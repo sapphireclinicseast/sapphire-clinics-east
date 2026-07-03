@@ -251,6 +251,78 @@ END$$;
 -- Cutoff 1 resignation toggle: compute monthly withholding tax on cutoff 1 instead of waiting for cutoff 2
 ALTER TABLE "EmployeePayslip" ADD COLUMN IF NOT EXISTS "computeTaxNow" BOOLEAN NOT NULL DEFAULT false;
 
+-- Cash Advances (event floats): release → liquidate → return → reimburse
+CREATE TABLE IF NOT EXISTS "CashAdvance" (
+  "id" TEXT NOT NULL,
+  "branch" TEXT NOT NULL,
+  "refNumber" TEXT NOT NULL,
+  "refSeq" INTEGER NOT NULL,
+  "accountableName" TEXT NOT NULL,
+  "purpose" TEXT NOT NULL,
+  "dateReleased" TIMESTAMP(3) NOT NULL,
+  "amount" DECIMAL(65,30) NOT NULL,
+  "sourceAccountId" TEXT,
+  "status" TEXT NOT NULL DEFAULT 'OPEN',
+  "createdById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CashAdvance_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "CashAdvance_branch_refNumber_key" ON "CashAdvance"("branch","refNumber");
+CREATE INDEX IF NOT EXISTS "CashAdvance_branch_idx" ON "CashAdvance"("branch");
+-- Release proof(s): acknowledgement receipt, approval memo, etc.
+ALTER TABLE "CashAdvance" ADD COLUMN IF NOT EXISTS "proofUrls" JSONB;
+CREATE TABLE IF NOT EXISTS "CashAdvanceLine" (
+  "id" TEXT NOT NULL,
+  "advanceId" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "date" TIMESTAMP(3) NOT NULL,
+  "accountTitle" TEXT,
+  "description" TEXT,
+  "vatable" TEXT,
+  "amount" DECIMAL(65,30) NOT NULL,
+  "siNumber" TEXT,
+  "registeredName" TEXT,
+  "proofUrl" TEXT,
+  "proofUrls" JSONB,
+  "bankAccountId" TEXT,
+  "journalEntryId" TEXT,
+  "createdById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CashAdvanceLine_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "CashAdvanceLine_advanceId_idx" ON "CashAdvanceLine"("advanceId");
+DO $$ BEGIN
+  ALTER TABLE "CashAdvanceLine" ADD CONSTRAINT "CashAdvanceLine_advanceId_fkey" FOREIGN KEY ("advanceId") REFERENCES "CashAdvance"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Sales-with-SI flag resolutions + monthly sales targets
+CREATE TABLE IF NOT EXISTS "SalesInvoiceFlag" (
+  "id" TEXT NOT NULL,
+  "branch" TEXT NOT NULL,
+  "siNumber" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "remarks" TEXT,
+  "createdById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SalesInvoiceFlag_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "SalesInvoiceFlag_branch_siNumber_key" ON "SalesInvoiceFlag"("branch","siNumber");
+CREATE INDEX IF NOT EXISTS "SalesInvoiceFlag_branch_idx" ON "SalesInvoiceFlag"("branch");
+CREATE TABLE IF NOT EXISTS "SalesTarget" (
+  "id" TEXT NOT NULL,
+  "branch" TEXT NOT NULL,
+  "periodMonth" INTEGER NOT NULL,
+  "periodYear" INTEGER NOT NULL,
+  "target" DECIMAL(65,30) NOT NULL DEFAULT 0,
+  "createdById" TEXT,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SalesTarget_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "SalesTarget_branch_periodMonth_periodYear_key" ON "SalesTarget"("branch","periodMonth","periodYear");
+CREATE INDEX IF NOT EXISTS "SalesTarget_branch_idx" ON "SalesTarget"("branch");
+
 -- Allow multiple rows per employee per cutoff (drop legacy unique constraint)
 -- Required so employees can have separate allowance + deduction rows in the same cutoff period
 DROP INDEX IF EXISTS "CutoffAdjustment_employeeId_cutoffPeriod_branch_key";

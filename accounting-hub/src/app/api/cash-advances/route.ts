@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch, accountableName, purpose, dateReleased, amount, sourceAccountId } = await req.json()
+    const { branch, accountableName, purpose, dateReleased, amount, sourceAccountId, proofUrls } = await req.json()
     if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     if (!accountableName?.trim()) return NextResponse.json({ error: 'Accountable staff is required' }, { status: 400 })
     if (!purpose?.trim()) return NextResponse.json({ error: 'Purpose is required' }, { status: 400 })
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       const seq = (last?.refSeq || 0) + 1
       const refNumber = `${prefix}${String(seq).padStart(4, '0')}`
       const adv = await tx.cashAdvance.create({
-        data: { branch, refNumber, refSeq: seq, accountableName: accountableName.trim(), purpose: purpose.trim(), dateReleased: new Date(dateReleased), amount: amt, sourceAccountId, createdById: session.user!.id ?? null },
+        data: { branch, refNumber, refSeq: seq, accountableName: accountableName.trim(), purpose: purpose.trim(), dateReleased: new Date(dateReleased), amount: amt, sourceAccountId, proofUrls: Array.isArray(proofUrls) && proofUrls.length ? proofUrls : undefined, createdById: session.user!.id ?? null },
       })
       await postJournalEntry(tx, {
         entryDate: new Date(dateReleased), description: `Cash advance released — ${adv.refNumber} (${accountableName.trim()})`,

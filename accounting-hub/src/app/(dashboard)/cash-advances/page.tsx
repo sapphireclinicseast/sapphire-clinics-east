@@ -127,17 +127,30 @@ function ReleaseModal({ branch, banks, onClose, onSaved }: { branch: string; ban
   const [amount, setAmount] = useState('')
   const [sourceAccountId, setSource] = useState('')
   const [staff, setStaff] = useState<string[]>([])
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     const sh = BRANCHES.find(b => b.value === branch)?.short || ''
     fetch(`/api/pos/staff${sh ? `?branch=${sh}` : ''}`).then(r => r.ok ? r.json() : { staff: [] })
       .then(d => setStaff([...new Set(((d.staff || []) as { name: string }[]).map(s => s.name).filter(Boolean))])).catch(() => setStaff([]))
   }, [branch])
+  const uploadProofs = async (files: FileList | null) => {
+    if (!files || !files.length) return
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData(); fd.append('file', file)
+        const r = await fetch('/api/upload', { method: 'POST', body: fd })
+        if (r.ok) { const u = (await r.json()).url; setProofUrls(p => [...p, u]) }
+      }
+    } catch { /* ignore */ } finally { setUploading(false) }
+  }
   const save = async () => {
     if (!accountableName.trim() || !purpose.trim() || !(num(amount) > 0) || !sourceAccountId) { alert('Fill accountable staff, purpose, a valid amount, and the source bank.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/cash-advances', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, accountableName, purpose, dateReleased, amount: num(amount), sourceAccountId }) })
+      const r = await fetch('/api/cash-advances', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, accountableName, purpose, dateReleased, amount: num(amount), sourceAccountId, proofUrls }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
     } finally { setBusy(false) }
@@ -159,6 +172,19 @@ function ReleaseModal({ branch, banks, onClose, onSaved }: { branch: string; ban
         <select value={sourceAccountId} onChange={e => setSource(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-4" style={{ borderColor: 'var(--light-gray)' }}>
           <option value="">Select account…</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
         </select>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(acknowledgement receipt, approval memo… — you can add more than one)</span></label>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {proofUrls.map((u, i) => (
+            <span key={u} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> Proof {i + 1}</a>
+              <button onClick={() => setProofUrls(p => p.filter(x => x !== u))}><X size={12} style={{ color: '#dc2626' }} /></button>
+            </span>
+          ))}
+          <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Add proof
+            <input type="file" multiple className="hidden" accept="image/*,.pdf" onChange={e => { uploadProofs(e.target.files); e.target.value = '' }} />
+          </label>
+        </div>
         <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Release advance'}</button>
       </div>
     </div>
@@ -166,7 +192,7 @@ function ReleaseModal({ branch, banks, onClose, onSaved }: { branch: string; ban
 }
 
 interface Line { id: string; kind: string; date: string; accountTitle: string | null; description: string | null; vatable: string | null; amount: number; siNumber: string | null; registeredName: string | null; proofUrl: string | null; bankAccountId: string | null }
-interface Detail { id: string; refNumber: string; accountableName: string; purpose: string; amount: number; status: string; liquidated: number; returned: number; reimbursed: number; outstanding: number; lines: Line[] }
+interface Detail { id: string; refNumber: string; accountableName: string; purpose: string; amount: number; status: string; liquidated: number; returned: number; reimbursed: number; outstanding: number; proofUrls: string[] | null; lines: Line[] }
 
 function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; banks: Bank[]; branch: string; onClose: () => void; onChanged: () => void }) {
   const [d, setD] = useState<Detail | null>(null)
@@ -203,7 +229,15 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
       <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         {!d ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" /></div> : (<>
           <div className="flex items-center justify-between mb-1"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{d.refNumber} · {d.accountableName}</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-          <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>{d.purpose}</p>
+          <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>{d.purpose}</p>
+          {Array.isArray(d.proofUrls) && d.proofUrls.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>Release proof:</span>
+              {d.proofUrls.map((u, i) => (
+                <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><Eye size={12} /> Proof {i + 1}</a>
+              ))}
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
             {[['Released', d.amount], ['Liquidated', d.liquidated], ['Returned', d.returned], ['Outstanding', d.outstanding]].map(([k, v]) => (
               <div key={k as string} className="rounded-xl border p-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}><p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{k as string}</p><p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(v as number)}</p></div>
