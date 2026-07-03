@@ -79,16 +79,16 @@ export async function GET(req: Request) {
       for (let i = min + 1; i < max; i++) if (!present.has(i)) gaps.push({ siNumber: pad4(i) })
     }
 
-    // Existing flag resolutions.
-    const flagNums = [...new Set([...gaps.map(g => g.siNumber), ...duplicates.map(d => d.siNumber)])]
-    const flags = flagNums.length ? await prisma.salesInvoiceFlag.findMany({ where: { branch, siNumber: { in: flagNums } } }) : []
-    const flagBy = new Map(flags.map(f => [f.siNumber, { status: f.status, remarks: f.remarks }]))
+    // All flag resolutions for the branch (Cancelled / Remarks / Tagged-to-order).
+    const allFlags = await prisma.salesInvoiceFlag.findMany({ where: { branch } })
+    const flagBy = new Map(allFlags.map(f => [f.siNumber, { status: f.status, remarks: f.remarks, orderId: f.orderId }]))
 
     return NextResponse.json({
       rows,
       totals: { vat: rows.reduce((s, r) => s + r.vat, 0), nonVat: rows.reduce((s, r) => s + r.nonVat, 0), count: rows.length },
       gaps: gaps.map(g => ({ ...g, flag: flagBy.get(g.siNumber) || null })),
       duplicates: duplicates.map(d => ({ ...d, flag: flagBy.get(d.siNumber) || null })),
+      flags: allFlags.map(f => ({ siNumber: f.siNumber, status: f.status, remarks: f.remarks, orderId: f.orderId })),
     })
   } catch (err) {
     console.error('With-SI error:', err)
@@ -104,13 +104,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch, siNumber, status, remarks } = await req.json()
-    if (!VALID_BRANCHES.includes(branch) || !siNumber || !['CANCELLED', 'REMARKS'].includes(status)) {
+    const { branch, siNumber, status, remarks, orderId } = await req.json()
+    if (!VALID_BRANCHES.includes(branch) || !siNumber || !['CANCELLED', 'REMARKS', 'TAGGED'].includes(status)) {
       return NextResponse.json({ error: 'branch, siNumber and a valid status are required' }, { status: 400 })
+    }
+    // Tag-to-order: the missing SI number is actually an order that was never
+    // labelled — assign this SI to that order so it joins the sequence.
+    if (status === 'TAGGED') {
+      if (!orderId) return NextResponse.json({ error: 'Select an order to tag' }, { status: 400 })
+      const order = await prisma.order.findFirst({ where: { id: orderId, branch } })
+      if (!order) return NextResponse.json({ error: 'Order not found in this branch' }, { status: 404 })
+      if (order.salesInvoiceNumber) return NextResponse.json({ error: 'That order already has a Sales Invoice number' }, { status: 400 })
+      await prisma.order.update({ where: { id: orderId }, data: { salesInvoiceNumber: String(siNumber), issuedOfficialInvoice: true } })
+      await prisma.salesInvoiceFlag.upsert({
+        where: { branch_siNumber: { branch, siNumber: String(siNumber) } },
+        update: { status, orderId, remarks: null },
+        create: { branch, siNumber: String(siNumber), status, orderId, createdById: session.user.id as string },
+      })
+      return NextResponse.json({ success: true })
     }
     await prisma.salesInvoiceFlag.upsert({
       where: { branch_siNumber: { branch, siNumber: String(siNumber) } },
-      update: { status, remarks: remarks?.trim() || null },
+      update: { status, remarks: remarks?.trim() || null, orderId: null },
       create: { branch, siNumber: String(siNumber), status, remarks: remarks?.trim() || null, createdById: session.user.id as string },
     })
     return NextResponse.json({ success: true })
@@ -129,6 +144,11 @@ export async function DELETE(req: Request) {
   const sp = new URL(req.url).searchParams
   const branch = sp.get('branch') || '', siNumber = sp.get('siNumber') || ''
   if (!branch || !siNumber) return NextResponse.json({ error: 'branch and siNumber required' }, { status: 400 })
+  // If this was a tag-to-order, un-label the order so the SI reverts to a gap.
+  const existing = await prisma.salesInvoiceFlag.findUnique({ where: { branch_siNumber: { branch, siNumber } } })
+  if (existing?.status === 'TAGGED' && existing.orderId) {
+    await prisma.order.update({ where: { id: existing.orderId }, data: { salesInvoiceNumber: null, issuedOfficialInvoice: false } }).catch(() => {})
+  }
   await prisma.salesInvoiceFlag.deleteMany({ where: { branch, siNumber } })
   return NextResponse.json({ success: true })
 }

@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   Receipt, Download, Printer, Loader2, Filter, FileText,
-  CheckCircle2, XCircle,
+  CheckCircle2, XCircle, X, Search,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -532,12 +532,15 @@ const WITHSI_BRANCHES = [
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface SiRow { id: string; orderNumber: number; siNumber: string; date: string; patientName: string; vat: number; nonVat: number; amount: number; orderType: string }
+interface FlagInfo { siNumber: string; status: string; remarks: string | null; orderId: string | null }
 interface Flag { siNumber: string; count?: number; flag: { status: string; remarks: string | null } | null }
+interface OrderHit { id: string; orderNumber: number; date: string; patientName: string; services: string; amount: number; payment: string }
+const siDigits = (s: string) => parseInt(String(s).replace(/\D/g, '') || '0', 10)
 
 function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scopeEnum: string | null }) {
   const [branch, setBranch] = useState(initialBranch)
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
-  const [data, setData] = useState<{ rows: SiRow[]; totals: { vat: number; nonVat: number; count: number }; gaps: Flag[]; duplicates: Flag[] } | null>(null)
+  const [data, setData] = useState<{ rows: SiRow[]; totals: { vat: number; nonVat: number; count: number }; gaps: Flag[]; duplicates: Flag[]; flags: FlagInfo[] } | null>(null)
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(async () => {
@@ -551,7 +554,35 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
     await fetch('/api/reports/with-si', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, siNumber, status, remarks }) })
     await load()
   }
+  const tagOrder = async (siNumber: string, orderId: string) => {
+    const r = await fetch('/api/reports/with-si', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, siNumber, status: 'TAGGED', orderId }) })
+    if (!r.ok) { alert((await r.json()).error || 'Failed to tag'); return }
+    await load()
+  }
   const clearFlag = async (siNumber: string) => { await fetch(`/api/reports/with-si?branch=${branch}&siNumber=${siNumber}`, { method: 'DELETE' }); await load() }
+
+  const flagBySi = new Map((data?.flags || []).map(f => [f.siNumber, f]))
+  const tagged = (si: string) => flagBySi.get(si)?.status === 'TAGGED'
+
+  // LEFT — valid SIs (orders) plus items resolved from the right (tagged / cancelled / remarks).
+  const leftItems = data ? [
+    ...data.rows.map(r => ({ kind: tagged(r.siNumber) ? 'tagged' : 'si', si: r.siNumber, siN: siDigits(r.siNumber), order: r, amount: r.amount, remarks: '' })),
+    ...data.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').map(f => ({ kind: f.status.toLowerCase(), si: f.siNumber, siN: siDigits(f.siNumber), order: null as SiRow | null, amount: 0, remarks: f.remarks || '' })),
+  ].sort((a, b) => a.siN - b.siN) : []
+  const leftTotal = data ? data.rows.reduce((s, r) => s + r.amount, 0) : 0
+
+  // RIGHT — still-unresolved flags (missing / duplicate numbers) needing action.
+  const rightItems = data ? [
+    ...data.gaps.filter(g => !g.flag).map(g => ({ type: 'gap' as const, siNumber: g.siNumber, count: 0 })),
+    ...data.duplicates.filter(d => !d.flag).map(d => ({ type: 'dup' as const, siNumber: d.siNumber, count: d.count || 0 })),
+  ].sort((a, b) => siDigits(a.siNumber) - siDigits(b.siNumber)) : []
+  const rightTotal = data ? rightItems.reduce((s, it) => it.type === 'dup'
+    ? s + data.rows.filter(r => r.siNumber === it.siNumber).reduce((x, r) => x + r.amount, 0) : s, 0) : 0
+
+  const resolvedBg = '#fffbeb', resolvedBorder = '#fde68a'
+  const badge = (kind: string) => kind === 'tagged' ? { t: 'Tagged → order', bg: '#e0e7ff', c: '#3730a3' }
+    : kind === 'cancelled' ? { t: 'Cancelled SI', bg: '#fee2e2', c: '#b91c1c' }
+    : { t: 'Remarks', bg: '#dbeafe', c: '#1e40af' }
 
   return (
     <div className="space-y-4">
@@ -566,67 +597,133 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
       </div>
 
       {loading ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></div> : data && (<>
-        {(data.gaps.length > 0 || data.duplicates.length > 0) && (
-          <div className="rounded-2xl border p-4" style={{ borderColor: '#fde68a', background: '#fffbeb' }}>
-            <p className="text-sm font-bold mb-2" style={{ color: '#92400e' }}>Flagged Sales Invoices</p>
-            <div className="space-y-1.5">
-              {data.gaps.map(g => <FlagRow key={`g${g.siNumber}`} label={`Missing #${g.siNumber}`} item={g} onSave={saveFlag} onClear={clearFlag} />)}
-              {data.duplicates.map(d => <FlagRow key={`d${d.siNumber}`} label={`Duplicate #${d.siNumber} (×${d.count})`} item={d} onSave={saveFlag} onClear={clearFlag} />)}
-            </div>
-          </div>
-        )}
-
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>VAT (Products)</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(data.totals.vat)}</p></div>
           <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Non-VAT (Services)</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(data.totals.nonVat)}</p></div>
           <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}><p className="text-[11px]" style={{ color: 'var(--deep-teal)' }}>{data.totals.count} SI order(s)</p><p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(data.totals.vat + data.totals.nonVat)}</p></div>
         </div>
 
-        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-          <table className="w-full text-sm">
-            <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              <th className="px-3 py-2.5 font-semibold">SI No.</th><th className="px-3 py-2.5 font-semibold">Order #</th><th className="px-3 py-2.5 font-semibold">Date</th>
-              <th className="px-3 py-2.5 font-semibold">Patient / Customer</th><th className="px-3 py-2.5 font-semibold text-right">VAT</th><th className="px-3 py-2.5 font-semibold text-right">Non-VAT</th>
-            </tr></thead>
-            <tbody>
-              {data.rows.map(r => (
-                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.siNumber}</td>
-                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.orderNumber}</td>
-                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.date}</td>
-                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{r.patientName}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: r.vat ? 'var(--charcoal)' : 'var(--light-gray)' }}>{r.vat ? `₱${peso(r.vat)}` : '—'}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: r.nonVat ? 'var(--charcoal)' : 'var(--light-gray)' }}>{r.nonVat ? `₱${peso(r.nonVat)}` : '—'}</td>
-                </tr>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          {/* LEFT — Sales Invoices */}
+          <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Sales Invoices <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {leftItems.length}</span></p>
+              <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(leftTotal)}</p>
+            </div>
+            <div className="overflow-auto" style={{ maxHeight: '68vh' }}>
+              <table className="w-full text-sm">
+                <thead><tr className="text-left sticky top-0" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  <th className="px-3 py-2 font-semibold">SI No.</th><th className="px-3 py-2 font-semibold">Date</th>
+                  <th className="px-3 py-2 font-semibold">Patient / Customer</th><th className="px-3 py-2 font-semibold text-right">Amount</th>
+                </tr></thead>
+                <tbody>
+                  {leftItems.map(it => {
+                    const isResolved = it.kind !== 'si'
+                    const b = isResolved ? badge(it.kind) : null
+                    return (
+                      <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isResolved ? resolvedBg : undefined }}>
+                        <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{it.si}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.order?.date || '—'}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>
+                          {it.order ? it.order.patientName : <span style={{ color: 'var(--mid-gray)' }}>{it.remarks || '—'}</span>}
+                          {b && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: b.bg, color: b.c }}>{b.t}</span>}
+                          {isResolved && <button onClick={() => clearFlag(it.si)} className="ml-1.5 underline text-[10px]" style={{ color: 'var(--mid-gray)' }}>undo</button>}
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: it.amount ? 'var(--charcoal)' : 'var(--light-gray)' }}>{it.amount ? `₱${peso(it.amount)}` : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                  {leftItems.length === 0 && <tr><td colSpan={4} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No orders with a Sales Invoice in this branch/range.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* RIGHT — Flagged Sales Invoices */}
+          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: resolvedBorder, background: resolvedBg }}>
+            <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: resolvedBorder }}>
+              <p className="text-sm font-bold" style={{ color: '#92400e' }}>Flagged Sales Invoices <span className="font-normal">· {rightItems.length}</span></p>
+              {rightTotal > 0 && <p className="text-sm font-bold" style={{ color: '#92400e' }}>₱{peso(rightTotal)}</p>}
+            </div>
+            <div className="overflow-auto p-3 space-y-1.5" style={{ maxHeight: '68vh' }}>
+              {rightItems.length === 0 ? (
+                <p className="text-xs text-center py-8" style={{ color: '#92400e' }}>No unresolved flags — every Sales Invoice number is accounted for. 🎉</p>
+              ) : rightItems.map(it => (
+                <FlagRow key={`${it.type}${it.siNumber}`} branch={branch}
+                  label={it.type === 'gap' ? `Missing #${it.siNumber}` : `Duplicate #${it.siNumber} (×${it.count})`}
+                  siNumber={it.siNumber} onSave={saveFlag} onTag={tagOrder} />
               ))}
-              {data.rows.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No orders with a Sales Invoice in this branch/range.</td></tr>}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
       </>)}
     </div>
   )
 }
 
-function FlagRow({ label, item, onSave, onClear }: { label: string; item: Flag; onSave: (si: string, status: string, remarks: string) => void; onClear: (si: string) => void }) {
-  const [status, setStatus] = useState(item.flag?.status || 'CANCELLED')
-  const [remarks, setRemarks] = useState(item.flag?.remarks || '')
-  const resolved = !!item.flag
+function FlagRow({ branch, label, siNumber, onSave, onTag }: { branch: string; label: string; siNumber: string; onSave: (si: string, status: string, remarks: string) => void; onTag: (si: string, orderId: string) => void }) {
+  const [status, setStatus] = useState('CANCELLED')
+  const [remarks, setRemarks] = useState('')
+  const [q, setQ] = useState('')
+  const [hits, setHits] = useState<OrderHit[]>([])
+  const [picked, setPicked] = useState<OrderHit | null>(null)
+  const [searching, setSearching] = useState(false)
+
+  useEffect(() => {
+    if (status !== 'TAGGED' || !q.trim()) { setHits([]); return }
+    const t = setTimeout(async () => {
+      setSearching(true)
+      try { const r = await fetch(`/api/reports/order-search?branch=${branch}&q=${encodeURIComponent(q)}`); const d = r.ok ? await r.json() : { orders: [] }; setHits(d.orders || []) }
+      catch { setHits([]) } finally { setSearching(false) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [q, status, branch])
+
+  const save = () => {
+    if (status === 'TAGGED') { if (!picked) { alert('Search and choose the order this SI belongs to.'); return } onTag(siNumber, picked.id) }
+    else onSave(siNumber, status, remarks)
+  }
   return (
-    <div className="flex items-center gap-2 flex-wrap text-xs">
-      <span className="font-semibold w-40" style={{ color: '#92400e' }}>{label}</span>
-      {resolved ? (
-        <>
-          <span className="px-2 py-0.5 rounded-full font-semibold" style={item.flag!.status === 'CANCELLED' ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#e0e7ff', color: '#3730a3' }}>{item.flag!.status === 'CANCELLED' ? 'Cancelled SI' : 'Remarks'}</span>
-          {item.flag!.remarks && <span style={{ color: 'var(--mid-gray)' }}>{item.flag!.remarks}</span>}
-          <button onClick={() => onClear(item.siNumber)} className="underline" style={{ color: 'var(--mid-gray)' }}>edit</button>
-        </>
-      ) : (
-        <>
-          <select value={status} onChange={e => setStatus(e.target.value)} className="px-2 py-1 rounded border" style={{ borderColor: 'var(--light-gray)' }}><option value="CANCELLED">Declare Cancelled SI</option><option value="REMARKS">Add Remarks</option></select>
-          {status === 'REMARKS' && <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Reason…" className="px-2 py-1 rounded border" style={{ borderColor: 'var(--light-gray)' }} />}
-          <button onClick={() => onSave(item.siNumber, status, remarks)} className="px-2 py-1 rounded text-white font-semibold flex items-center gap-1" style={{ background: 'var(--teal)' }}><CheckCircle2 size={12} /> Save</button>
-        </>
+    <div className="rounded-lg border bg-white p-2" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="font-semibold" style={{ color: '#92400e', minWidth: 130 }}>{label}</span>
+        <select value={status} onChange={e => setStatus(e.target.value)} className="px-2 py-1 rounded border" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="CANCELLED">Declare Cancelled SI</option>
+          <option value="REMARKS">Remarks</option>
+          <option value="TAGGED">Tag to Order</option>
+        </select>
+        {status === 'REMARKS' && <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Reason…" className="px-2 py-1 rounded border flex-1 min-w-[120px]" style={{ borderColor: 'var(--light-gray)' }} />}
+        <button onClick={save} className="ml-auto px-2 py-1 rounded text-white font-semibold flex items-center gap-1" style={{ background: 'var(--teal)' }}><CheckCircle2 size={12} /> Save</button>
+      </div>
+
+      {status === 'TAGGED' && (
+        <div className="mt-2">
+          {picked ? (
+            <div className="flex items-center gap-2 p-1.5 rounded text-xs" style={{ background: '#e0e7ff', color: '#3730a3' }}>
+              <span className="flex-1">#{picked.orderNumber} · {picked.date} · {picked.patientName} · ₱{peso(picked.amount)}{picked.services ? ` · ${picked.services}` : ''}</span>
+              <button onClick={() => setPicked(null)}><X size={13} /></button>
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="flex items-center gap-1 px-2 py-1 rounded border" style={{ borderColor: 'var(--light-gray)' }}>
+                <Search size={12} style={{ color: 'var(--mid-gray)' }} />
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search patient / date (YYYY-MM-DD) / service / amount / payment…" className="flex-1 text-xs outline-none" />
+                {searching && <Loader2 size={12} className="animate-spin" style={{ color: 'var(--mid-gray)' }} />}
+              </div>
+              {hits.length > 0 && (
+                <div className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-xl max-h-52 overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                  {hits.map(h => (
+                    <button key={h.id} onClick={() => { setPicked(h); setHits([]); setQ('') }} className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--pale-teal)] border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>
+                      <div className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>#{h.orderNumber} · {h.date} · {h.patientName}</div>
+                      <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{[h.services, `₱${peso(h.amount)}`, h.payment].filter(Boolean).join(' · ')}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {q.trim() && !searching && hits.length === 0 && <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>No unlabelled orders match.</p>}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

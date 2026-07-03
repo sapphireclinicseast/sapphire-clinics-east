@@ -1847,8 +1847,9 @@ model SalesInvoiceFlag {
   id          String   @id @default(cuid())
   branch      String
   siNumber    String
-  status      String   // CANCELLED | REMARKS
+  status      String   // CANCELLED | REMARKS | TAGGED
   remarks     String?
+  orderId     String?  // TAGGED: the order this SI number was assigned to
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

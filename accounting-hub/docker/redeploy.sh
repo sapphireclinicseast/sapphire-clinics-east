@@ -257,6 +257,9 @@ ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "salesInvoiceNumber" TEXT;
 -- Cancelled check: scanned image(s)
 ALTER TABLE "CancelledCheck" ADD COLUMN IF NOT EXISTS "proofUrls" JSONB;
 
+-- Sales-invoice flag: tag a missing SI number to an existing order
+ALTER TABLE "SalesInvoiceFlag" ADD COLUMN IF NOT EXISTS "orderId" TEXT;
+
 -- Cash Advances (event floats): release → liquidate → return → reimburse
 CREATE TABLE IF NOT EXISTS "CashAdvance" (
   "id" TEXT NOT NULL,
