@@ -1515,7 +1515,9 @@ model Asset {
   depreciationEndDate DateTime
   supplierId          String?
   supplier            Supplier? @relation(fields: [supplierId], references: [id])
-  photoUrl            String?
+  photoUrl            String?   // main photo (shown in the list)
+  photoUrls           Json?     // all photos (gallery)
+  isDefective         Boolean   @default(false)
   departments         Json      @default("[]")  // string[] of dept names
   utilized            Boolean   @default(true)
   controlNumber       String?
@@ -1529,6 +1531,49 @@ model Asset {
   @@index([branch])
   @@index([classification])
   @@index([createdById])
+}
+
+// Annual physical asset audit. Snapshots the assets in scope at creation time,
+// records per-asset condition (usable / needs replacement), and locks on finalize.
+model AssetAudit {
+  id           String   @id @default(cuid())
+  refNumber    String   // AUDIT-26-0001
+  refSeq       Int
+  dateFrom     DateTime
+  dateTo       DateTime
+  auditorName  String
+  branch       String   // Branch enum value or 'ALL'
+  departments  Json     @default("[]")  // string[] of dept names covered
+  status       String   @default("DRAFT") // DRAFT | FINALIZED
+  proofUrls    Json?    // photo documentation of the audit
+  finalizedAt  DateTime?
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items        AssetAuditItem[]
+
+  @@unique([refNumber])
+  @@index([branch])
+}
+
+model AssetAuditItem {
+  id               String   @id @default(cuid())
+  auditId          String
+  audit            AssetAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  assetId          String
+  // snapshot so the printed report is stable even if the asset later changes
+  assetName        String
+  controlNumber    String?
+  classification   String?
+  accountableName  String?
+  usable           Boolean? // null = not yet assessed during the audit
+  needsReplacement Boolean  @default(false)
+  remarks          String?
+  createdAt        DateTime @default(now())
+
+  @@index([auditId])
+  @@index([assetId])
 }
 
 // Per-classification default depreciation years (set in Depreciation Settings)

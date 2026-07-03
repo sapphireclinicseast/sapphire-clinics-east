@@ -20,7 +20,13 @@ import {
   ChevronsUpDown,
   Filter,
   Image as ImageIcon,
+  Printer,
+  FileDown,
+  ClipboardCheck,
+  CheckCircle2,
+  Lock,
 } from 'lucide-react'
+import { downloadXlsx, downloadPdf } from '@/lib/export'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -44,6 +50,8 @@ interface Asset {
   supplierId: string | null
   supplier: { id: string; supplierName: string } | null
   photoUrl: string | null
+  photoUrls: string[] | null
+  isDefective: boolean
   departments: string[]
   utilized: boolean
   controlNumber: string | null
@@ -135,6 +143,8 @@ function emptyForm(branch: string) {
     yearsDepreciation: '5',
     supplierId: '',
     photoUrl: '',
+    photoUrls: [] as string[],
+    isDefective: false,
     departments: [] as string[],
     utilized: true,
     controlNumber: '',
@@ -215,8 +225,15 @@ export default function AssetManagementPage() {
   const [depSettingsForm, setDepSettingsForm] = useState<Record<string, number>>({})
   const [savingDepSettings, setSavingDepSettings] = useState(false)
 
-  // Lightbox
+  // Lightbox + photo gallery
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const [galleryAsset, setGalleryAsset] = useState<Asset | null>(null)
+  const [tab, setTab] = useState<'assets' | 'audit'>('assets')
+  const photosOf = (a: Asset): string[] => {
+    const arr = Array.isArray(a.photoUrls) ? a.photoUrls : []
+    if (arr.length) return arr
+    return a.photoUrl ? [a.photoUrl] : []
+  }
 
   // ── Auth guard ───────────────────────────────────────────────
   if (status === 'unauthenticated') redirect('/login')
@@ -300,6 +317,8 @@ export default function AssetManagementPage() {
       yearsDepreciation: String(asset.yearsDepreciation),
       supplierId: asset.supplierId ?? '',
       photoUrl: asset.photoUrl ?? '',
+      photoUrls: Array.isArray(asset.photoUrls) ? asset.photoUrls : (asset.photoUrl ? [asset.photoUrl] : []),
+      isDefective: !!asset.isDefective,
       departments: Array.isArray(asset.departments) ? (asset.departments as string[]) : [],
       utilized: asset.utilized,
       controlNumber: asset.controlNumber ?? '',
@@ -429,7 +448,9 @@ export default function AssetManagementPage() {
         monthlyDepreciation,
         depreciationEndDate,
         supplierId: form.supplierId || null,
-        photoUrl: form.photoUrl || null,
+        photoUrl: form.photoUrls[0] || form.photoUrl || null,
+        photoUrls: form.photoUrls,
+        isDefective: form.isDefective,
         departments: form.departments,
         utilized: form.utilized,
         accountableName: form.accountableName.trim() || null,
@@ -523,7 +544,7 @@ export default function AssetManagementPage() {
           <Building2 size={24} className="text-teal-600" />
           <h1 className="text-2xl font-semibold text-gray-900">Asset Management</h1>
         </div>
-        {canWrite && (
+        {canWrite && tab === 'assets' && (
           <div className="flex items-center gap-2">
             <button
               onClick={openDepSettings}
@@ -544,6 +565,16 @@ export default function AssetManagementPage() {
         )}
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+        {([['assets', 'Assets'], ['audit', 'Asset Audit']] as const).map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'audit' && <AssetAuditTab canWrite={canWrite} />}
+
       {/* Error banner */}
       {error && (
         <div className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-3 text-sm">
@@ -553,6 +584,7 @@ export default function AssetManagementPage() {
         </div>
       )}
 
+      {tab === 'assets' && (<>
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Global search */}
@@ -774,6 +806,9 @@ export default function AssetManagementPage() {
                     </div>
                   </th>
 
+                  {/* ── Condition ── */}
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Condition</th>
+
                   {/* ── Control No. ── */}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('controlNumber')}>
@@ -792,38 +827,34 @@ export default function AssetManagementPage() {
               <tbody className="divide-y divide-gray-100">
                 {displayedAssets.length === 0 ? (
                   <tr>
-                    <td colSpan={canWrite ? 11 : 10} className="text-center py-10 text-gray-400 text-sm">
+                    <td colSpan={canWrite ? 12 : 11} className="text-center py-10 text-gray-400 text-sm">
                       No assets match your search or filters.
                     </td>
                   </tr>
                 ) : displayedAssets.map((asset) => (
                   <tr key={asset.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
-                      {asset.photoUrl ? (
-                        /\.(jpg|jpeg|png|webp)$/i.test(asset.photoUrl) ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={asset.photoUrl}
-                            alt=""
-                            className="w-12 h-12 rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
-                            onClick={(e) => { e.stopPropagation(); setLightboxUrl(asset.photoUrl) }}
-                          />
-                        ) : (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); window.open(asset.photoUrl!, '_blank') }}
-                            className="w-12 h-12 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-teal-600 transition-colors"
-                            title="View PDF"
-                          >
-                            <FileText size={18} />
+                      {(() => {
+                        const photos = photosOf(asset); const main = photos[0]
+                        if (!main) return <div className="w-12 h-12 rounded-lg border border-dashed border-gray-200 flex items-center justify-center text-gray-300"><ImageIcon size={16} /></div>
+                        const isImg = /\.(jpg|jpeg|png|webp)$/i.test(main)
+                        return (
+                          <button className="relative block" onClick={(e) => { e.stopPropagation(); setGalleryAsset(asset) }} title={photos.length > 1 ? `${photos.length} photos` : 'View photo'}>
+                            {isImg ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={main} alt="" className="w-12 h-12 rounded-lg object-cover border border-gray-200 hover:opacity-80 transition-opacity" />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400"><FileText size={18} /></div>
+                            )}
+                            {photos.length > 1 && <span className="absolute -bottom-1 -right-1 px-1 py-0.5 rounded-full text-[9px] font-bold text-white" style={{ background: 'var(--teal)' }}>{photos.length}</span>}
                           </button>
                         )
-                      ) : (
-                        <div className="w-12 h-12 rounded-lg border border-dashed border-gray-200 flex items-center justify-center text-gray-300">
-                          <ImageIcon size={16} />
-                        </div>
-                      )}
+                      })()}
                     </td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{asset.name}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      {asset.name}
+                      {asset.isDefective && <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Defective</span>}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{classificationLabel(asset.classification)}</td>
                     <td className="px-4 py-3 text-gray-600">{branchLabel(asset.branch)}</td>
                     <td className="px-4 py-3 text-right text-gray-900 font-medium">{formatCurrency(asset.totalAmount)}</td>
@@ -836,6 +867,11 @@ export default function AssetManagementPage() {
                           : 'bg-gray-100 text-gray-600'
                       }`}>
                         {asset.utilized ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style={asset.isDefective ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#dcfce7', color: '#166534' }}>
+                        {asset.isDefective ? 'Defective' : 'OK'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600 font-mono text-xs">{asset.controlNumber ?? '—'}</td>
@@ -893,6 +929,33 @@ export default function AssetManagementPage() {
           </div>
         )}
       </div>
+      </>)}
+
+      {/* Photo gallery */}
+      {galleryAsset && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={() => setGalleryAsset(null)}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-2xl max-h-[88vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-bold text-gray-900">{galleryAsset.name} — Photos</h3>
+              <button onClick={() => setGalleryAsset(null)}><X size={18} className="text-gray-500" /></button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {photosOf(galleryAsset).map((url, i) => (
+                <div key={url} className="relative">
+                  {/\.(jpg|jpeg|png|webp)$/i.test(url) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={url} alt="" className="w-full aspect-square object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80" onClick={() => setLightboxUrl(url)} />
+                  ) : (
+                    <button onClick={() => window.open(url, '_blank')} className="w-full aspect-square rounded-lg border border-gray-200 flex items-center justify-center text-teal-600"><FileText size={28} /></button>
+                  )}
+                  {i === 0 && <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: 'var(--teal)' }}>Main</span>}
+                </div>
+              ))}
+              {photosOf(galleryAsset).length === 0 && <p className="col-span-3 text-center py-8 text-sm text-gray-400">No photos.</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {showModal && (
@@ -1062,48 +1125,43 @@ export default function AssetManagementPage() {
                 </select>
               </div>
 
-              {/* Photo upload */}
+              {/* Photos (main + gallery) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Photo of Asset</label>
-                <div className="flex items-start gap-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Photos of Asset <span className="font-normal text-gray-400">— first is the Main photo (shown in the list); add more than one</span></label>
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  {form.photoUrls.map((url, i) => (
+                    <div key={url} className="relative">
+                      {/\.(jpg|jpeg|png|webp)$/i.test(url) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={url} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80"
+                          onClick={() => setLightboxUrl(url)} title="Click to enlarge" />
+                      ) : (
+                        <button onClick={() => window.open(url, '_blank')} className="w-16 h-16 rounded-lg border border-gray-200 flex items-center justify-center text-teal-600"><FileText size={20} /></button>
+                      )}
+                      {i === 0 && <span className="absolute -top-1.5 -left-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white" style={{ background: 'var(--teal)' }}>Main</span>}
+                      <div className="absolute -top-1.5 -right-1.5 flex gap-0.5">
+                        {i !== 0 && <button onClick={() => setForm(f => { const a = [...f.photoUrls]; const [m] = a.splice(i, 1); return { ...f, photoUrls: [m, ...a] } })} title="Make main" className="w-4 h-4 rounded-full bg-teal-600 text-white text-[9px] flex items-center justify-center">★</button>}
+                        <button onClick={() => setForm(f => ({ ...f, photoUrls: f.photoUrls.filter(u => u !== url) }))} title="Remove" className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center"><X size={9} /></button>
+                      </div>
+                    </div>
+                  ))}
                   <ScanUpload
                     prefix={form.controlNumber || form.name || 'ASSET'}
                     section="asset"
-                    label="Upload file"
-                    onUploaded={(url) => {
-                      setForm((f) => ({ ...f, photoUrl: url }))
-                      const isImage = /\.(jpg|jpeg|png|webp)$/i.test(url)
-                      setPhotoPreview(isImage ? url : null)
-                      setPhotoFilename(url.split('/').pop() ?? '')
-                    }}
+                    existingCount={form.photoUrls.length}
+                    label="Add photo"
+                    onUploaded={(url) => setForm((f) => ({ ...f, photoUrls: [...f.photoUrls, url] }))}
                   />
-                  {form.photoUrl && (
-                    <div className="flex items-center gap-2">
-                      {photoPreview ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={photoPreview}
-                          alt="Asset preview"
-                          className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => setLightboxUrl(photoPreview)}
-                          title="Click to enlarge"
-                        />
-                      ) : (
-                        <button
-                          onClick={() => window.open(form.photoUrl, '_blank')}
-                          className="flex items-center gap-1 text-teal-600 hover:text-teal-800 transition-colors"
-                        >
-                          <FileText size={20} />
-                          <span className="text-xs underline">{photoFilename}</span>
-                        </button>
-                      )}
-                      <button onClick={removePhoto} className="text-red-500 hover:text-red-700">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  )}
                 </div>
-                <p className="text-xs text-gray-400 mt-1">JPG, PNG, or PDF — max 10MB</p>
+                <p className="text-xs text-gray-400">JPG, PNG, or PDF — max 10MB each</p>
+              </div>
+
+              {/* Defective */}
+              <div>
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                  <input type="checkbox" checked={form.isDefective} onChange={(e) => setForm(f => ({ ...f, isDefective: e.target.checked }))} />
+                  Mark as defective
+                </label>
               </div>
 
               {/* Departments */}
@@ -1291,6 +1349,250 @@ export default function AssetManagementPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Asset Audit tab ───────────────────────────────────────────
+interface AuditRow { id: string; refNumber: string; dateFrom: string; dateTo: string; auditorName: string; branch: string; departments: string[]; status: string; finalizedAt: string | null; createdAt: string; itemCount: number; replacementCount: number; assessedCount: number }
+interface AuditItem { id: string; assetId: string; assetName: string; controlNumber: string | null; classification: string | null; accountableName: string | null; usable: boolean | null; needsReplacement: boolean; remarks: string | null }
+interface AuditDetail { id: string; refNumber: string; dateFrom: string; dateTo: string; auditorName: string; branch: string; departments: string[]; status: string; proofUrls: string[] | null; finalizedAt: string | null; items: AuditItem[] }
+
+const dISO = (s: string) => String(s).slice(0, 10)
+
+function AssetAuditTab({ canWrite }: { canWrite: boolean }) {
+  const [audits, setAudits] = useState<AuditRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showCreate, setShowCreate] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const r = await fetch('/api/assets/audits'); setAudits(r.ok ? await r.json() : []) }
+    catch { setAudits([]) } finally { setLoading(false) }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const del = async (a: AuditRow) => {
+    if (!confirm(`Delete draft audit ${a.refNumber}?`)) return
+    const r = await fetch(`/api/assets/audits?id=${a.id}`, { method: 'DELETE' })
+    if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+    load()
+  }
+  const exportReplacements = async (a: AuditRow) => {
+    const r = await fetch(`/api/assets/audits?id=${a.id}`)
+    if (!r.ok) return
+    const j: AuditDetail = await r.json()
+    const repl = (j.items || []).filter(i => i.needsReplacement)
+    if (repl.length === 0) { alert('No assets flagged for replacement in this audit.'); return }
+    const headers = ['Control No.', 'Asset', 'Classification', 'Accountable', 'Usable', 'Remarks']
+    const rows = repl.map(i => [i.controlNumber || '', i.assetName, classificationLabel(i.classification || ''), i.accountableName || '', i.usable === false ? 'No' : i.usable ? 'Yes' : '—', i.remarks || ''])
+    downloadXlsx(`assets-for-replacement-${j.refNumber}`, [{ name: 'For Replacement', headers, rows }])
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">Annual physical audits — snapshot the assets in scope, mark each usable or for replacement, then finalize to lock.</p>
+        {canWrite && <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: 'var(--teal)' }}><Plus size={16} /> Add New Audit</button>}
+      </div>
+
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left bg-gray-50" style={{ color: 'var(--mid-gray)' }}>
+            {['Audit Ref.', 'Period', 'Auditor', 'Branch', 'Assessed', 'For Replacement', 'Status', ''].map(h => <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide">{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {loading ? <tr><td colSpan={8} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+            : audits.map(a => (
+              <tr key={a.id} className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-4 py-3 font-mono font-semibold text-gray-900">{a.refNumber}</td>
+                <td className="px-4 py-3 text-xs text-gray-600">{dISO(a.dateFrom)} → {dISO(a.dateTo)}</td>
+                <td className="px-4 py-3 text-gray-700">{a.auditorName}</td>
+                <td className="px-4 py-3 text-gray-600">{a.branch === 'ALL' ? 'All branches' : branchLabel(a.branch)}</td>
+                <td className="px-4 py-3 text-gray-600">{a.assessedCount}/{a.itemCount}</td>
+                <td className="px-4 py-3"><span className="font-semibold" style={{ color: a.replacementCount ? '#b91c1c' : 'var(--mid-gray)' }}>{a.replacementCount}</span></td>
+                <td className="px-4 py-3">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={a.status === 'FINALIZED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef9c3', color: '#854d0e' }}>
+                    {a.status === 'FINALIZED' ? <><Lock size={10} /> Finalized</> : 'Draft'}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  <button onClick={() => setOpenId(a.id)} className="px-2 py-1 rounded text-xs font-semibold" style={{ color: 'var(--teal)' }}>{a.status === 'FINALIZED' ? 'View' : 'Open'}</button>
+                  {a.replacementCount > 0 && <button onClick={() => exportReplacements(a)} title="For-replacement list" className="p-1 rounded hover:bg-gray-100"><FileDown size={14} className="text-gray-500" /></button>}
+                  {canWrite && a.status !== 'FINALIZED' && <button onClick={() => del(a)} title="Delete draft" className="p-1 rounded hover:bg-red-50"><Trash2 size={14} className="text-red-400" /></button>}
+                </td>
+              </tr>
+            ))}
+            {!loading && audits.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-gray-400 text-sm">No audits yet. Click “Add New Audit” to start.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {showCreate && <CreateAuditModal onClose={() => setShowCreate(false)} onCreated={(id) => { setShowCreate(false); load(); setOpenId(id) }} />}
+      {openId && <AuditDetailModal id={openId} canWrite={canWrite} onClose={() => setOpenId(null)} onChanged={load} />}
+    </div>
+  )
+}
+
+function CreateAuditModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom] = useState(today)
+  const [dateTo, setDateTo] = useState(today)
+  const [auditorName, setAuditorName] = useState('')
+  const [branch, setBranch] = useState('ALL')
+  const [departments, setDepartments] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+
+  const toggleDep = (d: string) => setDepartments(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d])
+  const save = async () => {
+    if (!auditorName.trim()) { alert('Enter who conducted the audit.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/assets/audits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dateFrom, dateTo, auditorName, branch, departments }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      onCreated((await r.json()).id)
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[88vh] overflow-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900 flex items-center gap-2"><ClipboardCheck size={18} style={{ color: 'var(--teal)' }} /> New Asset Audit</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">Audit from</label><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">Audit to</label><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
+        </div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Conducted by</label>
+        <input value={auditorName} onChange={e => setAuditorName(e.target.value)} placeholder="Auditor name" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Branch</label>
+        <select value={branch} onChange={e => setBranch(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="ALL">All branches</option>{BRANCH_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+        </select>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Departments <span className="font-normal text-gray-400">(none = all)</span></label>
+        <div className="grid grid-cols-2 gap-1.5 mb-4">
+          {DEPARTMENT_OPTIONS.map(d => (
+            <label key={d} className="inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={departments.includes(d)} onChange={() => toggleDep(d)} /> {d}
+            </label>
+          ))}
+        </div>
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Create audit & load assets'}</button>
+      </div>
+    </div>
+  )
+}
+
+function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; canWrite: boolean; onClose: () => void; onChanged: () => void }) {
+  const [d, setD] = useState<AuditDetail | null>(null)
+  const [items, setItems] = useState<AuditItem[]>([])
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/assets/audits?id=${id}`)
+    if (r.ok) { const j: AuditDetail = await r.json(); setD(j); setItems(j.items); setProofUrls(Array.isArray(j.proofUrls) ? j.proofUrls : []) }
+  }, [id])
+  useEffect(() => { load() }, [load])
+
+  const locked = d?.status === 'FINALIZED' || !canWrite
+  const patch = (iid: string, p: Partial<AuditItem>) => setItems(prev => prev.map(x => x.id === iid ? { ...x, ...p } : x))
+
+  const save = async (finalize = false) => {
+    if (finalize && !confirm('Finalize and lock this audit? Results can no longer be edited.')) return
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/assets/audits?id=${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: items.map(i => ({ id: i.id, usable: i.usable, needsReplacement: i.needsReplacement, remarks: i.remarks })), proofUrls, ...(finalize ? { action: 'finalize' } : {}) }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      await load(); onChanged()
+      if (finalize) alert('Audit finalized.')
+    } finally { setBusy(false) }
+  }
+
+  const replacements = items.filter(i => i.needsReplacement)
+  const exportReplace = (fmt: 'xlsx' | 'pdf') => {
+    const headers = ['Control No.', 'Asset', 'Classification', 'Accountable', 'Usable', 'Remarks']
+    const rows = replacements.map(i => [i.controlNumber || '', i.assetName, classificationLabel(i.classification || ''), i.accountableName || '', i.usable === false ? 'No' : i.usable ? 'Yes' : '—', i.remarks || ''])
+    if (fmt === 'xlsx') downloadXlsx(`assets-for-replacement-${d?.refNumber}`, [{ name: 'For Replacement', headers, rows }])
+    else downloadPdf({ title: `Assets for Replacement — ${d?.refNumber}`, subtitle: `${d?.branch === 'ALL' ? 'All branches' : branchLabel(d?.branch || '')} · Auditor: ${d?.auditorName}`, headers, rows, landscape: true })
+  }
+
+  const printAudit = () => {
+    if (!d) return
+    const rowsHtml = items.map(i => `<tr><td>${i.controlNumber || ''}</td><td>${i.assetName}</td><td>${classificationLabel(i.classification || '')}</td><td>${i.accountableName || ''}</td><td style="text-align:center">${i.usable === false ? 'Not usable' : i.usable ? 'Usable' : '—'}</td><td style="text-align:center">${i.needsReplacement ? 'YES' : ''}</td><td>${i.remarks || ''}</td></tr>`).join('')
+    const w = window.open('', '_blank'); if (!w) return
+    w.document.write(`<html><head><title>${d.refNumber}</title><style>
+      body{font-family:Arial,sans-serif;padding:28px;color:#111}h1{font-size:18px;margin:0}h2{font-size:13px;color:#555;font-weight:normal;margin:2px 0 14px}
+      table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#f0f0f0}
+      .sig{margin-top:48px;display:flex;justify-content:space-between}.sig div{width:45%}.line{margin-top:40px;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:12px}
+    </style></head><body>
+      <h1>Asset Audit Report — ${d.refNumber}</h1>
+      <h2>Period: ${dISO(d.dateFrom)} to ${dISO(d.dateTo)} &nbsp;·&nbsp; Branch: ${d.branch === 'ALL' ? 'All branches' : branchLabel(d.branch)} &nbsp;·&nbsp; Departments: ${(d.departments || []).join(', ') || 'All'} &nbsp;·&nbsp; Status: ${d.status}</h2>
+      <table><thead><tr><th>Control No.</th><th>Asset</th><th>Classification</th><th>Accountable</th><th>Condition</th><th>Replace</th><th>Remarks</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      <div class="sig"><div><div class="line">${d.auditorName}</div><div style="text-align:center;font-size:11px;color:#555">Audited by (signature over printed name)</div></div><div><div class="line">&nbsp;</div><div style="text-align:center;font-size:11px;color:#555">Noted by</div></div></div>
+    </body></html>`)
+    w.document.close(); w.focus(); setTimeout(() => w.print(), 300)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-5xl my-8" onClick={e => e.stopPropagation()}>
+        {!d ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" /></div> : (<>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">{d.refNumber}
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={d.status === 'FINALIZED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef9c3', color: '#854d0e' }}>{d.status === 'FINALIZED' ? 'Finalized' : 'Draft'}</span>
+            </h2>
+            <button onClick={onClose}><X size={18} className="text-gray-500" /></button>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">{dISO(d.dateFrom)} → {dISO(d.dateTo)} · {d.branch === 'ALL' ? 'All branches' : branchLabel(d.branch)} · {(d.departments || []).join(', ') || 'All departments'} · Auditor: {d.auditorName}</p>
+
+          <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: '46vh' }}>
+            <table className="w-full text-xs">
+              <thead className="sticky top-0" style={{ background: 'var(--off-white)' }}><tr className="text-left text-gray-500">
+                {['Control No.', 'Asset', 'Classification', 'Accountable', 'Condition', 'Replace?', 'Remarks'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {items.map(i => (
+                  <tr key={i.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: i.needsReplacement ? '#fef2f2' : undefined }}>
+                    <td className="px-2 py-1.5 font-mono">{i.controlNumber || '—'}</td>
+                    <td className="px-2 py-1.5 text-gray-800">{i.assetName}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{classificationLabel(i.classification || '')}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{i.accountableName || '—'}</td>
+                    <td className="px-2 py-1.5">
+                      <select disabled={locked} value={i.usable === null || i.usable === undefined ? '' : i.usable ? 'yes' : 'no'}
+                        onChange={e => { const v = e.target.value; patch(i.id, { usable: v === '' ? null : v === 'yes' }) }}
+                        className="px-1.5 py-1 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">—</option><option value="yes">Usable</option><option value="no">Not usable</option>
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5 text-center"><input type="checkbox" disabled={locked} checked={i.needsReplacement} onChange={e => patch(i.id, { needsReplacement: e.target.checked })} /></td>
+                    <td className="px-2 py-1.5"><input disabled={locked} value={i.remarks || ''} onChange={e => patch(i.id, { remarks: e.target.value })} className="w-full px-1.5 py-1 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap mb-4">
+            <span className="text-xs text-gray-500">Proof of audit:</span>
+            {proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><FileText size={12} /> {i + 1}</a>)}
+            {!locked && <ScanUpload compact section="asset" prefix={`${d.refNumber}-PROOF`} existingCount={proofUrls.length} label="Add proof" onUploaded={url => setProofUrls(p => [...p, url])} />}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={printAudit} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Printer size={15} /> Print</button>
+            {replacements.length > 0 && <>
+              <button onClick={() => exportReplace('xlsx')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileDown size={15} /> Replacements (Excel)</button>
+              <button onClick={() => exportReplace('pdf')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileDown size={15} /> Replacements (PDF)</button>
+            </>}
+            {!locked && <>
+              <button onClick={() => save(false)} disabled={busy} className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Save Edit</button>
+              <button onClick={() => save(true)} disabled={busy} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#166534' }}><Lock size={15} /> Finalize Audit</button>
+            </>}
+          </div>
+          {replacements.length > 0 && <p className="text-[11px] mt-2" style={{ color: '#b91c1c' }}>{replacements.length} asset(s) flagged for replacement.</p>}
+        </>)}
+      </div>
     </div>
   )
 }
