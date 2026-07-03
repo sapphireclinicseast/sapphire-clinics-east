@@ -96,7 +96,9 @@ const DEPARTMENT_OPTIONS = [
   'Medical Doctor',
 ]
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+// Front-desk can add/edit assets (photos, renaming); delete + audits stay with accounting.
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+const MANAGE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -169,6 +171,7 @@ export default function AssetManagementPage() {
     : ''
 
   const canWrite = WRITE_ROLES.includes(userRole)
+  const canManage = MANAGE_ROLES.includes(userRole) // delete assets + run audits
 
   // ── State ───────────────────────────────────────────────────
   const [assets, setAssets] = useState<Asset[]>([])
@@ -546,6 +549,7 @@ export default function AssetManagementPage() {
         </div>
         {canWrite && tab === 'assets' && (
           <div className="flex items-center gap-2">
+            {canManage && (
             <button
               onClick={openDepSettings}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
@@ -553,6 +557,7 @@ export default function AssetManagementPage() {
               <Settings2 size={16} />
               Depreciation Settings
             </button>
+            )}
             <button
               onClick={openAdd}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
@@ -573,7 +578,7 @@ export default function AssetManagementPage() {
         ))}
       </div>
 
-      {tab === 'audit' && <AssetAuditTab canWrite={canWrite} />}
+      {tab === 'audit' && <AssetAuditTab canWrite={canManage} />}
 
       {/* Error banner */}
       {error && (
@@ -893,7 +898,7 @@ export default function AssetManagementPage() {
                           >
                             <Pencil size={14} />
                           </button>
-                          {confirmDeleteId === asset.id ? (
+                          {canManage && (confirmDeleteId === asset.id ? (
                             <div className="flex items-center gap-1">
                               <span className="text-xs text-red-600">Sure?</span>
                               <button
@@ -918,7 +923,7 @@ export default function AssetManagementPage() {
                             >
                               <Trash2 size={14} />
                             </button>
-                          )}
+                          ))}
                         </div>
                       </td>
                     )}

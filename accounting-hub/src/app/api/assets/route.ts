@@ -3,7 +3,9 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+// Front-desk staff can add/edit assets (photos, renaming) but not delete them.
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+const DELETE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
 
 // Auto control number: BRANCH-YEAR-000x, sequence per (branch, purchase year).
@@ -239,7 +241,7 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   const session = await auth()
-  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+  if (!session?.user || !DELETE_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
 
