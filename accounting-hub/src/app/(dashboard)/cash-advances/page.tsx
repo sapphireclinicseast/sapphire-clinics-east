@@ -270,6 +270,13 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
                 <button key={k} onClick={() => setForm(f => ({ ...f, kind: k }))} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={form.kind === k ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{k === 'LIQUIDATION' ? 'Liquidate' : k === 'RETURN' ? 'Return' : 'Reimburse'}</button>
               ))}
             </div>
+            <p className="text-[11px] mb-2 px-2 py-1.5 rounded-lg" style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+              {form.kind === 'LIQUIDATION'
+                ? <><b style={{ color: 'var(--charcoal)' }}>Liquidate</b> — record what the staff actually spent (attach the receipt). This converts the advance into an expense.</>
+                : form.kind === 'RETURN'
+                  ? <><b style={{ color: 'var(--charcoal)' }}>Return</b> — the staff gives back the <b>unspent</b> portion of the float. Money comes <b>back into</b> the company bank. Use when they spent <b>less</b> than released.</>
+                  : <><b style={{ color: 'var(--charcoal)' }}>Reimburse</b> — the company pays the staff back for spending their <b>own</b> money beyond the float. Money goes <b>out of</b> the company bank. Use when they spent <b>more</b> than released.</>}
+            </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>Date</label><input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></div>
               <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>Amount</label><input value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} inputMode="decimal" placeholder="0.00" className="w-full px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} /></div>
