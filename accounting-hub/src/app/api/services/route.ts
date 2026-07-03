@@ -176,7 +176,7 @@ export async function POST(req: Request) {
         unitPayId: unitPayId || null,
         unitPayEnabled: unitPayEnabled !== undefined ? unitPayEnabled : true,
         thresholdCounted: thresholdCounted || false,
-        thresholdQty: thresholdQty != null ? Math.max(1, parseInt(String(thresholdQty)) || 1) : 1,
+        thresholdQty: thresholdQty != null ? Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2) : 1,
         issuedOfficialInvoice: issuedOfficialInvoice || false,
         createdById: session.user.id,
       },
@@ -275,7 +275,7 @@ export async function PUT(req: Request) {
     if (unitPayId !== undefined) data.unitPayId = unitPayId || null
     if (unitPayEnabled !== undefined) data.unitPayEnabled = unitPayEnabled
     if (thresholdCounted !== undefined) data.thresholdCounted = !!thresholdCounted
-    if (thresholdQty !== undefined) data.thresholdQty = Math.max(1, parseInt(String(thresholdQty)) || 1)
+    if (thresholdQty !== undefined) data.thresholdQty = Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2)
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
 
     const service = await prisma.service.update({ where: { id }, data })

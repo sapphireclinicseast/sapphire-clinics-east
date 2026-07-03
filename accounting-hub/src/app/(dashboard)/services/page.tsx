@@ -302,7 +302,7 @@ export default function ServicesPage() {
       unitPayId: fUnitPayEnabled ? (fUnitPayId || null) : null,
       unitPayEnabled: fUnitPayEnabled,
       thresholdCounted: fThresholdCounted,
-      thresholdQty: fThresholdCounted ? (parseInt(fThresholdQty) || 1) : 1,
+      thresholdQty: fThresholdCounted ? (parseFloat(fThresholdQty) || 1) : 1,
       newPrice: fNewPrice || null,
       newPriceEffectiveDate: fNewPriceDate || null,
       branchPrices: fBranch === 'ALL' ? fBranchPrices.filter(bp => bp.price).map(bp => ({ branch: bp.branch, price: bp.price, newPrice: bp.newPrice || null, newPriceEffectiveDate: bp.newPriceDate || null })) : [],
@@ -1054,11 +1054,11 @@ export default function ServicesPage() {
                 {fThresholdCounted ? (
                   <div className="flex items-center gap-2">
                     <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Qty for threshold count</label>
-                    <input type="number" min={1} step={1} value={fThresholdQty}
+                    <input type="number" min={0.5} step={0.5} value={fThresholdQty}
                       onChange={(e) => setFThresholdQty(e.target.value)}
                       className="w-20 px-3 py-2 rounded-xl border text-sm outline-none"
                       style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }} />
-                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>session(s) per unit (e.g. 2 for a 2-hour session)</span>
+                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>session(s) per unit (e.g. 0.5 for a half session, 2 for a 2-hour session)</span>
                   </div>
                 ) : (
                   <p className="text-xs px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>Not counted toward the daily patient threshold</p>

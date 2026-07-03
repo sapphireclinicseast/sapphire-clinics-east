@@ -264,6 +264,13 @@ ALTER TABLE "SalesInvoiceFlag" ADD COLUMN IF NOT EXISTS "orderId" TEXT;
 ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "paymentStatus" TEXT NOT NULL DEFAULT 'PAID';
 ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "paymentDate" TIMESTAMP(3);
 
+-- Half-session threshold counts (0.5 increments): thresholdQty Int -> Decimal
+DO $$ BEGIN
+  IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'Service' AND column_name = 'thresholdQty') = 'integer' THEN
+    ALTER TABLE "Service" ALTER COLUMN "thresholdQty" TYPE DECIMAL(65,30);
+  END IF;
+END $$;
+
 -- QR phone-upload sessions
 CREATE TABLE IF NOT EXISTS "UploadSession" (
   "id" TEXT NOT NULL,
