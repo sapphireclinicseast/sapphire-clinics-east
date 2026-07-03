@@ -29,6 +29,7 @@ export default function CashAdvancesPage() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [banks, setBanks] = useState<Bank[]>([])
   const [dlFrom, setDlFrom] = useState(''); const [dlTo, setDlTo] = useState('')
+  const [tab, setTab] = useState<'advances' | 'flowchart'>('advances')
 
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'dateReleased', dir: 'desc' })
   const [filters, setFilters] = useState<Record<string, string>>({})
@@ -66,10 +67,19 @@ export default function CashAdvancesPage() {
         <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           <HandCoins size={22} style={{ color: 'var(--teal)' }} /> Cash Advances
         </h1>
-        <button onClick={() => setShowRelease(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Release Advance</button>
+        {tab === 'advances' && <button onClick={() => setShowRelease(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Release Advance</button>}
       </div>
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Cash released to staff up front (event floats). Liquidate receipts and return the unspent balance. Releases/returns hit Bank Reconciliation; liquidations hit the Income Statement.</p>
 
+      {/* Sub-tabs */}
+      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+        {([['advances', 'Advances'], ['flowchart', 'Flowchart']] as const).map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'flowchart' ? <CashAdvanceFlowchart /> : (<>
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
           {BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
@@ -102,6 +112,7 @@ export default function CashAdvancesPage() {
           </tbody>
         </table>
       </div>
+      </>)}
 
       {showRelease && <ReleaseModal branch={branch} banks={banks} onClose={() => setShowRelease(false)} onSaved={async () => { setShowRelease(false); await load() }} />}
       {detailId && <DetailModal id={detailId} banks={banks} branch={branch} onClose={() => setDetailId(null)} onChanged={load} />}
@@ -247,6 +258,40 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
           </div>
           <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>Branch: {BRANCHES.find(b => b.value === branch)?.label}. Liquidations post to the Income Statement; returns/reimbursements post to the bank for reconciliation.</p>
         </>)}
+      </div>
+    </div>
+  )
+}
+
+// Process flowchart for accounting staff.
+function CashAdvanceFlowchart() {
+  const steps = [
+    { n: 1, title: 'Release the advance', who: 'Admin / Accountant / Bookkeeper', desc: 'Cash is handed to a staff member up front for an event (e.g. ₱10,000). Record it here with the accountable staff, purpose, amount and source bank.', je: 'DR 1160 Due from Employees  /  CR Bank', tag: 'Bank Reconciliation (money out)' },
+    { n: 2, title: 'Staff spends within the float', who: 'Accountable staff', desc: 'During the event the staff spends against the advance and keeps the receipts (e.g. ₱9,800). No entry yet — the cash is still an advance owed by the staff.', je: null, tag: null },
+    { n: 3, title: 'Liquidate the receipts', who: 'Accountant / Bookkeeper', desc: 'In the advance detail, add each receipt: expense account, VAT/Non-VAT, SI/OR number, supplier and proof. This converts the advance into actual expenses.', je: 'DR Expense (net) [+ DR 1040 Input VAT]  /  CR 1160 Due from Employees', tag: 'Income Statement + Expense Report (source: Cash Advance)' },
+    { n: 4, title: 'Return the unspent cash', who: 'Accountable staff', desc: 'The remaining balance (e.g. ₱200) is deposited back to the company bank. Record it as a Return in the advance detail.', je: 'DR Bank  /  CR 1160 Due from Employees', tag: 'Bank Reconciliation (money in)' },
+    { n: 5, title: 'If overspent — reimburse the staff', who: 'Accountant / Bookkeeper', desc: 'When the staff spends more than the float, the company pays back the excess. Record it as a Reimburse in the advance detail.', je: 'DR 1160 Due from Employees  /  CR Bank', tag: 'Bank Reconciliation (money out)' },
+    { n: 6, title: 'Advance closes', who: '', desc: 'When Outstanding = Released + Reimbursed − Liquidated − Returned reaches ₱0, the advance is marked Closed. The Due from Employees balance nets to zero.', je: null, tag: null },
+  ]
+  return (
+    <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
+      <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Cash Advance Workflow</h2>
+      <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>For event floats — cash given up front, liquidated later, unspent balance returned. Every step posts a balanced journal entry so it flows to Bank Reconciliation and the Income Statement automatically.</p>
+      <div className="flex flex-col items-center">
+        {steps.map((s, i, arr) => (
+          <div key={s.n} className="w-full max-w-2xl flex flex-col items-center">
+            <div className="w-full rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'var(--teal)' }}>{s.n}</div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{s.title}{s.who && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{s.who}</span>}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.desc}</p>
+                {s.je && <p className="text-[11px] mt-1.5 font-mono px-2 py-1 rounded" style={{ background: '#f1f5f9', color: '#334155' }}>{s.je}</p>}
+                {s.tag && <p className="text-[10px] mt-1 font-semibold" style={{ color: 'var(--deep-teal)' }}>→ {s.tag}</p>}
+              </div>
+            </div>
+            {i < arr.length - 1 && <div className="text-xl leading-none my-1" style={{ color: 'var(--teal)' }}>↓</div>}
+          </div>
+        ))}
       </div>
     </div>
   )
