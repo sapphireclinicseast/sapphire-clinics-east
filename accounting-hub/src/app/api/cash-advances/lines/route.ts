@@ -25,7 +25,8 @@ export async function POST(req: Request) {
   }
   try {
     const body = await req.json()
-    const { advanceId, kind, date, accountTitle, description, vatable, amount, siNumber, registeredName, proofUrl, proofUrls, bankAccountId } = body
+    const { advanceId, kind, date, accountTitle, description, vatable, amount, siNumber, registeredName, proofUrl, proofUrls, bankAccountId,
+            requestor, department, validity, tinNumber, registeredAddress, hasEwt, ewtRate } = body
     if (!advanceId || !['LIQUIDATION', 'RETURN', 'REIMBURSE'].includes(kind)) return NextResponse.json({ error: 'advanceId and a valid kind are required' }, { status: 400 })
     const amt = num(amount)
     if (amt <= 0) return NextResponse.json({ error: 'Enter a valid amount' }, { status: 400 })
@@ -71,9 +72,16 @@ export async function POST(req: Request) {
       const created = await tx.cashAdvanceLine.create({
         data: {
           advanceId, kind, date: new Date(date), accountTitle: accountTitle?.trim() || null, description: description?.trim() || null,
-          vatable: kind === 'LIQUIDATION' ? (vatable || 'NV') : null, amount: amt, siNumber: siNumber?.trim() || null,
+          vatable: kind === 'LIQUIDATION' ? (vatable || 'Non-VAT') : null, amount: amt, siNumber: siNumber?.trim() || null,
           registeredName: registeredName?.trim() || null, proofUrl: proofUrl || (Array.isArray(proofUrls) ? proofUrls[0] : null) || null,
           proofUrls: Array.isArray(proofUrls) ? proofUrls : undefined, bankAccountId: bankAccountId || null, createdById: session.user!.id ?? null,
+          requestor: kind === 'LIQUIDATION' ? (requestor?.trim() || null) : null,
+          department: kind === 'LIQUIDATION' ? (department?.trim() || null) : null,
+          validity: kind === 'LIQUIDATION' ? (validity?.trim() || null) : null,
+          tinNumber: kind === 'LIQUIDATION' ? (tinNumber?.trim() || null) : null,
+          registeredAddress: kind === 'LIQUIDATION' ? (registeredAddress?.trim() || null) : null,
+          hasEwt: kind === 'LIQUIDATION' ? !!hasEwt : false,
+          ewtRate: kind === 'LIQUIDATION' && hasEwt ? (Number(ewtRate) || null) : null,
         },
       })
       const refType = kind === 'LIQUIDATION' ? 'CASH_ADVANCE_LIQ' : kind === 'RETURN' ? 'CASH_ADVANCE_RETURN' : 'CASH_ADVANCE_REIMBURSE'

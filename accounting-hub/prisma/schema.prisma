@@ -1818,10 +1818,18 @@ model CashAdvanceLine {
   date           DateTime
   accountTitle   String?     // LIQUIDATION: the expense account
   description    String?
-  vatable        String?     // VAT | NV
+  vatable        String?     // VAT | Non-VAT
   amount         Decimal     // gross
   siNumber       String?     // SI / OR number
-  registeredName String?     // supplier
+  // Expense-entry parity fields (BIR-relevant supplier info)
+  requestor        String?   // payee (as picked from Suppliers)
+  department       String?
+  validity         String?   // Valid | Invalid | Cancelled
+  tinNumber        String?
+  registeredName   String?   // BIR-registered supplier name
+  registeredAddress String?
+  hasEwt           Boolean   @default(false)
+  ewtRate          Int?      // 5 | 10 (informational; float posting is unchanged)
   proofUrl       String?
   proofUrls      Json?
   bankAccountId  String?     // RETURN / REIMBURSE bank account

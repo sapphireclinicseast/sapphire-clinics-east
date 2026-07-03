@@ -295,6 +295,14 @@ CREATE INDEX IF NOT EXISTS "CashAdvanceLine_advanceId_idx" ON "CashAdvanceLine"(
 DO $$ BEGIN
   ALTER TABLE "CashAdvanceLine" ADD CONSTRAINT "CashAdvanceLine_advanceId_fkey" FOREIGN KEY ("advanceId") REFERENCES "CashAdvance"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- Expense-entry parity fields on liquidation lines (BIR supplier info)
+ALTER TABLE "CashAdvanceLine" ADD COLUMN IF NOT EXISTS "requestor" TEXT;
+ALTER TABLE "CashAdvanceLine" ADD COLUMN IF NOT EXISTS "department" TEXT;
+ALTER TABLE "CashAdvanceLine" ADD COLUMN IF NOT EXISTS "validity" TEXT;
+ALTER TABLE "CashAdvanceLine" ADD COLUMN IF NOT EXISTS "tinNumber" TEXT;
+ALTER TABLE "CashAdvanceLine" ADD COLUMN IF NOT EXISTS "registeredAddress" TEXT;
+ALTER TABLE "CashAdvanceLine" ADD COLUMN IF NOT EXISTS "hasEwt" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "CashAdvanceLine" ADD COLUMN IF NOT EXISTS "ewtRate" INTEGER;
 
 -- Sales-with-SI flag resolutions + monthly sales targets
 CREATE TABLE IF NOT EXISTS "SalesInvoiceFlag" (
