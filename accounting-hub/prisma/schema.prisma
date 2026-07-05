@@ -2121,6 +2121,63 @@ model DividendReleaseItem {
   @@index([releaseId])
 }
 
+// ── Loans & Advances: Advances ────────────────────────────────
+model Advance {
+  id                String   @id @default(cuid())
+  shareholderId     String?
+  name              String
+  dateAcquired      DateTime
+  advanceType       String   // CASH | KIND
+  kindType          String?
+  principalAmount   Decimal
+  hasInterest       Boolean  @default(false)
+  interestMode      String?  // ANNUAL_PCT | MONTHLY_AMORT
+  annualPct         Decimal?
+  termMonths        Int?
+  monthlyAmortization Decimal?
+  computedAnnualPct Decimal? // back-computed effective annual rate (IRR)
+  totalInterest     Decimal?
+  proofOfDepositUrls Json?
+  bankAccountId     String?  // debited (money in)
+  creditAccountId   String?  // Advances liability account (CR on release)
+  interestExpenseAccountId String? // interest expense account
+  payoutSchedule    String?  // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
+  payoutStartMonth  Int?
+  payoutStartYear   Int?
+  payoutDay         Int?
+  pdcUrls           Json?
+  remarks           String?
+  journalEntryId    String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  payouts           AdvancePayout[]
+  @@index([shareholderId])
+}
+
+model AdvancePayout {
+  id               String   @id @default(cuid())
+  advanceId        String
+  advance          Advance  @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  dueDate          DateTime
+  principalPortion Decimal  @default(0)
+  interestPortion  Decimal  @default(0)
+  amount           Decimal
+  status           String   @default("PENDING") // PENDING | PAID
+  paidDate         DateTime?
+  bankAccountId    String?
+  proofUrls        Json?
+  emailedAt        DateTime?
+  journalEntryId   String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([advanceId])
+  @@index([dueDate])
+}
+
 model BankTransaction {
   id                String   @id @default(cuid())
   bankAccountId     String   // Account.id (a Chart-of-Accounts bank account)
