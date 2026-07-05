@@ -4,22 +4,6 @@ import { postJournalEntry } from './posting'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = PrismaClient | any
 
-// Resolve (or create) an equity COA account by number, so posting always has a target.
-async function ensureAccount(db: Db, accountNumber: string, accountTitle: string, normalBalance: 'DEBIT' | 'CREDIT', createdById: string) {
-  const existing = await db.account.findFirst({ where: { accountNumber } })
-  if (existing) return existing
-  return db.account.create({
-    data: { accountNumber, accountTitle, accountType: 'EQUITY', subType: 'PAID_IN_CAPITAL', normalBalance, createdById },
-  })
-}
-
-export const EQUITY_ACCOUNTS = {
-  COMMON: { number: '3200', title: 'Common Share Capital', normal: 'CREDIT' as const },
-  PREFERRED: { number: '3300', title: 'Preferred Share Capital', normal: 'CREDIT' as const },
-  TREASURY: { number: '3400', title: 'Treasury Shares', normal: 'DEBIT' as const },
-  RETAINED: { number: '3100', title: 'Retained Earnings', normal: 'CREDIT' as const },
-}
-
 // Issuance: DR bank (money in) / CR the chosen equity account. Requires both accounts.
 export async function postEquityIssuance(db: Db, opts: {
   kind: 'COMMON' | 'PREFERRED'; refId: string; date: Date; amount: number; bankAccountId?: string | null; equityAccountId?: string | null; investor: string; createdById: string
@@ -60,12 +44,11 @@ export async function postEquityBuyback(db: Db, opts: {
   return je.id
 }
 
-// Dividend / preferred payout: DR Retained Earnings / CR bank.
+// Dividend / preferred payout: DR the chosen Retained Earnings account / CR bank.
 export async function postDividend(db: Db, opts: {
-  refType: string; refId: string; date: Date; amount: number; bankAccountId?: string | null; label: string; createdById: string
+  refType: string; refId: string; date: Date; amount: number; bankAccountId?: string | null; retainedAccountId?: string | null; label: string; createdById: string
 }): Promise<string | null> {
-  if (!opts.bankAccountId || !(opts.amount > 0)) return null
-  const re = await ensureAccount(db, EQUITY_ACCOUNTS.RETAINED.number, EQUITY_ACCOUNTS.RETAINED.title, 'CREDIT', opts.createdById)
+  if (!opts.bankAccountId || !opts.retainedAccountId || !(opts.amount > 0)) return null
   const je = await postJournalEntry(db, {
     entryDate: opts.date,
     description: opts.label,
@@ -74,7 +57,7 @@ export async function postDividend(db: Db, opts: {
     branch: 'ALL',
     createdById: opts.createdById,
     lines: [
-      { accountId: re.id, debit: opts.amount, description: opts.label },
+      { accountId: opts.retainedAccountId, debit: opts.amount, description: opts.label },
       { accountId: opts.bankAccountId, credit: opts.amount, description: opts.label },
     ],
   })

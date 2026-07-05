@@ -120,7 +120,7 @@ export async function PUT(req: Request) {
         await tx.dividendReleaseItem.deleteMany({ where: { releaseId: id } })
         await tx.dividendReleaseItem.createMany({ data: [...holdings.entries()].map(([sid, h]) => ({ releaseId: id, shareholderId: sid, shareholderName: h.name, shares: h.shares, amount: num(base.dividendAmount) * h.shares })) })
         await reverseEquityJournal(tx, 'DIVIDEND_COMMON', id)
-        const jeId = await postDividend(tx, { refType: 'DIVIDEND_COMMON', refId: id, date: base.date, amount: total, bankAccountId: base.bankAccountId, label: `Common dividend (${base.dividendType})`, createdById: session.user!.id as string })
+        const jeId = await postDividend(tx, { refType: 'DIVIDEND_COMMON', refId: id, date: base.date, amount: total, bankAccountId: base.bankAccountId, retainedAccountId: base.retainedAccountId, label: `Common dividend (${base.dividendType})`, createdById: session.user!.id as string })
         await tx.dividendRelease.update({ where: { id }, data: { ...base, totalAmountPaid: total, status: 'FINALIZED', finalizedAt: new Date(), journalEntryId: jeId } })
       })
       return NextResponse.json({ success: true })
