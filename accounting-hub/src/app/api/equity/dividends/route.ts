@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postDividend, reverseEquityJournal } from '@/lib/accounting/equity'
-import { sendInvestorEmail } from '@/lib/email'
+import { sendInvestorEmail, dividendEmailHtml } from '@/lib/email'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 
@@ -81,13 +81,7 @@ export async function PUT(req: Request) {
       for (const u of proofs) {
         try { const fn = u.split('/').pop() || 'proof'; attachments.push({ filename: fn, content: (await readFile(join(uploadsDir, fn))).toString('base64') }) } catch { /* skip */ }
       }
-      const dt = rel.dividendType === 'SPECIAL' ? 'special' : 'regular'
-      const html = `<div style="font-family:Arial,sans-serif;color:#111;line-height:1.6">
-        <p>Dear ${sh.name},</p>
-        <p>We are pleased to share that the Board has declared a <b>${dt}</b> cash dividend of <b>₱${num(rel.dividendAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</b> per share. For your <b>${num(item.shares).toLocaleString('en-PH')}</b> common shares, your dividend is <b>₱${num(item.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</b>, deposited on ${new Date(rel.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}.</p>
-        <p>Thank you for standing with us. Your partnership is a quiet but powerful part of everything we're able to do, and we don't take it for granted. We remain dedicated to growing this company thoughtfully and to keeping the trust you've shown us well-placed.</p>
-        <p>Your proof of deposit is attached. With gratitude,<br/><b>Sapphire Clinics East Inc.</b></p>
-      </div>`
+      const html = dividendEmailHtml({ name: sh.name, perShare: num(rel.dividendAmount), shares: num(item.shares), amount: num(item.amount), date: new Date(rel.date), type: rel.dividendType })
       const r = await sendInvestorEmail({ to: sh.email, subject: 'Notice of dividend — thank you for believing in what we’re building', html, attachments })
       if (!r.ok) { console.error('Dividend email failed:', r.error); return NextResponse.json({ error: r.error || 'Email failed to send' }, { status: 502 }) }
       await prisma.dividendReleaseItem.update({ where: { id: item.id }, data: { emailedAt: new Date() } })
