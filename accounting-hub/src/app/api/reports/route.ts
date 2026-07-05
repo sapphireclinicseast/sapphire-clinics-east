@@ -36,15 +36,30 @@ export async function GET(req: Request) {
     // its startDate (the same rule Bank Reconciliation applies), so counting those
     // pre-startDate Hub transactions again would double-count them on the Balance
     // Sheet / Cash Flow. Exclude them by starting the derivation at the latest
-    // opening-balance startDate within the year. No startDate set → no change.
-    const openingStartRows = await prisma.beginningBalance.findMany({
-      where: { periodYear: year, startDate: { not: null } },
-      select: { startDate: true },
+    // opening-balance startDate within the year.
+    //
+    // BUT a mid-year cutoff only balances if opening balances exist for EVERY
+    // account type as of that date (a real go-live) — otherwise the pre-cutoff
+    // cash inflows are removed while the assets they funded (PPE, inventory) stay,
+    // wrecking the sheet. So the cutoff activates only when a non-cash opening
+    // balance is present (evidence of a full opening position). Cash/bank-only
+    // openings → derive the full history (cutoff inert).
+    const openingRows = await prisma.beginningBalance.findMany({
+      where: { periodYear: year },
+      select: {
+        startDate: true,
+        account: { select: { accountType: true, isBankAccount: true, accountNumber: true, accountTitle: true } },
+      },
     })
+    const isCashish = (a: { isBankAccount?: boolean; accountNumber?: string; accountTitle?: string } | null) =>
+      !!a && (a.isBankAccount === true || /^10/.test(a.accountNumber || '') || /cash|bank/i.test(a.accountTitle || ''))
+    const hasFullOpeningPosition = openingRows.some(r => r.account && !isCashish(r.account))
     let cutoffDate: Date | null = null
-    for (const r of openingStartRows) {
-      if (r.startDate && r.startDate > startDate && r.startDate < endDate) {
-        if (!cutoffDate || r.startDate > cutoffDate) cutoffDate = r.startDate
+    if (hasFullOpeningPosition) {
+      for (const r of openingRows) {
+        if (r.startDate && r.startDate > startDate && r.startDate < endDate) {
+          if (!cutoffDate || r.startDate > cutoffDate) cutoffDate = r.startDate
+        }
       }
     }
     const effectiveStart = cutoffDate || startDate
