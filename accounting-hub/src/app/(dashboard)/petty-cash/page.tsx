@@ -48,6 +48,7 @@ interface Entry {
   proofUrl: string | null
   proofUrls: string[] | null
   branchAllocations: { branch: string; amount: number }[] | null
+  rfpBranchMap: Record<string, string> | null   // CEO only: branch → RFP report id
   reimbursementId: string | null
   paidAt: string | null
   finalized: boolean
@@ -70,6 +71,7 @@ interface Reimb {
   proofUrl: string | null
   payableTo: string | null
   createdAt: string
+  filterBranch?: string | null   // CEO branch RFP: which branch's allocations
   _count: { entries: number }
 }
 
@@ -159,6 +161,8 @@ export default function PettyCashPage() {
   const [importing, setImporting] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [rfpMode, setRfpMode] = useState<'VALID' | 'INVALID' | null>(null)
+  // CEO RFP only: which branch's allocations this RFP covers.
+  const [rfpBranch, setRfpBranch] = useState<string>('')
   const [showAddPopup, setShowAddPopup] = useState(false)
   const [addSameSeq, setAddSameSeq] = useState('')
   const [showReimbModal, setShowReimbModal] = useState(false)
@@ -426,11 +430,16 @@ export default function PettyCashPage() {
   }
 
   // ── Reimbursement (Phase 2) ───────────────────────────────────
-  const buildReimbursementPdf = async (refNumber: string, br: string, rows: Entry[]): Promise<string> => {
+  const buildReimbursementPdf = async (refNumber: string, br: string, rows: Entry[], ceoBranch?: string | null): Promise<string> => {
     const { jsPDF } = await import('jspdf')
     const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-    const branchLabel = BRANCHES.find(b => b.value === br)?.label || br
+    // For CEO branch RFPs each row shows only the branch-allocated portion.
+    const grossOf = (e: Entry) => ceoBranch ? (allocOf(e, ceoBranch) || 0) : num(e.grossAmount)
+    const netOf = (e: Entry) => { const g = grossOf(e); return e.vatable === 'VAT' ? g / 1.12 : g }
+    const vatOf = (e: Entry) => grossOf(e) - netOf(e)
+    const ceoBranchLabel = ceoBranch ? (BRANCHES.find(b => b.value === ceoBranch)?.label || ceoBranch) : null
+    const branchLabel = ceoBranchLabel ? `CEO → ${ceoBranchLabel}` : (BRANCHES.find(b => b.value === br)?.label || br)
     const logo = await fetchDataUrl('/aura-logo.png')
     let tx = 14
     if (logo) { doc.addImage(logo, 'PNG', 14, 9, 18, 18); tx = 36 }
@@ -439,16 +448,16 @@ export default function PettyCashPage() {
     doc.text(`Branch: ${branchLabel}`, tx, 20)
     doc.text(`Ref No: ${refNumber}`, tx, 24)
     doc.text(`Date: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, tx, 28)
-    const tG = rows.reduce((s, e) => s + num(e.grossAmount), 0)
-    const tN = rows.reduce((s, e) => s + netOfVat(e), 0)
-    const tV = rows.reduce((s, e) => s + vatAmount(e), 0)
+    const tG = rows.reduce((s, e) => s + grossOf(e), 0)
+    const tN = rows.reduce((s, e) => s + netOf(e), 0)
+    const tV = rows.reduce((s, e) => s + vatOf(e), 0)
     autoTable(doc, {
       startY: 33,
       head: [['Reference Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
       body: rows.map(e => [
         refOf(e), e.requestor || '', e.department || '', e.pcfStatus || '',
         e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.vatable || '',
-        peso(num(e.grossAmount)), peso(netOfVat(e)), peso(vatAmount(e)),
+        peso(grossOf(e)), peso(netOf(e)), peso(vatOf(e)),
       ]),
       foot: [['', '', '', '', '', '', 'TOTAL', peso(tG), peso(tN), peso(tV)]],
       styles: { fontSize: 7, cellPadding: 1.5 },
@@ -468,11 +477,11 @@ export default function PettyCashPage() {
       const sel = entries.filter(e => selected.has(e.id))
       const res = await fetch('/api/petty-cash/reimbursements', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID', manualSeq: manualSeq || null }),
+        body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID', manualSeq: manualSeq || null, filterBranch: isCeo ? rfpBranch : null }),
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to generate'); setGenerating(false); return }
       const { id, refNumber } = await res.json()
-      const pdfData = await buildReimbursementPdf(refNumber, branch, sel)
+      const pdfData = await buildReimbursementPdf(refNumber, branch, sel, isCeo ? rfpBranch : null)
       try {
         await fetch('/api/petty-cash/reimbursements', {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -482,6 +491,7 @@ export default function PettyCashPage() {
       setSelected(new Set())
       setShowReimbModal(false)
       setRfpMode(null)
+      setRfpBranch('')
       await loadEntries(branch)
       await loadReimbursements(branch)
       setTab('reimbursements')
@@ -597,13 +607,25 @@ export default function PettyCashPage() {
   // Entries are only selectable after an RFP button is clicked, and only those
   // matching the chosen kind's validity (and not already in an RFP).
   const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
-  const isSelectable = (e: Entry) => !e.reimbursementId && !!e.audited && rfpValidity != null && e.validity === rfpValidity
+  const isCeo = branch === 'CEO'
+  // CEO: an entry is selectable for the chosen RFP branch if it has a nonzero
+  // allocation to that branch and that branch portion hasn't been RFP'd yet — so
+  // a shared entry can be ticked once per branch.
+  const isSelectable = (e: Entry) => {
+    if (!e.audited || rfpValidity == null || e.validity !== rfpValidity) return false
+    if (isCeo) {
+      if (!rfpBranch) return false
+      const amt = allocOf(e, rfpBranch)
+      return !!amt && amt !== 0 && !(e.rfpBranchMap && e.rfpBranchMap[rfpBranch])
+    }
+    return !e.reimbursementId
+  }
   const selectableIds = displayed.filter(isSelectable).map(e => e.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const startRfp = (mode: 'VALID' | 'INVALID') => { setRfpMode(mode); setSelected(new Set()); if (tab !== 'entries') setTab('entries') }
-  const cancelRfp = () => { setRfpMode(null); setSelected(new Set()) }
+  const cancelRfp = () => { setRfpMode(null); setSelected(new Set()); setRfpBranch('') }
   // Distinct existing PCV bases (for "same PCV as a previous entry").
   const pcvBases = Array.from(new Map(entries.map(e => [e.pcvSeq, e.pcvNumber.replace(/-\d{2}$/, '')])).entries())
     .map(([seq, label]) => ({ seq, label }))
@@ -699,9 +721,16 @@ export default function PettyCashPage() {
                 <span className="text-xs font-bold" style={{ color: '#dc2626' }}>
                   Select {rfpMode === 'VALID' ? 'Valid' : 'Invalid'} Entries
                 </span>
-                <button onClick={() => setShowReimbModal(true)} disabled={selected.size === 0}
+                {isCeo && (
+                  <select value={rfpBranch} onChange={e => { setRfpBranch(e.target.value); setSelected(new Set()) }}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: rfpBranch ? 'var(--teal)' : '#dc2626', color: 'var(--charcoal)' }}>
+                    <option value="">Choose branch…</option>
+                    {ALLOC_BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                  </select>
+                )}
+                <button onClick={() => setShowReimbModal(true)} disabled={selected.size === 0 || (isCeo && !rfpBranch)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: 'var(--teal)' }}>
-                  <FileText size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){selected.size > 0 ? ` · ${selected.size}` : ''}
+                  <FileText size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){isCeo && rfpBranch ? ` · ${ALLOC_BRANCHES.find(b => b.value === rfpBranch)?.label}` : ''}{selected.size > 0 ? ` · ${selected.size}` : ''}
                 </button>
                 <button onClick={cancelRfp}
                   className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>

@@ -29,23 +29,36 @@ export async function GET(req: Request) {
     where: { branch, module: 'PETTY_CASH' },
     select: {
       id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true, checkNumber: true, transferRef: true,
-      debitAccount: true, depositAccount: true, proofUrl: true, payableTo: true, createdAt: true,
+      debitAccount: true, depositAccount: true, proofUrl: true, payableTo: true, createdAt: true, meta: true,
       _count: { select: { entries: true } },
       entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
-  // Amount Payable = (gross − VAT) − EWT, summed across the RFP's entries.
+  // Amount Payable = (gross − VAT) − EWT. For CEO branch RFPs the entries live in
+  // meta.items (only the branch-allocated portion), not the entries relation.
+  const payableOf = (vatable: string | null, gross: number, hasEwt: boolean, ewtRate: number | null) => {
+    const net = vatable === 'VAT' ? gross / 1.12 : gross
+    const ewt = hasEwt && ewtRate ? net * (ewtRate / 100) : 0
+    return net - ewt
+  }
   const withPayable = reports.map(r => {
-    const payableTotal = r.entries.reduce((sum, e) => {
-      const g = Number(e.grossAmount)
-      const net = e.vatable === 'VAT' ? g / 1.12 : g
-      const ewt = e.hasEwt && e.ewtRate ? net * (e.ewtRate / 100) : 0
-      return sum + (net - ewt)
-    }, 0)
-    const { entries, ...rest } = r
-    void entries
-    return { ...rest, payableTotal }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meta = r.meta as any
+    const ceoItems: { gross: number; vatable: string | null; hasEwt?: boolean; ewtRate?: number | null }[] | null =
+      meta && Array.isArray(meta.items) ? meta.items : null
+    let payableTotal: number
+    let count: number
+    if (ceoItems) {
+      payableTotal = ceoItems.reduce((s, i) => s + payableOf(i.vatable ?? null, Number(i.gross), !!i.hasEwt, i.ewtRate ?? null), 0)
+      count = ceoItems.length
+    } else {
+      payableTotal = r.entries.reduce((s, e) => s + payableOf(e.vatable, Number(e.grossAmount), e.hasEwt, e.ewtRate), 0)
+      count = r._count.entries
+    }
+    const { entries, _count, meta: _m, ...rest } = r
+    void entries; void _count; void _m
+    return { ...rest, payableTotal, _count: { entries: count }, filterBranch: ceoItems ? (meta.filterBranch ?? null) : null }
   })
   return NextResponse.json(withPayable)
 }
@@ -57,7 +70,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch, entryIds, kind, manualSeq } = await req.json()
+    const { branch, entryIds, kind, manualSeq, filterBranch } = await req.json()
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     }
@@ -70,31 +83,78 @@ export async function POST(req: Request) {
     const k = kind === 'INVALID' ? 'INVALID' : 'VALID'   // RFP (Valid) | RFP (Invalid)
     const mseq = manualSeq != null && String(manualSeq).trim() !== '' ? parseInt(String(manualSeq), 10) : null
 
-    const report = await prisma.$transaction(async (tx) => {
-      // Only audited entries in this branch, not yet reimbursed, matching the RFP kind's validity.
-      const entries = await tx.pettyCashEntry.findMany({
-        where: { id: { in: entryIds }, branch, reimbursementId: null, audited: true, validity: k === 'VALID' ? 'Valid' : 'Invalid' },
-      })
-      if (entries.length === 0) throw new Error(`No eligible audited ${k === 'VALID' ? 'valid' : 'invalid'} entries (already reimbursed / not audited?)`)
-      const grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
+    // CEO petty cash: a branch RFP includes only each entry's allocation to that
+    // branch, so a shared entry can be reimbursed once per branch.
+    const ALLOC_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+    const ceoBranch: string | null = branch === 'CEO' && typeof filterBranch === 'string' && ALLOC_BRANCHES.includes(filterBranch) ? filterBranch : null
+    if (branch === 'CEO' && !ceoBranch) {
+      return NextResponse.json({ error: 'Select a branch for this CEO RFP' }, { status: 400 })
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allocAmount = (e: any, br: string): number => {
+      const arr = Array.isArray(e.branchAllocations) ? e.branchAllocations : []
+      return Number(arr.find((x: { branch?: string; amount?: number | string }) => x?.branch === br)?.amount || 0)
+    }
 
-      let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
-      if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch, nextPcvSeq: 1 } })
-      // Manual seq (from the pre-printed form) overrides the auto counter; keep the counter ahead.
+    const report = await prisma.$transaction(async (tx) => {
+      const validity = k === 'VALID' ? 'Valid' : 'Invalid'
+      let grossTotal: number
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let meta: any = undefined
+      let eligibleIds: string[] = []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let ceoEligible: any[] = []
+
+      if (ceoBranch) {
+        const entries = await tx.pettyCashEntry.findMany({
+          where: { id: { in: entryIds }, branch: 'CEO', audited: true, validity },
+        })
+        // Eligible = has a nonzero allocation to this branch and not already RFP'd for it.
+        ceoEligible = entries.filter(e => {
+          const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? e.rfpBranchMap as Record<string, string> : {}
+          return allocAmount(e, ceoBranch) !== 0 && !map[ceoBranch]
+        })
+        if (ceoEligible.length === 0) throw new Error(`No eligible ${validity.toLowerCase()} entries for this branch (no allocation / already reimbursed for it?)`)
+        const items = ceoEligible.map(e => ({
+          entryId: e.id, gross: allocAmount(e, ceoBranch), vatable: e.vatable, hasEwt: e.hasEwt, ewtRate: e.ewtRate,
+        }))
+        grossTotal = items.reduce((s, i) => s + i.gross, 0)
+        meta = { filterBranch: ceoBranch, items }
+      } else {
+        const entries = await tx.pettyCashEntry.findMany({
+          where: { id: { in: entryIds }, branch, reimbursementId: null, audited: true, validity },
+        })
+        if (entries.length === 0) throw new Error(`No eligible audited ${validity.toLowerCase()} entries (already reimbursed / not audited?)`)
+        grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
+        eligibleIds = entries.map(e => e.id)
+      }
+
+      const settingsBranch = branch
+      let settings = await tx.pettyCashSettings.findUnique({ where: { branch: settingsBranch } })
+      if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch: settingsBranch, nextPcvSeq: 1 } })
       const seq = (mseq != null && !isNaN(mseq) && mseq > 0) ? mseq : settings.nextReimbSeq
-      await tx.pettyCashSettings.update({ where: { branch }, data: { nextReimbSeq: Math.max(settings.nextReimbSeq, seq + 1) } })
+      await tx.pettyCashSettings.update({ where: { branch: settingsBranch }, data: { nextReimbSeq: Math.max(settings.nextReimbSeq, seq + 1) } })
 
       const yy = new Date().getFullYear() % 100
       const suffix = k === 'VALID' ? 'VAL' : 'INV'
-      const refNumber = `${BRANCH_CODE[branch]}-RFP${yy}-${String(seq).padStart(6, '0')}-${suffix}`
+      const refNumber = ceoBranch
+        ? `${BRANCH_CODE['CEO']}-RFP${yy}-${String(seq).padStart(6, '0')}-${BRANCH_CODE[ceoBranch]}-${suffix}`
+        : `${BRANCH_CODE[branch]}-RFP${yy}-${String(seq).padStart(6, '0')}-${suffix}`
 
       const created = await tx.reimbursementReport.create({
-        data: { branch, refNumber, refSeq: seq, grossTotal, kind: k, createdById: session.user.id ?? null },
+        data: { branch, refNumber, refSeq: seq, grossTotal, kind: k, meta, createdById: session.user.id ?? null },
       })
-      await tx.pettyCashEntry.updateMany({
-        where: { id: { in: entries.map(e => e.id) } },
-        data: { reimbursementId: created.id },
-      })
+      if (ceoBranch) {
+        // Tag only this branch portion of each entry (leave reimbursementId free so
+        // other branches can still be reimbursed separately).
+        for (const e of ceoEligible) {
+          const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? { ...e.rfpBranchMap as Record<string, string> } : {}
+          map[ceoBranch] = created.id
+          await tx.pettyCashEntry.update({ where: { id: e.id }, data: { rfpBranchMap: map } })
+        }
+      } else {
+        await tx.pettyCashEntry.updateMany({ where: { id: { in: eligibleIds } }, data: { reimbursementId: created.id } })
+      }
       return created
     })
 
@@ -167,14 +227,28 @@ export async function DELETE(req: Request) {
   }
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
-  const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { branch: true } })
+  const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { branch: true, meta: true } })
   if (!rep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!branchAllowed((session.user as { branch?: string }).branch, rep.branch)) {
     return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
   }
   try {
-    // Released entries go back to Petty Cash Entries as "For Replenishment".
-    await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meta = rep.meta as any
+    if (meta && meta.filterBranch && Array.isArray(meta.items)) {
+      // CEO branch RFP: free just this branch portion of each entry (drop the
+      // rfpBranchMap[filterBranch] key) so it can be reimbursed again.
+      const br = meta.filterBranch as string
+      const entryIds = (meta.items as { entryId: string }[]).map(i => i.entryId)
+      const entries = await prisma.pettyCashEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, rfpBranchMap: true } })
+      for (const e of entries) {
+        const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? { ...e.rfpBranchMap as Record<string, string> } : {}
+        if (map[br] === id) { delete map[br]; await prisma.pettyCashEntry.update({ where: { id: e.id }, data: { rfpBranchMap: map } }) }
+      }
+    } else {
+      // Standard RFP: released entries go back to Petty Cash Entries as "For Replenishment".
+      await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
+    }
     await prisma.reimbursementReport.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (e) {

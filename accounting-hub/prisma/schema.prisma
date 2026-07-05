@@ -1724,6 +1724,10 @@ model PettyCashEntry {
   paymentBankAccount String?
   reimbursementId   String?
   reimbursement     ReimbursementReport? @relation(fields: [reimbursementId], references: [id], onDelete: SetNull)
+  // CEO petty cash only: a CEO expense can be allocated across branches and each
+  // branch portion goes into its own branch RFP. Maps branch enum → RFP report id
+  // so the same entry can be reimbursed once per branch without a single FK.
+  rfpBranchMap      Json?
   soaId             String?   // links a one-time entry tagged "Paid by Credit Card" to its CreditCardSOA
   createdById       String?
   createdAt         DateTime @default(now())

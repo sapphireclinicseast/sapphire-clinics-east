@@ -82,6 +82,7 @@ ALTER TABLE "DigitalWallet" ADD COLUMN IF NOT EXISTS "diagnosis" TEXT;
 ALTER TABLE "DigitalWallet" ADD COLUMN IF NOT EXISTS "approvedServices" JSONB;
 ALTER TABLE "PayrollEntry" ADD COLUMN IF NOT EXISTS "incentives" JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE "PayrollEntry" ADD COLUMN IF NOT EXISTS "incentiveTotal" DECIMAL(65,30) NOT NULL DEFAULT 0;
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "rfpBranchMap" JSONB;
 
 -- SOA Settings (singleton row for bank details, signatories)
 CREATE TABLE IF NOT EXISTS "SoaSettings" (
