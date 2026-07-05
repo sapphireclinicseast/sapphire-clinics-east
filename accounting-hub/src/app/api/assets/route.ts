@@ -82,6 +82,7 @@ export async function POST(req: Request) {
       monthlyDepreciation,
       depreciationEndDate,
       supplierId,
+      sourceAccountId,
       photoUrl,
       photoUrls,
       isDefective,
@@ -105,6 +106,7 @@ export async function POST(req: Request) {
         monthlyDepreciation,
         depreciationEndDate: new Date(depreciationEndDate),
         supplierId: supplierId || null,
+        sourceAccountId: sourceAccountId || null,
         photoUrl: photoUrl || null,
         photoUrls: Array.isArray(photoUrls) ? photoUrls : undefined,
         isDefective: !!isDefective,
@@ -169,6 +171,7 @@ export async function PUT(req: Request) {
       monthlyDepreciation,
       depreciationEndDate,
       supplierId,
+      sourceAccountId,
       photoUrl,
       photoUrls,
       isDefective,
@@ -181,7 +184,7 @@ export async function PUT(req: Request) {
     // Capture pre-edit state to detect material changes affecting the JE.
     const prior = await prisma.asset.findUnique({
       where: { id },
-      select: { totalAmount: true, classification: true, dateBought: true, branch: true },
+      select: { totalAmount: true, classification: true, dateBought: true, branch: true, sourceAccountId: true },
     })
 
     const asset = await prisma.asset.update({
@@ -198,6 +201,7 @@ export async function PUT(req: Request) {
         monthlyDepreciation,
         depreciationEndDate: new Date(depreciationEndDate),
         supplierId: supplierId || null,
+        sourceAccountId: sourceAccountId || null,
         photoUrl: photoUrl || null,
         photoUrls: Array.isArray(photoUrls) ? photoUrls : undefined,
         isDefective: !!isDefective,
@@ -218,6 +222,7 @@ export async function PUT(req: Request) {
       || prior.classification !== asset.classification
       || prior.dateBought.getTime() !== asset.dateBought.getTime()
       || prior.branch !== asset.branch
+      || prior.sourceAccountId !== asset.sourceAccountId
     if (materialChange) {
       try {
         await reverseAssetJournal(prisma, id, session.user.id, 'asset edited')

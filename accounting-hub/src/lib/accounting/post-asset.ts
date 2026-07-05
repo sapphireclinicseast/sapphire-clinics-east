@@ -42,10 +42,6 @@ export async function postAssetJournal(
   assetId: string,
   createdById: string,
 ): Promise<PostAssetResult> {
-  if (process.env.ENABLE_GL_POSTING !== 'true') {
-    return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
-  }
-
   // Idempotency
   const existing = await prisma.journalEntry.findFirst({
     where: { referenceType: 'ASSET_PURCHASE', referenceId: assetId },
@@ -57,10 +53,16 @@ export async function postAssetJournal(
     where: { id: assetId },
     select: {
       id: true, name: true, branch: true, totalAmount: true,
-      classification: true, dateBought: true,
+      classification: true, dateBought: true, sourceAccountId: true,
     },
   })
   if (!asset) return { posted: false, reason: 'asset not found' }
+
+  // Post whenever the user identified the funding bank account (they want the
+  // purchase recorded); otherwise fall back to the global Tier-3 GL flag.
+  if (!asset.sourceAccountId && process.env.ENABLE_GL_POSTING !== 'true') {
+    return { posted: false, reason: 'ENABLE_GL_POSTING flag is off and no source account selected' }
+  }
 
   const amount = Number(asset.totalAmount)
   if (amount <= 0) return { posted: false, reason: 'zero-amount asset — nothing to post' }
@@ -75,16 +77,18 @@ export async function postAssetJournal(
     return { posted: false, reason: `no ASSET account with accountNumber=${asset.classification} found for asset "${asset.name}"` }
   }
 
-  // Funding side (CR) — default to cash. Future enhancement: if Asset.sourceAccountId
-  // is added, branch on its accountType to support loan-financed acquisitions.
-  const cashAcct = await findDefaultCashAccount(prisma)
-  if (!cashAcct) {
-    return { posted: false, reason: 'no default cash ASSET account found to credit for asset purchase' }
+  // Funding side (CR) — the bank/COA account the asset was purchased from, if the
+  // user picked one; otherwise fall back to the earliest cash account.
+  const fundingAcct = asset.sourceAccountId
+    ? await prisma.account.findUnique({ where: { id: asset.sourceAccountId }, select: { id: true, accountNumber: true, accountTitle: true } })
+    : await findDefaultCashAccount(prisma)
+  if (!fundingAcct) {
+    return { posted: false, reason: 'no funding account found to credit for asset purchase' }
   }
 
   const lines: PostingLine[] = [
-    { accountId: ppeAcct.id,  debit:  amount, description: `Acquired ${asset.name}` },
-    { accountId: cashAcct.id, credit: amount, description: `Cash paid for ${asset.name}` },
+    { accountId: ppeAcct.id,      debit:  amount, description: `Acquired ${asset.name}` },
+    { accountId: fundingAcct.id,  credit: amount, description: `Paid for ${asset.name}` },
   ]
 
   try {
@@ -114,10 +118,8 @@ export async function reverseAssetJournal(
   createdById: string,
   reason: string,
 ): Promise<PostAssetResult> {
-  if (process.env.ENABLE_GL_POSTING !== 'true') {
-    return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
-  }
-
+  // Reverse whenever an original acquisition JE exists — regardless of the flag —
+  // so editing/deleting an asset always unwinds its posted entry.
   const original = await prisma.journalEntry.findFirst({
     where: { referenceType: 'ASSET_PURCHASE', referenceId: assetId },
     include: { lines: true },

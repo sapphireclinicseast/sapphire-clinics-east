@@ -1517,6 +1517,7 @@ model Asset {
   depreciationEndDate DateTime
   supplierId          String?
   supplier            Supplier? @relation(fields: [supplierId], references: [id])
+  sourceAccountId     String?   // COA bank account the asset was purchased from (credited on the acquisition JE)
   photoUrl            String?   // main photo (shown in the list)
   photoUrls           Json?     // all photos (gallery)
   isDefective         Boolean   @default(false)

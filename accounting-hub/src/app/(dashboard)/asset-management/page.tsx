@@ -49,6 +49,7 @@ interface Asset {
   depreciationEndDate: string
   supplierId: string | null
   supplier: { id: string; supplierName: string } | null
+  sourceAccountId: string | null
   photoUrl: string | null
   photoUrls: string[] | null
   isDefective: boolean
@@ -144,6 +145,7 @@ function emptyForm(branch: string) {
     classification: '',
     yearsDepreciation: '5',
     supplierId: '',
+    sourceAccountId: '',
     photoUrl: '',
     photoUrls: [] as string[],
     isDefective: false,
@@ -176,6 +178,7 @@ export default function AssetManagementPage() {
   // ── State ───────────────────────────────────────────────────
   const [assets, setAssets] = useState<Asset[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [banks, setBanks] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -289,6 +292,14 @@ export default function AssetManagementPage() {
     }
   }, [])
 
+  const fetchBanks = useCallback(async () => {
+    try {
+      const res = await fetch('/api/bank-accounts')
+      if (res.ok) setBanks(await res.json())
+    } catch { /* non-critical */ }
+  }, [])
+  useEffect(() => { fetchBanks() }, [fetchBanks])
+
   useEffect(() => {
     if (status === 'authenticated') {
       fetchAssets()
@@ -319,6 +330,7 @@ export default function AssetManagementPage() {
       classification: asset.classification,
       yearsDepreciation: String(asset.yearsDepreciation),
       supplierId: asset.supplierId ?? '',
+      sourceAccountId: asset.sourceAccountId ?? '',
       photoUrl: asset.photoUrl ?? '',
       photoUrls: Array.isArray(asset.photoUrls) ? asset.photoUrls : (asset.photoUrl ? [asset.photoUrl] : []),
       isDefective: !!asset.isDefective,
@@ -451,6 +463,7 @@ export default function AssetManagementPage() {
         monthlyDepreciation,
         depreciationEndDate,
         supplierId: form.supplierId || null,
+        sourceAccountId: form.sourceAccountId || null,
         photoUrl: form.photoUrls[0] || form.photoUrl || null,
         photoUrls: form.photoUrls,
         isDefective: form.isDefective,
@@ -1156,6 +1169,26 @@ export default function AssetManagementPage() {
                     <option key={s.id} value={s.id}>{s.supplierName}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Purchased from (funding bank account) + journal-entry preview */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Purchased from <span className="font-normal text-gray-400">(bank account — records the purchase as a journal entry)</span></label>
+                <select
+                  value={form.sourceAccountId}
+                  onChange={(e) => setForm((f) => ({ ...f, sourceAccountId: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="">— Not recorded (no journal entry) —</option>
+                  {banks.map((b) => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
+                </select>
+                {form.sourceAccountId && (
+                  <div className="mt-2 rounded-lg border p-2.5 text-xs font-mono" style={{ borderColor: 'var(--light-gray)', background: '#f8fafc', color: '#334155' }}>
+                    <div className="mb-1 font-sans font-semibold text-[11px]" style={{ color: 'var(--mid-gray)' }}>Journal entry on save:</div>
+                    <div>DR&nbsp; {form.classification ? classificationLabel(form.classification) : 'Asset (PPE)'} &nbsp;<span className="float-right">{formatCurrency(totalAmount)}</span></div>
+                    <div>CR&nbsp;&nbsp;&nbsp;&nbsp; {banks.find(b => b.id === form.sourceAccountId)?.accountTitle || 'Bank'} <span className="float-right">{formatCurrency(totalAmount)}</span></div>
+                  </div>
+                )}
               </div>
 
               {/* Photos (main + gallery) */}
