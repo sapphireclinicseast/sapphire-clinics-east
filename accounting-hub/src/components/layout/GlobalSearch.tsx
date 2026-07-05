@@ -12,7 +12,7 @@ interface Hit {
 
 const SECTION: Record<string, string> = {
   '/sales-summary': 'Sales Summary', '/petty-cash': 'Petty Cash', '/expenses': 'Expenses',
-  '/inventory': 'Inventory', '/chart-of-accounts': 'Chart of Accounts', '/reports/v2': 'Reports (GL)',
+  '/inventory': 'Inventory', '/chart-of-accounts': 'Chart of Accounts',
   '/asset-management': 'Asset Management',
 }
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

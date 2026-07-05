@@ -100,7 +100,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/budgets', icon: Target, label: 'Budgets', roles: FULL_ACCESS },
       { href: '/reports', icon: BarChart3, label: 'Reports', roles: [...FULL_ACCESS, 'MEDREP'] },
-      { href: '/reports/v2', icon: BarChart3, label: 'Reports (v2 / GL)', roles: FULL_ACCESS },
       { href: '/sales-summary', icon: Receipt, label: 'Sales Summary', roles: FULL_ACCESS },
       { href: '/products-analysis', icon: PackageSearch, label: 'Products Analysis', roles: ANALYSIS_ACCESS },
       { href: '/sales-analysis', icon: TrendingUp, label: 'Sales Analysis', roles: ANALYSIS_ACCESS },

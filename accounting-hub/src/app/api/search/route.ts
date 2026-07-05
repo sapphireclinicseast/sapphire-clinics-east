@@ -160,7 +160,7 @@ export async function GET(req: Request) {
   })
   for (const j of journals) results.push({
     id: j.id, type: 'Journal Entry', title: j.description, subtitle: `${j.referenceType} · ${bl(j.branch)} · ${dstr(j.entryDate)}`,
-    amount: num(j.totalAmount), reference: j.referenceType, date: dstr(j.entryDate), href: '/reports/v2',
+    amount: num(j.totalAmount), reference: j.referenceType, date: dstr(j.entryDate), href: '/reports',
     detail: { Description: j.description, 'Reference Type': j.referenceType, Branch: bl(j.branch), 'Total Amount': num(j.totalAmount).toFixed(2), Date: dstr(j.entryDate) },
   })
   for (const a of assets) results.push({
