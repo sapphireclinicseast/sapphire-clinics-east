@@ -60,6 +60,8 @@ export async function GET(req: Request) {
     const orders = await prisma.order.findMany({
       where,
       select: {
+        orderNumber: true,
+        orderType: true,
         subtotal: true,
         netAmount: true,
         patientId: true,
@@ -105,6 +107,8 @@ export async function GET(req: Request) {
     const payAmt = new Map<string, number>()
     const accGross = { pediatric: 0, adult: 0, unknown: 0 }
     const accNet = { pediatric: 0, adult: 0, unknown: 0 }
+    // Enumerate the "Unknown" bucket so the user can judge whether to include it.
+    const unknownOrders: { orderNumber: number; date: string; orderType: string; patientName: string; gross: number; net: number; reason: string }[] = []
 
     for (const o of orders) {
       const g = Number(o.subtotal), n = Number(o.netAmount)
@@ -118,6 +122,14 @@ export async function GET(req: Request) {
         : 'unknown'
       accGross[bucket] += g
       accNet[bucket] += n
+      if (bucket === 'unknown') {
+        const hasName = !!(o.patientName && o.patientName.trim())
+        unknownOrders.push({
+          orderNumber: o.orderNumber, date: new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
+          orderType: o.orderType, patientName: hasName ? o.patientName! : '—', gross: Math.round(g * 100) / 100, net: Math.round(n * 100) / 100,
+          reason: !hasName ? 'No patient on the order (walk-in / product sale)' : (o.patientId ? 'Patient linked but no DOB in the CRM' : 'Patient name not matched to a CRM record with DOB'),
+        })
+      }
       for (const it of o.items) {
         const dept = it.service?.department || it.inventoryItem?.skuDepartment || 'OTHER'
         deptGross.set(dept, (deptGross.get(dept) || 0) + Number(it.lineTotal))
@@ -181,6 +193,7 @@ export async function GET(req: Request) {
       ageGross: ageRows(accGross),
       ageNet: ageRows(accNet),
       ageDataAvailable,
+      unknownOrders: unknownOrders.sort((a, b) => b.gross - a.gross),
     })
   } catch (err) {
     console.error('Sales analysis error:', err)

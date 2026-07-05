@@ -17,6 +17,7 @@ interface AnalysisData {
   ageGross: { key: string; label: string; amount: number; pct: number }[]
   ageNet: { key: string; label: string; amount: number; pct: number }[]
   ageDataAvailable: boolean
+  unknownOrders?: { orderNumber: number; date: string; orderType: string; patientName: string; gross: number; net: number; reason: string }[]
 }
 
 const BRANCHES = [
@@ -139,6 +140,7 @@ export default function SalesAnalysisPage() {
   const [dateTo, setDateTo] = useState(today())
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<AnalysisData | null>(null)
+  const [showUnknown, setShowUnknown] = useState(false)
   const [error, setError] = useState('')
 
   const allowed = ['ADMIN', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
@@ -287,6 +289,34 @@ export default function SalesAnalysisPage() {
                 totalLabel="TOTAL"
                 totalCols={{ amount: formatCurrency(data.summary.grossSales), pct: '100.0%' }}
               />
+              {(data.unknownOrders?.length ?? 0) > 0 && (
+                <div className="mt-2">
+                  <button onClick={() => setShowUnknown(v => !v)} className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
+                    {showUnknown ? '▾ Hide' : '▸ Show'} the {data.unknownOrders!.length} “Unknown” order{data.unknownOrders!.length > 1 ? 's' : ''}
+                  </button>
+                  {showUnknown && (
+                    <div className="mt-2 rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)', maxHeight: '340px' }}>
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0" style={{ background: 'var(--off-white)' }}><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
+                          {['Order #', 'Date', 'Type', 'Patient / Customer', 'Gross', 'Why unknown'].map(h => <th key={h} className="px-2.5 py-2 font-semibold whitespace-nowrap">{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {data.unknownOrders!.map(o => (
+                            <tr key={o.orderNumber} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-2.5 py-1.5 font-mono">{o.orderNumber}</td>
+                              <td className="px-2.5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{o.date}</td>
+                              <td className="px-2.5 py-1.5">{o.orderType === 'PRODUCT' ? 'Product' : 'Service'}</td>
+                              <td className="px-2.5 py-1.5" style={{ color: 'var(--charcoal)' }}>{o.patientName}</td>
+                              <td className="px-2.5 py-1.5 text-right font-semibold">{formatCurrency(o.gross)}</td>
+                              <td className="px-2.5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{o.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </Section>
 
             {/* Net Sales by Age */}
