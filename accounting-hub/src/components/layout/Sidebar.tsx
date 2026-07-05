@@ -22,6 +22,7 @@ import {
   PackageSearch,
   TrendingUp,
   Landmark,
+  PieChart,
   Repeat,
   X,
 } from 'lucide-react'
@@ -41,6 +42,9 @@ const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 const COA_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 // Taxes module: main admin, accountant, bookkeeper.
 const TAX_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+// Equity: main admin only. Loans & Advances: main admin, accountant, bookkeeper.
+const EQUITY_ACCESS = ['ADMIN']
+const LOANS_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // Payroll: full access + the dedicated Payroll Officer.
 const PAYROLL_ACCESS = [...FULL_ACCESS, 'PAYROLL_OFFICER']
 // Products & Sales Analysis: main admin + branch admins + viewer (NOT accountant/bookkeeper).
@@ -87,6 +91,8 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll', roles: PAYROLL_ACCESS },
       { href: '/taxes', icon: Landmark, label: 'Taxes', roles: TAX_ACCESS },
       { href: '/fund-transfer', icon: Repeat, label: 'Fund Transfer', roles: TAX_ACCESS },
+      { href: '/equity', icon: PieChart, label: 'Equity', roles: EQUITY_ACCESS },
+      { href: '/loans-and-advances', icon: Landmark, label: 'Loans & Advances', roles: LOANS_ACCESS },
     ],
   },
   {

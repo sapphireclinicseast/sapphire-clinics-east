@@ -1989,6 +1989,135 @@ model UploadSession {
   @@index([expiresAt])
 }
 
+// ── Equity: shareholders, common/preferred shares, dividends ──
+model Shareholder {
+  id          String   @id @default(cuid())
+  shNumber    String   @unique // SH0001, SH0002 …
+  shSeq       Int      @unique
+  name        String
+  tin         String?
+  birthdate   DateTime?
+  email       String?
+  address     String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  commonShares    CommonShare[]
+  preferredShares PreferredShare[]
+}
+
+model CommonShare {
+  id               String   @id @default(cuid())
+  shareholderId    String
+  shareholder      Shareholder @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
+  dateAcquired     DateTime
+  agreementType    String   // SUBSCRIPTION | DEED_OF_ASSIGNMENT
+  assignedToShareholderId String? // when DEED_OF_ASSIGNMENT — who the shares are assigned to
+  agreementUrls    Json?
+  stockCertNumber  String?
+  proofOfDepositUrls Json?
+  numberOfShares   Decimal
+  pricePerShare    Decimal
+  bankAccountId    String?  // COA bank account the equity was debited into
+  journalEntryId   String?
+  // Buyback → Treasury Shares
+  boughtBack       Boolean  @default(false)
+  buybackPrice     Decimal?
+  buybackShares    Decimal?
+  buybackBankAccountId String?
+  buybackProofUrls Json?
+  buybackJournalEntryId String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([shareholderId])
+}
+
+model PreferredShare {
+  id               String   @id @default(cuid())
+  shareholderId    String
+  shareholder      Shareholder @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
+  dateAcquired     DateTime
+  agreementType    String   // SUBSCRIPTION | DEED_OF_ASSIGNMENT
+  agreementUrls    Json?
+  stockCertNumber  String?
+  proofOfDepositUrls Json?
+  numberOfShares   Decimal
+  pricePerShare    Decimal
+  bankAccountId    String?
+  journalEntryId   String?
+  annualInterest   Decimal? // % per year
+  maturityYears    Int?     // buyback maturity, e.g. 5
+  buybackPrice     Decimal? // price to buy back at maturity
+  payoutSchedule   String?  // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
+  payoutStartMonth Int?     // 1–12
+  payoutStartYear  Int?
+  payoutDay        Int?     // day of month (capped to month end), e.g. 30
+  pdcUrls          Json?    // post-dated cheques (multi)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  payouts          PreferredPayout[]
+  @@index([shareholderId])
+}
+
+// Preferred dividend payout history / schedule occurrences.
+model PreferredPayout {
+  id               String   @id @default(cuid())
+  preferredShareId String
+  preferredShare   PreferredShare @relation(fields: [preferredShareId], references: [id], onDelete: Cascade)
+  shareholderId    String
+  dueDate          DateTime
+  amount           Decimal
+  status           String   @default("PENDING") // PENDING | PAID
+  paidDate         DateTime?
+  bankAccountId    String?
+  proofUrls        Json?
+  emailedAt        DateTime?
+  journalEntryId   String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([preferredShareId])
+  @@index([dueDate])
+}
+
+// Common-share dividend releases.
+model DividendRelease {
+  id                 String   @id @default(cuid())
+  date               DateTime
+  boardResolutionUrls Json?
+  dividendAmount     Decimal  // per common share
+  dividendType       String   // REGULAR | SPECIAL
+  totalAmountPaid    Decimal  @default(0)
+  status             String   @default("DRAFT") // DRAFT | FINALIZED
+  proofOfDepositUrls Json?
+  journalEntryId     String?
+  finalizedAt        DateTime?
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  items              DividendReleaseItem[]
+}
+
+model DividendReleaseItem {
+  id               String   @id @default(cuid())
+  releaseId        String
+  release          DividendRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  shareholderId    String
+  shareholderName  String
+  shares           Decimal
+  amount           Decimal
+  emailedAt        DateTime?
+
+  @@index([releaseId])
+}
+
 model BankTransaction {
   id                String   @id @default(cuid())
   bankAccountId     String   // Account.id (a Chart-of-Accounts bank account)
