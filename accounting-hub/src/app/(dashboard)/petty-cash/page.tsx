@@ -6,6 +6,7 @@ import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANC
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
+import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
@@ -172,6 +173,10 @@ export default function PettyCashPage() {
   const [supplierNames, setSupplierNames] = useState<Set<string>>(new Set())
   const [suppliers, setSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
+  // "Add to Asset Management" prompt for entries tagged with a PPE classification.
+  const [assetPrompt, setAssetPrompt] = useState<Entry | null>(null)
+  const [assetBusy, setAssetBusy] = useState(false)
+  const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadEntries = useCallback(async (br: string) => {
@@ -537,11 +542,29 @@ export default function PettyCashPage() {
 
   const finalizeEntry = (e: Entry) => {
     saveField(e.id, { finalized: true }, false)
+    // Asset-classification entries → offer to add to Asset Management (takes
+    // precedence over the supplier prompt; the asset links its own supplier).
+    if (assetClassFromAccountTitle(e.accountTitle)) { setAssetPrompt(e); return }
     const name = (e.registeredName || '').trim()
     // Invalid-classified expenses are not real suppliers — never add them to the list.
     if (name && e.validity !== 'Invalid' && ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'].includes(branch) && !supplierNames.has(name.toLowerCase())) {
       setNewSupplierPrompt({ registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '' })
     }
+  }
+  const confirmAddAsset = async () => {
+    if (!assetPrompt) return
+    setAssetBusy(true)
+    try {
+      const r = await fetch('/api/assets/from-entry', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entryId: assetPrompt.id }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error || 'Failed to add asset'); setAssetBusy(false); return }
+      setAssetResult({ count: (d.created || []).length })
+      setAssetPrompt(null)
+    } catch { alert('Failed to add asset') }
+    setAssetBusy(false)
   }
   const confirmAddSupplier = async () => {
     if (!newSupplierPrompt) return
@@ -1225,6 +1248,55 @@ export default function PettyCashPage() {
             <div className="flex gap-2">
               <button onClick={() => setNewSupplierPrompt(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>No, skip</button>
               <button onClick={confirmAddSupplier} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Yes, add</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {assetPrompt && (() => {
+        const cls = assetClassFromAccountTitle(assetPrompt.accountTitle) || ''
+        const vf = assetPrompt.vatable === 'VAT' ? 1 / 1.12 : 1
+        const alloc = getAllocArr(assetPrompt).filter(a => a.branch && Number(a.amount) !== 0)
+        const targets = alloc.length >= 1
+          ? alloc.map(a => ({ branch: a.branch, price: Number(a.amount) * vf }))
+          : [{ branch: assetPrompt.branch, price: num(assetPrompt.grossAmount) * vf }]
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setAssetPrompt(null)}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+              <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Add to Asset Management?</h2>
+              <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
+                This entry is classified as <strong>{cls} — {ASSET_CLASSIFICATION_LABELS[cls]}</strong>.
+                {targets.length > 1 && ' It is split across branches, so one asset will be created per branch:'}
+              </p>
+              <div className="rounded-xl px-3 py-2 mb-4 text-sm space-y-1" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                {targets.map((t, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <span>{BRANCHES.find(b => b.value === t.branch)?.label || t.branch}</span>
+                    <span className="font-mono font-semibold">₱{peso(Math.round(t.price * 100) / 100)}</span>
+                  </div>
+                ))}
+                <div className="text-xs pt-1" style={{ color: 'var(--mid-gray)' }}>Amounts are net of VAT · depreciation, supplier &amp; department are pre-filled.</div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setAssetPrompt(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>No, skip</button>
+                <button onClick={confirmAddAsset} disabled={assetBusy} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                  {assetBusy ? 'Creating…' : `Yes, create ${targets.length > 1 ? `${targets.length} assets` : 'asset'}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {assetResult && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setAssetResult(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center" onClick={e => e.stopPropagation()}>
+            <CheckCircle2 size={32} className="mx-auto mb-2" style={{ color: 'var(--teal)' }} />
+            <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Added to Asset Management</h2>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>Created {assetResult.count} asset record{assetResult.count === 1 ? '' : 's'}. Review or add photos in Asset Management.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setAssetResult(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Close</button>
+              <a href="/asset-management" className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white text-center" style={{ background: 'var(--teal)' }}>Go to Asset Management</a>
             </div>
           </div>
         </div>
