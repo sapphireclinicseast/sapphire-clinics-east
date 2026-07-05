@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { redirect } from 'next/navigation'
 import { PieChart, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -23,6 +24,8 @@ interface Figures { totalCapitalization: number; totalShares: number; treasurySh
 export default function EquityPage() {
   const { data: session, status } = useSession()
   const [tab, setTab] = useState<'common' | 'preferred' | 'dividends'>('common')
+  const commonTableRef = useRef<HTMLTableElement>(null)
+  const commonRz = useResizableColumns('equity-common-list', commonTableRef)
   const [data, setData] = useState<{ rows: CommonRow[]; shareholders: Shareholder[]; figures: Figures } | null>(null)
   const [banks, setBanks] = useState<Bank[]>([])
   const [equityAccts, setEquityAccts] = useState<EquityAcct[]>([])
@@ -92,9 +95,10 @@ export default function EquityPage() {
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Common Shareholder</button>
           </div>
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-            <table className="w-full text-xs">
+            <table ref={commonTableRef} className="w-full text-xs" style={commonRz.tableStyle}>
+              <ResizableColgroup rz={commonRz} />
               <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Investor', 'Date Acq.', 'Stock Cert.', 'Shares', 'Price', 'Capitalization', '% Stake', 'Bank Debited', 'Bought back?', 'Proofs', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+                {['SH #', 'Investor', 'Date Acq.', 'Stock Cert.', 'Shares', 'Price', 'Capitalization', '% Stake', 'Bank Debited', 'Bought back?', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={commonRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
                 {loading ? <tr><td colSpan={12} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>

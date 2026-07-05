@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { Landmark, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 
 const ALLOWED = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -25,6 +26,8 @@ interface AdvanceRow {
 export default function LoansAndAdvancesPage() {
   const { data: session, status } = useSession()
   const [tab, setTab] = useState<'advances' | 'loans' | 'creditline' | 'history'>('advances')
+  const advTableRef = useRef<HTMLTableElement>(null)
+  const advRz = useResizableColumns('loans-advances-list', advTableRef)
   const [rows, setRows] = useState<AdvanceRow[]>([])
   const [shareholders, setShareholders] = useState<SH[]>([])
   const [banks, setBanks] = useState<Bank[]>([])
@@ -68,9 +71,10 @@ export default function LoansAndAdvancesPage() {
         <div className="space-y-3">
           <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Advance</button></div>
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-            <table className="w-full text-xs">
+            <table ref={advTableRef} className="w-full text-xs" style={advRz.tableStyle}>
+              <ResizableColgroup rz={advRz} />
               <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
                 {loading ? <tr><td colSpan={10} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>

@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
@@ -406,6 +407,8 @@ export default function PettyCashPage() {
     saveField(e.id, { proofUrls: next, proofUrl: next[0] ?? null }, false)
   }
   // Race-safe append (ScanUpload may deliver several photos in quick succession).
+  const gridTableRef = useRef<HTMLTableElement>(null)
+  const gridRz = useResizableColumns('petty-cash-entries-grid', gridTableRef)
   const entriesRef = useRef(entries)
   useEffect(() => { entriesRef.current = entries }, [entries])
   const appendProof = (id: string, url: string) => {
@@ -735,14 +738,15 @@ export default function PettyCashPage() {
             {loading ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
             ) : (
-              <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 2560 }}>
+              <table ref={gridTableRef} className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 2560, ...gridRz.tableStyle }}>
+                <ResizableColgroup rz={gridRz} />
                 <thead className="sticky top-0 z-10">
                   <tr style={{ background: 'var(--off-white)' }}>
                     <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
                     </th>
-                    {gridCols.map(col => (
-                      <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap"
+                    {gridCols.map((col, ci) => (
+                      <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap relative"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                         {col.key === 'branchAlloc' ? (
                           <div className="min-w-[150px]">
@@ -765,6 +769,7 @@ export default function PettyCashPage() {
                               className="mt-1 w-full px-1.5 py-0.5 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
                           </>
                         )}
+                        <ColResizeHandle rz={gridRz} index={ci + 1} />
                       </th>
                     ))}
                     <th className="border-r border-b px-2 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />

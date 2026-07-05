@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Landmark, ExternalLink, CalendarClock } from 'lucide-react'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { computeTaxDue, TAX_PORTALS, type TaxDueInfo } from '@/lib/taxes'
 import WithholdingCompensation from './WithholdingCompensation'
 import ExpandedWithholding from './ExpandedWithholding'
@@ -32,6 +33,8 @@ const dueBadge = (d: number) =>
 
 export default function TaxesPage() {
   const [tab, setTab] = useState<Tab>('guide')
+  const dueTableRef = useRef<HTMLTableElement>(null)
+  const dueRz = useResizableColumns('taxes-due-list', dueTableRef)
   const [due, setDue] = useState<TaxDueInfo[] | null>(null)
 
   // Deadlines depend on "today" → compute client-side to avoid hydration drift.
@@ -77,11 +80,12 @@ export default function TaxesPage() {
 
           {/* Tax summary table */}
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-            <table className="w-full text-sm">
+            <table ref={dueTableRef} className="w-full text-sm" style={dueRz.tableStyle}>
+              <ResizableColgroup rz={dueRz} />
               <thead>
                 <tr style={{ background: 'var(--off-white)' }}>
                   {['Tax', 'BIR Forms', 'Frequency', 'Deadline rule', 'Next deadline', 'Links'].map((h, i) => (
-                    <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap align-bottom" style={{ color: 'var(--charcoal)' }}>{h}</th>
+                    <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap align-bottom relative" style={{ color: 'var(--charcoal)' }}>{h}<ColResizeHandle rz={dueRz} index={i} /></th>
                   ))}
                 </tr>
               </thead>

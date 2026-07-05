@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
@@ -224,6 +225,8 @@ export default function ExpensesPage() {
   const [uploadingProof, setUploadingProof] = useState('')
   const [uploadPct, setUploadPct] = useState<Record<string, number>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
+  const gridTableRef = useRef<HTMLTableElement>(null)
+  const gridRz = useResizableColumns('expenses-entries-grid', gridTableRef)
 
   const recordType = TABS.find(t => t.key === tab)?.recordType || ''
   const isRecording = recordType === 'RECURRING' || recordType === 'ONE_TIME'
@@ -879,14 +882,15 @@ export default function ExpensesPage() {
             {loading ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
             ) : (
-              <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: isRecurringTab ? 3160 : 2360 }}>
+              <table ref={gridTableRef} className="text-xs" style={{ borderCollapse: 'collapse', minWidth: isRecurringTab ? 3160 : 2360, ...gridRz.tableStyle }}>
+                <ResizableColgroup rz={gridRz} />
                 <thead className="sticky top-0 z-10">
                   <tr style={{ background: 'var(--off-white)' }}>
                     <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
                     </th>
-                    {gridCols.map(col => (
-                      <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap"
+                    {gridCols.map((col, ci) => (
+                      <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap relative"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                         {col.plain ? (
                           <span className="font-semibold">{col.label}</span>
@@ -900,6 +904,7 @@ export default function ExpensesPage() {
                               className="mt-1 w-full px-1.5 py-0.5 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
                           </>
                         )}
+                        <ColResizeHandle rz={gridRz} index={ci + 1} />
                       </th>
                     ))}
                     <th className="border-r border-b px-2 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />
