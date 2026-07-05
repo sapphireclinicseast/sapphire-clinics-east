@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { branchAllowed } from '@/lib/branch-scope'
+import { branchAllowed, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'CEO']
@@ -35,8 +35,13 @@ export async function GET(req: Request) {
   if (!VALID_BRANCHES.includes(branch)) {
     return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
   }
-  // Branch-scoped users may only read their own branch.
-  if (!branchAllowed((session.user as { branch?: string }).branch, branch)) {
+  // Branch-scoped users may only read their own branch — except East/Greenhills
+  // accountants & bookkeepers, who get read-only visibility into CEO & Verdana.
+  const uBranch = (session.user as { branch?: string }).branch
+  const uRole = (session.user as { role?: string }).role
+  const canRead = branchAllowed(uBranch, branch)
+    || (canViewPettyCashCeoVerdana(uRole, uBranch) && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(branch))
+  if (!canRead) {
     return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
   }
   const entries = await prisma.pettyCashEntry.findMany({
@@ -61,6 +66,10 @@ export async function POST(req: Request) {
     const samePcvSeq = body.samePcvSeq != null && body.samePcvSeq !== '' ? Number(body.samePcvSeq) : null
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
+    }
+    // Writes are scoped to the user's own branch (view-only branches are read-only).
+    if (!branchAllowed((session.user as { branch?: string }).branch, branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
     }
     const withSub = recordType === 'PETTY_CASH'
     const entry = await prisma.$transaction(async (tx) => {
@@ -114,6 +123,9 @@ export async function PUT(req: Request) {
 
     const existing = await prisma.pettyCashEntry.findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+    if (!branchAllowed((session.user as { branch?: string }).branch, existing.branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
     if (existing.reimbursementId || existing.paidAt) {
       return NextResponse.json({ error: 'Locked: entry has been paid / reimbursed' }, { status: 409 })
     }
@@ -167,6 +179,9 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   const existing = await prisma.pettyCashEntry.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+  if (!branchAllowed((session.user as { branch?: string }).branch, existing.branch)) {
+    return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+  }
   if (existing.reimbursementId) {
     return NextResponse.json({ error: 'Locked: entry is part of a reimbursement report' }, { status: 409 })
   }

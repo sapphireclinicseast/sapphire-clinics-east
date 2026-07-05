@@ -43,3 +43,20 @@ export function branchAllowed(userBranch: string | null | undefined, requested: 
   const short = BRANCH_ENUM_TO_SHORT[userBranch] || userBranch
   return requested === userBranch || requested === short
 }
+
+// Branches that East/Greenhills accountants & bookkeepers may VIEW (read-only)
+// in Petty Cash, in addition to their own branch: the CEO and Verdana sections.
+export const PETTY_CASH_VIEW_ONLY_BRANCHES = ['CEO', 'VERDANA_STORE']
+
+/**
+ * True if the user is an Accountant or Bookkeeper locked to the East or Greenhills
+ * branch — these users get read-only visibility into the CEO and Verdana petty-cash
+ * sections (but cannot create, edit, delete, or audit them).
+ */
+export function canViewPettyCashCeoVerdana(
+  role: string | null | undefined,
+  userBranch: string | null | undefined,
+): boolean {
+  return (role === 'ACCOUNTANT' || role === 'BOOKKEEPER')
+    && (userBranch === 'SANDBOX_EAST' || userBranch === 'SANDBOX_GREENHILLS')
+}

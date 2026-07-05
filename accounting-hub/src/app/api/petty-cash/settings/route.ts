@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { branchAllowed } from '@/lib/branch-scope'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'CEO']
@@ -43,6 +44,9 @@ export async function PUT(req: Request) {
     const { branch, nextPcvSeq, requestors, prepaidAccount } = await req.json()
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
+    }
+    if (!branchAllowed((session.user as { branch?: string }).branch, branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}

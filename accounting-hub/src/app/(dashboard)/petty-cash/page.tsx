@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { userBranchScope } from '@/lib/branch-scope'
+import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -106,13 +106,19 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
 export default function PettyCashPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
-  const canWrite = WRITE_ROLES.includes(role)
-  // Only Accountant + main Admin may set the Audited flag.
-  const canAudit = role === 'ADMIN' || role === 'ACCOUNTANT'
   // Users assigned to a single branch only see that branch here.
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
+  // East/Greenhills accountants & bookkeepers additionally get read-only visibility
+  // into the CEO and Verdana petty-cash sections.
+  const canCrossView = canViewPettyCashCeoVerdana(role, scope.enum)
 
   const [branch, setBranch] = useState(scope.enum || 'SANDBOX_EAST')
+  // Read-only when a branch-locked user is viewing a section outside their own
+  // branch (i.e. an East/GH accountant looking at the CEO or Verdana sections).
+  const viewOnly = !!scope.enum && branch !== scope.enum
+  const canWrite = WRITE_ROLES.includes(role) && !viewOnly
+  // Only Accountant + main Admin may set the Audited flag (and not on view-only branches).
+  const canAudit = (role === 'ADMIN' || role === 'ACCOUNTANT') && !viewOnly
   // Session loads async — once we know the user is branch-locked, force their branch.
   useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState<'entries' | 'reimbursements' | 'flowchart'>('entries')
@@ -576,6 +582,9 @@ export default function PettyCashPage() {
       case 'vatAmount': return vatAmount(e)
       case 'accountTitle': return e.accountTitle || ''
       case 'audited': return e.audited ? 'Yes' : 'No'
+      // CEO allocations: the branch values this entry is allocated to (nonzero),
+      // so the header dropdown can filter entries by allocation branch.
+      case 'branchAlloc': return getAllocArr(e).filter(a => Number(a.amount) !== 0).map(a => a.branch).join(' ')
       default: return ''
     }
   }
@@ -612,16 +621,25 @@ export default function PettyCashPage() {
         </h1>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => (
+            {(scope.enum
+              ? BRANCHES.filter(b => b.value === scope.enum || (canCrossView && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(b.value)))
+              : BRANCHES).map(b => (
               <button key={b.value} onClick={() => setBranch(b.value)}
                 className="px-4 py-2 text-xs font-semibold transition-colors"
                 style={branch === b.value
                   ? { background: 'var(--teal)', color: '#fff' }
-                  : { background: '#fff', color: 'var(--mid-gray)' }}>
+                  : { background: '#fff', color: 'var(--mid-gray)' }}
+                title={canCrossView && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(b.value) ? 'View only' : undefined}>
                 {b.label}
               </button>
             ))}
           </div>
+          {viewOnly && (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
+              style={{ background: '#fef3c7', color: '#92400e' }}>
+              <Eye size={13} /> View only
+            </span>
+          )}
           <button onClick={() => setExpanded(v => !v)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
             style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
@@ -726,7 +744,16 @@ export default function PettyCashPage() {
                     {gridCols.map(col => (
                       <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                        {col.plain ? (
+                        {col.key === 'branchAlloc' ? (
+                          <div className="min-w-[150px]">
+                            <span className="font-semibold block">{col.label}</span>
+                            <select value={gridFilters['branchAlloc'] || ''} onChange={ev => setGridFilters(f => ({ ...f, branchAlloc: ev.target.value }))}
+                              className="mt-1 w-full px-1.5 py-0.5 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }}>
+                              <option value="">All branches</option>
+                              {ALLOC_BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                            </select>
+                          </div>
+                        ) : col.plain ? (
                           <span className="font-semibold">{col.label}</span>
                         ) : (
                           <>

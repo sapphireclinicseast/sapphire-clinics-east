@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { branchAllowed } from '@/lib/branch-scope'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT']
 
@@ -15,6 +16,11 @@ export async function PATCH(req: Request) {
   try {
     const { id, audited } = await req.json()
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    const existing = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { branch: true } })
+    if (!existing) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+    if (!branchAllowed((session.user as { branch?: string }).branch, existing.branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
     await prisma.pettyCashEntry.update({ where: { id }, data: { audited: !!audited } })
     return NextResponse.json({ ok: true })
   } catch (e) {

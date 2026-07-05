@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { branchAllowed } from '@/lib/branch-scope'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'CEO']
@@ -60,6 +61,9 @@ export async function POST(req: Request) {
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     }
+    if (!branchAllowed((session.user as { branch?: string }).branch, branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
     if (!Array.isArray(entryIds) || entryIds.length === 0) {
       return NextResponse.json({ error: 'Select at least one entry' }, { status: 400 })
     }
@@ -112,6 +116,11 @@ export async function PATCH(req: Request) {
     const body = await req.json()
     const { id, action } = body
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { branch: true } })
+    if (!rep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!branchAllowed((session.user as { branch?: string }).branch, rep.branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
     if (action === 'pay') {
       await prisma.reimbursementReport.update({
         where: { id },
@@ -158,6 +167,11 @@ export async function DELETE(req: Request) {
   }
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+  const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { branch: true } })
+  if (!rep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (!branchAllowed((session.user as { branch?: string }).branch, rep.branch)) {
+    return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+  }
   try {
     // Released entries go back to Petty Cash Entries as "For Replenishment".
     await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
