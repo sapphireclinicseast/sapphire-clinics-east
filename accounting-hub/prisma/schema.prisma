@@ -2098,6 +2098,8 @@ model DividendRelease {
   dividendType       String   // REGULAR | SPECIAL
   totalAmountPaid    Decimal  @default(0)
   status             String   @default("DRAFT") // DRAFT | FINALIZED
+  bankAccountId      String?  // bank credited when the dividend is paid
+  retainedAccountId  String?  // equity account debited (Retained Earnings)
   proofOfDepositUrls Json?
   journalEntryId     String?
   finalizedAt        DateTime?
