@@ -160,9 +160,18 @@ export async function DELETE(req: Request) {
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   await prisma.$transaction(async (tx) => {
+    const share = await tx.commonShare.findUnique({ where: { id }, select: { shareholderId: true } })
     await reverseEquityJournal(tx, 'EQUITY_COMMON', id)
     await reverseEquityJournal(tx, 'EQUITY_BUYBACK', id)
     await tx.commonShare.delete({ where: { id } })
+    // Remove the shareholder if this was their last holding (keeps SH numbering tight).
+    if (share) {
+      const [cCount, pCount] = await Promise.all([
+        tx.commonShare.count({ where: { shareholderId: share.shareholderId } }),
+        tx.preferredShare.count({ where: { shareholderId: share.shareholderId } }),
+      ])
+      if (cCount === 0 && pCount === 0) await tx.shareholder.delete({ where: { id: share.shareholderId } }).catch(() => {})
+    }
   })
   return NextResponse.json({ success: true })
 }
