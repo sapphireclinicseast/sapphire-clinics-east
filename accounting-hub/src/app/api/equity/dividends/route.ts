@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postDividend, reverseEquityJournal } from '@/lib/accounting/equity'
-import nodemailer from 'nodemailer'
+import { sendInvestorEmail } from '@/lib/email'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 
@@ -10,10 +10,6 @@ const ADMIN = ['ADMIN']
 // Emails / proof can also be handled by accountant + bookkeeper (as specified).
 const UPLOAD_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const num = (v: unknown) => Number(v || 0)
-
-function transport() {
-  return nodemailer.createTransport({ host: 'smtp.resend.com', port: 465, secure: true, auth: { user: 'resend', pass: process.env.RESEND_API_KEY || '' } })
-}
 
 // Aggregate available common shares per shareholder (net of buyback).
 async function commonHoldings() {
@@ -80,10 +76,10 @@ export async function PUT(req: Request) {
       const sh = await prisma.shareholder.findUnique({ where: { id: item.shareholderId }, select: { email: true, name: true } })
       if (!sh?.email) return NextResponse.json({ error: 'This shareholder has no email on file' }, { status: 400 })
       const proofs = Array.isArray(rel.proofOfDepositUrls) ? (rel.proofOfDepositUrls as string[]) : []
-      const attachments: { filename: string; content: Buffer }[] = []
+      const attachments: { filename: string; content: string }[] = []
       const uploadsDir = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads')
       for (const u of proofs) {
-        try { const fn = u.split('/').pop() || 'proof'; attachments.push({ filename: fn, content: await readFile(join(uploadsDir, fn)) }) } catch { /* skip */ }
+        try { const fn = u.split('/').pop() || 'proof'; attachments.push({ filename: fn, content: (await readFile(join(uploadsDir, fn))).toString('base64') }) } catch { /* skip */ }
       }
       const dt = rel.dividendType === 'SPECIAL' ? 'special' : 'regular'
       const html = `<div style="font-family:Arial,sans-serif;color:#111;line-height:1.6">
@@ -92,14 +88,10 @@ export async function PUT(req: Request) {
         <p>Thank you for standing with us. Your partnership is a quiet but powerful part of everything we're able to do, and we don't take it for granted. We remain dedicated to growing this company thoughtfully and to keeping the trust you've shown us well-placed.</p>
         <p>Your proof of deposit is attached. With gratitude,<br/><b>Sapphire Clinics East Inc.</b></p>
       </div>`
-      try {
-        await transport().sendMail({
-          from: 'Sapphire Clinics East <main@sapphireclinicseast.org>', replyTo: 'main@sapphireclinicseast.org', to: sh.email,
-          subject: 'Notice of dividend — thank you for believing in what we’re building', html, attachments,
-        })
-      } catch (e) { console.error('Dividend email failed:', e); return NextResponse.json({ error: 'Email failed to send' }, { status: 502 }) }
+      const r = await sendInvestorEmail({ to: sh.email, subject: 'Notice of dividend — thank you for believing in what we’re building', html, attachments })
+      if (!r.ok) { console.error('Dividend email failed:', r.error); return NextResponse.json({ error: r.error || 'Email failed to send' }, { status: 502 }) }
       await prisma.dividendReleaseItem.update({ where: { id: item.id }, data: { emailedAt: new Date() } })
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, from: r.from })
     }
 
     if (rel.status === 'FINALIZED' && b.action !== 'proof') return NextResponse.json({ error: 'This dividend release is finalized' }, { status: 409 })
