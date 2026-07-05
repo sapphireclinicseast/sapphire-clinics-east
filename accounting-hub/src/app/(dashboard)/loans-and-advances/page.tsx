@@ -114,17 +114,18 @@ export default function LoansAndAdvancesPage() {
 function amortPreview(principal: number, mode: string, annualPct: number, monthly: number, months: number) {
   if (!(principal > 0) || !(months > 0)) return null
   const perMonthPrincipal = principal / months
-  let interestPerMonth = 0, totalInterest = 0, amort = 0, annual = 0
+  let interestPerMonth = 0, totalInterest = 0, amort = 0, effective = 0
   if (mode === 'MONTHLY_AMORT' && monthly > 0) { amort = monthly; interestPerMonth = monthly - perMonthPrincipal; totalInterest = interestPerMonth * months }
   else if (mode === 'ANNUAL_PCT' && annualPct > 0) { totalInterest = principal * (annualPct / 100) * (months / 12); interestPerMonth = totalInterest / months; amort = perMonthPrincipal + interestPerMonth }
-  // effective annual via bisection
+  const flat = principal > 0 ? (totalInterest / principal / (months / 12)) * 100 : 0
+  // effective annual (IRR) via bisection — shown as the true cost of funds
   if (amort > 0 && amort * months > principal) {
     const pv = (r: number) => r === 0 ? amort * months : amort * (1 - Math.pow(1 + r, -months)) / r
     let lo = 0, hi = 1
     for (let i = 0; i < 200; i++) { const mid = (lo + hi) / 2; if (pv(mid) > principal) lo = mid; else hi = mid }
-    annual = (Math.pow(1 + (lo + hi) / 2, 12) - 1) * 100
+    effective = (Math.pow(1 + (lo + hi) / 2, 12) - 1) * 100
   }
-  return { perMonthPrincipal, interestPerMonth, totalInterest, amort, annual }
+  return { perMonthPrincipal, interestPerMonth, totalInterest, amort, flat, effective }
 }
 
 function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { row: AdvanceRow | null; shareholders: SH[]; banks: Bank[]; accts: Acct[]; onClose: () => void; onSaved: () => void }) {
@@ -192,7 +193,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
                   : <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Monthly amortization</label><input value={f.monthlyAmortization} onChange={e => set('monthlyAmortization', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>}
                 <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>For how many months</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
               </div>
-              {prev && <p className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#fff', color: '#334155' }}>≈ {prev.annual.toFixed(2)}% p.a. (effective) · monthly {peso(prev.amort)} = principal {peso(prev.perMonthPrincipal)} + interest {peso(prev.interestPerMonth)} · total interest {peso(prev.totalInterest)}</p>}
+              {prev && <p className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#fff', color: '#334155' }}>≈ {prev.flat.toFixed(2)}% p.a. (flat) · true cost {prev.effective.toFixed(2)}% eff. · monthly {peso(prev.amort)} = principal {peso(prev.perMonthPrincipal)} + interest {peso(prev.interestPerMonth)} · total interest {peso(prev.totalInterest)}</p>}
             </div>
           )}
         </div>

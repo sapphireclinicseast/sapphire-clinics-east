@@ -11,11 +11,12 @@ function computeInterest(body: { hasInterest?: boolean; interestMode?: string; p
   if (!body.hasInterest || !body.termMonths) return { computedAnnualPct: null as number | null, totalInterest: null as number | null, monthlyAmortization: null as number | null }
   if (body.interestMode === 'MONTHLY_AMORT' && body.monthlyAmortization) {
     const r = fromMonthlyAmort(body.principalAmount, num(body.monthlyAmortization), body.termMonths)
-    return { computedAnnualPct: r.effectiveAnnualPct, totalInterest: r.totalInterest, monthlyAmortization: r.monthlyAmortization }
+    return { computedAnnualPct: r.flatAnnualPct, totalInterest: r.totalInterest, monthlyAmortization: r.monthlyAmortization }
   }
   if (body.interestMode === 'ANNUAL_PCT' && body.annualPct != null) {
+    // The user entered the flat annual % directly; echo it back.
     const r = fromAnnualPct(body.principalAmount, num(body.annualPct), body.termMonths)
-    return { computedAnnualPct: r.effectiveAnnualPct, totalInterest: r.totalInterest, monthlyAmortization: r.monthlyAmortization }
+    return { computedAnnualPct: num(body.annualPct), totalInterest: r.totalInterest, monthlyAmortization: r.monthlyAmortization }
   }
   return { computedAnnualPct: null, totalInterest: null, monthlyAmortization: null }
 }

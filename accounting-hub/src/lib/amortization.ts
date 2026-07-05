@@ -7,7 +7,14 @@ export interface AmortResult {
   principalPerMonth: number
   interestPerMonth: number
   totalInterest: number
-  effectiveAnnualPct: number // IRR-based, annualised
+  flatAnnualPct: number       // total interest ÷ principal ÷ years (matches the working example)
+  effectiveAnnualPct: number  // IRR-based, annualised (true cost of funds)
+}
+
+// Flat/simple annual rate: total interest as a % of principal, per year.
+function flatRate(principal: number, totalInterest: number, months: number): number {
+  const years = months / 12
+  return principal > 0 && years > 0 ? (totalInterest / principal / years) * 100 : 0
 }
 
 // Effective annual rate from (principal, level monthly payment, term months) via IRR.
@@ -34,7 +41,7 @@ export function fromAnnualPct(principal: number, annualPct: number, months: numb
   const totalInterest = principal * (annualPct / 100) * years
   const interestPerMonth = months > 0 ? totalInterest / months : 0
   const monthlyAmortization = principalPerMonth + interestPerMonth
-  return { monthlyAmortization, principalPerMonth, interestPerMonth, totalInterest, effectiveAnnualPct: effectiveAnnualRate(principal, monthlyAmortization, months) }
+  return { monthlyAmortization, principalPerMonth, interestPerMonth, totalInterest, flatAnnualPct: flatRate(principal, totalInterest, months), effectiveAnnualPct: effectiveAnnualRate(principal, monthlyAmortization, months) }
 }
 
 // From monthly amortization + term → back-computed rate + split.
@@ -42,7 +49,7 @@ export function fromMonthlyAmort(principal: number, monthlyAmortization: number,
   const principalPerMonth = months > 0 ? principal / months : 0
   const interestPerMonth = monthlyAmortization - principalPerMonth
   const totalInterest = interestPerMonth * months
-  return { monthlyAmortization, principalPerMonth, interestPerMonth, totalInterest, effectiveAnnualPct: effectiveAnnualRate(principal, monthlyAmortization, months) }
+  return { monthlyAmortization, principalPerMonth, interestPerMonth, totalInterest, flatAnnualPct: flatRate(principal, totalInterest, months), effectiveAnnualPct: effectiveAnnualRate(principal, monthlyAmortization, months) }
 }
 
 // Schedule dates: start month/year, cadence, "every nth" day (capped to month end).
