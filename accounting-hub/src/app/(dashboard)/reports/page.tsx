@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { computeIncomeStatementTotals } from '@/lib/reports/income-statement-totals'
+import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -648,6 +649,12 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   // Equity accounts
   const ownersEquityAccounts = accounts.EQUITY?.OWNERS_EQUITY || []
   const retainedEarningsAccounts = accounts.EQUITY?.RETAINED_EARNINGS || []
+  // Any other equity subtypes (e.g. Share Capital, Treasury Shares, Preferred
+  // Capital) so Equity-module journal balances render as their own lines.
+  const allEquityAccounts = Object.values(accounts.EQUITY || {}).flat()
+  const otherEquityAccounts = allEquityAccounts.filter(a =>
+    !ownersEquityAccounts.find(o => o.accountNumber === a.accountNumber) &&
+    !retainedEarningsAccounts.find(r => r.accountNumber === a.accountNumber))
 
   // Sum deduction-sourced current asset amounts (CWT, etc.)
   const deductionAssetTotal = currentAssetAccounts.reduce((s, a) => {
@@ -744,7 +751,16 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   const openingOwnersEquity = sumOpeningForAccts(ownersEquityAccounts)
   const openingRetainedEarnings = sumOpeningForAccts(retainedEarningsAccounts)
 
-  const totalEquity = openingOwnersEquity + openingRetainedEarnings + netIncome
+  // Journal-entry EQUITY balances (share capital issuance, treasury buyback,
+  // dividends) from the Equity module. Each equity JE posts a matching bank leg
+  // that already flows into Cash above, so including the equity leg here keeps
+  // A = L + E balanced for every equity transaction. Without this, raising
+  // capital would increase assets (cash) but not equity.
+  const equityJournalTotal = journalBalances
+    .filter(jb => jb.accountType === 'EQUITY')
+    .reduce((s, jb) => s + jb.balance, 0)
+
+  const totalEquity = openingOwnersEquity + openingRetainedEarnings + equityJournalTotal + netIncome
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity
 
   // Balance sheet equation check
@@ -897,15 +913,21 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
 
         <div className="h-4" />
 
-        {/* EQUITY */}
+        {/* EQUITY — each account = opening balance + Equity-module journal movements */}
         <SectionHeader label="Equity" />
         {ownersEquityAccounts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`}
-            amount={openingByAcctNum[a.accountNumber] || 0} indent={1} />
+            amount={(openingByAcctNum[a.accountNumber] || 0) + (journalBalanceMap[`${a.accountNumber} ${a.accountTitle}`] || 0)} indent={1} />
         ))}
+        {otherEquityAccounts.map((a) => {
+          const amt = (openingByAcctNum[a.accountNumber] || 0) + (journalBalanceMap[`${a.accountNumber} ${a.accountTitle}`] || 0)
+          return amt !== 0 ? (
+            <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={amt} indent={1} />
+          ) : null
+        })}
         {retainedEarningsAccounts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle} (Opening)`}
-            amount={openingByAcctNum[a.accountNumber] || 0} indent={1} />
+            amount={(openingByAcctNum[a.accountNumber] || 0) + (journalBalanceMap[`${a.accountNumber} ${a.accountTitle}`] || 0)} indent={1} />
         ))}
         <AnnualRow label="Net Income (Current Year)" amount={netIncome} indent={1} />
         <AnnualRow label="TOTAL EQUITY" amount={totalEquity} isGrandTotal />
@@ -1319,244 +1341,82 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
    ═══════════════════════════════════════════════════════════════ */
 
 function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
-  const { monthly, accountsReceivable } = data
+  // Indirect method — reuses the SAME Net Income (Income Statement) and the SAME
+  // Balance-Sheet working-capital / PPE / equity figures, so all three statements
+  // tie out. Ending Cash equals the Balance-Sheet cash balance.
+  const cf = computeCashFlowTotals(data as unknown as Parameters<typeof computeCashFlowTotals>[0])
+  const netOperating = cf.netCashFromOperations + cf.unreconciled // fold the derivation residual into ops
 
-  // Collect all payment methods used
-  const allMethods = new Set<string>()
-  for (let m = 1; m <= 12; m++) {
-    for (const method of Object.keys(monthly[m].paymentsByMethod)) allMethods.add(method)
-  }
-  const methods = Array.from(allMethods).sort()
+  const body = (
+    <div>
+      {/* OPERATING ACTIVITIES — indirect method */}
+      <SectionHeader label="Cash Flows from Operating Activities" />
+      <AnnualRow label="Net Income" amount={cf.netIncome} indent={1} bold />
 
-  // Cash methods (actual cash inflows)
-  const cashMethods = ['CASH', 'GCASH', 'PAYMAYA', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK']
-  // Non-cash methods excluding HMO/GL (those are AR, handled separately)
-  const nonCashMethods = ['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'DOWNPAYMENT', 'PACKAGE']
-  // AR methods (HMO/GL) — these are cash outflows (increase in accounts receivable)
-  const arMethods = ['HMO', 'GL']
+      <SubSectionHeader label="Adjustments for non-cash items" />
+      <AnnualRow label="Add: Depreciation" amount={cf.depreciation} indent={2}
+        onDrillDown={() => onDrillDown('8070 Depreciation Expense', 'DEPRECIATION_EXPENSE', 0)} />
 
-  const cashMethodsUsed = methods.filter((m) => cashMethods.includes(m))
-  const nonCashMethodsUsed = methods.filter((m) => nonCashMethods.includes(m))
-  const arMethodsUsed = methods.filter((m) => arMethods.includes(m))
+      <SubSectionHeader label="Changes in Working Capital" />
+      <AnnualRow label="(Increase) / decrease in Accounts Receivable" amount={cf.arChange} indent={2} />
+      <AnnualRow label="(Increase) / decrease in Inventory" amount={cf.inventoryChange} indent={2} />
+      <AnnualRow label="(Increase) / decrease in Other Current Assets (CWT, Input VAT, prepaid)" amount={cf.otherCurrentAssetChange} indent={2} />
+      <AnnualRow label="Increase / (decrease) in Payables" amount={cf.payablesChange} indent={2} />
+      <AnnualRow label="Increase / (decrease) in Unearned Revenue" amount={cf.unearnedChange} indent={2} />
+      {Math.abs(cf.unreconciled) >= 0.01 && (
+        <AnnualRow label="Other operating adjustments (net)" amount={cf.unreconciled} indent={2} />
+      )}
+      <AnnualRow label="Net Cash from Operating Activities" amount={netOperating} indent={0} isTotal bold />
 
-  const totalCashFromOps = sumMonths(monthly, (m) => {
-    let total = 0
-    for (const method of cashMethods) total += m.paymentsByMethod[method] || 0
-    return total
-  })
+      <div className="h-3" />
 
-  const totalNonCashFromOps = sumMonths(monthly, (m) => {
-    let total = 0
-    for (const method of nonCashMethods) total += m.paymentsByMethod[method] || 0
-    return total
-  })
+      {/* INVESTING ACTIVITIES */}
+      <SectionHeader label="Cash Flows from Investing Activities" />
+      {cf.ppePurchases > 0 ? (
+        <AnnualRow label="Purchase of Property, Plant & Equipment" amount={-cf.ppePurchases} indent={1} />
+      ) : (
+        <AnnualRow label="(No investing activities recorded)" amount={0} indent={1} />
+      )}
+      <AnnualRow label="Net Cash from Investing Activities" amount={cf.netCashFromInvesting} indent={0} isTotal bold />
 
-  // AR: HMO/GL charges are cash outflows (increase in receivables)
-  const totalARIncrease = sumMonths(monthly, (m) => {
-    let total = 0
-    for (const method of arMethods) total += m.paymentsByMethod[method] || 0
-    return total
-  })
+      <div className="h-3" />
 
-  // AR payments received (from Record Payment in Accounts Receivable) are cash inflows
-  const totalARPaymentsReceived = accountsReceivable?.paymentsReceived || 0
+      {/* FINANCING ACTIVITIES */}
+      <SectionHeader label="Cash Flows from Financing Activities" />
+      {cf.equityFinancing !== 0 ? (
+        <AnnualRow label="Share issuance, buyback & dividends (net)" amount={cf.equityFinancing} indent={1} />
+      ) : (
+        <AnnualRow label="(No financing activities recorded)" amount={0} indent={1} />
+      )}
+      <AnnualRow label="Net Cash from Financing Activities" amount={cf.netCashFromFinancing} indent={0} isTotal bold />
 
-  const netCashFromOperations = totalCashFromOps + totalARPaymentsReceived - totalARIncrease
-  const netCashFromInvesting = 0
-  const netCashFromFinancing = 0
-  const netChange = netCashFromOperations + netCashFromInvesting + netCashFromFinancing
+      <div className="h-3" />
 
-  if (viewMode === 'annual') {
+      <AnnualRow label="NET CHANGE IN CASH" amount={cf.actualNetChange} isGrandTotal />
+      <div className="h-2" />
+      <AnnualRow label="Beginning Cash Balance" amount={cf.beginningCash} indent={0} />
+      <AnnualRow label="ENDING CASH BALANCE" amount={cf.endingCash} isGrandTotal
+        onDrillDown={() => onDrillDown('Ending Cash Balance', 'CASH_BALANCE', 0)} />
+
+      <div className="px-4 pt-3 text-xs italic" style={{ color: 'var(--mid-gray)' }}>
+        Indirect method: starts from Net Income (Income Statement), adds back non-cash depreciation, then
+        reflects the period changes in Balance-Sheet working capital, investing (PPE) and financing (equity)
+        accounts. Ending Cash ties to the Balance-Sheet cash balance.
+      </div>
+    </div>
+  )
+
+  if (viewMode === 'monthly') {
     return (
       <div>
-        {/* OPERATING ACTIVITIES */}
-        <SectionHeader label="Cash Flows from Operating Activities" />
-
-        <SubSectionHeader label="Cash Receipts from Customers" />
-        {cashMethodsUsed.map((method) => {
-          const methodTotal = sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)
-          return <AnnualRow key={method} label={PAYMENT_LABELS[method] || method} amount={methodTotal} indent={2}
-            onDrillDown={() => onDrillDown(PAYMENT_LABELS[method] || method, method, 0)} />
-        })}
-        {cashMethodsUsed.length === 0 && (
-          <AnnualRow label="(No cash receipts recorded)" amount={0} indent={2} />
-        )}
-        <AnnualRow label="Total Cash Receipts" amount={totalCashFromOps} indent={1} isTotal bold
-          onDrillDown={() => onDrillDown('Total Cash Receipts', 'CASH_BALANCE', 0)} />
-
-        {/* AR Payments Received (cash inflow from HMO/GL collections) */}
-        {totalARPaymentsReceived > 0 && (
-          <>
-            <SubSectionHeader label="Collections from Accounts Receivable" />
-            <AnnualRow label="AR Payments Received (HMO/GL)" amount={totalARPaymentsReceived} indent={2}
-              onDrillDown={() => onDrillDown('AR Payments Received', 'AR_PAYMENTS', 0)} />
-          </>
-        )}
-
-        {/* AR Increase (cash outflow — billed to HMO/GL but not yet collected) */}
-        {totalARIncrease > 0 && (
-          <>
-            <SubSectionHeader label="Increase in Accounts Receivable" />
-            {arMethodsUsed.map((method) => {
-              const methodTotal = sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)
-              return <AnnualRow key={method} label={PAYMENT_LABELS[method] || method} amount={-methodTotal} indent={2}
-                onDrillDown={() => onDrillDown(PAYMENT_LABELS[method] || method, `AR_INCREASE_${method}`, 0)} />
-            })}
-            <AnnualRow label="Total Increase in AR" amount={-totalARIncrease} indent={1} isTotal />
-          </>
-        )}
-
-        {nonCashMethodsUsed.length > 0 && (
-          <>
-            <SubSectionHeader label="Non-Cash Payments Received" />
-            {nonCashMethodsUsed.map((method) => {
-              const methodTotal = sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)
-              return <AnnualRow key={method} label={PAYMENT_LABELS[method] || method} amount={methodTotal} indent={2} />
-            })}
-            <AnnualRow label="Total Non-Cash Payments" amount={totalNonCashFromOps} indent={1} isTotal />
-          </>
-        )}
-
-        <div className="py-1 px-4 pl-6 text-xs italic" style={{ color: 'var(--mid-gray)' }}>
-          Note: Cash payments to suppliers, employees, and other operating costs will appear here once expense transactions are recorded.
-        </div>
-
-        <AnnualRow label="Net Cash from Operating Activities" amount={netCashFromOperations} indent={0} isTotal bold />
-
-        <div className="h-3" />
-
-        {/* INVESTING ACTIVITIES */}
-        <SectionHeader label="Cash Flows from Investing Activities" />
-        <AnnualRow label="(No investing activities recorded)" amount={0} indent={1} />
-        <AnnualRow label="Net Cash from Investing Activities" amount={netCashFromInvesting} indent={0} isTotal bold />
-
-        <div className="h-3" />
-
-        {/* FINANCING ACTIVITIES */}
-        <SectionHeader label="Cash Flows from Financing Activities" />
-        <AnnualRow label="(No financing activities recorded)" amount={0} indent={1} />
-        <AnnualRow label="Net Cash from Financing Activities" amount={netCashFromFinancing} indent={0} isTotal bold />
-
-        <div className="h-3" />
-
-        <AnnualRow label="NET CHANGE IN CASH" amount={netChange} isGrandTotal />
-
-        <div className="h-2" />
-        <AnnualRow label="Beginning Cash Balance" amount={0} indent={0} />
-        <AnnualRow label="ENDING CASH BALANCE" amount={netChange} isGrandTotal
-          onDrillDown={() => onDrillDown('Ending Cash Balance', 'CASH_BALANCE', 0)} />
+        <p className="text-sm italic px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
+          Note: The indirect-method Cash Flow Statement is a period statement. Monthly view shows the same annual figures.
+        </p>
+        {body}
       </div>
     )
   }
-
-  /* ── Monthly view ──────────────────────────────────────────── */
-  return (
-    <div className="overflow-x-auto">
-      <MonthlyHeader />
-
-      <SectionHeader label="Cash Flows from Operating Activities" />
-
-      {cashMethodsUsed.map((method) => (
-        <MonthlyRow
-          key={method}
-          label={PAYMENT_LABELS[method] || method}
-          values={getMonthlyArray(monthly, (m) => m.paymentsByMethod[method] || 0)}
-          total={sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)}
-          indent={1}
-          onClickCell={(m) => onDrillDown(PAYMENT_LABELS[method] || method, method, m ?? 0)}
-        />
-      ))}
-
-      <MonthlyRow
-        label="Total Cash Receipts"
-        values={getMonthlyArray(monthly, (m) => {
-          let t = 0
-          for (const method of cashMethods) t += m.paymentsByMethod[method] || 0
-          return t
-        })}
-        total={totalCashFromOps}
-        bold
-        isTotal
-      />
-
-      {/* AR Payments Received */}
-      {totalARPaymentsReceived > 0 && (
-        <>
-          <div className="h-2" />
-          <SubSectionHeader label="Collections from Accounts Receivable" />
-          <MonthlyRow
-            label="AR Payments Received (HMO/GL)"
-            values={Array(12).fill(0)}
-            total={totalARPaymentsReceived}
-            indent={1}
-          />
-        </>
-      )}
-
-      {/* AR Increase (outflow) */}
-      {arMethodsUsed.length > 0 && (
-        <>
-          <div className="h-2" />
-          <SubSectionHeader label="Increase in Accounts Receivable" />
-          {arMethodsUsed.map((method) => (
-            <MonthlyRow
-              key={method}
-              label={PAYMENT_LABELS[method] || method}
-              values={getMonthlyArray(monthly, (m) => -(m.paymentsByMethod[method] || 0))}
-              total={-sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)}
-              indent={1}
-              onClickCell={(m) => onDrillDown(PAYMENT_LABELS[method] || method, `AR_INCREASE_${method}`, m ?? 0)}
-            />
-          ))}
-        </>
-      )}
-
-      {nonCashMethodsUsed.length > 0 && (
-        <>
-          <div className="h-2" />
-          <SubSectionHeader label="Non-Cash Payments" />
-          {nonCashMethodsUsed.map((method) => (
-            <MonthlyRow
-              key={method}
-              label={PAYMENT_LABELS[method] || method}
-              values={getMonthlyArray(monthly, (m) => m.paymentsByMethod[method] || 0)}
-              total={sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)}
-              indent={1}
-            />
-          ))}
-        </>
-      )}
-
-      <div className="h-2" />
-
-      <MonthlyRow
-        label="Net Cash from Operations"
-        values={getMonthlyArray(monthly, (m) => {
-          let t = 0
-          for (const method of cashMethods) t += m.paymentsByMethod[method] || 0
-          for (const method of arMethods) t -= m.paymentsByMethod[method] || 0
-          return t
-        })}
-        total={netCashFromOperations}
-        bold
-        isTotal
-      />
-
-      <div className="h-2" />
-
-      <MonthlyRow
-        label="NET CHANGE IN CASH"
-        values={getMonthlyArray(monthly, (m) => {
-          let t = 0
-          for (const method of cashMethods) t += m.paymentsByMethod[method] || 0
-          for (const method of arMethods) t -= m.paymentsByMethod[method] || 0
-          return t
-        })}
-        total={netChange}
-        isGrandTotal
-      />
-    </div>
-  )
+  return body
 }
 
 /* ═══════════════════════════════════════════════════════════════
