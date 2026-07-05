@@ -45,6 +45,7 @@ export async function GET(req: Request) {
           subSubType: true,
           normalBalance: true,
           currency: true,
+          isBankAccount: true,
         },
         orderBy: { accountNumber: 'asc' },
       }),
@@ -892,8 +893,15 @@ export async function GET(req: Request) {
             treat all asset acquisitions as cash outflows; the BS routes the
             total against a default cash account so it shows up somewhere. */
 
+    // Bank/cash accounts: number starts with 10, title mentions cash/bank, OR the
+    // CoA marks it as a bank account (isBankAccount) — the latter catches accounts
+    // titled "Checking Account" / "Corporate Account" that the heuristic would miss
+    // and otherwise silently drop their opening balances from the Balance Sheet.
+    const bankAccountKeys = new Set(
+      accounts.filter(a => a.isBankAccount).map(a => `${a.accountNumber} ${a.accountTitle}`)
+    )
     const isCashAccountKey = (acctNum: string, acctTitle: string) =>
-      /^10/.test(acctNum) || /cash|bank/i.test(acctTitle)
+      /^10/.test(acctNum) || /cash|bank/i.test(acctTitle) || bankAccountKeys.has(`${acctNum} ${acctTitle}`)
 
     // a) Opening cash by account
     const openingByAccountKey: Record<string, number> = {}
