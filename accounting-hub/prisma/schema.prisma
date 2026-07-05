@@ -2020,12 +2020,14 @@ model CommonShare {
   numberOfShares   Decimal
   pricePerShare    Decimal
   bankAccountId    String?  // COA bank account the equity was debited into
+  equityAccountId  String?  // COA equity account credited on issuance (chosen from CoA)
   journalEntryId   String?
   // Buyback → Treasury Shares
   boughtBack       Boolean  @default(false)
   buybackPrice     Decimal?
   buybackShares    Decimal?
   buybackBankAccountId String?
+  treasuryAccountId String? // COA equity/treasury account debited on buyback
   buybackProofUrls Json?
   buybackJournalEntryId String?
   createdById      String?
@@ -2047,6 +2049,7 @@ model PreferredShare {
   numberOfShares   Decimal
   pricePerShare    Decimal
   bankAccountId    String?
+  equityAccountId  String?  // COA equity account credited on issuance
   journalEntryId   String?
   annualInterest   Decimal? // % per year
   maturityYears    Int?     // buyback maturity, e.g. 5

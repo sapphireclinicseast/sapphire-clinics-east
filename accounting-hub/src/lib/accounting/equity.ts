@@ -20,13 +20,11 @@ export const EQUITY_ACCOUNTS = {
   RETAINED: { number: '3100', title: 'Retained Earnings', normal: 'CREDIT' as const },
 }
 
-// Issuance: DR bank (money in) / CR share capital. Returns the JE id, or null if no bank/amount.
+// Issuance: DR bank (money in) / CR the chosen equity account. Requires both accounts.
 export async function postEquityIssuance(db: Db, opts: {
-  kind: 'COMMON' | 'PREFERRED'; refId: string; date: Date; amount: number; bankAccountId?: string | null; investor: string; createdById: string
+  kind: 'COMMON' | 'PREFERRED'; refId: string; date: Date; amount: number; bankAccountId?: string | null; equityAccountId?: string | null; investor: string; createdById: string
 }): Promise<string | null> {
-  if (!opts.bankAccountId || !(opts.amount > 0)) return null
-  const capital = opts.kind === 'COMMON' ? EQUITY_ACCOUNTS.COMMON : EQUITY_ACCOUNTS.PREFERRED
-  const capAcct = await ensureAccount(db, capital.number, capital.title, 'CREDIT', opts.createdById)
+  if (!opts.bankAccountId || !opts.equityAccountId || !(opts.amount > 0)) return null
   const je = await postJournalEntry(db, {
     entryDate: opts.date,
     description: `${opts.kind === 'COMMON' ? 'Common' : 'Preferred'} share issuance — ${opts.investor}`,
@@ -36,18 +34,17 @@ export async function postEquityIssuance(db: Db, opts: {
     createdById: opts.createdById,
     lines: [
       { accountId: opts.bankAccountId, debit: opts.amount, description: `Investment from ${opts.investor}` },
-      { accountId: capAcct.id, credit: opts.amount, description: `${capital.title} — ${opts.investor}` },
+      { accountId: opts.equityAccountId, credit: opts.amount, description: `Share capital — ${opts.investor}` },
     ],
   })
   return je.id
 }
 
-// Buyback → Treasury: DR Treasury Shares / CR bank (money out).
+// Buyback → Treasury: DR the chosen treasury/equity account / CR bank (money out).
 export async function postEquityBuyback(db: Db, opts: {
-  refId: string; date: Date; amount: number; bankAccountId?: string | null; investor: string; createdById: string
+  refId: string; date: Date; amount: number; bankAccountId?: string | null; treasuryAccountId?: string | null; investor: string; createdById: string
 }): Promise<string | null> {
-  if (!opts.bankAccountId || !(opts.amount > 0)) return null
-  const treasury = await ensureAccount(db, EQUITY_ACCOUNTS.TREASURY.number, EQUITY_ACCOUNTS.TREASURY.title, 'DEBIT', opts.createdById)
+  if (!opts.bankAccountId || !opts.treasuryAccountId || !(opts.amount > 0)) return null
   const je = await postJournalEntry(db, {
     entryDate: opts.date,
     description: `Share buyback (treasury) — ${opts.investor}`,
@@ -56,7 +53,7 @@ export async function postEquityBuyback(db: Db, opts: {
     branch: 'ALL',
     createdById: opts.createdById,
     lines: [
-      { accountId: treasury.id, debit: opts.amount, description: `Treasury shares — ${opts.investor}` },
+      { accountId: opts.treasuryAccountId, debit: opts.amount, description: `Treasury shares — ${opts.investor}` },
       { accountId: opts.bankAccountId, credit: opts.amount, description: `Paid buyback to ${opts.investor}` },
     ],
   })

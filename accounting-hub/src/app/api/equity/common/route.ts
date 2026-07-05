@@ -54,9 +54,9 @@ export async function GET() {
       agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls,
       numberOfShares: num(c.numberOfShares), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
       equityStake: totalCapitalization > 0 ? (cap / totalCapitalization) * 100 : 0,
-      bankAccountId: c.bankAccountId,
+      bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId,
       boughtBack: c.boughtBack, buybackPrice: num(c.buybackPrice), buybackShares: num(c.buybackShares),
-      buybackBankAccountId: c.buybackBankAccountId, buybackProofUrls: c.buybackProofUrls,
+      buybackBankAccountId: c.buybackBankAccountId, treasuryAccountId: c.treasuryAccountId, buybackProofUrls: c.buybackProofUrls,
     }
   })
 
@@ -76,6 +76,8 @@ export async function POST(req: Request) {
     if (!(shares > 0) || !(price > 0)) return NextResponse.json({ error: 'Number of shares and price are required' }, { status: 400 })
     if (!body.dateAcquired) return NextResponse.json({ error: 'Date acquired is required' }, { status: 400 })
 
+    const boughtBack = !!body.boughtBack
+    const buyShares = num(body.buybackShares), buyPrice = num(body.buybackPrice)
     const created = await prisma.$transaction(async (tx) => {
       const sh = await resolveShareholder(tx, body, userId)
       const c = await tx.commonShare.create({
@@ -85,11 +87,17 @@ export async function POST(req: Request) {
           agreementUrls: Array.isArray(body.agreementUrls) ? body.agreementUrls : undefined,
           stockCertNumber: body.stockCertNumber?.trim() || null,
           proofOfDepositUrls: Array.isArray(body.proofOfDepositUrls) ? body.proofOfDepositUrls : undefined,
-          numberOfShares: shares, pricePerShare: price, bankAccountId: body.bankAccountId || null, createdById: userId,
+          numberOfShares: shares, pricePerShare: price, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
+          boughtBack, buybackPrice: boughtBack ? buyPrice : null, buybackShares: boughtBack ? buyShares : null,
+          buybackBankAccountId: boughtBack ? (body.buybackBankAccountId || null) : null, treasuryAccountId: boughtBack ? (body.treasuryAccountId || null) : null,
+          buybackProofUrls: boughtBack && Array.isArray(body.buybackProofUrls) ? body.buybackProofUrls : undefined,
+          createdById: userId,
         },
       })
-      const jeId = await postEquityIssuance(tx, { kind: 'COMMON', refId: c.id, date: new Date(body.dateAcquired), amount: shares * price, bankAccountId: body.bankAccountId, investor: sh.name, createdById: userId })
-      if (jeId) await tx.commonShare.update({ where: { id: c.id }, data: { journalEntryId: jeId } })
+      const jeId = await postEquityIssuance(tx, { kind: 'COMMON', refId: c.id, date: new Date(body.dateAcquired), amount: shares * price, bankAccountId: body.bankAccountId, equityAccountId: body.equityAccountId, investor: sh.name, createdById: userId })
+      let buyJe: string | null = null
+      if (boughtBack) buyJe = await postEquityBuyback(tx, { refId: c.id, date: new Date(body.dateAcquired), amount: buyShares * buyPrice, bankAccountId: body.buybackBankAccountId, treasuryAccountId: body.treasuryAccountId, investor: sh.name, createdById: userId })
+      if (jeId || buyJe) await tx.commonShare.update({ where: { id: c.id }, data: { journalEntryId: jeId, buybackJournalEntryId: buyJe } })
       return c
     })
     return NextResponse.json({ id: created.id })
@@ -127,16 +135,16 @@ export async function PUT(req: Request) {
         agreementUrls: Array.isArray(body.agreementUrls) ? body.agreementUrls : undefined,
         stockCertNumber: body.stockCertNumber?.trim() || null,
         proofOfDepositUrls: Array.isArray(body.proofOfDepositUrls) ? body.proofOfDepositUrls : undefined,
-        numberOfShares: shares, pricePerShare: price, bankAccountId: body.bankAccountId || null,
+        numberOfShares: shares, pricePerShare: price, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
         boughtBack, buybackPrice: boughtBack ? buyPrice : null, buybackShares: boughtBack ? buyShares : null,
-        buybackBankAccountId: boughtBack ? (body.buybackBankAccountId || null) : null,
+        buybackBankAccountId: boughtBack ? (body.buybackBankAccountId || null) : null, treasuryAccountId: boughtBack ? (body.treasuryAccountId || null) : null,
         buybackProofUrls: boughtBack && Array.isArray(body.buybackProofUrls) ? body.buybackProofUrls : undefined,
       } })
-      const jeId = await postEquityIssuance(tx, { kind: 'COMMON', refId: id, date: new Date(body.dateAcquired), amount: shares * price, bankAccountId: body.bankAccountId, investor: (body.name || existing.shareholder.name), createdById: userId })
+      const jeId = await postEquityIssuance(tx, { kind: 'COMMON', refId: id, date: new Date(body.dateAcquired), amount: shares * price, bankAccountId: body.bankAccountId, equityAccountId: body.equityAccountId, investor: (body.name || existing.shareholder.name), createdById: userId })
       // Buyback JE (reverse + re-post)
       await reverseEquityJournal(tx, 'EQUITY_BUYBACK', id)
       let buyJe: string | null = null
-      if (boughtBack) buyJe = await postEquityBuyback(tx, { refId: id, date: new Date(body.dateAcquired), amount: buyShares * buyPrice, bankAccountId: body.buybackBankAccountId, investor: (body.name || existing.shareholder.name), createdById: userId })
+      if (boughtBack) buyJe = await postEquityBuyback(tx, { refId: id, date: new Date(body.dateAcquired), amount: buyShares * buyPrice, bankAccountId: body.buybackBankAccountId, treasuryAccountId: body.treasuryAccountId, investor: (body.name || existing.shareholder.name), createdById: userId })
       await tx.commonShare.update({ where: { id }, data: { journalEntryId: jeId, buybackJournalEntryId: buyJe } })
     })
     return NextResponse.json({ success: true })

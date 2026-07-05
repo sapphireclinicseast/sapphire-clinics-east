@@ -14,9 +14,10 @@ interface CommonRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
   stockCertNumber: string | null; proofOfDepositUrls: string[] | null; numberOfShares: number; pricePerShare: number
-  totalCapitalization: number; equityStake: number; bankAccountId: string | null
-  boughtBack: boolean; buybackPrice: number; buybackShares: number; buybackBankAccountId: string | null; buybackProofUrls: string[] | null
+  totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
+  boughtBack: boolean; buybackPrice: number; buybackShares: number; buybackBankAccountId: string | null; treasuryAccountId: string | null; buybackProofUrls: string[] | null
 }
+interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
 interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number }
 
 export default function EquityPage() {
@@ -24,6 +25,7 @@ export default function EquityPage() {
   const [tab, setTab] = useState<'common' | 'preferred' | 'dividends'>('common')
   const [data, setData] = useState<{ rows: CommonRow[]; shareholders: Shareholder[]; figures: Figures } | null>(null)
   const [banks, setBanks] = useState<Bank[]>([])
+  const [equityAccts, setEquityAccts] = useState<EquityAcct[]>([])
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<CommonRow | null>(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -35,6 +37,11 @@ export default function EquityPage() {
   }, [])
   useEffect(() => { load() }, [load])
   useEffect(() => { fetch('/api/bank-accounts').then(r => r.ok ? r.json() : []).then(setBanks).catch(() => setBanks([])) }, [])
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?accountType=EQUITY&pageSize=1000').then(r => r.ok ? r.json() : { data: [] })
+      .then(j => setEquityAccts(((j.data || j.items || j || []) as EquityAcct[]).map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
+      .catch(() => setEquityAccts([]))
+  }, [])
 
   if (status === 'unauthenticated') redirect('/login')
   if (status === 'authenticated' && session?.user?.role !== 'ADMIN') {
@@ -124,20 +131,20 @@ export default function EquityPage() {
       {tab === 'preferred' && <div className="rounded-2xl border p-8 text-center text-sm text-gray-400" style={{ borderColor: 'var(--light-gray)' }}>Preferred Shares — coming in the next update.</div>}
       {tab === 'dividends' && <div className="rounded-2xl border p-8 text-center text-sm text-gray-400" style={{ borderColor: 'var(--light-gray)' }}>Dividend Release History — coming in the next update.</div>}
 
-      {(showAdd || edit) && <CommonModal row={edit} shareholders={data?.shareholders || []} banks={banks} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
+      {(showAdd || edit) && <CommonModal row={edit} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
   )
 }
 
-function CommonModal({ row, shareholders, banks, onClose, onSaved }: { row: CommonRow | null; shareholders: Shareholder[]; banks: Bank[]; onClose: () => void; onSaved: () => void }) {
+function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }: { row: CommonRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '',
     email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '',
     stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', pricePerShare: row ? String(row.pricePerShare) : '',
-    bankAccountId: row?.bankAccountId || '',
+    bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
     boughtBack: row?.boughtBack || false, buybackPrice: row?.buybackPrice ? String(row.buybackPrice) : '', buybackShares: row?.buybackShares ? String(row.buybackShares) : '',
-    buybackBankAccountId: row?.buybackBankAccountId || '',
+    buybackBankAccountId: row?.buybackBankAccountId || '', treasuryAccountId: row?.treasuryAccountId || '',
   })
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.agreementUrls || [])
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
@@ -208,12 +215,19 @@ function CommonModal({ row, shareholders, banks, onClose, onSaved }: { row: Comm
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Number of Shares</label><input value={f.numberOfShares} onChange={e => set('numberOfShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price per Share</label><input value={f.pricePerShare} onChange={e => set('pricePerShare', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Total Capitalization</label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(cap)}</div></div>
-          <div className="col-span-2 sm:col-span-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account where the equity was debited</label>
+          <div className="col-span-2 sm:col-span-1"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account where the equity was debited</label>
             <select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
-              <option value="">— Not recorded (no journal entry) —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
+              <option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
             </select>
-            {f.bankAccountId && <p className="text-[11px] mt-1 font-mono" style={{ color: '#334155' }}>DR {banks.find(b => b.id === f.bankAccountId)?.accountTitle} {peso(cap)} / CR Common Share Capital {peso(cap)}</p>}
           </div>
+          <div className="col-span-2 sm:col-span-2"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Equity account to credit <span className="font-normal text-gray-400">(from Chart of Accounts)</span></label>
+            <select value={f.equityAccountId} onChange={e => set('equityAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">— Select equity account —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+            </select>
+          </div>
+          {f.bankAccountId && f.equityAccountId && (
+            <div className="col-span-2 sm:col-span-3"><p className="text-[11px] font-mono px-2 py-1.5 rounded" style={{ background: '#f8fafc', color: '#334155' }}>DR {banks.find(b => b.id === f.bankAccountId)?.accountTitle} {peso(cap)} &nbsp;/&nbsp; CR {equityAccts.find(a => a.id === f.equityAccountId)?.accountTitle} {peso(cap)}</p></div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -236,15 +250,20 @@ function CommonModal({ row, shareholders, banks, onClose, onSaved }: { row: Comm
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
               <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price at Buyback</label><input value={f.buybackPrice} onChange={e => set('buybackPrice', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
               <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Shares bought back</label><input value={f.buybackShares} onChange={e => set('buybackShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
-              <div className="col-span-2"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account used to pay</label>
+              <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account used to pay</label>
                 <select value={f.buybackBankAccountId} onChange={e => set('buybackBankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
                   <option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
+                </select>
+              </div>
+              <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Treasury account to debit <span className="font-normal text-gray-400">(CoA)</span></label>
+                <select value={f.treasuryAccountId} onChange={e => set('treasuryAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">— Select equity account —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
                 </select>
               </div>
               <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of Buyback</label>
                 <div className="flex flex-wrap items-center gap-2">{buybackProofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
                   <ScanUpload compact section="equity" prefix={`${prefix}-BUYBACK`} existingCount={buybackProofUrls.length} label="Add" onUploaded={u => setBuybackProofUrls(p => [...p, u])} /></div>
-                {n(f.buybackShares) > 0 && n(f.buybackPrice) > 0 && <p className="text-[11px] mt-1 font-mono" style={{ color: '#334155' }}>DR Treasury Shares {peso(n(f.buybackShares) * n(f.buybackPrice))} / CR {banks.find(b => b.id === f.buybackBankAccountId)?.accountTitle || 'Bank'} {peso(n(f.buybackShares) * n(f.buybackPrice))}</p>}
+                {n(f.buybackShares) > 0 && n(f.buybackPrice) > 0 && f.treasuryAccountId && f.buybackBankAccountId && <p className="text-[11px] mt-1 font-mono" style={{ color: '#334155' }}>DR {equityAccts.find(a => a.id === f.treasuryAccountId)?.accountTitle} {peso(n(f.buybackShares) * n(f.buybackPrice))} / CR {banks.find(b => b.id === f.buybackBankAccountId)?.accountTitle} {peso(n(f.buybackShares) * n(f.buybackPrice))}</p>}
               </div>
             </div>
           )}

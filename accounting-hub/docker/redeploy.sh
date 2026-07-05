@@ -349,6 +349,9 @@ CREATE TABLE IF NOT EXISTS "DividendReleaseItem" (
   "emailedAt" TIMESTAMP(3), CONSTRAINT "DividendReleaseItem_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX IF NOT EXISTS "DividendReleaseItem_releaseId_idx" ON "DividendReleaseItem"("releaseId");
+ALTER TABLE "CommonShare" ADD COLUMN IF NOT EXISTS "equityAccountId" TEXT;
+ALTER TABLE "CommonShare" ADD COLUMN IF NOT EXISTS "treasuryAccountId" TEXT;
+ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "equityAccountId" TEXT;
 DO $$ BEGIN
   ALTER TABLE "CommonShare" ADD CONSTRAINT "CommonShare_shareholderId_fkey" FOREIGN KEY ("shareholderId") REFERENCES "Shareholder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
