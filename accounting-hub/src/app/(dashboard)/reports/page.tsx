@@ -46,6 +46,7 @@ interface AccountEntry {
 interface ReportData {
   year: number
   branch: string
+  cutoffDate?: string | null   // opening-balance date; transactions before it are excluded
   accounts: Record<string, Record<string, AccountEntry[]>>
   monthly: Record<number, MonthData>
   productIncomeAcctKey?: string | null
@@ -949,6 +950,11 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
               {!isBalanced && ` (diff: ${formatCurrency(Math.abs(totalAssets - totalLiabilitiesAndEquity))})`}
             </span>
           </div>
+          {data.cutoffDate && (
+            <p className="mt-2 text-xs italic" style={{ color: 'var(--mid-gray)' }}>
+              Opening-balance cutoff: transactions before {data.cutoffDate} are excluded (already embedded in the bank opening balances).
+            </p>
+          )}
         </div>
       </div>
     )
@@ -1383,10 +1389,14 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
 
       {/* FINANCING ACTIVITIES */}
       <SectionHeader label="Cash Flows from Financing Activities" />
-      {cf.equityFinancing !== 0 ? (
-        <AnnualRow label="Share issuance, buyback & dividends (net)" amount={cf.equityFinancing} indent={1} />
-      ) : (
+      {cf.equityFinancing === 0 && cf.financingLiabChange === 0 && (
         <AnnualRow label="(No financing activities recorded)" amount={0} indent={1} />
+      )}
+      {cf.equityFinancing !== 0 && (
+        <AnnualRow label="Share issuance, buyback & dividends (net)" amount={cf.equityFinancing} indent={1} />
+      )}
+      {cf.financingLiabChange !== 0 && (
+        <AnnualRow label="Shareholder advances, bonds & loans (net)" amount={cf.financingLiabChange} indent={1} />
       )}
       <AnnualRow label="Net Cash from Financing Activities" amount={cf.netCashFromFinancing} indent={0} isTotal bold />
 

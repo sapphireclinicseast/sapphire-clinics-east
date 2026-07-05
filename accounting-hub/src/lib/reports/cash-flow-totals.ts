@@ -56,6 +56,7 @@ export interface CashFlowTotals {
   netCashFromInvesting: number
   // Financing
   equityFinancing: number       // net equity issuance − dividends − buyback (signed)
+  financingLiabChange: number   // net change in shareholder advances / bonds / loans
   netCashFromFinancing: number
   // Reconciliation to the Balance-Sheet cash balance
   computedNetChange: number     // ops + investing + financing
@@ -133,9 +134,12 @@ export function computeCashFlowTotals(data: CfData): CashFlowTotals {
 
   const liabilitySourceAccounts = (data.inventorySourceAccounts || []).filter(a => a.accountType === 'LIABILITY')
   const sourceAccountTotal = liabilitySourceAccounts.reduce((s, a) => s + a.amount, 0) + (data.unclassifiedAP || 0)
-  const payrollPayableTotal = (data.journalBalances || [])
-    .filter(jb => jb.accountType === 'LIABILITY' && jb.balance > 0 && jb.accountNumber !== '4050')
-    .reduce((s, a) => s + a.balance, 0)
+  // Financing-type liabilities (shareholder advances, bonds, loans) belong in the
+  // Financing section — not operating working capital — per the investor model.
+  const FINANCING_LIAB = /advance.*(stock|share)holder|(stock|share)holder.*advance|bonds?\s*payable|corporate\s*bond|(short|long)[-\s]*term\s*loan|loan.*payable/i
+  const liabJournal = (data.journalBalances || []).filter(jb => jb.accountType === 'LIABILITY' && jb.balance > 0 && jb.accountNumber !== '4050')
+  const payrollPayableTotal = liabJournal.filter(a => !FINANCING_LIAB.test(a.accountTitle)).reduce((s, a) => s + a.balance, 0)
+  const financingLiabEnding = liabJournal.filter(a => FINANCING_LIAB.test(a.accountTitle)).reduce((s, a) => s + a.balance, 0)
   const payablesEnding = sourceAccountTotal + payrollPayableTotal
   const unearnedEnding = data.wallets.total + (data.unearnedRevenueFromAR || 0)
 
@@ -173,7 +177,12 @@ export function computeCashFlowTotals(data: CfData): CashFlowTotals {
   const equityFinancing = (data.journalBalances || [])
     .filter(jb => jb.accountType === 'EQUITY')
     .reduce((s, jb) => s + jb.balance, 0)
-  const netCashFromFinancing = equityFinancing
+  // Shareholder advances / bonds / loans: increase = cash in (financing source).
+  const openingFinancingLiab = (data.beginningBalances || [])
+    .filter(b => b.accountType === 'LIABILITY' && FINANCING_LIAB.test(b.accountTitle))
+    .reduce((s, b) => s + Number(b.amount), 0)
+  const financingLiabChange = financingLiabEnding - openingFinancingLiab
+  const netCashFromFinancing = equityFinancing + financingLiabChange
 
   const computedNetChange = netCashFromOperations + netCashFromInvesting + netCashFromFinancing
   const actualNetChange = endingCash - beginningCash
@@ -184,7 +193,7 @@ export function computeCashFlowTotals(data: CfData): CashFlowTotals {
     arChange, inventoryChange, otherCurrentAssetChange, payablesChange, unearnedChange,
     netCashFromOperations,
     ppePurchases, netCashFromInvesting,
-    equityFinancing, netCashFromFinancing,
+    equityFinancing, financingLiabChange, netCashFromFinancing,
     computedNetChange, beginningCash, endingCash, actualNetChange, unreconciled,
   }
 }

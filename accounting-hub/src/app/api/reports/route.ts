@@ -32,6 +32,24 @@ export async function GET(req: Request) {
   const branchFilter: any = branch !== 'ALL' ? { branch: orderBranch } : {}
 
   try {
+    // Date cutoff: a bank's opening balance already embeds every transaction before
+    // its startDate (the same rule Bank Reconciliation applies), so counting those
+    // pre-startDate Hub transactions again would double-count them on the Balance
+    // Sheet / Cash Flow. Exclude them by starting the derivation at the latest
+    // opening-balance startDate within the year. No startDate set → no change.
+    const openingStartRows = await prisma.beginningBalance.findMany({
+      where: { periodYear: year, startDate: { not: null } },
+      select: { startDate: true },
+    })
+    let cutoffDate: Date | null = null
+    for (const r of openingStartRows) {
+      if (r.startDate && r.startDate > startDate && r.startDate < endDate) {
+        if (!cutoffDate || r.startDate > cutoffDate) cutoffDate = r.startDate
+      }
+    }
+    const effectiveStart = cutoffDate || startDate
+    const cutoffMonth = cutoffDate && cutoffDate.getUTCFullYear() === year ? cutoffDate.getUTCMonth() + 1 : 0
+
     const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory, assets, beginningBalances, payrollCOAMappingRaw, payrollEntriesRaw, employeePayslipsRaw] = await Promise.all([
       // Chart of Accounts — structure for report line items
       prisma.account.findMany({
@@ -54,7 +72,7 @@ export async function GET(req: Request) {
       prisma.order.findMany({
         where: {
           status: 'COMPLETED',
-          transactionDate: { gte: startDate, lt: endDate },
+          transactionDate: { gte: effectiveStart, lt: endDate },
           ...branchFilter,
         },
         select: {
@@ -113,7 +131,7 @@ export async function GET(req: Request) {
       // AR Payments — for tracking cash received from HMO/GL and reducing AR balance
       prisma.aRPayment.findMany({
         where: {
-          paymentDate: { gte: startDate, lt: endDate },
+          paymentDate: { gte: effectiveStart, lt: endDate },
           ...(branch !== 'ALL' ? { branch } : {}),
         },
         select: {
@@ -141,7 +159,7 @@ export async function GET(req: Request) {
             OR: [
               // Standard window: any entry (payroll or not) dated within the year
               {
-                entryDate: { gte: startDate, lt: endDate },
+                entryDate: { gte: effectiveStart, lt: endDate },
                 // Journal entries store branch as the enum form (SANDBOX_EAST); the
                 // request param can be the short code (SBEA) — match both so single-branch
                 // views don't silently drop their journal entries.
@@ -705,7 +723,7 @@ export async function GET(req: Request) {
           VAT portion → 1040 Input VAT (current asset). ── */
     const pettyCashEntries = await prisma.pettyCashEntry.findMany({
       where: {
-        date: { gte: startDate, lt: endDate },
+        date: { gte: effectiveStart, lt: endDate },
         ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
       },
       select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, distributeMonthly: true },
@@ -782,7 +800,7 @@ export async function GET(req: Request) {
 
     /* ── CEO petty cash → allocated per branch (Gross split across branches) ── */
     const ceoEntries = await prisma.pettyCashEntry.findMany({
-      where: { branch: 'CEO', date: { gte: startDate, lt: endDate } },
+      where: { branch: 'CEO', date: { gte: effectiveStart, lt: endDate } },
       select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true },
     })
     for (const e of ceoEntries) {
@@ -850,6 +868,9 @@ export async function GET(req: Request) {
     for (const asset of assets) {
       const monthlyDep = Number(asset.monthlyDepreciation)
       for (let m = 1; m <= 12; m++) {
+        // Months before the opening-balance cutoff are already in opening RE /
+        // accumulated depreciation, so keep them out of current-year expense.
+        if (m < cutoffMonth) continue
         const monthStart = new Date(Date.UTC(year, m - 1, 1))
         const monthEnd = new Date(Date.UTC(year, m, 1))
         const depStart = new Date(asset.dateBought)
@@ -964,6 +985,8 @@ export async function GET(req: Request) {
     return NextResponse.json({
       year,
       branch,
+      // The opening-balance cutoff actually applied (null if no bank startDate is set).
+      cutoffDate: cutoffDate ? cutoffDate.toISOString().slice(0, 10) : null,
       accounts: groupedAccounts,
       monthly,
       productIncomeAcctKey,
