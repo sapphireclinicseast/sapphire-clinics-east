@@ -28,6 +28,10 @@ export function useResizableColumns(storageKey: string, tableRef: RefObject<HTML
   const [ready, setReady] = useState(false)
   const [colCount, setColCount] = useState(0)
   const seeded = useRef(false)
+  // Keep a live mirror of widths so the drag handler can read the current width
+  // synchronously (without stale closures) when a resize starts.
+  const widthsRef = useRef(widths)
+  widthsRef.current = widths
 
   useEffect(() => {
     if (seeded.current) return
@@ -61,24 +65,28 @@ export function useResizableColumns(storageKey: string, tableRef: RefObject<HTML
   const startResize = useCallback((index: number, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
     const startX = e.clientX
-    setWidths(prev => {
-      const startW = prev[index] ?? 120
-      const move = (ev: MouseEvent) => {
-        const next = Math.max(40, startW + (ev.clientX - startX))
-        setWidths(p => ({ ...p, [index]: next }))
-      }
-      const up = () => {
-        window.removeEventListener('mousemove', move)
-        window.removeEventListener('mouseup', up)
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-      }
-      window.addEventListener('mousemove', move)
-      window.addEventListener('mouseup', up)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-      return prev
-    })
+    // Read the starting width synchronously; fall back to the header cell's real
+    // width if this column hasn't been measured yet.
+    let startW = widthsRef.current[index]
+    if (!startW) {
+      const th = (e.currentTarget as HTMLElement).closest('th')
+      startW = th ? Math.round(th.getBoundingClientRect().width) : 120
+    }
+    // Attach listeners synchronously so the very next mousemove already resizes.
+    const move = (ev: MouseEvent) => {
+      const next = Math.max(40, startW + (ev.clientX - startX))
+      setWidths(p => ({ ...p, [index]: next }))
+    }
+    const up = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
   }, [])
 
   const tableStyle: React.CSSProperties = ready ? { tableLayout: 'fixed' } : {}
@@ -104,10 +112,18 @@ export function ColResizeHandle({ rz, index }: { rz: ResizeApi; index: number })
       onMouseDown={(e) => rz.startResize(index, e)}
       onClick={(e) => { e.stopPropagation() }}
       title="Drag to resize column"
+      className="group/resize"
       style={{
-        position: 'absolute', top: 0, right: -2, height: '100%', width: 8,
+        position: 'absolute', top: 0, right: -4, height: '100%', width: 10,
         cursor: 'col-resize', userSelect: 'none', zIndex: 20, touchAction: 'none',
+        display: 'flex', justifyContent: 'center',
       }}
-    />
+    >
+      {/* thin grip line, brightens on hover */}
+      <span
+        className="group-hover/resize:opacity-100"
+        style={{ width: 2, height: '100%', background: 'var(--teal)', opacity: 0.25, transition: 'opacity .15s' }}
+      />
+    </span>
   )
 }

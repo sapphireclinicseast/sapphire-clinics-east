@@ -632,7 +632,8 @@ export default function ExpensesPage() {
   const finalizeEntry = (e: Entry) => {
     saveField(e.id, { finalized: true }, false)
     const name = (e.registeredName || '').trim()
-    if (name && !supplierByName.has(name.toLowerCase())) {
+    // Invalid-classified expenses are not real suppliers — never add them to the list.
+    if (name && e.validity !== 'Invalid' && !supplierByName.has(name.toLowerCase())) {
       setNewSupplierPrompt({ registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '' })
     }
   }

@@ -538,7 +538,8 @@ export default function PettyCashPage() {
   const finalizeEntry = (e: Entry) => {
     saveField(e.id, { finalized: true }, false)
     const name = (e.registeredName || '').trim()
-    if (name && ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'].includes(branch) && !supplierNames.has(name.toLowerCase())) {
+    // Invalid-classified expenses are not real suppliers — never add them to the list.
+    if (name && e.validity !== 'Invalid' && ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'].includes(branch) && !supplierNames.has(name.toLowerCase())) {
       setNewSupplierPrompt({ registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '' })
     }
   }
