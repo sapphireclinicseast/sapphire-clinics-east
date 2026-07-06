@@ -302,6 +302,18 @@ export default function PettyCashPage() {
       else { const u = await r.json(); patchLocal(e.id, { pcvNumber: u.pcvNumber, pcvSeq: u.pcvSeq }) }
     } catch { patchLocal(e.id, { pcvNumber: prev }) }
   }
+  // Re-parent an entry under an existing PCV base (joins it as the next -NN sub).
+  const assignPcv = async (e: Entry, seq: number) => {
+    try {
+      const r = await fetch('/api/petty-cash/entries', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: e.id, assignToSeq: seq }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Could not assign to that PCV number.'); return }
+      const u = await r.json()
+      patchLocal(e.id, { pcvNumber: u.pcvNumber, pcvSeq: u.pcvSeq, pcvSub: u.pcvSub })
+    } catch { alert('Could not assign to that PCV number.') }
+  }
 
   const downloadTemplate = async () => {
     const XLSX = await import('xlsx')
@@ -847,6 +859,14 @@ export default function PettyCashPage() {
                               onBlur={ev => savePcv(e, ev.target.value)}
                               onKeyDown={ev => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur() }} />
                             {(e.validity === 'Valid' || e.validity === 'Invalid') && <span className="text-[10px] pr-1 font-mono" style={{ color: 'var(--mid-gray)' }}>{e.validity === 'Valid' ? '-VAL' : '-INV'}</span>}
+                            {!e.reimbursementId && !e.paidAt && canWrite && pcvBases.length > 0 && (
+                              <select value="" title="Assign to a previous PCV number"
+                                onChange={ev => { const s = ev.target.value; if (s) { if (confirm(`Assign this entry under ${pcvBases.find(b => String(b.seq) === s)?.label}?`)) assignPcv(e, Number(s)); ev.target.value = '' } }}
+                                className="text-[10px] rounded border bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', maxWidth: 24 }}>
+                                <option value="">⋯</option>
+                                {pcvBases.filter(b => b.seq !== e.pcvSeq).map(b => <option key={b.seq} value={b.seq}>Assign to {b.label}</option>)}
+                              </select>
+                            )}
                           </div>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>

@@ -4,9 +4,8 @@
 // (e.g. "2050 Furniture and Fixtures"); when that number is a PPE classification
 // the entry represents an asset purchase.
 
-export const ASSET_CLASSIFICATION_CODES = ['2020', '2030', '2040', '2050', '2060', '2070', '2080', '2090', '2100']
-
-export const ASSET_CLASSIFICATION_LABELS: Record<string, string> = {
+// Depreciating PPE classifications.
+export const PPE_CLASSIFICATION_LABELS: Record<string, string> = {
   '2020': 'Buildings',
   '2030': 'Clinic Appliances',
   '2040': 'Educational Toys, Books, and Others',
@@ -16,6 +15,28 @@ export const ASSET_CLASSIFICATION_LABELS: Record<string, string> = {
   '2080': 'Therapy Equipment',
   '2090': 'Treatment and Assessment Tools',
   '2100': 'Vehicles',
+}
+
+// Non-depreciating non-current assets (intangibles + other non-current assets).
+// These are carried at cost on the Balance Sheet with NO depreciation.
+export const NON_DEPRECIATING_CLASSIFICATION_LABELS: Record<string, string> = {
+  '3010': 'Goodwill',
+  '3020': 'Trademark',
+  '3110': 'Security Deposit',
+  '3120': 'SEC Registration',
+  '3130': 'Construction Bond',
+}
+
+export const ASSET_CLASSIFICATION_LABELS: Record<string, string> = {
+  ...PPE_CLASSIFICATION_LABELS,
+  ...NON_DEPRECIATING_CLASSIFICATION_LABELS,
+}
+
+export const ASSET_CLASSIFICATION_CODES = Object.keys(ASSET_CLASSIFICATION_LABELS)
+
+/** True if the classification depreciates (PPE); false for intangibles / other non-current assets. */
+export function isDepreciatingClassification(code: string): boolean {
+  return code in PPE_CLASSIFICATION_LABELS
 }
 
 /** Returns the classification code ("2050") if the account title is a PPE account, else null. */

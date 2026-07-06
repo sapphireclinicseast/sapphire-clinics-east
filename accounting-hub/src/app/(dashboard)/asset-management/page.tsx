@@ -82,7 +82,17 @@ const CLASSIFICATION_OPTIONS = [
   { value: '2080', label: '2080 — Therapy Equipment' },
   { value: '2090', label: '2090 — Treatment and Assessment Tools' },
   { value: '2100', label: '2100 — Vehicles' },
+  // Non-depreciating (intangibles + other non-current assets)
+  { value: '3010', label: '3010 — Goodwill (not depreciated)' },
+  { value: '3020', label: '3020 — Trademark (not depreciated)' },
+  { value: '3110', label: '3110 — Security Deposit (not depreciated)' },
+  { value: '3120', label: '3120 — SEC Registration (not depreciated)' },
+  { value: '3130', label: '3130 — Construction Bond (not depreciated)' },
 ]
+
+// Classifications that do NOT depreciate — carried at cost on the Balance Sheet.
+const NON_DEPRECIATING = new Set(['3010', '3020', '3110', '3120', '3130'])
+const isDepreciating = (code: string) => !!code && !NON_DEPRECIATING.has(code)
 
 const DEPRECIATION_YEARS = [3, 5, 10]
 
@@ -248,9 +258,10 @@ export default function AssetManagementPage() {
   const purchasePriceNum = parseFloat(form.purchasePrice) || 0
   const quantityNum = parseInt(form.quantity) || 1
   const totalAmount = purchasePriceNum * quantityNum
-  const yearsNum = parseInt(form.yearsDepreciation) || 5
-  const monthlyDepreciation = totalAmount > 0 ? totalAmount / (yearsNum * 12) : 0
-  const depreciationEndDate = form.dateBought ? computeEndDate(form.dateBought, yearsNum) : ''
+  const noDep = !isDepreciating(form.classification)
+  const yearsNum = noDep ? 0 : (parseInt(form.yearsDepreciation) || 5)
+  const monthlyDepreciation = (!noDep && totalAmount > 0) ? totalAmount / (yearsNum * 12) : 0
+  const depreciationEndDate = noDep ? (form.dateBought || '') : (form.dateBought ? computeEndDate(form.dateBought, yearsNum) : '')
 
   // ── Data fetching ────────────────────────────────────────────
   const fetchAssets = useCallback(async () => {
@@ -1116,35 +1127,44 @@ export default function AssetManagementPage() {
                 </div>
               </div>
 
-              {/* Row 4: Years Depreciation */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Years for Depreciation</label>
-                <select
-                  value={form.yearsDepreciation}
-                  onChange={(e) => setForm((f) => ({ ...f, yearsDepreciation: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                >
-                  {DEPRECIATION_YEARS.map((y) => (
-                    <option key={y} value={y}>{y} years</option>
-                  ))}
-                </select>
-              </div>
+              {noDep ? (
+                /* Intangibles / other non-current assets are carried at cost — no depreciation. */
+                <div className="rounded-lg px-3 py-2 text-sm" style={{ background: '#f0fdfa', color: '#0f766e' }}>
+                  This is a non-depreciating asset (intangible / other non-current asset). It is carried at cost on the Balance Sheet with no depreciation.
+                </div>
+              ) : (
+                <>
+                  {/* Row 4: Years Depreciation */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Years for Depreciation</label>
+                    <select
+                      value={form.yearsDepreciation}
+                      onChange={(e) => setForm((f) => ({ ...f, yearsDepreciation: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      {DEPRECIATION_YEARS.map((y) => (
+                        <option key={y} value={y}>{y} years</option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Computed: Monthly Depreciation + End Date */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Depreciation (computed)</label>
-                  <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700 font-medium">
-                    {formatCurrency(monthlyDepreciation)}
+                  {/* Computed: Monthly Depreciation + End Date */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Depreciation (computed)</label>
+                      <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700 font-medium">
+                        {formatCurrency(monthlyDepreciation)}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">End Month for Depreciation (computed)</label>
+                      <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                        {depreciationEndDate ? formatEndDate(depreciationEndDate) : '—'}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">End Month for Depreciation (computed)</label>
-                  <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700">
-                    {depreciationEndDate ? formatEndDate(depreciationEndDate) : '—'}
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
 
               {/* Supplier */}
               <div>

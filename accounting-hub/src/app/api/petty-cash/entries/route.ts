@@ -133,6 +133,26 @@ export async function PUT(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
 
+    // Re-parent this entry under a previous PCV base: it joins that base as the
+    // next "-NN" sub-entry (used from the grid to assign an entry to an existing
+    // reference number after the fact).
+    if (body.assignToSeq != null && body.assignToSeq !== '') {
+      const targetSeq = Number(body.assignToSeq)
+      if (isNaN(targetSeq)) return NextResponse.json({ error: 'Invalid PCV to assign to' }, { status: 400 })
+      const sibling = await prisma.pettyCashEntry.findFirst({
+        where: { branch: existing.branch, recordType: existing.recordType, pcvSeq: targetSeq },
+        orderBy: { pcvSub: 'desc' },
+      })
+      if (!sibling) return NextResponse.json({ error: 'That PCV number does not exist in this branch' }, { status: 404 })
+      const base = sibling.pcvNumber.replace(/-\d{1,2}$/, '')
+      const nextSub = (sibling.pcvSub || 0) + 1
+      data.pcvSeq = targetSeq
+      data.pcvSub = nextSub
+      data.pcvNumber = `${base}-${String(nextSub).padStart(2, '0')}`
+      const entry = await prisma.pettyCashEntry.update({ where: { id }, data })
+      return NextResponse.json(entry)
+    }
+
     // Overhaul / force the PCV reference number to match the physical hard copy.
     // Must stay unique within the branch; keep pcvSeq aligned with the forced
     // number so list order and future auto-numbering follow it.

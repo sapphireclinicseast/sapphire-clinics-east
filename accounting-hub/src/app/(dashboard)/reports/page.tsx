@@ -837,12 +837,15 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {totalGrossAssets === 0 && accumulatedDep === 0 && ppeAccounts.length === 0 && intangibleAccounts.length === 0 && otherNCAAccounts.length === 0 && (
           <AnnualRow label="(No non-current asset accounts set up)" amount={0} indent={2} />
         )}
-        {intangibleAccounts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
-        ))}
-        {otherNCAAccounts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
-        ))}
+        {/* Intangibles + other non-current assets — carried at cost, no depreciation. */}
+        {intangibleAccounts.map((a) => {
+          const val = depreciation?.assetsByClassification?.[a.accountNumber] || 0
+          return val > 0 ? <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={val} indent={2} /> : null
+        })}
+        {otherNCAAccounts.map((a) => {
+          const val = depreciation?.assetsByClassification?.[a.accountNumber] || 0
+          return val > 0 ? <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={val} indent={2} /> : null
+        })}
         <AnnualRow label="Total Non-Current Assets" amount={totalNonCurrentAssets} indent={1} isTotal bold />
 
         <AnnualRow label="TOTAL ASSETS" amount={totalAssets} isGrandTotal />

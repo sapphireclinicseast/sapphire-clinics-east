@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET } from '@/lib/asset-classification'
+import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -55,11 +55,13 @@ export async function POST(req: Request) {
       }
     }
 
-    const depRow = await prisma.assetDepreciationSetting.findUnique({ where: { classification } })
-    const years = depRow?.years ?? 5
+    // Intangibles / other non-current assets are NOT depreciated.
+    const depreciates = isDepreciatingClassification(classification)
+    const depRow = depreciates ? await prisma.assetDepreciationSetting.findUnique({ where: { classification } }) : null
+    const years = depreciates ? (depRow?.years ?? 5) : 0
     const name = (e.description || '').trim() || ASSET_CLASSIFICATION_LABELS[classification]
     const dateBought = e.date ? new Date(e.date) : new Date()
-    const depEnd = new Date(dateBought); depEnd.setFullYear(depEnd.getFullYear() + years)
+    const depEnd = new Date(dateBought); if (years > 0) depEnd.setFullYear(depEnd.getFullYear() + years)
     const deptName = e.department ? ENTRY_DEPT_TO_ASSET[e.department] : undefined
     const departments = deptName ? [deptName] : []
 

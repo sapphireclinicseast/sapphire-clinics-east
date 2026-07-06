@@ -51,6 +51,7 @@ interface Entry {
   branch: string
   pcvNumber: string
   pcvSeq: number
+  pcvSub: number
   requestor: string | null      // reused as Payee
   department: string | null
   date: string | null
@@ -329,6 +330,28 @@ export default function ExpensesPage() {
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const patchLocal = (id: string, patch: Partial<Entry>) =>
     setEntries(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))
+  // Distinct existing PCV bases for the current record type (for re-parenting).
+  const pcvBases = Array.from(new Map(entries.map(e => [e.pcvSeq, e.pcvNumber.replace(/-\d{1,2}$/, '')])).entries())
+    .map(([seq, label]) => ({ seq, label })).sort((a, b) => b.seq - a.seq)
+  const savePcv = async (e: Entry, raw: string) => {
+    const val = raw.trim()
+    if (!val || val === e.pcvNumber) { patchLocal(e.id, { pcvNumber: e.pcvNumber }); return }
+    const prev = e.pcvNumber
+    patchLocal(e.id, { pcvNumber: val })
+    try {
+      const r = await fetch('/api/petty-cash/entries', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: e.id, pcvNumber: val }) })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Could not change the reference number.'); patchLocal(e.id, { pcvNumber: prev }) }
+      else { const u = await r.json(); patchLocal(e.id, { pcvNumber: u.pcvNumber, pcvSeq: u.pcvSeq }) }
+    } catch { patchLocal(e.id, { pcvNumber: prev }) }
+  }
+  const assignPcv = async (e: Entry, seq: number) => {
+    try {
+      const r = await fetch('/api/petty-cash/entries', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: e.id, assignToSeq: seq }) })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Could not assign to that PCV number.'); return }
+      const u = await r.json()
+      patchLocal(e.id, { pcvNumber: u.pcvNumber, pcvSeq: u.pcvSeq, pcvSub: u.pcvSub })
+    } catch { alert('Could not assign to that PCV number.') }
+  }
 
   const saveField = (id: string, patch: Partial<Entry>, debounce = true) => {
     patchLocal(id, patch)
@@ -944,7 +967,24 @@ export default function ExpensesPage() {
                             onChange={() => toggleOne(e.id)} title={e.paidAt ? 'Locked (paid)' : ''} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.reimbursement?.refNumber || e.pcvNumber}</span>
+                          {(e.reimbursementId || e.paidAt || e.soaId || !canWrite) ? (
+                            <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.reimbursement?.refNumber || e.pcvNumber}</span>
+                          ) : (
+                            <div className="flex items-center whitespace-nowrap">
+                              <input key={e.pcvNumber} defaultValue={e.pcvNumber} className={`${cellCls} font-mono`} style={{ minWidth: 150 }}
+                                title="Reference number — edit to match your physical hard copy"
+                                onBlur={ev => savePcv(e, ev.target.value)}
+                                onKeyDown={ev => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur() }} />
+                              {pcvBases.length > 0 && (
+                                <select value="" title="Assign to a previous PCV number"
+                                  onChange={ev => { const s = ev.target.value; if (s) { if (confirm(`Assign this entry under ${pcvBases.find(b => String(b.seq) === s)?.label}?`)) assignPcv(e, Number(s)); ev.target.value = '' } }}
+                                  className="text-[10px] rounded border bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', maxWidth: 24 }}>
+                                  <option value="">⋯</option>
+                                  {pcvBases.filter(b => b.seq !== e.pcvSeq).map(b => <option key={b.seq} value={b.seq}>Assign to {b.label}</option>)}
+                                </select>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <SupplierCombo value={e.requestor || ''} disabled={lk} placeholder="Payee" suppliers={suppliers}
