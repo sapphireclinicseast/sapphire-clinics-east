@@ -861,9 +861,12 @@ export default function PettyCashPage() {
                     const ve = vatEditable(e)
                     return (
                       <tr key={e.id} style={{ background:
+                        // Colour by workflow state — identical across all branches (CEO included).
+                        // "In an RFP" and "For Replenishment" are the same state (awaiting the
+                        // replenishment payment) → same colour, whether tracked via reimbursementId
+                        // (branches) or rfpBranchMap (CEO).
                         e.pcfStatus === 'Replenished' ? '#dcfce7'                                              // green — paid/replenished
-                        : (e.reimbursementId || (e.rfpBranchMap && Object.keys(e.rfpBranchMap).length > 0)) ? '#ffedd5'  // orange — in an RFP (incl. CEO branch RFPs)
-                        : e.pcfStatus === 'For Replenishment' ? '#fef3c7'                                       // amber — awaiting replenishment
+                        : (e.pcfStatus === 'For Replenishment' || e.reimbursementId || (e.rfpBranchMap && Object.keys(e.rfpBranchMap).length > 0)) ? '#ffedd5'  // orange — for replenishment / in an RFP
                         : e.pcfStatus === 'Cancelled' ? '#f3f4f6'                                               // gray — cancelled
                         : e.pcfStatus === 'Missing' ? '#fee2e2'                                                 // red — missing
                         : e.finalized ? '#fef9c3'                                                               // yellow — finalized/ready
