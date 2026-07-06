@@ -246,6 +246,8 @@ export async function GET(req: Request) {
           monthlyDepreciation: true,
           dateBought: true,
           depreciationEndDate: true,
+          sourceAccountId: true,
+          fromPettyCash: true,
         },
       }),
 
@@ -970,10 +972,17 @@ export async function GET(req: Request) {
       inventoryCashOutflowsByAccount[key] = (inventoryCashOutflowsByAccount[key] || 0) + val
     }
 
-    // d) Asset cash purchases — total, applied against the first/lowest cash
-    //    account number we know about (deterministic). User can later add a
-    //    per-asset sourceAccountId to refine this.
-    const assetCashOutflows = assets.reduce((s, a) => s + Number(a.totalAmount), 0)
+    // d) Asset cash purchases — applied against the default cash account.
+    //    EXCLUDE assets whose cash impact is already recorded elsewhere, or the
+    //    bank would be double-credited:
+    //      • sourceAccountId set → the acquisition JE already credits that bank
+    //        (captured in journalCashFlowByAccount).
+    //      • fromPettyCash → paid out of petty cash; the bank is credited later
+    //        at replenishment (the RFP), not at asset creation.
+    //    Only truly "unrecorded" manual assets fall back to this heuristic.
+    const assetCashOutflows = assets
+      .filter(a => !a.sourceAccountId && !a.fromPettyCash)
+      .reduce((s, a) => s + Number(a.totalAmount), 0)
     const cashAccountKeys = accounts
       .filter(a => a.accountType === 'ASSET' && isCashAccountKey(a.accountNumber, a.accountTitle))
       .map(a => `${a.accountNumber} ${a.accountTitle}`)

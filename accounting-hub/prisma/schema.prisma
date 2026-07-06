@@ -1518,6 +1518,7 @@ model Asset {
   supplierId          String?
   supplier            Supplier? @relation(fields: [supplierId], references: [id])
   sourceAccountId     String?   // COA bank account the asset was purchased from (credited on the acquisition JE)
+  fromPettyCash       Boolean   @default(false)  // created from a petty-cash/expense entry — cash is handled by replenishment, so NO bank credit here (avoids double-counting cash on the BS)
   photoUrl            String?   // main photo (shown in the list)
   photoUrls           Json?     // all photos (gallery)
   isDefective         Boolean   @default(false)

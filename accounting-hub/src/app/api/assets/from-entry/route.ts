@@ -92,6 +92,7 @@ export async function POST(req: Request) {
           supplierId,
           departments,
           controlNumber,
+          fromPettyCash: true,   // cash handled by petty-cash replenishment — no bank credit on the BS
           remarks: `Auto-created from petty cash / expense ${e.pcvNumber}`,
           createdById: session.user.id as string,
         },

@@ -244,7 +244,7 @@ export default function AssetManagementPage() {
   // Lightbox + photo gallery
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [galleryAsset, setGalleryAsset] = useState<Asset | null>(null)
-  const [tab, setTab] = useState<'assets' | 'audit'>('assets')
+  const [tab, setTab] = useState<'assets' | 'audit' | 'flowchart'>('assets')
   const photosOf = (a: Asset): string[] => {
     const arr = Array.isArray(a.photoUrls) ? a.photoUrls : []
     if (arr.length) return arr
@@ -624,13 +624,14 @@ export default function AssetManagementPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['assets', 'Assets'], ['audit', 'Asset Audit']] as const).map(([v, label]) => (
+        {([['assets', 'Assets'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
             style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
       </div>
 
       {tab === 'audit' && <AssetAuditTab canWrite={canManage} />}
+      {tab === 'flowchart' && <AssetFlowchart />}
 
       {/* Error banner */}
       {error && (
@@ -1435,6 +1436,39 @@ export default function AssetManagementPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Asset recording flowchart ─────────────────────────────────
+function AssetFlowchart() {
+  const steps = [
+    { n: 1, title: 'Record the purchase as an expense', who: 'Front desk / Bookkeeper', desc: 'Enter the asset purchase in Petty Cash (petty-cash float) or as a One-time Expense. In the Account Title, pick the asset account — a PPE class (2020–2100) or an intangible / other non-current asset (3010–3130).', je: null, tag: 'Petty Cash · One-time Expense' },
+    { n: 2, title: 'Add it to Asset Management', who: 'Accountant / Bookkeeper', desc: 'On finalizing the entry — or anytime, via the "Add to Asset Management" button under its Account Title — confirm the prompt. The asset record is created automatically.', je: null, tag: null },
+    { n: 3, title: 'Details are pre-filled', who: 'Automatic', desc: 'Branch, price (net of VAT), date bought, classification, depreciation (default years → monthly + end date), supplier and department are carried over from the entry. If a CEO expense is split across branches, one asset is created per branch, each priced at that branch’s allocated amount.', je: null, tag: null },
+    { n: 4, title: 'No bank credit here', who: '', desc: 'The asset is created with "Purchased from = Not recorded (no journal entry)". The cash was already paid from petty cash (credited to the bank later at replenishment / RFP) or by the expense’s own payment — so booking a bank credit here would double-count it.', je: 'No journal entry (cash handled by replenishment)', tag: 'Bank credited at RFP replenishment, not here' },
+    { n: 5, title: 'Shows on the Balance Sheet', who: 'Automatic', desc: 'The asset is carried at cost under Non-Current Assets. Depreciating classes (PPE 2020–2100) accrue monthly depreciation with an Accumulated Depreciation contra line; intangibles / other non-current assets (3010–3130) are carried at cost with NO depreciation.', je: 'Depreciation: DR 8070 Depreciation Expense / CR 2010 Accumulated Depreciation (PPE only)', tag: 'Balance Sheet (Non-Current Assets) + Income Statement (depreciation)' },
+  ]
+  return (
+    <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
+      <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Asset Recording Workflow</h2>
+      <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>Assets are recorded as a One-time Expense or Petty Cash entry (with an asset account), then transferred here automatically. The cash is handled by that entry / its replenishment, so the asset itself posts no bank credit — it only adds the asset to the Balance Sheet and its depreciation schedule.</p>
+      <div className="flex flex-col items-center">
+        {steps.map((s, i, arr) => (
+          <div key={s.n} className="w-full max-w-2xl flex flex-col items-center">
+            <div className="w-full rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'var(--teal)' }}>{s.n}</div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{s.title}{s.who && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{s.who}</span>}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.desc}</p>
+                {s.je && <p className="text-[11px] mt-1.5 font-mono px-2 py-1 rounded" style={{ background: '#f1f5f9', color: '#334155' }}>{s.je}</p>}
+                {s.tag && <p className="text-[10px] mt-1 font-semibold" style={{ color: 'var(--deep-teal)' }}>→ {s.tag}</p>}
+              </div>
+            </div>
+            {i < arr.length - 1 && <div className="text-xl leading-none my-1" style={{ color: 'var(--teal)' }}>↓</div>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
