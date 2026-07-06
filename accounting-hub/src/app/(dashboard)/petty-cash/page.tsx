@@ -987,6 +987,13 @@ export default function PettyCashPage() {
                             {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
                             {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
                           </select>
+                          {canWrite && assetClassFromAccountTitle(e.accountTitle) && (
+                            <button onClick={() => setAssetPrompt(e)} title="Add this asset to Asset Management"
+                              className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                              <Plus size={11} /> Add to Asset Management
+                            </button>
+                          )}
                         </td>
                         {branch === 'CEO' && (
                           <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
