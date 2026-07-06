@@ -153,10 +153,10 @@ export async function POST(req: Request) {
         for (const e of ceoEligible) {
           const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? { ...e.rfpBranchMap as Record<string, string> } : {}
           map[ceoBranch] = created.id
-          await tx.pettyCashEntry.update({ where: { id: e.id }, data: { rfpBranchMap: map } })
+          await tx.pettyCashEntry.update({ where: { id: e.id }, data: { rfpBranchMap: map, pcfStatus: 'For Replenishment' } })
         }
       } else {
-        await tx.pettyCashEntry.updateMany({ where: { id: { in: eligibleIds } }, data: { reimbursementId: created.id } })
+        await tx.pettyCashEntry.updateMany({ where: { id: { in: eligibleIds } }, data: { reimbursementId: created.id, pcfStatus: 'For Replenishment' } })
       }
       return created
     })
