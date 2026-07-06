@@ -554,14 +554,14 @@ export default function PettyCashPage() {
 
   const finalizeEntry = (e: Entry) => {
     saveField(e.id, { finalized: true }, false)
-    // Asset-classification entries → offer to add to Asset Management (takes
-    // precedence over the supplier prompt; the asset links its own supplier).
-    if (assetClassFromAccountTitle(e.accountTitle)) { setAssetPrompt(e); return }
     const name = (e.registeredName || '').trim()
+    // On save (finalize), offer to add a new supplier to the Suppliers list.
     // Invalid-classified expenses are not real suppliers — never add them to the list.
     if (name && e.validity !== 'Invalid' && ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'].includes(branch) && !supplierNames.has(name.toLowerCase())) {
       setNewSupplierPrompt({ registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '' })
     }
+    // Asset-classification entries are added to Asset Management via the dedicated
+    // "Add to Asset Management" button under the Account Title (works anytime).
   }
   const confirmAddAsset = async () => {
     if (!assetPrompt) return
@@ -803,7 +803,7 @@ export default function PettyCashPage() {
             {loading ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
             ) : (
-              <table ref={gridTableRef} className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 2560, ...gridRz.tableStyle }}>
+              <table ref={gridTableRef} className="text-xs rz-grid" style={{ borderCollapse: 'collapse', minWidth: 2560, ...gridRz.tableStyle }}>
                 <ResizableColgroup rz={gridRz} />
                 <thead className="sticky top-0 z-10">
                   <tr style={{ background: 'var(--off-white)' }}>

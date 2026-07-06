@@ -659,13 +659,14 @@ export default function ExpensesPage() {
   const supplierByName = new Map(suppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
   const finalizeEntry = (e: Entry) => {
     saveField(e.id, { finalized: true }, false)
-    // One-time asset-classification entries → offer to add to Asset Management.
-    if (e.recordType === 'ONE_TIME' && assetClassFromAccountTitle(e.accountTitle)) { setAssetPrompt(e); return }
     const name = (e.registeredName || '').trim()
-    // Invalid-classified expenses are not real suppliers — never add them to the list.
+    // On save (finalize), offer to add a new supplier to the Suppliers list.
+    // Invalid-classified expenses are not real suppliers — never add them.
     if (name && e.validity !== 'Invalid' && !supplierByName.has(name.toLowerCase())) {
       setNewSupplierPrompt({ registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '' })
     }
+    // Asset-classification entries are added to Asset Management via the dedicated
+    // "Add to Asset Management" button under the Account Title (works anytime).
   }
   const confirmAddAsset = async () => {
     if (!assetPrompt) return
@@ -928,7 +929,7 @@ export default function ExpensesPage() {
             {loading ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
             ) : (
-              <table ref={gridTableRef} className="text-xs" style={{ borderCollapse: 'collapse', minWidth: isRecurringTab ? 3160 : 2360, ...gridRz.tableStyle }}>
+              <table ref={gridTableRef} className="text-xs rz-grid" style={{ borderCollapse: 'collapse', minWidth: isRecurringTab ? 3160 : 2360, ...gridRz.tableStyle }}>
                 <ResizableColgroup rz={gridRz} />
                 <thead className="sticky top-0 z-10">
                   <tr style={{ background: 'var(--off-white)' }}>

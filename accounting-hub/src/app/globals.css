@@ -41,6 +41,14 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
 }
 
+/* Resizable data grids (table-layout: fixed): keep cell contents inside the
+   column so nothing overlaps a neighbour when a column is narrowed. Inputs/
+   selects drop their min-width and fit the column; text wraps within the cell. */
+.rz-grid td, .rz-grid th { overflow: hidden; }
+.rz-grid td input, .rz-grid td select, .rz-grid td textarea { min-width: 0 !important; max-width: 100%; }
+.rz-grid td, .rz-grid td span, .rz-grid td div { overflow-wrap: anywhere; word-break: break-word; }
+.rz-grid td .whitespace-nowrap, .rz-grid td.whitespace-nowrap { white-space: normal !important; }
+
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--light-gray); }
