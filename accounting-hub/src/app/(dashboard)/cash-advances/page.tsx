@@ -264,13 +264,25 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
     } finally { setBusy(false) }
   }
   const delLine = async (lid: string) => { if (!confirm('Remove this line? Its journal entry is reversed.')) return; await fetch(`/api/cash-advances/lines?id=${lid}`, { method: 'DELETE' }); await load(); onChanged() }
+  const delAdvance = async () => {
+    if (!confirm('Delete this entire cash advance, including all its liquidation/return lines? Every related journal entry is reversed. This cannot be undone.')) return
+    const r = await fetch(`/api/cash-advances?id=${id}`, { method: 'DELETE' })
+    if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || 'Failed to delete'); return }
+    onChanged(); onClose()
+  }
 
   const isLiq = form.kind === 'LIQUIDATION'
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         {!d ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" /></div> : (<>
-          <div className="flex items-center justify-between mb-1"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{d.refNumber} · {d.accountableName}</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{d.refNumber} · {d.accountableName}</h2>
+            <div className="flex items-center gap-2">
+              <button onClick={delAdvance} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: '#fecaca', color: '#dc2626' }}><Trash2 size={13} /> Delete advance</button>
+              <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+          </div>
           <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>{d.purpose}</p>
           {Array.isArray(d.proofUrls) && d.proofUrls.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 mb-3">

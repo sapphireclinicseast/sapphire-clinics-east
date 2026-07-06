@@ -94,7 +94,8 @@ export async function POST(req: Request) {
   }
 }
 
-// DELETE ?id= — delete an advance with no lines; reverse its release JE.
+// DELETE ?id= — delete the whole advance, including any liquidation/return/
+// reimburse lines, reversing every associated journal entry.
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
@@ -103,11 +104,19 @@ export async function DELETE(req: Request) {
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   try {
-    const lineCount = await prisma.cashAdvanceLine.count({ where: { advanceId: id } })
-    if (lineCount > 0) return NextResponse.json({ error: 'Remove liquidation/return lines first' }, { status: 400 })
+    const adv = await prisma.cashAdvance.findUnique({ where: { id }, include: { lines: { select: { id: true, journalEntryId: true } } } })
+    if (!adv) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     await prisma.$transaction(async (tx) => {
-      await tx.journalEntry.deleteMany({ where: { referenceType: 'CASH_ADVANCE', referenceId: id } })
-      await tx.cashAdvance.delete({ where: { id } })
+      // Reverse the release JE + every line JE (by stored id and by reference).
+      const jeIds = adv.lines.map(l => l.journalEntryId).filter((x): x is string => !!x)
+      if (jeIds.length) await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } })
+      await tx.journalEntry.deleteMany({
+        where: {
+          referenceType: { in: ['CASH_ADVANCE', 'CASH_ADVANCE_LIQ', 'CASH_ADVANCE_RETURN', 'CASH_ADVANCE_REIMBURSE'] },
+          referenceId: { in: [id, ...adv.lines.map(l => l.id)] },
+        },
+      })
+      await tx.cashAdvance.delete({ where: { id } })   // lines cascade via FK
     })
     return NextResponse.json({ success: true })
   } catch (e) {
