@@ -323,6 +323,7 @@ model InventoryItem {
   expenseAccountId     String?
   expenseAccount       Account?  @relation("InventoryExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: SetNull)
   isBundle             Boolean   @default(false)
+  fromPettyCash        Boolean   @default(false)  // bought via petty cash / expense — cash handled by replenishment, so NOT counted as an inventory cash outflow on the BS (avoids double-count)
   issuedOfficialInvoice Boolean  @default(false)
   isActive             Boolean   @default(true)
   createdById          String

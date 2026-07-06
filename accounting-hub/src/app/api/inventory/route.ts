@@ -121,6 +121,7 @@ export async function POST(req: Request) {
         supplierExchangeRate: supplierExchangeRate ? parseFloat(supplierExchangeRate) : null,
         revenueAccountId: revenueAccountId || null,
         sourceAccountId: sourceAccountId || null,
+        fromPettyCash: body.fromPettyCash === true,
         expenseAccountId: expenseAccountId || null,
         issuedOfficialInvoice: body.issuedOfficialInvoice || false,
         dimensionLength: dimensionLength ? parseFloat(dimensionLength) : null,

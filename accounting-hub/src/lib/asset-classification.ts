@@ -46,6 +46,21 @@ export function assetClassFromAccountTitle(accountTitle?: string | null): string
   return ASSET_CLASSIFICATION_CODES.includes(code) ? code : null
 }
 
+// ── Inventory classifications ─────────────────────────────────
+// Petty-cash/expense entries whose account is an Inventory Asset account are
+// inventory purchases → prompt to record in Inventory & Procurement.
+export const INVENTORY_CLASSIFICATION_LABELS: Record<string, string> = {
+  '1050': 'Inventory Asset',
+  '1051': 'Inventory Asset CNY',
+}
+
+/** Returns the inventory account code ("1050") if the account title is an Inventory account, else null. */
+export function inventoryClassFromAccountTitle(accountTitle?: string | null): string | null {
+  if (!accountTitle) return null
+  const code = accountTitle.trim().split(/\s+/)[0]
+  return code in INVENTORY_CLASSIFICATION_LABELS ? code : null
+}
+
 // Map a petty-cash/expense department code to an Asset Management department name.
 export const ENTRY_DEPT_TO_ASSET: Record<string, string> = {
   ADMIN: 'Admin',

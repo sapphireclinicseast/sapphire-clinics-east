@@ -544,6 +544,7 @@ export default function InventoryPage() {
   const [fRevenueAccountSearch, setFRevenueAccountSearch] = useState('')
   const [revenueAccounts, setRevenueAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [fSourceAccountId, setFSourceAccountId] = useState('')
+  const [fFromPettyCash, setFFromPettyCash] = useState(false)  // set when creating from a petty-cash draft — no bank source, excluded from BS cash outflow
   const [fSourceAccountSearch, setFSourceAccountSearch] = useState('')
   const [sourceAccounts, setSourceAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [fExpenseAccountId, setFExpenseAccountId] = useState('')
@@ -959,6 +960,7 @@ export default function InventoryPage() {
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
     setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch(''); setFExpenseAccountId(''); setFExpenseAccountSearch('')
+    setFFromPettyCash(false)
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(false)
     setFDimL(''); setFDimW(''); setFDimH('')
@@ -966,6 +968,22 @@ export default function InventoryPage() {
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
   }
+
+  // Pre-fill from a petty-cash / expense inventory purchase (draft in localStorage).
+  useEffect(() => {
+    let draft: { action?: string; name?: string; unitCost?: number; branch?: string; supplierName?: string } | null = null
+    try { const raw = localStorage.getItem('pcf-inventory-draft'); if (raw) draft = JSON.parse(raw) } catch { /* ignore */ }
+    if (!draft) return
+    try { localStorage.removeItem('pcf-inventory-draft') } catch { /* ignore */ }
+    if (draft.action === 'adjust') { setActiveTab('Adjustments'); return }
+    openItemCreate()
+    if (draft.name) setFName(String(draft.name))
+    if (draft.unitCost != null) setFUnitCost(String(draft.unitCost))
+    if (draft.branch) setFBranch(String(draft.branch))
+    setFSourceAccountId(''); setFSourceAccountSearch('')
+    setFFromPettyCash(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function openItemEdit(item: InventoryItem) {
     setEditingItem(item)
@@ -1128,6 +1146,7 @@ export default function InventoryPage() {
       sourceAccountId: fSourceAccountId || null,
       expenseAccountId: fExpenseAccountId || null,
       issuedOfficialInvoice,
+      fromPettyCash: fFromPettyCash,
     }
     if (editingItem) body.id = editingItem.id
     try {

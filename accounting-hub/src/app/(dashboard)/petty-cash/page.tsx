@@ -6,7 +6,7 @@ import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANC
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
-import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
+import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
@@ -177,6 +177,17 @@ export default function PettyCashPage() {
   const [assetPrompt, setAssetPrompt] = useState<Entry | null>(null)
   const [assetBusy, setAssetBusy] = useState(false)
   const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
+  // "Record in Inventory & Procurement" prompt for inventory-classification entries.
+  const [invPrompt, setInvPrompt] = useState<Entry | null>(null)
+  const goToInventory = (e: Entry, action: 'create' | 'adjust') => {
+    try {
+      localStorage.setItem('pcf-inventory-draft', JSON.stringify({
+        action, name: e.description || '', unitCost: Number(e.grossAmount) || 0,
+        branch: e.branch, supplierName: e.registeredName || '', fromPettyCash: true,
+      }))
+    } catch { /* ignore */ }
+    window.location.href = action === 'adjust' ? '/inventory?tab=Adjustments&fromPcf=1' : '/inventory?fromPcf=1'
+  }
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadEntries = useCallback(async (br: string) => {
@@ -994,6 +1005,13 @@ export default function PettyCashPage() {
                               <Plus size={11} /> Add to Asset Management
                             </button>
                           )}
+                          {canWrite && inventoryClassFromAccountTitle(e.accountTitle) && (
+                            <button onClick={() => setInvPrompt(e)} title="Record this in Inventory & Procurement"
+                              className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                              <Plus size={11} /> Record in Inventory
+                            </button>
+                          )}
                         </td>
                         {branch === 'CEO' && (
                           <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -1328,6 +1346,29 @@ export default function PettyCashPage() {
           </div>
         </div>
       )}
+
+      {invPrompt && (() => {
+        const cls = inventoryClassFromAccountTitle(invPrompt.accountTitle) || ''
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setInvPrompt(null)}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+              <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Record in Inventory &amp; Procurement?</h2>
+              <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
+                This entry is classified as <strong>{cls} — {INVENTORY_CLASSIFICATION_LABELS[cls]}</strong>. It stays in the replenishment total here; recording it in Inventory keeps the item count correct, with no double-count on the Balance Sheet.
+              </p>
+              <div className="rounded-xl px-3 py-2 mb-4 text-sm" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                <div className="font-semibold">{invPrompt.description || '—'}</div>
+                <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>₱{peso(num(invPrompt.grossAmount))} · {BRANCHES.find(b => b.value === invPrompt.branch)?.label || invPrompt.branch}</div>
+              </div>
+              <div className="space-y-2">
+                <button onClick={() => goToInventory(invPrompt, 'create')} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>New item → create in Inventory &amp; Procurement</button>
+                <button onClick={() => goToInventory(invPrompt, 'adjust')} className="w-full py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Replenishment → record a stock Adjustment</button>
+                <button onClick={() => setInvPrompt(null)} className="w-full py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Skip</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

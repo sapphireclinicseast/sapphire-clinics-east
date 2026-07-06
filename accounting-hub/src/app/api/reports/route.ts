@@ -124,7 +124,7 @@ export async function GET(req: Request) {
           isActive: true,
           ...(branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {}),
         },
-        select: { quantity: true, unitCost: true, skuDepartment: true, branch: true, sourceAccountId: true, sourceAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } },
+        select: { quantity: true, unitCost: true, skuDepartment: true, branch: true, fromPettyCash: true, sourceAccountId: true, sourceAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } },
       }),
 
       // Digital wallets — unearned revenue (liability) + AR (HMO/GL)
@@ -965,6 +965,9 @@ export async function GET(req: Request) {
     //    Approximation: current on-hand value (already net of COGS via FIFO).
     const inventoryCashOutflowsByAccount: Record<string, number> = {}
     for (const item of inventoryItems) {
+      // Petty-cash-bought inventory: the bank is credited at replenishment (RFP),
+      // not here — skip so cash isn't double-counted (mirrors fromPettyCash assets).
+      if (item.fromPettyCash) continue
       if (!item.sourceAccount || item.sourceAccount.accountType !== 'ASSET') continue
       if (!isCashAccountKey(item.sourceAccount.accountNumber, item.sourceAccount.accountTitle)) continue
       const key = `${item.sourceAccount.accountNumber} ${item.sourceAccount.accountTitle}`
