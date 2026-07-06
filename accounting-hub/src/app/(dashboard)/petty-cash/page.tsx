@@ -440,7 +440,7 @@ export default function PettyCashPage() {
   }
   // Race-safe append (ScanUpload may deliver several photos in quick succession).
   const gridTableRef = useRef<HTMLTableElement>(null)
-  const gridRz = useResizableColumns('petty-cash-entries-grid', gridTableRef)
+  const gridRz = useResizableColumns(`petty-cash-entries-grid-${branch}`, gridTableRef)
   const entriesRef = useRef(entries)
   useEffect(() => { entriesRef.current = entries }, [entries])
   const appendProof = (id: string, url: string) => {

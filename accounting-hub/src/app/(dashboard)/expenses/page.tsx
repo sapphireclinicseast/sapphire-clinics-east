@@ -242,7 +242,7 @@ export default function ExpensesPage() {
   const [uploadPct, setUploadPct] = useState<Record<string, number>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridTableRef = useRef<HTMLTableElement>(null)
-  const gridRz = useResizableColumns('expenses-entries-grid', gridTableRef)
+  const gridRz = useResizableColumns(`expenses-entries-grid-${tab}`, gridTableRef)
 
   const recordType = TABS.find(t => t.key === tab)?.recordType || ''
   const isRecording = recordType === 'RECURRING' || recordType === 'ONE_TIME'

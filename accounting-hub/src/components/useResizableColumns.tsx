@@ -27,20 +27,29 @@ export function useResizableColumns(storageKey: string, tableRef: RefObject<HTML
   const [widths, setWidths] = useState<Record<number, number>>({})
   const [ready, setReady] = useState(false)
   const [colCount, setColCount] = useState(0)
-  const seeded = useRef(false)
+  // Signature of the layout we last seeded for (storageKey + column count). Re-seed
+  // when it changes — e.g. switching Petty Cash branches adds/removes a column, and
+  // a stale colgroup would leave the extra/last column (the actions) with no width.
+  const seededSig = useRef('')
   // Keep a live mirror of widths so the drag handler can read the current width
   // synchronously (without stale closures) when a resize starts.
   const widthsRef = useRef(widths)
   widthsRef.current = widths
 
   useEffect(() => {
-    if (seeded.current) return
     const t = tableRef.current
     if (!t) return
     const headRow = t.querySelector('thead tr')
     if (!headRow) return
     const cells = Array.from(headRow.children) as HTMLElement[]
     if (cells.length === 0) return
+
+    const sig = `${storageKey}:${cells.length}`
+    if (seededSig.current === sig) return
+
+    // If we're currently in fixed layout, drop back to auto for one render so we
+    // measure the columns' natural content widths (not the stale fixed widths).
+    if (ready) { setReady(false); return }
 
     let stored: Record<number, number> | null = null
     try { const raw = localStorage.getItem(storageKey); if (raw) stored = JSON.parse(raw) } catch { /* ignore */ }
@@ -53,7 +62,7 @@ export function useResizableColumns(storageKey: string, tableRef: RefObject<HTML
     setColCount(cells.length)
     setWidths(w)
     setReady(true)
-    seeded.current = true
+    seededSig.current = sig
   })
 
   useEffect(() => {
