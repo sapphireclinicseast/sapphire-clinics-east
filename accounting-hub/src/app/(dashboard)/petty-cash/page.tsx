@@ -860,7 +860,14 @@ export default function PettyCashPage() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
-                      <tr key={e.id} style={{ background: e.pcfStatus === 'Replenished' ? '#dcfce7' : e.reimbursementId ? '#ffedd5' : e.finalized ? '#fef9c3' : '#fff' }}>
+                      <tr key={e.id} style={{ background:
+                        e.pcfStatus === 'Replenished' ? '#dcfce7'                                              // green — paid/replenished
+                        : (e.reimbursementId || (e.rfpBranchMap && Object.keys(e.rfpBranchMap).length > 0)) ? '#ffedd5'  // orange — in an RFP (incl. CEO branch RFPs)
+                        : e.pcfStatus === 'For Replenishment' ? '#fef3c7'                                       // amber — awaiting replenishment
+                        : e.pcfStatus === 'Cancelled' ? '#f3f4f6'                                               // gray — cancelled
+                        : e.pcfStatus === 'Missing' ? '#fee2e2'                                                 // red — missing
+                        : e.finalized ? '#fef9c3'                                                               // yellow — finalized/ready
+                        : '#fff' }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !isSelectable(e)}
                             onChange={() => toggleOne(e.id)}
