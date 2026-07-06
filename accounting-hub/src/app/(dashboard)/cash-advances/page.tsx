@@ -97,6 +97,12 @@ export default function CashAdvancesPage() {
   useEffect(() => { load() }, [load])
   useEffect(() => { fetch('/api/bank-accounts').then(r => r.ok ? r.json() : []).then(setBanks).catch(() => setBanks([])) }, [])
 
+  const deleteAdvance = async (a: Advance) => {
+    if (!confirm(`Delete cash advance ${a.refNumber}${a.accountableName ? ` (${a.accountableName})` : ''}? All its liquidation/return lines are removed and every related journal entry is reversed. This cannot be undone.`)) return
+    const r = await fetch(`/api/cash-advances?id=${a.id}`, { method: 'DELETE' })
+    if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || 'Failed to delete'); return }
+    await load()
+  }
   const exportRows = (fmt: ExportFormat) => {
     const rs = shown.filter(a => inDateRange(a.dateReleased, dlFrom, dlTo))
     const headers = ['Reference', 'Date', 'Accountable', 'Purpose', 'Released', 'Liquidated', 'Returned', 'Outstanding', 'Status']
@@ -149,7 +155,10 @@ export default function CashAdvancesPage() {
                 <td className="px-3 py-2.5 text-right whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>₱{peso(a.returned)}</td>
                 <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: a.outstanding > 0.005 ? '#b45309' : a.outstanding < -0.005 ? '#dc2626' : '#166534' }}>₱{peso(a.outstanding)}</td>
                 <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={a.status === 'CLOSED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{a.status === 'CLOSED' ? 'Closed' : 'Open'}</span></td>
-                <td className="px-3 py-2.5 text-right"><button onClick={e => { e.stopPropagation(); setDetailId(a.id) }} className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>Manage</button></td>
+                <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                  <button onClick={e => { e.stopPropagation(); setDetailId(a.id) }} className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>Manage</button>
+                  <button onClick={e => { e.stopPropagation(); deleteAdvance(a) }} title="Delete advance" className="ml-2 p-1 rounded hover:bg-red-50 align-middle"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
+                </td>
               </tr>
             ))}
             {!loading && shown.length === 0 && <tr><td colSpan={10} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No cash advances yet.</td></tr>}
