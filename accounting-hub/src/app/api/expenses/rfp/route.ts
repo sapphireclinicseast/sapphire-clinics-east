@@ -23,7 +23,8 @@ export async function GET(req: Request) {
         const netVat = e.vatable === 'VAT' ? gross / 1.12 : gross
         const vat = gross - netVat
         const ewt = e.hasEwt && e.ewtRate ? netVat * (e.ewtRate / 100) : 0
-        return { account: e.accountTitle || '', description: e.description || e.requestor || '', gross, vat, netVat, netEwt: netVat - ewt }
+        // Amount payable = GROSS − EWT (full gross is reimbursed; only EWT withheld, not VAT).
+        return { account: e.accountTitle || '', description: e.description || e.requestor || '', gross, vat, netVat, ewt, netEwt: gross - ewt }
       }) })
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,14 +63,15 @@ export async function GET(req: Request) {
     },
     orderBy: { createdAt: 'desc' },
   })
-  // Amount Payable = (gross − VAT) − EWT for expense RFPs; payroll RFPs use meta.netTotal.
+  // Amount Payable = GROSS − EWT for expense RFPs (VAT is not deducted from the
+  // payee — they paid the full gross; only EWT is withheld). Payroll uses netTotal.
   const withPayable = reports.map(r => {
     const payableTotal = r.module === 'EXPENSE'
       ? r.entries.reduce((sum, e) => {
           const g = Number(e.grossAmount)
           const net = e.vatable === 'VAT' ? g / 1.12 : g
           const ewt = e.hasEwt && e.ewtRate ? net * (e.ewtRate / 100) : 0
-          return sum + (net - ewt)
+          return sum + (g - ewt)
         }, 0)
       : Number(r.grossTotal)
     const { entries, ...rest } = r

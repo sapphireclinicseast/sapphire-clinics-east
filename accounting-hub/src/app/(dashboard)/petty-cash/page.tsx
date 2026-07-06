@@ -466,8 +466,8 @@ export default function PettyCashPage() {
     const grossOf = (e: Entry) => ceoBranch ? (allocOf(e, ceoBranch) || 0) : num(e.grossAmount)
     const netOf = (e: Entry) => { const g = grossOf(e); return e.vatable === 'VAT' ? g / 1.12 : g }
     const vatOf = (e: Entry) => grossOf(e) - netOf(e)
-    const ceoBranchLabel = ceoBranch ? (BRANCHES.find(b => b.value === ceoBranch)?.label || ceoBranch) : null
-    const branchLabel = ceoBranchLabel ? `CEO → ${ceoBranchLabel}` : (BRANCHES.find(b => b.value === br)?.label || br)
+    // CEO petty cash RFP → "CEO Petty Cash" (the allocated branch is in the Ref No.).
+    const branchLabel = br === 'CEO' ? 'CEO Petty Cash' : (BRANCHES.find(b => b.value === br)?.label || br)
     const logo = await fetchDataUrl('/aura-logo.png')
     let tx = 14
     if (logo) { doc.addImage(logo, 'PNG', 14, 9, 18, 18); tx = 36 }
@@ -487,7 +487,11 @@ export default function PettyCashPage() {
         e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.vatable || '',
         peso(grossOf(e)), peso(netOf(e)), peso(vatOf(e)),
       ]),
-      foot: [['', '', '', '', '', '', 'TOTAL', peso(tG), peso(tN), peso(tV)]],
+      foot: [['', '', '', '', '', '', 'TOTAL',
+        { content: peso(tG), styles: { halign: 'right' } },
+        { content: peso(tN), styles: { halign: 'right' } },
+        { content: peso(tV), styles: { halign: 'right' } },
+      ]],
       styles: { fontSize: 7, cellPadding: 1.5 },
       headStyles: { fillColor: [36, 73, 82], textColor: 255 },
       footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },

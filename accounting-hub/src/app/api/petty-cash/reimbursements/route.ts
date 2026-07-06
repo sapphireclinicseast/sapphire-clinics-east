@@ -35,12 +35,15 @@ export async function GET(req: Request) {
     },
     orderBy: { createdAt: 'desc' },
   })
-  // Amount Payable = (gross − VAT) − EWT. For CEO branch RFPs the entries live in
+  // Amount Payable = GROSS − EWT. The person replenishing paid the full gross
+  // (VAT included) to the supplier, so they are reimbursed the full gross; only
+  // EWT is withheld (VAT is reclaimable input tax, not deducted from the payee).
+  // EWT base is the net-of-VAT amount. For CEO branch RFPs the entries live in
   // meta.items (only the branch-allocated portion), not the entries relation.
   const payableOf = (vatable: string | null, gross: number, hasEwt: boolean, ewtRate: number | null) => {
     const net = vatable === 'VAT' ? gross / 1.12 : gross
     const ewt = hasEwt && ewtRate ? net * (ewtRate / 100) : 0
-    return net - ewt
+    return gross - ewt
   }
   const withPayable = reports.map(r => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
