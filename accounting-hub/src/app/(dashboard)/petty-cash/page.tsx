@@ -996,6 +996,7 @@ export default function PettyCashPage() {
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
                             value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
+                            onWheel={ev => ev.currentTarget.blur()}
                             onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
                             onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
                         </td>
@@ -1039,6 +1040,7 @@ export default function PettyCashPage() {
                                     </label>
                                     <input type="number" step="0.01" disabled={lk || !checked} placeholder="0"
                                       value={checked ? String(allocOf(e, b.value) ?? '') : ''}
+                                      onWheel={ev => ev.currentTarget.blur()}
                                       onChange={ev => setAllocAmt(e, b.value, ev.target.value)}
                                       className="w-20 px-1 py-0.5 text-[11px] border rounded text-right" style={{ borderColor: 'var(--light-gray)' }} />
                                   </div>

@@ -1082,6 +1082,7 @@ export default function ExpensesPage() {
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
                             value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
+                            onWheel={ev => ev.currentTarget.blur()}
                             onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
                             onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
                         </td>
