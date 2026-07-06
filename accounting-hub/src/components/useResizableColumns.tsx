@@ -89,7 +89,14 @@ export function useResizableColumns(storageKey: string, tableRef: RefObject<HTML
     document.body.style.userSelect = 'none'
   }, [])
 
-  const tableStyle: React.CSSProperties = ready ? { tableLayout: 'fixed' } : {}
+  // Pin the table width to the exact sum of the column widths. Without this a
+  // fixed table-layout with a larger min-width (or a w-full table) proportionally
+  // redistributes the surplus and IGNORES individual <col> widths, so dragging a
+  // column updates the <col> but never resizes it visually.
+  const total = Object.values(widths).reduce((a, b) => a + b, 0)
+  const tableStyle: React.CSSProperties = ready && total > 0
+    ? { tableLayout: 'fixed', width: total, minWidth: total, maxWidth: 'none' }
+    : {}
   return { widths, ready, colCount, tableStyle, startResize }
 }
 
