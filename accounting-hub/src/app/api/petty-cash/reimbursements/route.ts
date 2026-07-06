@@ -246,11 +246,19 @@ export async function DELETE(req: Request) {
       const entries = await prisma.pettyCashEntry.findMany({ where: { id: { in: entryIds } }, select: { id: true, rfpBranchMap: true } })
       for (const e of entries) {
         const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? { ...e.rfpBranchMap as Record<string, string> } : {}
-        if (map[br] === id) { delete map[br]; await prisma.pettyCashEntry.update({ where: { id: e.id }, data: { rfpBranchMap: map } }) }
+        if (map[br] !== id) continue
+        delete map[br]
+        // Once the entry is no longer in ANY branch RFP, unlock it (un-finalize)
+        // so it's editable again and back to Unliquidated.
+        const stillInRfp = Object.keys(map).length > 0
+        await prisma.pettyCashEntry.update({
+          where: { id: e.id },
+          data: stillInRfp ? { rfpBranchMap: map } : { rfpBranchMap: map, finalized: false, pcfStatus: 'Unliquidated' },
+        })
       }
     } else {
-      // Standard RFP: released entries go back to Petty Cash Entries as "For Replenishment".
-      await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
+      // Standard RFP: released entries go back to being editable (un-finalized).
+      await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment', finalized: false } })
     }
     await prisma.reimbursementReport.delete({ where: { id } })
     return NextResponse.json({ success: true })
