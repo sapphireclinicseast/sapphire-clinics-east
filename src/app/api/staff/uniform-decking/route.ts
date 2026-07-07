@@ -46,26 +46,72 @@ export async function GET(req: NextRequest) {
     })
 
     const DAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
-    const items = staff.map((s) => {
-      const raw = s.deckingConfig?.workDays
-      const workDays = Array.isArray(raw)
-        ? (raw as unknown[])
-            .map((d) => String(d).toUpperCase())
-            .filter((d) => DAY_ORDER.includes(d))
-        : []
-      workDays.sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b))
-      return {
-        id: s.id,
-        firstName: s.firstName,
-        lastName: s.lastName,
-        name: `${s.lastName}, ${s.firstName}`,
-        department: s.department,
-        branch: s.branch,
-        employmentType: s.employmentType || '',
-        workDays,
-        daysPerWeek: workDays.length,
+    const BRANCH_LABEL: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH' }
+
+    // A consultant who works both branches has one Staff row per branch — merge
+    // them into a single person so the name is counted once, and their total
+    // days/week is the UNION of days across branches (this drives entitlement).
+    type Group = {
+      id: string
+      firstName: string
+      lastName: string
+      department: string
+      employmentType: string
+      branches: Set<string>
+      workDays: Set<string>
+    }
+    const groups = new Map<string, Group>()
+    for (const s of staff) {
+      const key = `${s.lastName}|${s.firstName}`.toUpperCase().trim()
+      let g = groups.get(key)
+      if (!g) {
+        g = {
+          id: s.id,
+          firstName: s.firstName,
+          lastName: s.lastName,
+          department: s.department,
+          employmentType: s.employmentType || '',
+          branches: new Set<string>(),
+          workDays: new Set<string>(),
+        }
+        groups.set(key, g)
       }
-    })
+      if (s.branch) g.branches.add(s.branch)
+      if (!g.employmentType && s.employmentType) g.employmentType = s.employmentType
+      const raw = s.deckingConfig?.workDays
+      if (Array.isArray(raw)) {
+        for (const d of raw as unknown[]) {
+          const up = String(d).toUpperCase()
+          if (DAY_ORDER.includes(up)) g.workDays.add(up)
+        }
+      }
+    }
+
+    const items = [...groups.values()]
+      .map((g) => {
+        const workDays = [...g.workDays].sort(
+          (a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b)
+        )
+        const branches = [...g.branches]
+        const branchLabel = branches.map((b) => BRANCH_LABEL[b] || b).join(' & ')
+        return {
+          id: g.id,
+          firstName: g.firstName,
+          lastName: g.lastName,
+          name: `${g.lastName}, ${g.firstName}`,
+          department: g.department,
+          branches,
+          branchLabel,
+          employmentType: g.employmentType,
+          workDays,
+          daysPerWeek: workDays.length,
+        }
+      })
+      .sort(
+        (a, b) =>
+          a.lastName.localeCompare(b.lastName) ||
+          a.firstName.localeCompare(b.firstName)
+      )
 
     return NextResponse.json({ ok: true, staff: items })
   } catch (err) {
