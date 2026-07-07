@@ -545,6 +545,7 @@ export default function InventoryPage() {
   const [revenueAccounts, setRevenueAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [fSourceAccountId, setFSourceAccountId] = useState('')
   const [fFromPettyCash, setFFromPettyCash] = useState(false)  // set when creating from a petty-cash draft — no bank source, excluded from BS cash outflow
+  const [pcfSourceEntryId, setPcfSourceEntryId] = useState<string | null>(null)  // petty-cash/expense entry to stamp "Recorded in Inventory" on save
   const [fSourceAccountSearch, setFSourceAccountSearch] = useState('')
   const [sourceAccounts, setSourceAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [fExpenseAccountId, setFExpenseAccountId] = useState('')
@@ -654,6 +655,15 @@ export default function InventoryPage() {
   const [adjForeignCost, setAdjForeignCost] = useState('')  // Cost per unit in foreign currency
   const [adjForeignCurrency, setAdjForeignCurrency] = useState('CNY')
   const [adjExchangeRate, setAdjExchangeRate] = useState('')
+
+  // ── Capitalize-freight-into-a-lot state (freight forwarder cost paid via petty cash / expense)
+  const [capOpen, setCapOpen] = useState(false)
+  const [capEntryId, setCapEntryId] = useState<string | null>(null)   // source petty-cash/expense entry
+  const [capAmount, setCapAmount] = useState('')                       // freight to capitalize (net of VAT)
+  const [capItemId, setCapItemId] = useState('')                       // item whose batch receives the freight
+  const [capLots, setCapLots] = useState<{ id: string; displayRef: string | null; adjustmentDate: string; quantityChange: number; remainingQuantity: number | null; totalLandedCost: number | null; localCost: number | null }[]>([])
+  const [capAdjId, setCapAdjId] = useState('')                         // chosen INCREASE lot
+  const [capSaving, setCapSaving] = useState(false)
 
   // ── Freight batch adjustment state
   const [fbOpen, setFbOpen] = useState(false)
@@ -927,17 +937,38 @@ export default function InventoryPage() {
   // Pre-fill from a petty-cash / expense inventory purchase (draft in localStorage).
   // MUST stay above the auth-guard early return so hook order is stable.
   useEffect(() => {
-    let draft: { action?: string; name?: string; unitCost?: number; branch?: string; supplierName?: string } | null = null
+    let draft: { action?: string; entryId?: string; name?: string; unitCost?: number; freightAmount?: number; branch?: string; supplierName?: string } | null = null
     try { const raw = localStorage.getItem('pcf-inventory-draft'); if (raw) draft = JSON.parse(raw) } catch { /* ignore */ }
     if (!draft) return
     try { localStorage.removeItem('pcf-inventory-draft') } catch { /* ignore */ }
-    if (draft.action === 'adjust') { setActiveTab('Adjustments'); return }
+    const entryId = draft.entryId || null
+    // Freight forwarder cost → capitalize into an existing stock batch.
+    if (draft.action === 'freight') {
+      setActiveTab('Adjustments')
+      setCapEntryId(entryId)
+      setCapAmount(String(draft.freightAmount ?? draft.unitCost ?? ''))
+      setCapItemId(''); setCapAdjId(''); setCapLots([])
+      setCapOpen(true)
+      return
+    }
+    // Replenishment → pre-fill a stock-in (INCREASE) adjustment; stamp on save.
+    if (draft.action === 'adjust') {
+      setActiveTab('Adjustments')
+      setPcfSourceEntryId(entryId)
+      setAdjType('INCREASE')
+      if (draft.unitCost != null) setAdjLocalCost(String(draft.unitCost))
+      setAdjRemarks(`Replenishment from petty cash${draft.name ? ` — ${draft.name}` : ''}`)
+      setAdjModalOpen(true)
+      return
+    }
+    // New item → create, then record its opening batch as an adjustment.
     openItemCreate()
     if (draft.name) setFName(String(draft.name))
     if (draft.unitCost != null) setFUnitCost(String(draft.unitCost))
     if (draft.branch) setFBranch(String(draft.branch))
     setFSourceAccountId(''); setFSourceAccountSearch('')
     setFFromPettyCash(true)
+    setPcfSourceEntryId(entryId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -977,7 +1008,7 @@ export default function InventoryPage() {
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
     setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch(''); setFExpenseAccountId(''); setFExpenseAccountSearch('')
-    setFFromPettyCash(false)
+    setFFromPettyCash(false); setPcfSourceEntryId(null)
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(false)
     setFDimL(''); setFDimW(''); setFDimH('')
@@ -988,6 +1019,7 @@ export default function InventoryPage() {
 
   function openItemEdit(item: InventoryItem) {
     setEditingItem(item)
+    setPcfSourceEntryId(null)
     setFName(item.name)
     const parts = item.sku.split('-')
     setFSkuDept(parts[0] || ''); setFSkuCat(parts[1] || ''); setFSkuSub(parts[2] || '')
@@ -1130,6 +1162,12 @@ export default function InventoryPage() {
   async function handleItemSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true); setError('')
+    // Petty-cash new-item flow: create the item with 0 stock, then record the
+    // opening batch as an INCREASE adjustment so there's a proper FIFO lot + log
+    // entry (item-create alone creates no lot). skipGl on the adjustment avoids
+    // double-counting against the source petty-cash entry.
+    const isPcfCreate = !editingItem && fFromPettyCash && !!pcfSourceEntryId
+    const openingQty = parseInt(fInitialQty || '0') || 0
     const body: Record<string, unknown> = {
       name: fName, branch: fBranch,
       skuDepartment: fSkuDept || null, skuCategory: fSkuCat || null, skuSubcategory: fSkuSub || null,
@@ -1137,7 +1175,7 @@ export default function InventoryPage() {
       unitCost: fUnitCost || '0',
       sellingPrice: fSellingPrice || null,
       rewardPointsPrice: fRewardPointsPrice || null,
-      quantity: fInitialQty || '0',
+      quantity: isPcfCreate ? '0' : (fInitialQty || '0'),
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
       dimensionLength: fDimL || null,
@@ -1158,7 +1196,25 @@ export default function InventoryPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Something went wrong'); setSaving(false); return }
-      setItemModalOpen(false); fetchItems(); fetchAllItems()
+      if (isPcfCreate) {
+        // Opening batch → INCREASE adjustment (no GL — source entry carries it).
+        if (openingQty > 0 && data?.id) {
+          try {
+            await fetch('/api/inventory/adjustments', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                itemId: data.id, type: 'INCREASE', quantityChange: openingQty,
+                adjustmentDate: new Date().toISOString().split('T')[0],
+                remarks: 'Opening batch from petty cash / expense',
+                localCost: fUnitCost || undefined, skipGl: true,
+              }),
+            })
+          } catch { /* non-fatal */ }
+        }
+        try { await fetch('/api/inventory/record-entry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entryId: pcfSourceEntryId }) }) } catch { /* non-fatal */ }
+        setPcfSourceEntryId(null)
+      }
+      setItemModalOpen(false); fetchItems(); fetchAllItems(); fetchAdjustments()
     } catch { setError('Network error') }
     finally { setSaving(false) }
   }
@@ -1309,6 +1365,9 @@ export default function InventoryPage() {
           itemId: adjItemId, type: adjType,
           quantityChange: parseInt(adjQty) || 0,
           adjustmentDate: adjDate, remarks: adjRemarks,
+          // Replenishment sourced from a petty-cash / expense entry → skip GL so
+          // it doesn't double-count against that entry.
+          ...(pcfSourceEntryId ? { skipGl: true } : {}),
           ...(adjType === 'INCREASE' ? {
             localCost: adjLocalCost || undefined,
             foreignCost: adjForeignCost || undefined,
@@ -1319,9 +1378,48 @@ export default function InventoryPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Something went wrong'); setSaving(false); return }
+      if (pcfSourceEntryId) {
+        try { await fetch('/api/inventory/record-entry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entryId: pcfSourceEntryId }) }) } catch { /* non-fatal */ }
+        setPcfSourceEntryId(null)
+      }
       setAdjModalOpen(false); fetchAdjustments(); fetchItems(); fetchAllItems()
     } catch { setError('Network error') }
     finally { setSaving(false) }
+  }
+
+  // Load an item's INCREASE (stock-in) lots so the user can pick which batch the
+  // freight is capitalized into.
+  async function loadCapLots(itemId: string) {
+    setCapItemId(itemId); setCapAdjId(''); setCapLots([])
+    if (!itemId) return
+    try {
+      const res = await fetch(`/api/inventory/adjustments?itemId=${itemId}&pageSize=100`)
+      if (!res.ok) return
+      const data = await res.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lots = (data.data || []).filter((a: any) => a.type === 'INCREASE')
+      setCapLots(lots)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (lots.length === 1) setCapAdjId((lots[0] as any).id)
+    } catch { /* ignore */ }
+  }
+
+  async function handleCapitalizeSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const amt = parseFloat(capAmount)
+    if (!capAdjId || !(amt > 0)) { setError('Pick a stock batch and a positive freight amount'); return }
+    setCapSaving(true); setError('')
+    try {
+      const res = await fetch('/api/inventory/adjustments/capitalize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adjustmentId: capAdjId, freightAmount: amt, sourceEntryId: capEntryId || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to capitalize freight'); setCapSaving(false); return }
+      setCapOpen(false); setCapEntryId(null); setCapAmount(''); setCapItemId(''); setCapAdjId(''); setCapLots([])
+      fetchAdjustments(); fetchItems(); fetchAllItems()
+    } catch { setError('Network error') }
+    finally { setCapSaving(false) }
   }
 
   function openFbModal() {
@@ -3193,12 +3291,59 @@ setTimeout(()=>window.print(),500);
           )}
 
           {/* New Adjustment Modal */}
+          {capOpen && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Capitalize Freight Forwarder Cost</h3>
+                  <button onClick={() => { setCapOpen(false); setCapEntryId(null) }} className="p-1 hover:bg-gray-100 rounded-lg">
+                    <X size={20} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                </div>
+                <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+                  Adds the freight cost to a specific stock batch&apos;s landed cost — no quantity change — raising that batch&apos;s unit cost. No journal entry is posted (the freight&apos;s petty-cash / expense entry already carries it), so inventory value is not double-counted.
+                </p>
+                {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
+                <form onSubmit={handleCapitalizeSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item</label>
+                    <select value={capItemId} onChange={(e) => loadCapLots(e.target.value)} required
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— Select item —</option>
+                      {allItems.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Stock batch (INCREASE lot)</label>
+                    <select value={capAdjId} onChange={(e) => setCapAdjId(e.target.value)} required disabled={!capItemId}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">{capItemId ? (capLots.length ? '— Select batch —' : 'No stock-in batches for this item') : '— Select item first —'}</option>
+                      {capLots.map((l) => {
+                        const cur = l.totalLandedCost != null ? Number(l.totalLandedCost) : (l.localCost != null ? Number(l.localCost) * l.quantityChange : 0)
+                        return <option key={l.id} value={l.id}>{(l.displayRef || l.id.slice(0, 6))} · {String(l.adjustmentDate).slice(0, 10)} · qty {l.quantityChange} · cost ₱{cur.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</option>
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Freight amount to capitalize (₱, net of VAT)</label>
+                    <input type="number" step="0.01" min="0" value={capAmount} onChange={(e) => setCapAmount(e.target.value)} required
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => { setCapOpen(false); setCapEntryId(null) }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+                    <button type="submit" disabled={capSaving} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ background: 'var(--teal)' }}>{capSaving ? 'Saving…' : 'Capitalize freight'}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
           {adjModalOpen && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>New Adjustment</h3>
-                  <button onClick={() => setAdjModalOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                  <button onClick={() => { setAdjModalOpen(false); setPcfSourceEntryId(null) }} className="p-1 hover:bg-gray-100 rounded-lg">
                     <X size={20} style={{ color: 'var(--mid-gray)' }} />
                   </button>
                 </div>
@@ -3284,7 +3429,7 @@ setTimeout(()=>window.print(),500);
                     </div>
                   )}
                   <div className="flex gap-3 pt-2">
-                    <button type="button" onClick={() => setAdjModalOpen(false)}
+                    <button type="button" onClick={() => { setAdjModalOpen(false); setPcfSourceEntryId(null) }}
                       className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
                       style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
                     <button type="submit" disabled={saving}

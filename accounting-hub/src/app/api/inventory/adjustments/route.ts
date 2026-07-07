@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
   try {
     const { itemId, type, quantityChange, adjustmentDate, remarks,
-            foreignCost, foreignCurrency, localCost, exchangeRate } = await req.json()
+            foreignCost, foreignCurrency, localCost, exchangeRate, skipGl } = await req.json()
 
     if (!itemId || !type || !quantityChange || !remarks?.trim()) {
       return NextResponse.json({ error: 'Item, type, quantity change, and remarks are required' }, { status: 400 })
@@ -135,9 +135,15 @@ export async function POST(req: Request) {
     })
 
     // Tier 3 Step 5: Post the inventory movement to the GL.
+    // skipGl → this adjustment mirrors a petty-cash / one-time-expense entry that
+    // already carries the cash + GL impact (opening batch or replenishment funded
+    // by petty cash). Posting a JE here would double-count inventory on the sheet,
+    // so we deliberately skip it — same rule as assets-from-petty-cash.
     let invPostResult: Awaited<ReturnType<typeof postInventoryAdjustmentJournal>> | null = null
     try {
-      invPostResult = await postInventoryAdjustmentJournal(prisma, adjustment.id, session.user.id)
+      invPostResult = skipGl === true
+        ? { posted: false, reason: 'skipped: sourced from petty cash / expense (no double-count)' }
+        : await postInventoryAdjustmentJournal(prisma, adjustment.id, session.user.id)
       if (invPostResult.posted) {
         console.log(`[GL] Posted inventory ${type} JE ${invPostResult.journalEntryId} for adj ${adjustment.id}`)
       } else if (process.env.ENABLE_GL_POSTING === 'true') {

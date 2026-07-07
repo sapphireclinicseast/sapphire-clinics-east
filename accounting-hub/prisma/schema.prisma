@@ -1731,6 +1731,7 @@ model PettyCashEntry {
   // so the same entry can be reimbursed once per branch without a single FK.
   rfpBranchMap      Json?
   assetAddedAt      DateTime?  // set when this entry was added to Asset Management — persistent, cross-user "Added" state to prevent accidental double-adds
+  inventoryRecordedAt DateTime? // set when this entry was recorded in Inventory & Procurement (new item / stock adjustment / capitalized freight) — persistent, cross-user "Recorded" state
   soaId             String?   // links a one-time entry tagged "Paid by Credit Card" to its CreditCardSOA
   createdById       String?
   createdAt         DateTime @default(now())

@@ -68,6 +68,7 @@ interface Entry {
   proofUrls: string[] | null
   recordType: string | null
   assetAddedAt: string | null
+  inventoryRecordedAt: string | null
   paidAt: string | null
   paymentMethod: string | null
   checkNumber: string | null
@@ -185,14 +186,22 @@ export default function ExpensesPage() {
   const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
   const [assetReAddWarn, setAssetReAddWarn] = useState<Entry | null>(null)
   const [invPrompt, setInvPrompt] = useState<Entry | null>(null)
-  const goToInventory = (e: Entry, action: 'create' | 'adjust') => {
+  const [invReAddWarn, setInvReAddWarn] = useState<Entry | null>(null)   // "already recorded" confirmation
+  const goToInventory = (e: Entry, action: 'create' | 'adjust' | 'freight') => {
     try {
+      // Freight is capitalized net of VAT (VAT is recoverable Input VAT); item
+      // cost / replenishment amounts use the gross paid.
+      const net = e.vatable === 'VAT' ? (Number(e.grossAmount) || 0) / 1.12 : (Number(e.grossAmount) || 0)
       localStorage.setItem('pcf-inventory-draft', JSON.stringify({
-        action, name: e.description || '', unitCost: Number(e.grossAmount) || 0,
+        action, entryId: e.id, name: e.description || '', unitCost: Number(e.grossAmount) || 0,
+        freightAmount: Math.round(net * 100) / 100,
         branch: e.branch, supplierName: e.registeredName || '', fromPettyCash: true,
       }))
     } catch { /* ignore */ }
-    window.location.href = action === 'adjust' ? '/inventory?tab=Adjustments&fromPcf=1' : '/inventory?fromPcf=1'
+    const q = action === 'adjust' ? '/inventory?tab=Adjustments&fromPcf=1'
+      : action === 'freight' ? '/inventory?tab=Adjustments&fromPcf=1&freight=1'
+      : '/inventory?fromPcf=1'
+    window.location.href = q
   }
   const [showSettings, setShowSettings] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -1121,11 +1130,19 @@ export default function ExpensesPage() {
                             )
                           })()}
                           {canWrite && e.recordType === 'ONE_TIME' && inventoryClassFromAccountTitle(e.accountTitle) && (
-                            <button onClick={() => setInvPrompt(e)} title="Record this in Inventory & Procurement"
-                              className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
-                              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                              <Plus size={11} /> Record in Inventory
-                            </button>
+                            e.inventoryRecordedAt ? (
+                              <button onClick={() => setInvReAddWarn(e)} title={`Already recorded in Inventory on ${String(e.inventoryRecordedAt).slice(0, 10)}`}
+                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                                style={{ borderColor: '#16a34a', color: '#16a34a', background: '#f0fdf4' }}>
+                                <CheckCircle2 size={11} /> Recorded in Inventory
+                              </button>
+                            ) : (
+                              <button onClick={() => setInvPrompt(e)} title="Record this in Inventory & Procurement"
+                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                                <Plus size={11} /> Record in Inventory
+                              </button>
+                            )
                           )}
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -1642,6 +1659,21 @@ export default function ExpensesPage() {
         </div>
       )}
 
+      {invReAddWarn && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setInvReAddWarn(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1" style={{ color: '#b45309' }}>Already recorded</h2>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+              This entry was already recorded in Inventory &amp; Procurement on <strong>{String(invReAddWarn.inventoryRecordedAt).slice(0, 10)}</strong>. Recording it again may create a <strong>duplicate</strong> item or stock movement. Are you sure?
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setInvReAddWarn(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+              <button onClick={() => { const e = invReAddWarn; setInvReAddWarn(null); setInvPrompt(e) }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: '#dc2626' }}>Record again</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {invPrompt && (() => {
         const cls = inventoryClassFromAccountTitle(invPrompt.accountTitle) || ''
         return (
@@ -1658,6 +1690,7 @@ export default function ExpensesPage() {
               <div className="space-y-2">
                 <button onClick={() => goToInventory(invPrompt, 'create')} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>New item → create in Inventory &amp; Procurement</button>
                 <button onClick={() => goToInventory(invPrompt, 'adjust')} className="w-full py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Replenishment → record a stock Adjustment</button>
+                <button onClick={() => goToInventory(invPrompt, 'freight')} className="w-full py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Freight Forwarder Cost (Capitalized)</button>
                 <button onClick={() => setInvPrompt(null)} className="w-full py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Skip</button>
               </div>
             </div>
