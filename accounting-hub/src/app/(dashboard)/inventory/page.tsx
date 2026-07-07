@@ -924,6 +924,23 @@ export default function InventoryPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // Pre-fill from a petty-cash / expense inventory purchase (draft in localStorage).
+  // MUST stay above the auth-guard early return so hook order is stable.
+  useEffect(() => {
+    let draft: { action?: string; name?: string; unitCost?: number; branch?: string; supplierName?: string } | null = null
+    try { const raw = localStorage.getItem('pcf-inventory-draft'); if (raw) draft = JSON.parse(raw) } catch { /* ignore */ }
+    if (!draft) return
+    try { localStorage.removeItem('pcf-inventory-draft') } catch { /* ignore */ }
+    if (draft.action === 'adjust') { setActiveTab('Adjustments'); return }
+    openItemCreate()
+    if (draft.name) setFName(String(draft.name))
+    if (draft.unitCost != null) setFUnitCost(String(draft.unitCost))
+    if (draft.branch) setFBranch(String(draft.branch))
+    setFSourceAccountId(''); setFSourceAccountSearch('')
+    setFFromPettyCash(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   /* ── Auth guard ────────────────────────────────────────── */
 
   if (loading && !initialLoaded.current) {
@@ -968,22 +985,6 @@ export default function InventoryPage() {
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
   }
-
-  // Pre-fill from a petty-cash / expense inventory purchase (draft in localStorage).
-  useEffect(() => {
-    let draft: { action?: string; name?: string; unitCost?: number; branch?: string; supplierName?: string } | null = null
-    try { const raw = localStorage.getItem('pcf-inventory-draft'); if (raw) draft = JSON.parse(raw) } catch { /* ignore */ }
-    if (!draft) return
-    try { localStorage.removeItem('pcf-inventory-draft') } catch { /* ignore */ }
-    if (draft.action === 'adjust') { setActiveTab('Adjustments'); return }
-    openItemCreate()
-    if (draft.name) setFName(String(draft.name))
-    if (draft.unitCost != null) setFUnitCost(String(draft.unitCost))
-    if (draft.branch) setFBranch(String(draft.branch))
-    setFSourceAccountId(''); setFSourceAccountSearch('')
-    setFFromPettyCash(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   function openItemEdit(item: InventoryItem) {
     setEditingItem(item)
