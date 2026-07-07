@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>OT &amp; SLP School Scholarship Planner — Sapphire Clinics East, Inc.</title>
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#4a8073; --primary-dark:#244952; --primary-darker:#18353c;
+    --primary-xlight:#edf3d9; --accent:#c69849; --accent-dark:#8a6a2f;
+    --ot:#d63a5b; --slp:#5560d6;
+    --text:#223841; --muted:#5d6f6a; --light:#9aa89f;
+    --border:#dde6d4; --bg:#f7faf1; --bg-alt:#edf3d9; --card:#fff;
+    --radius:16px; --radius-sm:10px; --radius-xs:6px;
+    --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05);
+    --shadow-md:0 4px 10px -2px rgba(0,0,0,.10);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    --head:'DM Sans','Inter',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font);color:var(--text);background:var(--bg);line-height:1.5}
+  h1,h2,h3{font-family:var(--head);margin:0}
+  a{color:var(--primary-dark)}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+
+  /* Header */
+  header{background:linear-gradient(135deg,var(--primary-darker),var(--primary-dark));color:#fff;padding:22px 0}
+  .head-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brand .mark{width:40px;height:40px;flex:0 0 auto;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;padding:5px}
+  .brand .mark img{max-width:100%;max-height:100%;object-fit:contain}
+  .brand .t{min-width:0}
+  .brand h1{font-size:19px;font-weight:800;line-height:1.15}
+  .brand p{margin:2px 0 0;font-size:12.5px;opacity:.75;letter-spacing:.02em}
+  .head-back{color:#fff;text-decoration:none;font-size:13px;font-weight:600;opacity:.9;border:1px solid rgba(255,255,255,.35);padding:8px 14px;border-radius:999px;white-space:nowrap}
+  .head-back:hover{background:rgba(255,255,255,.12)}
+
+  .note{background:var(--accent-light,#f3e7cf);border:1px solid #e6d3ac;color:var(--accent-dark);
+        font-size:13px;border-radius:var(--radius-sm);padding:11px 14px;margin:20px 0 4px;display:flex;gap:9px;align-items:flex-start}
+  .note b{font-weight:700}
+
+  section{margin:26px 0}
+  .sec-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--primary);margin-bottom:12px}
+
+  /* Scenario controls */
+  .scenario{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+  .field{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 15px;box-shadow:var(--shadow)}
+  .field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  .field .in{display:flex;align-items:center;gap:6px}
+  .field .pfx{color:var(--light);font-weight:600;font-size:15px}
+  .field input{width:100%;border:none;background:transparent;font-family:var(--head);font-size:20px;font-weight:700;color:var(--text);padding:0;outline:none;min-width:0}
+  .field .hint{font-size:11px;color:var(--light);margin-top:4px}
+
+  /* KPI cards */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:14px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:15px 16px;box-shadow:var(--shadow)}
+  .kpi .v{font-family:var(--head);font-size:26px;font-weight:800;color:var(--primary-dark);line-height:1.1}
+  .kpi .l{font-size:12px;color:var(--muted);margin-top:5px}
+  .kpi.hl{background:linear-gradient(135deg,var(--primary),var(--primary-dark));border:none}
+  .kpi.hl .v,.kpi.hl .l{color:#fff}
+  .kpi.hl .l{opacity:.85}
+  .budgetbar{height:7px;border-radius:99px;background:rgba(255,255,255,.28);margin-top:9px;overflow:hidden}
+  .budgetbar>span{display:block;height:100%;background:#fff;border-radius:99px;transition:width .3s}
+  .kpi.over{background:linear-gradient(135deg,#b4453f,#8a2f2f)}
+
+  /* Toolbar */
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .btn{font-family:var(--font);font-size:13px;font-weight:600;border-radius:var(--radius-xs);border:1px solid var(--border);
+       background:var(--card);color:var(--text);padding:8px 14px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--primary);color:var(--primary-dark)}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.primary:hover{background:var(--primary-dark);color:#fff}
+  .btn.ghost{background:transparent}
+  .spacer{flex:1 1 auto}
+
+  /* Table */
+  .tablecard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);overflow:hidden}
+  .scrollx{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:920px}
+  thead th{background:var(--primary-xlight);color:var(--primary-dark);font-weight:700;text-align:left;
+           padding:12px 12px;font-size:12px;white-space:nowrap;cursor:pointer;user-select:none;border-bottom:1px solid var(--border)}
+  thead th.num{text-align:right}
+  thead th .arr{color:var(--light);font-size:10px;margin-left:3px}
+  tbody td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#fbfdf6}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  td .comp{font-family:var(--head);font-weight:700;color:var(--primary-dark)}
+  .cell-in{width:100%;border:1px solid transparent;background:transparent;border-radius:var(--radius-xs);
+           padding:6px 8px;font-family:var(--font);font-size:13.5px;color:var(--text)}
+  .cell-in:hover{border-color:var(--border)}
+  .cell-in:focus{outline:none;border-color:var(--primary);background:#fff}
+  .cell-in.num{text-align:right;font-variant-numeric:tabular-nums}
+  .cell-name{font-weight:600;min-width:210px}
+  .cell-loc{min-width:180px;color:var(--muted);font-size:12.5px}
+  .tags{display:flex;gap:5px}
+  .tag{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;cursor:pointer;user-select:none;border:1.5px solid transparent}
+  .tag.ot{color:var(--ot);background:#fdeaef;border-color:#f6c7d3}
+  .tag.slp{color:var(--slp);background:#eaecfb;border-color:#c8ccf2}
+  .tag.off{color:var(--light);background:#f1f3ee;border-color:transparent}
+  .del{border:none;background:transparent;color:var(--light);cursor:pointer;font-size:17px;line-height:1;padding:4px 6px;border-radius:6px}
+  .del:hover{color:#b4453f;background:#fbeceb}
+  tfoot td{padding:11px 12px;background:#fafcf5;font-weight:700;font-family:var(--head);color:var(--primary-dark);border-top:2px solid var(--border)}
+
+  /* Chart */
+  .chartcard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:8px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  footer{color:var(--light);font-size:12px;text-align:center;padding:26px 0 40px}
+  .muted{color:var(--muted)}
+  @media (max-width:600px){
+    .brand h1{font-size:16px}
+    .kpi .v{font-size:22px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap head-row">
+    <div class="brand">
+      <div class="mark"><img src="/BRANDS/AURA ACADEMY.png" alt="" onerror="this.style.display='none'"></div>
+      <div class="t">
+        <h1>OT &amp; SLP School Scholarship Planner</h1>
+        <p>Sapphire Clinics East, Inc. · Scholarship program planning</p>
+      </div>
+    </div>
+    <a class="head-back" href="/">← Back to site</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="note">
+    <span>ℹ️</span>
+    <span><b>Working sandbox.</b> School names, locations and programs are pre-filled from our OT/SLP schools map.
+    The <b>graduates, board passing rate and tuition are editable placeholders</b> — replace them with your researched
+    figures. Everything you enter is saved in <b>this browser only</b> (nothing is uploaded); use Export to back it up or share.</span>
+  </div>
+
+  <!-- SCENARIO -->
+  <section>
+    <div class="sec-title">Scenario</div>
+    <div class="scenario">
+      <div class="field">
+        <label for="s-budget">Annual scholarship budget</label>
+        <div class="in"><span class="pfx">₱</span><input id="s-budget" type="text" inputmode="numeric"></div>
+        <div class="hint">Total you can spend per year</div>
+      </div>
+      <div class="field">
+        <label for="s-allow">Allowance per scholar / yr</label>
+        <div class="in"><span class="pfx">₱</span><input id="s-allow" type="text" inputmode="numeric"></div>
+        <div class="hint">Stipend/books on top of tuition</div>
+      </div>
+      <div class="field">
+        <label for="s-accept">Offer acceptance rate</label>
+        <div class="in"><input id="s-accept" type="text" inputmode="numeric"><span class="pfx">%</span></div>
+        <div class="hint">Share of offers that enroll</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KPIs -->
+  <section>
+    <div class="sec-title">At a glance</div>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <!-- TABLE -->
+  <section>
+    <div class="sec-title">Schools &amp; statistics</div>
+    <div class="toolbar">
+      <button class="btn primary" id="add">＋ Add school</button>
+      <button class="btn ghost" id="offers">Offers needed: <b id="offers-v" style="margin-left:4px">—</b></button>
+      <div class="spacer"></div>
+      <button class="btn" id="exp-json">Export JSON</button>
+      <button class="btn" id="exp-csv">Export CSV</button>
+      <button class="btn" id="imp">Import</button>
+      <button class="btn" id="print">Print</button>
+      <button class="btn ghost" id="reset">Reset</button>
+      <input type="file" id="file" accept="application/json" hidden>
+    </div>
+    <div class="tablecard">
+      <div class="scrollx">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="name">School <span class="arr"></span></th>
+              <th data-sort="loc">Location <span class="arr"></span></th>
+              <th>Programs</th>
+              <th class="num" data-sort="grads">Graduates/yr <span class="arr"></span></th>
+              <th class="num" data-sort="rate">Board passing % <span class="arr"></span></th>
+              <th class="num" data-sort="passers">Est. passers/yr <span class="arr"></span></th>
+              <th class="num" data-sort="tuition">Tuition/yr <span class="arr"></span></th>
+              <th class="num" data-sort="slots">Scholars <span class="arr"></span></th>
+              <th class="num" data-sort="cost">Cost/yr <span class="arr"></span></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+          <tfoot id="foot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHART -->
+  <section>
+    <div class="sec-title">Estimated annual licensed graduates (talent pool)</div>
+    <div class="chartcard">
+      <div class="legend">
+        <span><i style="background:var(--primary)"></i>Est. board passers / yr (graduates × passing rate)</span>
+        <span><i style="background:var(--accent)"></i>Your scholars who pass / yr</span>
+      </div>
+      <div class="scrollx"><div id="chart"></div></div>
+    </div>
+  </section>
+
+  <footer>
+    Internal planning tool · figures are estimates you control · Sapphire Clinics East, Inc.
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var KEY='scei_ot_slp_scholarship_v2';
+
+  // Real identity data from the OT/SLP schools map; numeric stats are editable placeholders.
+  var SEED={
+    scenario:{budget:3000000, allowance:20000, accept:70},
+    schools:[
+      {name:"University of the Philippines Manila", loc:"UP-PGH Compound, Pedro Gil St., Malate, Manila", ot:true, slp:true, grads:40, rate:85, tuition:35000, slots:0},
+      {name:"University of Santo Tomas", loc:"España Blvd., Sampaloc, Manila", ot:true, slp:true, grads:60, rate:80, tuition:110000, slots:0},
+      {name:"Emilio Aguinaldo College - Manila", loc:"1113-1117 San Marcelino St., Paco, Manila", ot:true, slp:false, grads:45, rate:70, tuition:90000, slots:0},
+      {name:"Philippine Rehabilitation Institute Foundation, Inc.", loc:"56 Banawe Street, Quezon City", ot:true, slp:false, grads:30, rate:72, tuition:85000, slots:0},
+      {name:"University of Perpetual Help System - College of Manila", loc:"1240 V. Concepcion St., Sampaloc, Manila", ot:true, slp:false, grads:40, rate:68, tuition:80000, slots:0},
+      {name:"University of Perpetual Help System DALTA - Las Piñas", loc:"Alabang-Zapote Avenue, Pamplona 3, Las Piñas City", ot:true, slp:false, grads:50, rate:68, tuition:82000, slots:0},
+      {name:"University of Perpetual Help System DALTA - Calamba", loc:"Brgy. Paciano Rizal, Calamba City, Laguna", ot:true, slp:false, grads:35, rate:65, tuition:78000, slots:0},
+      {name:"University of Perpetual Help - Dr. Jose G. Tamayo Medical University", loc:"Old National Highway, Sto. Niño, Biñan, Laguna", ot:true, slp:false, grads:30, rate:65, tuition:80000, slots:0}
+    ]
+  };
+
+  var state, sortKey='passers', sortDir=-1;
+
+  function load(){
+    try{var r=JSON.parse(localStorage.getItem(KEY)); if(r&&r.schools&&r.scenario) return r;}catch(e){}
+    return clone(SEED);
+  }
+  function clone(o){return JSON.parse(JSON.stringify(o));}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+
+  // number helpers
+  function n(v){v=parseFloat(String(v).replace(/[^0-9.\-]/g,''));return isFinite(v)?v:0;}
+  function peso(v){return '₱'+Math.round(v).toLocaleString('en-US');}
+  function num(v){return Math.round(v).toLocaleString('en-US');}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+  // per-school computed
+  function passers(s){return n(s.grads)*n(s.rate)/100;}
+  function costPer(s){return n(s.tuition)+n(state.scenario.allowance);}
+  function cost(s){return n(s.slots)*costPer(s);}
+  function scholarPassers(s){return n(s.slots)*n(s.rate)/100;}
+
+  function totals(){
+    var t={grads:0,passers:0,slots:0,cost:0,schoParse:0,wRate:0};
+    state.schools.forEach(function(s){
+      t.grads+=n(s.grads); t.passers+=passers(s); t.slots+=n(s.slots);
+      t.cost+=cost(s); t.schoParse+=scholarPassers(s); t.wRate+=n(s.grads)*n(s.rate);
+    });
+    t.avgRate=t.grads?t.wRate/t.grads:0;
+    return t;
+  }
+
+  /* ---------- render ---------- */
+  function render(){
+    var t=totals();
+
+    // KPIs
+    var budget=n(state.scenario.budget);
+    var pct=budget?Math.min(100,t.cost/budget*100):0;
+    var over=budget && t.cost>budget;
+    var kpis=[
+      {v:num(state.schools.length),l:'Schools tracked'},
+      {v:num(t.grads),l:'Graduates / yr (all schools)'},
+      {v:t.avgRate.toFixed(0)+'%',l:'Wtd. avg board passing'},
+      {v:num(t.passers),l:'Est. licensed / yr (market)'},
+      {v:num(t.slots),l:'Planned scholars'},
+      {v:num(t.schoParse),l:'Est. scholars licensed / yr'},
+      {hl:true,over:over,budget:true,pct:pct,v:peso(t.cost),l:(over?'Over budget by '+peso(t.cost-budget):'Program cost / yr · '+pct.toFixed(0)+'% of budget')}
+    ];
+    document.getElementById('kpis').innerHTML=kpis.map(function(k){
+      var cls='kpi'+(k.hl?' hl':'')+(k.over?' over':'');
+      var bar=k.budget?'<div class="budgetbar"><span style="width:'+Math.min(100,k.pct)+'%"></span></div>':'';
+      return '<div class="'+cls+'"><div class="v">'+k.v+'</div><div class="l">'+k.l+'</div>'+bar+'</div>';
+    }).join('');
+
+    // offers needed
+    var acc=n(state.scenario.accept);
+    document.getElementById('offers-v').textContent = acc? num(Math.ceil(t.slots/(acc/100))) : '—';
+
+    // rows (sorted)
+    var arr=state.schools.map(function(s,i){return{s:s,i:i};});
+    arr.sort(function(a,b){
+      var va=sortVal(a.s),vb=sortVal(b.s);
+      if(va<vb)return -1*sortDir; if(va>vb)return 1*sortDir; return 0;
+    });
+    document.getElementById('rows').innerHTML=arr.map(function(o){return row(o.s,o.i);}).join('');
+
+    // footer totals
+    document.getElementById('foot').innerHTML=
+      '<td colspan="3">Totals · '+state.schools.length+' schools</td>'+
+      '<td class="num">'+num(t.grads)+'</td>'+
+      '<td class="num">'+t.avgRate.toFixed(0)+'%</td>'+
+      '<td class="num">'+num(t.passers)+'</td>'+
+      '<td class="num"></td>'+
+      '<td class="num">'+num(t.slots)+'</td>'+
+      '<td class="num">'+peso(t.cost)+'</td><td></td>';
+
+    // sort arrows
+    document.querySelectorAll('thead th[data-sort]').forEach(function(th){
+      var a=th.querySelector('.arr');
+      a.textContent = th.dataset.sort===sortKey ? (sortDir>0?'▲':'▼') : '';
+    });
+
+    chart(arr.map(function(o){return o.s;}));
+  }
+
+  function sortVal(s){
+    switch(sortKey){
+      case 'name': return s.name.toLowerCase();
+      case 'loc': return s.loc.toLowerCase();
+      case 'grads': return n(s.grads);
+      case 'rate': return n(s.rate);
+      case 'passers': return passers(s);
+      case 'tuition': return n(s.tuition);
+      case 'slots': return n(s.slots);
+      case 'cost': return cost(s);
+      default: return 0;
+    }
+  }
+
+  function row(s,i){
+    return '<tr data-i="'+i+'">'+
+      '<td><input class="cell-in cell-name" data-f="name" value="'+esc(s.name)+'"></td>'+
+      '<td><input class="cell-in cell-loc" data-f="loc" value="'+esc(s.loc)+'"></td>'+
+      '<td><div class="tags">'+
+        '<span class="tag '+(s.ot?'ot':'off')+'" data-t="ot">OT</span>'+
+        '<span class="tag '+(s.slp?'slp':'off')+'" data-t="slp">SLP</span>'+
+      '</div></td>'+
+      '<td class="num"><input class="cell-in num" data-f="grads" inputmode="numeric" value="'+num(s.grads)+'"></td>'+
+      '<td class="num"><input class="cell-in num" data-f="rate" inputmode="numeric" value="'+n(s.rate)+'"></td>'+
+      '<td class="num"><span class="comp">'+num(passers(s))+'</span></td>'+
+      '<td class="num"><input class="cell-in num" data-f="tuition" inputmode="numeric" value="'+num(s.tuition)+'"></td>'+
+      '<td class="num"><input class="cell-in num" data-f="slots" inputmode="numeric" value="'+num(s.slots)+'"></td>'+
+      '<td class="num"><span class="comp">'+peso(cost(s))+'</span></td>'+
+      '<td><button class="del" title="Remove">✕</button></td>'+
+    '</tr>';
+  }
+
+  function chart(schools){
+    var w=Math.max(schools.length*84,640), h=240, pad=34, bw=38, gap=46;
+    var max=1; schools.forEach(function(s){max=Math.max(max,passers(s));});
+    var x=function(i){return pad+i*(gap+bw*2)+10;};
+    var y=function(v){return (h-pad)-(v/max)*(h-pad*2);};
+    var svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" font-family="Inter,sans-serif">';
+    // baseline
+    svg+='<line x1="0" y1="'+(h-pad)+'" x2="'+w+'" y2="'+(h-pad)+'" stroke="#dde6d4"/>';
+    schools.forEach(function(s,i){
+      var xp=x(i), p=passers(s), sp=scholarPassers(s);
+      svg+='<rect x="'+xp+'" y="'+y(p)+'" width="'+bw+'" height="'+((h-pad)-y(p))+'" rx="4" fill="#4a8073"><title>'+esc(s.name)+' — est. passers: '+num(p)+'/yr</title></rect>';
+      svg+='<rect x="'+(xp+bw+6)+'" y="'+y(sp)+'" width="'+bw+'" height="'+((h-pad)-y(sp))+'" rx="4" fill="#c69849"><title>'+esc(s.name)+' — scholars passing: '+num(sp)+'/yr</title></rect>';
+      svg+='<text x="'+(xp+bw+3)+'" y="'+(y(p)-6)+'" text-anchor="middle" font-size="11" font-weight="700" fill="#244952">'+num(p)+'</text>';
+      var short=abbrev(s.name);
+      svg+='<text x="'+(xp+bw+3)+'" y="'+(h-pad+15)+'" text-anchor="middle" font-size="10.5" fill="#5d6f6a">'+esc(short)+'</text>';
+    });
+    svg+='</svg>';
+    document.getElementById('chart').innerHTML=svg;
+  }
+  function abbrev(name){
+    var map={'University of the Philippines Manila':'UP Manila','University of Santo Tomas':'UST',
+      'Emilio Aguinaldo College - Manila':'EAC Manila','Philippine Rehabilitation Institute Foundation, Inc.':'PRIF',
+      'University of Perpetual Help System - College of Manila':'UPHS Manila',
+      'University of Perpetual Help System DALTA - Las Piñas':'UPHSD Las Piñas',
+      'University of Perpetual Help System DALTA - Calamba':'UPHSD Calamba',
+      'University of Perpetual Help - Dr. Jose G. Tamayo Medical University':'UPH-JGT'};
+    if(map[name])return map[name];
+    return name.length>16?name.slice(0,15)+'…':name;
+  }
+
+  /* ---------- events ---------- */
+  document.getElementById('rows').addEventListener('input',function(e){
+    var tr=e.target.closest('tr'); if(!tr)return;
+    var i=+tr.dataset.i, f=e.target.dataset.f; if(f==null)return;
+    var s=state.schools[i];
+    if(f==='name'||f==='loc'){ s[f]=e.target.value; }
+    else { s[f]=n(e.target.value); }
+    save();
+    if(f!=='name'&&f!=='loc'){ // update computed cells + KPIs without stealing focus
+      updateComputed();
+    }
+  });
+  document.getElementById('rows').addEventListener('click',function(e){
+    var tr=e.target.closest('tr'); if(!tr)return; var i=+tr.dataset.i;
+    if(e.target.classList.contains('tag')){
+      var s=state.schools[i], t=e.target.dataset.t; s[t]=!s[t]; save(); render();
+    }
+    if(e.target.classList.contains('del')){
+      if(confirm('Remove "'+state.schools[i].name+'"?')){ state.schools.splice(i,1); save(); render(); }
+    }
+  });
+
+  function updateComputed(){
+    // refresh computed cells, footer, kpis, chart — but leave inputs (and focus) intact
+    var t=totals();
+    document.querySelectorAll('#rows tr').forEach(function(tr){
+      var s=state.schools[+tr.dataset.i];
+      var comps=tr.querySelectorAll('.comp');
+      if(comps[0]) comps[0].textContent=num(passers(s));
+      if(comps[1]) comps[1].textContent=peso(cost(s));
+    });
+    // KPIs + footer + chart + offers rebuild fully (no focus there)
+    renderKpisFootChart(t);
+  }
+  function renderKpisFootChart(t){
+    // reuse render pieces that don't hold focus
+    var budget=n(state.scenario.budget);
+    var pct=budget?Math.min(100,t.cost/budget*100):0, over=budget&&t.cost>budget;
+    var kpis=[
+      {v:num(state.schools.length),l:'Schools tracked'},
+      {v:num(t.grads),l:'Graduates / yr (all schools)'},
+      {v:t.avgRate.toFixed(0)+'%',l:'Wtd. avg board passing'},
+      {v:num(t.passers),l:'Est. licensed / yr (market)'},
+      {v:num(t.slots),l:'Planned scholars'},
+      {v:num(t.schoParse),l:'Est. scholars licensed / yr'},
+      {hl:true,over:over,budget:true,pct:pct,v:peso(t.cost),l:(over?'Over budget by '+peso(t.cost-budget):'Program cost / yr · '+pct.toFixed(0)+'% of budget')}
+    ];
+    document.getElementById('kpis').innerHTML=kpis.map(function(k){
+      var cls='kpi'+(k.hl?' hl':'')+(k.over?' over':'');
+      var bar=k.budget?'<div class="budgetbar"><span style="width:'+Math.min(100,k.pct)+'%"></span></div>':'';
+      return '<div class="'+cls+'"><div class="v">'+k.v+'</div><div class="l">'+k.l+'</div>'+bar+'</div>';
+    }).join('');
+    var acc=n(state.scenario.accept);
+    document.getElementById('offers-v').textContent=acc?num(Math.ceil(t.slots/(acc/100))):'—';
+    document.getElementById('foot').innerHTML=
+      '<td colspan="3">Totals · '+state.schools.length+' schools</td>'+
+      '<td class="num">'+num(t.grads)+'</td><td class="num">'+t.avgRate.toFixed(0)+'%</td>'+
+      '<td class="num">'+num(t.passers)+'</td><td class="num"></td>'+
+      '<td class="num">'+num(t.slots)+'</td><td class="num">'+peso(t.cost)+'</td><td></td>';
+    // chart in current sort order
+    var arr=state.schools.slice();
+    document.querySelectorAll('#rows tr').forEach(function(tr,idx){});
+    chart(currentOrder());
+  }
+  function currentOrder(){
+    var order=[];
+    document.querySelectorAll('#rows tr').forEach(function(tr){order.push(state.schools[+tr.dataset.i]);});
+    return order.length?order:state.schools;
+  }
+
+  // scenario inputs
+  function bindScenario(){
+    var b=document.getElementById('s-budget'),a=document.getElementById('s-allow'),c=document.getElementById('s-accept');
+    b.value=num(state.scenario.budget); a.value=num(state.scenario.allowance); c.value=n(state.scenario.accept);
+    [ [b,'budget'],[a,'allowance'],[c,'accept'] ].forEach(function(p){
+      p[0].addEventListener('input',function(){state.scenario[p[1]]=n(p[0].value);save();updateComputed();});
+      p[0].addEventListener('blur',function(){ if(p[1]!=='accept')p[0].value=num(state.scenario[p[1]]); });
+    });
+  }
+
+  // sorting
+  document.querySelectorAll('thead th[data-sort]').forEach(function(th){
+    th.addEventListener('click',function(){
+      var k=th.dataset.sort;
+      if(sortKey===k){sortDir*=-1;}else{sortKey=k;sortDir=(k==='name'||k==='loc')?1:-1;}
+      render();
+    });
+  });
+
+  // toolbar
+  document.getElementById('add').onclick=function(){
+    state.schools.push({name:"New school",loc:"",ot:true,slp:false,grads:0,rate:0,tuition:0,slots:0});
+    save();render();
+    var rows=document.querySelectorAll('#rows tr'); var last=rows[rows.length-1];
+    if(last){last.querySelector('.cell-name').focus();last.querySelector('.cell-name').select();}
+  };
+  document.getElementById('reset').onclick=function(){
+    if(confirm('Reset everything back to the sample data? Your current entries will be lost.')){
+      state=clone(SEED);save();bindScenario();render();
+    }
+  };
+  document.getElementById('exp-json').onclick=function(){
+    dl('ot-slp-scholarship-plan.json','application/json',JSON.stringify(state,null,2));
+  };
+  document.getElementById('exp-csv').onclick=function(){
+    var head=['School','Location','OT','SLP','Graduates/yr','Board passing %','Est passers/yr','Tuition/yr','Scholars','Cost/yr'];
+    var lines=[head.join(',')];
+    state.schools.forEach(function(s){
+      lines.push([q(s.name),q(s.loc),s.ot?'Y':'',s.slp?'Y':'',n(s.grads),n(s.rate),Math.round(passers(s)),n(s.tuition),n(s.slots),Math.round(cost(s))].join(','));
+    });
+    dl('ot-slp-scholarship-plan.csv','text/csv',lines.join('\n'));
+  };
+  function q(v){v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+  document.getElementById('imp').onclick=function(){document.getElementById('file').click();};
+  document.getElementById('file').onchange=function(e){
+    var f=e.target.files[0]; if(!f)return; var r=new FileReader();
+    r.onload=function(){try{var d=JSON.parse(r.result);
+      if(d&&d.schools&&d.scenario){state=d;save();bindScenario();render();alert('Imported '+d.schools.length+' schools.');}
+      else alert('That file doesn\'t look like a saved plan.');
+    }catch(err){alert('Could not read that file.');}};
+    r.readAsText(f); e.target.value='';
+  };
+  document.getElementById('print').onclick=function(){window.print();};
+  function dl(name,type,data){
+    var b=new Blob([data],{type:type}),u=URL.createObjectURL(b),a=document.createElement('a');
+    a.href=u;a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(u);},1500);
+  }
+
+  // boot
+  state=load();
+  bindScenario();
+  render();
+})();
+</script>
+</body>
+</html>
