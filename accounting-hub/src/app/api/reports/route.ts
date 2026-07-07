@@ -689,6 +689,39 @@ export async function GET(req: Request) {
       })
     }
 
+    // Equity is CUMULATIVE (a Balance-Sheet account), so it must reflect
+    // inception-to-date movements — not just the current year. Share capital
+    // issued in a prior year (e.g. via the Equity module) is still equity today,
+    // but the year-scoped journalLines above would drop it. Recompute EQUITY
+    // balances from ALL journal entries up to the report year-end and replace the
+    // year-scoped equity balances with them. (Equity is company-wide, so it is not
+    // branch-filtered.)
+    const equityLinesAllTime = await prisma.journalEntryLine.findMany({
+      where: { account: { accountType: 'EQUITY' }, journalEntry: { entryDate: { lt: endDate } } },
+      select: {
+        debit: true, credit: true,
+        account: { select: { accountNumber: true, accountTitle: true, accountType: true } },
+        journalEntry: { select: { entryDate: true, description: true, referenceType: true } },
+      },
+    })
+    for (const key of Object.keys(journalBalances)) {
+      if (journalBalances[key].accountType === 'EQUITY') delete journalBalances[key]
+    }
+    for (const line of equityLinesAllTime) {
+      if (!line.account) continue
+      const key = `${line.account.accountNumber} ${line.account.accountTitle}`
+      if (!journalBalances[key]) {
+        journalBalances[key] = { accountNumber: line.account.accountNumber, accountTitle: line.account.accountTitle, accountType: 'EQUITY', balance: 0, entries: [] }
+      }
+      journalBalances[key].balance += (Number(line.credit) || 0) - (Number(line.debit) || 0)
+      journalBalances[key].entries.push({
+        date: line.journalEntry.entryDate.toISOString().split('T')[0],
+        description: line.journalEntry.description,
+        referenceType: line.journalEntry.referenceType || '',
+        amount: (Number(line.credit) || 0) > 0 ? Number(line.credit) : -Number(line.debit),
+      })
+    }
+
     /* ── Feed journal-entry REVENUE into monthly revenueByAccount ── */
     // This ensures accounts like 7220 Other Comprehensive Income appear in the Income Statement
     const journalRevenueKeys = new Set<string>()
