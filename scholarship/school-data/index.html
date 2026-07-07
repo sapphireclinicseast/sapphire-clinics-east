@@ -157,9 +157,8 @@
   <!-- OT / SLP TABS -->
   <div style="margin:22px 0 2px;">
     <div class="tabs" id="tabs">
-      <button data-f="all" class="active">All schools <span class="c" id="c-all"></span></button>
-      <button data-f="ot">OT <span class="c" id="c-ot"></span></button>
-      <button data-f="slp">SLP <span class="c" id="c-slp"></span></button>
+      <button data-f="ot" class="active">Occupational Therapy <span class="c" id="c-ot"></span></button>
+      <button data-f="slp">Speech-Language Pathology <span class="c" id="c-slp"></span></button>
     </div>
   </div>
 
@@ -268,7 +267,7 @@
     ]
   };
 
-  var state, sortKey='passers', sortDir=-1, filter='all';
+  var state, sortKey='passers', sortDir=-1, filter='ot';
 
   function load(){
     try{var r=JSON.parse(localStorage.getItem(KEY)); if(r&&r.schools&&r.scenario) return r;}catch(e){}
@@ -327,7 +326,7 @@
     var over=budget && t.cost>budget;
     var kpis=[
       {v:num(t.count),l:'Schools tracked'},
-      {v:num(t.grads),l:'Graduates / yr (all schools)'},
+      {v:num(t.grads),l:'Graduates / yr (this program)'},
       {v:t.avgRate.toFixed(0)+'%',l:'Wtd. avg board passing'},
       {v:num(t.passers),l:'Est. licensed / yr (market)'},
       {v:num(t.slots),l:'Planned scholars'},
@@ -345,7 +344,6 @@
     document.getElementById('offers-v').textContent = acc? num(Math.ceil(t.slots/(acc/100))) : '—';
 
     // tab counts
-    document.getElementById('c-all').textContent=state.schools.length;
     document.getElementById('c-ot').textContent=state.schools.filter(function(s){return s.ot;}).length;
     document.getElementById('c-slp').textContent=state.schools.filter(function(s){return s.slp;}).length;
 
@@ -478,7 +476,7 @@
     var pct=budget?Math.min(100,t.cost/budget*100):0, over=budget&&t.cost>budget;
     var kpis=[
       {v:num(t.count),l:'Schools tracked'},
-      {v:num(t.grads),l:'Graduates / yr (all schools)'},
+      {v:num(t.grads),l:'Graduates / yr (this program)'},
       {v:t.avgRate.toFixed(0)+'%',l:'Wtd. avg board passing'},
       {v:num(t.passers),l:'Est. licensed / yr (market)'},
       {v:num(t.slots),l:'Planned scholars'},
