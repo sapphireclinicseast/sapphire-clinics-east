@@ -156,6 +156,25 @@ jobs:
                echo "✅ SSL cert already exists for staff."
              fi'
 
+      # ── 6c. Provision SSL for scholarship subdomain (if needed) ─
+      - name: Setup scholarship SSL
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'if [ ! -d /etc/letsencrypt/live/scholarship.sapphireclinicseast.org ]; then
+               echo "→ Provisioning SSL for scholarship.sapphireclinicseast.org..."
+               certbot certonly --standalone --preferred-challenges http \
+                 -d scholarship.sapphireclinicseast.org \
+                 --non-interactive --agree-tos \
+                 -m admin@sapphireclinicseast.org \
+                 --pre-hook "systemctl stop nginx" \
+                 --post-hook "systemctl start nginx" \
+                 && echo "✅ SSL cert obtained." \
+                 || echo "⚠ SSL cert failed — will retry next deploy."
+             else
+               echo "✅ SSL cert already exists for scholarship."
+             fi'
+
       # ── 6. Update Nginx config & reload ─────────────────────────
       - name: Update Nginx config
         run: |
