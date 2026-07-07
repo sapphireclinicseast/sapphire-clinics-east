@@ -101,7 +101,12 @@ export async function POST(req: Request) {
       created.push({ ...asset, totalAmount: Number(asset.totalAmount) })
     }
 
-    return NextResponse.json({ created })
+    // Stamp the source entry so the "Added to Asset Management" state persists for
+    // all users (server-side, survives refresh / sign-out / cache clear).
+    const assetAddedAt = new Date()
+    await prisma.pettyCashEntry.update({ where: { id: e.id }, data: { assetAddedAt } })
+
+    return NextResponse.json({ created, assetAddedAt })
   } catch (err) {
     console.error('Asset from-entry error:', err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to create asset' }, { status: 500 })

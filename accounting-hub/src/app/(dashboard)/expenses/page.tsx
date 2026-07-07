@@ -6,7 +6,7 @@ import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
-import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
+import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciatingClassification, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
@@ -67,6 +67,7 @@ interface Entry {
   proofUrl: string | null
   proofUrls: string[] | null
   recordType: string | null
+  assetAddedAt: string | null
   paidAt: string | null
   paymentMethod: string | null
   checkNumber: string | null
@@ -182,6 +183,7 @@ export default function ExpensesPage() {
   const [assetPrompt, setAssetPrompt] = useState<Entry | null>(null)
   const [assetBusy, setAssetBusy] = useState(false)
   const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
+  const [assetReAddWarn, setAssetReAddWarn] = useState<Entry | null>(null)
   const [invPrompt, setInvPrompt] = useState<Entry | null>(null)
   const goToInventory = (e: Entry, action: 'create' | 'adjust') => {
     try {
@@ -688,6 +690,7 @@ export default function ExpensesPage() {
       })
       const d = await r.json()
       if (!r.ok) { alert(d.error || 'Failed to add asset'); setAssetBusy(false); return }
+      patchLocal(assetPrompt.id, { assetAddedAt: d.assetAddedAt || new Date().toISOString() })
       setAssetResult({ count: (d.created || []).length })
       setAssetPrompt(null)
     } catch { alert('Failed to add asset') }
@@ -1099,13 +1102,24 @@ export default function ExpensesPage() {
                             {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
                             {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
                           </select>
-                          {canWrite && e.recordType === 'ONE_TIME' && assetClassFromAccountTitle(e.accountTitle) && (
-                            <button onClick={() => setAssetPrompt(e)} title="Add this asset to Asset Management"
-                              className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
-                              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                              <Plus size={11} /> Add to Asset Management
-                            </button>
-                          )}
+                          {/* Only tangible (depreciating PPE) one-time entries — not intangibles. */}
+                          {(() => {
+                            const ac = assetClassFromAccountTitle(e.accountTitle)
+                            if (!canWrite || e.recordType !== 'ONE_TIME' || !ac || !isDepreciatingClassification(ac)) return null
+                            return e.assetAddedAt ? (
+                              <button onClick={() => setAssetReAddWarn(e)} title={`Already added to Asset Management on ${String(e.assetAddedAt).slice(0, 10)}`}
+                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                                style={{ borderColor: '#16a34a', color: '#16a34a', background: '#f0fdf4' }}>
+                                <CheckCircle2 size={11} /> Added to Asset Management
+                              </button>
+                            ) : (
+                              <button onClick={() => setAssetPrompt(e)} title="Add this asset to Asset Management"
+                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                                <Plus size={11} /> Add to Asset Management
+                              </button>
+                            )
+                          })()}
                           {canWrite && e.recordType === 'ONE_TIME' && inventoryClassFromAccountTitle(e.accountTitle) && (
                             <button onClick={() => setInvPrompt(e)} title="Record this in Inventory & Procurement"
                               className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
@@ -1608,6 +1622,21 @@ export default function ExpensesPage() {
             <div className="flex gap-2">
               <button onClick={() => setAssetResult(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Close</button>
               <a href="/asset-management" className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white text-center" style={{ background: 'var(--teal)' }}>Go to Asset Management</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {assetReAddWarn && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setAssetReAddWarn(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1" style={{ color: '#b45309' }}>Already added</h2>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+              This entry was already added to Asset Management on <strong>{String(assetReAddWarn.assetAddedAt).slice(0, 10)}</strong>. Adding it again will create <strong>another</strong> asset record. Are you sure?
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setAssetReAddWarn(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+              <button onClick={() => { const e = assetReAddWarn; setAssetReAddWarn(null); setAssetPrompt(e) }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: '#dc2626' }}>Add again</button>
             </div>
           </div>
         </div>
