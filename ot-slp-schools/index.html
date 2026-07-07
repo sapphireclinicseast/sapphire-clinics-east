@@ -77,6 +77,18 @@
   .btn.primary:hover{background:var(--primary-dark);color:#fff}
   .btn.ghost{background:transparent}
   .spacer{flex:1 1 auto}
+  .btn.save{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.save:hover{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff}
+  .saved-pill{font-size:12.5px;color:var(--light);align-self:center;transition:.2s}
+  .saved-pill.ok{color:#2e7d5b;font-weight:600}
+
+  /* OT / SLP tabs */
+  .tabs{display:inline-flex;background:var(--bg-alt);border:1px solid var(--border);border-radius:999px;padding:4px;gap:4px}
+  .tabs button{border:none;background:transparent;font-family:var(--head);font-weight:700;font-size:13px;color:var(--muted);padding:8px 20px;border-radius:999px;cursor:pointer;transition:.15s}
+  .tabs button:hover{color:var(--primary-dark)}
+  .tabs button.active{background:var(--primary);color:#fff}
+  .tabs button .c{opacity:.7;font-weight:600;margin-left:5px;font-size:12px}
+  .tabs button.active .c{opacity:.85}
 
   /* Table */
   .tablecard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);overflow:hidden}
@@ -142,6 +154,15 @@
     figures. Everything you enter is saved in <b>this browser only</b> (nothing is uploaded); use Export to back it up or share.</span>
   </div>
 
+  <!-- OT / SLP TABS -->
+  <div style="margin:22px 0 2px;">
+    <div class="tabs" id="tabs">
+      <button data-f="all" class="active">All schools <span class="c" id="c-all"></span></button>
+      <button data-f="ot">OT <span class="c" id="c-ot"></span></button>
+      <button data-f="slp">SLP <span class="c" id="c-slp"></span></button>
+    </div>
+  </div>
+
   <!-- SCENARIO -->
   <section>
     <div class="sec-title">Scenario</div>
@@ -175,6 +196,8 @@
     <div class="sec-title">Schools &amp; statistics</div>
     <div class="toolbar">
       <button class="btn primary" id="add">＋ Add school</button>
+      <button class="btn save" id="save">💾 Save</button>
+      <span class="saved-pill" id="saved-status">Auto-saves as you type</span>
       <button class="btn ghost" id="offers">Offers needed: <b id="offers-v" style="margin-left:4px">—</b></button>
       <div class="spacer"></div>
       <button class="btn" id="exp-json">Export JSON</button>
@@ -245,14 +268,31 @@
     ]
   };
 
-  var state, sortKey='passers', sortDir=-1;
+  var state, sortKey='passers', sortDir=-1, filter='all';
 
   function load(){
     try{var r=JSON.parse(localStorage.getItem(KEY)); if(r&&r.schools&&r.scenario) return r;}catch(e){}
     return clone(SEED);
   }
   function clone(o){return JSON.parse(JSON.stringify(o));}
-  function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){} markSaved(false);}
+
+  // OT/SLP tab filter — returns {school, originalIndex} pairs so row editing
+  // still maps back to state.schools by index.
+  function visPairs(){
+    return state.schools.map(function(s,i){return {s:s,i:i};}).filter(function(o){
+      return filter==='all' || (filter==='ot'&&o.s.ot) || (filter==='slp'&&o.s.slp);
+    });
+  }
+  function visSchools(){return visPairs().map(function(o){return o.s;});}
+
+  function markSaved(flash){
+    var el=document.getElementById('saved-status'); if(!el)return;
+    var d=new Date(), p=function(n){return(n<10?'0':'')+n;};
+    el.textContent='Saved ✓ '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+    el.classList.add('ok');
+    if(flash){el.classList.remove('ok');void el.offsetWidth;el.classList.add('ok');}
+  }
 
   // number helpers
   function n(v){v=parseFloat(String(v).replace(/[^0-9.\-]/g,''));return isFinite(v)?v:0;}
@@ -266,9 +306,10 @@
   function cost(s){return n(s.slots)*costPer(s);}
   function scholarPassers(s){return n(s.slots)*n(s.rate)/100;}
 
-  function totals(){
-    var t={grads:0,passers:0,slots:0,cost:0,schoParse:0,wRate:0};
-    state.schools.forEach(function(s){
+  function totals(list){
+    list=list||visSchools();
+    var t={grads:0,passers:0,slots:0,cost:0,schoParse:0,wRate:0,count:list.length};
+    list.forEach(function(s){
       t.grads+=n(s.grads); t.passers+=passers(s); t.slots+=n(s.slots);
       t.cost+=cost(s); t.schoParse+=scholarPassers(s); t.wRate+=n(s.grads)*n(s.rate);
     });
@@ -285,7 +326,7 @@
     var pct=budget?Math.min(100,t.cost/budget*100):0;
     var over=budget && t.cost>budget;
     var kpis=[
-      {v:num(state.schools.length),l:'Schools tracked'},
+      {v:num(t.count),l:'Schools tracked'},
       {v:num(t.grads),l:'Graduates / yr (all schools)'},
       {v:t.avgRate.toFixed(0)+'%',l:'Wtd. avg board passing'},
       {v:num(t.passers),l:'Est. licensed / yr (market)'},
@@ -303,8 +344,13 @@
     var acc=n(state.scenario.accept);
     document.getElementById('offers-v').textContent = acc? num(Math.ceil(t.slots/(acc/100))) : '—';
 
-    // rows (sorted)
-    var arr=state.schools.map(function(s,i){return{s:s,i:i};});
+    // tab counts
+    document.getElementById('c-all').textContent=state.schools.length;
+    document.getElementById('c-ot').textContent=state.schools.filter(function(s){return s.ot;}).length;
+    document.getElementById('c-slp').textContent=state.schools.filter(function(s){return s.slp;}).length;
+
+    // rows (sorted, filtered to current tab)
+    var arr=visPairs();
     arr.sort(function(a,b){
       var va=sortVal(a.s),vb=sortVal(b.s);
       if(va<vb)return -1*sortDir; if(va>vb)return 1*sortDir; return 0;
@@ -313,7 +359,7 @@
 
     // footer totals
     document.getElementById('foot').innerHTML=
-      '<td colspan="3">Totals · '+state.schools.length+' schools</td>'+
+      '<td colspan="3">Totals · '+t.count+' schools</td>'+
       '<td class="num">'+num(t.grads)+'</td>'+
       '<td class="num">'+t.avgRate.toFixed(0)+'%</td>'+
       '<td class="num">'+num(t.passers)+'</td>'+
@@ -431,7 +477,7 @@
     var budget=n(state.scenario.budget);
     var pct=budget?Math.min(100,t.cost/budget*100):0, over=budget&&t.cost>budget;
     var kpis=[
-      {v:num(state.schools.length),l:'Schools tracked'},
+      {v:num(t.count),l:'Schools tracked'},
       {v:num(t.grads),l:'Graduates / yr (all schools)'},
       {v:t.avgRate.toFixed(0)+'%',l:'Wtd. avg board passing'},
       {v:num(t.passers),l:'Est. licensed / yr (market)'},
@@ -447,7 +493,7 @@
     var acc=n(state.scenario.accept);
     document.getElementById('offers-v').textContent=acc?num(Math.ceil(t.slots/(acc/100))):'—';
     document.getElementById('foot').innerHTML=
-      '<td colspan="3">Totals · '+state.schools.length+' schools</td>'+
+      '<td colspan="3">Totals · '+t.count+' schools</td>'+
       '<td class="num">'+num(t.grads)+'</td><td class="num">'+t.avgRate.toFixed(0)+'%</td>'+
       '<td class="num">'+num(t.passers)+'</td><td class="num"></td>'+
       '<td class="num">'+num(t.slots)+'</td><td class="num">'+peso(t.cost)+'</td><td></td>';
@@ -482,8 +528,21 @@
   });
 
   // toolbar
+  // OT / SLP tab switching
+  document.querySelectorAll('#tabs button').forEach(function(b){
+    b.addEventListener('click',function(){
+      filter=b.dataset.f;
+      document.querySelectorAll('#tabs button').forEach(function(x){x.classList.toggle('active',x===b);});
+      render();
+    });
+  });
+
+  // Explicit Save (data also auto-saves on every change)
+  document.getElementById('save').onclick=function(){ save(); markSaved(true); };
+
   document.getElementById('add').onclick=function(){
-    state.schools.push({name:"New school",loc:"",ot:true,slp:false,grads:0,rate:0,tuition:0,slots:0});
+    // New school defaults to the program of the active tab
+    state.schools.push({name:"New school",loc:"",ot:filter!=='slp',slp:filter==='slp',grads:0,rate:0,tuition:0,slots:0});
     save();render();
     var rows=document.querySelectorAll('#rows tr'); var last=rows[rows.length-1];
     if(last){last.querySelector('.cell-name').focus();last.querySelector('.cell-name').select();}
