@@ -4,12 +4,12 @@ import { prisma } from '@/lib/prisma'
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id } = params
+  const { id } = await params
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   try {
