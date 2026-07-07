@@ -5,8 +5,9 @@ import {
   Upload, Plus, Search, X, Cake, Download,
   AlertTriangle, CheckSquare, Square, Pencil, Trash2, Check,
   ChevronUp, ChevronDown, ArrowUpDown, CheckCircle, XCircle, ListFilter,
-  QrCode, FileText, Camera, Loader2,
+  QrCode, FileText, Camera, Loader2, Star,
 } from 'lucide-react'
+import { isLikelyChinoy } from '@/lib/chinoy-surnames'
 
 interface Patient {
   id: string
@@ -217,6 +218,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   const [search, setSearch]             = useState('')
   const [typeFilter, setTypeFilter]     = useState('')
   const [branchFilter, setBranchFilter] = useState(forcedBranch)
+  const [chinoyFilter, setChinoyFilter] = useState(false)
   const [showAddForm, setShowAddForm]   = useState(false)
   const [csvFile, setCsvFile]           = useState<File | null>(null)
   const [importBranch, setImportBranch] = useState(forcedBranch || 'SANDBOX_EAST')
@@ -342,6 +344,9 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       result = result.filter((p) => values.has(colDisplayVal(p, col)))
     }
 
+    // Chinoy surname filter
+    if (chinoyFilter) result = result.filter((p) => isLikelyChinoy(p.lastName))
+
     // Apply sort
     if (!sortCol) return result
     return [...result].sort((a, b) => {
@@ -361,7 +366,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       return sortDir === 'asc' ? c : -c
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patients, sortCol, sortDir, colFilters])
+  }, [patients, sortCol, sortDir, colFilters, chinoyFilter])
 
   // Reset to page 1 whenever the filtered/sorted list changes
   useEffect(() => { setPage(1) }, [displayPatients])
@@ -641,6 +646,20 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
             {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
         )}
+
+        {/* Filipino-Chinese surname filter */}
+        <button
+          onClick={() => setChinoyFilter((v) => !v)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
+          style={{
+            background: chinoyFilter ? '#E8A020' : '#fff',
+            color: chinoyFilter ? '#fff' : '#E8A020',
+            border: `1.5px solid #E8A020`,
+          }}
+        >
+          <Star size={13} />
+          Filipino-Chinese
+        </button>
 
         {/* Clear column filters badge */}
         {hasColFilters && (

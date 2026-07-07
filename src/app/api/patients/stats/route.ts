@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isLikelyChinoy } from '@/lib/chinoy-surnames'
 
 // Never cache — branch filter query param must always be respected
 export const dynamic = 'force-dynamic'
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
   // Dataset is ~2k patients with minimal fields — fast and reliable.
   const allPatients = await prisma.patient.findMany({
     select: {
+      lastName:    true,
       dob:         true,
       sex:         true,
       diagnosis:   true,
@@ -74,8 +76,9 @@ export async function GET(req: NextRequest) {
   const total = patients.length
   console.log('[stats] patients after filter:', total, '| filter:', filterBranches)
 
-  const pediatricCount = patients.filter((p) => p.patientType === 'PEDIATRIC').length
-  const adultCount     = patients.filter((p) => p.patientType === 'ADULT').length
+  const pediatricCount      = patients.filter((p) => p.patientType === 'PEDIATRIC').length
+  const adultCount          = patients.filter((p) => p.patientType === 'ADULT').length
+  const filipinoChineseCount = patients.filter((p) => isLikelyChinoy(p.lastName)).length
 
   // ── Age statistics (mean, median, mode) ──────────────────────────────────────
   const ages = patients
@@ -176,6 +179,7 @@ export async function GET(req: NextRequest) {
       total,
       pediatricCount,
       adultCount,
+      filipinoChineseCount,
       meanAge,
       medianAge,
       modeAge,

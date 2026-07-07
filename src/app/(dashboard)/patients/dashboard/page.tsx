@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
-import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
+import { Users, Baby, UserCheck, CalendarDays, Star } from 'lucide-react'
 
 const PatientMap = dynamic(() => import('@/components/patients/PatientMap'), { ssr: false })
 
@@ -13,6 +13,7 @@ interface Stats {
   total: number
   pediatricCount: number
   adultCount: number
+  filipinoChineseCount: number
   meanAge: number | null
   medianAge: number | null
   modeAge: number | null
@@ -168,6 +169,8 @@ export default function PatientDashboardPage() {
     ? Math.round((stats.pediatricCount / stats.total) * 100) : 0
   const adultPct = stats && stats.total > 0
     ? Math.round((stats.adultCount / stats.total) * 100) : 0
+  const chinoyPct = stats && stats.total > 0
+    ? Math.round(((stats.filipinoChineseCount ?? 0) / stats.total) * 100) : 0
 
   const isAllSelected = selectedBranches.length === ALL_BRANCHES.length
 
@@ -242,7 +245,7 @@ export default function PatientDashboardPage() {
       </div>
 
       {/* ── Stat cards row 1 ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           icon={<Users size={22} style={{ color: 'var(--teal)' }} />}
           label="Total Patients"
@@ -268,6 +271,13 @@ export default function PatientDashboardPage() {
           label="Mean Age"
           value={stats?.meanAge != null ? `${stats.meanAge} yrs` : '—'}
           color="#8B5CF6"
+        />
+        <StatCard
+          icon={<Star size={22} style={{ color: '#E8A020' }} />}
+          label="Most Likely Filipino-Chinese"
+          value={(stats?.filipinoChineseCount ?? 0).toLocaleString()}
+          color="#E8A020"
+          sub={`${chinoyPct}% of total · by surname`}
         />
       </div>
 
