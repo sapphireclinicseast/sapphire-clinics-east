@@ -3319,7 +3319,8 @@ setTimeout(()=>window.print(),500);
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">{capItemId ? (capLots.length ? '— Select batch —' : 'No stock-in batches for this item') : '— Select item first —'}</option>
                       {capLots.map((l) => {
-                        const cur = l.totalLandedCost != null ? Number(l.totalLandedCost) : (l.localCost != null ? Number(l.localCost) * l.quantityChange : 0)
+                        const capItemUnitCost = Number(allItems.find((i) => i.id === capItemId)?.unitCost ?? 0)
+                        const cur = l.totalLandedCost != null ? Number(l.totalLandedCost) : (l.localCost != null ? Number(l.localCost) * l.quantityChange : capItemUnitCost * l.quantityChange)
                         return <option key={l.id} value={l.id}>{(l.displayRef || l.id.slice(0, 6))} · {String(l.adjustmentDate).slice(0, 10)} · qty {l.quantityChange} · cost ₱{cur.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</option>
                       })}
                     </select>
