@@ -150,7 +150,7 @@
   <div class="note">
     <span>ℹ️</span>
     <span><b>Working sandbox.</b> School names, locations and programs are pre-filled from our OT/SLP schools map.
-    The <b>graduates, board passing rate and tuition are editable placeholders</b> — replace them with your researched
+    The <b>graduates, board passing rate and tuition start blank</b> — enter each school’s
     figures. Everything you enter is saved in <b>this browser only</b> (nothing is uploaded); use Export to back it up or share.</span>
   </div>
 
@@ -256,14 +256,18 @@
   var SEED={
     scenario:{budget:3000000, allowance:20000, accept:70},
     schools:[
-      {name:"University of the Philippines Manila", loc:"UP-PGH Compound, Pedro Gil St., Malate, Manila", ot:true, slp:true, grads:40, rate:85, tuition:35000, slots:0},
-      {name:"University of Santo Tomas", loc:"España Blvd., Sampaloc, Manila", ot:true, slp:true, grads:60, rate:80, tuition:110000, slots:0},
-      {name:"Emilio Aguinaldo College - Manila", loc:"1113-1117 San Marcelino St., Paco, Manila", ot:true, slp:false, grads:45, rate:70, tuition:90000, slots:0},
-      {name:"Philippine Rehabilitation Institute Foundation, Inc.", loc:"56 Banawe Street, Quezon City", ot:true, slp:false, grads:30, rate:72, tuition:85000, slots:0},
-      {name:"University of Perpetual Help System - College of Manila", loc:"1240 V. Concepcion St., Sampaloc, Manila", ot:true, slp:false, grads:40, rate:68, tuition:80000, slots:0},
-      {name:"University of Perpetual Help System DALTA - Las Piñas", loc:"Alabang-Zapote Avenue, Pamplona 3, Las Piñas City", ot:true, slp:false, grads:50, rate:68, tuition:82000, slots:0},
-      {name:"University of Perpetual Help System DALTA - Calamba", loc:"Brgy. Paciano Rizal, Calamba City, Laguna", ot:true, slp:false, grads:35, rate:65, tuition:78000, slots:0},
-      {name:"University of Perpetual Help - Dr. Jose G. Tamayo Medical University", loc:"Old National Highway, Sto. Niño, Biñan, Laguna", ot:true, slp:false, grads:30, rate:65, tuition:80000, slots:0}
+      {name:"University of the Philippines Manila (College of Allied Medical Professions)", loc:"Manila, NCR", ot:true, slp:true, grads:0, rate:0, tuition:0, slots:0},
+      {name:"University of Santo Tomas (College of Rehabilitation Sciences)", loc:"Manila, NCR", ot:true, slp:true, grads:0, rate:0, tuition:0, slots:0},
+      {name:"De La Salle Medical and Health Sciences Institute", loc:"Dasmarinas, Cavite, Region IV-A", ot:true, slp:true, grads:0, rate:0, tuition:0, slots:0},
+      {name:"Cebu Doctors' University", loc:"Mandaue, Cebu, Region VII", ot:true, slp:true, grads:0, rate:0, tuition:0, slots:0},
+      {name:"University of Batangas", loc:"Batangas City, Region IV-A", ot:true, slp:true, grads:0, rate:0, tuition:0, slots:0},
+      {name:"Silliman University", loc:"Dumaguete City, Region VII", ot:true, slp:false, grads:0, rate:0, tuition:0, slots:0},
+      {name:"Emilio Aguinaldo College", loc:"Manila, NCR", ot:true, slp:false, grads:0, rate:0, tuition:0, slots:0},
+      {name:"Velez College", loc:"Cebu City, Region VII", ot:true, slp:false, grads:0, rate:0, tuition:0, slots:0},
+      {name:"Southwestern University PHINMA", loc:"Cebu City, Region VII", ot:true, slp:false, grads:0, rate:0, tuition:0, slots:0},
+      {name:"University of Perpetual Help System DALTA", loc:"Las Pinas, NCR", ot:true, slp:false, grads:0, rate:0, tuition:0, slots:0},
+      {name:"UPH Dr. Jose G. Tamayo Medical University", loc:"Binan, Laguna, Region IV-A", ot:true, slp:false, grads:0, rate:0, tuition:0, slots:0},
+      {name:"Philippine Rehabilitation Institute (PRI College of Sciences)", loc:"Quezon City, NCR", ot:true, slp:false, grads:0, rate:0, tuition:0, slots:0}
     ]
   };
 
@@ -426,12 +430,19 @@
     document.getElementById('chart').innerHTML=svg;
   }
   function abbrev(name){
-    var map={'University of the Philippines Manila':'UP Manila','University of Santo Tomas':'UST',
-      'Emilio Aguinaldo College - Manila':'EAC Manila','Philippine Rehabilitation Institute Foundation, Inc.':'PRIF',
-      'University of Perpetual Help System - College of Manila':'UPHS Manila',
-      'University of Perpetual Help System DALTA - Las Piñas':'UPHSD Las Piñas',
-      'University of Perpetual Help System DALTA - Calamba':'UPHSD Calamba',
-      'University of Perpetual Help - Dr. Jose G. Tamayo Medical University':'UPH-JGT'};
+    var map={
+      'University of the Philippines Manila (College of Allied Medical Professions)':'UP Manila',
+      'University of Santo Tomas (College of Rehabilitation Sciences)':'UST',
+      'De La Salle Medical and Health Sciences Institute':'DLSMHSI',
+      "Cebu Doctors' University":"Cebu Doctors'",
+      'University of Batangas':'U. Batangas',
+      'Silliman University':'Silliman',
+      'Emilio Aguinaldo College':'EAC',
+      'Velez College':'Velez',
+      'Southwestern University PHINMA':'SWU PHINMA',
+      'University of Perpetual Help System DALTA':'UPHSD',
+      'UPH Dr. Jose G. Tamayo Medical University':'UPH-JGT',
+      'Philippine Rehabilitation Institute (PRI College of Sciences)':'PRI'};
     if(map[name])return map[name];
     return name.length>16?name.slice(0,15)+'…':name;
   }
