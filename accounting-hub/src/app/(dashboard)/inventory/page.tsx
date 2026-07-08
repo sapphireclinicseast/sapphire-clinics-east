@@ -724,6 +724,7 @@ export default function InventoryPage() {
 
   // ── Consumable Forms state
   const [forms, setForms] = useState<FormReceipt[]>([])
+  const [formTemplates, setFormTemplates] = useState<{ templateNo: string; templateName: string; department: string; massProduced: boolean }[]>([])
   const [formsBranchFilter, setFormsBranchFilter] = useState('')
   const [formModalOpen, setFormModalOpen] = useState(false)
   const [formEditId, setFormEditId] = useState<string | null>(null)
@@ -901,6 +902,14 @@ export default function InventoryPage() {
     } catch { /* ignore */ }
   }, [formsBranchFilter])
 
+  const fetchFormTemplates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/inventory/form-templates')
+      const data = await res.json()
+      setFormTemplates(Array.isArray(data.templates) ? data.templates : [])
+    } catch { /* ignore — dropdown falls back to free text */ }
+  }, [])
+
   // Initial load — only runs once when session is available
   const initialLoaded = useRef(false)
   useEffect(() => {
@@ -911,7 +920,7 @@ export default function InventoryPage() {
     }
     initialLoaded.current = true
     setLoading(true)
-    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms()])
+    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
@@ -4779,6 +4788,7 @@ setTimeout(()=>window.print(),500);
           }, new Map<string, { total: number; receipts: number }>())
         ).sort((a, b) => a[0].localeCompare(b[0]))
         const grandTotal = forms.reduce((s, f) => s + f.quantity, 0)
+        const tmplNameByNo = new Map(formTemplates.map((t) => [t.templateNo || t.templateName, t.templateName]))
         return (
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
@@ -4808,6 +4818,7 @@ setTimeout(()=>window.print(),500);
               {summary.map(([type, s]) => (
                 <div key={type} className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                   <p className="text-xs font-mono font-semibold" style={{ color: 'var(--teal)' }}>{type}</p>
+                  {tmplNameByNo.get(type) && <p className="text-xs truncate" style={{ color: 'var(--charcoal)' }} title={tmplNameByNo.get(type)}>{tmplNameByNo.get(type)}</p>}
                   <p className="text-2xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>{s.total.toLocaleString('en-PH')}</p>
                   <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>pcs on hand · {s.receipts} receipt{s.receipts === 1 ? '' : 's'}</p>
                 </div>
@@ -4847,6 +4858,7 @@ setTimeout(()=>window.print(),500);
                     <tr key={f.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-3">
                         <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{f.formType}</span>
+                        {tmplNameByNo.get(f.formType) && <span className="text-xs ml-2" style={{ color: 'var(--mid-gray)' }}>{tmplNameByNo.get(f.formType)}</span>}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[f.branch] || f.branch}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(f.dateReceived)}</td>
@@ -4892,6 +4904,9 @@ setTimeout(()=>window.print(),500);
             const previewFrom = parseInt(String(frFrom).replace(/[^0-9]/g, ''), 10)
             const previewTo = parseInt(String(frTo).replace(/[^0-9]/g, ''), 10)
             const previewQty = Number.isFinite(previewFrom) && Number.isFinite(previewTo) && previewTo >= previewFrom ? previewTo - previewFrom + 1 : null
+            const tmplByDept = formTemplates.reduce((m, t) => { (m[t.department] = m[t.department] || []).push(t); return m }, {} as Record<string, typeof formTemplates>)
+            const tmplDepts = Object.keys(tmplByDept).sort()
+            const knownFormType = formTemplates.some((t) => (t.templateNo || t.templateName) === frFormType)
             return (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
@@ -4912,15 +4927,31 @@ setTimeout(()=>window.print(),500);
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Form Type</label>
-                      <input type="text" value={frFormType} onChange={(e) => setFrFormType(e.target.value)} required placeholder="e.g. ADMIN01"
-                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Date Received</label>
+                      <input type="date" value={frDate} onChange={(e) => setFrDate(e.target.value)} required
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Date Received</label>
-                    <input type="date" value={frDate} onChange={(e) => setFrDate(e.target.value)} required
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Form Type <span style={{ color: 'var(--mid-gray)', fontWeight: 400 }}>(from HR Hub Templates)</span></label>
+                    {formTemplates.length > 0 ? (
+                      <select value={frFormType} onChange={(e) => setFrFormType(e.target.value)} required
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— Select form —</option>
+                        {frFormType && !knownFormType && <option value={frFormType}>{frFormType} (custom)</option>}
+                        {tmplDepts.map((dep) => (
+                          <optgroup key={dep} label={dep}>
+                            {tmplByDept[dep].map((t) => {
+                              const val = t.templateNo || t.templateName
+                              return <option key={`${t.templateNo}|${t.templateName}`} value={val}>{[t.templateNo, t.templateName].filter(Boolean).join(' — ')}{t.massProduced ? ' • mass-produced' : ''}</option>
+                            })}
+                          </optgroup>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" value={frFormType} onChange={(e) => setFrFormType(e.target.value)} required placeholder="e.g. ADMIN01"
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
