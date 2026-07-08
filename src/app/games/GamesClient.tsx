@@ -78,6 +78,125 @@ function postMirror(payload: Record<string, unknown>) {
   }
 }
 
+type PrizeKind = 'discount' | 'merch'
+type PrizeResult = { code: string; tier: number; prize: PrizeKind; emailed: boolean; alreadyClaimed: boolean }
+
+// Prize claiming is USER-TRIGGERED (a button press), not an effect — this both
+// lets the player choose merch vs discount and avoids the self-cancelling-effect
+// bug that hung "Minting your voucher…" under real network latency.
+function usePrizeClaim(
+  reg: RegForm,
+  game: string,
+  onClaimed: (info: ClaimInfo) => void,
+) {
+  const [claiming, setClaiming] = useState(false)
+  const [result, setResult] = useState<PrizeResult | null>(null)
+  const [error, setError] = useState('')
+
+  const claim = useCallback(
+    async (prize: PrizeKind, tier: number, correct: number) => {
+      setClaiming(true)
+      setError('')
+      try {
+        const res = await fetch('/api/public/games/win', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName: reg.firstName,
+            lastName: reg.lastName,
+            email: reg.email,
+            tier,
+            correct,
+            game,
+            prize,
+          }),
+        })
+        const d = await res.json().catch(() => ({ ok: false }))
+        if (d?.ok) {
+          const r: PrizeResult = {
+            code: d.code,
+            tier: d.tier,
+            prize: d.prize === 'merch' ? 'merch' : 'discount',
+            emailed: !!d.emailed,
+            alreadyClaimed: !!d.alreadyClaimed,
+          }
+          setResult(r)
+          onClaimed({ code: r.code, tier: r.tier, prize: r.prize })
+        } else {
+          setError(d?.error || 'Could not lock in your prize — please show this screen to our booth staff.')
+        }
+      } catch {
+        setError('Network hiccup — please show this screen to our booth staff.')
+      } finally {
+        setClaiming(false)
+      }
+    },
+    [reg.firstName, reg.lastName, reg.email, game, onClaimed],
+  )
+
+  return { claiming, result, error, claim }
+}
+
+function PrizePicker({
+  tier,
+  claiming,
+  error,
+  onPick,
+}: {
+  tier: number
+  claiming: boolean
+  error: string
+  onPick: (p: PrizeKind) => void
+}) {
+  return (
+    <>
+      <p className="lede">Pick your prize — you can only claim one:</p>
+      <div className="prize-cards">
+        <button className="prize-card" disabled={claiming} onClick={() => onPick('merch')}>
+          <span className="pz-emoji" aria-hidden>🎁</span>
+          <span className="pz-title">Aura merch</span>
+          <span className="pz-desc">Grab a freebie from our booth.</span>
+        </button>
+        <button className="prize-card" disabled={claiming} onClick={() => onPick('discount')}>
+          <span className="pz-emoji" aria-hidden>🎟️</span>
+          <span className="pz-title">{tier}% seminar discount</span>
+          <span className="pz-desc">Save on a future Verdana Trainings &amp; Seminars enrollment.</span>
+        </button>
+      </div>
+      {claiming && <div className="lede sm">Locking in your prize…</div>}
+      {error && <div className="err">{error}</div>}
+    </>
+  )
+}
+
+function PrizeReveal({ result, email }: { result: PrizeResult; email: string }) {
+  const merch = result.prize === 'merch'
+  return (
+    <>
+      {result.alreadyClaimed && (
+        <p className="lede sm">You already claimed a prize earlier — here it is again:</p>
+      )}
+      <p className="lede">
+        {merch ? (
+          <>You bagged some <strong>Aura merch</strong>! 🎁</>
+        ) : (
+          <>That&apos;s a <strong>{result.tier}% discount</strong> on Verdana Trainings &amp; Seminars. 🦙</>
+        )}
+      </p>
+      <div className="voucher">
+        <div className="v-kicker">{merch ? 'Your merch claim code' : 'Your voucher code'}</div>
+        <div className="v-code">{result.code}</div>
+        <div className="v-note">
+          {result.emailed ? `Also sent to ${email}. ` : 'Screenshot this now. '}
+          {merch
+            ? 'Show this at our booth to grab your merch.'
+            : `Present it when you enroll to claim ${result.tier}% off.`}
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function GamesClient({ qrDataUrl, gameUrl }: { qrDataUrl: string; gameUrl: string }) {
   const [tab, setTab] = useState<Tab>('SLP')
   const [showQr, setShowQr] = useState(false)
@@ -158,12 +277,16 @@ function ComingSoon({ profession }: { profession: Tab }) {
 // ── SLP zone: game picker + shared one-time registration ─────────────────────
 type SlpGameId = 'quiz' | 'flappy'
 
+type ClaimInfo = { code: string; tier: number; prize: 'discount' | 'merch' }
+
 function SlpZone() {
   const [reg, setReg] = useState<RegForm>(EMPTY_REG)
   const [registered, setRegistered] = useState(false)
   const [game, setGame] = useState<SlpGameId | null>(null)
   const [pending, setPending] = useState<SlpGameId | null>(null)
   const [settings, setSettings] = useState<{ quiz: boolean; flappy: boolean }>({ quiz: true, flappy: true })
+  // One prize per person: once claimed, the games lock for this player.
+  const [claim, setClaim] = useState<ClaimInfo | null>(null)
 
   // Poll the admin on/off switches so a game disabled mid-event disappears here.
   useEffect(() => {
@@ -189,9 +312,27 @@ function SlpZone() {
   const playerName = `${reg.firstName} ${reg.lastName}`.trim() || 'Player'
 
   const launch = (g: SlpGameId) => {
-    if (!settings[g]) return
+    if (!settings[g] || claim) return
     if (registered) setGame(g)
     else setPending(g)
+  }
+
+  // After registration, check whether this email already claimed a prize (so a
+  // re-scan can't win twice). If so, lock straight to the claimed screen.
+  const finishRegister = async () => {
+    setRegistered(true)
+    setPending(null)
+    try {
+      const res = await fetch(`/api/public/games/claim-status?email=${encodeURIComponent(reg.email.trim())}`)
+      const d = await res.json().catch(() => null)
+      if (d?.ok && d.claimed && d.voucher) {
+        setClaim({ code: d.voucher.code, tier: d.voucher.tier, prize: d.voucher.prize || 'discount' })
+        return
+      }
+    } catch {
+      /* ignore — let them play */
+    }
+    setGame(pending)
   }
 
   if (pending && !registered) {
@@ -200,18 +341,36 @@ function SlpZone() {
         reg={reg}
         setReg={setReg}
         onCancel={() => setPending(null)}
-        onDone={() => {
-          setRegistered(true)
-          setGame(pending)
-          setPending(null)
-        }}
+        onDone={finishRegister}
       />
     )
   }
+  const onClaimed = (info: ClaimInfo) => setClaim(info)
   if (game === 'quiz')
-    return <QuizRound reg={reg} sessionId={sessionId} playerName={playerName} onExit={() => setGame(null)} />
+    return <QuizRound reg={reg} sessionId={sessionId} playerName={playerName} onClaimed={onClaimed} onExit={() => setGame(null)} />
   if (game === 'flappy')
-    return <FlappyRound reg={reg} sessionId={sessionId} playerName={playerName} onExit={() => setGame(null)} />
+    return <FlappyRound reg={reg} sessionId={sessionId} playerName={playerName} onClaimed={onClaimed} onExit={() => setGame(null)} />
+
+  // Already claimed a prize → games are locked for this player.
+  if (claim) {
+    return (
+      <section className="panel center">
+        <div className="hero-emoji" aria-hidden>🎉</div>
+        <div className="kicker">Prize claimed</div>
+        <h1 className="h1">You&apos;re all set{reg.firstName ? `, ${reg.firstName}` : ''}!</h1>
+        <p className="lede">
+          {claim.prize === 'merch'
+            ? 'You already claimed your Aura merch prize — show this to our booth staff.'
+            : `You already claimed your ${claim.tier}% Verdana Trainings & Seminars discount.`}{' '}
+          One prize per person, so the games are locked for you now. Thanks for playing! 🦙
+        </p>
+        <div className="voucher">
+          <div className="v-kicker">{claim.prize === 'merch' ? 'Your merch claim code' : 'Your voucher code'}</div>
+          <div className="v-code">{claim.code}</div>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="panel">
@@ -422,11 +581,13 @@ function RegisterForm({
 function QuizRound({
   reg,
   onExit,
+  onClaimed,
   sessionId,
   playerName,
 }: {
   reg: RegForm
   onExit: () => void
+  onClaimed: (info: ClaimInfo) => void
   sessionId: string
   playerName: string
 }) {
@@ -442,9 +603,7 @@ function QuizRound({
   const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS)
   const [countdown, setCountdown] = useState(3)
 
-  // voucher result
-  const [voucher, setVoucher] = useState<{ code: string; tier: number; emailed: boolean } | null>(null)
-  const [voucherLoading, setVoucherLoading] = useState(false)
+  const { claiming, result, error: claimError, claim } = usePrizeClaim(reg, 'slp-quiz', onClaimed)
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const tier = correct >= TIER_8_MIN ? 8 : correct >= TIER_5_MIN ? 5 : 0
@@ -458,7 +617,6 @@ function QuizRound({
     setAnswered(0)
     setTimeLeft(ROUND_SECONDS)
     setCountdown(3)
-    setVoucher(null)
     setPhase('countdown')
   }, [])
 
@@ -489,28 +647,6 @@ function QuizRound({
     return () => clearTimeout(t)
   }, [phase, timeLeft])
 
-  // request voucher when a qualifying round ends
-  useEffect(() => {
-    if (phase !== 'result' || tier === 0 || voucher || voucherLoading) return
-    let cancelled = false
-    setVoucherLoading(true)
-    fetch('/api/public/games/win', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ firstName: reg.firstName, email: reg.email, correct, tier, game: 'slp-quiz' }),
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return
-        if (d?.ok) setVoucher({ code: d.code, tier: d.tier, emailed: !!d.emailed })
-      })
-      .catch(() => {})
-      .finally(() => !cancelled && setVoucherLoading(false))
-    return () => {
-      cancelled = true
-    }
-  }, [phase, tier, voucher, voucherLoading, reg.firstName, reg.email, correct])
-
   useEffect(() => () => { if (advanceTimer.current) clearTimeout(advanceTimer.current) }, [])
 
   const current = deck[idx]
@@ -534,10 +670,10 @@ function QuizRound({
         answered,
         timeLeft,
         tier,
-        code: voucher?.code ?? null,
+        code: result?.code ?? null,
       },
     })
-  }, [phase, idx, picked, correct, answered, timeLeft, tier, voucher, sessionId, playerName]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, idx, picked, correct, answered, timeLeft, tier, result, sessionId, playerName]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const choose = useCallback(
     (choiceIdx: number) => {
@@ -626,33 +762,15 @@ function QuizRound({
       </h1>
 
       {win ? (
-        <>
-          <p className="lede">
-            That&apos;s a <strong>{tier}% discount</strong> on Verdana Trainings &amp; Seminars. 🦙
-          </p>
-          {voucherLoading && <div className="lede sm">Minting your voucher code…</div>}
-          {voucher && (
-            <div className="voucher">
-              <div className="v-kicker">Your voucher code</div>
-              <div className="v-code">{voucher.code}</div>
-              <div className="v-note">
-                {voucher.emailed
-                  ? `Also sent to ${reg.email}. `
-                  : `Screenshot this now — take note of it. `}
-                Present it when you enroll to claim {voucher.tier}% off.
-              </div>
-            </div>
-          )}
-          {!voucher && !voucherLoading && (
-            <div className="err">
-              Voucher service hiccuped — please show this screen ({tier}% winner) to our booth staff.
-            </div>
-          )}
-        </>
+        result ? (
+          <PrizeReveal result={result} email={reg.email} />
+        ) : (
+          <PrizePicker tier={tier} claiming={claiming} error={claimError} onPick={(p) => claim(p, tier, correct)} />
+        )
       ) : (
         <p className="lede">
-          So close! You needed <b>{TIER_5_MIN}</b> for a 5% voucher. Catch your breath and run it back
-          — the questions reshuffle every time.
+          So close! You needed <b>{TIER_5_MIN}</b> for a prize. Catch your breath and run it back —
+          the questions reshuffle every time.
         </p>
       )}
 
@@ -660,9 +778,12 @@ function QuizRound({
         <button className="btn-ghost" onClick={onExit}>
           ← Back to games
         </button>
-        <button className="btn-primary big" onClick={startCountdown}>
-          {win ? 'Play again' : 'Try again 🔁'}
-        </button>
+        {/* No replay once won — one prize per person. Retry only shows if they didn't win. */}
+        {!win && (
+          <button className="btn-primary big" onClick={startCountdown}>
+            Try again 🔁
+          </button>
+        )}
       </div>
     </section>
   )
@@ -746,11 +867,13 @@ function newFlappyState(): FlappyState {
 function FlappyRound({
   reg,
   onExit,
+  onClaimed,
   sessionId,
   playerName,
 }: {
   reg: RegForm
   onExit: () => void
+  onClaimed: (info: ClaimInfo) => void
   sessionId: string
   playerName: string
 }) {
@@ -760,8 +883,7 @@ function FlappyRound({
   const statusRef = useRef<'ready' | 'flying' | 'dead' | 'won'>('ready')
 
   const [status, setStatusState] = useState<'ready' | 'flying' | 'dead' | 'won'>('ready')
-  const [voucher, setVoucher] = useState<{ code: string; tier: number; emailed: boolean } | null>(null)
-  const [voucherLoading, setVoucherLoading] = useState(false)
+  const { claiming, result, error: claimError, claim } = usePrizeClaim(reg, 'slp-flappy', onClaimed)
 
   const setPhase = useCallback((p: 'ready' | 'flying' | 'dead' | 'won') => {
     statusRef.current = p
@@ -777,9 +899,10 @@ function FlappyRound({
     }
   }, [setPhase])
 
+  // Once a prize is won it can't be replayed (one prize per person), so restart
+  // is only offered on the "dead" screen.
   const restart = useCallback(() => {
     g.current = newFlappyState()
-    setVoucher(null)
     setPhase('ready')
   }, [setPhase])
 
@@ -842,26 +965,6 @@ function FlappyRound({
     return () => cancelAnimationFrame(raf.current)
   }, [setPhase, sessionId, playerName])
 
-  // Issue the voucher once the finish is reached.
-  useEffect(() => {
-    if (status !== 'won' || voucher || voucherLoading) return
-    let cancelled = false
-    setVoucherLoading(true)
-    fetch('/api/public/games/win', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ firstName: reg.firstName, email: reg.email, tier: 5, game: 'slp-flappy' }),
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled && d?.ok) setVoucher({ code: d.code, tier: d.tier, emailed: !!d.emailed })
-      })
-      .catch(() => {})
-      .finally(() => !cancelled && setVoucherLoading(false))
-    return () => {
-      cancelled = true
-    }
-  }, [status, voucher, voucherLoading, reg.firstName, reg.email])
 
   return (
     <section className="panel">
@@ -894,22 +997,10 @@ function FlappyRound({
           <div className="fl-overlay win">
             <div className="fl-o-emoji" aria-hidden>🎉</div>
             <div className="fl-o-title">You caught the cherub!</div>
-            <div className="fl-o-sub">
-              That&apos;s a <b>5% discount</b> on Verdana Trainings &amp; Seminars.
-            </div>
-            {voucherLoading && <div className="fl-o-sub">Minting your voucher…</div>}
-            {voucher && (
-              <div className="voucher">
-                <div className="v-kicker">Your voucher code</div>
-                <div className="v-code">{voucher.code}</div>
-                <div className="v-note">
-                  {voucher.emailed ? `Also sent to ${reg.email}. ` : 'Screenshot this now. '}
-                  Present it when you enroll to claim {voucher.tier}% off.
-                </div>
-              </div>
-            )}
-            {!voucher && !voucherLoading && (
-              <div className="err">Voucher hiccup — show this screen to our booth staff.</div>
+            {result ? (
+              <PrizeReveal result={result} email={reg.email} />
+            ) : (
+              <PrizePicker tier={5} claiming={claiming} error={claimError} onPick={(p) => claim(p, 5, 0)} />
             )}
           </div>
         )}
@@ -918,11 +1009,6 @@ function FlappyRound({
         <button className="btn-ghost" onClick={onExit}>
           ← Back to games
         </button>
-        {status === 'won' && (
-          <button className="btn-primary" onClick={restart}>
-            Play again
-          </button>
-        )}
       </div>
     </section>
   )
@@ -1626,9 +1712,11 @@ function StyleTag() {
         margin: 6px 0 16px;
       }
       .qr-img {
+        display: block;
         width: 100%;
         max-width: 300px;
         height: auto;
+        margin: 0 auto;
         border-radius: 14px;
         border: 1px solid var(--border);
       }
@@ -1719,6 +1807,55 @@ function GameStyles() {
         align-items: center;
         flex-wrap: wrap;
         margin-top: 4px;
+      }
+      .prize-cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        width: 100%;
+        max-width: 440px;
+        margin: 8px 0 4px;
+      }
+      .prize-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        text-align: center;
+        background: var(--bg-alt);
+        border: 1.5px solid var(--border);
+        border-radius: 14px;
+        padding: 16px 12px;
+        cursor: pointer;
+        font-family: inherit;
+        transition: transform 0.12s ease, border-color 0.12s ease;
+      }
+      .prize-card:hover:not(:disabled) {
+        border-color: var(--warm);
+        transform: translateY(-2px);
+      }
+      .prize-card:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .fl-overlay .prize-card {
+        background: #fff;
+        color: var(--text);
+      }
+      .pz-emoji {
+        font-size: 30px;
+        line-height: 1;
+      }
+      .pz-title {
+        font-family: var(--font-montserrat), sans-serif;
+        font-weight: 800;
+        color: var(--primary-dark);
+        font-size: 15px;
+      }
+      .pz-desc {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.4;
       }
       .fl-stage {
         position: relative;

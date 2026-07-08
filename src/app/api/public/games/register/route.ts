@@ -4,13 +4,8 @@
  * POST /api/public/games/register
  *
  * Public, unauthenticated. Captures the attendee's details at a marketing
- * event and forwards them to the HR Platform's seminar-notification list —
- * the same intake that feeds Hiring → "Talent Pool" (an entry there can be
- * one-click "Converted to Talent Pool" by HR).
- *
- * Mirrors the server-to-server pattern used by the registration-forms and
- * peer-eval proxies: hit the internal HR base (HR_PLATFORM_URL) with the
- * public route path. Nginx exposes the same route publicly under /api.
+ * event and adds them DIRECTLY to the HR Platform's Hiring → Talent Pool
+ * (via the keyed external endpoint), tagged source "Marketing Game".
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -18,8 +13,8 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 
 const HR_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
+const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
 
-// Profession values the HR notification-signup endpoint accepts.
 const ALLOWED_PROFESSIONS = ['OT', 'PT', 'SLP', 'SPED', 'Psychology', 'MD', 'Orthosis', 'Others']
 
 export async function POST(req: NextRequest) {
@@ -55,21 +50,24 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const professionLabel = profession === 'Others' ? professionOther || 'Others' : profession
+
   try {
-    const res = await fetch(`${HR_URL}/seminars/notification-signup`, {
+    const res = await fetch(`${HR_URL}/hiring/potential-applicants/external`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${HR_KEY}` },
       body: JSON.stringify({
         firstName,
         lastName,
-        mobile,
         email,
-        profession,
-        professionOther,
+        phone: mobile,
+        position: professionLabel,
+        department: profession && profession !== 'Others' ? profession : '',
         birthdate,
         yearsOfPractice,
-        // Provenance tag so HR knows this lead came from a marketing game event.
-        source: 'marketing-games',
+        source: 'Marketing Game',
+        status: 'contacted',
+        notes: 'Registered at an Aura Health marketing-event game.',
       }),
       cache: 'no-store',
       signal: AbortSignal.timeout(10_000),
