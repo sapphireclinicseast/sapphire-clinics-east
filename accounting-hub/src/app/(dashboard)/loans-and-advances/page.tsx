@@ -105,8 +105,8 @@ export default function LoansAndAdvancesPage() {
         </div>
       )}
 
-      {tab === 'loans' && <div className="rounded-2xl border p-8 text-center text-sm text-gray-400" style={{ borderColor: 'var(--light-gray)' }}>Loans — coming in the next update.</div>}
-      {tab === 'creditline' && <div className="rounded-2xl border p-8 text-center text-sm text-gray-400" style={{ borderColor: 'var(--light-gray)' }}>Credit Line — coming in the next update.</div>}
+      {tab === 'loans' && <LoansTab shareholders={shareholders} banks={banks} accts={accts} />}
+      {tab === 'creditline' && <CreditLineTab shareholders={shareholders} banks={banks} accts={accts} />}
       {tab === 'history' && <div className="rounded-2xl border p-8 text-center text-sm text-gray-400" style={{ borderColor: 'var(--light-gray)' }}>Payment History — coming in the next update.</div>}
 
       {(showAdd || edit) && <AdvanceModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
@@ -228,6 +228,333 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
         <div className="mt-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Remarks</label><input value={f.remarks} onChange={e => set('remarks', e.target.value)} className={inp} style={bc} /></div>
 
         <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add advance'}</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Loans ─────────────────────────────────────────────────────
+interface LoanCharge { id?: string; date: string; description: string; registeredName: string; vatable: string; amount: string; siNumber: string; chargeAccountId: string; deductedFromDebit: boolean; proofUrls: string[] }
+interface LoanRow {
+  id: string; loanEntity: string; shareholderId: string | null; entityName: string | null; name: string; dateAcquired: string; loanType: string; kindType: string | null
+  principalAmount: number; hasInterest: boolean; interestMode: string | null; annualPct: number | null; termMonths: number | null
+  monthlyAmortization: number | null; computedAnnualPct: number | null; totalInterest: number | null; maturityDate: string | null
+  proofOfDepositUrls: string[] | null; bankAccountId: string | null; creditAccountId: string | null; interestExpenseAccountId: string | null
+  payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null
+  loanAgreementUrls: string[] | null; pdcUrls: string[] | null; netAmountToDebit: number | null; remarks: string | null; fromCreditLineId: string | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  charges: any[]
+}
+
+function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: Bank[]; accts: Acct[] }) {
+  const [rows, setRows] = useState<LoanRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [edit, setEdit] = useState<LoanRow | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/loans/loans'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []) } catch { setRows([]) } finally { setLoading(false) } }, [])
+  useEffect(() => { load() }, [load])
+  const del = async (r: LoanRow) => { if (!confirm(`Delete loan from ${r.name}? Its journal entry is reversed.`)) return; await fetch(`/api/loans/loans?id=${r.id}`, { method: 'DELETE' }); load() }
+  const acctLabel = (id: string | null) => { const a = accts.find(x => x.id === id) || banks.find(x => x.id === id); return a ? `${a.accountNumber} ${a.accountTitle}` : '—' }
+  const entityLabel = (r: LoanRow) => r.loanEntity === 'SHAREHOLDER' ? 'Shareholder' : r.loanEntity === 'BANK' ? 'Bank' : 'Other'
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Loan</button></div>
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+          {['Entity', 'Name', 'Date', 'Type', 'Principal', 'Interest / Coupon', 'Net Debit', 'Schedule', 'Bank', 'Agreement', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+        </tr></thead><tbody>
+          {loading ? <tr><td colSpan={11} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          : rows.map(r => (
+            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+              <td className="px-3 py-2">{entityLabel(r)}</td>
+              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
+              <td className="px-3 py-2">{r.loanType === 'CORPORATE_BOND' ? 'Corp. Bond' : r.loanType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
+              <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
+              <td className="px-3 py-2 text-right">{r.loanType === 'CORPORATE_BOND' ? (r.annualPct != null ? `${r.annualPct}% coupon` : '—') : r.hasInterest ? `${(r.computedAnnualPct || 0).toFixed(2)}% · ${peso(r.totalInterest || 0)}` : '—'}</td>
+              <td className="px-3 py-2 text-right">{r.netAmountToDebit != null ? peso(r.netAmountToDebit) : peso(r.principalAmount)}</td>
+              <td className="px-3 py-2">{r.loanType === 'CORPORATE_BOND' ? (r.maturityDate ? `matures ${String(r.maturityDate).slice(0, 10)}` : '—') : r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
+              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{acctLabel(r.bankAccountId)}</td>
+              <td className="px-3 py-2"><span className="inline-flex gap-1.5">{(r.loanAgreementUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}{(!r.loanAgreementUrls || r.loanAgreementUrls.length === 0) && <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></td>
+              <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
+            </tr>
+          ))}
+          {!loading && rows.length === 0 && <tr><td colSpan={11} className="text-center py-10 text-gray-400">No loans yet.</td></tr>}
+        </tbody></table>
+      </div>
+      {(showAdd || edit) && <LoanModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
+    </div>
+  )
+}
+
+function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }: { row: LoanRow | null; shareholders: SH[]; banks: Bank[]; accts: Acct[]; onClose: () => void; onSaved: () => void; preset?: { fromCreditLineId: string; entityName: string; annualPct: number | null } }) {
+  const [f, setF] = useState({
+    loanEntity: row?.loanEntity || (preset ? 'OTHER' : 'BANK'), shareholderId: row?.shareholderId || '', entityName: row?.entityName || preset?.entityName || '', name: row?.name || preset?.entityName || '',
+    dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
+    loanType: row?.loanType || 'CASH', kindType: row?.kindType || '', principalAmount: row ? String(row.principalAmount) : '',
+    hasInterest: row?.hasInterest ?? (preset ? (preset.annualPct != null && preset.annualPct > 0) : false), interestMode: row?.interestMode || 'ANNUAL_PCT', annualPct: row?.annualPct != null ? String(row.annualPct) : (preset?.annualPct != null ? String(preset.annualPct) : ''), termMonths: row?.termMonths ? String(row.termMonths) : '',
+    monthlyAmortization: row?.monthlyAmortization ? String(row.monthlyAmortization) : '', maturityDate: row?.maturityDate ? String(row.maturityDate).slice(0, 10) : '',
+    bankAccountId: row?.bankAccountId || '', creditAccountId: row?.creditAccountId || '', interestExpenseAccountId: row?.interestExpenseAccountId || '',
+    payoutSchedule: row?.payoutSchedule || '', payoutStartMonth: row?.payoutStartMonth ? String(row.payoutStartMonth) : '', payoutStartYear: row?.payoutStartYear ? String(row.payoutStartYear) : '', payoutDay: row?.payoutDay ? String(row.payoutDay) : '',
+    remarks: row?.remarks || '',
+  })
+  const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
+  const [pdcUrls, setPdcUrls] = useState<string[]>(row?.pdcUrls || [])
+  const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.loanAgreementUrls || [])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [charges, setCharges] = useState<LoanCharge[]>(() => (row?.charges || []).map((c: any) => ({ id: c.id, date: c.date ? String(c.date).slice(0, 10) : '', description: c.description || '', registeredName: c.registeredName || '', vatable: c.vatable || '', amount: c.amount != null ? String(c.amount) : '', siNumber: c.siNumber || '', chargeAccountId: c.chargeAccountId || '', deductedFromDebit: !!c.deductedFromDebit, proofUrls: c.proofUrls || [] })))
+  const [busy, setBusy] = useState(false)
+  const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
+  const n = (v: string) => Number(v) || 0
+  const isBond = f.loanType === 'CORPORATE_BOND'
+  const prefix = (f.name || f.entityName || 'LOAN').replace(/\s+/g, '_')
+  const prev = !isBond && f.hasInterest ? amortPreview(n(f.principalAmount), f.interestMode, n(f.annualPct), n(f.monthlyAmortization), n(f.termMonths)) : null
+  const deducted = charges.filter(c => c.deductedFromDebit).reduce((s, c) => s + n(c.amount), 0)
+  const netDebit = Math.max(0, n(f.principalAmount) - deducted)
+  const setCharge = (i: number, patch: Partial<LoanCharge>) => setCharges(cs => cs.map((c, idx) => idx === i ? { ...c, ...patch } : c))
+  const addCharge = () => setCharges(cs => [...cs, { date: f.dateAcquired, description: '', registeredName: '', vatable: '', amount: '', siNumber: '', chargeAccountId: '', deductedFromDebit: false, proofUrls: [] }])
+  const removeCharge = (i: number) => setCharges(cs => cs.filter((_, idx) => idx !== i))
+
+  const pickSh = (id: string) => { const sh = shareholders.find(s => s.id === id); setF(p => ({ ...p, shareholderId: id, name: sh ? sh.name : p.name })) }
+  const save = async () => {
+    const nm = (f.loanEntity === 'SHAREHOLDER' ? f.name : f.entityName || f.name).trim()
+    if (!nm || !(n(f.principalAmount) > 0)) { alert('Enter entity/name and principal amount.'); return }
+    if (isBond && !f.maturityDate) { alert('Corporate bonds need a maturity date.'); return }
+    setBusy(true)
+    try {
+      const body = { ...(row ? { id: row.id } : {}), ...f, name: nm, principalAmount: n(f.principalAmount),
+        annualPct: f.annualPct ? n(f.annualPct) : null, termMonths: f.termMonths ? Number(f.termMonths) : null, monthlyAmortization: f.monthlyAmortization ? n(f.monthlyAmortization) : null,
+        payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null,
+        proofOfDepositUrls: proofUrls, pdcUrls, loanAgreementUrls: agreementUrls,
+        fromCreditLineId: preset?.fromCreditLineId ?? row?.fromCreditLineId ?? null,
+        charges: charges.map(c => ({ ...c, amount: n(c.amount) })) }
+      const r = await fetch('/api/loans/loans', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm'
+  const lbl = 'block text-xs font-semibold mb-1'
+  const bc = { borderColor: 'var(--light-gray)' }
+  const mg = { color: 'var(--mid-gray)' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">{row ? 'Edit Loan' : 'Add Loan'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div><label className={lbl} style={mg}>Loan Entity</label><select value={f.loanEntity} onChange={e => set('loanEntity', e.target.value)} className={inp} style={bc}><option value="SHAREHOLDER">Shareholder</option><option value="BANK">Bank</option><option value="OTHER">Other Financial Institution</option></select></div>
+          {f.loanEntity === 'SHAREHOLDER'
+            ? <div><label className={lbl} style={mg}>Shareholder</label><select value={f.shareholderId} onChange={e => pickSh(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{shareholders.map(s => <option key={s.id} value={s.id}>{s.shNumber} — {s.name}</option>)}</select></div>
+            : <div><label className={lbl} style={mg}>Name of {f.loanEntity === 'BANK' ? 'Bank' : 'Institution'}</label><input value={f.entityName} onChange={e => set('entityName', e.target.value)} className={inp} style={bc} /></div>}
+          <div><label className={lbl} style={mg}>Date Acquired</label><input type="date" value={f.dateAcquired} onChange={e => set('dateAcquired', e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Type of Loan</label><select value={f.loanType} onChange={e => set('loanType', e.target.value)} className={inp} style={bc}><option value="CASH">Cash</option><option value="CORPORATE_BOND">Corporate Bond</option><option value="KIND">Kind</option></select></div>
+          {f.loanType === 'KIND' && <div><label className={lbl} style={mg}>What kind?</label><input value={f.kindType} onChange={e => set('kindType', e.target.value)} className={inp} style={bc} /></div>}
+          <div><label className={lbl} style={mg}>Principal Amount</label><input value={f.principalAmount} onChange={e => set('principalAmount', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+        </div>
+
+        {/* Interest / bond terms */}
+        {isBond ? (
+          <div className="mt-3 rounded-xl border p-3 grid grid-cols-2 sm:grid-cols-3 gap-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <div><label className={lbl} style={mg}>Annual coupon %</label><input value={f.annualPct} onChange={e => set('annualPct', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+            <div><label className={lbl} style={mg}>Maturity date</label><input type="date" value={f.maturityDate} onChange={e => set('maturityDate', e.target.value)} className={inp} style={bc} /></div>
+            <div className="col-span-2 sm:col-span-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Only the annual interest is paid each period; the principal is repaid in full at maturity.</div>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700"><input type="checkbox" checked={f.hasInterest} onChange={e => set('hasInterest', e.target.checked)} /> Has interest?</label>
+            {f.hasInterest && (
+              <div className="mt-2">
+                <div className="flex gap-2 mb-2 text-xs">{(['ANNUAL_PCT', 'MONTHLY_AMORT'] as const).map(m => <button key={m} onClick={() => set('interestMode', m)} className="px-3 py-1.5 rounded-lg font-semibold" style={f.interestMode === m ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{m === 'ANNUAL_PCT' ? 'Annual % + months' : 'Monthly amortization + months'}</button>)}</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {f.interestMode === 'ANNUAL_PCT'
+                    ? <div><label className={lbl} style={mg}>Annual %</label><input value={f.annualPct} onChange={e => set('annualPct', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+                    : <div><label className={lbl} style={mg}>Monthly amortization</label><input value={f.monthlyAmortization} onChange={e => set('monthlyAmortization', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>}
+                  <div><label className={lbl} style={mg}>For how many months</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
+                </div>
+                {prev && <p className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#fff', color: '#334155' }}>≈ {prev.flat.toFixed(2)}% p.a. (flat) · true cost {prev.effective.toFixed(2)}% eff. · monthly {peso(prev.amort)} = principal {peso(prev.perMonthPrincipal)} + interest {peso(prev.interestPerMonth)} · total interest {peso(prev.totalInterest)}</p>}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+          <div><label className={lbl} style={mg}>Bank Account Debited</label><select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={bc}><option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Account to be Credited <span className="font-normal text-gray-400">(principal)</span></label><select value={f.creditAccountId} onChange={e => set('creditAccountId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{accts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Account to be Expensed <span className="font-normal text-gray-400">(interest)</span></label><select value={f.interestExpenseAccountId} onChange={e => set('interestExpenseAccountId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{accts.filter(a => a.accountType === 'EXPENSE').map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+        </div>
+        {f.bankAccountId && f.creditAccountId && n(f.principalAmount) > 0 && <p className="text-[11px] mt-1 font-mono" style={{ color: '#334155' }}>Release: DR {banks.find(b => b.id === f.bankAccountId)?.accountTitle} {peso(n(f.principalAmount))} / CR {accts.find(a => a.id === f.creditAccountId)?.accountTitle} {peso(n(f.principalAmount))}</p>}
+
+        {/* Payout schedule (not shown for bonds) */}
+        {!isBond && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+            <div><label className={lbl} style={mg}>Payout Schedule</label><select value={f.payoutSchedule} onChange={e => set('payoutSchedule', e.target.value)} className={inp} style={bc}><option value="">—</option>{['ANNUALLY', 'BIANNUALLY', 'QUARTERLY', 'MONTHLY'].map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}</select></div>
+            <div><label className={lbl} style={mg}>Start month</label><select value={f.payoutStartMonth} onChange={e => set('payoutStartMonth', e.target.value)} className={inp} style={bc}><option value="">—</option>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></div>
+            <div><label className={lbl} style={mg}>Start year</label><input value={f.payoutStartYear} onChange={e => set('payoutStartYear', e.target.value)} inputMode="numeric" placeholder="2026" className={inp + ' font-mono'} style={bc} /></div>
+            <div><label className={lbl} style={mg}>Every nth (day)</label><input value={f.payoutDay} onChange={e => set('payoutDay', e.target.value)} inputMode="numeric" placeholder="30" className={inp + ' font-mono'} style={bc} /></div>
+          </div>
+        )}
+
+        {/* One-time charges */}
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex items-center justify-between mb-2"><span className="text-sm font-semibold text-gray-700">Other one-time charges</span><button onClick={addCharge} className="text-xs px-2 py-1 rounded-lg font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}><Plus size={12} className="inline" /> Add charge</button></div>
+          {charges.length === 0 ? <p className="text-[11px]" style={mg}>None. These become entries in the Expenses History.</p> : (
+            <div className="space-y-2">
+              {charges.map((c, i) => (
+                <div key={i} className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-end rounded-lg p-2" style={{ background: 'var(--off-white)' }}>
+                  <div><label className="block text-[10px] font-semibold" style={mg}>Date</label><input type="date" value={c.date} onChange={e => setCharge(i, { date: e.target.value })} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={bc} /></div>
+                  <div className="col-span-2 sm:col-span-1"><label className="block text-[10px] font-semibold" style={mg}>Description</label><input value={c.description} onChange={e => setCharge(i, { description: e.target.value })} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={bc} /></div>
+                  <div><label className="block text-[10px] font-semibold" style={mg}>Payee</label><input value={c.registeredName} onChange={e => setCharge(i, { registeredName: e.target.value })} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={bc} /></div>
+                  <div><label className="block text-[10px] font-semibold" style={mg}>Amount</label><input value={c.amount} onChange={e => setCharge(i, { amount: e.target.value })} inputMode="decimal" className="w-full px-2 py-1.5 rounded-lg border text-xs font-mono" style={bc} /></div>
+                  <div><label className="block text-[10px] font-semibold" style={mg}>Expense acct</label><select value={c.chargeAccountId} onChange={e => setCharge(i, { chargeAccountId: e.target.value })} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={bc}><option value="">—</option>{accts.filter(a => a.accountType === 'EXPENSE').map(a => <option key={a.id} value={a.id}>{a.accountNumber} {a.accountTitle}</option>)}</select></div>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="inline-flex items-center gap-1 text-[10px] font-semibold" style={mg}><input type="checkbox" checked={c.deductedFromDebit} onChange={e => setCharge(i, { deductedFromDebit: e.target.checked })} /> Deducted?</label>
+                    <ScanUpload compact section="loan" prefix={`${prefix}-CHARGE${i + 1}`} existingCount={c.proofUrls.length} label="Proof" onUploaded={u => setCharge(i, { proofUrls: [...c.proofUrls, u] })} />
+                    <button onClick={() => removeCharge(i)} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} className="text-red-400" /></button>
+                  </div>
+                </div>
+              ))}
+              <p className="text-[11px] font-mono" style={{ color: '#334155' }}>Deducted from disbursement: {peso(deducted)} · <span className="font-bold">Net amount to be debited: {peso(netDebit)}</span></p>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+          <div><label className={lbl} style={mg}>Loan Agreement</label><div className="flex flex-wrap items-center gap-2">{agreementUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${prefix}-AGREEMENT`} existingCount={agreementUrls.length} label="Add" onUploaded={u => setAgreementUrls(p => [...p, u])} /></div></div>
+          <div><label className={lbl} style={mg}>Proof of Deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${prefix}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
+          <div><label className={lbl} style={mg}>PDCs</label><div className="flex flex-wrap items-center gap-2">{pdcUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${prefix}-PDC`} existingCount={pdcUrls.length} label="Add" onUploaded={u => setPdcUrls(p => [...p, u])} /></div></div>
+        </div>
+        <div className="mt-3"><label className={lbl} style={mg}>Remarks</label><input value={f.remarks} onChange={e => set('remarks', e.target.value)} className={inp} style={bc} /></div>
+
+        <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add loan'}</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Credit Line ───────────────────────────────────────────────
+interface DrawnLoan { id: string; name: string; principalAmount: number; creditAccountId: string | null }
+interface CreditLineRow { id: string; entityName: string; amount: number; interestPct: number | null; utilized: boolean; settledAt: string | null; remarks: string | null; drawnLoans: DrawnLoan[]; drawnTotal: number }
+
+function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: Bank[]; accts: Acct[] }) {
+  const [rows, setRows] = useState<CreditLineRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [addOpen, setAddOpen] = useState(false)
+  const [drawFor, setDrawFor] = useState<CreditLineRow | null>(null)
+  const [settleFor, setSettleFor] = useState<CreditLineRow | null>(null)
+  const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/loans/credit-lines'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []) } catch { setRows([]) } finally { setLoading(false) } }, [])
+  useEffect(() => { load() }, [load])
+  const del = async (r: CreditLineRow) => { if (!confirm(`Delete credit line "${r.entityName}"? Drawn loans are kept but detached.`)) return; await fetch(`/api/loans/credit-lines?id=${r.id}`, { method: 'DELETE' }); load() }
+  const markUtilized = async (r: CreditLineRow) => { await fetch('/api/loans/credit-lines', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, entityName: r.entityName, amount: r.amount, interestPct: r.interestPct, utilized: true, remarks: r.remarks }) }); load() }
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end"><button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Credit Line</button></div>
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+          {['Entity', 'Available', 'Interest', 'Drawn', 'Remaining', 'Status', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+        </tr></thead><tbody>
+          {loading ? <tr><td colSpan={7} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          : rows.map(r => (
+            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.entityName}</td>
+              <td className="px-3 py-2 text-right font-semibold">{peso(r.amount)}</td>
+              <td className="px-3 py-2 text-right">{r.interestPct != null ? `${r.interestPct}%` : '—'}</td>
+              <td className="px-3 py-2 text-right">{peso(r.drawnTotal)}</td>
+              <td className="px-3 py-2 text-right">{peso(Math.max(0, r.amount - r.drawnTotal))}</td>
+              <td className="px-3 py-2">{r.settledAt ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Settled</span> : r.utilized || r.drawnTotal > 0 ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#ffedd5', color: '#9a3412' }}>Utilized</span> : <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f1f5f9', color: '#475569' }}>Open</span>}</td>
+              <td className="px-3 py-2 text-right whitespace-nowrap">
+                {!r.settledAt && <button onClick={() => setDrawFor(r)} className="text-[11px] px-2 py-1 rounded-lg font-semibold mr-1" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>Utilize</button>}
+                {!r.settledAt && r.drawnTotal > 0 && <button onClick={() => setSettleFor(r)} className="text-[11px] px-2 py-1 rounded-lg font-semibold mr-1" style={{ background: '#fef9c3', color: '#854d0e' }}>Paid full earlier</button>}
+                <button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
+              </td>
+            </tr>
+          ))}
+          {!loading && rows.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">No credit lines yet.</td></tr>}
+        </tbody></table>
+      </div>
+      {addOpen && <CreditLineModal onClose={() => setAddOpen(false)} onSaved={() => { setAddOpen(false); load() }} />}
+      {drawFor && <LoanModal row={null} shareholders={shareholders} banks={banks} accts={accts} preset={{ fromCreditLineId: drawFor.id, entityName: drawFor.entityName, annualPct: drawFor.interestPct }} onClose={() => setDrawFor(null)} onSaved={() => { const cl = drawFor; setDrawFor(null); if (cl) markUtilized(cl); else load() }} />}
+      {settleFor && <SettleCreditLineModal line={settleFor} banks={banks} accts={accts} onClose={() => setSettleFor(null)} onSaved={() => { setSettleFor(null); load() }} />}
+    </div>
+  )
+}
+
+function CreditLineModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ entityName: '', amount: '', interestPct: '', remarks: '' })
+  const [busy, setBusy] = useState(false)
+  const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
+  const n = (v: string) => Number(v) || 0
+  const save = async () => {
+    if (!f.entityName.trim() || !(n(f.amount) > 0)) { alert('Enter entity and amount.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/loans/credit-lines', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entityName: f.entityName, amount: n(f.amount), interestPct: f.interestPct ? n(f.interestPct) : null, remarks: f.remarks }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const lbl = 'block text-xs font-semibold mb-1'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Add Credit Line</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2"><label className={lbl} style={mg}>Credit Line Entity</label><input value={f.entityName} onChange={e => set('entityName', e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Amount (available)</label><input value={f.amount} onChange={e => set('amount', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Interest (annual %)</label><input value={f.interestPct} onChange={e => set('interestPct', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+          <div className="col-span-2"><label className={lbl} style={mg}>Remarks</label><input value={f.remarks} onChange={e => set('remarks', e.target.value)} className={inp} style={bc} /></div>
+        </div>
+        <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Add credit line</button>
+      </div>
+    </div>
+  )
+}
+
+function SettleCreditLineModal({ line, banks, accts, onClose, onSaved }: { line: CreditLineRow; banks: Bank[]; accts: Acct[]; onClose: () => void; onSaved: () => void }) {
+  const [balance, setBalance] = useState(String(line.drawnTotal || ''))
+  const [balanceAccountId, setBalanceAccountId] = useState(line.drawnLoans[0]?.creditAccountId || '')
+  const [bankAccountId, setBankAccountId] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [charges, setCharges] = useState<{ description: string; amount: string; accountId: string }[]>([])
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const n = (v: string) => Number(v) || 0
+  const chargeTotal = charges.reduce((s, c) => s + n(c.amount), 0)
+  const total = n(balance) + chargeTotal
+  const save = async () => {
+    if (!(n(balance) > 0) || !balanceAccountId || !bankAccountId) { alert('Enter balance, liability account and bank account.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/loans/credit-lines', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: line.id, action: 'settle', entityName: line.entityName, date, balance: n(balance), balanceAccountId, bankAccountId, charges: charges.map(c => ({ ...c, amount: n(c.amount) })), proofUrls }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const lbl = 'block text-xs font-semibold mb-1'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Pay Full Earlier — {line.entityName}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className={lbl} style={mg}>Outstanding balance</label><input value={balance} onChange={e => setBalance(e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Date paid</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Loan liability account</label><select value={balanceAccountId} onChange={e => setBalanceAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{accts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Bank account credited</label><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+        </div>
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex items-center justify-between mb-2"><span className="text-sm font-semibold text-gray-700">Early-payment charges</span><button onClick={() => setCharges(cs => [...cs, { description: '', amount: '', accountId: '' }])} className="text-xs px-2 py-1 rounded-lg font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}><Plus size={12} className="inline" /> Add</button></div>
+          {charges.map((c, i) => (
+            <div key={i} className="grid grid-cols-6 gap-2 items-end mb-2">
+              <div className="col-span-2"><input placeholder="Description" value={c.description} onChange={e => setCharges(cs => cs.map((x, idx) => idx === i ? { ...x, description: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={bc} /></div>
+              <div><input placeholder="Amount" value={c.amount} onChange={e => setCharges(cs => cs.map((x, idx) => idx === i ? { ...x, amount: e.target.value } : x))} inputMode="decimal" className="w-full px-2 py-1.5 rounded-lg border text-xs font-mono" style={bc} /></div>
+              <div className="col-span-2"><select value={c.accountId} onChange={e => setCharges(cs => cs.map((x, idx) => idx === i ? { ...x, accountId: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={bc}><option value="">Expense acct</option>{accts.filter(a => a.accountType === 'EXPENSE').map(a => <option key={a.id} value={a.id}>{a.accountNumber} {a.accountTitle}</option>)}</select></div>
+              <button onClick={() => setCharges(cs => cs.filter((_, idx) => idx !== i))} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} className="text-red-400" /></button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3"><label className={lbl} style={mg}>Proof of payment</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${line.entityName.replace(/\s+/g, '_')}-SETTLE`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
+        <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>Total to pay: {peso(total)} = balance {peso(n(balance))} + charges {peso(chargeTotal)}</p>
+        <button onClick={save} disabled={busy} className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record full early payment</button>
       </div>
     </div>
   )

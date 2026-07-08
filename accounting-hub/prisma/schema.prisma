@@ -2216,6 +2216,110 @@ model AdvancePayout {
   @@index([dueDate])
 }
 
+// ── Loans & Advances: Loans ───────────────────────────────────
+model Loan {
+  id                String   @id @default(cuid())
+  loanEntity        String   // SHAREHOLDER | BANK | OTHER
+  shareholderId     String?  // when loanEntity = SHAREHOLDER
+  entityName        String?  // bank / other-institution name
+  name              String   // display name (shareholder name or entity name)
+  dateAcquired      DateTime
+  loanType          String   // CASH | CORPORATE_BOND | KIND
+  kindType          String?
+  principalAmount   Decimal
+  // Cash / Kind interest (straight-line amortization, mirrors Advance)
+  hasInterest       Boolean  @default(false)
+  interestMode      String?  // ANNUAL_PCT | MONTHLY_AMORT
+  annualPct         Decimal?
+  termMonths        Int?
+  monthlyAmortization Decimal?
+  computedAnnualPct Decimal?
+  totalInterest     Decimal?
+  // Corporate bond: annual coupon %; principal repaid at maturity
+  maturityDate      DateTime?
+  proofOfDepositUrls Json?
+  bankAccountId     String?  // debited (money in) — net of deducted charges
+  creditAccountId   String?  // Loan liability account (CR on release)
+  interestExpenseAccountId String?
+  payoutSchedule    String?  // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
+  payoutStartMonth  Int?
+  payoutStartYear   Int?
+  payoutDay         Int?
+  loanAgreementUrls Json?
+  pdcUrls           Json?
+  netAmountToDebit  Decimal? // principal − charges deducted from disbursement
+  remarks           String?
+  fromCreditLineId  String?  // set when this loan is a credit-line drawdown
+  journalEntryId    String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  charges           LoanCharge[]
+  payouts           LoanPayout[]
+  @@index([shareholderId])
+  @@index([fromCreditLineId])
+}
+
+// One-time charges on a loan (mirrors an Expenses one-time expense; may be
+// deducted from the disbursement). Each also creates an Expenses entry.
+model LoanCharge {
+  id                String   @id @default(cuid())
+  loanId            String
+  loan              Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  date              DateTime
+  description       String
+  registeredName    String?  // supplier / payee
+  vatable           String?  // VAT | NV
+  amount            Decimal
+  siNumber          String?
+  chargeAccountId   String?  // expense account (COA)
+  deductedFromDebit Boolean  @default(false)
+  proofUrls         Json?
+  pettyCashEntryId  String?  // linked Expenses-history entry
+  createdAt         DateTime @default(now())
+
+  @@index([loanId])
+}
+
+model LoanPayout {
+  id               String   @id @default(cuid())
+  loanId           String
+  loan             Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  dueDate          DateTime
+  principalPortion Decimal  @default(0)
+  interestPortion  Decimal  @default(0)
+  amount           Decimal
+  status           String   @default("PENDING") // PENDING | PAID
+  paidDate         DateTime?
+  bankAccountId    String?
+  proofUrls        Json?
+  emailedAt        DateTime?
+  journalEntryId   String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([loanId])
+  @@index([dueDate])
+}
+
+// ── Loans & Advances: Credit Line ─────────────────────────────
+model CreditLine {
+  id            String   @id @default(cuid())
+  entityName    String   // lender / facility name
+  amount        Decimal  // total available line
+  interestPct   Decimal? // annual %
+  utilized      Boolean  @default(false)
+  // "Paid full earlier" settlement
+  settledAt     DateTime?
+  settledJournalEntryId String?
+  remarks       String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model BankTransaction {
   id                String   @id @default(cuid())
   bankAccountId     String   // Account.id (a Chart-of-Accounts bank account)
