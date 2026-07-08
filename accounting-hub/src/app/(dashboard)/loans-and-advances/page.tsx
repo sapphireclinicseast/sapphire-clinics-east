@@ -255,7 +255,7 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
   useEffect(() => { load() }, [load])
   const del = async (r: LoanRow) => { if (!confirm(`Delete loan from ${r.name}? Its journal entry is reversed.`)) return; await fetch(`/api/loans/loans?id=${r.id}`, { method: 'DELETE' }); load() }
   const acctLabel = (id: string | null) => { const a = accts.find(x => x.id === id) || banks.find(x => x.id === id); return a ? `${a.accountNumber} ${a.accountTitle}` : '—' }
-  const entityLabel = (r: LoanRow) => r.loanEntity === 'SHAREHOLDER' ? 'Shareholder' : r.loanEntity === 'BANK' ? 'Bank' : 'Other'
+  const entityLabel = (r: LoanRow) => r.loanEntity === 'SHAREHOLDER' ? 'Shareholder' : r.loanEntity === 'BANK' ? 'Bank' : r.loanEntity === 'INDIVIDUAL' ? 'Individual' : 'Other'
   return (
     <div className="space-y-3">
       <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Loan</button></div>
@@ -343,10 +343,10 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
       <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">{row ? 'Edit Loan' : 'Add Loan'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div><label className={lbl} style={mg}>Loan Entity</label><select value={f.loanEntity} onChange={e => set('loanEntity', e.target.value)} className={inp} style={bc}><option value="SHAREHOLDER">Shareholder</option><option value="BANK">Bank</option><option value="OTHER">Other Financial Institution</option></select></div>
+          <div><label className={lbl} style={mg}>Loan Entity</label><select value={f.loanEntity} onChange={e => set('loanEntity', e.target.value)} className={inp} style={bc}><option value="SHAREHOLDER">Shareholder</option><option value="BANK">Bank</option><option value="INDIVIDUAL">Individual (non-shareholder)</option><option value="OTHER">Other Financial Institution</option></select></div>
           {f.loanEntity === 'SHAREHOLDER'
             ? <div><label className={lbl} style={mg}>Shareholder</label><select value={f.shareholderId} onChange={e => pickSh(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{shareholders.map(s => <option key={s.id} value={s.id}>{s.shNumber} — {s.name}</option>)}</select></div>
-            : <div><label className={lbl} style={mg}>Name of {f.loanEntity === 'BANK' ? 'Bank' : 'Institution'}</label><input value={f.entityName} onChange={e => set('entityName', e.target.value)} className={inp} style={bc} /></div>}
+            : <div><label className={lbl} style={mg}>Name of {f.loanEntity === 'BANK' ? 'Bank' : f.loanEntity === 'INDIVIDUAL' ? 'Individual' : 'Institution'}</label><input value={f.entityName} onChange={e => set('entityName', e.target.value)} className={inp} style={bc} /></div>}
           <div><label className={lbl} style={mg}>Date Acquired</label><input type="date" value={f.dateAcquired} onChange={e => set('dateAcquired', e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Type of Loan</label><select value={f.loanType} onChange={e => set('loanType', e.target.value)} className={inp} style={bc}><option value="CASH">Cash</option><option value="CORPORATE_BOND">Corporate Bond</option><option value="KIND">Kind</option></select></div>
           {f.loanType === 'KIND' && <div><label className={lbl} style={mg}>What kind?</label><input value={f.kindType} onChange={e => set('kindType', e.target.value)} className={inp} style={bc} /></div>}
@@ -358,7 +358,7 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
           <div className="mt-3 rounded-xl border p-3 grid grid-cols-2 sm:grid-cols-3 gap-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
             <div><label className={lbl} style={mg}>Annual coupon %</label><input value={f.annualPct} onChange={e => set('annualPct', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
             <div><label className={lbl} style={mg}>Maturity date</label><input type="date" value={f.maturityDate} onChange={e => set('maturityDate', e.target.value)} className={inp} style={bc} /></div>
-            <div className="col-span-2 sm:col-span-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Only the annual interest is paid each period; the principal is repaid in full at maturity.</div>
+            <div className="col-span-2 sm:col-span-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Only the annual interest is paid each period; the principal is repaid in full at maturity. A corporate bond can be issued to <strong>any lender</strong> — shareholder, bank, or a private individual — so set the <strong>Loan Entity</strong> above accordingly. Classify the principal under a <strong>Bonds Payable</strong> account in &ldquo;Account to be Credited&rdquo;.</div>
           </div>
         ) : (
           <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
