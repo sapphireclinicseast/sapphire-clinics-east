@@ -107,7 +107,7 @@ export default function LoansAndAdvancesPage() {
 
       {tab === 'loans' && <LoansTab shareholders={shareholders} banks={banks} accts={accts} />}
       {tab === 'creditline' && <CreditLineTab shareholders={shareholders} banks={banks} accts={accts} />}
-      {tab === 'history' && <div className="rounded-2xl border p-8 text-center text-sm text-gray-400" style={{ borderColor: 'var(--light-gray)' }}>Payment History — coming in the next update.</div>}
+      {tab === 'history' && <PaymentHistoryTab banks={banks} />}
 
       {(showAdd || edit) && <AdvanceModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
@@ -555,6 +555,102 @@ function SettleCreditLineModal({ line, banks, accts, onClose, onSaved }: { line:
         <div className="mt-3"><label className={lbl} style={mg}>Proof of payment</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${line.entityName.replace(/\s+/g, '_')}-SETTLE`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
         <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>Total to pay: {peso(total)} = balance {peso(n(balance))} + charges {peso(chargeTotal)}</p>
         <button onClick={save} disabled={busy} className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record full early payment</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Payment History ───────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PayRow = any
+
+function PaymentHistoryTab({ banks }: { banks: Bank[] }) {
+  const [sub, setSub] = useState<'advances' | 'loans'>('advances')
+  const [rows, setRows] = useState<PayRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [recordFor, setRecordFor] = useState<PayRow | null>(null)
+  const [emailing, setEmailing] = useState('')
+  const load = useCallback(async () => { setLoading(true); try { const r = await fetch(`/api/loans/payments?type=${sub}`); const j = r.ok ? await r.json() : null; setRows(j?.rows || []) } catch { setRows([]) } finally { setLoading(false) } }, [sub])
+  useEffect(() => { load() }, [load])
+
+  const now = Date.now()
+  const soon = rows.filter(r => r.status !== 'PAID' && new Date(r.dueDate).getTime() - now < 14 * 864e5 && new Date(r.dueDate).getTime() - now > -60 * 864e5)
+  const sendEmail = async (r: PayRow) => {
+    if (!r.payoutId) return
+    setEmailing(r.payoutId)
+    try {
+      const res = await fetch('/api/loans/payments/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payoutId: r.payoutId }) })
+      const j = await res.json()
+      if (res.ok) { alert(`Emailed ${j.to} (from ${j.from}).`); load() } else alert(j.error || 'Email failed')
+    } finally { setEmailing('') }
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="flex gap-1">{(['advances', 'loans'] as const).map(v => <button key={v} onClick={() => setSub(v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={sub === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{v === 'advances' ? 'Advances' : 'Loans'}</button>)}</div>
+      </div>
+
+      {soon.length > 0 && (
+        <div className="rounded-xl border p-3 flex items-center justify-between gap-3" style={{ borderColor: '#fed7aa', background: '#fff7ed' }}>
+          <div className="text-sm" style={{ color: '#9a3412' }}><strong>{soon.length} payment{soon.length === 1 ? '' : 's'} due soon.</strong> The nearest is <strong>{soon[0].name}</strong> on {String(soon[0].dueDate).slice(0, 10)} ({peso(soon[0].amount)}).</div>
+          <button onClick={() => setRecordFor(soon[0])} className="whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Record {sub === 'advances' ? 'Advances' : 'Loans'} Payment</button>
+        </div>
+      )}
+
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+          {['Name', 'Due Date', 'Principal', 'Interest', 'Amount', 'Status', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+        </tr></thead><tbody>
+          {loading ? <tr><td colSpan={7} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          : rows.map((r, i) => (
+            <tr key={`${r.parentId}-${r.seq}-${i}`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dueDate).slice(0, 10)}</td>
+              <td className="px-3 py-2 text-right">{peso(r.principalPortion)}</td>
+              <td className="px-3 py-2 text-right">{peso(r.interestPortion)}</td>
+              <td className="px-3 py-2 text-right font-semibold">{peso(r.amount)}</td>
+              <td className="px-3 py-2">{r.status === 'PAID' ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Paid {r.paidDate ? String(r.paidDate).slice(0, 10) : ''}</span> : <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fef9c3', color: '#854d0e' }}>Pending</span>}</td>
+              <td className="px-3 py-2 text-right whitespace-nowrap">
+                {r.status !== 'PAID' && <button onClick={() => setRecordFor(r)} className="text-[11px] px-2 py-1 rounded-lg font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>Record payment</button>}
+                {r.status === 'PAID' && sub === 'advances' && r.payoutId && <button onClick={() => sendEmail(r)} disabled={emailing === r.payoutId} className="text-[11px] px-2 py-1 rounded-lg font-semibold disabled:opacity-50" style={{ background: r.emailedAt ? '#dcfce7' : 'var(--pale-teal)', color: r.emailedAt ? '#166534' : 'var(--teal)' }}>{emailing === r.payoutId ? '…' : r.emailedAt ? 'Emailed ✓' : 'Email shareholder'}</button>}
+              </td>
+            </tr>
+          ))}
+          {!loading && rows.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">No scheduled payments. Add a payout schedule on an {sub === 'advances' ? 'advance' : 'a loan'}.</td></tr>}
+        </tbody></table>
+      </div>
+      {recordFor && <RecordPaymentModal occ={recordFor} banks={banks} onClose={() => setRecordFor(null)} onSaved={() => { setRecordFor(null); load() }} />}
+    </div>
+  )
+}
+
+function RecordPaymentModal({ occ, banks, onClose, onSaved }: { occ: PayRow; banks: Bank[]; onClose: () => void; onSaved: () => void }) {
+  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10))
+  const [bankAccountId, setBankAccountId] = useState(occ.bankAccountId || '')
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    if (!bankAccountId) { alert('Select the bank account.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const lbl = 'block text-xs font-semibold mb-1'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Record {occ.kind === 'advance' ? 'Advance' : 'Loan'} Payment</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <p className="text-xs mb-3" style={mg}>{occ.name} · due {String(occ.dueDate).slice(0, 10)} · {peso(occ.amount)} <span className="font-mono">(principal {peso(occ.principalPortion)} + interest {peso(occ.interestPortion)})</span></p>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className={lbl} style={mg}>Date paid</label><input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Bank account credited</label><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+        </div>
+        <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${(occ.name || 'PAY').replace(/\s+/g, '_')}-PAYMENT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
+        <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>DR liability {peso(occ.principalPortion)} + DR interest {peso(occ.interestPortion)} / CR bank {peso(occ.amount)}</p>
+        <button onClick={save} disabled={busy} className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record payment</button>
       </div>
     </div>
   )
