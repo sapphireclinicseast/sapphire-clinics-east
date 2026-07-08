@@ -581,4 +581,16 @@ CREATE INDEX IF NOT EXISTS "FormReceipt_branch_idx" ON "FormReceipt"("branch");
 CREATE INDEX IF NOT EXISTS "FormReceipt_formType_idx" ON "FormReceipt"("formType");
 SQL
 
+# ── Equity: split price into True Par + APIC (per share) + valid-ID uploads ────
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+ALTER TABLE "CommonShare" ADD COLUMN IF NOT EXISTS "truePar" DECIMAL(65,30);
+ALTER TABLE "CommonShare" ADD COLUMN IF NOT EXISTS "apic" DECIMAL(65,30);
+ALTER TABLE "CommonShare" ADD COLUMN IF NOT EXISTS "validIdUrls" JSONB;
+UPDATE "CommonShare" SET "truePar" = "pricePerShare", "apic" = 0 WHERE "truePar" IS NULL;
+ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "truePar" DECIMAL(65,30);
+ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "apic" DECIMAL(65,30);
+ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "validIdUrls" JSONB;
+UPDATE "PreferredShare" SET "truePar" = "pricePerShare", "apic" = 0 WHERE "truePar" IS NULL;
+SQL
+
 echo "Redeploy complete."

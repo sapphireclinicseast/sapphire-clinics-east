@@ -5,6 +5,8 @@ import { postEquityIssuance, reverseEquityJournal } from '@/lib/accounting/equit
 
 const ADMIN = ['ADMIN']
 const num = (v: unknown) => Number(v || 0)
+// Price per share = True Par + APIC (fall back to explicit pricePerShare for older callers).
+const priceOf = (b: Record<string, unknown>) => (b.truePar != null || b.apic != null) ? num(b.truePar) + num(b.apic) : num(b.pricePerShare)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function resolveShareholder(tx: any, body: { shareholderId?: string; name?: string; tin?: string; birthdate?: string; email?: string; address?: string }, createdById: string) {
@@ -34,7 +36,7 @@ export async function GET() {
       id: p.id, shareholderId: p.shareholderId, shNumber: p.shareholder.shNumber, name: p.shareholder.name,
       tin: p.shareholder.tin, birthdate: p.shareholder.birthdate, email: p.shareholder.email, address: p.shareholder.address,
       dateAcquired: p.dateAcquired, agreementType: p.agreementType, agreementUrls: p.agreementUrls, stockCertNumber: p.stockCertNumber,
-      proofOfDepositUrls: p.proofOfDepositUrls, numberOfShares: num(p.numberOfShares), pricePerShare: num(p.pricePerShare), totalCapitalization: cap,
+      proofOfDepositUrls: p.proofOfDepositUrls, validIdUrls: p.validIdUrls, numberOfShares: num(p.numberOfShares), truePar: num(p.truePar), apic: num(p.apic), pricePerShare: num(p.pricePerShare), totalCapitalization: cap,
       equityStake: total > 0 ? (cap / total) * 100 : 0, bankAccountId: p.bankAccountId, equityAccountId: p.equityAccountId,
       annualInterest: p.annualInterest != null ? num(p.annualInterest) : null, maturityYears: p.maturityYears, buybackPrice: p.buybackPrice != null ? num(p.buybackPrice) : null,
       payoutSchedule: p.payoutSchedule, payoutStartMonth: p.payoutStartMonth, payoutStartYear: p.payoutStartYear, payoutDay: p.payoutDay, pdcUrls: p.pdcUrls,
@@ -48,7 +50,8 @@ function dataFrom(b: Record<string, unknown>) {
     dateAcquired: new Date(b.dateAcquired as string), agreementType: (b.agreementType as string) || 'SUBSCRIPTION',
     agreementUrls: Array.isArray(b.agreementUrls) ? b.agreementUrls : undefined, stockCertNumber: (b.stockCertNumber as string)?.trim() || null,
     proofOfDepositUrls: Array.isArray(b.proofOfDepositUrls) ? b.proofOfDepositUrls : undefined,
-    numberOfShares: num(b.numberOfShares), pricePerShare: num(b.pricePerShare), bankAccountId: (b.bankAccountId as string) || null, equityAccountId: (b.equityAccountId as string) || null,
+    validIdUrls: Array.isArray(b.validIdUrls) ? b.validIdUrls : undefined,
+    numberOfShares: num(b.numberOfShares), truePar: num(b.truePar), apic: num(b.apic), pricePerShare: priceOf(b), bankAccountId: (b.bankAccountId as string) || null, equityAccountId: (b.equityAccountId as string) || null,
     annualInterest: b.annualInterest != null ? num(b.annualInterest) : null, maturityYears: b.maturityYears ? Number(b.maturityYears) : null,
     buybackPrice: b.buybackPrice != null ? num(b.buybackPrice) : null,
     payoutSchedule: (b.payoutSchedule as string) || null, payoutStartMonth: b.payoutStartMonth ? Number(b.payoutStartMonth) : null,
@@ -63,7 +66,7 @@ export async function POST(req: Request) {
   try {
     const b = await req.json()
     const userId = session.user.id as string
-    const shares = num(b.numberOfShares), price = num(b.pricePerShare)
+    const shares = num(b.numberOfShares), price = priceOf(b)
     if (!(shares > 0) || !(price > 0) || !b.name?.trim() || !b.dateAcquired) return NextResponse.json({ error: 'Name, shares, price and date are required' }, { status: 400 })
     const created = await prisma.$transaction(async (tx) => {
       const sh = await resolveShareholder(tx, b, userId)
@@ -88,7 +91,7 @@ export async function PUT(req: Request) {
     if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
     const existing = await prisma.preferredShare.findUnique({ where: { id: b.id }, include: { shareholder: true } })
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    const shares = num(b.numberOfShares), price = num(b.pricePerShare)
+    const shares = num(b.numberOfShares), price = priceOf(b)
     await prisma.$transaction(async (tx) => {
       await tx.shareholder.update({ where: { id: existing.shareholderId }, data: {
         name: (b.name || existing.shareholder.name).trim(), tin: b.tin?.trim() || null,

@@ -51,8 +51,8 @@ export async function GET() {
       id: c.id, shareholderId: c.shareholderId, shNumber: c.shareholder.shNumber, name: c.shareholder.name,
       tin: c.shareholder.tin, birthdate: c.shareholder.birthdate, email: c.shareholder.email, address: c.shareholder.address,
       dateAcquired: c.dateAcquired, agreementType: c.agreementType, assignedToShareholderId: c.assignedToShareholderId,
-      agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls,
-      numberOfShares: num(c.numberOfShares), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
+      agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls, validIdUrls: c.validIdUrls,
+      numberOfShares: num(c.numberOfShares), truePar: num(c.truePar), apic: num(c.apic), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
       equityStake: totalCapitalization > 0 ? (cap / totalCapitalization) * 100 : 0,
       bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId,
       boughtBack: c.boughtBack, buybackPrice: num(c.buybackPrice), buybackShares: num(c.buybackShares),
@@ -72,7 +72,10 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const userId = session.user.id as string
-    const shares = num(body.numberOfShares), price = num(body.pricePerShare)
+    const shares = num(body.numberOfShares)
+    // Price per share = True Par + APIC (fall back to an explicit pricePerShare for older callers).
+    const truePar = num(body.truePar), apic = num(body.apic)
+    const price = (body.truePar != null || body.apic != null) ? truePar + apic : num(body.pricePerShare)
     if (!(shares > 0) || !(price > 0)) return NextResponse.json({ error: 'Number of shares and price are required' }, { status: 400 })
     if (!body.dateAcquired) return NextResponse.json({ error: 'Date acquired is required' }, { status: 400 })
 
@@ -87,7 +90,8 @@ export async function POST(req: Request) {
           agreementUrls: Array.isArray(body.agreementUrls) ? body.agreementUrls : undefined,
           stockCertNumber: body.stockCertNumber?.trim() || null,
           proofOfDepositUrls: Array.isArray(body.proofOfDepositUrls) ? body.proofOfDepositUrls : undefined,
-          numberOfShares: shares, pricePerShare: price, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
+          validIdUrls: Array.isArray(body.validIdUrls) ? body.validIdUrls : undefined,
+          numberOfShares: shares, truePar, apic, pricePerShare: price, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
           boughtBack, buybackPrice: boughtBack ? buyPrice : null, buybackShares: boughtBack ? buyShares : null,
           buybackBankAccountId: boughtBack ? (body.buybackBankAccountId || null) : null, treasuryAccountId: boughtBack ? (body.treasuryAccountId || null) : null,
           buybackProofUrls: boughtBack && Array.isArray(body.buybackProofUrls) ? body.buybackProofUrls : undefined,
@@ -117,7 +121,9 @@ export async function PUT(req: Request) {
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
     const existing = await prisma.commonShare.findUnique({ where: { id }, include: { shareholder: true } })
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    const shares = num(body.numberOfShares), price = num(body.pricePerShare)
+    const shares = num(body.numberOfShares)
+    const truePar = num(body.truePar), apic = num(body.apic)
+    const price = (body.truePar != null || body.apic != null) ? truePar + apic : num(body.pricePerShare)
 
     await prisma.$transaction(async (tx) => {
       // Update shareholder profile fields
@@ -135,7 +141,8 @@ export async function PUT(req: Request) {
         agreementUrls: Array.isArray(body.agreementUrls) ? body.agreementUrls : undefined,
         stockCertNumber: body.stockCertNumber?.trim() || null,
         proofOfDepositUrls: Array.isArray(body.proofOfDepositUrls) ? body.proofOfDepositUrls : undefined,
-        numberOfShares: shares, pricePerShare: price, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
+        validIdUrls: Array.isArray(body.validIdUrls) ? body.validIdUrls : undefined,
+        numberOfShares: shares, truePar, apic, pricePerShare: price, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
         boughtBack, buybackPrice: boughtBack ? buyPrice : null, buybackShares: boughtBack ? buyShares : null,
         buybackBankAccountId: boughtBack ? (body.buybackBankAccountId || null) : null, treasuryAccountId: boughtBack ? (body.treasuryAccountId || null) : null,
         buybackProofUrls: boughtBack && Array.isArray(body.buybackProofUrls) ? body.buybackProofUrls : undefined,

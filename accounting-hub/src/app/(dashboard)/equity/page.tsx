@@ -14,7 +14,7 @@ interface Shareholder { id: string; shNumber: string; name: string; tin: string 
 interface CommonRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
-  stockCertNumber: string | null; proofOfDepositUrls: string[] | null; numberOfShares: number; pricePerShare: number
+  stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
   totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
   boughtBack: boolean; buybackPrice: number; buybackShares: number; buybackBankAccountId: string | null; treasuryAccountId: string | null; buybackProofUrls: string[] | null
 }
@@ -98,10 +98,10 @@ export default function EquityPage() {
             <table ref={commonTableRef} className="w-full text-xs" style={commonRz.tableStyle}>
               <ResizableColgroup rz={commonRz} />
               <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Investor', 'Date Acq.', 'Stock Cert.', 'Shares', 'Price', 'Capitalization', '% Stake', 'Bank Debited', 'Bought back?', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={commonRz} index={i} /></th>)}
+                {['SH #', 'Investor', 'Date Acq.', 'Stock Cert.', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Bank Debited', 'Bought back?', 'Valid ID', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={commonRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={12} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                {loading ? <tr><td colSpan={15} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 : (data?.rows || []).map(r => (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.boughtBack ? '#fef2f2' : undefined }}>
                     <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.shNumber}</td>
@@ -109,14 +109,22 @@ export default function EquityPage() {
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.stockCertNumber || '—'}</td>
                     <td className="px-3 py-2 text-right">{r.numberOfShares.toLocaleString('en-PH')}</td>
-                    <td className="px-3 py-2 text-right">{peso(r.pricePerShare)}</td>
+                    <td className="px-3 py-2 text-right">{peso(r.truePar)}</td>
+                    <td className="px-3 py-2 text-right">{peso(r.apic)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{peso(r.pricePerShare)}</td>
                     <td className="px-3 py-2 text-right font-semibold">{peso(r.totalCapitalization)}</td>
                     <td className="px-3 py-2 text-right">{r.equityStake.toFixed(2)}%</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{bankLabel(r.bankAccountId)}</td>
                     <td className="px-3 py-2">{r.boughtBack ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Yes · {r.buybackShares.toLocaleString('en-PH')} @ {peso(r.buybackPrice)}</span> : 'No'}</td>
                     <td className="px-3 py-2">
                       <span className="inline-flex gap-1.5">
-                        {(r.proofOfDepositUrls || []).map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Proof of deposit" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}
+                        {(r.validIdUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Valid ID" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}
+                        {(!r.validIdUrls || r.validIdUrls.length === 0) && <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex gap-1.5">
+                        {(r.proofOfDepositUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Proof of deposit" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
@@ -125,7 +133,7 @@ export default function EquityPage() {
                     </td>
                   </tr>
                 ))}
-                {!loading && (data?.rows || []).length === 0 && <tr><td colSpan={12} className="text-center py-10 text-gray-400">No common shareholders yet.</td></tr>}
+                {!loading && (data?.rows || []).length === 0 && <tr><td colSpan={15} className="text-center py-10 text-gray-400">No common shareholders yet.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -145,18 +153,20 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '',
     email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '',
-    stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', pricePerShare: row ? String(row.pricePerShare) : '',
+    stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '',
     bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
     boughtBack: row?.boughtBack || false, buybackPrice: row?.buybackPrice ? String(row.buybackPrice) : '', buybackShares: row?.buybackShares ? String(row.buybackShares) : '',
     buybackBankAccountId: row?.buybackBankAccountId || '', treasuryAccountId: row?.treasuryAccountId || '',
   })
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.agreementUrls || [])
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
+  const [validIdUrls, setValidIdUrls] = useState<string[]>(row?.validIdUrls || [])
   const [buybackProofUrls, setBuybackProofUrls] = useState<string[]>(row?.buybackProofUrls || [])
   const [busy, setBusy] = useState(false)
   const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
   const n = (v: string) => Number(v) || 0
-  const cap = n(f.numberOfShares) * n(f.pricePerShare)
+  const pricePerShare = n(f.truePar) + n(f.apic)
+  const cap = n(f.numberOfShares) * pricePerShare
   const prefix = f.stockCertNumber || f.name || 'SHARE'
 
   const pickShareholder = (id: string) => {
@@ -166,12 +176,12 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
   }
 
   const save = async () => {
-    if (!(n(f.numberOfShares) > 0) || !(n(f.pricePerShare) > 0)) { alert('Enter shares and price.'); return }
+    if (!(n(f.numberOfShares) > 0) || !(pricePerShare > 0)) { alert('Enter shares and True Par / APIC.'); return }
     if (!f.name.trim()) { alert('Investor name is required.'); return }
     setBusy(true)
     try {
-      const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), pricePerShare: n(f.pricePerShare),
-        buybackPrice: n(f.buybackPrice), buybackShares: n(f.buybackShares), agreementUrls, proofOfDepositUrls: proofUrls, buybackProofUrls }
+      const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), truePar: n(f.truePar), apic: n(f.apic), pricePerShare,
+        buybackPrice: n(f.buybackPrice), buybackShares: n(f.buybackShares), agreementUrls, proofOfDepositUrls: proofUrls, validIdUrls, buybackProofUrls }
       const r = await fetch('/api/equity/common', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
@@ -217,7 +227,9 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
           )}
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Stock Certificate No.</label><input value={f.stockCertNumber} onChange={e => set('stockCertNumber', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Number of Shares</label><input value={f.numberOfShares} onChange={e => set('numberOfShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
-          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price per Share</label><input value={f.pricePerShare} onChange={e => set('pricePerShare', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>True Par (PHP)</label><input value={f.truePar} onChange={e => set('truePar', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>APIC (PHP)</label><input value={f.apic} onChange={e => set('apic', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price/Share (PHP) <span className="font-normal text-gray-400">(par + APIC)</span></label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(pricePerShare)}</div></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Total Capitalization</label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(cap)}</div></div>
           <div className="col-span-2 sm:col-span-1"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account where the equity was debited</label>
             <select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
@@ -242,6 +254,10 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of deposit</label>
             <div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
               <ScanUpload compact section="equity" prefix={`${prefix}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div>
+          </div>
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Valid ID <span className="font-normal text-gray-400">(one or more; scan via QR)</span></label>
+            <div className="flex flex-wrap items-center gap-2">{validIdUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
+              <ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div>
           </div>
         </div>
 
@@ -283,8 +299,8 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 interface PrefRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
-  dateAcquired: string; agreementType: string; agreementUrls: string[] | null; stockCertNumber: string | null; proofOfDepositUrls: string[] | null
-  numberOfShares: number; pricePerShare: number; totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
+  dateAcquired: string; agreementType: string; agreementUrls: string[] | null; stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null
+  numberOfShares: number; truePar: number; apic: number; pricePerShare: number; totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
   annualInterest: number | null; maturityYears: number | null; buybackPrice: number | null
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; pdcUrls: string[] | null
 }
@@ -304,26 +320,29 @@ function PreferredTab({ banks, equityAccts, onChanged }: { banks: Bank[]; equity
       <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button></div>
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-          {['SH #', 'Investor', 'Date', 'Shares', 'Price', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+          {['SH #', 'Investor', 'Date', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank', 'Valid ID', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
         </tr></thead><tbody>
-          {loading ? <tr><td colSpan={12} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          {loading ? <tr><td colSpan={15} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           : rows.map(r => (
             <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
               <td className="px-3 py-2 font-mono font-semibold">{r.shNumber}</td>
               <td className="px-3 py-2">{r.name}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
               <td className="px-3 py-2 text-right">{r.numberOfShares.toLocaleString('en-PH')}</td>
-              <td className="px-3 py-2 text-right">{peso(r.pricePerShare)}</td>
+              <td className="px-3 py-2 text-right">{peso(r.truePar)}</td>
+              <td className="px-3 py-2 text-right">{peso(r.apic)}</td>
+              <td className="px-3 py-2 text-right font-semibold">{peso(r.pricePerShare)}</td>
               <td className="px-3 py-2 text-right font-semibold">{peso(r.totalCapitalization)}</td>
               <td className="px-3 py-2 text-right">{r.equityStake.toFixed(2)}%</td>
               <td className="px-3 py-2 text-right">{r.annualInterest != null ? `${r.annualInterest}%` : '—'}</td>
               <td className="px-3 py-2">{r.maturityYears ? `${r.maturityYears}y${r.buybackPrice ? ` @ ${peso(r.buybackPrice)}` : ''}` : '—'}</td>
               <td className="px-3 py-2">{r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{bankLabel(r.bankAccountId)}</td>
+              <td className="px-3 py-2"><span className="inline-flex gap-1.5">{(r.validIdUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Valid ID" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}{(!r.validIdUrls || r.validIdUrls.length === 0) && <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></td>
               <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
             </tr>
           ))}
-          {!loading && rows.length === 0 && <tr><td colSpan={12} className="text-center py-10 text-gray-400">No preferred shareholders yet.</td></tr>}
+          {!loading && rows.length === 0 && <tr><td colSpan={15} className="text-center py-10 text-gray-400">No preferred shareholders yet.</td></tr>}
         </tbody></table>
       </div>
       {(showAdd || edit) && <PreferredModal row={edit} shareholders={shareholders} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load(); onChanged() }} />}
@@ -335,24 +354,26 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '', email: row?.email || '', address: row?.address || '',
     dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10), agreementType: row?.agreementType || 'SUBSCRIPTION', stockCertNumber: row?.stockCertNumber || '',
-    numberOfShares: row ? String(row.numberOfShares) : '', pricePerShare: row ? String(row.pricePerShare) : '', bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
+    numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '', bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
     annualInterest: row?.annualInterest != null ? String(row.annualInterest) : '', maturityYears: row?.maturityYears ? String(row.maturityYears) : '', buybackPrice: row?.buybackPrice != null ? String(row.buybackPrice) : '',
     payoutSchedule: row?.payoutSchedule || '', payoutStartMonth: row?.payoutStartMonth ? String(row.payoutStartMonth) : '', payoutStartYear: row?.payoutStartYear ? String(row.payoutStartYear) : '', payoutDay: row?.payoutDay ? String(row.payoutDay) : '',
   })
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.agreementUrls || [])
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
   const [pdcUrls, setPdcUrls] = useState<string[]>(row?.pdcUrls || [])
+  const [validIdUrls, setValidIdUrls] = useState<string[]>(row?.validIdUrls || [])
   const [busy, setBusy] = useState(false)
   const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
   const n = (v: string) => Number(v) || 0
-  const cap = n(f.numberOfShares) * n(f.pricePerShare)
+  const pricePerShare = n(f.truePar) + n(f.apic)
+  const cap = n(f.numberOfShares) * pricePerShare
   const prefix = f.stockCertNumber || f.name || 'PREF'
   const pickSh = (id: string) => { const sh = shareholders.find(s => s.id === id); if (sh) setF(p => ({ ...p, shareholderId: id, name: sh.name, tin: sh.tin || '', birthdate: sh.birthdate ? String(sh.birthdate).slice(0, 10) : '', email: sh.email || '', address: sh.address || '' })); else set('shareholderId', '') }
   const save = async () => {
-    if (!(n(f.numberOfShares) > 0) || !(n(f.pricePerShare) > 0) || !f.name.trim()) { alert('Enter name, shares and price.'); return }
+    if (!(n(f.numberOfShares) > 0) || !(pricePerShare > 0) || !f.name.trim()) { alert('Enter name, shares and True Par / APIC.'); return }
     setBusy(true)
     try {
-      const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), pricePerShare: n(f.pricePerShare), annualInterest: f.annualInterest ? n(f.annualInterest) : null, maturityYears: f.maturityYears ? Number(f.maturityYears) : null, buybackPrice: f.buybackPrice ? n(f.buybackPrice) : null, payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null, agreementUrls, proofOfDepositUrls: proofUrls, pdcUrls }
+      const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), truePar: n(f.truePar), apic: n(f.apic), pricePerShare, annualInterest: f.annualInterest ? n(f.annualInterest) : null, maturityYears: f.maturityYears ? Number(f.maturityYears) : null, buybackPrice: f.buybackPrice ? n(f.buybackPrice) : null, payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null, agreementUrls, proofOfDepositUrls: proofUrls, validIdUrls, pdcUrls }
       const r = await fetch('/api/equity/preferred', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
@@ -374,7 +395,9 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
           <div><label className={lbl} style={mg}>Agreement type</label><select value={f.agreementType} onChange={e => set('agreementType', e.target.value)} className={inp} style={bc}><option value="SUBSCRIPTION">Subscription</option><option value="DEED_OF_ASSIGNMENT">Deed of Assignment</option></select></div>
           <div><label className={lbl} style={mg}>Stock Certificate No.</label><input value={f.stockCertNumber} onChange={e => set('stockCertNumber', e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Number of Shares</label><input value={f.numberOfShares} onChange={e => set('numberOfShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
-          <div><label className={lbl} style={mg}>Price per Share</label><input value={f.pricePerShare} onChange={e => set('pricePerShare', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+          <div><label className={lbl} style={mg}>True Par (PHP)</label><input value={f.truePar} onChange={e => set('truePar', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+          <div><label className={lbl} style={mg}>APIC (PHP)</label><input value={f.apic} onChange={e => set('apic', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Price/Share (PHP) <span className="font-normal text-gray-400">(par + APIC)</span></label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(pricePerShare)}</div></div>
           <div><label className={lbl} style={mg}>Total Capitalization</label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(cap)}</div></div>
           <div><label className={lbl} style={mg}>Annual Interest %</label><input value={f.annualInterest} onChange={e => set('annualInterest', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
           <div><label className={lbl} style={mg}>Maturity for buyback (years)</label><input value={f.maturityYears} onChange={e => set('maturityYears', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
@@ -389,9 +412,10 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
           <div><label className={lbl} style={mg}>Start year</label><input value={f.payoutStartYear} onChange={e => set('payoutStartYear', e.target.value)} inputMode="numeric" placeholder="2026" className={inp + ' font-mono'} style={bc} /></div>
           <div><label className={lbl} style={mg}>Every nth (day)</label><input value={f.payoutDay} onChange={e => set('payoutDay', e.target.value)} inputMode="numeric" placeholder="30" className={inp + ' font-mono'} style={bc} /></div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-3">
           <div><label className={lbl} style={mg}>Subscription / Deed</label><div className="flex flex-wrap items-center gap-2">{agreementUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-AGREEMENT`} existingCount={agreementUrls.length} label="Add" onUploaded={u => setAgreementUrls(p => [...p, u])} /></div></div>
           <div><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
+          <div><label className={lbl} style={mg}>Valid ID <span className="font-normal text-gray-400">(1+, QR)</span></label><div className="flex flex-wrap items-center gap-2">{validIdUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div></div>
           <div><label className={lbl} style={mg}>PDCs</label><div className="flex flex-wrap items-center gap-2">{pdcUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-PDC`} existingCount={pdcUrls.length} label="Add" onUploaded={u => setPdcUrls(p => [...p, u])} /></div></div>
         </div>
         <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add preferred shareholder'}</button>
