@@ -61,6 +61,36 @@ function chargeRows(b: any): { date: Date; description: string; registeredName: 
   }))
 }
 
+// Create a one-time Expenses entry (branch CEO) for a loan charge so it appears
+// in Expenses History and is expensed once (the Income Statement derives expenses
+// from these entries — never from the loan JE — so nothing is double-counted).
+// Deducted charges are marked paid from the loan's bank, so the bank reconciliation
+// nets them against the gross principal inflow.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function createChargeEntry(tx: any, c: { date: Date; description: string; registeredName: string | null; vatable: string | null; amount: number; siNumber: string | null; chargeAccountId: string | null; deductedFromDebit: boolean; proofUrls: string[] }, loan: { name: string; dateAcquired: Date; bankAccountId: string | null }, userId: string): Promise<string> {
+  const branch = 'CEO'
+  let accountTitle: string | null = null
+  if (c.chargeAccountId) {
+    const acc = await tx.account.findUnique({ where: { id: c.chargeAccountId }, select: { accountNumber: true, accountTitle: true } })
+    if (acc) accountTitle = `${acc.accountNumber} ${acc.accountTitle}`
+  }
+  const agg = await tx.pettyCashEntry.aggregate({ where: { branch }, _max: { pcvSeq: true } })
+  const seq = (agg._max.pcvSeq || 0) + 1
+  const yy = new Date().getFullYear() % 100
+  const pcvNumber = `CEO-PCV${String(yy).padStart(2, '0')}-${String(seq).padStart(6, '0')}`
+  await tx.pettyCashSettings.upsert({ where: { branch }, create: { branch, nextPcvSeq: seq + 1 }, update: { nextPcvSeq: seq + 1 } })
+  const entry = await tx.pettyCashEntry.create({ data: {
+    branch, recordType: 'ONE_TIME', pcvNumber, pcvSeq: seq, pcvSub: 1,
+    date: c.date, description: `${c.description} (loan: ${loan.name})`, accountTitle,
+    grossAmount: c.amount, vatable: c.vatable || null, siNumber: c.siNumber || null, registeredName: c.registeredName || null,
+    proofUrls: c.proofUrls && c.proofUrls.length ? c.proofUrls : undefined, finalized: true,
+    paidAt: c.deductedFromDebit ? loan.dateAcquired : null,
+    paymentBankAccount: c.deductedFromDebit && loan.bankAccountId ? loan.bankAccountId : null,
+    createdById: userId,
+  } })
+  return entry.id as string
+}
+
 export async function GET() {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
@@ -117,7 +147,10 @@ export async function POST(req: Request) {
     const netDebit = Math.round((principal - deducted) * 100) / 100
     const created = await prisma.$transaction(async (tx) => {
       const l = await tx.loan.create({ data: { ...loanData(b, principal, interest, netDebit), createdById: userId } })
-      if (charges.length) await tx.loanCharge.createMany({ data: charges.map(c => ({ ...c, proofUrls: c.proofUrls, loanId: l.id })) })
+      for (const c of charges) {
+        const entryId = await createChargeEntry(tx, c, { name: l.name, dateAcquired: l.dateAcquired, bankAccountId: l.bankAccountId }, userId)
+        await tx.loanCharge.create({ data: { ...c, proofUrls: c.proofUrls, loanId: l.id, pettyCashEntryId: entryId } })
+      }
       const jeId = await releaseJE(tx, { id: l.id, name: l.name, principalAmount: principal, bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, date: new Date(b.dateAcquired), createdById: userId })
       if (jeId) await tx.loan.update({ where: { id: l.id }, data: { journalEntryId: jeId } })
       return l
@@ -143,9 +176,16 @@ export async function PUT(req: Request) {
     const netDebit = Math.round((principal - deducted) * 100) / 100
     await prisma.$transaction(async (tx) => {
       await tx.journalEntry.deleteMany({ where: { referenceType: 'LOAN', referenceId: b.id } })
+      // Remove the previous charges' Expenses-History entries, then rebuild.
+      const oldCharges = await tx.loanCharge.findMany({ where: { loanId: b.id }, select: { pettyCashEntryId: true } })
+      const oldEntryIds = oldCharges.map((c: { pettyCashEntryId: string | null }) => c.pettyCashEntryId).filter((x: string | null): x is string => !!x)
+      if (oldEntryIds.length) await tx.pettyCashEntry.deleteMany({ where: { id: { in: oldEntryIds } } })
       await tx.loanCharge.deleteMany({ where: { loanId: b.id } })
-      await tx.loan.update({ where: { id: b.id }, data: loanData(b, principal, interest, netDebit) })
-      if (charges.length) await tx.loanCharge.createMany({ data: charges.map(c => ({ ...c, proofUrls: c.proofUrls, loanId: b.id })) })
+      const upd = await tx.loan.update({ where: { id: b.id }, data: loanData(b, principal, interest, netDebit) })
+      for (const c of charges) {
+        const entryId = await createChargeEntry(tx, c, { name: upd.name, dateAcquired: upd.dateAcquired, bankAccountId: upd.bankAccountId }, userId)
+        await tx.loanCharge.create({ data: { ...c, proofUrls: c.proofUrls, loanId: b.id, pettyCashEntryId: entryId } })
+      }
       const jeId = await releaseJE(tx, { id: b.id, name: b.name.trim(), principalAmount: principal, bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, date: new Date(b.dateAcquired), createdById: userId })
       await tx.loan.update({ where: { id: b.id }, data: { journalEntryId: jeId } })
     })
@@ -163,6 +203,10 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   await prisma.$transaction(async (tx) => {
     await tx.journalEntry.deleteMany({ where: { referenceType: 'LOAN', referenceId: id } })
+    // Remove the charges' Expenses-History entries before the loan (and its charges) go.
+    const chs = await tx.loanCharge.findMany({ where: { loanId: id }, select: { pettyCashEntryId: true } })
+    const eids = chs.map((c: { pettyCashEntryId: string | null }) => c.pettyCashEntryId).filter((x: string | null): x is string => !!x)
+    if (eids.length) await tx.pettyCashEntry.deleteMany({ where: { id: { in: eids } } })
     await tx.loan.delete({ where: { id } }) // charges + payouts cascade
   })
   return NextResponse.json({ success: true })
