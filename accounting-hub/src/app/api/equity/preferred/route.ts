@@ -3,9 +3,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postEquityIssuance, reverseEquityJournal } from '@/lib/accounting/equity'
 
-const ADMIN = ['ADMIN']
-// Preferred shares are readable by accountants/bookkeepers (view-only); writes stay admin-only.
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+// Preferred shares are fully managed (view + add/edit/delete) by admin, accountant, and bookkeeper.
+const ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const num = (v: unknown) => Number(v || 0)
 // Price per share = True Par + APIC (fall back to explicit pricePerShare for older callers).
 const priceOf = (b: Record<string, unknown>) => (b.truePar != null || b.apic != null) ? num(b.truePar) + num(b.apic) : num(b.pricePerShare)
@@ -23,7 +22,7 @@ async function resolveShareholder(tx: any, body: { shareholderId?: string; name?
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user || !READ_ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   const [prefs, commons, shareholders] = await Promise.all([
     prisma.preferredShare.findMany({ include: { shareholder: true }, orderBy: { createdAt: 'asc' } }),
     prisma.commonShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),
@@ -65,7 +64,7 @@ function dataFrom(b: Record<string, unknown>) {
 
 export async function POST(req: Request) {
   const session = await auth()
-  if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   try {
     const b = await req.json()
     const userId = session.user.id as string
@@ -87,7 +86,7 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   const session = await auth()
-  if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   try {
     const b = await req.json()
     const userId = session.user.id as string
@@ -114,7 +113,7 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   const session = await auth()
-  if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   await prisma.$transaction(async (tx) => {

@@ -164,7 +164,8 @@ export default function EquityPage() {
         </div>
       )}
 
-      {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} canWrite={isAdmin} />}
+      {/* Preferred shares are editable by admin, accountant, and bookkeeper. */}
+      {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} canWrite />}
       {isAdmin && effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} />}
 
       {(showAdd || edit) && <CommonModal row={edit} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
