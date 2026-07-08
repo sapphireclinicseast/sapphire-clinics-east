@@ -591,6 +591,8 @@ ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "truePar" DECIMAL(65,30);
 ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "apic" DECIMAL(65,30);
 ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "validIdUrls" JSONB;
 UPDATE "PreferredShare" SET "truePar" = "pricePerShare", "apic" = 0 WHERE "truePar" IS NULL;
+ALTER TABLE "CommonShare" ADD COLUMN IF NOT EXISTS "shareClass" TEXT;
+ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "shareClass" TEXT;
 SQL
 
 echo "Redeploy complete."

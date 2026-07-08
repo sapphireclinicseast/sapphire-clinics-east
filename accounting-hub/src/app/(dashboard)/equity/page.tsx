@@ -11,10 +11,23 @@ const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionD
 
 interface Bank { id: string; accountNumber: string; accountTitle: string }
 interface Shareholder { id: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null }
+const COMMON_SHARE_CLASSES = [
+  'Common – Voting – with Par',
+  'Common – Voting – without Par',
+  'Founders – Voting – with Par',
+  'Founders – Voting – without Par',
+]
+const PREFERRED_SHARE_CLASSES = [
+  'Preferred – Voting – with Par',
+  'Preferred – Non-Voting – with Par',
+  'Redeemable Preferred – Voting – with Par',
+  'Redeemable Preferred – Non-Voting – with Par',
+]
+
 interface CommonRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
-  stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
+  stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
   totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
   boughtBack: boolean; buybackPrice: number; buybackShares: number; buybackBankAccountId: string | null; treasuryAccountId: string | null; buybackProofUrls: string[] | null
 }
@@ -98,14 +111,15 @@ export default function EquityPage() {
             <table ref={commonTableRef} className="w-full text-xs" style={commonRz.tableStyle}>
               <ResizableColgroup rz={commonRz} />
               <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Investor', 'Date Acq.', 'Stock Cert.', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Bank Debited', 'Bought back?', 'Valid ID', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={commonRz} index={i} /></th>)}
+                {['SH #', 'Investor', 'Class', 'Date Acq.', 'Stock Cert.', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Bank Debited', 'Bought back?', 'Valid ID', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={commonRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={15} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                {loading ? <tr><td colSpan={16} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 : (data?.rows || []).map(r => (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.boughtBack ? '#fef2f2' : undefined }}>
                     <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.shNumber}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.stockCertNumber || '—'}</td>
                     <td className="px-3 py-2 text-right">{r.numberOfShares.toLocaleString('en-PH')}</td>
@@ -133,7 +147,7 @@ export default function EquityPage() {
                     </td>
                   </tr>
                 ))}
-                {!loading && (data?.rows || []).length === 0 && <tr><td colSpan={15} className="text-center py-10 text-gray-400">No common shareholders yet.</td></tr>}
+                {!loading && (data?.rows || []).length === 0 && <tr><td colSpan={16} className="text-center py-10 text-gray-400">No common shareholders yet.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -152,7 +166,7 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '',
     email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
-    agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '',
+    agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '', shareClass: row?.shareClass || '',
     stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '',
     bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
     boughtBack: row?.boughtBack || false, buybackPrice: row?.buybackPrice ? String(row.buybackPrice) : '', buybackShares: row?.buybackShares ? String(row.buybackShares) : '',
@@ -213,6 +227,12 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Email</label><input value={f.email} onChange={e => set('email', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div className="col-span-2 sm:col-span-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Complete Address</label><input value={f.address} onChange={e => set('address', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
 
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Class <span className="text-red-500">*</span></label>
+            <select value={f.shareClass} onChange={e => set('shareClass', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">— Select Type of Share —</option>
+              {COMMON_SHARE_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Agreement type</label>
             <select value={f.agreementType} onChange={e => set('agreementType', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
               <option value="SUBSCRIPTION">Subscription Agreement</option><option value="DEED_OF_ASSIGNMENT">Deed of Assignment</option>
@@ -299,7 +319,7 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 interface PrefRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
-  dateAcquired: string; agreementType: string; agreementUrls: string[] | null; stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null
+  dateAcquired: string; agreementType: string; agreementUrls: string[] | null; stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null
   numberOfShares: number; truePar: number; apic: number; pricePerShare: number; totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
   annualInterest: number | null; maturityYears: number | null; buybackPrice: number | null
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; pdcUrls: string[] | null
@@ -320,13 +340,14 @@ function PreferredTab({ banks, equityAccts, onChanged }: { banks: Bank[]; equity
       <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button></div>
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-          {['SH #', 'Investor', 'Date', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank', 'Valid ID', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+          {['SH #', 'Investor', 'Class', 'Date', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank', 'Valid ID', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
         </tr></thead><tbody>
-          {loading ? <tr><td colSpan={15} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          {loading ? <tr><td colSpan={16} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           : rows.map(r => (
             <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
               <td className="px-3 py-2 font-mono font-semibold">{r.shNumber}</td>
               <td className="px-3 py-2">{r.name}</td>
+              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
               <td className="px-3 py-2 text-right">{r.numberOfShares.toLocaleString('en-PH')}</td>
               <td className="px-3 py-2 text-right">{peso(r.truePar)}</td>
@@ -342,7 +363,7 @@ function PreferredTab({ banks, equityAccts, onChanged }: { banks: Bank[]; equity
               <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
             </tr>
           ))}
-          {!loading && rows.length === 0 && <tr><td colSpan={15} className="text-center py-10 text-gray-400">No preferred shareholders yet.</td></tr>}
+          {!loading && rows.length === 0 && <tr><td colSpan={16} className="text-center py-10 text-gray-400">No preferred shareholders yet.</td></tr>}
         </tbody></table>
       </div>
       {(showAdd || edit) && <PreferredModal row={edit} shareholders={shareholders} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load(); onChanged() }} />}
@@ -353,7 +374,7 @@ function PreferredTab({ banks, equityAccts, onChanged }: { banks: Bank[]; equity
 function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSaved }: { row: PrefRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '', email: row?.email || '', address: row?.address || '',
-    dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10), agreementType: row?.agreementType || 'SUBSCRIPTION', stockCertNumber: row?.stockCertNumber || '',
+    dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10), agreementType: row?.agreementType || 'SUBSCRIPTION', stockCertNumber: row?.stockCertNumber || '', shareClass: row?.shareClass || '',
     numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '', bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
     annualInterest: row?.annualInterest != null ? String(row.annualInterest) : '', maturityYears: row?.maturityYears ? String(row.maturityYears) : '', buybackPrice: row?.buybackPrice != null ? String(row.buybackPrice) : '',
     payoutSchedule: row?.payoutSchedule || '', payoutStartMonth: row?.payoutStartMonth ? String(row.payoutStartMonth) : '', payoutStartYear: row?.payoutStartYear ? String(row.payoutStartYear) : '', payoutDay: row?.payoutDay ? String(row.payoutDay) : '',
@@ -392,6 +413,7 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
           <div><label className={lbl} style={mg}>Birthdate</label><input type="date" value={f.birthdate} onChange={e => set('birthdate', e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Email</label><input value={f.email} onChange={e => set('email', e.target.value)} className={inp} style={bc} /></div>
           <div className="col-span-2 sm:col-span-3"><label className={lbl} style={mg}>Complete Address</label><input value={f.address} onChange={e => set('address', e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Class <span className="text-red-500">*</span></label><select value={f.shareClass} onChange={e => set('shareClass', e.target.value)} className={inp} style={bc}><option value="">— Select Type of Share —</option>{PREFERRED_SHARE_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Agreement type</label><select value={f.agreementType} onChange={e => set('agreementType', e.target.value)} className={inp} style={bc}><option value="SUBSCRIPTION">Subscription</option><option value="DEED_OF_ASSIGNMENT">Deed of Assignment</option></select></div>
           <div><label className={lbl} style={mg}>Stock Certificate No.</label><input value={f.stockCertNumber} onChange={e => set('stockCertNumber', e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Number of Shares</label><input value={f.numberOfShares} onChange={e => set('numberOfShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>

@@ -2046,6 +2046,7 @@ model CommonShare {
   stockCertNumber  String?
   proofOfDepositUrls Json?
   validIdUrls      Json?    // shareholder's valid ID(s) — multi-file, QR upload
+  shareClass       String?  // e.g. "Common – Voting – with Par" / "Founders – …"
   numberOfShares   Decimal
   truePar          Decimal? // par value per share (PHP)
   apic             Decimal? // additional paid-in capital per share (PHP)
@@ -2078,6 +2079,7 @@ model PreferredShare {
   stockCertNumber  String?
   proofOfDepositUrls Json?
   validIdUrls      Json?    // shareholder's valid ID(s) — multi-file, QR upload
+  shareClass       String?  // e.g. "Preferred – Voting – with Par" / "Redeemable Preferred – …"
   numberOfShares   Decimal
   truePar          Decimal? // par value per share (PHP)
   apic             Decimal? // additional paid-in capital per share (PHP)
