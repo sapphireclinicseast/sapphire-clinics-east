@@ -340,7 +340,7 @@ const CURRENCIES = [
   { value: 'INR', label: 'INR — Indian Rupee' },
 ]
 
-const TABS = ['Inventory', 'Suppliers', 'Adjustments', 'Consignments'] as const
+const TABS = ['Inventory', 'Suppliers', 'Adjustments', 'Consignments', 'Forms'] as const
 type Tab = (typeof TABS)[number]
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -444,6 +444,19 @@ interface Consignment {
   remarks: string | null
   createdAt: string
   requestedBy?: { name: string }
+}
+
+interface FormReceipt {
+  id: string
+  branch: string
+  formType: string
+  dateReceived: string
+  fromControl: string
+  toControl: string
+  quantity: number
+  remarks: string | null
+  createdByName?: string | null
+  createdAt: string
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -708,6 +721,22 @@ export default function InventoryPage() {
   const [conCsvSubmitting, setConCsvSubmitting] = useState(false)
   const [conCsvResult, setConCsvResult] = useState<{ success: number; errors: string[] } | null>(null)
   const conCsvFileRef = useRef<HTMLInputElement>(null)
+
+  // ── Consumable Forms state
+  const [forms, setForms] = useState<FormReceipt[]>([])
+  const [formsBranchFilter, setFormsBranchFilter] = useState('')
+  const [formModalOpen, setFormModalOpen] = useState(false)
+  const [formEditId, setFormEditId] = useState<string | null>(null)
+  const [frBranch, setFrBranch] = useState('SANDBOX_EAST')
+  const [frFormType, setFrFormType] = useState('')
+  const [frDate, setFrDate] = useState('')
+  const [frFrom, setFrFrom] = useState('')
+  const [frTo, setFrTo] = useState('')
+  const [frRemarks, setFrRemarks] = useState('')
+  const [frSubmitting, setFrSubmitting] = useState(false)
+  const [deleteFormConfirm, setDeleteFormConfirm] = useState<string | null>(null)
+  const [deletingForm, setDeletingForm] = useState(false)
+
   // PDF modal state
   const [pdfModalOpen, setPdfModalOpen] = useState(false)
   const [pdfData, setPdfData] = useState<TransmittalData | null>(null)
@@ -863,6 +892,15 @@ export default function InventoryPage() {
     } catch { /* ignore */ }
   }, [])
 
+  const fetchForms = useCallback(async () => {
+    try {
+      const qs = formsBranchFilter ? `?branch=${encodeURIComponent(formsBranchFilter)}` : ''
+      const res = await fetch(`/api/inventory/forms${qs}`)
+      const data = await res.json()
+      setForms(data.data || [])
+    } catch { /* ignore */ }
+  }, [formsBranchFilter])
+
   // Initial load — only runs once when session is available
   const initialLoaded = useRef(false)
   useEffect(() => {
@@ -873,10 +911,48 @@ export default function InventoryPage() {
     }
     initialLoaded.current = true
     setLoading(true)
-    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments()])
+    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
+
+  // Refetch consumable forms when the branch toggle changes (skip first mount).
+  useEffect(() => {
+    if (!initialLoaded.current) return
+    fetchForms()
+  }, [fetchForms])
+
+  const openFormCreate = () => {
+    setFormEditId(null)
+    setFrBranch(formsBranchFilter || 'SANDBOX_EAST')
+    setFrFormType(''); setFrDate(''); setFrFrom(''); setFrTo(''); setFrRemarks('')
+    setError(''); setFormModalOpen(true)
+  }
+  const openFormEdit = (f: FormReceipt) => {
+    setFormEditId(f.id)
+    setFrBranch(f.branch); setFrFormType(f.formType)
+    setFrDate(f.dateReceived ? new Date(f.dateReceived).toISOString().slice(0, 10) : '')
+    setFrFrom(f.fromControl); setFrTo(f.toControl); setFrRemarks(f.remarks || '')
+    setError(''); setFormModalOpen(true)
+  }
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFrSubmitting(true); setError('')
+    try {
+      const body = { id: formEditId || undefined, branch: frBranch, formType: frFormType, dateReceived: frDate || undefined, fromControl: frFrom, toControl: frTo, remarks: frRemarks }
+      const res = await fetch('/api/inventory/forms', { method: formEditId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to save'); return }
+      setFormModalOpen(false); fetchForms()
+    } catch { setError('Failed to save') } finally { setFrSubmitting(false) }
+  }
+  const handleFormDelete = async (id: string) => {
+    setDeletingForm(true)
+    try {
+      const res = await fetch(`/api/inventory/forms?id=${id}`, { method: 'DELETE' })
+      if (res.ok) { setDeleteFormConfirm(null); fetchForms() }
+    } finally { setDeletingForm(false) }
+  }
 
   // Fetch COA accounts for dropdowns
   useEffect(() => {
@@ -1602,7 +1678,7 @@ export default function InventoryPage() {
      RENDER
      ═══════════════════════════════════════════════════════ */
 
-  const anyModalOpen = itemModalOpen || supplierModalOpen || adjModalOpen || conModalOpen || pdfModalOpen || bulkEditOpen
+  const anyModalOpen = itemModalOpen || supplierModalOpen || adjModalOpen || conModalOpen || pdfModalOpen || bulkEditOpen || formModalOpen
 
   // Print bulk barcodes — A6 pages, 10 barcodes per product per page
   const printBulkBarcodes = () => {
@@ -4690,6 +4766,199 @@ setTimeout(()=>window.print(),500);
           )}
         </>
       )}
+
+      {/* ════════════════════════════════════════════════════
+         TAB 5: CONSUMABLE FORMS (control-number stock)
+         ════════════════════════════════════════════════════ */}
+      {activeTab === 'Forms' && (() => {
+        const summary = Array.from(
+          forms.reduce((m, f) => {
+            const cur = m.get(f.formType) || { total: 0, receipts: 0 }
+            m.set(f.formType, { total: cur.total + f.quantity, receipts: cur.receipts + 1 })
+            return m
+          }, new Map<string, { total: number; receipts: number }>())
+        ).sort((a, b) => a[0].localeCompare(b[0]))
+        const grandTotal = forms.reduce((s, f) => s + f.quantity, 0)
+        return (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <div>
+              <p className="text-sm" style={{ color: 'var(--charcoal)', fontWeight: 600 }}>Consumable Forms</p>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Track how many pre-numbered forms are on hand — pcs are counted automatically from each control-number range received.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select value={formsBranchFilter} onChange={(e) => setFormsBranchFilter(e.target.value)}
+                className="px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                <option value="">All Branches</option>
+                {Object.entries(BRANCH_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              {canWrite && (
+                <button onClick={openFormCreate}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--teal)' }}>
+                  <Plus size={18} /> Add Receipt
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Available-pcs summary per form type */}
+          {summary.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
+              {summary.map(([type, s]) => (
+                <div key={type} className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                  <p className="text-xs font-mono font-semibold" style={{ color: 'var(--teal)' }}>{type}</p>
+                  <p className="text-2xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>{s.total.toLocaleString('en-PH')}</p>
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>pcs on hand · {s.receipts} receipt{s.receipts === 1 ? '' : 's'}</p>
+                </div>
+              ))}
+              <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>Total</p>
+                <p className="text-2xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>{grandTotal.toLocaleString('en-PH')}</p>
+                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>pcs across all form types</p>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Form Type</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date Received</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Control Range</th>
+                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pcs</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Remarks</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Recorded By</th>
+                    {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {forms.length === 0 ? (
+                    <tr>
+                      <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                        <FileText size={32} className="mx-auto mb-2 opacity-40" />
+                        <p>No form receipts yet</p>
+                      </td>
+                    </tr>
+                  ) : forms.map((f) => (
+                    <tr key={f.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{f.formType}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[f.branch] || f.branch}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(f.dateReceived)}</td>
+                      <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{f.fromControl} → {f.toControl}</td>
+                      <td className="px-4 py-3 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{f.quantity.toLocaleString('en-PH')}</td>
+                      <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: 'var(--mid-gray)' }}>{f.remarks || '—'}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{f.createdByName || '—'}</td>
+                      {canWrite && (
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <button onClick={() => openFormEdit(f)} className="p-2 rounded-lg hover:bg-teal-50 transition-colors mr-1" title="Edit receipt">
+                            <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                          </button>
+                          <button onClick={() => setDeleteFormConfirm(f.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete receipt">
+                            <Trash2 size={15} className="text-red-500" />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Delete Form Receipt Confirm */}
+          {deleteFormConfirm && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Delete Receipt</h3>
+                <p className="text-sm mb-2" style={{ color: 'var(--mid-gray)' }}>Delete this form receipt? The pcs it contributes will be removed from the on-hand count.</p>
+                <div className="flex gap-3 justify-end mt-6">
+                  <button onClick={() => setDeleteFormConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }} disabled={deletingForm}>Cancel</button>
+                  <button onClick={() => handleFormDelete(deleteFormConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600 flex items-center gap-2" disabled={deletingForm}>
+                    {deletingForm && <Loader2 size={14} className="animate-spin" />} Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add / Edit Form Receipt Modal */}
+          {formModalOpen && (() => {
+            const previewFrom = parseInt(String(frFrom).replace(/[^0-9]/g, ''), 10)
+            const previewTo = parseInt(String(frTo).replace(/[^0-9]/g, ''), 10)
+            const previewQty = Number.isFinite(previewFrom) && Number.isFinite(previewTo) && previewTo >= previewFrom ? previewTo - previewFrom + 1 : null
+            return (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{formEditId ? 'Edit Form Receipt' : 'Add Form Receipt'}</h3>
+                  <button onClick={() => setFormModalOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                    <X size={20} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                </div>
+                {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
+                <form onSubmit={handleFormSubmit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Branch</label>
+                      <select value={frBranch} onChange={(e) => setFrBranch(e.target.value)} required
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                        {Object.entries(BRANCH_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Form Type</label>
+                      <input type="text" value={frFormType} onChange={(e) => setFrFormType(e.target.value)} required placeholder="e.g. ADMIN01"
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Date Received</label>
+                    <input type="date" value={frDate} onChange={(e) => setFrDate(e.target.value)} required
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>From Control #</label>
+                      <input type="text" value={frFrom} onChange={(e) => setFrFrom(e.target.value)} required placeholder="000001"
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>To Control #</label>
+                      <input type="text" value={frTo} onChange={(e) => setFrTo(e.target.value)} required placeholder="000100"
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl text-sm" style={{ background: previewQty != null ? 'var(--pale-teal)' : '#fef2f2', color: previewQty != null ? 'var(--teal)' : '#dc2626' }}>
+                    {previewQty != null
+                      ? <>This receipt = <span className="font-bold">{previewQty.toLocaleString('en-PH')} pcs</span></>
+                      : 'Enter a valid range — the "to" number must be ≥ the "from" number.'}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Remarks (optional)</label>
+                    <input type="text" value={frRemarks} onChange={(e) => setFrRemarks(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div className="flex gap-3 justify-end pt-2">
+                    <button type="button" onClick={() => setFormModalOpen(false)} className="px-4 py-2.5 rounded-xl text-sm border" style={{ borderColor: 'var(--light-gray)' }} disabled={frSubmitting}>Cancel</button>
+                    <button type="submit" disabled={frSubmitting || previewQty == null}
+                      className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                      {frSubmitting && <Loader2 size={14} className="animate-spin" />} {formEditId ? 'Save Changes' : 'Add Receipt'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            )
+          })()}
+        </>
+        )
+      })()}
     </div>
   )
 }

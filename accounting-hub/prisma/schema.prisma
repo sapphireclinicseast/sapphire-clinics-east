@@ -416,6 +416,26 @@ model InventoryAdjustment {
   @@index([batchRefId])
 }
 
+// Consumable pre-numbered forms (e.g. ADMIN01) tracked by control-number range.
+// Received pcs = numeric(toControl) − numeric(fromControl) + 1. Toggled per branch.
+model FormReceipt {
+  id            String   @id @default(cuid())
+  branch        String
+  formType      String   // form code / series, e.g. "ADMIN01"
+  dateReceived  DateTime
+  fromControl   String   // starting control number (string preserves zero-padding)
+  toControl     String   // ending control number
+  quantity      Int      // computed pcs in the range
+  remarks       String?
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([branch])
+  @@index([formType])
+}
+
 model InventoryAdjustmentBatch {
   id                 String    @id @default(cuid())
   referenceNumber    String    @unique
