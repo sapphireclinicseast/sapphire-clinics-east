@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { postEquityIssuance, reverseEquityJournal } from '@/lib/accounting/equity'
 
 const ADMIN = ['ADMIN']
+// Preferred shares are readable by accountants/bookkeepers (view-only); writes stay admin-only.
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const num = (v: unknown) => Number(v || 0)
 // Price per share = True Par + APIC (fall back to explicit pricePerShare for older callers).
 const priceOf = (b: Record<string, unknown>) => (b.truePar != null || b.apic != null) ? num(b.truePar) + num(b.apic) : num(b.pricePerShare)
@@ -21,7 +23,7 @@ async function resolveShareholder(tx: any, body: { shareholderId?: string; name?
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  if (!session?.user || !READ_ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   const [prefs, commons, shareholders] = await Promise.all([
     prisma.preferredShare.findMany({ include: { shareholder: true }, orderBy: { createdAt: 'asc' } }),
     prisma.commonShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),

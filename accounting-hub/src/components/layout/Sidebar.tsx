@@ -42,8 +42,8 @@ const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 const COA_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 // Taxes module: main admin, accountant, bookkeeper.
 const TAX_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
-// Equity: main admin only. Loans & Advances: main admin, accountant, bookkeeper.
-const EQUITY_ACCESS = ['ADMIN']
+// Equity: main admin (full) + accountant/bookkeeper (Preferred Shares tab only, view-only).
+const EQUITY_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const LOANS_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // Payroll: full access + the dedicated Payroll Officer.
 const PAYROLL_ACCESS = [...FULL_ACCESS, 'PAYROLL_OFFICER']

@@ -34,8 +34,12 @@ interface CommonRow {
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
 interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number }
 
+const EQUITY_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+
 export default function EquityPage() {
   const { data: session, status } = useSession()
+  const role = session?.user?.role
+  const isAdmin = role === 'ADMIN'
   const [tab, setTab] = useState<'common' | 'preferred' | 'dividends'>('common')
   const commonTableRef = useRef<HTMLTableElement>(null)
   const commonRz = useResizableColumns('equity-common-list', commonTableRef)
@@ -47,10 +51,12 @@ export default function EquityPage() {
   const [showAdd, setShowAdd] = useState(false)
 
   const load = useCallback(async () => {
+    // Common-shares data is admin-only; accountants/bookkeepers see the Preferred tab only.
+    if (!isAdmin) { setLoading(false); return }
     setLoading(true)
     try { const r = await fetch('/api/equity/common'); setData(r.ok ? await r.json() : null) }
     catch { setData(null) } finally { setLoading(false) }
-  }, [])
+  }, [isAdmin])
   useEffect(() => { load() }, [load])
   useEffect(() => { fetch('/api/bank-accounts').then(r => r.ok ? r.json() : []).then(setBanks).catch(() => setBanks([])) }, [])
   useEffect(() => {
@@ -60,9 +66,11 @@ export default function EquityPage() {
   }, [])
 
   if (status === 'unauthenticated') redirect('/login')
-  if (status === 'authenticated' && session?.user?.role !== 'ADMIN') {
-    return <div className="p-8 text-center text-gray-500">Equity is restricted to the main administrator.</div>
+  if (status === 'authenticated' && !EQUITY_ROLES.includes(role as string)) {
+    return <div className="p-8 text-center text-gray-500">Equity is restricted to Admin, Accountant, and Bookkeeper roles.</div>
   }
+  // Accountants/bookkeepers are scoped to the Preferred Shares tab (view-only).
+  const effectiveTab = isAdmin ? tab : 'preferred'
 
   const del = async (row: CommonRow) => {
     if (!confirm(`Delete ${row.shNumber} — ${row.name}'s common shares? Its journal entries are reversed.`)) return
@@ -78,7 +86,8 @@ export default function EquityPage() {
         <h1 className="text-2xl font-semibold text-gray-900">Equity</h1>
       </div>
 
-      {/* Top figures */}
+      {/* Top figures — org-wide equity totals (admin only) */}
+      {isAdmin && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Total Capitalization</p>
@@ -93,16 +102,17 @@ export default function EquityPage() {
           <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{(fig?.treasuryShares || 0).toLocaleString('en-PH')}</p>
         </div>
       </div>
+      )}
 
-      {/* Tabs */}
+      {/* Tabs — accountants/bookkeepers only see Preferred Shares */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']] as const).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
-            style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+        {(isAdmin ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']] : [['preferred', 'Preferred Shares']]).map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v as 'common' | 'preferred' | 'dividends')} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
+            style={{ borderColor: effectiveTab === v ? 'var(--teal)' : 'transparent', color: effectiveTab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
       </div>
 
-      {tab === 'common' && (
+      {effectiveTab === 'common' && (
         <div className="space-y-3">
           <div className="flex justify-end">
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Common Shareholder</button>
@@ -154,8 +164,8 @@ export default function EquityPage() {
         </div>
       )}
 
-      {tab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} />}
-      {tab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} />}
+      {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} canWrite={isAdmin} />}
+      {isAdmin && effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} />}
 
       {(showAdd || edit) && <CommonModal row={edit} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
@@ -325,7 +335,7 @@ interface PrefRow {
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; pdcUrls: string[] | null
 }
 
-function PreferredTab({ banks, equityAccts, onChanged }: { banks: Bank[]; equityAccts: EquityAcct[]; onChanged: () => void }) {
+function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { banks: Bank[]; equityAccts: EquityAcct[]; onChanged: () => void; canWrite?: boolean }) {
   const [rows, setRows] = useState<PrefRow[]>([])
   const [shareholders, setShareholders] = useState<Shareholder[]>([])
   const [loading, setLoading] = useState(true)
@@ -337,7 +347,7 @@ function PreferredTab({ banks, equityAccts, onChanged }: { banks: Bank[]; equity
   const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? `${b.accountNumber} ${b.accountTitle}` : '—' }
   return (
     <div className="space-y-3">
-      <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button></div>
+      {canWrite && <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button></div>}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
           {['SH #', 'Investor', 'Class', 'Date', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank', 'Valid ID', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
@@ -360,7 +370,7 @@ function PreferredTab({ banks, equityAccts, onChanged }: { banks: Bank[]; equity
               <td className="px-3 py-2">{r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{bankLabel(r.bankAccountId)}</td>
               <td className="px-3 py-2"><span className="inline-flex gap-1.5">{(r.validIdUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Valid ID" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}{(!r.validIdUrls || r.validIdUrls.length === 0) && <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></td>
-              <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
+              <td className="px-3 py-2 text-right whitespace-nowrap">{canWrite && <><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></>}</td>
             </tr>
           ))}
           {!loading && rows.length === 0 && <tr><td colSpan={16} className="text-center py-10 text-gray-400">No preferred shareholders yet.</td></tr>}
