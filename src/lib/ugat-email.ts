@@ -198,6 +198,67 @@ export async function sendUgatVerificationEmail(params: {
   await send({ to, subject, html })
 }
 
+/** Interview scheduled — Jitsi link + "add to Google Calendar". */
+export async function sendUgatInterviewEmail(params: {
+  to: string | string[]
+  firstName: string
+  whenText: string
+  jitsiUrl: string
+  gcalUrl: string
+}): Promise<void> {
+  const { to, firstName, whenText, jitsiUrl, gcalUrl } = params
+  const subject = 'Your UGAT Fellowship interview is scheduled'
+  const html = `
+  <div style="margin:0;padding:0;background:${CREAM};font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:560px;margin:0 auto;padding:32px 20px">
+      <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
+        <div style="background:${DEEP};padding:26px;text-align:center">
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:22px;font-weight:800">UGAT Fellowship — Interview</div>
+        </div>
+        <div style="padding:28px 30px;color:${DEEP}">
+          <h2 style="margin:0 0 12px;font-family:'Montserrat',Arial,sans-serif;font-size:19px">Hi ${escapeHtml(firstName)},</h2>
+          <p style="margin:0 0 14px;line-height:1.6;font-size:15px">Your interview for the UGAT Fellowship Program is confirmed for:</p>
+          <div style="background:${CREAM};border-radius:12px;padding:16px 18px;margin:0 0 18px;font-size:16px;font-weight:700;color:${DEEP}">${escapeHtml(whenText)}</div>
+          <p style="margin:0 0 18px;line-height:1.6;font-size:14px">Please join the video call at your scheduled time using the link below.</p>
+          <div style="text-align:center;margin:8px 0 6px">
+            <a href="${jitsiUrl}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:15px;padding:13px 26px;border-radius:999px">Join the video interview</a>
+          </div>
+          <p style="margin:6px 0 18px;text-align:center;font-size:12px"><a href="${gcalUrl}" style="color:${GOLD}">Add this to your Google Calendar</a></p>
+          <p style="margin:0 0 6px;font-size:12px;color:${GREEN}">Meeting link:</p>
+          <p style="margin:0;word-break:break-all;font-size:12px"><a href="${jitsiUrl}" style="color:${GOLD}">${jitsiUrl}</a></p>
+        </div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.</div>
+      </div>
+    </div>
+  </div>`
+  await send({ to, subject, html })
+}
+
+/** Empathic "not considered for the next step" notice. */
+export async function sendUgatRejectionEmail(params: { to: string | string[]; firstName: string }): Promise<void> {
+  const { to, firstName } = params
+  const subject = 'An update on your UGAT Fellowship application'
+  const html = `
+  <div style="margin:0;padding:0;background:${CREAM};font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:560px;margin:0 auto;padding:32px 20px">
+      <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
+        <div style="background:${DEEP};padding:24px;text-align:center">
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:800">UGAT Fellowship Program</div>
+        </div>
+        <div style="padding:28px 30px;color:${DEEP}">
+          <h2 style="margin:0 0 12px;font-family:'Montserrat',Arial,sans-serif;font-size:19px">Dear ${escapeHtml(firstName)},</h2>
+          <p style="margin:0 0 14px;line-height:1.65;font-size:15px">Thank you for applying to the UGAT Fellowship Program and for the time and heart you put into your application. It was a genuine privilege to learn about your journey.</p>
+          <p style="margin:0 0 14px;line-height:1.65;font-size:15px">After careful consideration, we are unable to move your application forward to the next step at this time. Please know this reflects the limited number of slots we have — not your worth or your promise as a future clinician.</p>
+          <p style="margin:0 0 14px;line-height:1.65;font-size:15px">We sincerely hope you&rsquo;ll consider applying again in a future cycle, and we wish you every success in your internship and licensure. Extensions and future openings are usually announced on your account and by email.</p>
+          <p style="margin:0;line-height:1.65;font-size:15px">With warmth and respect,<br><strong>The UGAT Fellowship Team</strong><br>Aura Foundation · Sapphire Clinics East, Inc.</p>
+        </div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">You&rsquo;re welcome to reach us anytime at scholarship@sapphireclinicseast.org.</div>
+      </div>
+    </div>
+  </div>`
+  await send({ to, subject, html })
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')

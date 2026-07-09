@@ -811,3 +811,17 @@
 .cycleForm { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 12px 0; }
 .dtField { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--deep-70); font-weight: 600; }
 .dtField input { font-weight: 400; }
+
+/* ── Interview slots / booking ─────────────────────────────────── */
+.slotGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 8px; }
+.slotBtn {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  border: 1px solid var(--line); background: #fff; border-radius: 12px;
+  padding: 12px 14px; cursor: pointer; font-family: var(--body);
+  transition: border-color 0.14s, background 0.14s;
+}
+.slotBtn:hover { border-color: var(--green); background: rgba(74,128,115,0.06); }
+.slotBtn:disabled { opacity: 0.5; cursor: default; }
+.slotBtn b { color: var(--deep); font-size: 13.5px; }
+.slotBtn span { font-size: 11.5px; color: var(--deep-70); }
+.intvRow { display: flex; align-items: center; gap: 12px; padding: 11px 2px; }
