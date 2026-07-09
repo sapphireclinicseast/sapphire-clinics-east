@@ -31,6 +31,8 @@ export async function GET() {
   const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
   const prefCap = prefs.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
   const total = commonCap + prefCap
+  // % equity is share-count based: total shares across common + preferred.
+  const totalShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0) + prefs.reduce((s, p) => s + num(p.numberOfShares), 0)
   const rows = prefs.map(p => {
     const cap = num(p.numberOfShares) * num(p.pricePerShare)
     return {
@@ -38,7 +40,7 @@ export async function GET() {
       tin: p.shareholder.tin, birthdate: p.shareholder.birthdate, email: p.shareholder.email, address: p.shareholder.address,
       dateAcquired: p.dateAcquired, agreementType: p.agreementType, agreementUrls: p.agreementUrls, stockCertNumber: p.stockCertNumber,
       proofOfDepositUrls: p.proofOfDepositUrls, validIdUrls: p.validIdUrls, shareClass: p.shareClass, numberOfShares: num(p.numberOfShares), truePar: num(p.truePar), apic: num(p.apic), pricePerShare: num(p.pricePerShare), totalCapitalization: cap,
-      equityStake: total > 0 ? (cap / total) * 100 : 0, bankAccountId: p.bankAccountId, equityAccountId: p.equityAccountId,
+      equityStake: totalShares > 0 ? (num(p.numberOfShares) / totalShares) * 100 : 0, bankAccountId: p.bankAccountId, equityAccountId: p.equityAccountId,
       annualInterest: p.annualInterest != null ? num(p.annualInterest) : null, maturityYears: p.maturityYears, buybackPrice: p.buybackPrice != null ? num(p.buybackPrice) : null,
       payoutSchedule: p.payoutSchedule, payoutStartMonth: p.payoutStartMonth, payoutStartYear: p.payoutStartYear, payoutDay: p.payoutDay, pdcUrls: p.pdcUrls,
     }

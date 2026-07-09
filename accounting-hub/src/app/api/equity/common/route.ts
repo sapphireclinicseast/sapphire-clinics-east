@@ -53,7 +53,8 @@ export async function GET() {
       dateAcquired: c.dateAcquired, agreementType: c.agreementType, assignedToShareholderId: c.assignedToShareholderId,
       agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls, validIdUrls: c.validIdUrls, shareClass: c.shareClass,
       numberOfShares: num(c.numberOfShares), truePar: num(c.truePar), apic: num(c.apic), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
-      equityStake: totalCapitalization > 0 ? (cap / totalCapitalization) * 100 : 0,
+      // % equity is share-count based: this holding's shares ÷ total shares (common + preferred).
+      equityStake: totalShares > 0 ? (num(c.numberOfShares) / totalShares) * 100 : 0,
       bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId,
       boughtBack: c.boughtBack, buybackPrice: num(c.buybackPrice), buybackShares: num(c.buybackShares),
       buybackBankAccountId: c.buybackBankAccountId, treasuryAccountId: c.treasuryAccountId, buybackProofUrls: c.buybackProofUrls,
