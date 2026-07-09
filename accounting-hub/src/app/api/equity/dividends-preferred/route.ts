@@ -25,10 +25,14 @@ async function preferredSummary() {
     const cur = per.get(p.shareholderId) || { shareholderId: p.shareholderId, name: p.shareholder.name, email: p.shareholder.email, shares: 0, quarterly: 0, quarters: new Set<string>() }
     cur.shares += num(p.numberOfShares)
     cur.quarterly += quarterly
-    if (p.payoutStartMonth && p.payoutStartYear) {
+    // Due quarters = quarterly from the payout start over the maturity. If no explicit
+    // payout start, fall back to the acquisition date so the matrix has a denominator.
+    const startY = p.payoutStartYear || (p.dateAcquired ? new Date(p.dateAcquired).getUTCFullYear() : null)
+    const startM = p.payoutStartMonth || (p.dateAcquired ? new Date(p.dateAcquired).getUTCMonth() + 1 : null)
+    if (startY && startM) {
       const n = (p.maturityYears || 5) * 4
       for (let i = 0; i < n; i++) {
-        const d = new Date(Date.UTC(p.payoutStartYear, (p.payoutStartMonth - 1) + i * 3, 1))
+        const d = new Date(Date.UTC(startY, (startM - 1) + i * 3, 1))
         cur.quarters.add(qkDate(d).key)
       }
     }
