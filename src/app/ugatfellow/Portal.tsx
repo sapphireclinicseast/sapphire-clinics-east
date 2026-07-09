@@ -24,6 +24,8 @@ export interface AppData {
   truthAffirmed?: boolean; signedAt?: string | null; submittedAt?: string | null
   academicYear?: string | null
   initialDecision?: string
+  interviewAt?: string | null; interviewDurationMins?: number | null; jitsiUrl?: string | null
+  interviewSlotId?: string | null; interviewDecision?: string
 }
 export interface PortalScholar {
   id: string; username: string; professionalEmail: string; personalEmail: string
@@ -501,8 +503,73 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
         </>
       ))}
 
-      {tab === 'interview' && <div className={s.card2}><h3 className={s.card2H}>Interview</h3><p className={s.muted}>You&rsquo;ve advanced to the Interview stage. Slot booking (with your Jitsi link and calendar invite) opens here soon — watch your email.</p></div>}
+      {tab === 'interview' && <ScholarInterview app={app0} authHeaders={authHeaders} />}
       {tab === 'acceptance' && <div className={s.card2}><h3 className={s.card2H}>Acceptance</h3><p className={s.muted}>Congratulations! Your Return Service Agreement and onboarding steps will appear here.</p></div>}
+    </div>
+  )
+}
+
+// ══ Interview (scholar) — pick a slot / see confirmed booking ══════
+function ScholarInterview({ app, authHeaders }: { app: AppData | null; authHeaders: Record<string, string> }) {
+  const [slots, setSlots] = useState<Slot[] | null>(null)
+  const [booked, setBooked] = useState<{ interviewAt?: string | null; jitsiUrl?: string | null; gcalUrl?: string } | null>(
+    app?.interviewAt ? { interviewAt: app.interviewAt, jitsiUrl: app.jitsiUrl } : null,
+  )
+  const [busy, setBusy] = useState<string>('')
+  const [err, setErr] = useState<string | null>(null)
+  const [reschedule, setReschedule] = useState(false)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`${API}/interview/slots`, { headers: authHeaders })
+    if (r.ok) setSlots((await r.json()).slots)
+  }, [authHeaders])
+  useEffect(() => { load() }, [load])
+
+  async function book(slotId: string) {
+    setBusy(slotId); setErr(null)
+    const r = await fetch(`${API}/interview/book`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ slotId }) })
+    const d = await r.json(); setBusy('')
+    if (!r.ok) { setErr(d.error || 'Could not book that slot.'); return }
+    setBooked({ interviewAt: d.interviewAt, jitsiUrl: d.jitsiUrl, gcalUrl: d.gcalUrl }); setReschedule(false); load()
+  }
+
+  const available = (slots || []).filter((sl) => new Date(sl.startsAt).getTime() > Date.now() && sl.booked < sl.capacity)
+
+  if (booked?.interviewAt && !reschedule) {
+    return (
+      <div className={s.card2}>
+        <div className={s.acceptedBox}>
+          <CheckCircle2 size={26} />
+          <div style={{ flex: 1 }}>
+            <h3 className={s.card2H} style={{ margin: '0 0 4px' }}>Your interview is scheduled</h3>
+            <p className={s.muted} style={{ margin: '0 0 12px' }}><b>{fmtWhen(booked.interviewAt)}</b>. We&rsquo;ve emailed you the details too.</p>
+            <div className={s.fileActions} style={{ flexWrap: 'wrap' }}>
+              {booked.jitsiUrl && <a className={s.btn2} href={booked.jitsiUrl} target="_blank" rel="noreferrer">Join the video interview</a>}
+              {booked.gcalUrl && <a className={s.miniBtn} href={booked.gcalUrl} target="_blank" rel="noreferrer">Add to Google Calendar</a>}
+              <button className={s.miniBtn} onClick={() => setReschedule(true)}>Reschedule</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={s.card2}>
+      <h3 className={s.card2H}>{reschedule ? 'Choose a new interview slot' : 'Schedule your interview'}</h3>
+      <p className={s.muted}>Pick a slot below. We&rsquo;ll generate your video-call link and email it to you, along with an add-to-calendar link.</p>
+      {err && <div className={`${s.alert2} ${s.alertErr2}`}>{err}</div>}
+      {slots === null && <p className={s.muted}>Loading…</p>}
+      {slots !== null && available.length === 0 && <p className={s.muted}>No interview slots are available right now. Please check back — we&rsquo;ll email you when slots open.</p>}
+      <div className={s.slotGrid}>
+        {available.map((sl) => (
+          <button key={sl.id} className={s.slotBtn} disabled={!!busy} onClick={() => book(sl.id)}>
+            <b>{fmtWhen(sl.startsAt)}</b>
+            <span>{sl.durationMins} min{sl.capacity > 1 ? ` · ${sl.capacity - sl.booked} left` : ''}</span>
+          </button>
+        ))}
+      </div>
+      {reschedule && <button className={s.btnGhost3} style={{ marginTop: 12 }} onClick={() => setReschedule(false)}>Cancel</button>}
     </div>
   )
 }
@@ -510,8 +577,12 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
 // ══ Application (admin) ════════════════════════════════════════════
 const DECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_INTERVIEW']
 const DECISION_LABEL: Record<string, string> = { NOT_CONSIDERED: 'Not Considered', PENDING: 'Pending', FOR_INTERVIEW: 'For Interview' }
+const IDECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_ACCEPTANCE']
+const IDECISION_LABEL: Record<string, string> = { NOT_CONSIDERED: 'Not Considered', PENDING: 'Pending', FOR_ACCEPTANCE: 'For Acceptance' }
 
-interface Cycle { id: string; academicYear: string; opensAt: string; closesAt: string }
+interface Cycle { id: string; academicYear: string; opensAt: string; closesAt: string; initialDeadline?: string | null; interviewDeadline?: string | null }
+interface Slot { id: string; startsAt: string; durationMins: number; capacity: number; booked: number }
+const fmtWhen = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: string; authHeaders: Record<string, string>; readOnly: boolean; onGoTo: (k: SectionKey) => void }) {
   const { rows, load } = useScholars(authHeaders)
@@ -542,9 +613,23 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
   const forInterview = submitted.filter((r) => r.application?.initialDecision === 'FOR_INTERVIEW')
   const accepted = rows.filter((r) => r.status === 'ACCEPTED').filter(inAY)
 
+  // Deadline reminders (1 day before, or after it lapses with Pending left).
+  const openCycle = cycles?.find((c) => c.academicYear === openAY)
+  const pendInitial = submittedAll.filter((r) => (r.application?.initialDecision || 'PENDING') === 'PENDING').length
+  const pendInterview = submittedAll.filter((r) => r.application?.initialDecision === 'FOR_INTERVIEW' && (r.application?.interviewDecision || 'PENDING') === 'PENDING').length
+  const alertFor = (iso: string | null | undefined, count: number, label: string): { kind: 'warn' | 'err'; t: string } | null => {
+    if (!iso || count === 0) return null
+    const dl = new Date(iso).getTime(); const now = Date.now()
+    if (now > dl) return { kind: 'err', t: `The ${label} deadline has passed and ${count} applicant${count > 1 ? 's are' : ' is'} still Pending — please decide now.` }
+    if (dl - now <= 86400000) return { kind: 'warn', t: `${count} applicant${count > 1 ? 's are' : ' is'} still Pending and the ${label} decision deadline is ${fmtWhen(iso)}. Please finalize.` }
+    return null
+  }
+  const alerts = [alertFor(openCycle?.initialDeadline, pendInitial, 'Initial'), alertFor(openCycle?.interviewDeadline, pendInterview, 'Interview')].filter(Boolean) as { kind: 'warn' | 'err'; t: string }[]
+
   return (
     <div className={s.sec}>
       {readOnly && <div className={s.integrity}><Eye size={16} /><span>University-admin view — read only.</span></div>}
+      {!readOnly && alerts.map((a, i) => <div key={i} className={`${s.alert2} ${a.kind === 'err' ? s.alertErr2 : s.alertWarn2}`}>⏰ {a.t}</div>)}
       <div className={s.uaHead}>
         <div className={s.ayFilter}>
           <label className={s.cellSub}>Academic Year:</label>
@@ -580,14 +665,7 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
         </div>
       )}
 
-      {tab === 'interview' && (
-        <div className={s.card2}>
-          <h3 className={s.card2H}>Interview stage</h3>
-          <p className={s.muted}>Students marked “For Interview”. Slot times, Jitsi links, and the next decision (For Acceptance) will be managed here — interview scheduling ships in the next phase.</p>
-          {forInterview.map((r) => <div key={r.id} className={s.accessItem}><div><b>{[r.firstName, r.lastName].filter(Boolean).join(' ')}</b><span className={s.cellSub}>@{r.username} · {r.school}</span></div></div>)}
-          {forInterview.length === 0 && <p className={s.muted}>No students at the interview stage yet.</p>}
-        </div>
-      )}
+      {tab === 'interview' && <InterviewStage students={forInterview} authHeaders={authHeaders} readOnly={readOnly} reloadScholars={load} />}
 
       {tab === 'acceptance' && (
         <div className={s.card2}>
@@ -601,6 +679,99 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
   )
 }
 
+// ══ Interview stage (admin) — slots + booked students + decisions ══
+function InterviewStage({ students, authHeaders, readOnly, reloadScholars }: { students: AdminScholar[]; authHeaders: Record<string, string>; readOnly: boolean; reloadScholars: () => void }) {
+  const [slots, setSlots] = useState<Slot[] | null>(null)
+  const [form, setForm] = useState({ startsAt: '', durationMins: '30', capacity: '1' })
+  const [showSlots, setShowSlots] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [notify, setNotify] = useState<{ ok: boolean; t: string } | null>(null)
+
+  const loadSlots = useCallback(async () => {
+    const r = await fetch(`${API}/interview/slots`, { headers: authHeaders })
+    if (r.ok) setSlots((await r.json()).slots)
+  }, [authHeaders])
+  useEffect(() => { loadSlots() }, [loadSlots])
+
+  async function addSlot(e: React.FormEvent) {
+    e.preventDefault(); if (!form.startsAt) return; setBusy(true)
+    await fetch(`${API}/interview/slots`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ startsAt: new Date(form.startsAt).toISOString(), durationMins: Number(form.durationMins), capacity: Number(form.capacity) }) })
+    setForm({ startsAt: '', durationMins: '30', capacity: '1' }); setBusy(false); loadSlots()
+  }
+  async function delSlot(id: string) { if (!window.confirm('Delete this slot? Any booking on it is released.')) return; await fetch(`${API}/interview/slots`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id }) }); loadSlots(); reloadScholars() }
+  async function setDecision(id: string, interviewDecision: string) { await fetch(`${API}/scholars`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id, interviewDecision }) }); reloadScholars() }
+  async function notifyRejected() {
+    if (!window.confirm('Send the empathic "not considered" email to everyone marked Not Considered who hasn’t been notified yet?')) return
+    setNotify(null)
+    const r = await fetch(`${API}/interview/notify-rejected`, { method: 'POST', headers: authHeaders })
+    const d = await r.json().catch(() => ({}))
+    setNotify(r.ok ? { ok: true, t: `Sent ${d.sent} email${d.sent === 1 ? '' : 's'}.` } : { ok: false, t: d.error || 'Could not send.' })
+  }
+
+  return (
+    <>
+      {!readOnly && (
+        <div className={s.card2}>
+          <div className={s.uaHead}>
+            <h3 className={s.card2H} style={{ margin: 0 }}>Interview availability</h3>
+            <div className={s.uaHeadBtns}>
+              <button className={s.btnGhost3} onClick={() => setShowSlots((v) => !v)}><Calendar size={15} /> {showSlots ? 'Hide slots' : 'Manage slots'}</button>
+              <button className={s.btnGhost3} onClick={notifyRejected}><Mail size={15} /> Email not-considered</button>
+            </div>
+          </div>
+          {notify && <div className={`${s.alert2} ${notify.ok ? s.alertOk2 : s.alertErr2}`}>{notify.t}</div>}
+          {showSlots && (
+            <>
+              <form className={s.cycleForm} onSubmit={addSlot}>
+                <label className={s.dtField}>Date &amp; time<input type="datetime-local" className={s.input2} value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} required /></label>
+                <label className={s.dtField}>Minutes<input type="number" min={10} max={240} className={s.input2} style={{ width: 90 }} value={form.durationMins} onChange={(e) => setForm({ ...form, durationMins: e.target.value })} /></label>
+                <label className={s.dtField}>Capacity<input type="number" min={1} max={20} className={s.input2} style={{ width: 80 }} value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></label>
+                <button className={s.btn2} disabled={busy}><Plus size={16} /> Add slot</button>
+              </form>
+              <div className={s.accessList}>
+                {slots?.map((sl) => (
+                  <div key={sl.id} className={s.accessItem}>
+                    <div><b>{fmtWhen(sl.startsAt)}</b><span className={s.cellSub}>{sl.durationMins} min · {sl.booked}/{sl.capacity} booked{new Date(sl.startsAt).getTime() < Date.now() ? ' · past' : ''}</span></div>
+                    <button className={`${s.miniBtn} ${s.miniDanger}`} onClick={() => delSlot(sl.id)}>Delete</button>
+                  </div>
+                ))}
+                {slots && slots.length === 0 && <p className={s.muted} style={{ margin: '6px 2px' }}>No slots yet. Add availability so students can book.</p>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className={s.card2}>
+        <h3 className={s.card2H}>For-Interview applicants</h3>
+        {students.length === 0 && <p className={s.muted}>No students at the interview stage yet. Mark an applicant &ldquo;For Interview&rdquo; in the Initial tab.</p>}
+        {students.map((r) => {
+          const a = r.application
+          return (
+            <div key={r.id} className={s.appRow}>
+              <div className={s.intvRow}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className={s.appRowName}>{[r.lastName, [r.firstName, r.middleName].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</div>
+                  <div className={s.cellSub}>
+                    {a?.interviewAt ? <>🗓 {fmtWhen(a.interviewAt)}{a.jitsiUrl ? <> · <a href={a.jitsiUrl} target="_blank" rel="noreferrer" className={s.linkBtn2}>Jitsi link</a></> : ''}</> : 'Not yet booked'}
+                  </div>
+                </div>
+                {readOnly ? (
+                  <span className={`${s.statusPill} ${a?.interviewDecision === 'FOR_ACCEPTANCE' ? s.stAccepted : a?.interviewDecision === 'NOT_CONSIDERED' ? s.stRejected : s.stApplied}`}>{IDECISION_LABEL[a?.interviewDecision || 'PENDING']}</span>
+                ) : (
+                  <select className={s.statusSelect} value={a?.interviewDecision || 'PENDING'} onChange={(e) => setDecision(r.id, e.target.value)}>
+                    {IDECISIONS.map((d) => <option key={d} value={d}>{IDECISION_LABEL[d]}</option>)}
+                  </select>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
 // Local <input type="datetime-local"> value <-> ISO helpers.
 function toLocalInput(iso?: string) {
   if (!iso) return ''
@@ -609,8 +780,10 @@ function toLocalInput(iso?: string) {
 }
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
+const emptyCycleForm = { id: '', academicYear: '', opensAt: '', closesAt: '', initialDeadline: '', interviewDeadline: '' }
+
 function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<string, string>; cycles: Cycle[] | null; reload: () => void }) {
-  const [form, setForm] = useState({ id: '', academicYear: '', opensAt: '', closesAt: '' })
+  const [form, setForm] = useState({ ...emptyCycleForm })
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [announcing, setAnnouncing] = useState(false)
@@ -618,19 +791,22 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setMsg(null)
+    const iso = (v: string) => (v ? new Date(v).toISOString() : null)
     const payload = {
       ...(editing ? { id: form.id } : {}),
       academicYear: form.academicYear.trim(),
       opensAt: form.opensAt ? new Date(form.opensAt).toISOString() : '',
       closesAt: form.closesAt ? new Date(form.closesAt).toISOString() : '',
+      initialDeadline: iso(form.initialDeadline),
+      interviewDeadline: iso(form.interviewDeadline),
     }
     const r = await fetch(`${API}/cycles`, { method: editing ? 'PATCH' : 'POST', headers: authHeaders, body: JSON.stringify(payload) })
     const d = await r.json().catch(() => ({})); setBusy(false)
     if (!r.ok) { setMsg({ ok: false, t: d.error || 'Could not save.' }); return }
     setMsg({ ok: true, t: editing ? 'Cycle updated.' : 'Cycle added.' })
-    setForm({ id: '', academicYear: '', opensAt: '', closesAt: '' }); reload()
+    setForm({ ...emptyCycleForm }); reload()
   }
-  function edit(c: Cycle) { setForm({ id: c.id, academicYear: c.academicYear, opensAt: toLocalInput(c.opensAt), closesAt: toLocalInput(c.closesAt) }); setMsg(null) }
+  function edit(c: Cycle) { setForm({ id: c.id, academicYear: c.academicYear, opensAt: toLocalInput(c.opensAt), closesAt: toLocalInput(c.closesAt), initialDeadline: toLocalInput(c.initialDeadline || undefined), interviewDeadline: toLocalInput(c.interviewDeadline || undefined) }); setMsg(null) }
   async function remove(c: Cycle) {
     if (!window.confirm(`Delete the A.Y. ${c.academicYear} cycle? Submitted applications keep their year tag.`)) return
     await fetch(`${API}/cycles`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id: c.id }) }); reload()
@@ -661,8 +837,10 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
         <input className={s.input2} placeholder="Academic year (e.g. 2026-2027)" value={form.academicYear} onChange={(e) => setForm({ ...form, academicYear: e.target.value })} required />
         <label className={s.dtField}>Opens<input type="datetime-local" className={s.input2} value={form.opensAt} onChange={(e) => setForm({ ...form, opensAt: e.target.value })} required /></label>
         <label className={s.dtField}>Closes<input type="datetime-local" className={s.input2} value={form.closesAt} onChange={(e) => setForm({ ...form, closesAt: e.target.value })} required /></label>
+        <label className={s.dtField}>Initial-decision deadline<input type="datetime-local" className={s.input2} value={form.initialDeadline} onChange={(e) => setForm({ ...form, initialDeadline: e.target.value })} /></label>
+        <label className={s.dtField}>Interview-decision deadline<input type="datetime-local" className={s.input2} value={form.interviewDeadline} onChange={(e) => setForm({ ...form, interviewDeadline: e.target.value })} /></label>
         <button className={s.btn2} disabled={busy}>{editing ? 'Save cycle' : <><Plus size={16} /> Add cycle</>}</button>
-        {editing && <button type="button" className={s.btnGhost3} onClick={() => setForm({ id: '', academicYear: '', opensAt: '', closesAt: '' })}>Cancel</button>}
+        {editing && <button type="button" className={s.btnGhost3} onClick={() => setForm({ ...emptyCycleForm })}>Cancel</button>}
       </form>
       {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
       <div className={s.accessList}>
@@ -670,7 +848,7 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
           const st = status(c)
           return (
             <div key={c.id} className={s.accessItem}>
-              <div><b>A.Y. {c.academicYear}</b><span className={s.cellSub}>{fmtDate(c.opensAt)} → {fmtDate(c.closesAt)}</span></div>
+              <div><b>A.Y. {c.academicYear}</b><span className={s.cellSub}>{fmtDate(c.opensAt)} → {fmtDate(c.closesAt)}{c.initialDeadline ? ` · decide by ${fmtDate(c.initialDeadline)}` : ''}</span></div>
               <div className={s.accessActions}>
                 <span className={`${s.statusPill} ${st === 'Open' ? s.stAccepted : st === 'Upcoming' ? s.stApplied : s.stRejected}`}>{st}</span>
                 <button className={s.miniBtn} onClick={() => edit(c)}>Edit</button>

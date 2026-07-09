@@ -1576,6 +1576,20 @@ model UgatApplication {
   /// Admin decision on Part I: NOT_CONSIDERED | PENDING | FOR_INTERVIEW
   initialDecision String @default("PENDING")
 
+  // ── Part II: Interview ──────────────────────────────────────────
+  /// The interview slot the scholar booked, plus a snapshot of its time so
+  /// deleting a slot doesn't lose the booking.
+  interviewSlotId       String?
+  interviewAt           DateTime?
+  interviewDurationMins Int?
+  jitsiUrl              String?
+  /// Admin decision after interview: NOT_CONSIDERED | PENDING | FOR_ACCEPTANCE
+  interviewDecision String @default("PENDING")
+
+  /// Set when the empathic "not considered" email has been sent (prevents
+  /// double-sending).
+  rejectionEmailedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1583,6 +1597,7 @@ model UgatApplication {
 
   @@index([submittedAt])
   @@index([initialDecision])
+  @@index([interviewDecision])
   @@index([academicYear])
 }
 
@@ -1595,10 +1610,27 @@ model UgatApplicationCycle {
   academicYear String   @unique
   opensAt      DateTime
   closesAt     DateTime
+  /// Deadline to finish deciding Part I (Initial). Used for the reminder popup
+  /// + the empathic "not considered" notification.
+  initialDeadline   DateTime?
+  /// Deadline to finish deciding Part II (Interview → Acceptance).
+  interviewDeadline DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([opensAt, closesAt])
+}
+
+/// An interview slot the admin offers. Scholars marked "For Interview" book
+/// one; capacity lets several fit the same window if needed (default 1).
+model UgatInterviewSlot {
+  id           String   @id @default(cuid())
+  startsAt     DateTime
+  durationMins Int      @default(30)
+  capacity     Int      @default(1)
+  createdAt    DateTime @default(now())
+
+  @@index([startsAt])
 }
 
 /// A staff- or university-admin account for the UGAT hub. The single MAIN

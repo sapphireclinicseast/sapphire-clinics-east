@@ -14,7 +14,14 @@ export const dynamic = 'force-dynamic'
 
 const AY_RE = /^\d{4}-\d{4}$/
 
-function parse(body: { academicYear?: string; opensAt?: string; closesAt?: string }) {
+function optDate(v?: string | null): Date | null | undefined {
+  if (v === undefined) return undefined // not provided → leave unchanged
+  if (v === null || v === '') return null // cleared
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? undefined : d
+}
+
+function parse(body: { academicYear?: string; opensAt?: string; closesAt?: string; initialDeadline?: string | null; interviewDeadline?: string | null }) {
   const academicYear = String(body.academicYear || '').trim()
   const opensAt = body.opensAt ? new Date(body.opensAt) : null
   const closesAt = body.closesAt ? new Date(body.closesAt) : null
@@ -24,7 +31,10 @@ function parse(body: { academicYear?: string; opensAt?: string; closesAt?: strin
   if (!opensAt || Number.isNaN(opensAt.getTime())) return { error: 'Please set a valid opening date.' }
   if (!closesAt || Number.isNaN(closesAt.getTime())) return { error: 'Please set a valid closing date.' }
   if (closesAt <= opensAt) return { error: 'The closing date must be after the opening date.' }
-  return { academicYear, opensAt, closesAt }
+  const out: { academicYear: string; opensAt: Date; closesAt: Date; initialDeadline?: Date | null; interviewDeadline?: Date | null } = { academicYear, opensAt, closesAt }
+  const id = optDate(body.initialDeadline); if (id !== undefined) out.initialDeadline = id
+  const iv = optDate(body.interviewDeadline); if (iv !== undefined) out.interviewDeadline = iv
+  return out
 }
 
 export async function GET(req: Request) {

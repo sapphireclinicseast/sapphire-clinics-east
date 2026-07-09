@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic'
 
 const STATUSES = ['APPLIED', 'ACCEPTED', 'WAITLISTED', 'REJECTED'] as const
 const DECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_INTERVIEW'] as const
+const IDECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_ACCEPTANCE'] as const
 
 function ageFrom(birthdate: Date | null): number | null {
   if (!birthdate) return null
@@ -60,7 +61,7 @@ export async function PATCH(req: Request) {
   const tok = await tokenFromRequest(req)
   if (!tok || !isAdminRole(tok.role)) return NextResponse.json({ error: 'Admin authorization required.' }, { status: 401 })
 
-  let body: { id?: string; status?: string; disabled?: boolean; initialDecision?: string; newPassword?: string }
+  let body: { id?: string; status?: string; disabled?: boolean; initialDecision?: string; interviewDecision?: string; newPassword?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid request.' }, { status: 400 }) }
   const id = String(body.id || '')
   if (!id) return NextResponse.json({ error: 'id is required.' }, { status: 400 })
@@ -79,15 +80,25 @@ export async function PATCH(req: Request) {
     data.passwordHash = await hashPassword(body.newPassword)
     data.passwordPlain = body.newPassword
   }
-  if (Object.keys(data).length) await prisma.ugatScholar.update({ where: { id }, data }).catch(() => {})
 
-  // Application decision lives on the related row.
+  // Decisions live on the related application row, and drive the overall status.
   if (typeof body.initialDecision === 'string') {
     if (!DECISIONS.includes(body.initialDecision as (typeof DECISIONS)[number])) return NextResponse.json({ error: 'Invalid decision.' }, { status: 400 })
     await prisma.ugatApplication.updateMany({ where: { scholarId: id }, data: { initialDecision: body.initialDecision } })
+    if (body.initialDecision === 'NOT_CONSIDERED') data.status = 'REJECTED'
+    else if (body.initialDecision === 'FOR_INTERVIEW' || body.initialDecision === 'PENDING') data.status = 'APPLIED'
+  }
+  if (typeof body.interviewDecision === 'string') {
+    if (!IDECISIONS.includes(body.interviewDecision as (typeof IDECISIONS)[number])) return NextResponse.json({ error: 'Invalid decision.' }, { status: 400 })
+    await prisma.ugatApplication.updateMany({ where: { scholarId: id }, data: { interviewDecision: body.interviewDecision } })
+    if (body.interviewDecision === 'FOR_ACCEPTANCE') data.status = 'ACCEPTED'
+    else if (body.interviewDecision === 'NOT_CONSIDERED') data.status = 'REJECTED'
+    else data.status = 'APPLIED'
   }
 
-  if (Object.keys(data).length === 0 && typeof body.initialDecision !== 'string') {
+  if (Object.keys(data).length) await prisma.ugatScholar.update({ where: { id }, data }).catch(() => {})
+
+  if (Object.keys(data).length === 0 && typeof body.initialDecision !== 'string' && typeof body.interviewDecision !== 'string') {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 })
   }
   return NextResponse.json({ ok: true })
