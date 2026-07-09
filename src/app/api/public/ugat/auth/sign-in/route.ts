@@ -1,12 +1,12 @@
 // POST /api/public/ugat/auth/sign-in
-// Body: { username, password }  (admin logs in with main@ as the username)
-// Handles BOTH the virtual admin login (main@ SCEI → gates /ugatfellow/admin)
-// and scholar logins. Scholars sign in by username, must be verified, and not
-// disabled. Response: { token, role, scholar? }
+// Body: { username, password }
+// Resolves, in order: the virtual MAIN admin (`main` / `scei`), a STAFF_ADMIN
+// (UgatAdmin row), then a SCHOLAR (UgatScholar). Scholars must be verified and
+// not disabled. Response: { token, role, scholar? }
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { signToken, comparePassword, isAdminCredentials, UGAT_ADMIN_EMAIL } from '@/lib/ugat-auth'
+import { signToken, comparePassword, isMainAdminCredentials, UGAT_MAIN_ADMIN_USERNAME } from '@/lib/ugat-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,17 +18,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
 
-  // Accept `username` (scholar + admin forms) with `email` as a fallback.
+  // Accept `username` (with `email` as a legacy fallback).
   const identifier = (body.username || body.email || '').trim().toLowerCase()
   const password = body.password || ''
   if (!identifier || !password) {
     return NextResponse.json({ error: 'Username and password are required.' }, { status: 400 })
   }
 
-  // ── Admin (virtual) — identifier is the admin email ─────────────────
-  if (isAdminCredentials(identifier, password)) {
-    const token = await signToken({ role: 'ADMIN', email: UGAT_ADMIN_EMAIL })
-    return NextResponse.json({ token, role: 'ADMIN' })
+  // ── MAIN admin (virtual) ────────────────────────────────────────────
+  if (isMainAdminCredentials(identifier, password)) {
+    const token = await signToken({ role: 'MAIN_ADMIN', username: UGAT_MAIN_ADMIN_USERNAME, name: 'Main Administrator' })
+    return NextResponse.json({ token, role: 'MAIN_ADMIN' })
+  }
+
+  // ── STAFF admin (UgatAdmin row) ─────────────────────────────────────
+  const admin = await prisma.ugatAdmin.findUnique({ where: { username: identifier } })
+  if (admin) {
+    if (!(await comparePassword(password, admin.passwordHash))) {
+      return NextResponse.json({ error: 'Incorrect username or password.' }, { status: 401 })
+    }
+    if (admin.disabledAt) {
+      return NextResponse.json({ error: 'This admin account has been disabled.' }, { status: 403 })
+    }
+    const token = await signToken({ role: 'STAFF_ADMIN', adminId: admin.id, username: admin.username, name: admin.name })
+    return NextResponse.json({ token, role: 'STAFF_ADMIN' })
   }
 
   // ── Scholar (by username) ───────────────────────────────────────────

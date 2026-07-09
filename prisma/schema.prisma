@@ -1507,6 +1507,10 @@ model UgatScholar {
   /// Null = unverified; such accounts cannot sign in.
   emailVerifiedAt DateTime?
 
+  /// Application status shown on the admin Dashboard.
+  /// APPLIED | ACCEPTED | WAITLISTED | REJECTED. Default APPLIED.
+  status String @default("APPLIED")
+
   /// Soft-disable (admin). Null = active.
   disabledAt DateTime?
   disabledBy String?
@@ -1517,6 +1521,22 @@ model UgatScholar {
   verificationTokens UgatVerificationToken[]
 
   @@index([emailVerifiedAt])
+  @@index([disabledAt])
+  @@index([status])
+}
+
+/// A staff-admin account for the UGAT hub. The single MAIN admin
+/// (username `main`) is virtual/hardcoded and has no row here; these are
+/// the additional STAFF_ADMIN accounts created in the User Access section.
+model UgatAdmin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  createdBy    String?
+  disabledAt   DateTime?
+
   @@index([disabledAt])
 }
 
