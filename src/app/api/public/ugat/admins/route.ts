@@ -69,14 +69,25 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const t = await tok(req)
   if (!t) return NextResponse.json({ error: 'Admin authorization required.' }, { status: 401 })
-  if (t.role !== 'MAIN_ADMIN') return NextResponse.json({ error: 'Only the main administrator can manage staff admins.' }, { status: 403 })
 
-  let body: { id?: string; disabled?: boolean; name?: string; password?: string; kind?: string }
+  let body: { id?: string; disabled?: boolean; name?: string; password?: string; kind?: string; self?: boolean }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
+
+  // A non-main admin (staff / university) may change ONLY their own password.
+  if (t.role !== 'MAIN_ADMIN') {
+    if (!body.self || !t.adminId) {
+      return NextResponse.json({ error: 'You can only change your own password.' }, { status: 403 })
+    }
+    const pw = String(body.password || '')
+    if (pw.length < 8) return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
+    await prisma.ugatAdmin.update({ where: { id: t.adminId }, data: { passwordHash: await hashPassword(pw), passwordPlain: pw } }).catch(() => {})
+    return NextResponse.json({ ok: true })
+  }
+
   const id = String(body.id || '')
   if (!id) return NextResponse.json({ error: 'id is required.' }, { status: 400 })
 

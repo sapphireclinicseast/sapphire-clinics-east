@@ -765,7 +765,8 @@
 .cityBar { height: 100%; background: var(--green); border-radius: 6px; }
 
 /* User Access tables */
-.uaHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.uaHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.uaHeadBtns { display: flex; gap: 8px; flex: none; }
 .uaTableWrap { overflow-x: auto; }
 .uaTable { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
 .uaTable thead th { text-align: left; padding: 9px 12px; background: rgba(36,73,82,0.04); color: var(--deep-70); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }

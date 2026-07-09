@@ -691,14 +691,24 @@ function UserAccess({ role, authHeaders }: { role: Role; authHeaders: Record<str
   async function toggleScholar(sc: AdminScholar) { await fetch(`${API}/scholars`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id: sc.id, disabled: !sc.disabledAt }) }); load() }
   async function resetScholarPw(sc: AdminScholar) { const p = window.prompt(`New password for @${sc.username} (min 8 chars):`); if (!p) return; await fetch(`${API}/scholars`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id: sc.id, newPassword: p }) }); load() }
   async function removeScholar(sc: AdminScholar) { if (!window.confirm(`Delete student ${sc.firstName} ${sc.lastName} (@${sc.username}) and ALL their data? This cannot be undone.`)) return; await fetch(`${API}/scholars`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id: sc.id }) }); load() }
+  async function changeMyPassword() {
+    const p = window.prompt('Enter your new password (minimum 8 characters):'); if (!p) return
+    const r = await fetch(`${API}/admins`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ self: true, password: p }) })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) { window.alert(d.error || 'Could not change your password.'); return }
+    window.alert('Your password has been updated.'); load()
+  }
 
   const pw = (v?: string | null) => show ? (v || '—') : '••••••••'
 
   return (
     <div className={s.sec}>
       <div className={s.uaHead}>
-        <p className={s.muted} style={{ margin: 0 }}>All users, by account type. {isMain ? 'You can add, modify, and delete users.' : 'Only the main administrator can add or remove users.'}</p>
-        <button className={s.btnGhost3} onClick={() => setShow((v) => !v)}>{show ? <><EyeOff size={15} /> Hide passwords</> : <><Eye size={15} /> Show passwords</>}</button>
+        <p className={s.muted} style={{ margin: 0 }}>All users, by account type. {isMain ? 'You can add, modify, and delete users.' : 'Only the main administrator can add or remove users — but you can change your own password.'}</p>
+        <div className={s.uaHeadBtns}>
+          {!isMain && <button className={s.btnGhost3} onClick={changeMyPassword}>Change my password</button>}
+          <button className={s.btnGhost3} onClick={() => setShow((v) => !v)}>{show ? <><EyeOff size={15} /> Hide passwords</> : <><Eye size={15} /> Show passwords</>}</button>
+        </div>
       </div>
 
       {isMain && (
