@@ -644,4 +644,9 @@ CREATE TABLE IF NOT EXISTS "CreditLine" (
 );
 SQL
 
+# ── CEO shared-entry per-branch EWT remittance ────────────────────────────────
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "ewtRemittedBranches" JSONB;
+SQL
+
 echo "Redeploy complete."

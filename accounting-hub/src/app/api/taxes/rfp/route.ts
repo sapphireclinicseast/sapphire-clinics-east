@@ -85,24 +85,45 @@ export async function POST(req: Request) {
         items = slips.map(s => ({ id: s.id, name: `${s.employee.firstName} ${s.employee.lastName}`, period: s.cutoffPeriod, gross: Number(s.grossPay), tax: Number(s.taxDeduction) }))
         markRemitted = async () => { await tx.employeePayslip.updateMany({ where: { id: { in: slips.map(s => s.id) } }, data: { taxRemitted: true } }) }
       } else {
-        // EWT = consultant professional-fee withholding + expense EWT.
+        // EWT = consultant professional-fee withholding + expense EWT. Expense ids may be
+        // plain (own-branch entry) or "<id>::<branch>" for a CEO entry's branch allocation.
         const cids: string[] = Array.isArray(consultantIds) ? consultantIds : []
-        const eids: string[] = Array.isArray(expenseIds) ? expenseIds : []
-        if (cids.length === 0 && eids.length === 0) throw new Error('Select at least one entry')
+        const rawEids: string[] = Array.isArray(expenseIds) ? expenseIds : []
+        const plainEids = rawEids.filter(x => !String(x).includes('::'))
+        const ceoEids = [...new Set(rawEids.filter(x => String(x).includes('::')).map(x => String(x).split('::')[0]))]
+        if (cids.length === 0 && rawEids.length === 0) throw new Error('Select at least one entry')
         const cons = cids.length ? await tx.payrollEntry.findMany({
           where: { id: { in: cids }, branch: payrollBranch, status: 'LOCKED', taxRemitted: false, taxAmount: { gt: 0 } },
           include: { consultant: { select: { name: true } } },
         }) : []
-        const exps = eids.length ? await tx.pettyCashEntry.findMany({
-          where: { id: { in: eids }, branch: pcBranch, hasEwt: true, ewtRemitted: false, OR: [{ paidAt: { not: null } }, { reimbursementId: { not: null } }] },
+        const exps = plainEids.length ? await tx.pettyCashEntry.findMany({
+          where: { id: { in: plainEids }, branch: pcBranch, hasEwt: true, ewtRemitted: false, OR: [{ paidAt: { not: null } }, { reimbursementId: { not: null } }] },
         }) : []
-        if (cons.length === 0 && exps.length === 0) throw new Error('No eligible unremitted EWT items found')
+        const ceoRaw = ceoEids.length ? await tx.pettyCashEntry.findMany({ where: { id: { in: ceoEids }, branch: 'CEO', hasEwt: true } }) : []
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ceoEntries = ceoRaw.filter((e: any) => !((e.ewtRemittedBranches && typeof e.ewtRemittedBranches === 'object' ? e.ewtRemittedBranches as Record<string, boolean> : {})[pcBranch]))
+        if (cons.length === 0 && exps.length === 0 && ceoEntries.length === 0) throw new Error('No eligible unremitted EWT items found')
         const consItems = cons.map(e => { const base = Number(e.grossPay), ewt = Number(e.taxAmount); return { id: e.id, source: 'CONSULTANT', name: e.consultant.name, period: e.cutoffPeriod, base, rate: base > 0 ? Math.round((ewt / base) * 100) : null, ewt } })
         const expItems = exps.map(e => { const g = Number(e.grossAmount); const net = e.vatable === 'VAT' ? g / 1.12 : g; const rate = e.ewtRate || 0; const when = e.paidAt || e.date; return { id: e.id, source: 'EXPENSE', name: e.requestor || e.pcvNumber, period: when ? new Date(when).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) } })
-        items = [...consItems, ...expItems]
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ceoItems = ceoEntries.flatMap((e: any) => {
+          const allocs = Array.isArray(e.branchAllocations) ? e.branchAllocations as { branch?: string; amount?: number | string }[] : []
+          const alloc = allocs.find(a => a?.branch === pcBranch)
+          const g = alloc ? Number(alloc.amount) : 0
+          if (!(g > 0)) return []
+          const net = e.vatable === 'VAT' ? g / 1.12 : g; const rate = e.ewtRate || 0; const when = e.paidAt || e.date
+          return [{ id: `${e.id}::${pcBranch}`, source: 'EXPENSE', name: `${e.requestor || e.pcvNumber} (CEO)`, period: when ? new Date(when).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) }]
+        })
+        items = [...consItems, ...expItems, ...ceoItems]
         markRemitted = async () => {
           if (cons.length) await tx.payrollEntry.updateMany({ where: { id: { in: cons.map(c => c.id) } }, data: { taxRemitted: true } })
           if (exps.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: exps.map(x => x.id) } }, data: { ewtRemitted: true } })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          for (const e of ceoEntries as any[]) {
+            const cur = (e.ewtRemittedBranches && typeof e.ewtRemittedBranches === 'object') ? { ...e.ewtRemittedBranches as Record<string, boolean> } : {}
+            cur[pcBranch] = true
+            await tx.pettyCashEntry.update({ where: { id: e.id }, data: { ewtRemittedBranches: cur } })
+          }
         }
       }
       const grossTotal = (taxType === 'VAT' || taxType === 'IT') ? Number(amount) : items.reduce((sum, i) => sum + (taxType === 'WC' ? i.tax : i.ewt), 0)
@@ -196,9 +217,20 @@ export async function DELETE(req: Request) {
         await tx.employeePayslip.updateMany({ where: { id: { in: metaItems.map(i => i.id) } }, data: { taxRemitted: false } })
       } else if (meta.taxType === 'EWT') {
         const consIds = metaItems.filter(i => i.source === 'CONSULTANT').map(i => i.id)
-        const expIds = metaItems.filter(i => i.source === 'EXPENSE').map(i => i.id)
+        const allExpIds = metaItems.filter(i => i.source === 'EXPENSE').map(i => String(i.id))
+        const expIds = allExpIds.filter(x => !x.includes('::'))
+        const ceoExpIds = allExpIds.filter(x => x.includes('::')) // "<entryId>::<branch>"
         if (consIds.length) await tx.payrollEntry.updateMany({ where: { id: { in: consIds } }, data: { taxRemitted: false } })
         if (expIds.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: expIds } }, data: { ewtRemitted: false } })
+        // Revert per-branch remittance for CEO allocations.
+        for (const composite of ceoExpIds) {
+          const [entryId, br] = composite.split('::')
+          const e = await tx.pettyCashEntry.findUnique({ where: { id: entryId }, select: { ewtRemittedBranches: true } })
+          if (!e) continue
+          const cur = (e.ewtRemittedBranches && typeof e.ewtRemittedBranches === 'object') ? { ...e.ewtRemittedBranches as Record<string, boolean> } : {}
+          delete cur[br]
+          await tx.pettyCashEntry.update({ where: { id: entryId }, data: { ewtRemittedBranches: cur } })
+        }
       }
       await tx.reimbursementReport.delete({ where: { id } })
     })

@@ -28,6 +28,13 @@ export async function GET(req: Request) {
     select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, grossAmount: true, ewtRate: true, ewtRemitted: true, paidAt: true, date: true },
     orderBy: [{ paidAt: 'desc' }],
   })
+  // CEO petty-cash entries with EWT that were RFP'd for THIS branch (rfpBranchMap has
+  // the branch). The EWT is attributed to the branch's allocation and remitted from
+  // that branch's Taxes; per-branch remittance is tracked in ewtRemittedBranches.
+  const ceoEntries = await prisma.pettyCashEntry.findMany({
+    where: { branch: 'CEO', hasEwt: true, ewtRate: { not: null } },
+    select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, grossAmount: true, ewtRate: true, paidAt: true, date: true, branchAllocations: true, rfpBranchMap: true, ewtRemittedBranches: true },
+  })
 
   const items = [
     ...consultants.map(e => {
@@ -50,6 +57,25 @@ export async function GET(req: Request) {
         ym, periodLabel: when ? new Date(when).toISOString().slice(0, 10) : '',
         base: net, rate, ewt: net * (rate / 100), remitted: e.ewtRemitted,
       }
+    }),
+    // CEO entries allocated + RFP'd to this branch → one item per (entry, branch),
+    // keyed "<id>::<branch>" so remittance can be tracked per branch.
+    ...ceoEntries.flatMap(e => {
+      const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? e.rfpBranchMap as Record<string, string> : {}
+      if (!map[pcBranch]) return []
+      const allocs = Array.isArray(e.branchAllocations) ? e.branchAllocations as { branch?: string; amount?: number | string }[] : []
+      const alloc = allocs.find(a => a?.branch === pcBranch)
+      const g = alloc ? Number(alloc.amount) : 0
+      if (!(g > 0)) return []
+      const net = e.vatable === 'VAT' ? g / 1.12 : g
+      const rate = e.ewtRate || 0
+      const when = e.paidAt || e.date
+      const remitMap = (e.ewtRemittedBranches && typeof e.ewtRemittedBranches === 'object') ? e.ewtRemittedBranches as Record<string, boolean> : {}
+      return [{
+        id: `${e.id}::${pcBranch}`, source: 'EXPENSE' as const, name: `${e.requestor || e.description || e.pcvNumber} (CEO)`, ref: e.pcvNumber,
+        ym: when ? new Date(when).toISOString().slice(0, 7) : '', periodLabel: when ? new Date(when).toISOString().slice(0, 10) : '',
+        base: net, rate, ewt: net * (rate / 100), remitted: !!remitMap[pcBranch],
+      }]
     }),
   ]
   return NextResponse.json({ items })
