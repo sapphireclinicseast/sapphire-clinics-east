@@ -610,6 +610,14 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
     q: 'Does the fellowship require a co-maker?',
     a: <>Yes. A <b>co-maker</b> is a parent or guardian, of legal age, who co-signs your Return Service Agreement and agrees to be <b>jointly and severally liable</b> with you for any monetary obligations that may arise under it — for example, a reimbursement or cash buyout, together with any surcharge or penalty — should you be unable to fulfill the fellowship&rsquo;s terms. In practice, the co-maker is a trusted family member who stands with you in your commitment.</>,
   },
+  {
+    q: 'Do I have obligations after availing of the fellowship?',
+    a: <>Yes. In return for the fellowship, you render a <b>return service of 1,500 hours of patient sessions</b> at our partner, the <b>Aura Health Rehab</b> clinics. This begins within <b>60 days</b> after you receive your professional license. Because the service is rendered on-site, please make sure you are able to reach and work at Aura Health Rehab&rsquo;s clinic locations.</>,
+  },
+  {
+    q: 'If I render service at the accredited partner clinics, is my professional compensation deducted?',
+    a: <>No. Your return service is fulfilled through the <b>hours you actually work — not through any salary deduction</b>, and you are fully and separately compensated for that work. In practice, you simply report for your regular clinical schedule (about five days a week) at an accredited partner clinic until the 1,500 hours are completed.</>,
+  },
 ]
 function FaqModal({ onClose }: { onClose: () => void }) {
   return (
