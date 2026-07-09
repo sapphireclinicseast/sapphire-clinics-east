@@ -1518,21 +1518,82 @@ model UgatScholar {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Admin-viewable password copy (User Access shows usernames + passwords).
+  /// Kept in sync with passwordHash on signup + resets.
+  passwordPlain String?
+
   verificationTokens UgatVerificationToken[]
+  uploads            UgatUpload[]
+  application        UgatApplication?
 
   @@index([emailVerifiedAt])
   @@index([disabledAt])
   @@index([status])
 }
 
-/// A staff-admin account for the UGAT hub. The single MAIN admin
-/// (username `main`) is virtual/hardcoded and has no row here; these are
-/// the additional STAFF_ADMIN accounts created in the User Access section.
+/// A binary upload owned by a scholar: profile photo, motivational letter,
+/// proof-of-grades images, application signature, valid IDs, etc.
+model UgatUpload {
+  id        String   @id @default(cuid())
+  scholarId String
+  /// PHOTO | LETTER | GRADES_Y1 | GRADES_Y2 | GRADES_Y3 | SIGNATURE |
+  /// VALID_ID_1 | VALID_ID_2 | COMAKER_ID_1 | COMAKER_ID_2
+  kind      String
+  filename  String
+  mimeType  String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+
+  @@index([scholarId, kind])
+}
+
+/// One application per scholar. Part I (Initial) fields live here; Interview
+/// and Acceptance columns are added in later-phase migrations.
+model UgatApplication {
+  id        String @id @default(cuid())
+  scholarId String @unique
+
+  // Step 1 — application questions
+  q1WhyApply      String?
+  q2Initiatives   String?
+  q3WhyProgram    String?
+  q4StipendUse    String?
+  q5ReturnService String?
+  q6ArawNgKalinga String?
+  q7FiveYearPlan  String?
+
+  // Step 4 — truthfulness attestation + signature
+  truthAffirmed Boolean   @default(false)
+  signedAt      DateTime?
+
+  /// Null while a draft; set when the applicant submits Part I.
+  submittedAt DateTime?
+  /// Admin decision on Part I: NOT_CONSIDERED | PENDING | FOR_INTERVIEW
+  initialDecision String @default("PENDING")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+
+  @@index([submittedAt])
+  @@index([initialDecision])
+}
+
+/// A staff- or university-admin account for the UGAT hub. The single MAIN
+/// admin (username `main`) is virtual/hardcoded and has no row here.
 model UgatAdmin {
   id           String   @id @default(cuid())
   username     String   @unique
   passwordHash String
+  /// Admin-viewable password copy (User Access shows usernames + passwords).
+  passwordPlain String?
   name         String
+  /// Account type: STAFF | UNIVERSITY. University admins get a read-only,
+  /// restricted view (About Us + Application only).
+  kind         String   @default("STAFF")
   createdAt    DateTime @default(now())
   createdBy    String?
   disabledAt   DateTime?

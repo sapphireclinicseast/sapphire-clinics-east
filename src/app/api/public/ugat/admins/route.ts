@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   if (!t) return NextResponse.json({ error: 'Admin authorization required.' }, { status: 401 })
   const admins = await prisma.ugatAdmin.findMany({
     orderBy: { createdAt: 'asc' },
-    select: { id: true, username: true, name: true, createdAt: true, createdBy: true, disabledAt: true },
+    select: { id: true, username: true, name: true, kind: true, passwordPlain: true, createdAt: true, createdBy: true, disabledAt: true },
   })
   return NextResponse.json({ admins })
 }
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   if (!t) return NextResponse.json({ error: 'Admin authorization required.' }, { status: 401 })
   if (t.role !== 'MAIN_ADMIN') return NextResponse.json({ error: 'Only the main administrator can add staff admins.' }, { status: 403 })
 
-  let body: { username?: string; password?: string; name?: string }
+  let body: { username?: string; password?: string; name?: string; kind?: string }
   try {
     body = await req.json()
   } catch {
@@ -40,6 +40,7 @@ export async function POST(req: Request) {
   const username = String(body.username || '').trim().toLowerCase()
   const password = String(body.password || '')
   const name = String(body.name || '').trim()
+  const kind = body.kind === 'UNIVERSITY' ? 'UNIVERSITY' : 'STAFF'
 
   if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
     return NextResponse.json({ error: 'Username must be 3–30 characters (letters, numbers, and . _ - only).' }, { status: 400 })
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
 
   try {
     const created = await prisma.ugatAdmin.create({
-      data: { username, name, passwordHash: await hashPassword(password), createdBy: t.username || 'main' },
+      data: { username, name, kind, passwordHash: await hashPassword(password), passwordPlain: password, createdBy: t.username || 'main' },
       select: { id: true },
     })
     return NextResponse.json({ id: created.id })
@@ -70,7 +71,7 @@ export async function PATCH(req: Request) {
   if (!t) return NextResponse.json({ error: 'Admin authorization required.' }, { status: 401 })
   if (t.role !== 'MAIN_ADMIN') return NextResponse.json({ error: 'Only the main administrator can manage staff admins.' }, { status: 403 })
 
-  let body: { id?: string; disabled?: boolean; name?: string; password?: string }
+  let body: { id?: string; disabled?: boolean; name?: string; password?: string; kind?: string }
   try {
     body = await req.json()
   } catch {
@@ -82,9 +83,11 @@ export async function PATCH(req: Request) {
   const data: Record<string, unknown> = {}
   if (typeof body.disabled === 'boolean') data.disabledAt = body.disabled ? new Date() : null
   if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim()
+  if (body.kind === 'STAFF' || body.kind === 'UNIVERSITY') data.kind = body.kind
   if (typeof body.password === 'string' && body.password) {
     if (body.password.length < 8) return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
     data.passwordHash = await hashPassword(body.password)
+    data.passwordPlain = body.password
   }
   if (Object.keys(data).length === 0) return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 })
 

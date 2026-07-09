@@ -131,6 +131,7 @@ export async function POST(req: Request) {
         professionalEmail,
         personalEmail,
         passwordHash,
+        passwordPlain: password,
         firstName: str(body.firstName),
         middleName: str(body.middleName) || null,
         lastName: str(body.lastName),

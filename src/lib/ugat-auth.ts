@@ -46,10 +46,16 @@ async function hmacSha256(key: Uint8Array, msg: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(msg)))
 }
 
-export type UgatRole = 'MAIN_ADMIN' | 'STAFF_ADMIN' | 'SCHOLAR'
+export type UgatRole = 'MAIN_ADMIN' | 'STAFF_ADMIN' | 'UNIVERSITY_ADMIN' | 'SCHOLAR'
 
+/** Full admins — may write (decisions, user management, settings). */
 export function isAdminRole(role: UgatRole | undefined): boolean {
   return role === 'MAIN_ADMIN' || role === 'STAFF_ADMIN'
+}
+
+/** Any admin-tier account, including the read-only university admin. */
+export function canViewAdmin(role: UgatRole | undefined): boolean {
+  return role === 'MAIN_ADMIN' || role === 'STAFF_ADMIN' || role === 'UNIVERSITY_ADMIN'
 }
 
 export interface UgatToken {
