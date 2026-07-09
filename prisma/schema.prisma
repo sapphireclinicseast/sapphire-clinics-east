@@ -1467,7 +1467,13 @@ model UgatOption {
 /// A fellowship scholar account.
 model UgatScholar {
   id           String   @id @default(cuid())
-  email        String   @unique
+  /// Login handle (lowercased). Sign-in is by username, not email.
+  username     String   @unique
+  /// School / professional email + personal email. Verification links are
+  /// sent to both. Not unique — two scholars could share a school domain
+  /// alias in edge cases; uniqueness is enforced on username only.
+  professionalEmail String
+  personalEmail     String
   passwordHash String
 
   firstName   String

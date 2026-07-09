@@ -1,8 +1,8 @@
 // POST /api/public/ugat/auth/sign-in
-// Body: { email, password }
+// Body: { username, password }  (admin logs in with main@ as the username)
 // Handles BOTH the virtual admin login (main@ SCEI → gates /ugatfellow/admin)
-// and scholar logins. Scholars must have a verified email and not be disabled.
-// Response: { token, role, scholar? }
+// and scholar logins. Scholars sign in by username, must be verified, and not
+// disabled. Response: { token, role, scholar? }
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -11,29 +11,30 @@ import { signToken, comparePassword, isAdminCredentials, UGAT_ADMIN_EMAIL } from
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
-  let body: { email?: string; password?: string }
+  let body: { username?: string; email?: string; password?: string }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
 
-  const email = (body.email || '').trim().toLowerCase()
+  // Accept `username` (scholar + admin forms) with `email` as a fallback.
+  const identifier = (body.username || body.email || '').trim().toLowerCase()
   const password = body.password || ''
-  if (!email || !password) {
-    return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 })
+  if (!identifier || !password) {
+    return NextResponse.json({ error: 'Username and password are required.' }, { status: 400 })
   }
 
-  // ── Admin (virtual) ────────────────────────────────────────────────
-  if (isAdminCredentials(email, password)) {
+  // ── Admin (virtual) — identifier is the admin email ─────────────────
+  if (isAdminCredentials(identifier, password)) {
     const token = await signToken({ role: 'ADMIN', email: UGAT_ADMIN_EMAIL })
     return NextResponse.json({ token, role: 'ADMIN' })
   }
 
-  // ── Scholar ────────────────────────────────────────────────────────
-  const scholar = await prisma.ugatScholar.findUnique({ where: { email } })
-  // Uniform failure message to avoid leaking which emails are registered.
-  const invalid = () => NextResponse.json({ error: 'Incorrect email or password.' }, { status: 401 })
+  // ── Scholar (by username) ───────────────────────────────────────────
+  const scholar = await prisma.ugatScholar.findUnique({ where: { username: identifier } })
+  // Uniform failure message to avoid leaking which usernames are registered.
+  const invalid = () => NextResponse.json({ error: 'Incorrect username or password.' }, { status: 401 })
   if (!scholar) return invalid()
   if (!(await comparePassword(password, scholar.passwordHash))) return invalid()
 
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
   const token = await signToken({
     role: 'SCHOLAR',
     scholarId: scholar.id,
-    email: scholar.email,
+    email: scholar.personalEmail,
     firstName: scholar.firstName,
   })
   return NextResponse.json({
@@ -58,7 +59,9 @@ export async function POST(req: Request) {
     role: 'SCHOLAR',
     scholar: {
       id: scholar.id,
-      email: scholar.email,
+      username: scholar.username,
+      professionalEmail: scholar.professionalEmail,
+      personalEmail: scholar.personalEmail,
       firstName: scholar.firstName,
       middleName: scholar.middleName,
       lastName: scholar.lastName,

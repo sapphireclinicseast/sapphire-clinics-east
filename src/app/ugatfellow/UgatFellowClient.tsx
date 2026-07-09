@@ -55,7 +55,9 @@ type View = 'auth' | 'checkEmail' | 'dashboard'
 
 interface Scholar {
   id: string
-  email: string
+  username: string
+  professionalEmail: string
+  personalEmail: string
   firstName: string
   middleName?: string | null
   lastName: string
@@ -197,6 +199,22 @@ export default function UgatFellowClient() {
               )}
 
               <PrivacyStrip />
+
+              {/* Program info for mobile (left panel is hidden < 900px). */}
+              <div className={s.mobileProgram}>
+                <p className={s.mobileProgramDesc}>
+                  The UGAT Fellowship Program provides a monthly stipend to Allied Health
+                  Professionals in their final year of university — helping fellows stay
+                  grounded in their values (<i>ugat</i>) as they pursue excellence
+                  (<i>galing</i>), integrity (<i>tindig</i>), and service (<i>paglilingkod</i>).
+                </p>
+                <ProgramTimeline />
+                <p className={s.mobilePartner}>
+                  Interested to have your school partner with us for accepting fellows for
+                  Speech-Language Pathology or Occupational Therapy? Contact us at{' '}
+                  <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -225,26 +243,39 @@ function LeftPanel() {
         <h1 className={s.leftTitle}>Rooted in values.<br />Growing in service.</h1>
         <p className={s.leftTagline}>A fellowship for the next generation of Allied Health Professionals.</p>
         <p className={s.leftDesc}>
-          The UGAT Fellowship Program provides a monthly stipend to outstanding
-          Allied Health students in their final year of university. Like strong
-          roots (<i>ugat</i>), we help our fellows stay grounded in their values as
-          they grow — pursuing excellence (<i>galing</i>) in their craft, upholding
-          honor and integrity (<i>tindig</i>) in their practice, and giving back
-          through meaningful service (<i>paglilingkod</i>) to the community.
+          The UGAT Fellowship Program provides a monthly stipend to Allied Health
+          Professionals in their final year of university. Much like strong roots
+          (<i>ugat</i>), we hope our fellows stay firmly grounded in their values even
+          as they grow — pursuing excellence (<i>galing</i>) in their craft, upholding
+          honor and integrity (<i>tindig</i>) in their practice, and ultimately giving
+          back through meaningful service (<i>paglilingkod</i>) to the community.
         </p>
-        <div className={s.leftPills}>
-          <span className={s.pill}>Monthly stipend</span>
-          <span className={s.pill}>Final-year students</span>
-          <span className={s.pill}>Mentorship &amp; service</span>
-        </div>
+        <ProgramTimeline />
+        <p className={s.leftPartner}>
+          Interested to have your school partner with us for accepting fellows for
+          Speech-Language Pathology or Occupational Therapy? Contact us at{' '}
+          <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>.
+        </p>
       </div>
+    </div>
+  )
+}
+
+// ── Application timeline (shared by desktop panel + mobile block) ───
+function ProgramTimeline() {
+  return (
+    <div className={s.timeline}>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>Jan – Apr</span><span>Applications accepted</span></div>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>May – Jun</span><span>Deliberations</span></div>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>July</span><span>Scholars announced</span></div>
+      <p className={s.timelineNote}>Extensions are usually announced.</p>
     </div>
   )
 }
 
 // ── Sign In ────────────────────────────────────────────────────────
 function SignIn({ onSignedIn, booted }: { onSignedIn: (t: string, s: Scholar) => void; booted: boolean }) {
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -258,7 +289,7 @@ function SignIn({ onSignedIn, booted }: { onSignedIn: (t: string, s: Scholar) =>
       const r = await fetch(`${API}/auth/sign-in`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       })
       const d = await r.json()
       if (!r.ok) {
@@ -285,9 +316,9 @@ function SignIn({ onSignedIn, booted }: { onSignedIn: (t: string, s: Scholar) =>
       await fetch(`${API}/auth/resend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ username }),
       })
-      setResendMsg('If that account needs verification, a new link is on its way.')
+      setResendMsg('If that account needs verification, a new link is on its way to your emails.')
     } catch {
       setResendMsg('Could not resend right now. Please try again shortly.')
     }
@@ -302,8 +333,8 @@ function SignIn({ onSignedIn, booted }: { onSignedIn: (t: string, s: Scholar) =>
       {resendMsg && <div className={`${s.alert} ${s.alertOk}`}>{resendMsg}</div>}
 
       <div className={s.field}>
-        <label className={s.label}>Email</label>
-        <input className={s.input} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+        <label className={s.label}>Username</label>
+        <input className={s.input} type="text" autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} placeholder="your.username" />
       </div>
       <div className={s.field}>
         <label className={s.label}>Password</label>
@@ -329,7 +360,7 @@ const emptyForm = {
   firstName: '', middleName: '', lastName: '',
   studentNumber: '', expectedGraduationYear: '', birthdate: '',
   school: '', program: '', preferredField: '',
-  email: '', password: '',
+  professionalEmail: '', personalEmail: '', username: '', password: '',
   permAddress1: '', permAddress2: '', permCity: '', permRegion: '', permZip: '',
   presAddress1: '', presAddress2: '', presCity: '', presRegion: '', presZip: '',
 }
@@ -456,7 +487,6 @@ function SignUp({
 
       {dropdown('School', 'school', options.schools)}
       {dropdown('Program', 'program', options.programs)}
-      {dropdown('Preferred Field of Practice', 'preferredField', options.fields)}
 
       <div className={s.sectionLabel}>Permanent Address</div>
       {addr('perm')}
@@ -468,10 +498,19 @@ function SignUp({
       </label>
       {!sameAddr && addr('pres')}
 
-      <div className={s.sectionLabel}>Account &amp; Consent</div>
+      <div className={s.sectionLabel}>Practice &amp; Account</div>
+      {dropdown('Preferred Field of Practice', 'preferredField', options.fields)}
       <div className={s.field}>
-        <label className={s.label}>Email</label>
-        <input className={s.input} type="email" autoComplete="email" required value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="you@example.com" />
+        <label className={s.label}>Professional Email <span className={s.opt}>(school / work)</span></label>
+        <input className={s.input} type="email" autoComplete="email" required value={f.professionalEmail} onChange={(e) => set('professionalEmail', e.target.value)} placeholder="you@school.edu.ph" />
+      </div>
+      <div className={s.field}>
+        <label className={s.label}>Personal Email</label>
+        <input className={s.input} type="email" required value={f.personalEmail} onChange={(e) => set('personalEmail', e.target.value)} placeholder="you@example.com" />
+      </div>
+      <div className={s.field}>
+        <label className={s.label}>Username <span className={s.opt}>(you&rsquo;ll sign in with this)</span></label>
+        <input className={s.input} type="text" autoComplete="username" required value={f.username} onChange={(e) => set('username', e.target.value)} placeholder="3–30 chars: letters, numbers, . _ -" />
       </div>
       <div className={s.field}>
         <label className={s.label}>Password <span className={s.opt}>(min. 8 characters)</span></label>
@@ -506,8 +545,8 @@ function CheckEmail({ onBack }: { onBack: () => void }) {
       </div>
       <h2 className={s.h1}>Check your email</h2>
       <p className={s.sub}>
-        We&rsquo;ve sent a verification link to your inbox from{' '}
-        <b>scholarship@sapphireclinicseast.org</b>. Click it to activate your account, then come back here to sign in.
+        We&rsquo;ve sent a verification link to your <b>professional and personal email</b> from{' '}
+        <b>scholarship@sapphireclinicseast.org</b>. Click it to activate your account, then come back here to sign in with your username.
       </p>
       <button className={s.btn} onClick={onBack}>Back to Sign In</button>
     </div>
@@ -537,7 +576,7 @@ function Dashboard({ scholar, onLogout }: { scholar: Scholar; onLogout: () => vo
           <LeafMark />
           <div>
             <p className={s.dashHi}>Kumusta, {scholar.firstName}! 🌱</p>
-            <p className={s.dashMeta}>{scholar.email}</p>
+            <p className={s.dashMeta}>@{scholar.username} · {scholar.personalEmail}</p>
           </div>
           <button className={s.ghostBtn} style={{ marginLeft: 'auto' }} onClick={onLogout}>Sign out</button>
         </div>

@@ -423,3 +423,42 @@
 .adminAdd button { border: 0; background: var(--green); color: #fff; border-radius: 9px; padding: 0 14px; font-family: var(--display); font-weight: 700; font-size: 13.5px; cursor: pointer; }
 .adminLogin { max-width: 400px; margin: 8vh auto 0; }
 @media (max-width: 800px) { .adminGrid { grid-template-columns: 1fr; } }
+
+/* ── Application timeline + partner CTA (left panel) ───────────── */
+.timeline { margin: 4px 0 16px; }
+.timelineRow {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 5px 0; font-size: 13.5px; color: rgba(255,255,255,0.92);
+  border-top: 1px solid rgba(237,243,217,0.18);
+}
+.timelineRow:first-child { border-top: 0; }
+.timelineWhen {
+  font-family: var(--display); font-weight: 700; font-size: 12px;
+  letter-spacing: 0.04em; color: var(--gold);
+  min-width: 78px; flex: none;
+}
+.timelineNote { margin: 8px 0 0; font-size: 12px; font-style: italic; color: rgba(237,243,217,0.75); }
+.leftPartner {
+  margin: 16px 0 0; padding-top: 14px;
+  border-top: 1px solid rgba(237,243,217,0.22);
+  font-size: 12.5px; line-height: 1.55; color: rgba(255,255,255,0.85);
+}
+.leftPartner a { color: var(--gold); font-weight: 600; }
+
+/* ── Mobile-only program block (shown when left panel is hidden) ─ */
+.mobileProgram { display: none; }
+.mobileProgramDesc { font-size: 13.5px; line-height: 1.6; color: var(--deep); margin: 0 0 12px; }
+.mobilePartner { font-size: 12.5px; line-height: 1.55; color: var(--deep-70); margin: 12px 0 0; }
+.mobilePartner a { color: var(--gold); font-weight: 700; }
+@media (max-width: 900px) {
+  .mobileProgram {
+    display: block;
+    margin-top: 22px; padding: 18px;
+    border-radius: 14px; background: rgba(36,73,82,0.05);
+    border: 1px solid var(--line);
+  }
+  /* Recolor the timeline for the light mobile card. */
+  .mobileProgram .timelineRow { color: var(--deep); border-top-color: var(--line); }
+  .mobileProgram .timelineWhen { color: var(--green); }
+  .mobileProgram .timelineNote { color: var(--deep-70); }
+}
