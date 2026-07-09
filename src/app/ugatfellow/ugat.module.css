@@ -662,3 +662,105 @@
   .statRow { grid-template-columns: repeat(2, 1fr); }
   .aboutH1 { font-size: 23px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   PHASE 1 — Profile photo, Application, Dashboard, User Access
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Profile photo */
+.photoRow { display: flex; gap: 20px; align-items: flex-start; }
+.photoFrame { width: 116px; height: 116px; flex: none; border-radius: 14px; overflow: hidden; background: rgba(36,73,82,0.06); border: 1px solid var(--line); display: grid; place-items: center; color: var(--deep-70); }
+.photoFrame img { width: 100%; height: 100%; object-fit: cover; }
+.avatarSm { width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: rgba(36,73,82,0.08); display: grid; place-items: center; color: var(--deep-70); }
+.avatarSm img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Integrity / info banner */
+.integrity { display: flex; gap: 11px; align-items: flex-start; background: rgba(198,152,73,0.12); border: 1px solid rgba(198,152,73,0.4); border-radius: 12px; padding: 13px 16px; font-size: 13px; line-height: 1.55; color: var(--deep); }
+.integrity svg { flex: none; margin-top: 1px; color: var(--gold); }
+
+/* Flow strip */
+.flow { display: flex; align-items: flex-start; gap: 0; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; overflow-x: auto; }
+.flowItem { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 150px; }
+.flowNode { width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 700; background: rgba(36,73,82,0.08); color: var(--deep-70); border: 2px solid transparent; }
+.flowActive { background: var(--deep); color: #fff; }
+.flowDone { background: rgba(74,128,115,0.16); color: #2c6b5b; }
+.flowText { display: flex; flex-direction: column; line-height: 1.25; }
+.flowText b { font-family: var(--display); font-size: 13px; color: var(--deep); }
+.flowText span { font-size: 11px; color: var(--deep-70); }
+.flowLine { flex: 1; height: 2px; min-width: 16px; background: var(--line); margin: 0 4px; }
+.flowLineDone { background: rgba(74,128,115,0.5); }
+
+/* Sub-tabs (Initial / Interview / Acceptance) */
+.subTabs { display: flex; gap: 6px; }
+.subTab { border: 1px solid var(--line); background: #fff; color: var(--deep-70); border-radius: 10px; padding: 9px 18px; font-size: 13.5px; font-family: var(--body); cursor: pointer; }
+.subTabActive { background: var(--deep); color: #fff; border-color: var(--deep); }
+
+.appToolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.btnGhost3 { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: #fff; color: var(--deep); border-radius: 9px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: var(--body); white-space: nowrap; }
+.btnGhost3:hover { background: rgba(36,73,82,0.04); }
+
+/* Step cards */
+.stepH { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-size: 16px; color: var(--deep); margin: 0 0 14px; font-weight: 700; }
+.stepNum { width: 26px; height: 26px; flex: none; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-size: 13px; }
+.field2 { margin-bottom: 16px; }
+.qLabel { display: block; font-size: 13.5px; font-weight: 600; color: var(--ink); margin-bottom: 7px; line-height: 1.45; }
+.textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: var(--body); color: var(--ink); resize: vertical; line-height: 1.5; }
+.textarea:focus { outline: none; border-color: var(--green); }
+.charCount { text-align: right; font-size: 11px; color: var(--deep-70); margin-top: 3px; }
+
+/* File upload rows */
+.fileRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); }
+.fileRow:first-of-type { border-top: 0; }
+.fileLabel { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--ink); }
+.fileActions { display: flex; gap: 7px; flex: none; }
+
+/* Signature pad */
+.sigPad { width: 100%; max-width: 420px; height: 150px; border: 1px dashed var(--line); border-radius: 12px; background: #fff; touch-action: none; display: block; }
+.sigView { max-width: 240px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+
+.btn2Lg { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 11px; background: var(--deep); color: #fff; padding: 13px 26px; font-size: 15px; font-family: var(--display); font-weight: 600; cursor: pointer; align-self: flex-start; }
+.btn2Lg:hover { background: var(--green); }
+.btn2Lg:disabled { opacity: 0.6; cursor: default; }
+
+.acceptedBox { display: flex; gap: 14px; align-items: flex-start; }
+.acceptedBox > svg { color: #2c6b5b; flex: none; margin-top: 2px; }
+
+/* Admin applicant review */
+.appRow { border-top: 1px solid var(--line); }
+.appRow:first-of-type { border-top: 0; }
+.appRowHead { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; padding: 13px 2px; cursor: pointer; font-family: var(--body); text-align: left; }
+.appRowHead svg { color: var(--deep-70); transition: transform 0.15s; flex: none; }
+.rot { transform: rotate(180deg); }
+.appRowName { flex: 1; font-weight: 600; color: var(--ink); font-size: 14px; }
+.appDetail { padding: 4px 2px 16px; }
+.stepTabs, .stepTabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.stepTab { border: 1px solid var(--line); background: #fff; color: var(--deep-70); border-radius: 8px; padding: 6px 13px; font-size: 12.5px; cursor: pointer; font-family: var(--body); }
+.stepTabActive { background: rgba(36,73,82,0.08); color: var(--deep); font-weight: 600; }
+.qaList { display: flex; flex-direction: column; gap: 12px; }
+.qa { }
+.qaQ { font-size: 12.5px; font-weight: 600; color: var(--deep-70); margin-bottom: 3px; }
+.qaA { font-size: 13.5px; color: var(--ink); line-height: 1.55; white-space: pre-wrap; }
+.docLinks { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.decisionRow { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* Dashboard city bars */
+.cityRow { display: flex; align-items: center; gap: 12px; padding: 7px 0; font-size: 13px; }
+.cityRow > span { width: 150px; flex: none; color: var(--ink); }
+.cityRow > b { width: 28px; text-align: right; color: var(--deep); }
+.cityBarWrap { flex: 1; height: 10px; background: rgba(36,73,82,0.06); border-radius: 6px; overflow: hidden; }
+.cityBar { height: 100%; background: var(--green); border-radius: 6px; }
+
+/* User Access tables */
+.uaHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.uaTableWrap { overflow-x: auto; }
+.uaTable { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+.uaTable thead th { text-align: left; padding: 9px 12px; background: rgba(36,73,82,0.04); color: var(--deep-70); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+.uaTable tbody td { padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+.tagType { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: rgba(36,73,82,0.08); color: var(--deep); white-space: nowrap; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--ink); }
+
+@media (max-width: 640px) {
+  .photoRow { flex-direction: column; }
+  .flowText span { display: none; }
+  .decisionRow { flex-wrap: wrap; }
+}

@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ token, role: 'MAIN_ADMIN' })
   }
 
-  // ── STAFF admin (UgatAdmin row) ─────────────────────────────────────
+  // ── STAFF / UNIVERSITY admin (UgatAdmin row) ────────────────────────
   const admin = await prisma.ugatAdmin.findUnique({ where: { username: identifier } })
   if (admin) {
     if (!(await comparePassword(password, admin.passwordHash))) {
@@ -40,8 +40,9 @@ export async function POST(req: Request) {
     if (admin.disabledAt) {
       return NextResponse.json({ error: 'This admin account has been disabled.' }, { status: 403 })
     }
-    const token = await signToken({ role: 'STAFF_ADMIN', adminId: admin.id, username: admin.username, name: admin.name })
-    return NextResponse.json({ token, role: 'STAFF_ADMIN' })
+    const role = admin.kind === 'UNIVERSITY' ? 'UNIVERSITY_ADMIN' : 'STAFF_ADMIN'
+    const token = await signToken({ role, adminId: admin.id, username: admin.username, name: admin.name })
+    return NextResponse.json({ token, role })
   }
 
   // ── Scholar (by username) ───────────────────────────────────────────
