@@ -540,9 +540,19 @@
 
 /* ── About Us ────────────────────────────────────────────────── */
 .aboutHero {
+  position: relative; overflow: hidden;
   background: linear-gradient(135deg, var(--deep), var(--green));
   color: #fff; border-radius: 18px; padding: 34px 30px;
+  display: flex; align-items: center; gap: 28px;
 }
+.aboutHeroBody { flex: 1; min-width: 0; position: relative; z-index: 1; }
+.aboutHeroMark {
+  flex: none; width: 180px; height: auto; align-self: center;
+  filter: brightness(0) invert(1); opacity: 0.9;
+  /* Nudge slightly so it reads as a decorative brand mark, not an icon. */
+  margin-right: 6px;
+}
+@media (max-width: 760px) { .aboutHeroMark { display: none; } }
 .aboutKicker { font-family: var(--display); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin: 0 0 10px; font-weight: 700; }
 .aboutH1 { font-family: var(--display); font-size: 28px; font-weight: 800; margin: 0 0 12px; line-height: 1.15; }
 .aboutLead { font-size: 15px; line-height: 1.65; color: rgba(255,255,255,0.92); margin: 0; max-width: 62ch; }
