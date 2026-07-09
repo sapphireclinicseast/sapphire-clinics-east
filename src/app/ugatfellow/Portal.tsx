@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import {
   Info, User, FileText, LayoutDashboard, GraduationCap, Settings as SettingsIcon,
-  ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff,
+  ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff, Calendar,
 } from 'lucide-react'
 import s from './ugat.module.css'
 
@@ -22,6 +22,7 @@ export interface AppData {
   q4StipendUse?: string | null; q5ReturnService?: string | null; q6ArawNgKalinga?: string | null
   q7FiveYearPlan?: string | null
   truthAffirmed?: boolean; signedAt?: string | null; submittedAt?: string | null
+  academicYear?: string | null
   initialDecision?: string
 }
 export interface PortalScholar {
@@ -377,7 +378,10 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
   const [tab, setTab] = useState<'initial' | 'interview' | 'acceptance'>('initial')
   const [busy, setBusy] = useState<'' | 'draft' | 'submit'>('')
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+  const [win, setWin] = useState<{ open: boolean; academicYear?: string; closesAt?: string; nextAcademicYear?: string; nextOpensAt?: string } | null>(null)
   const sigRef = useRef<SignaturePadHandle>(null)
+
+  useEffect(() => { fetch(`${API}/window`).then((r) => r.json()).then(setWin).catch(() => setWin({ open: false })) }, [])
 
   const showInterview = app0?.initialDecision === 'FOR_INTERVIEW'
   const showAcceptance = session.scholar?.status === 'ACCEPTED'
@@ -434,8 +438,22 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
             </div>
           </div>
         </div>
+      ) : win === null ? (
+        <div className={s.card2}><p className={s.muted} style={{ margin: 0 }}>Loading…</p></div>
+      ) : !win.open ? (
+        <div className={s.card2}>
+          <h3 className={s.card2H}>Applications are currently closed</h3>
+          <p className={s.muted} style={{ margin: 0 }}>
+            The UGAT Fellowship application isn&rsquo;t open right now.{' '}
+            {win.nextAcademicYear && win.nextOpensAt
+              ? <>The next cycle (<b>A.Y. {win.nextAcademicYear}</b>) opens on <b>{new Date(win.nextOpensAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}</b>.</>
+              : <>New cycles are announced here and by email — extensions are usually announced too.</>}{' '}
+            Your account is ready, so you can apply as soon as it opens.
+          </p>
+        </div>
       ) : (
         <>
+          {win.academicYear && <div className={s.ayBadge}>You are applying for <b>Academic Year {win.academicYear}</b>.{win.closesAt ? ` Applications close ${new Date(win.closesAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}.` : ''}</div>}
           {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
           <div className={s.appToolbar}>
             <span className={s.muted} style={{ margin: 0 }}>Complete Steps 1–4, then submit. You can save a draft anytime.</span>
@@ -493,10 +511,22 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
 const DECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_INTERVIEW']
 const DECISION_LABEL: Record<string, string> = { NOT_CONSIDERED: 'Not Considered', PENDING: 'Pending', FOR_INTERVIEW: 'For Interview' }
 
+interface Cycle { id: string; academicYear: string; opensAt: string; closesAt: string }
+
 function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: string; authHeaders: Record<string, string>; readOnly: boolean; onGoTo: (k: SectionKey) => void }) {
   const { rows, load } = useScholars(authHeaders)
   const [tab, setTab] = useState<'initial' | 'interview' | 'acceptance'>('initial')
   const [openId, setOpenId] = useState<string | null>(null)
+  const [cycles, setCycles] = useState<Cycle[] | null>(null)
+  const [openAY, setOpenAY] = useState<string | undefined>(undefined)
+  const [ayFilter, setAyFilter] = useState('ALL')
+  const [showCycles, setShowCycles] = useState(false)
+
+  const loadCycles = useCallback(async () => {
+    const r = await fetch(`${API}/cycles`, { headers: authHeaders })
+    if (r.ok) { const d = await r.json(); setCycles(d.cycles); setOpenAY(d.window?.academicYear) }
+  }, [authHeaders])
+  useEffect(() => { loadCycles() }, [loadCycles])
 
   async function setDecision(id: string, initialDecision: string) {
     await fetch(`${API}/scholars`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id, initialDecision }) })
@@ -504,13 +534,29 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
   }
 
   if (!rows) return <div className={s.sec}><p className={s.muted}>Loading…</p></div>
-  const submitted = rows.filter((r) => r.application?.submittedAt)
+  const submittedAll = rows.filter((r) => r.application?.submittedAt)
+  const ays = Array.from(new Set(submittedAll.map((r) => r.application?.academicYear).filter(Boolean))) as string[]
+  const hasUnassigned = submittedAll.some((r) => !r.application?.academicYear)
+  const inAY = (r: AdminScholar) => ayFilter === 'ALL' || (ayFilter === 'UNASSIGNED' ? !r.application?.academicYear : r.application?.academicYear === ayFilter)
+  const submitted = submittedAll.filter(inAY)
   const forInterview = submitted.filter((r) => r.application?.initialDecision === 'FOR_INTERVIEW')
-  const accepted = rows.filter((r) => r.status === 'ACCEPTED')
+  const accepted = rows.filter((r) => r.status === 'ACCEPTED').filter(inAY)
 
   return (
     <div className={s.sec}>
       {readOnly && <div className={s.integrity}><Eye size={16} /><span>University-admin view — read only.</span></div>}
+      <div className={s.uaHead}>
+        <div className={s.ayFilter}>
+          <label className={s.cellSub}>Academic Year:</label>
+          <select className={s.statusSelect} value={ayFilter} onChange={(e) => setAyFilter(e.target.value)}>
+            <option value="ALL">All years</option>
+            {ays.map((y) => <option key={y} value={y}>A.Y. {y}{y === openAY ? ' (open)' : ''}</option>)}
+            {hasUnassigned && <option value="UNASSIGNED">Unassigned</option>}
+          </select>
+        </div>
+        {!readOnly && <button className={s.btnGhost3} onClick={() => setShowCycles((v) => !v)}><Calendar size={15} /> Application timelines</button>}
+      </div>
+      {showCycles && !readOnly && <CyclesPanel authHeaders={authHeaders} cycles={cycles} reload={loadCycles} />}
       <div className={s.subTabs}>
         <button className={`${s.subTab} ${tab === 'initial' ? s.subTabActive : ''}`} onClick={() => setTab('initial')}>Initial</button>
         <button className={`${s.subTab} ${tab === 'interview' ? s.subTabActive : ''}`} onClick={() => setTab('interview')}>Interview</button>
@@ -551,6 +597,74 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
           {accepted.length === 0 && <p className={s.muted}>No accepted fellows yet. <button className={s.linkBtn2} onClick={() => onGoTo('dashboard')}>Open Dashboard</button></p>}
         </div>
       )}
+    </div>
+  )
+}
+
+// Local <input type="datetime-local"> value <-> ISO helpers.
+function toLocalInput(iso?: string) {
+  if (!iso) return ''
+  const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+
+function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<string, string>; cycles: Cycle[] | null; reload: () => void }) {
+  const [form, setForm] = useState({ id: '', academicYear: '', opensAt: '', closesAt: '' })
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const editing = !!form.id
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setMsg(null)
+    const payload = {
+      ...(editing ? { id: form.id } : {}),
+      academicYear: form.academicYear.trim(),
+      opensAt: form.opensAt ? new Date(form.opensAt).toISOString() : '',
+      closesAt: form.closesAt ? new Date(form.closesAt).toISOString() : '',
+    }
+    const r = await fetch(`${API}/cycles`, { method: editing ? 'PATCH' : 'POST', headers: authHeaders, body: JSON.stringify(payload) })
+    const d = await r.json().catch(() => ({})); setBusy(false)
+    if (!r.ok) { setMsg({ ok: false, t: d.error || 'Could not save.' }); return }
+    setMsg({ ok: true, t: editing ? 'Cycle updated.' : 'Cycle added.' })
+    setForm({ id: '', academicYear: '', opensAt: '', closesAt: '' }); reload()
+  }
+  function edit(c: Cycle) { setForm({ id: c.id, academicYear: c.academicYear, opensAt: toLocalInput(c.opensAt), closesAt: toLocalInput(c.closesAt) }); setMsg(null) }
+  async function remove(c: Cycle) {
+    if (!window.confirm(`Delete the A.Y. ${c.academicYear} cycle? Submitted applications keep their year tag.`)) return
+    await fetch(`${API}/cycles`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id: c.id }) }); reload()
+  }
+  const now = Date.now()
+  const status = (c: Cycle) => { const o = +new Date(c.opensAt), cl = +new Date(c.closesAt); return now < o ? 'Upcoming' : now > cl ? 'Closed' : 'Open' }
+
+  return (
+    <div className={s.card2}>
+      <h3 className={s.card2H}>Application timelines</h3>
+      <p className={s.muted}>Set each academic year&rsquo;s open and close dates. While a cycle is open, submissions are automatically tagged to that year. Outside every window, students see a &ldquo;closed&rdquo; notice instead of the form.</p>
+      <form className={s.cycleForm} onSubmit={submit}>
+        <input className={s.input2} placeholder="Academic year (e.g. 2026-2027)" value={form.academicYear} onChange={(e) => setForm({ ...form, academicYear: e.target.value })} required />
+        <label className={s.dtField}>Opens<input type="datetime-local" className={s.input2} value={form.opensAt} onChange={(e) => setForm({ ...form, opensAt: e.target.value })} required /></label>
+        <label className={s.dtField}>Closes<input type="datetime-local" className={s.input2} value={form.closesAt} onChange={(e) => setForm({ ...form, closesAt: e.target.value })} required /></label>
+        <button className={s.btn2} disabled={busy}>{editing ? 'Save cycle' : <><Plus size={16} /> Add cycle</>}</button>
+        {editing && <button type="button" className={s.btnGhost3} onClick={() => setForm({ id: '', academicYear: '', opensAt: '', closesAt: '' })}>Cancel</button>}
+      </form>
+      {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
+      <div className={s.accessList}>
+        {cycles?.map((c) => {
+          const st = status(c)
+          return (
+            <div key={c.id} className={s.accessItem}>
+              <div><b>A.Y. {c.academicYear}</b><span className={s.cellSub}>{fmtDate(c.opensAt)} → {fmtDate(c.closesAt)}</span></div>
+              <div className={s.accessActions}>
+                <span className={`${s.statusPill} ${st === 'Open' ? s.stAccepted : st === 'Upcoming' ? s.stApplied : s.stRejected}`}>{st}</span>
+                <button className={s.miniBtn} onClick={() => edit(c)}>Edit</button>
+                <button className={`${s.miniBtn} ${s.miniDanger}`} onClick={() => remove(c)}>Delete</button>
+              </div>
+            </div>
+          )
+        })}
+        {cycles && cycles.length === 0 && <p className={s.muted} style={{ margin: '6px 2px' }}>No cycles yet. Add one to open applications.</p>}
+      </div>
     </div>
   )
 }

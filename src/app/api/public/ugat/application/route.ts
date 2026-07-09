@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { tokenFromRequest } from '@/lib/ugat-auth'
+import { getWindow } from '@/lib/ugat-cycle'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,6 +49,8 @@ export async function PUT(req: Request) {
   const existing = await prisma.ugatApplication.findUnique({ where: { scholarId: sid }, select: { submittedAt: true } })
   if (existing?.submittedAt) return NextResponse.json({ error: 'Your application has already been submitted.' }, { status: 409 })
 
+  if (!(await getWindow()).open) return NextResponse.json({ error: 'Applications are currently closed.' }, { status: 403 })
+
   const data = { ...cleanAnswers(body.answers), ...(typeof body.truthAffirmed === 'boolean' ? { truthAffirmed: body.truthAffirmed } : {}) }
   await prisma.ugatApplication.upsert({ where: { scholarId: sid }, create: { scholarId: sid, ...data }, update: data })
   return NextResponse.json({ ok: true })
@@ -61,6 +64,9 @@ export async function POST(req: Request) {
 
   const existing = await prisma.ugatApplication.findUnique({ where: { scholarId: sid }, select: { submittedAt: true } })
   if (existing?.submittedAt) return NextResponse.json({ error: 'Your application has already been submitted.' }, { status: 409 })
+
+  const win = await getWindow()
+  if (!win.open) return NextResponse.json({ error: 'Applications are currently closed.' }, { status: 403 })
 
   const answers = cleanAnswers(body.answers)
   for (const f of Q_FIELDS) {
@@ -84,10 +90,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Please complete: ${missing.join(', ')}.` }, { status: 400 })
   }
 
+  const stamp = { ...answers, truthAffirmed: true, signedAt: new Date(), submittedAt: new Date(), academicYear: win.academicYear || null }
   await prisma.ugatApplication.upsert({
     where: { scholarId: sid },
-    create: { scholarId: sid, ...answers, truthAffirmed: true, signedAt: new Date(), submittedAt: new Date() },
-    update: { ...answers, truthAffirmed: true, signedAt: new Date(), submittedAt: new Date() },
+    create: { scholarId: sid, ...stamp },
+    update: stamp,
   })
-  return NextResponse.json({ ok: true, submitted: true })
+  return NextResponse.json({ ok: true, submitted: true, academicYear: win.academicYear })
 }

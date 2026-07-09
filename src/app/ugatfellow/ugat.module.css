@@ -791,3 +791,23 @@
 }
 .checkPill input { accent-color: var(--green); width: 15px; height: 15px; }
 .checkPillOn { border-color: var(--green); background: rgba(74,128,115,0.08); font-weight: 600; }
+
+/* ── FAQ button on the auth card ──────────────────────────────── */
+.faqRow { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+.faqBtn {
+  background: none; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--green); font-weight: 600; font-size: 12px; padding: 5px 12px;
+  cursor: pointer; font-family: var(--body);
+}
+.faqBtn:hover { background: rgba(74,128,115,0.08); border-color: var(--green); }
+
+/* ── Application cycles / academic-year ────────────────────────── */
+.ayBadge {
+  background: rgba(74,128,115,0.1); border: 1px solid rgba(74,128,115,0.35);
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; color: #2c6b5b;
+}
+.ayFilter { display: flex; align-items: center; gap: 8px; }
+.ayFilter label { white-space: nowrap; }
+.cycleForm { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 12px 0; }
+.dtField { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--deep-70); font-weight: 600; }
+.dtField input { font-weight: 400; }
