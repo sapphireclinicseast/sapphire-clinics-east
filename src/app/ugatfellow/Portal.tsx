@@ -619,41 +619,97 @@ function SchoolsData() {
   return <div className={s.secFlush}><iframe className={s.embed} src="/school-data/" title="OT / SLP Schools Data" loading="lazy" /></div>
 }
 
-// ══ Settings — dropdown options editor ═════════════════════════════
+// ══ Settings — dropdown options editor (batched, explicit Save) ════
+// Edits are local until "Save changes" flushes creates / updates / deletes to
+// the shared UgatOption table (so changes persist for every user).
 type Kind = 'SCHOOL' | 'PROGRAM' | 'FIELD'
-interface Opt { id: string; label: string; sortOrder: number; disabled: boolean }
+interface OptRow { id?: string; label: string; disabled: boolean }
 const KIND_TITLES: Record<Kind, string> = { SCHOOL: 'Schools', PROGRAM: 'Programs', FIELD: 'Preferred Field of Practice' }
+const OPT_KINDS: Kind[] = ['SCHOOL', 'PROGRAM', 'FIELD']
 
 function SettingsSection({ authHeaders }: { authHeaders: Record<string, string> }) {
-  const [groups, setGroups] = useState<Record<Kind, Opt[]> | null>(null)
-  const load = useCallback(async () => { const r = await fetch(`${API}/admin/options`, { headers: authHeaders }); if (r.ok) setGroups(await r.json()) }, [authHeaders])
+  const [orig, setOrig] = useState<Record<Kind, OptRow[]> | null>(null)
+  const [g, setG] = useState<Record<Kind, OptRow[]> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`${API}/admin/options`, { headers: authHeaders })
+    if (!r.ok) return
+    const d = await r.json()
+    const norm = { SCHOOL: [], PROGRAM: [], FIELD: [] } as Record<Kind, OptRow[]>
+    for (const k of OPT_KINDS) norm[k] = (d[k] || []).map((o: { id: string; label: string; disabled: boolean }) => ({ id: o.id, label: o.label, disabled: o.disabled }))
+    setOrig(norm); setG(JSON.parse(JSON.stringify(norm)))
+  }, [authHeaders])
   useEffect(() => { load() }, [load])
+
+  const dirty = useMemo(() => JSON.stringify(orig) !== JSON.stringify(g), [orig, g])
+
+  async function save() {
+    if (!g || !orig) return
+    setSaving(true); setMsg(null)
+    try {
+      for (const kind of OPT_KINDS) {
+        const before = orig[kind], after = g[kind]
+        for (const b of before) {
+          if (b.id && !after.some((a) => a.id === b.id)) {
+            await fetch(`${API}/admin/options`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id: b.id }) })
+          }
+        }
+        for (const a of after) {
+          const label = a.label.trim()
+          if (!a.id) {
+            if (label) await fetch(`${API}/admin/options`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ kind, label }) })
+          } else {
+            const b = before.find((x) => x.id === a.id)
+            if (b && label && (b.label !== label || b.disabled !== a.disabled)) {
+              await fetch(`${API}/admin/options`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id: a.id, label, disabled: a.disabled }) })
+            }
+          }
+        }
+      }
+      await load()
+      setMsg({ ok: true, t: 'Saved — changes are now live for everyone.' })
+    } catch {
+      setMsg({ ok: false, t: 'Some changes could not be saved. Please try again.' })
+    } finally { setSaving(false) }
+  }
+
+  function setKind(kind: Kind, rows: OptRow[]) { setG((prev) => (prev ? { ...prev, [kind]: rows } : prev)) }
+
   return (
     <div className={s.sec}>
-      <p className={s.muted}>Set the schools we accept, programs, and preferred fields of practice — these populate the sign-up dropdowns. Disabled options are hidden from new applicants but preserved in existing records.</p>
-      {groups ? <div className={s.optGrid}>{(Object.keys(KIND_TITLES) as Kind[]).map((kind) => <OptionColumn key={kind} kind={kind} title={KIND_TITLES[kind]} items={groups[kind] || []} authHeaders={authHeaders} reload={load} />)}</div> : <p className={s.muted}>Loading…</p>}
+      <div className={s.uaHead}>
+        <p className={s.muted} style={{ margin: 0 }}>Set the schools we accept, programs, and preferred fields of practice — these populate the sign-up dropdowns. <b>Changes apply to everyone once you Save.</b> Disabled options are hidden from new applicants but preserved in existing records.</p>
+        <div className={s.uaHeadBtns}>
+          {dirty && <button className={s.btnGhost3} disabled={saving} onClick={() => orig && setG(JSON.parse(JSON.stringify(orig)))}>Discard</button>}
+          <button className={s.btn2} disabled={saving || !dirty} onClick={save}>{saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}</button>
+        </div>
+      </div>
+      {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
+      {dirty && !msg && <div className={`${s.alert2} ${s.alertWarn2}`}>You have unsaved changes — click <b>Save changes</b> to keep them.</div>}
+      {g ? <div className={s.optGrid}>{OPT_KINDS.map((kind) => <OptionColumn key={kind} kind={kind} title={KIND_TITLES[kind]} rows={g[kind]} onChange={(rows) => setKind(kind, rows)} />)}</div> : <p className={s.muted}>Loading…</p>}
     </div>
   )
 }
-function OptionColumn({ kind, title, items, authHeaders, reload }: { kind: Kind; title: string; items: Opt[]; authHeaders: Record<string, string>; reload: () => void }) {
+function OptionColumn({ kind, title, rows, onChange }: { kind: Kind; title: string; rows: OptRow[]; onChange: (rows: OptRow[]) => void }) {
   const [newLabel, setNewLabel] = useState('')
-  const [busy, setBusy] = useState(false)
-  async function add() { const label = newLabel.trim(); if (!label) return; setBusy(true); await fetch(`${API}/admin/options`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ kind, label }) }); setNewLabel(''); setBusy(false); reload() }
-  async function rename(id: string, label: string, original: string) { if (label.trim() === original || !label.trim()) return; await fetch(`${API}/admin/options`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id, label: label.trim() }) }); reload() }
-  async function toggle(id: string, disabled: boolean) { await fetch(`${API}/admin/options`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id, disabled: !disabled }) }); reload() }
-  async function remove(id: string, label: string) { if (!window.confirm(`Delete “${label}”? Existing records keep their saved value.`)) return; await fetch(`${API}/admin/options`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id }) }); reload() }
+  function setLabel(i: number, label: string) { const c = rows.slice(); c[i] = { ...c[i], label }; onChange(c) }
+  function toggle(i: number) { const c = rows.slice(); c[i] = { ...c[i], disabled: !c[i].disabled }; onChange(c) }
+  function remove(i: number) { const c = rows.slice(); c.splice(i, 1); onChange(c) }
+  function add() { const l = newLabel.trim(); if (!l) return; onChange([...rows, { label: l, disabled: false }]); setNewLabel('') }
   return (
     <div className={s.optCol}>
       <h3 className={s.optColH}>{title}</h3>
-      {items.length === 0 && <p className={s.muted} style={{ margin: 0 }}>No options yet.</p>}
-      {items.map((o) => (
-        <div key={o.id} className={s.optRow}>
-          <input className={`${s.optLabel} ${o.disabled ? s.optDisabled : ''}`} defaultValue={o.label} onBlur={(e) => rename(o.id, e.target.value, o.label)} />
-          <button className={s.iconBtn} title={o.disabled ? 'Enable' : 'Disable'} onClick={() => toggle(o.id, o.disabled)}>{o.disabled ? <Plus size={15} /> : <Ban size={15} />}</button>
-          <button className={`${s.iconBtn} ${s.iconDanger}`} title="Delete" onClick={() => remove(o.id, o.label)}><Trash2 size={15} /></button>
+      {rows.length === 0 && <p className={s.muted} style={{ margin: 0 }}>No options yet.</p>}
+      {rows.map((o, i) => (
+        <div key={o.id || `new-${i}`} className={s.optRow}>
+          <input className={`${s.optLabel} ${o.disabled ? s.optDisabled : ''}`} value={o.label} onChange={(e) => setLabel(i, e.target.value)} />
+          <button type="button" className={s.iconBtn} title={o.disabled ? 'Enable' : 'Disable'} onClick={() => toggle(i)}>{o.disabled ? <Plus size={15} /> : <Ban size={15} />}</button>
+          <button type="button" className={`${s.iconBtn} ${s.iconDanger}`} title="Remove" onClick={() => remove(i)}><Trash2 size={15} /></button>
         </div>
       ))}
-      <div className={s.optAdd}><input value={newLabel} placeholder={`Add ${title.toLowerCase().replace(/s$/, '')}…`} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add() }} /><button onClick={add} disabled={busy}>Add</button></div>
+      <div className={s.optAdd}><input value={newLabel} placeholder={`Add ${title.toLowerCase().replace(/s$/, '')}…`} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }} /><button type="button" onClick={add}>Add</button></div>
     </div>
   )
 }
