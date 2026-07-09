@@ -62,6 +62,7 @@ export default function UgatFellowClient() {
   const [session, setSession] = useState<PortalSession | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
+  const [faqOpen, setFaqOpen] = useState(false)
   const [banner, setBanner] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [booted, setBooted] = useState(false)
 
@@ -174,6 +175,9 @@ export default function UgatFellowClient() {
                 <CheckEmail onBack={() => { setView('auth'); setTab('signin') }} />
               ) : (
                 <>
+                  <div className={s.faqRow}>
+                    <button type="button" className={s.faqBtn} onClick={() => setFaqOpen(true)}>❓ Frequently Asked Questions</button>
+                  </div>
                   <div className={s.tabs} role="tablist">
                     <button className={`${s.tab} ${tab === 'signin' ? s.tabActive : ''}`} onClick={() => { setTab('signin'); setBanner(null) }}>
                       Sign In
@@ -218,6 +222,7 @@ export default function UgatFellowClient() {
       )}
 
       {privacyOpen && <PrivacyModal onClose={() => setPrivacyOpen(false)} />}
+      {faqOpen && <FaqModal onClose={() => setFaqOpen(false)} />}
     </div>
   )
 }
@@ -586,6 +591,49 @@ function PrivacyStrip() {
   )
 }
 
+
+// ── Frequently Asked Questions modal ───────────────────────────────
+const FAQS: { q: string; a: React.ReactNode }[] = [
+  {
+    q: 'I am not yet in my final year of college. Can I apply?',
+    a: <>Not yet — the fellowship is open to students in their <b>final (internship) year</b>. You are, however, very welcome to <b>create an account now</b>. That way you&rsquo;ll be among the first to be notified when the next cycle opens, and you can apply the moment you become eligible.</>,
+  },
+  {
+    q: 'I have failing grades in my records. Can I still apply?',
+    a: <>Yes, you can. UGAT recognizes that it takes more than grades to make a great clinician. Our application includes <b>qualitative components</b> — your motivations, values, and past initiatives — that help us understand the whole person behind the transcript when deciding who to award.</>,
+  },
+  {
+    q: 'What happens if I am unable to complete my internship?',
+    a: <>If you cannot continue or complete your clinical internship for any reason, your monthly allowance simply stops as of that date. Because you would not yet proceed to licensure and render your return service, you (together with your co-maker) would reimburse the allowance actually received up to that point, plus an <b>8% surcharge</b>, within <b>90 days</b>. Full reimbursement completely and finally settles the agreement, with no further obligation on either side. SCEI handles each case fairly and with compassion, and may waive, reduce, or restructure this — especially in cases of serious illness, a death in the immediate family, or other circumstances beyond your control.</>,
+  },
+  {
+    q: 'Does the fellowship require a co-maker?',
+    a: <>Yes. A <b>co-maker</b> is a parent or guardian, of legal age, who co-signs your Return Service Agreement and agrees to be <b>jointly and severally liable</b> with you for any monetary obligations that may arise under it — for example, a reimbursement or cash buyout, together with any surcharge or penalty — should you be unable to fulfill the fellowship&rsquo;s terms. In practice, the co-maker is a trusted family member who stands with you in your commitment.</>,
+  },
+]
+function FaqModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className={s.overlay} onClick={onClose}>
+      <div className={s.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className={s.modalHead}>
+          <h2>Frequently Asked Questions</h2>
+          <p>UGAT Fellowship Program · Aura Foundation · Sapphire Clinics East, Inc.</p>
+        </div>
+        <div className={s.modalBody}>
+          {FAQS.map((f, i) => (
+            <div key={i} style={{ marginBottom: 18 }}>
+              <h3>{f.q}</h3>
+              <p>{f.a}</p>
+            </div>
+          ))}
+        </div>
+        <div className={s.modalFoot}>
+          <button className={`${s.btn} ${s.btnGhost2}`} onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ── Data Privacy Notice modal (NPC-aligned) ────────────────────────
 function PrivacyModal({ onClose }: { onClose: () => void }) {

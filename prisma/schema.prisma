@@ -1570,6 +1570,9 @@ model UgatApplication {
 
   /// Null while a draft; set when the applicant submits Part I.
   submittedAt DateTime?
+  /// Academic year this application belongs to (e.g. "2026-2027"), stamped at
+  /// submission from whichever UgatApplicationCycle was open at the time.
+  academicYear String?
   /// Admin decision on Part I: NOT_CONSIDERED | PENDING | FOR_INTERVIEW
   initialDecision String @default("PENDING")
 
@@ -1580,6 +1583,22 @@ model UgatApplication {
 
   @@index([submittedAt])
   @@index([initialDecision])
+  @@index([academicYear])
+}
+
+/// An application cycle: an academic year and the window during which the
+/// application form is open. Submissions during a window are stamped with that
+/// cycle's academicYear. Outside every window, the student portal shows a
+/// "applications are closed" notice instead of the form.
+model UgatApplicationCycle {
+  id           String   @id @default(cuid())
+  academicYear String   @unique
+  opensAt      DateTime
+  closesAt     DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([opensAt, closesAt])
 }
 
 /// A staff- or university-admin account for the UGAT hub. The single MAIN
