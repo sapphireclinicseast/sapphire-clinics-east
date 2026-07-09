@@ -77,6 +77,9 @@
   .btn.primary:hover{background:var(--primary-dark);color:#fff}
   .btn.ghost{background:transparent}
   .spacer{flex:1 1 auto}
+  .search-in{font-family:var(--font);font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);
+       background:var(--card);color:var(--text);padding:8px 12px;min-width:230px}
+  .search-in:focus{outline:none;border-color:var(--primary)}
   .btn.save{background:var(--accent);border-color:var(--accent);color:#fff}
   .btn.save:hover{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff}
   .saved-pill{font-size:12.5px;color:var(--light);align-self:center;transition:.2s}
@@ -198,6 +201,7 @@
       <button class="btn save" id="save">💾 Save</button>
       <span class="saved-pill" id="saved-status">Auto-saves as you type</span>
       <button class="btn ghost" id="offers">Offers needed: <b id="offers-v" style="margin-left:4px">—</b></button>
+      <input type="search" id="search" class="search-in" placeholder="🔍 Filter by school or location…" autocomplete="off">
       <div class="spacer"></div>
       <button class="btn" id="exp-json">Export JSON</button>
       <button class="btn" id="exp-csv">Export CSV</button>
@@ -271,7 +275,7 @@
     ]
   };
 
-  var state, sortKey='passers', sortDir=-1, filter='ot';
+  var state, sortKey='passers', sortDir=-1, filter='ot', search='';
 
   function load(){
     try{var r=JSON.parse(localStorage.getItem(KEY)); if(r&&r.schools&&r.scenario) return r;}catch(e){}
@@ -283,8 +287,12 @@
   // OT/SLP tab filter — returns {school, originalIndex} pairs so row editing
   // still maps back to state.schools by index.
   function visPairs(){
+    var q=search.trim().toLowerCase();
     return state.schools.map(function(s,i){return {s:s,i:i};}).filter(function(o){
-      return filter==='all' || (filter==='ot'&&o.s.ot) || (filter==='slp'&&o.s.slp);
+      var tabOk = filter==='all' || (filter==='ot'&&o.s.ot) || (filter==='slp'&&o.s.slp);
+      if(!tabOk) return false;
+      if(!q) return true;
+      return String(o.s.name).toLowerCase().indexOf(q)>=0 || String(o.s.loc).toLowerCase().indexOf(q)>=0;
     });
   }
   function visSchools(){return visPairs().map(function(o){return o.s;});}
@@ -372,7 +380,7 @@
     // sort arrows
     document.querySelectorAll('thead th[data-sort]').forEach(function(th){
       var a=th.querySelector('.arr');
-      a.textContent = th.dataset.sort===sortKey ? (sortDir>0?'▲':'▼') : '';
+      a.textContent = th.dataset.sort===sortKey ? (sortDir>0?'▲':'▼') : '⇅';
     });
 
     chart(arr.map(function(o){return o.s;}));
@@ -527,7 +535,7 @@
     });
   }
 
-  // sorting
+  // sorting — click any column header to toggle ascending / descending
   document.querySelectorAll('thead th[data-sort]').forEach(function(th){
     th.addEventListener('click',function(){
       var k=th.dataset.sort;
@@ -535,6 +543,10 @@
       render();
     });
   });
+
+  // text filter (school / location)
+  var searchEl=document.getElementById('search');
+  if(searchEl){ searchEl.addEventListener('input',function(){search=searchEl.value;render();}); }
 
   // toolbar
   // OT / SLP tab switching
