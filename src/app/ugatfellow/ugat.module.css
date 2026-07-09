@@ -94,8 +94,14 @@
 
 /* Left — photo fading into brand ground + program description */
 .left {
-  position: relative;
-  min-height: 100vh;
+  /* Pinned to the viewport so the panel stays exactly 100vh regardless of
+     how tall the (scrolling) sign-up form on the right gets. This keeps the
+     photo from stretch-zooming or drifting between the Sign In / Sign Up
+     tabs, and keeps the text over the consistent dark lower third. */
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -115,8 +121,8 @@
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(36,73,82,0.10) 0%, rgba(36,73,82,0.35) 42%, rgba(36,73,82,0.86) 78%, var(--deep) 100%),
-    linear-gradient(90deg, rgba(36,73,82,0.34) 0%, rgba(36,73,82,0) 55%);
+    linear-gradient(180deg, rgba(36,73,82,0.18) 0%, rgba(36,73,82,0.45) 30%, rgba(36,73,82,0.82) 56%, rgba(36,73,82,0.95) 76%, var(--deep) 100%),
+    linear-gradient(90deg, rgba(36,73,82,0.42) 0%, rgba(36,73,82,0) 62%);
 }
 .leftTop {
   position: absolute;
@@ -133,7 +139,7 @@
 .leftBrand b { display: block; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; }
 .leftBrand span { display: block; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream); opacity: 0.85; }
 
-.leftBody { position: relative; z-index: 2; max-width: 520px; }
+.leftBody { position: relative; z-index: 2; max-width: 520px; text-shadow: 0 1px 8px rgba(18,37,42,0.55); }
 .leftKicker {
   font-family: var(--display);
   font-size: 12px;

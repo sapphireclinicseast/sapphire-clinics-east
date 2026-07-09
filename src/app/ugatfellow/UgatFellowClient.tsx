@@ -36,15 +36,15 @@ function LeafMark({ animated = false, className }: { animated?: boolean; classNa
     <svg className={className} viewBox="0 0 240 280" xmlns="http://www.w3.org/2000/svg" aria-label="UGAT living-leaf logo">
       <g transform="translate(120,130) scale(1.45)">
         <g className={p.plant}>
-          <path className={`${p.root} ${p.rc}`} d="M0 56 L0 78" fill="none" stroke="#244952" strokeWidth="3.5" strokeLinecap="round" />
-          <path className={`${p.root} ${p.rl}`} d="M0 56 C -8 64 -14 66 -22 78" fill="none" stroke="#244952" strokeWidth="3" strokeLinecap="round" />
-          <path className={`${p.root} ${p.rr}`} d="M0 56 C 8 64 14 66 22 78" fill="none" stroke="#244952" strokeWidth="3" strokeLinecap="round" />
-          <path className={p.stem} d="M0 56 L0 22" fill="none" stroke="#244952" strokeWidth="3.5" strokeLinecap="round" />
+          <path className={`${p.root} ${p.rc}`} d="M0 56 L0 78" fill="none" stroke="#1B5E3A" strokeWidth="3.5" strokeLinecap="round" />
+          <path className={`${p.root} ${p.rl}`} d="M0 56 C -8 64 -14 66 -22 78" fill="none" stroke="#1B5E3A" strokeWidth="3" strokeLinecap="round" />
+          <path className={`${p.root} ${p.rr}`} d="M0 56 C 8 64 14 66 22 78" fill="none" stroke="#1B5E3A" strokeWidth="3" strokeLinecap="round" />
+          <path className={p.stem} d="M0 56 L0 22" fill="none" stroke="#1B5E3A" strokeWidth="3.5" strokeLinecap="round" />
           <g className={p.leaf}>
-            <path d="M0 -72 C 40 -42 40 2 0 22 C -40 2 -40 -42 0 -72 Z" fill="#4a8073" />
-            <path d="M0 -72 C 40 -42 40 2 0 22 L0 -72 Z" fill="#c69849" />
+            <path d="M0 -72 C 40 -42 40 2 0 22 C -40 2 -40 -42 0 -72 Z" fill="#2F7A4D" />
+            <path d="M0 -72 C 40 -42 40 2 0 22 L0 -72 Z" fill="#4CAF6E" />
           </g>
-          <line className={p.midrib} x1="0" y1="20" x2="0" y2="-62" stroke="#edf3d9" strokeWidth="2.5" strokeLinecap="round" />
+          <line className={p.midrib} x1="0" y1="20" x2="0" y2="-62" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
         </g>
       </g>
     </svg>
