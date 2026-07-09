@@ -373,12 +373,21 @@ function SignUp({
   const [err, setErr] = useState<string | null>(null)
   const topRef = useRef<HTMLHeadingElement | null>(null)
 
+  // Preferred field of practice is multi-select + an "Others" free-text.
+  const [prefFields, setPrefFields] = useState<string[]>([])
+  const [otherOn, setOtherOn] = useState(false)
+  const [otherText, setOtherText] = useState('')
+  const togglePref = (v: string) => setPrefFields((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]))
+
   const set = (k: keyof typeof emptyForm, v: string) => setF((p) => ({ ...p, [k]: v }))
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setErr(null)
     if (!consent) { setErr('Please read and agree to the Data Privacy Notice.'); return }
+    const chosenFields = [...prefFields]
+    if (otherOn && otherText.trim()) chosenFields.push(otherText.trim())
+    if (chosenFields.length === 0) { setErr('Please choose at least one preferred field of practice.'); topRef.current?.scrollIntoView({ behavior: 'smooth' }); return }
     setBusy(true)
     try {
       const r = await fetch(`${API}/auth/sign-up`, {
@@ -386,6 +395,7 @@ function SignUp({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...f,
+          preferredField: chosenFields.join(', '),
           expectedGraduationYear: Number(f.expectedGraduationYear),
           presSameAsPerm: sameAddr,
           privacyConsent: consent,
@@ -491,7 +501,24 @@ function SignUp({
       {!sameAddr && addr('pres')}
 
       <div className={s.sectionLabel}>Practice &amp; Account</div>
-      {dropdown('Preferred Field of Practice', 'preferredField', options.fields)}
+      <div className={s.field}>
+        <label className={s.label}>Preferred Field of Practice <span className={s.opt}>(choose one or more)</span></label>
+        <div className={s.checkGrid}>
+          {options.fields.map((o) => (
+            <label key={o} className={`${s.checkPill} ${prefFields.includes(o) ? s.checkPillOn : ''}`}>
+              <input type="checkbox" checked={prefFields.includes(o)} onChange={() => togglePref(o)} />
+              <span>{o}</span>
+            </label>
+          ))}
+          <label className={`${s.checkPill} ${otherOn ? s.checkPillOn : ''}`}>
+            <input type="checkbox" checked={otherOn} onChange={(e) => setOtherOn(e.target.checked)} />
+            <span>Others</span>
+          </label>
+        </div>
+        {otherOn && (
+          <input className={s.input} style={{ marginTop: 8 }} placeholder="Please specify your other specialization(s)" value={otherText} onChange={(e) => setOtherText(e.target.value)} />
+        )}
+      </div>
       <div className={s.field}>
         <label className={s.label}>Professional Email <span className={s.opt}>(school / work)</span></label>
         <input className={s.input} type="email" autoComplete="email" required value={f.professionalEmail} onChange={(e) => set('professionalEmail', e.target.value)} placeholder="you@school.edu.ph" />
