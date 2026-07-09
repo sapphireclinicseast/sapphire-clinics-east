@@ -640,6 +640,7 @@
 .alert2 { border-radius: 9px; padding: 9px 13px; font-size: 13px; margin-bottom: 12px; }
 .alertOk2 { background: rgba(74,128,115,0.12); color: #2c6b5b; }
 .alertErr2 { background: rgba(180,69,58,0.1); color: var(--err); }
+.alertWarn2 { background: rgba(198,152,73,0.14); color: #8a6a1f; }
 .accessList { display: flex; flex-direction: column; margin-top: 8px; }
 .accessItem { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 2px; border-top: 1px solid var(--line); }
 .accessItem:first-child { border-top: 0; }
