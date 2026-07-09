@@ -2160,6 +2160,40 @@ model DividendReleaseItem {
   @@index([releaseId])
 }
 
+// Preferred-share dividend (quarterly interest) releases — tick which preferred
+// shareholders were paid for the period, upload proof, email each.
+model PreferredDividendRelease {
+  id                 String   @id @default(cuid())
+  date               DateTime // deposit / payout date
+  quarterKey         String   // "2025-Q3" — used to build the per-quarter matrix
+  periodLabel        String?  // "Q3 2025"
+  proofOfDepositUrls Json?
+  bankAccountId      String?  // CR on payout
+  expenseAccountId   String?  // DR (interest expense / retained earnings)
+  journalEntryId     String?
+  totalAmountPaid    Decimal  @default(0)
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  items              PreferredDividendItem[]
+  @@index([quarterKey])
+}
+
+model PreferredDividendItem {
+  id               String   @id @default(cuid())
+  releaseId        String
+  release          PreferredDividendRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  shareholderId    String
+  shareholderName  String
+  shares           Decimal
+  amount           Decimal  // quarterly dividend for this shareholder
+  paidDate         DateTime?
+  emailedAt        DateTime?
+
+  @@index([releaseId])
+}
+
 // ── Loans & Advances: Advances ────────────────────────────────
 model Advance {
   id                String   @id @default(cuid())

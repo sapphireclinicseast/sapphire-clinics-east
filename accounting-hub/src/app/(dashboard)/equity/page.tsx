@@ -494,7 +494,7 @@ function DividendTab({ banks, equityAccts }: { banks: Bank[]; equityAccts: Equit
             {!loading && releases.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">No dividend releases yet.</td></tr>}
           </tbody></table>
         </div>
-      ) : <div className="rounded-2xl border p-8 text-center text-sm text-gray-400" style={{ borderColor: 'var(--light-gray)' }}>Preferred dividend payout history appears here once payouts are recorded (Record Preferred Share Payout — next update).</div>}
+      ) : <PreferredDividendSection banks={banks} equityAccts={equityAccts} />}
       {showAdd && <AddDividendModal onClose={() => setShowAdd(false)} onSaved={(id) => { setShowAdd(false); load().then(() => { }); fetch(`/api/equity/dividends`).then(r => r.json()).then(j => { const rel = (j.releases || []).find((x: DivRelease) => x.id === id); if (rel) setOpen(rel) }) }} />}
       {open && <DividendDetail release={open} banks={banks} equityAccts={equityAccts} totalCommon={totalCommon} onClose={() => setOpen(null)} onChanged={load} />}
     </div>
@@ -586,3 +586,157 @@ function DividendDetail({ release, banks, equityAccts, totalCommon, onClose, onC
     </div>
   )
 }
+
+// ── Preferred Dividend Release ────────────────────────────────
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equityAccts: EquityAcct[] }) {
+  const [data, setData] = useState<{ releases: any[]; shareholders: any[]; matrix: any[] } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+  const [open, setOpen] = useState<any | null>(null)
+  const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/equity/dividends-preferred'); setData(r.ok ? await r.json() : null) } catch { setData(null) } finally { setLoading(false) } }, [])
+  useEffect(() => { load() }, [load])
+  const del = async (r: any) => { if (!confirm(`Delete preferred dividend release ${r.periodLabel || ''}? Its journal entry is reversed.`)) return; await fetch(`/api/equity/dividends-preferred?id=${r.id}`, { method: 'DELETE' }); load() }
+  const releases = data?.releases || []
+  const matrix = data?.matrix || []
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Dividend Release</button></div>
+
+      {/* Per-quarter completion matrix */}
+      {matrix.length > 0 && (
+        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+            <th className="px-3 py-2.5 font-semibold whitespace-nowrap sticky left-0" style={{ background: 'var(--off-white)' }}>Payout quarter →</th>
+            {matrix.map((m: any) => <th key={m.quarterKey} className="px-3 py-2.5 font-semibold text-center whitespace-nowrap">{m.label}</th>)}
+          </tr></thead><tbody>
+            <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+              <td className="px-3 py-2 font-semibold sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>Preferred paid</td>
+              {matrix.map((m: any) => {
+                const full = m.due > 0 && m.paid >= m.due
+                const partial = m.paid > 0 && m.paid < m.due
+                const bg = full ? '#dcfce7' : partial ? '#fef9c3' : '#f8fafc'
+                const col = full ? '#166534' : partial ? '#854d0e' : 'var(--mid-gray)'
+                return <td key={m.quarterKey} className="px-3 py-2 text-center font-semibold" style={{ background: bg, color: col }}>{m.due > 0 ? `${m.paid > 0 ? '✓ ' : ''}${m.paid}/${m.due}` : '—'}</td>
+              })}
+            </tr>
+          </tbody></table>
+        </div>
+      )}
+
+      {/* Releases */}
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Date', 'Quarter', 'Shareholders', 'Total Paid', 'Emailed', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold">{h}</th>)}</tr></thead><tbody>
+          {loading ? <tr><td colSpan={6} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /></td></tr>
+            : releases.map((r: any) => (
+              <tr key={r.id} className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-3 py-2 cursor-pointer" onClick={() => setOpen(r)}>{String(r.date).slice(0, 10)}</td>
+                <td className="px-3 py-2 cursor-pointer" onClick={() => setOpen(r)}>{r.periodLabel}</td>
+                <td className="px-3 py-2 text-right cursor-pointer" onClick={() => setOpen(r)}>{r.items.length}</td>
+                <td className="px-3 py-2 text-right font-semibold cursor-pointer" onClick={() => setOpen(r)}>{peso(r.totalAmountPaid)}</td>
+                <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.items.filter((i: any) => i.emailedAt).length}/{r.items.length}</td>
+                <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setOpen(r)} className="text-[11px] font-semibold mr-2" style={{ color: 'var(--teal)' }}>Open →</button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
+              </tr>
+            ))}
+          {!loading && releases.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-gray-400">No preferred dividend releases yet.</td></tr>}
+        </tbody></table>
+      </div>
+
+      {showAdd && <AddPreferredDividendModal shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load() }} />}
+      {open && <PreferredDividendDetail release={open} onClose={() => setOpen(null)} onChanged={load} />}
+    </div>
+  )
+}
+
+function AddPreferredDividendModal({ shareholders, banks, equityAccts, onClose, onSaved }: { shareholders: any[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [bankAccountId, setBank] = useState('')
+  const [expenseAccountId, setExp] = useState('')
+  const [checked, setChecked] = useState<Set<string>>(() => new Set(shareholders.map(s => s.shareholderId)))
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const toggle = (id: string) => setChecked(c => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const total = shareholders.filter(s => checked.has(s.shareholderId)).reduce((s, x) => s + (x.quarterly || 0), 0)
+  const [y, m] = date.split('-'); const q = Math.floor((Number(m) - 1) / 3) + 1; const qLabel = `Q${q} ${y}`
+  const save = async () => {
+    if (checked.size === 0) { alert('Tick at least one preferred shareholder.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/equity/dividends-preferred', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, shareholderIds: [...checked], bankAccountId, expenseAccountId, proofOfDepositUrls: proofUrls }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }; const lbl = 'block text-xs font-semibold mb-1'
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Add Preferred Dividend Release · <span style={{ color: 'var(--teal)' }}>{qLabel}</span></h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <div><label className={lbl} style={mg}>Payout date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Retained Earnings / interest (DR)</label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+        </div>
+        <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: 320 }}>
+          <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+            <th className="px-3 py-2 font-semibold"><input type="checkbox" checked={checked.size === shareholders.length && shareholders.length > 0} onChange={e => setChecked(e.target.checked ? new Set(shareholders.map(s => s.shareholderId)) : new Set())} /></th>
+            {['Shareholder', 'Preferred Shares', 'Quarterly Dividend'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}
+          </tr></thead><tbody>
+            {shareholders.map(s => (
+              <tr key={s.shareholderId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-3 py-1.5"><input type="checkbox" checked={checked.has(s.shareholderId)} onChange={() => toggle(s.shareholderId)} /></td>
+                <td className="px-3 py-1.5">{s.name}{!s.email && <span className="ml-1 text-[10px]" style={{ color: '#b91c1c' }}>(no email)</span>}</td>
+                <td className="px-3 py-1.5 text-right">{Number(s.shares).toLocaleString('en-PH')}</td>
+                <td className="px-3 py-1.5 text-right font-mono">{peso(s.quarterly || 0)}</td>
+              </tr>
+            ))}
+            {shareholders.length === 0 && <tr><td colSpan={4} className="text-center py-6 text-gray-400">No preferred shareholders.</td></tr>}
+          </tbody></table>
+        </div>
+        <div className="flex items-center justify-between mb-3">
+          <div><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`PREFDIV-${date}-PROOF`} existingCount={proofUrls.length} label="Add proof" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
+          <div className="text-right"><p className="text-[11px]" style={mg}>{checked.size} shareholder{checked.size === 1 ? '' : 's'}</p><p className="text-lg font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{peso(total)}</p></div>
+        </div>
+        {bankAccountId && expenseAccountId && total > 0 && <p className="text-[11px] mb-2 font-mono" style={{ color: '#334155' }}>DR {equityAccts.find(a => a.id === expenseAccountId)?.accountTitle} {peso(total)} / CR {banks.find(b => b.id === bankAccountId)?.accountTitle} {peso(total)}</p>}
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record preferred dividend payout</button>
+      </div>
+    </div>
+  )
+}
+
+function PreferredDividendDetail({ release, onClose, onChanged }: { release: any; onClose: () => void; onChanged: () => void }) {
+  const [r, setR] = useState<any>(release)
+  const [proofUrls, setProofUrls] = useState<string[]>(release.proofOfDepositUrls || [])
+  const [busy, setBusy] = useState<string>('')
+  const reload = useCallback(async () => { const j = await (await fetch('/api/equity/dividends-preferred')).json(); const fresh = (j.releases || []).find((x: any) => x.id === r.id); if (fresh) { setR(fresh); setProofUrls(fresh.proofOfDepositUrls || []) } onChanged() }, [r.id, onChanged])
+  const saveProof = async (urls: string[]) => { setProofUrls(urls); await fetch('/api/equity/dividends-preferred', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, action: 'proof', proofOfDepositUrls: urls }) }); reload() }
+  const emailOne = async (it: any) => {
+    if (!confirm(`Email ${it.shareholderName} their preferred dividend notice (${peso(it.amount)})? Proof of deposit will be attached.`)) return
+    setBusy(it.id)
+    try { const res = await fetch('/api/equity/dividends-preferred', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, action: 'email', itemId: it.id }) }); if (!res.ok) { alert((await res.json()).error || 'Email failed'); return } await reload() } finally { setBusy('') }
+  }
+  const mg = { color: 'var(--mid-gray)' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1"><h2 className="text-lg font-bold text-gray-900">Preferred Dividend · {r.periodLabel} <span className="text-xs font-normal" style={mg}>({String(r.date).slice(0, 10)})</span></h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <p className="text-xs mb-3" style={mg}>{r.items.length} shareholder{r.items.length === 1 ? '' : 's'} · total {peso(r.totalAmountPaid)}</p>
+        <div className="flex items-center gap-2 mb-3 flex-wrap"><span className="text-xs" style={mg}>Proof of deposit:</span>{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`PREFDIV-${String(r.date).slice(0, 10)}-PROOF`} existingCount={proofUrls.length} label="Add proof" onUploaded={u => saveProof([...proofUrls, u])} /></div>
+        <div className="rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Shareholder', 'Preferred Shares', 'Dividend Paid', 'Emailed', ''].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>
+            {r.items.map((it: any) => (
+              <tr key={it.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-3 py-1.5">{it.shareholderName}</td>
+                <td className="px-3 py-1.5 text-right">{Number(it.shares).toLocaleString('en-PH')}</td>
+                <td className="px-3 py-1.5 text-right font-semibold">{peso(it.amount)}</td>
+                <td className="px-3 py-1.5">{it.emailedAt ? <span className="text-[10px]" style={{ color: '#166534' }}>✓ {String(it.emailedAt).slice(0, 10)}</span> : '—'}</td>
+                <td className="px-3 py-1.5 text-right"><button onClick={() => emailOne(it)} disabled={busy === it.id} className="px-2 py-1 rounded text-[11px] font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy === it.id ? '…' : 'Email'}</button></td>
+              </tr>
+            ))}
+          </tbody></table>
+        </div>
+      </div>
+    </div>
+  )
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
