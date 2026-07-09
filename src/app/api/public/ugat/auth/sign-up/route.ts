@@ -1,7 +1,8 @@
 // POST /api/public/ugat/auth/sign-up
 // Self-service scholar registration. Creates an UNVERIFIED account and emails
-// a one-time verification link from scholarship@. The scholar can't sign in
-// until they click it. Body = the full enrollment form (see FIELDS below).
+// a one-time verification link from scholarship@ to BOTH the professional and
+// personal email. The scholar signs in by username, and can't sign in until
+// they verify. Body = the full enrollment form.
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -13,7 +14,9 @@ export const dynamic = 'force-dynamic'
 const PUBLIC_URL = process.env.UGAT_PUBLIC_URL || 'https://scholarship.sapphireclinicseast.org'
 
 interface Body {
-  email?: string
+  username?: string
+  professionalEmail?: string
+  personalEmail?: string
   password?: string
   firstName?: string
   middleName?: string
@@ -39,6 +42,7 @@ interface Body {
 }
 
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)
 
 export async function POST(req: Request) {
   let body: Body
@@ -48,14 +52,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
 
-  const email = str(body.email).toLowerCase()
+  const username = str(body.username).toLowerCase()
+  const professionalEmail = str(body.professionalEmail).toLowerCase()
+  const personalEmail = str(body.personalEmail).toLowerCase()
   const password = typeof body.password === 'string' ? body.password : ''
 
   if (!body.privacyConsent) {
     return NextResponse.json({ error: 'You must agree to the Data Privacy Notice to register.' }, { status: 400 })
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
+  if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
+    return NextResponse.json({ error: 'Username must be 3–30 characters (letters, numbers, and . _ - only).' }, { status: 400 })
+  }
+  if (!isEmail(professionalEmail)) {
+    return NextResponse.json({ error: 'Please enter a valid professional email.' }, { status: 400 })
+  }
+  if (!isEmail(personalEmail)) {
+    return NextResponse.json({ error: 'Please enter a valid personal email.' }, { status: 400 })
   }
   if (password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
@@ -100,11 +112,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Please enter a valid birthdate.' }, { status: 400 })
   }
 
-  // Reject duplicate email early (also guarded by the unique index).
-  const existing = await prisma.ugatScholar.findUnique({ where: { email }, select: { id: true } })
+  // Reject duplicate username early (also guarded by the unique index).
+  const existing = await prisma.ugatScholar.findUnique({ where: { username }, select: { id: true } })
   if (existing) {
     return NextResponse.json(
-      { error: 'An account with this email already exists. Try signing in, or resend your verification link.' },
+      { error: 'That username is already taken. Please choose another, or sign in.' },
       { status: 409 },
     )
   }
@@ -115,7 +127,9 @@ export async function POST(req: Request) {
   try {
     scholar = await prisma.ugatScholar.create({
       data: {
-        email,
+        username,
+        professionalEmail,
+        personalEmail,
         passwordHash,
         firstName: str(body.firstName),
         middleName: str(body.middleName) || null,
@@ -138,7 +152,7 @@ export async function POST(req: Request) {
         presRegion,
         presZip,
       },
-      select: { id: true, firstName: true },
+      select: { id: true, firstName: true, professionalEmail: true, personalEmail: true },
     })
   } catch {
     return NextResponse.json({ error: 'Could not create your account. Please try again.' }, { status: 500 })
@@ -154,11 +168,12 @@ export async function POST(req: Request) {
     },
   })
 
+  // Send to both addresses (dedupe if they entered the same one twice).
+  const recipients = [...new Set([scholar.professionalEmail, scholar.personalEmail])]
   const verifyUrl = `${PUBLIC_URL}/api/public/ugat/auth/verify?token=${encodeURIComponent(token)}`
   try {
-    await sendUgatVerificationEmail({ to: email, firstName: scholar.firstName, verifyUrl })
+    await sendUgatVerificationEmail({ to: recipients, firstName: scholar.firstName, verifyUrl })
   } catch (e) {
-    // Account exists but email failed — tell the user they can resend.
     console.error('[ugat] verification email failed:', e)
     return NextResponse.json(
       { ok: true, emailSent: false, message: 'Account created, but we could not send the verification email. Use "Resend link" on the sign-in tab.' },

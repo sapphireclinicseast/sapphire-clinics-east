@@ -17,16 +17,17 @@ const GREEN = '#4a8073'
 const GOLD = '#c69849'
 const CREAM = '#edf3d9'
 
-async function send(params: { to: string; subject: string; html: string; text?: string }): Promise<void> {
+async function send(params: { to: string | string[]; subject: string; html: string; text?: string }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) throw new Error('RESEND_API_KEY is not set')
   const { to, subject, html, text } = params
+  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean)
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from: FROM,
-      to: [to],
+      to: recipients,
       subject,
       html,
       text: text ?? html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
@@ -42,7 +43,7 @@ async function send(params: { to: string; subject: string; html: string; text?: 
 
 /** Send the "verify your email" message with a one-time link. */
 export async function sendUgatVerificationEmail(params: {
-  to: string
+  to: string | string[]
   firstName: string
   verifyUrl: string
 }): Promise<void> {

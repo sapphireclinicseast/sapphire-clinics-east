@@ -16,7 +16,8 @@ export async function GET(req: Request) {
   const scholar = await prisma.ugatScholar.findUnique({
     where: { id: tok.scholarId },
     select: {
-      id: true, email: true, firstName: true, middleName: true, lastName: true,
+      id: true, username: true, professionalEmail: true, personalEmail: true,
+      firstName: true, middleName: true, lastName: true,
       school: true, program: true, preferredField: true, expectedGraduationYear: true,
       emailVerifiedAt: true, disabledAt: true,
     },
