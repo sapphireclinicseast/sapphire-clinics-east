@@ -107,6 +107,10 @@ export async function POST(req: Request) {
       let eligibleIds: string[] = []
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let ceoEligible: any[] = []
+      // Auto-filled Payee = the payee (registeredName) of the first line item in the group.
+      let firstPayee: string | null = null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const firstPayeeOf = (rows: any[]) => [...rows].sort((a, b) => (a.pcvSeq - b.pcvSeq) || ((a.pcvSub || 0) - (b.pcvSub || 0)))[0]?.registeredName?.trim() || null
 
       if (ceoBranch) {
         const entries = await tx.pettyCashEntry.findMany({
@@ -123,6 +127,7 @@ export async function POST(req: Request) {
         }))
         grossTotal = items.reduce((s, i) => s + i.gross, 0)
         meta = { filterBranch: ceoBranch, items }
+        firstPayee = firstPayeeOf(ceoEligible)
       } else {
         const entries = await tx.pettyCashEntry.findMany({
           where: { id: { in: entryIds }, branch, reimbursementId: null, audited: true, validity },
@@ -130,6 +135,7 @@ export async function POST(req: Request) {
         if (entries.length === 0) throw new Error(`No eligible audited ${validity.toLowerCase()} entries (already reimbursed / not audited?)`)
         grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
         eligibleIds = entries.map(e => e.id)
+        firstPayee = firstPayeeOf(entries)
       }
 
       const settingsBranch = branch
@@ -145,7 +151,7 @@ export async function POST(req: Request) {
         : `${BRANCH_CODE[branch]}-RFP${yy}-${String(seq).padStart(6, '0')}-${suffix}`
 
       const created = await tx.reimbursementReport.create({
-        data: { branch, refNumber, refSeq: seq, grossTotal, kind: k, meta, createdById: session.user.id ?? null },
+        data: { branch, refNumber, refSeq: seq, grossTotal, kind: k, meta, payableTo: firstPayee, createdById: session.user.id ?? null },
       })
       if (ceoBranch) {
         // Tag only this branch portion of each entry (leave reimbursementId free so
@@ -161,7 +167,7 @@ export async function POST(req: Request) {
       return created
     })
 
-    return NextResponse.json({ id: report.id, refNumber: report.refNumber, grossTotal: report.grossTotal })
+    return NextResponse.json({ id: report.id, refNumber: report.refNumber, grossTotal: report.grossTotal, payableTo: report.payableTo })
   } catch (e) {
     console.error('Reimbursement create error:', e)
     const msg = e instanceof Error ? e.message : 'Failed to create reimbursement'

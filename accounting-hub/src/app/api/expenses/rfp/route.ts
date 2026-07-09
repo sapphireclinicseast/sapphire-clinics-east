@@ -104,6 +104,8 @@ export async function POST(req: Request) {
       })
       if (entries.length === 0) throw new Error(`No eligible audited ${k === 'VALID' ? 'valid' : 'invalid'} expense entries (already in an RFP / not audited?)`)
       const grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
+      // Auto-fill Payee = the payee (registeredName) of the first line item in the group.
+      const firstPayee = [...entries].sort((a, b) => (a.pcvSeq - b.pcvSeq) || ((a.pcvSub || 0) - (b.pcvSub || 0)))[0]?.registeredName?.trim() || null
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch, nextPcvSeq: 1 } })
@@ -116,12 +118,12 @@ export async function POST(req: Request) {
       const refNumber = `${BRANCH_CODE[branch]}-RFP${yy}-${String(seq).padStart(6, '0')}-${suffix}`
 
       const created = await tx.reimbursementReport.create({
-        data: { branch, refNumber, refSeq: seq, grossTotal, kind: k, module: 'EXPENSE', createdById: session.user.id ?? null },
+        data: { branch, refNumber, refSeq: seq, grossTotal, kind: k, module: 'EXPENSE', payableTo: firstPayee, createdById: session.user.id ?? null },
       })
       await tx.pettyCashEntry.updateMany({ where: { id: { in: entries.map(e => e.id) } }, data: { reimbursementId: created.id } })
       return created
     })
-    return NextResponse.json({ id: report.id, refNumber: report.refNumber, grossTotal: report.grossTotal })
+    return NextResponse.json({ id: report.id, refNumber: report.refNumber, grossTotal: report.grossTotal, payableTo: report.payableTo })
   } catch (e) {
     console.error('Expense RFP create error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to create RFP' }, { status: 500 })
