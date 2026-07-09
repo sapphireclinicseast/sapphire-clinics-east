@@ -1433,3 +1433,97 @@ model ChatSetting {
   updatedBy String?
   updatedAt DateTime @default(now()) @updatedAt
 }
+// ══════════════════════════════════════════════════════════════════
+//  UGAT Fellowship Program — scholar hub (scholarship.*/ugatfellow)
+//  Self-service scholar accounts with email verification. Admin (the
+//  hardcoded main@ SCEI login) manages the School / Program / Field
+//  dropdown options via UgatOption rows.
+// ══════════════════════════════════════════════════════════════════
+
+/// Which signup dropdown a UgatOption row belongs to.
+enum UgatOptionKind {
+  SCHOOL
+  PROGRAM
+  FIELD // preferred field of practice
+}
+
+/// Editable dropdown option for the signup form. Admin CRUDs these in the
+/// /ugatfellow/admin settings tab. Existing scholar rows snapshot the chosen
+/// label as plain text, so renaming/removing an option never breaks history.
+model UgatOption {
+  id         String         @id @default(cuid())
+  kind       UgatOptionKind
+  label      String
+  sortOrder  Int            @default(0)
+  /// Soft-hide from the signup dropdowns without deleting. Null = active.
+  disabledAt DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([kind, label])
+  @@index([kind, disabledAt, sortOrder])
+}
+
+/// A fellowship scholar account.
+model UgatScholar {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+
+  firstName   String
+  middleName  String?
+  lastName    String
+  studentNumber        String
+  expectedGraduationYear Int
+  birthdate   DateTime
+
+  /// Snapshots of the chosen dropdown labels (see UgatOption).
+  school         String
+  program        String
+  preferredField String
+
+  // Permanent address
+  permAddress1 String
+  permAddress2 String?
+  permCity     String
+  permRegion   String
+  permZip      String
+
+  // Present address (may mirror permanent)
+  presSameAsPerm Boolean @default(false)
+  presAddress1   String
+  presAddress2   String?
+  presCity       String
+  presRegion     String
+  presZip        String
+
+  /// Set the moment the scholar clicks their emailed verification link.
+  /// Null = unverified; such accounts cannot sign in.
+  emailVerifiedAt DateTime?
+
+  /// Soft-disable (admin). Null = active.
+  disabledAt DateTime?
+  disabledBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  verificationTokens UgatVerificationToken[]
+
+  @@index([emailVerifiedAt])
+  @@index([disabledAt])
+}
+
+/// One-time email-verification token, emailed from scholarship@ on signup.
+model UgatVerificationToken {
+  id        String    @id @default(cuid())
+  scholarId String
+  token     String    @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+
+  @@index([scholarId])
+}
