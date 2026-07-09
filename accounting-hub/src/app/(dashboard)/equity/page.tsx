@@ -470,6 +470,7 @@ function DividendTab({ banks, equityAccts }: { banks: Bank[]; equityAccts: Equit
   const [showAdd, setShowAdd] = useState(false)
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/equity/dividends'); const j = r.ok ? await r.json() : null; setReleases(j?.releases || []); setTotalCommon(j?.totalCommonShares || 0) } catch { setReleases([]) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
+  const del = async (r: DivRelease) => { if (!confirm(`Delete the ${String(r.date).slice(0, 10)} dividend release? Its journal entry is reversed and the payout table removed.`)) return; await fetch(`/api/equity/dividends?id=${r.id}`, { method: 'DELETE' }); load() }
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -488,7 +489,7 @@ function DividendTab({ banks, equityAccts }: { banks: Bank[]; equityAccts: Equit
                 <td className="px-3 py-2 text-right font-semibold">{peso(r.totalAmountPaid)}</td>
                 <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={r.status === 'FINALIZED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef9c3', color: '#854d0e' }}>{r.status === 'FINALIZED' ? 'Finalized' : 'Draft'}</span></td>
                 <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.items.filter(i => i.emailedAt).length}/{r.items.length}</td>
-                <td className="px-3 py-2 text-right" style={{ color: 'var(--teal)' }}>Open →</td>
+                <td className="px-3 py-2 text-right whitespace-nowrap"><span className="mr-2 font-semibold" style={{ color: 'var(--teal)' }}>Open →</span><button onClick={(e) => { e.stopPropagation(); del(r) }} className="p-1 rounded hover:bg-red-50" title="Delete release"><Trash2 size={13} className="text-red-400" /></button></td>
               </tr>
             ))}
             {!loading && releases.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">No dividend releases yet.</td></tr>}
