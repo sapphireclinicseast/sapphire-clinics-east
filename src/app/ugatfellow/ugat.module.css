@@ -780,3 +780,14 @@
   .flowText span { display: none; }
   .decisionRow { flex-wrap: wrap; }
 }
+
+/* ── Multi-select field-of-practice checkboxes (signup) ───────── */
+.checkGrid { display: flex; flex-wrap: wrap; gap: 8px; }
+.checkPill {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
+  font-size: 13px; cursor: pointer; background: #fff; color: var(--ink);
+  transition: border-color 0.14s, background 0.14s;
+}
+.checkPill input { accent-color: var(--green); width: 15px; height: 15px; }
+.checkPillOn { border-color: var(--green); background: rgba(74,128,115,0.08); font-weight: 600; }
