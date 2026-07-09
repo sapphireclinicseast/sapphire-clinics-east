@@ -137,35 +137,76 @@ function usePrizeClaim(
   return { claiming, result, error, claim }
 }
 
-function PrizePicker({
-  tier,
-  claiming,
-  error,
+// Full-screen prize picker shown BEFORE the game starts.
+function PrizeChoiceScreen({
   onPick,
+  onCancel,
 }: {
-  tier: number
-  claiming: boolean
-  error: string
   onPick: (p: PrizeKind) => void
+  onCancel: () => void
 }) {
   return (
-    <>
-      <p className="lede">Pick your prize — you can only claim one:</p>
+    <section className="panel center">
+      <div className="hero-emoji" aria-hidden>🎁</div>
+      <div className="kicker">Before you play</div>
+      <h1 className="h1 sm">What do you want to win?</h1>
+      <p className="lede sm">
+        Pick your prize now — you&apos;ll get it if you win. One prize per person.
+      </p>
       <div className="prize-cards">
-        <button className="prize-card" disabled={claiming} onClick={() => onPick('merch')}>
+        <button className="prize-card" onClick={() => onPick('merch')}>
           <span className="pz-emoji" aria-hidden>🎁</span>
           <span className="pz-title">Aura merch</span>
           <span className="pz-desc">Grab a freebie from our booth.</span>
         </button>
-        <button className="prize-card" disabled={claiming} onClick={() => onPick('discount')}>
+        <button className="prize-card" onClick={() => onPick('discount')}>
           <span className="pz-emoji" aria-hidden>🎟️</span>
-          <span className="pz-title">{tier}% seminar discount</span>
-          <span className="pz-desc">Save on a future Verdana Trainings &amp; Seminars enrollment.</span>
+          <span className="pz-title">Seminar discount</span>
+          <span className="pz-desc">Up to 8% off a future Verdana Trainings &amp; Seminars enrollment.</span>
         </button>
       </div>
-      {claiming && <div className="lede sm">Locking in your prize…</div>}
-      {error && <div className="err">{error}</div>}
-    </>
+      <button className="btn-ghost" style={{ marginTop: 14 }} onClick={onCancel}>
+        ← Back
+      </button>
+    </section>
+  )
+}
+
+// Shown while the pre-chosen prize is being awarded, then the reveal.
+function PrizeOutcome({
+  claiming,
+  result,
+  error,
+  email,
+}: {
+  claiming: boolean
+  result: PrizeResult | null
+  error: string
+  email: string
+}) {
+  if (result) return <PrizeReveal result={result} email={email} />
+  if (error) return <div className="err">{error}</div>
+  return <div className="lede sm">{claiming ? 'Locking in your prize…' : 'Preparing your prize…'}</div>
+}
+
+// Locked screen once this player has already claimed a prize.
+function ClaimedLock({ reg, claim }: { reg: RegForm; claim: ClaimInfo }) {
+  return (
+    <section className="panel center">
+      <div className="hero-emoji" aria-hidden>🎉</div>
+      <div className="kicker">Prize claimed</div>
+      <h1 className="h1">You&apos;re all set{reg.firstName ? `, ${reg.firstName}` : ''}!</h1>
+      <p className="lede">
+        {claim.prize === 'merch'
+          ? 'You already claimed your Aura merch prize — show this to our booth staff.'
+          : `You already claimed your ${claim.tier}% Verdana Trainings & Seminars discount.`}{' '}
+        One prize per person, so the games are locked for you now. Thanks for playing! 🦙
+      </p>
+      <div className="voucher">
+        <div className="v-kicker">{claim.prize === 'merch' ? 'Your merch claim code' : 'Your voucher code'}</div>
+        <div className="v-code">{claim.code}</div>
+      </div>
+    </section>
   )
 }
 
@@ -285,6 +326,8 @@ function SlpZone() {
   const [game, setGame] = useState<SlpGameId | null>(null)
   const [pending, setPending] = useState<SlpGameId | null>(null)
   const [settings, setSettings] = useState<{ quiz: boolean; flappy: boolean }>({ quiz: true, flappy: true })
+  // Prize is chosen BEFORE the game starts and auto-awarded on a win.
+  const [chosenPrize, setChosenPrize] = useState<PrizeKind | null>(null)
   // One prize per person: once claimed, the games lock for this player.
   const [claim, setClaim] = useState<ClaimInfo | null>(null)
 
@@ -313,26 +356,26 @@ function SlpZone() {
 
   const launch = (g: SlpGameId) => {
     if (!settings[g] || claim) return
-    if (registered) setGame(g)
-    else setPending(g)
+    // Already registered + already picked a prize (a replay) → straight to the game.
+    if (registered && chosenPrize) setGame(g)
+    else setPending(g) // → registration (if needed) → prize choice → game
   }
 
   // After registration, check whether this email already claimed a prize (so a
-  // re-scan can't win twice). If so, lock straight to the claimed screen.
+  // re-scan can't win twice). If so, lock straight to the claimed screen. The
+  // prize-choice screen renders next (pending && registered && !chosenPrize).
   const finishRegister = async () => {
     setRegistered(true)
-    setPending(null)
     try {
       const res = await fetch(`/api/public/games/claim-status?email=${encodeURIComponent(reg.email.trim())}`)
       const d = await res.json().catch(() => null)
       if (d?.ok && d.claimed && d.voucher) {
         setClaim({ code: d.voucher.code, tier: d.voucher.tier, prize: d.voucher.prize || 'discount' })
-        return
+        setPending(null)
       }
     } catch {
       /* ignore — let them play */
     }
-    setGame(pending)
   }
 
   if (pending && !registered) {
@@ -345,42 +388,69 @@ function SlpZone() {
       />
     )
   }
-  const onClaimed = (info: ClaimInfo) => setClaim(info)
-  if (game === 'quiz')
-    return <QuizRound reg={reg} sessionId={sessionId} playerName={playerName} onClaimed={onClaimed} onExit={() => setGame(null)} />
-  if (game === 'flappy')
-    return <FlappyRound reg={reg} sessionId={sessionId} playerName={playerName} onClaimed={onClaimed} onExit={() => setGame(null)} />
 
   // Already claimed a prize → games are locked for this player.
   if (claim) {
+    return <ClaimedLock reg={reg} claim={claim} />
+  }
+
+  // Prize is chosen up front — before the game starts.
+  if (pending && registered && !chosenPrize) {
     return (
-      <section className="panel center">
-        <div className="hero-emoji" aria-hidden>🎉</div>
-        <div className="kicker">Prize claimed</div>
-        <h1 className="h1">You&apos;re all set{reg.firstName ? `, ${reg.firstName}` : ''}!</h1>
-        <p className="lede">
-          {claim.prize === 'merch'
-            ? 'You already claimed your Aura merch prize — show this to our booth staff.'
-            : `You already claimed your ${claim.tier}% Verdana Trainings & Seminars discount.`}{' '}
-          One prize per person, so the games are locked for you now. Thanks for playing! 🦙
-        </p>
-        <div className="voucher">
-          <div className="v-kicker">{claim.prize === 'merch' ? 'Your merch claim code' : 'Your voucher code'}</div>
-          <div className="v-code">{claim.code}</div>
-        </div>
-      </section>
+      <PrizeChoiceScreen
+        onCancel={() => setPending(null)}
+        onPick={(p) => {
+          setChosenPrize(p)
+          setGame(pending)
+          setPending(null)
+        }}
+      />
     )
   }
+
+  const onClaimed = (info: ClaimInfo) => setClaim(info)
+  if (game === 'quiz')
+    return (
+      <QuizRound
+        reg={reg}
+        prize={chosenPrize ?? 'discount'}
+        sessionId={sessionId}
+        playerName={playerName}
+        onClaimed={onClaimed}
+        onExit={() => setGame(null)}
+      />
+    )
+  if (game === 'flappy')
+    return (
+      <FlappyRound
+        reg={reg}
+        prize={chosenPrize ?? 'discount'}
+        sessionId={sessionId}
+        playerName={playerName}
+        onClaimed={onClaimed}
+        onExit={() => setGame(null)}
+      />
+    )
 
   return (
     <section className="panel">
       <div className="kicker">SLP Games · pick your challenge</div>
-      <h1 className="h1 sm">Two ways to win a Verdana voucher.</h1>
+      <h1 className="h1 sm">Two ways to win a prize.</h1>
       <p className="lede sm">
         {registered
           ? "You're in — pick a game and go."
-          : 'A quick sign-up unlocks both games (and sends your voucher if you win).'}
+          : 'A quick sign-up unlocks both games. Win and grab a prize.'}
       </p>
+      {chosenPrize && (
+        <p className="prize-chip">
+          Your prize:{' '}
+          <b>{chosenPrize === 'merch' ? '🎁 Aura merch' : '🎟️ Seminar discount'}</b>
+          {' · '}
+          <button className="link-btn" onClick={() => setChosenPrize(null)}>
+            change
+          </button>
+        </p>
+      )}
       <div className="game-cards">
         <button
           className={`game-card ${settings.quiz ? '' : 'disabled'}`}
@@ -580,12 +650,14 @@ function RegisterForm({
 // ── Game 1: SLP trivia sprint ────────────────────────────────────────────────
 function QuizRound({
   reg,
+  prize,
   onExit,
   onClaimed,
   sessionId,
   playerName,
 }: {
   reg: RegForm
+  prize: PrizeKind
   onExit: () => void
   onClaimed: (info: ClaimInfo) => void
   sessionId: string
@@ -605,8 +677,18 @@ function QuizRound({
 
   const { claiming, result, error: claimError, claim } = usePrizeClaim(reg, 'slp-quiz', onClaimed)
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const claimedOnce = useRef(false)
 
   const tier = correct >= TIER_8_MIN ? 8 : correct >= TIER_5_MIN ? 5 : 0
+
+  // On a qualifying finish, auto-award the pre-chosen prize (fires exactly once;
+  // no self-cancelling effect — the ref guard, not the loading flag, gates it).
+  useEffect(() => {
+    if (phase === 'result' && tier > 0 && !claimedOnce.current) {
+      claimedOnce.current = true
+      claim(prize, tier, correct)
+    }
+  }, [phase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const startCountdown = useCallback(() => {
     setDeck(buildDeck())
@@ -762,11 +844,7 @@ function QuizRound({
       </h1>
 
       {win ? (
-        result ? (
-          <PrizeReveal result={result} email={reg.email} />
-        ) : (
-          <PrizePicker tier={tier} claiming={claiming} error={claimError} onPick={(p) => claim(p, tier, correct)} />
-        )
+        <PrizeOutcome claiming={claiming} result={result} error={claimError} email={reg.email} />
       ) : (
         <p className="lede">
           So close! You needed <b>{TIER_5_MIN}</b> for a prize. Catch your breath and run it back —
@@ -866,12 +944,14 @@ function newFlappyState(): FlappyState {
 
 function FlappyRound({
   reg,
+  prize,
   onExit,
   onClaimed,
   sessionId,
   playerName,
 }: {
   reg: RegForm
+  prize: PrizeKind
   onExit: () => void
   onClaimed: (info: ClaimInfo) => void
   sessionId: string
@@ -881,9 +961,18 @@ function FlappyRound({
   const g = useRef<FlappyState>(newFlappyState())
   const raf = useRef<number>(0)
   const statusRef = useRef<'ready' | 'flying' | 'dead' | 'won'>('ready')
+  const claimedOnce = useRef(false)
 
   const [status, setStatusState] = useState<'ready' | 'flying' | 'dead' | 'won'>('ready')
   const { claiming, result, error: claimError, claim } = usePrizeClaim(reg, 'slp-flappy', onClaimed)
+
+  // Auto-award the pre-chosen prize when the finish is reached (fires once).
+  useEffect(() => {
+    if (status === 'won' && !claimedOnce.current) {
+      claimedOnce.current = true
+      claim(prize, 5, 0)
+    }
+  }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setPhase = useCallback((p: 'ready' | 'flying' | 'dead' | 'won') => {
     statusRef.current = p
@@ -997,11 +1086,7 @@ function FlappyRound({
           <div className="fl-overlay win">
             <div className="fl-o-emoji" aria-hidden>🎉</div>
             <div className="fl-o-title">You caught the cherub!</div>
-            {result ? (
-              <PrizeReveal result={result} email={reg.email} />
-            ) : (
-              <PrizePicker tier={5} claiming={claiming} error={claimError} onPick={(p) => claim(p, 5, 0)} />
-            )}
+            <PrizeOutcome claiming={claiming} result={result} error={claimError} email={reg.email} />
           </div>
         )}
       </div>
@@ -1856,6 +1941,30 @@ function GameStyles() {
         font-size: 12px;
         color: var(--muted);
         line-height: 1.4;
+      }
+      .prize-chip {
+        font-size: 13px;
+        color: var(--muted);
+        background: var(--bg-alt);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 14px;
+        display: inline-block;
+        margin: 0 0 14px;
+      }
+      .prize-chip b {
+        color: var(--primary-dark);
+      }
+      .link-btn {
+        background: none;
+        border: none;
+        color: var(--warm);
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+        padding: 0;
+        font-family: inherit;
+        text-decoration: underline;
       }
       .fl-stage {
         position: relative;
