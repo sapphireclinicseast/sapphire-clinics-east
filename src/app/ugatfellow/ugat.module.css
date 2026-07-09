@@ -552,7 +552,10 @@
 .aboutCard p { font-size: 13.5px; line-height: 1.6; color: var(--ink); margin: 0; }
 .aboutNote { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
 .aboutNote h3 { font-family: var(--display); font-size: 16px; color: var(--deep); margin: 0 0 10px; }
-.aboutNote ul { margin: 0 0 12px; padding-left: 18px; }
+.aboutNote ul, .aboutNote ol { margin: 0 0 12px; padding-left: 20px; }
+.aboutSteps { list-style: decimal; }
+.aboutSteps li { padding-left: 4px; margin-bottom: 4px; }
+.aboutSteps li::marker { font-family: var(--display); font-weight: 700; color: var(--green); }
 .aboutNote li { font-size: 13.5px; line-height: 1.7; color: var(--ink); }
 .aboutTimeline { font-size: 13px; color: var(--deep-70); margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .aboutPartner {

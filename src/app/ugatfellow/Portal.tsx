@@ -150,18 +150,18 @@ function AboutUs() {
       </div>
       <div className={s.aboutGrid}>
         <div className={s.aboutCard}><h3>A monthly stipend while you train</h3><p>Fellows receive a monthly allowance of <b>₱10,000</b> for up to <b>ten (10) months</b> throughout their clinical internship — so you can focus on becoming an excellent clinician.</p></div>
-        <div className={s.aboutCard}><h3>Mentorship at Aura Health Rehab</h3><p>You train alongside our supervising therapists across Aura Health Rehab&rsquo;s <b>East</b> and <b>Greenhills</b> branches — real caseloads, real supervision, and a team invested in your craft (<i>galing</i>).</p></div>
+        <div className={s.aboutCard}><h3>Mentorship at Aura Health Rehab</h3><p>Upon receiving your license, you will receive additional mentorship training alongside our senior therapists across Aura Health Rehab&rsquo;s <b>East</b> and <b>Greenhills</b> branches — real caseloads, real supervision, and a team invested in your craft (<i>galing</i>).</p></div>
         <div className={s.aboutCard}><h3>A guaranteed runway into your career</h3><p>After you pass your licensure, you give back through <b>return service</b> — practicing as a fully-compensated licensed clinician at Aura. It&rsquo;s not a deduction; it&rsquo;s a head start: a place waiting for you the day you become licensed.</p></div>
         <div className={s.aboutCard}><h3>Values that stay grounded</h3><p>Much like strong roots (<i>ugat</i>), we hope our fellows stay grounded in their values as they grow — pursuing excellence (<i>galing</i>), upholding integrity (<i>tindig</i>), and giving back through service (<i>paglilingkod</i>).</p></div>
       </div>
       <div className={s.aboutNote}>
         <h3>How the fellowship works</h3>
-        <ul>
+        <ol className={s.aboutSteps}>
           <li>Offered to qualified final-year SLP and OT interns, coursed through your University.</li>
           <li>Monthly allowance during your internship, coordinated with your school calendar.</li>
           <li>Upon licensure, you render return-service clinical hours at Aura as a licensed, fully-paid professional — with a Certificate of Completion and the option to stay on.</li>
           <li>Handled with fairness and compassion, consistent with the <b>Data Privacy Act of 2012</b>.</li>
-        </ul>
+        </ol>
         <p className={s.aboutTimeline}><b>Applications</b> accepted January–April · <b>deliberations</b> May–June · <b>scholars announced</b> July. Extensions are usually announced.</p>
       </div>
       <div className={s.aboutPartner}>Interested to have your school partner with us for accepting fellows for Speech-Language Pathology or Occupational Therapy? Contact us at <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>.</div>

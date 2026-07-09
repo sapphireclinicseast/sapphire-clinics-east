@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   const denied = await requireAdmin(req)
   if (denied) return denied
   const rows = await prisma.ugatOption.findMany({
-    orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { label: 'asc' }],
+    orderBy: [{ kind: 'asc' }, { label: 'asc' }], // alphabetical by label
   })
   const group = (k: Kind) =>
     rows
