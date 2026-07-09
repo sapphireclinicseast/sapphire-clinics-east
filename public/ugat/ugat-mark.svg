@@ -1,0 +1,11 @@
+<svg width="240" height="280" viewBox="0 0 240 280" xmlns="http://www.w3.org/2000/svg">
+  <title>UGAT — Living leaf icon</title>
+  <g transform="translate(120,130) scale(1.45)">
+    <path d="M0 -72 C 40 -42 40 2 0 22 C -40 2 -40 -42 0 -72 Z" fill="#2F7A4D"/>
+    <path d="M0 -72 C 40 -42 40 2 0 22 L0 -72 Z" fill="#4CAF6E"/>
+    <line x1="0" y1="-62" x2="0" y2="20" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M0 22 L0 78" fill="none" stroke="#1B5E3A" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M0 56 C -8 64 -14 66 -22 78" fill="none" stroke="#1B5E3A" stroke-width="3" stroke-linecap="round"/>
+    <path d="M0 56 C 8 64 14 66 22 78" fill="none" stroke="#1B5E3A" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>
