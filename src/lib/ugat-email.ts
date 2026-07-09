@@ -65,6 +65,88 @@ async function send(params: { to: string | string[]; subject: string; html: stri
   await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
 }
 
+/** Build a broadcast message: To the mailbox itself, everyone on Bcc (so
+ *  recipients don't see each other). */
+function buildRawBcc(bcc: string[], subject: string, html: string): string {
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`
+  const bodyBase64 = Buffer.from(html, 'utf-8').toString('base64').replace(/(.{76})/g, '$1\r\n')
+  const message = [
+    `From: ${FROM_NAME} <${FROM_ADDRESS}>`,
+    `To: ${FROM_NAME} <${FROM_ADDRESS}>`,
+    `Bcc: ${bcc.join(', ')}`,
+    `Reply-To: ${FROM_ADDRESS}`,
+    `Subject: ${subjectEncoded}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    bodyBase64,
+  ].join('\r\n')
+  return Buffer.from(message).toString('base64url')
+}
+
+/** Broadcast "applications are now open" to all account holders (Bcc,
+ *  chunked). Returns how many recipient addresses were mailed. */
+export async function sendUgatCycleOpenEmail(params: {
+  recipients: string[]
+  academicYear: string
+  closesAt?: Date | string | null
+  applyUrl: string
+}): Promise<{ sent: number }> {
+  const recipients = [...new Set(params.recipients.filter(Boolean))]
+  if (recipients.length === 0) return { sent: 0 }
+
+  const closes = params.closesAt ? new Date(params.closesAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : null
+  const subject = `Applications are now open — UGAT Fellowship (A.Y. ${params.academicYear})`
+  const html = `
+  <div style="margin:0;padding:0;background:${CREAM};font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:560px;margin:0 auto;padding:32px 20px">
+      <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
+        <div style="background:${DEEP};padding:28px 28px 24px;text-align:center">
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:${CREAM};font-size:13px;letter-spacing:3px;text-transform:uppercase">Aura Foundation</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:26px;font-weight:800;margin-top:6px">UGAT Fellowship Program</div>
+          <div style="color:${GOLD};font-size:12px;letter-spacing:1px;margin-top:6px">Ugnayan para sa Galing, Aral, at Tindig</div>
+        </div>
+        <div style="padding:30px 30px 26px;color:${DEEP}">
+          <h2 style="margin:0 0 12px;font-family:'Montserrat',Arial,sans-serif;font-size:20px">Applications are now open!</h2>
+          <p style="margin:0 0 16px;line-height:1.6;font-size:15px">
+            We&rsquo;re delighted to share that applications for the <strong>UGAT Fellowship Program</strong>
+            for <strong>Academic Year ${escapeHtml(params.academicYear)}</strong> are now open.
+            ${closes ? `Please complete and submit your application on or before <strong>${escapeHtml(closes)}</strong>.` : ''}
+          </p>
+          <p style="margin:0 0 16px;line-height:1.6;font-size:15px">
+            Sign in to your account to begin — the application walks you through the questions,
+            your motivational letter, proof of grades, and a short declaration.
+          </p>
+          <div style="text-align:center;margin:26px 0">
+            <a href="${params.applyUrl}"
+               style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;
+                      font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:15px;
+                      padding:14px 30px;border-radius:999px">Sign in &amp; apply</a>
+          </div>
+          <p style="margin:0;line-height:1.6;font-size:12px;color:#94a3b8">
+            You&rsquo;re receiving this because you created a UGAT Fellowship account.
+            Reach us anytime at scholarship@sapphireclinicseast.org.
+          </p>
+        </div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px;line-height:1.5">
+          Sapphire Clinics East, Inc. is compliant with the Data Privacy Act of 2012
+          (RA 10173) and registered with the National Privacy Commission.
+        </div>
+      </div>
+    </div>
+  </div>`
+
+  const refreshToken = await resolveRefreshToken()
+  const gmail = await getGmailClient(refreshToken)
+  const CHUNK = 60
+  for (let i = 0; i < recipients.length; i += CHUNK) {
+    const raw = buildRawBcc(recipients.slice(i, i + CHUNK), subject, html)
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+  }
+  return { sent: recipients.length }
+}
+
 /** Send the "verify your email" message with a one-time link. */
 export async function sendUgatVerificationEmail(params: {
   to: string | string[]
