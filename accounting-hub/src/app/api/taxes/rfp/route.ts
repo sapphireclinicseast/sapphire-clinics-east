@@ -94,11 +94,11 @@ export async function POST(req: Request) {
           include: { consultant: { select: { name: true } } },
         }) : []
         const exps = eids.length ? await tx.pettyCashEntry.findMany({
-          where: { id: { in: eids }, branch: pcBranch, recordType: 'ONE_TIME', hasEwt: true, ewtRemitted: false, paidAt: { not: null } },
+          where: { id: { in: eids }, branch: pcBranch, hasEwt: true, ewtRemitted: false, OR: [{ paidAt: { not: null } }, { reimbursementId: { not: null } }] },
         }) : []
         if (cons.length === 0 && exps.length === 0) throw new Error('No eligible unremitted EWT items found')
         const consItems = cons.map(e => { const base = Number(e.grossPay), ewt = Number(e.taxAmount); return { id: e.id, source: 'CONSULTANT', name: e.consultant.name, period: e.cutoffPeriod, base, rate: base > 0 ? Math.round((ewt / base) * 100) : null, ewt } })
-        const expItems = exps.map(e => { const g = Number(e.grossAmount); const net = e.vatable === 'VAT' ? g / 1.12 : g; const rate = e.ewtRate || 0; return { id: e.id, source: 'EXPENSE', name: e.requestor || e.pcvNumber, period: e.paidAt ? new Date(e.paidAt).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) } })
+        const expItems = exps.map(e => { const g = Number(e.grossAmount); const net = e.vatable === 'VAT' ? g / 1.12 : g; const rate = e.ewtRate || 0; const when = e.paidAt || e.date; return { id: e.id, source: 'EXPENSE', name: e.requestor || e.pcvNumber, period: when ? new Date(when).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) } })
         items = [...consItems, ...expItems]
         markRemitted = async () => {
           if (cons.length) await tx.payrollEntry.updateMany({ where: { id: { in: cons.map(c => c.id) } }, data: { taxRemitted: true } })

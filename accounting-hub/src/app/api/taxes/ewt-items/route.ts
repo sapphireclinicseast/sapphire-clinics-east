@@ -19,9 +19,13 @@ export async function GET(req: Request) {
     include: { consultant: { select: { name: true, department: true } } },
     orderBy: [{ cutoffPeriod: 'desc' }],
   })
+  // EWT to remit is captured on entries with EWT that have committed to payment:
+  // a one-time expense marked paid, OR any petty-cash / expense entry included in an
+  // RFP (reimbursementId set). The RFP already withholds the EWT from the payee, so
+  // it appears here for separate remittance to the BIR.
   const expenses = await prisma.pettyCashEntry.findMany({
-    where: { branch: pcBranch, recordType: 'ONE_TIME', hasEwt: true, ewtRate: { not: null }, paidAt: { not: null } },
-    select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, grossAmount: true, ewtRate: true, ewtRemitted: true, paidAt: true },
+    where: { branch: pcBranch, hasEwt: true, ewtRate: { not: null }, OR: [{ paidAt: { not: null } }, { reimbursementId: { not: null } }] },
+    select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, grossAmount: true, ewtRate: true, ewtRemitted: true, paidAt: true, date: true },
     orderBy: [{ paidAt: 'desc' }],
   })
 
@@ -38,10 +42,12 @@ export async function GET(req: Request) {
       const g = Number(e.grossAmount)
       const net = e.vatable === 'VAT' ? g / 1.12 : g
       const rate = e.ewtRate || 0
-      const ym = e.paidAt ? new Date(e.paidAt).toISOString().slice(0, 7) : ''
+      // Period = payment date when paid, else the entry date (so RFP'd-not-yet-paid items still slot into a month).
+      const when = e.paidAt || e.date
+      const ym = when ? new Date(when).toISOString().slice(0, 7) : ''
       return {
         id: e.id, source: 'EXPENSE' as const, name: e.requestor || e.description || e.pcvNumber, ref: e.pcvNumber,
-        ym, periodLabel: e.paidAt ? new Date(e.paidAt).toISOString().slice(0, 10) : '',
+        ym, periodLabel: when ? new Date(when).toISOString().slice(0, 10) : '',
         base: net, rate, ewt: net * (rate / 100), remitted: e.ewtRemitted,
       }
     }),
