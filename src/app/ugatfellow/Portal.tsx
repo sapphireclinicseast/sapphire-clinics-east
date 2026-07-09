@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import {
   Info, User, FileText, LayoutDashboard, GraduationCap, Settings as SettingsIcon,
-  ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff, Calendar,
+  ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff, Calendar, Mail,
 } from 'lucide-react'
 import s from './ugat.module.css'
 
@@ -613,6 +613,7 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
   const [form, setForm] = useState({ id: '', academicYear: '', opensAt: '', closesAt: '' })
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [announcing, setAnnouncing] = useState(false)
   const editing = !!form.id
 
   async function submit(e: React.FormEvent) {
@@ -636,11 +637,26 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
   }
   const now = Date.now()
   const status = (c: Cycle) => { const o = +new Date(c.opensAt), cl = +new Date(c.closesAt); return now < o ? 'Upcoming' : now > cl ? 'Closed' : 'Open' }
+  const hasOpen = !!cycles?.some((c) => status(c) === 'Open')
+
+  async function announce() {
+    if (!window.confirm('Email every account holder that applications are now open? This sends to all non-disabled accounts.')) return
+    setAnnouncing(true); setMsg(null)
+    const r = await fetch(`${API}/cycles/announce`, { method: 'POST', headers: authHeaders })
+    const d = await r.json().catch(() => ({})); setAnnouncing(false)
+    if (!r.ok) { setMsg({ ok: false, t: d.error || 'Could not send the announcement.' }); return }
+    setMsg({ ok: true, t: `Announcement emailed to ${d.accounts} account holder${d.accounts === 1 ? '' : 's'} for A.Y. ${d.academicYear}.` })
+  }
 
   return (
     <div className={s.card2}>
-      <h3 className={s.card2H}>Application timelines</h3>
-      <p className={s.muted}>Set each academic year&rsquo;s open and close dates. While a cycle is open, submissions are automatically tagged to that year. Outside every window, students see a &ldquo;closed&rdquo; notice instead of the form.</p>
+      <div className={s.uaHead}>
+        <h3 className={s.card2H} style={{ margin: 0 }}>Application timelines</h3>
+        <button className={s.btn2} disabled={announcing || !hasOpen} title={hasOpen ? 'Notify account holders that applications are open' : 'Open a cycle first'} onClick={announce}>
+          <Mail size={15} /> {announcing ? 'Sending…' : 'Email account holders'}
+        </button>
+      </div>
+      <p className={s.muted}>Set each academic year&rsquo;s open and close dates. While a cycle is open, submissions are automatically tagged to that year. Outside every window, students see a &ldquo;closed&rdquo; notice instead of the form. When a cycle is open, use <b>Email account holders</b> to notify everyone with an account that they can apply.</p>
       <form className={s.cycleForm} onSubmit={submit}>
         <input className={s.input2} placeholder="Academic year (e.g. 2026-2027)" value={form.academicYear} onChange={(e) => setForm({ ...form, academicYear: e.target.value })} required />
         <label className={s.dtField}>Opens<input type="datetime-local" className={s.input2} value={form.opensAt} onChange={(e) => setForm({ ...form, opensAt: e.target.value })} required /></label>
