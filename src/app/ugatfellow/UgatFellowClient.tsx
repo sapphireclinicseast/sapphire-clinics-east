@@ -626,6 +626,10 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
     q: 'How will the stipend be released to me?',
     a: <>The stipend is <b>deposited directly to your nominated bank account</b> — please make sure the account can <b>accept check deposits</b>. It is <b>no longer coursed through the partner university</b>, so that you can access and use the stipend at the actual time you need it.</>,
   },
+  {
+    q: 'My school is not yet included in the list of partner schools. Can I still apply?',
+    a: <>At the moment, we only accept applications from our <b>partner schools</b>. We&rsquo;d love to change that — you may reach out to your <b>College</b> or <b>Office of Student Relations</b> so they can partner with us. You can also write to us at <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>, and we&rsquo;ll be glad to help start the conversation.</>,
+  },
 ]
 function FaqModal({ onClose }: { onClose: () => void }) {
   return (
