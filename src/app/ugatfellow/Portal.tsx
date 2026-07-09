@@ -139,14 +139,18 @@ function AboutUs() {
   return (
     <div className={s.sec}>
       <div className={s.aboutHero}>
-        <p className={s.aboutKicker}>Ugnayan para sa Galing, Aral, at Tindig</p>
-        <h2 className={s.aboutH1}>Grow where your roots are honored.</h2>
-        <p className={s.aboutLead}>
-          The <b>UGAT Fellowship Program</b> is Aura Foundation&rsquo;s allowance-based fellowship for
-          Allied Health Professionals — Speech-Language Pathology and Occupational Therapy interns — in
-          their final year of university. Run <b>in coordination with your University</b>, it walks with
-          you through your clinical internship and into your first years as a licensed professional.
-        </p>
+        <div className={s.aboutHeroBody}>
+          <p className={s.aboutKicker}>Ugnayan para sa Galing, Aral, at Tindig</p>
+          <h2 className={s.aboutH1}>Grow where your roots are honored.</h2>
+          <p className={s.aboutLead}>
+            The <b>UGAT Fellowship Program</b> is Aura Foundation&rsquo;s allowance-based fellowship for
+            Allied Health Professionals — Speech-Language Pathology and Occupational Therapy interns — in
+            their final year of university. Run <b>in coordination with your University</b>, it walks with
+            you through your clinical internship and into your first years as a licensed professional.
+          </p>
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className={s.aboutHeroMark} src="/ugat/ugat-mark.svg" alt="" aria-hidden="true" />
       </div>
       <div className={s.aboutGrid}>
         <div className={s.aboutCard}><h3>A monthly stipend while you train</h3><p>Fellows receive a monthly allowance of <b>₱10,000</b> for up to <b>ten (10) months</b> throughout their clinical internship — so you can focus on becoming an excellent clinician.</p></div>
