@@ -1,13 +1,18 @@
 // UGAT Fellowship auth helpers — used by /api/public/ugat/* routes.
-// Scholar session tokens are HS256 JWTs signed with UGAT_JWT_SECRET (falls
-// back to CLASS_PORTAL_JWT_SECRET so we don't need a second prod secret).
-// Passwords are bcrypt'd. Admin is virtual (the hardcoded main@ SCEI login),
-// no DB row — it only gates the /ugatfellow/admin settings tab.
+// Session tokens are HS256 JWTs signed with UGAT_JWT_SECRET (falls back to
+// CLASS_PORTAL_JWT_SECRET so we don't need a second prod secret). Passwords
+// are bcrypt'd.
+//
+// Roles:
+//   MAIN_ADMIN  — the single virtual account `main` / `scei` (no DB row).
+//   STAFF_ADMIN — a UgatAdmin row, created by the main admin in User Access.
+//   SCHOLAR     — a UgatScholar row (self-service signup).
 
 import bcrypt from 'bcryptjs'
 
-export const UGAT_ADMIN_EMAIL = 'main@sapphireclinicseast.org'
-const UGAT_ADMIN_PASSWORD = 'SCEI'
+// The virtual main-admin login: a username + password (not an email).
+export const UGAT_MAIN_ADMIN_USERNAME = 'main'
+const UGAT_MAIN_ADMIN_PASSWORD = 'scei'
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
 
 function secret(): Uint8Array {
@@ -41,14 +46,24 @@ async function hmacSha256(key: Uint8Array, msg: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(msg)))
 }
 
-export type UgatRole = 'ADMIN' | 'SCHOLAR'
+export type UgatRole = 'MAIN_ADMIN' | 'STAFF_ADMIN' | 'SCHOLAR'
+
+export function isAdminRole(role: UgatRole | undefined): boolean {
+  return role === 'MAIN_ADMIN' || role === 'STAFF_ADMIN'
+}
 
 export interface UgatToken {
   role: UgatRole
-  /** Scholar id — omitted for the virtual admin. */
+  /** Scholar id — SCHOLAR only. */
   scholarId?: string
-  email: string
+  /** UgatAdmin id — STAFF_ADMIN only. */
+  adminId?: string
+  /** Login handle (all roles; `main` for the virtual main admin). */
+  username?: string
+  email?: string
   firstName?: string
+  /** Display name (admins). */
+  name?: string
   /** issued-at / expiry (epoch seconds) */
   iat: number
   exp: number
@@ -92,8 +107,9 @@ export async function tokenFromRequest(req: Request): Promise<UgatToken | null> 
   return verifyToken(m[1])
 }
 
-export function isAdminCredentials(email: string, password: string): boolean {
-  return email.trim().toLowerCase() === UGAT_ADMIN_EMAIL && password === UGAT_ADMIN_PASSWORD
+/** True for the virtual MAIN admin login (username `main`, password `scei`). */
+export function isMainAdminCredentials(username: string, password: string): boolean {
+  return username.trim().toLowerCase() === UGAT_MAIN_ADMIN_USERNAME && password === UGAT_MAIN_ADMIN_PASSWORD
 }
 
 export async function hashPassword(plain: string): Promise<string> {

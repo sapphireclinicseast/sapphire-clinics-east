@@ -9,7 +9,7 @@
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { tokenFromRequest } from '@/lib/ugat-auth'
+import { tokenFromRequest, isAdminRole } from '@/lib/ugat-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +18,7 @@ type Kind = (typeof KINDS)[number]
 
 async function requireAdmin(req: Request): Promise<NextResponse | null> {
   const tok = await tokenFromRequest(req)
-  if (!tok || tok.role !== 'ADMIN') {
+  if (!tok || !isAdminRole(tok.role)) {
     return NextResponse.json({ error: 'Admin authorization required.' }, { status: 401 })
   }
   return null

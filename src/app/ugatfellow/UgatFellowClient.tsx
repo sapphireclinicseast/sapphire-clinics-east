@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import s from './ugat.module.css'
+import Portal, { type PortalSession } from './Portal'
 
 const TOKEN_KEY = 'ugat_token'
 const API = '/api/public/ugat'
@@ -51,28 +52,15 @@ function LeafMark({ animated = false, className }: { animated?: boolean; classNa
 }
 
 type Tab = 'signin' | 'signup'
-type View = 'auth' | 'checkEmail' | 'dashboard'
-
-interface Scholar {
-  id: string
-  username: string
-  professionalEmail: string
-  personalEmail: string
-  firstName: string
-  middleName?: string | null
-  lastName: string
-  school: string
-  program: string
-  preferredField: string
-  expectedGraduationYear: number
-}
+type View = 'auth' | 'checkEmail' | 'portal'
 
 export default function UgatFellowClient() {
   const [showIntro, setShowIntro] = useState(true)
   const [introGone, setIntroGone] = useState(false)
   const [view, setView] = useState<View>('auth')
   const [tab, setTab] = useState<Tab>('signin')
-  const [scholar, setScholar] = useState<Scholar | null>(null)
+  const [session, setSession] = useState<PortalSession | null>(null)
+  const [token, setToken] = useState<string | null>(null)
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [banner, setBanner] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [booted, setBooted] = useState(false)
@@ -112,13 +100,13 @@ export default function UgatFellowClient() {
     }
   }, [])
 
-  // Restore an existing scholar session.
+  // Restore an existing session (any role).
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY)
-    if (!token) { setBooted(true); return }
-    fetch(`${API}/me`, { headers: { Authorization: `Bearer ${token}` } })
+    const t = localStorage.getItem(TOKEN_KEY)
+    if (!t) { setBooted(true); return }
+    fetch(`${API}/session`, { headers: { Authorization: `Bearer ${t}` } })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => { setScholar(d.scholar); setView('dashboard') })
+      .then((d: PortalSession) => { setSession(d); setToken(t); setView('portal') })
       .catch(() => localStorage.removeItem(TOKEN_KEY))
       .finally(() => setBooted(true))
   }, [])
@@ -128,14 +116,23 @@ export default function UgatFellowClient() {
     fetch(`${API}/options`).then((r) => r.json()).then(setOptions).catch(() => {})
   }, [])
 
-  function onSignedIn(token: string, sc: Scholar) {
-    localStorage.setItem(TOKEN_KEY, token)
-    setScholar(sc)
-    setView('dashboard')
+  // Called after a successful sign-in (any role). Stores the token, then
+  // resolves the canonical session (role + scholar/admin) from the server.
+  async function onAuthed(t: string) {
+    localStorage.setItem(TOKEN_KEY, t)
+    try {
+      const r = await fetch(`${API}/session`, { headers: { Authorization: `Bearer ${t}` } })
+      if (!r.ok) throw new Error()
+      const d: PortalSession = await r.json()
+      setSession(d); setToken(t); setView('portal')
+    } catch {
+      localStorage.removeItem(TOKEN_KEY)
+      setBanner({ kind: 'err', msg: 'Signed in, but your session could not be loaded. Please try again.' })
+    }
   }
   function logout() {
     localStorage.removeItem(TOKEN_KEY)
-    setScholar(null)
+    setSession(null); setToken(null)
     setView('auth')
     setTab('signin')
   }
@@ -154,8 +151,8 @@ export default function UgatFellowClient() {
         </div>
       )}
 
-      {view === 'dashboard' && scholar ? (
-        <Dashboard scholar={scholar} onLogout={logout} />
+      {view === 'portal' && session && token ? (
+        <Portal session={session} token={token} onLogout={logout} />
       ) : (
         <div className={`${s.split} ${introGone ? s.enter : ''}`}>
           <LeftPanel />
@@ -187,7 +184,7 @@ export default function UgatFellowClient() {
                   </div>
 
                   {tab === 'signin' ? (
-                    <SignIn onSignedIn={onSignedIn} booted={booted} />
+                    <SignIn onAuthed={onAuthed} booted={booted} />
                   ) : (
                     <SignUp
                       options={options}
@@ -274,7 +271,7 @@ function ProgramTimeline() {
 }
 
 // ── Sign In ────────────────────────────────────────────────────────
-function SignIn({ onSignedIn, booted }: { onSignedIn: (t: string, s: Scholar) => void; booted: boolean }) {
+function SignIn({ onAuthed, booted }: { onAuthed: (t: string) => void | Promise<void>; booted: boolean }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -297,12 +294,7 @@ function SignIn({ onSignedIn, booted }: { onSignedIn: (t: string, s: Scholar) =>
         if (d.needsVerification) setNeedsVerify(true)
         return
       }
-      if (d.role === 'ADMIN') {
-        localStorage.setItem('ugat_admin_token', d.token)
-        window.location.href = '/ugatfellow/admin'
-        return
-      }
-      onSignedIn(d.token, d.scholar)
+      await onAuthed(d.token)
     } catch {
       setErr('Network error. Please try again.')
     } finally {
@@ -567,36 +559,6 @@ function PrivacyStrip() {
   )
 }
 
-// ── Dashboard placeholder ──────────────────────────────────────────
-function Dashboard({ scholar, onLogout }: { scholar: Scholar; onLogout: () => void }) {
-  return (
-    <div className={s.dash}>
-      <div className={s.dashCard}>
-        <div className={s.dashHead}>
-          <LeafMark />
-          <div>
-            <p className={s.dashHi}>Kumusta, {scholar.firstName}! 🌱</p>
-            <p className={s.dashMeta}>@{scholar.username} · {scholar.personalEmail}</p>
-          </div>
-          <button className={s.ghostBtn} style={{ marginLeft: 'auto' }} onClick={onLogout}>Sign out</button>
-        </div>
-
-        <div className={s.dashNote}>
-          Welcome to the <b>UGAT Fellowship Program</b>. Your scholar account is active and verified.
-          The full scholar hub — stipend details, requirements, and onboarding — is being prepared,
-          and your next steps will appear here soon.
-        </div>
-
-        <ul className={s.dashList}>
-          <li><b>Program:</b>&nbsp;{scholar.program}</li>
-          <li><b>School:</b>&nbsp;{scholar.school}</li>
-          <li><b>Preferred field:</b>&nbsp;{scholar.preferredField}</li>
-          <li><b>Expected graduation:</b>&nbsp;{scholar.expectedGraduationYear}</li>
-        </ul>
-      </div>
-    </div>
-  )
-}
 
 // ── Data Privacy Notice modal (NPC-aligned) ────────────────────────
 function PrivacyModal({ onClose }: { onClose: () => void }) {
