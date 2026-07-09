@@ -618,6 +618,14 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
     q: 'If I render service at the accredited partner clinics, is my professional compensation deducted?',
     a: <>No. Your return service is fulfilled through the <b>hours you actually work — not through any salary deduction</b>, and you are fully and separately compensated for that work. In practice, you simply report for your regular clinical schedule (about five days a week) at an accredited partner clinic until the 1,500 hours are completed.</>,
   },
+  {
+    q: 'When does the stipend start to be released?',
+    a: <>The stipend is released beginning on the <b>first day of the first month of your internship period</b>, and every month thereafter for the duration of the award.</>,
+  },
+  {
+    q: 'How will the stipend be released to me?',
+    a: <>The stipend is <b>deposited directly to your nominated bank account</b> — please make sure the account can <b>accept check deposits</b>. It is <b>no longer coursed through the partner university</b>, so that you can access and use the stipend at the actual time you need it.</>,
+  },
 ]
 function FaqModal({ onClose }: { onClose: () => void }) {
   return (
