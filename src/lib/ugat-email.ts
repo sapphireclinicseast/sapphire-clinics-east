@@ -1,15 +1,22 @@
 // UGAT Fellowship transactional email — verification link.
-// Uses the Resend HTTP API (port 443) like src/lib/transactional-email.ts;
-// the VPS blocks outbound SMTP so HTTP is the only reliable path.
 //
-// Sender: scholarship@sapphireclinicseast.org. This address must be an
-// authorized sender on a Resend-verified domain (sapphireclinicseast.org
-// is already verified for noreply@do-not-reply.*). Override via
-// UGAT_MAIL_FROM if the verified sender differs.
+// Sends DIRECTLY through the scholarship@sapphireclinicseast.org Gmail
+// mailbox via the Gmail API (HTTPS, port 443 — the VPS blocks outbound
+// SMTP). This reuses the OAuth plumbing in src/lib/email.ts and the
+// GmailAccount table: connect the mailbox once at
+//   /api/auth/google  →  Settings ▸ Accounts  (pick scholarship@…)
+// which upserts a GmailAccount row we look up here by address.
+//
+// Resolution order for the sending account's refresh token:
+//   1. UGAT_GMAIL_REFRESH_TOKEN env (explicit override)
+//   2. GmailAccount row whose email == UGAT_MAIL_FROM_ADDRESS
+// The message shows "From: UGAT Fellowship — Aura Foundation <that address>".
 
-const FROM =
-  process.env.UGAT_MAIL_FROM ||
-  'UGAT Fellowship — SCEI <scholarship@sapphireclinicseast.org>'
+import { getGmailClient } from './email'
+import { prisma } from './prisma'
+
+const FROM_ADDRESS = process.env.UGAT_MAIL_FROM_ADDRESS || 'scholarship@sapphireclinicseast.org'
+const FROM_NAME = 'UGAT Fellowship — Aura Foundation'
 
 // Brand palette (mirrors the /ugatfellow landing page).
 const DEEP = '#244952'
@@ -17,28 +24,45 @@ const GREEN = '#4a8073'
 const GOLD = '#c69849'
 const CREAM = '#edf3d9'
 
-async function send(params: { to: string | string[]; subject: string; html: string; text?: string }): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) throw new Error('RESEND_API_KEY is not set')
-  const { to, subject, html, text } = params
-  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean)
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: FROM,
-      to: recipients,
-      subject,
-      html,
-      text: text ?? html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
-      reply_to: 'scholarship@sapphireclinicseast.org',
-    }),
-    signal: AbortSignal.timeout(10_000),
+/** Find the refresh token for the scholarship@ mailbox. */
+async function resolveRefreshToken(): Promise<string> {
+  if (process.env.UGAT_GMAIL_REFRESH_TOKEN) return process.env.UGAT_GMAIL_REFRESH_TOKEN
+  const acct = await prisma.gmailAccount.findUnique({
+    where: { email: FROM_ADDRESS },
+    select: { refreshToken: true },
   })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error('Resend API ' + res.status + ': ' + body.slice(0, 400))
-  }
+  if (acct?.refreshToken) return acct.refreshToken
+  throw new Error(
+    `No Gmail account connected for ${FROM_ADDRESS}. Connect it once at /api/auth/google (Settings ▸ Accounts), signing in as ${FROM_ADDRESS}.`,
+  )
+}
+
+/** Build an RFC 2822 message (base64url) branded for the UGAT sender. */
+function buildRaw(to: string[], subject: string, html: string): string {
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`
+  const bodyBase64 = Buffer.from(html, 'utf-8').toString('base64').replace(/(.{76})/g, '$1\r\n')
+  const message = [
+    `From: ${FROM_NAME} <${FROM_ADDRESS}>`,
+    `To: ${to.join(', ')}`,
+    `Reply-To: ${FROM_ADDRESS}`,
+    `Subject: ${subjectEncoded}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    bodyBase64,
+  ].join('\r\n')
+  return Buffer.from(message).toString('base64url')
+}
+
+async function send(params: { to: string | string[]; subject: string; html: string }): Promise<void> {
+  const { to, subject, html } = params
+  const recipients = (Array.isArray(to) ? to : [to]).filter(Boolean)
+  if (recipients.length === 0) throw new Error('No recipients')
+  const refreshToken = await resolveRefreshToken()
+  const gmail = await getGmailClient(refreshToken)
+  const raw = buildRaw(recipients, subject, html)
+  await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
 }
 
 /** Send the "verify your email" message with a one-time link. */
