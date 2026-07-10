@@ -18,6 +18,7 @@ const LETTER_MAX_WORDS = 900
 type Role = 'MAIN_ADMIN' | 'STAFF_ADMIN' | 'UNIVERSITY_ADMIN' | 'SCHOLAR'
 
 export interface AppData {
+  track?: string
   q1WhyApply?: string | null; q2Initiatives?: string | null; q3WhyProgram?: string | null
   q4StipendUse?: string | null; q5ReturnService?: string | null; q6ArawNgKalinga?: string | null
   q7FiveYearPlan?: string | null
@@ -146,17 +147,18 @@ function AboutUs() {
           <p className={s.aboutKicker}>Ugnayan para sa Galing, Aral, at Tindig</p>
           <h2 className={s.aboutH1}>Grow where your roots are honored.</h2>
           <p className={s.aboutLead}>
-            The <b>UGAT Fellowship Program</b> is Aura Foundation&rsquo;s allowance-based fellowship for
-            Allied Health Professionals — Speech-Language Pathology and Occupational Therapy interns — in
-            their final year of university. Run <b>in coordination with your University</b>, it walks with
-            you through your clinical internship and into your first years as a licensed professional.
+            The <b>UGAT Fellowship Program</b> is Aura Foundation&rsquo;s fellowship for aspiring
+            Allied Health Professionals — Speech-Language Pathology and Occupational Therapy — offered
+            in two tracks: the <b>Aral Track</b> for final-year interns and the <b>Tindig Track</b> for
+            graduates preparing for the licensure exam. It walks with you from training and review all the
+            way into your first years as a licensed professional.
           </p>
         </div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className={s.aboutHeroMark} src="/ugat/ugat-mark.svg" alt="" aria-hidden="true" />
       </div>
       <div className={s.aboutGrid}>
-        <div className={s.aboutCard}><h3>A monthly stipend while you train</h3><p>Fellows receive a monthly allowance — <b>₱5,000 or ₱10,000</b>, depending on the award — for up to <b>ten (10) months</b> throughout their clinical internship. Every fellow renders the same <b>1,500 hours</b> of return service, so you can focus on becoming an excellent clinician.</p></div>
+        <div className={s.aboutCard}><h3>Two tracks of support</h3><p><b>Aral Track</b> (final-year interns): a monthly allowance of <b>₱5,000 or ₱10,000</b> for up to ten months during your internship. <b>Tindig Track</b> (graduates): a <b>₱30,000</b> review-support grant toward your licensure — review fees, or ₱5,000/month for six months. Every fellow, in either track, renders the same <b>1,500 hours</b> of return service after licensure.</p></div>
         <div className={s.aboutCard}><h3>Mentorship at Aura Health Rehab</h3><p>Upon receiving your license, you will receive additional mentorship training alongside our senior therapists across Aura Health Rehab&rsquo;s <b>East</b> and <b>Greenhills</b> branches — real caseloads, real supervision, and a team invested in your craft (<i>galing</i>).</p></div>
         <div className={s.aboutCard}><h3>A guaranteed runway into your career</h3><p>After you pass your licensure, you give back through <b>return service</b> — practicing as a fully-compensated licensed clinician at Aura. It&rsquo;s not a deduction; it&rsquo;s a head start: a place waiting for you the day you become licensed.</p></div>
         <div className={s.aboutCard}><h3>Values that stay grounded</h3><p>Much like strong roots (<i>ugat</i>), we hope our fellows stay grounded in their values as they grow — pursuing excellence (<i>galing</i>), upholding integrity (<i>tindig</i>), and giving back through service (<i>paglilingkod</i>).</p></div>
@@ -164,9 +166,9 @@ function AboutUs() {
       <div className={s.aboutNote}>
         <h3>How the fellowship works</h3>
         <ol className={s.aboutSteps}>
-          <li>Offered to qualified final-year SLP and OT interns, coursed through your University.</li>
-          <li>Monthly allowance during your internship, coordinated with your school calendar.</li>
-          <li>Upon licensure, you render return-service clinical hours at Aura as a licensed, fully-paid professional — with a Certificate of Completion and the option to stay on.</li>
+          <li><b>Aral Track</b> — for qualified final-year SLP and OT interns, coursed through your University; a monthly allowance supports you through your internship.</li>
+          <li><b>Tindig Track</b> — for graduates who&rsquo;ve completed their internship and are preparing for the licensure exam; a review-support grant (applied for directly to SCEI) covers review fees or a monthly review stipend.</li>
+          <li>Upon licensure, every fellow renders return-service clinical hours at Aura as a licensed, fully-paid professional — with a Certificate of Completion and the option to stay on.</li>
           <li>Handled with fairness and compassion, consistent with the <b>Data Privacy Act of 2012</b>.</li>
         </ol>
         <p className={s.aboutTimeline}><b>Applications</b> accepted January–April · <b>deliberations</b> May–June · <b>scholars announced</b> July. Extensions are usually announced.</p>
@@ -317,7 +319,10 @@ function FlowStrip({ part }: { part: 1 | 2 | 3 }) {
 
 const INTEGRITY_NOTE = 'The Fellowship Team holds integrity in the highest regard. All responses submitted here are screened for AI-generated text — please write in your own words. AI-generated responses are strongly discouraged and may disqualify your application.'
 
-const QUESTIONS: { field: keyof AppData; label: string }[] = [
+type Track = 'ARAL' | 'TINDIG'
+const TRACK_LABEL: Record<string, string> = { ARAL: 'Aral Track', TINDIG: 'Tindig Track' }
+
+const ARAL_QUESTIONS: { field: keyof AppData; label: string }[] = [
   { field: 'q1WhyApply', label: 'Why do you want to apply for this fellowship?' },
   { field: 'q2Initiatives', label: 'What initiatives have you done in the past that align with our values of Galing, Aral, and Tindig?' },
   { field: 'q3WhyProgram', label: 'What made you want to choose the program that you are currently enrolled in?' },
@@ -326,6 +331,38 @@ const QUESTIONS: { field: keyof AppData; label: string }[] = [
   { field: 'q6ArawNgKalinga', label: 'The fellowship also requires awarded fellows to actively participate in the organization’s “Araw ng Kalinga” — a day of giving back through free screening and treatment. Will you be open to actively participating in this initiative?' },
   { field: 'q7FiveYearPlan', label: 'What are your plans in the next five years after getting your license?' },
 ]
+const TINDIG_QUESTIONS: { field: keyof AppData; label: string }[] = [
+  { field: 'q1WhyApply', label: 'Why do you want to apply for the UGAT Fellowship — Tindig (licensure-review) Track?' },
+  { field: 'q2Initiatives', label: 'What initiatives or experiences during your studies or internship reflect our values of Galing, Aral, and Tindig?' },
+  { field: 'q3WhyProgram', label: 'How do you plan to prepare for the Licensure Examination — your review program or self-review plan and timeline?' },
+  { field: 'q4StipendUse', label: 'How do you intend to use the review-support grant (e.g., licensure review fees, or a monthly review stipend)?' },
+  { field: 'q5ReturnService', label: 'The fellowship requires 1,500 hours of return service at the clinics after you are licensed. How long will you be willing to work with the clinic/s?' },
+  { field: 'q6ArawNgKalinga', label: 'The fellowship also requires awarded fellows to actively participate in the organization’s “Araw ng Kalinga” — a day of giving back through free screening and treatment. Will you be open to actively participating in this initiative?' },
+  { field: 'q7FiveYearPlan', label: 'What are your plans in the next five years after getting your license?' },
+]
+const questionsFor = (track?: string) => (track === 'TINDIG' ? TINDIG_QUESTIONS : ARAL_QUESTIONS)
+
+function TrackChooser({ onChoose }: { onChoose: (t: Track) => void }) {
+  return (
+    <div>
+      <div className={s.ayBadge}>First, choose which track you are applying to. Each has different eligibility and requirements.</div>
+      <div className={s.trackGrid}>
+        <button className={s.trackCard} onClick={() => onChoose('ARAL')}>
+          <div className={s.trackName}>Aral Track</div>
+          <div className={s.trackTag}>Internship allowance</div>
+          <p>For <b>final-year Allied Health interns</b> currently undergoing their clinical internship. Provides a monthly allowance (<b>₱5,000 or ₱10,000</b>) for up to ten months during your internship.</p>
+          <span className={s.trackPick}>Apply to Aral Track →</span>
+        </button>
+        <button className={s.trackCard} onClick={() => onChoose('TINDIG')}>
+          <div className={s.trackName}>Tindig Track</div>
+          <div className={s.trackTag}>Licensure review support</div>
+          <p>For <b>graduates preparing for the Licensure Examination</b> who have finished their internship and were not Aral awardees. Provides a <b>₱30,000</b> review-support grant (review fees, or ₱5,000/month for six months).</p>
+          <span className={s.trackPick}>Apply to Tindig Track →</span>
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ── Signature pad (canvas) ─────────────────────────────────────────
 interface SignaturePadHandle { toDataUrl: () => string | null }
@@ -379,9 +416,10 @@ function FileField({ label, kind, accept, uploads, token, onFile }: { label: str
 // ══ Application (scholar) ═════════════════════════════════════════
 function ScholarApplication({ session, token, authHeaders }: { session: PortalSession; token: string; authHeaders: Record<string, string> }) {
   const app0 = session.application || null
+  const [track, setTrack] = useState<Track | null>(app0?.track === 'TINDIG' || app0?.track === 'ARAL' ? (app0.track as Track) : app0 ? 'ARAL' : null)
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     const o: Record<string, string> = {}
-    for (const q of QUESTIONS) o[q.field] = (app0?.[q.field] as string) || ''
+    for (const q of ARAL_QUESTIONS) o[q.field] = (app0?.[q.field] as string) || ''
     return o
   })
   const [truth, setTruth] = useState<boolean>(!!app0?.truthAffirmed)
@@ -406,9 +444,14 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
     setUploads((u) => ({ ...u, [kind]: d.id })); setMsg({ ok: true, t: 'File uploaded.' })
   }
 
+  async function chooseTrack(t: Track) {
+    setTrack(t)
+    fetch(`${API}/application`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ track: t, answers }) }).catch(() => {})
+  }
+
   async function saveDraft() {
     setBusy('draft'); setMsg(null)
-    const r = await fetch(`${API}/application`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ answers, truthAffirmed: truth }) })
+    const r = await fetch(`${API}/application`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ answers, truthAffirmed: truth, track }) })
     setBusy(''); setMsg(r.ok ? { ok: true, t: 'Draft saved.' } : { ok: false, t: 'Could not save draft.' })
   }
 
@@ -419,11 +462,12 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
       await fetch(`${API}/uploads`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ kind: 'SIGNATURE', filename: 'signature.png', mimeType: 'image/png', dataBase64: sig }) })
         .then((r) => r.json()).then((d) => d.id && setUploads((u) => ({ ...u, SIGNATURE: d.id }))).catch(() => {})
     }
-    const r = await fetch(`${API}/application`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ answers, truthAffirmed: truth }) })
+    const r = await fetch(`${API}/application`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ answers, truthAffirmed: truth, track }) })
     const d = await r.json(); setBusy('')
     if (!r.ok) { setMsg({ ok: false, t: d.error || 'Could not submit.' }); return }
     setSubmitted(true)
   }
+  const QS = questionsFor(track || 'ARAL')
 
   const tabs: { k: 'initial' | 'interview' | 'acceptance'; label: string; show: boolean }[] = [
     { k: 'initial', label: 'Initial', show: true },
@@ -463,9 +507,12 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
             Your account is ready, so you can apply as soon as it opens.
           </p>
         </div>
+      ) : track === null ? (
+        <TrackChooser onChoose={chooseTrack} />
       ) : (
         <>
           {win.academicYear && <div className={s.ayBadge}>You are applying for <b>Academic Year {win.academicYear}</b>.{win.closesAt ? ` Applications close ${new Date(win.closesAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}.` : ''}</div>}
+          <div className={s.trackHeader}>You are applying to the <b>{TRACK_LABEL[track]}</b>. <button className={s.linkBtn2} onClick={() => setTrack(null)}>Change track</button></div>
           {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
           <div className={s.appToolbar}>
             <span className={s.muted} style={{ margin: 0 }}>Complete Steps 1–4, then submit. You can save a draft anytime.</span>
@@ -474,7 +521,7 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
 
           <div className={s.card2}>
             <h3 className={s.stepH}><span className={s.stepNum}>1</span> Application form</h3>
-            {QUESTIONS.map((q) => (
+            {QS.map((q) => (
               <div key={q.field} className={s.field2}>
                 <label className={s.qLabel}>{q.label}</label>
                 <textarea className={s.textarea} maxLength={QUESTION_MAX} rows={3} value={answers[q.field]} onChange={(e) => setAnswers((a) => ({ ...a, [q.field]: e.target.value }))} />
@@ -489,13 +536,22 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
             <FileField label="Motivational letter (PDF)" kind="LETTER" accept="application/pdf" uploads={uploads} token={token} onFile={upload} />
           </div>
 
-          <div className={s.card2}>
-            <h3 className={s.stepH}><span className={s.stepNum}>3</span> Proof of grades (Years 1–3)</h3>
-            <p className={s.muted}>Upload proof of grades for each year level. JPG, PNG, or PDF.</p>
-            <FileField label="Year 1" kind="GRADES_Y1" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
-            <FileField label="Year 2" kind="GRADES_Y2" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
-            <FileField label="Year 3" kind="GRADES_Y3" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
-          </div>
+          {track === 'TINDIG' ? (
+            <div className={s.card2}>
+              <h3 className={s.stepH}><span className={s.stepNum}>3</span> Academic documents</h3>
+              <p className={s.muted}>As a graduate applying to the Tindig Track, upload the following. JPG, PNG, or PDF.</p>
+              <FileField label="Transcript of Records" kind="TOR" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+              <FileField label="Proof of graduation / internship completion" kind="GRAD_PROOF" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+            </div>
+          ) : (
+            <div className={s.card2}>
+              <h3 className={s.stepH}><span className={s.stepNum}>3</span> Proof of grades (Years 1–3)</h3>
+              <p className={s.muted}>Upload proof of grades for each year level. JPG, PNG, or PDF.</p>
+              <FileField label="Year 1" kind="GRADES_Y1" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+              <FileField label="Year 2" kind="GRADES_Y2" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+              <FileField label="Year 3" kind="GRADES_Y3" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+            </div>
+          )}
 
           <div className={s.card2}>
             <h3 className={s.stepH}><span className={s.stepNum}>4</span> Declaration &amp; signature</h3>
@@ -839,6 +895,7 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
               <button className={s.appRowHead} onClick={() => setOpenId(openId === r.id ? null : r.id)}>
                 <ChevronDown size={16} className={openId === r.id ? s.rot : ''} />
                 <span className={s.appRowName}>{[r.lastName, [r.firstName, r.middleName].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</span>
+                <span className={s.tagType}>{TRACK_LABEL[r.application?.track || 'ARAL']}</span>
                 <span className={`${s.statusPill} ${r.application?.initialDecision === 'FOR_INTERVIEW' ? s.stAccepted : r.application?.initialDecision === 'NOT_CONSIDERED' ? s.stRejected : s.stApplied}`}>{DECISION_LABEL[r.application?.initialDecision || 'PENDING']}</span>
               </button>
               {openId === r.id && <ApplicantDetail r={r} token={token} readOnly={readOnly} onDecide={(d) => setDecision(r.id, d)} />}
@@ -1107,12 +1164,17 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
 function ApplicantDetail({ r, token, readOnly, onDecide }: { r: AdminScholar; token: string; readOnly: boolean; onDecide: (d: string) => void }) {
   const [step, setStep] = useState(1)
   const a = r.application || {}
+  const isTindig = a.track === 'TINDIG'
+  const doc = (kind: string, label: string) => r.uploadKinds[kind]
+    ? <a key={kind} className={s.miniBtn} href={`${API}/uploads/${r.uploadKinds[kind]}?t=${token}`} target="_blank" rel="noreferrer">{label}</a>
+    : <span key={kind} className={s.muted}>{label}: — </span>
   return (
     <div className={s.appDetail}>
+      <div className={s.docLinks} style={{ marginBottom: 10 }}><span className={`${s.tagType}`}>{TRACK_LABEL[a.track || 'ARAL']}</span></div>
       <div className={s.stepTabs}>{[1, 2, 3, 4].map((n) => <button key={n} className={`${s.stepTab} ${step === n ? s.stepTabActive : ''}`} onClick={() => setStep(n)}>Step {n}</button>)}</div>
-      {step === 1 && <div className={s.qaList}>{QUESTIONS.map((q) => <div key={q.field} className={s.qa}><div className={s.qaQ}>{q.label}</div><div className={s.qaA}>{(a[q.field] as string) || <span className={s.muted}>—</span>}</div></div>)}</div>}
+      {step === 1 && <div className={s.qaList}>{questionsFor(a.track).map((q) => <div key={q.field} className={s.qa}><div className={s.qaQ}>{q.label}</div><div className={s.qaA}>{(a[q.field] as string) || <span className={s.muted}>—</span>}</div></div>)}</div>}
       {step === 2 && <div className={s.docLinks}>{r.uploadKinds.LETTER ? <a className={s.miniBtn} href={`${API}/uploads/${r.uploadKinds.LETTER}?t=${token}`} target="_blank" rel="noreferrer">View motivational letter</a> : <span className={s.muted}>No letter uploaded.</span>}</div>}
-      {step === 3 && <div className={s.docLinks}>{['GRADES_Y1', 'GRADES_Y2', 'GRADES_Y3'].map((k) => r.uploadKinds[k] ? <a key={k} className={s.miniBtn} href={`${API}/uploads/${r.uploadKinds[k]}?t=${token}`} target="_blank" rel="noreferrer">Grades — Year {k.slice(-1)}</a> : <span key={k} className={s.muted}>No Year {k.slice(-1)} grades. </span>)}</div>}
+      {step === 3 && <div className={s.docLinks}>{isTindig ? [doc('TOR', 'Transcript of Records'), doc('GRAD_PROOF', 'Proof of graduation / internship')] : ['GRADES_Y1', 'GRADES_Y2', 'GRADES_Y3'].map((k) => doc(k, `Grades — Year ${k.slice(-1)}`))}</div>}
       {step === 4 && <div><div className={s.docLinks}>{r.uploadKinds.SIGNATURE ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={`${API}/uploads/${r.uploadKinds.SIGNATURE}?t=${token}`} alt="signature" className={s.sigView} /> : <span className={s.muted}>No signature.</span>}</div><p className={s.muted} style={{ marginTop: 8 }}>Declaration affirmed: {a.truthAffirmed ? 'Yes' : 'No'}{a.signedAt ? ` · signed ${new Date(a.signedAt).toLocaleDateString()}` : ''}</p></div>}
       {!readOnly && (
         <div className={s.decisionRow}>

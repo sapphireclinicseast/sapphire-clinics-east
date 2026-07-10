@@ -40,10 +40,14 @@ export async function GET(req: Request) {
   return NextResponse.json({ application, uploadKinds })
 }
 
+function cleanTrack(v: unknown): 'ARAL' | 'TINDIG' | undefined {
+  return v === 'TINDIG' ? 'TINDIG' : v === 'ARAL' ? 'ARAL' : undefined
+}
+
 export async function PUT(req: Request) {
   const sid = await scholarId(req)
   if (!sid) return NextResponse.json({ error: 'Not authenticated.' }, { status: 401 })
-  let body: { answers?: Record<string, unknown>; truthAffirmed?: boolean }
+  let body: { answers?: Record<string, unknown>; truthAffirmed?: boolean; track?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid request.' }, { status: 400 }) }
 
   const existing = await prisma.ugatApplication.findUnique({ where: { scholarId: sid }, select: { submittedAt: true } })
@@ -51,7 +55,8 @@ export async function PUT(req: Request) {
 
   if (!(await getWindow()).open) return NextResponse.json({ error: 'Applications are currently closed.' }, { status: 403 })
 
-  const data = { ...cleanAnswers(body.answers), ...(typeof body.truthAffirmed === 'boolean' ? { truthAffirmed: body.truthAffirmed } : {}) }
+  const track = cleanTrack(body.track)
+  const data = { ...cleanAnswers(body.answers), ...(typeof body.truthAffirmed === 'boolean' ? { truthAffirmed: body.truthAffirmed } : {}), ...(track ? { track } : {}) }
   await prisma.ugatApplication.upsert({ where: { scholarId: sid }, create: { scholarId: sid, ...data }, update: data })
   return NextResponse.json({ ok: true })
 }
@@ -59,15 +64,16 @@ export async function PUT(req: Request) {
 export async function POST(req: Request) {
   const sid = await scholarId(req)
   if (!sid) return NextResponse.json({ error: 'Not authenticated.' }, { status: 401 })
-  let body: { answers?: Record<string, unknown>; truthAffirmed?: boolean }
+  let body: { answers?: Record<string, unknown>; truthAffirmed?: boolean; track?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid request.' }, { status: 400 }) }
 
-  const existing = await prisma.ugatApplication.findUnique({ where: { scholarId: sid }, select: { submittedAt: true } })
+  const existing = await prisma.ugatApplication.findUnique({ where: { scholarId: sid }, select: { submittedAt: true, track: true } })
   if (existing?.submittedAt) return NextResponse.json({ error: 'Your application has already been submitted.' }, { status: 409 })
 
   const win = await getWindow()
   if (!win.open) return NextResponse.json({ error: 'Applications are currently closed.' }, { status: 403 })
 
+  const track = cleanTrack(body.track) || (existing?.track as 'ARAL' | 'TINDIG') || 'ARAL'
   const answers = cleanAnswers(body.answers)
   for (const f of Q_FIELDS) {
     if (!answers[f] || !answers[f].trim()) {
@@ -82,15 +88,20 @@ export async function POST(req: Request) {
   const kinds = new Set(uploads.map((u) => u.kind))
   const missing: string[] = []
   if (!kinds.has('LETTER')) missing.push('the motivational letter (Step 2)')
-  for (const y of ['GRADES_Y1', 'GRADES_Y2', 'GRADES_Y3']) {
-    if (!kinds.has(y)) missing.push(`proof of grades for Year ${y.slice(-1)} (Step 3)`)
+  if (track === 'TINDIG') {
+    if (!kinds.has('TOR')) missing.push('your Transcript of Records (Step 3)')
+    if (!kinds.has('GRAD_PROOF')) missing.push('proof of graduation / internship completion (Step 3)')
+  } else {
+    for (const y of ['GRADES_Y1', 'GRADES_Y2', 'GRADES_Y3']) {
+      if (!kinds.has(y)) missing.push(`proof of grades for Year ${y.slice(-1)} (Step 3)`)
+    }
   }
   if (!kinds.has('SIGNATURE')) missing.push('your signature (Step 4)')
   if (missing.length) {
     return NextResponse.json({ error: `Please complete: ${missing.join(', ')}.` }, { status: 400 })
   }
 
-  const stamp = { ...answers, truthAffirmed: true, signedAt: new Date(), submittedAt: new Date(), academicYear: win.academicYear || null }
+  const stamp = { ...answers, track, truthAffirmed: true, signedAt: new Date(), submittedAt: new Date(), academicYear: win.academicYear || null }
   await prisma.ugatApplication.upsert({
     where: { scholarId: sid },
     create: { scholarId: sid, ...stamp },

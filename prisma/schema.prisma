@@ -1614,6 +1614,10 @@ model UgatApplication {
   id        String @id @default(cuid())
   scholarId String @unique
 
+  /// Which sub-category the applicant applied to: ARAL (internship allowance,
+  /// current interns) | TINDIG (licensure review-support, graduates).
+  track String @default("ARAL")
+
   // Step 1 — application questions
   q1WhyApply      String?
   q2Initiatives   String?

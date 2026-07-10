@@ -595,8 +595,12 @@ function PrivacyStrip() {
 // ── Frequently Asked Questions modal ───────────────────────────────
 const FAQS: { q: string; a: React.ReactNode }[] = [
   {
+    q: 'What is the difference between the Aral Track and the Tindig Track?',
+    a: <>The fellowship has two tracks. The <b>Aral Track</b> is for <b>final-year interns</b> still undergoing their clinical internship — it provides a monthly allowance (₱5,000 or ₱10,000) for up to ten months. The <b>Tindig Track</b> is for <b>graduates preparing for the Licensure Examination</b> who have completed their internship and were not Aral awardees — it provides a ₱30,000 review-support grant (review fees, or ₱5,000/month for six months). Both tracks share the same 1,500-hour return service after you are licensed. When you apply, you&rsquo;ll first choose the track that fits you.</>,
+  },
+  {
     q: 'I am not yet in my final year of college. Can I apply?',
-    a: <>Not yet — the fellowship is open to students in their <b>final (internship) year</b>. You are, however, very welcome to <b>create an account now</b>. That way you&rsquo;ll be among the first to be notified when the next cycle opens, and you can apply the moment you become eligible.</>,
+    a: <>Not yet — the <b>Aral Track</b> is open to students in their <b>final (internship) year</b>, and the <b>Tindig Track</b> is for graduates preparing for the licensure exam. If you&rsquo;re earlier in your studies, you are still very welcome to <b>create an account now</b> so you&rsquo;ll be among the first notified when the next cycle opens, and can apply the moment you become eligible.</>,
   },
   {
     q: 'I have failing grades in my records. Can I still apply?',
