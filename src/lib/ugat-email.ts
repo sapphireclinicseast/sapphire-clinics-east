@@ -10,13 +10,13 @@
 // Resolution order for the sending account's refresh token:
 //   1. UGAT_GMAIL_REFRESH_TOKEN env (explicit override)
 //   2. GmailAccount row whose email == UGAT_MAIL_FROM_ADDRESS
-// The message shows "From: UGAT Fellowship — Aura Foundation <that address>".
+// The message shows "From: UGAT Fellowship <that address>".
 
 import { getGmailClient } from './email'
 import { prisma } from './prisma'
 
 const FROM_ADDRESS = process.env.UGAT_MAIL_FROM_ADDRESS || 'scholarship@sapphireclinicseast.org'
-const FROM_NAME = 'UGAT Fellowship — Aura Foundation'
+const FROM_NAME = 'UGAT Fellowship'
 
 // Brand palette (mirrors the /ugatfellow landing page).
 const DEEP = '#244952'
@@ -243,7 +243,7 @@ export async function sendUgatContractEmail(params: { to: string | string[]; fir
     <div style="max-width:560px;margin:0 auto;padding:32px 20px">
       <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
         <div style="background:${DEEP};padding:26px;text-align:center">
-          <div style="font-family:'Montserrat',Arial,sans-serif;color:${GOLD};font-size:12px;letter-spacing:2px;text-transform:uppercase">You&rsquo;re a UGAT Fellow</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:${GOLD};font-size:12px;letter-spacing:2px;text-transform:uppercase">You&rsquo;re an UGAT Fellow</div>
           <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:24px;font-weight:800;margin-top:6px">Congratulations, ${escapeHtml(firstName)}!</div>
         </div>
         <div style="padding:28px 30px;color:${DEEP}">
