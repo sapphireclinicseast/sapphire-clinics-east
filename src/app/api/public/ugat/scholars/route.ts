@@ -1,7 +1,7 @@
 // Admin scholar directory — powers Profile (admin student list), the admin
 // Application review, Dashboard, and User Access.
 //   GET                                                   → scholars (enriched) + counts
-//   PATCH { id, status?|disabled?|initialDecision?|newPassword? }  → update (full admins)
+//   PATCH { id, status?|disabled?|initialDecision?|newPassword?|award? }  → update (full admins)
 //   DELETE { id }                                         → remove (MAIN_ADMIN only)
 // GET is allowed for any admin tier (incl. read-only university admin);
 // writes require a full admin (MAIN_ADMIN / STAFF_ADMIN).
@@ -15,6 +15,8 @@ export const dynamic = 'force-dynamic'
 const STATUSES = ['APPLIED', 'ACCEPTED', 'WAITLISTED', 'REJECTED'] as const
 const DECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_INTERVIEW'] as const
 const IDECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_ACCEPTANCE'] as const
+// Allowed Aral Track award tiers (monthly stipend × duration in months).
+const AWARD_TIERS = [[5000, 10], [10000, 10], [5000, 5], [10000, 5]] as const
 
 function ageFrom(birthdate: Date | null): number | null {
   if (!birthdate) return null
@@ -35,6 +37,7 @@ export async function GET(req: Request) {
       id: true, username: true, track: true, professionalEmail: true, personalEmail: true,
       firstName: true, middleName: true, lastName: true, studentNumber: true, birthdate: true,
       school: true, program: true, preferredField: true, expectedGraduationYear: true,
+      awardMonthly: true, awardMonths: true,
       permCity: true, status: true, emailVerifiedAt: true, disabledAt: true, createdAt: true,
       application: true,
       acceptance: true,
@@ -62,12 +65,19 @@ export async function PATCH(req: Request) {
   const tok = await tokenFromRequest(req)
   if (!tok || !isAdminRole(tok.role)) return NextResponse.json({ error: 'Admin authorization required.' }, { status: 401 })
 
-  let body: { id?: string; status?: string; disabled?: boolean; initialDecision?: string; interviewDecision?: string; newPassword?: string }
+  let body: { id?: string; status?: string; disabled?: boolean; initialDecision?: string; interviewDecision?: string; newPassword?: string; awardMonthly?: number | null; awardMonths?: number | null }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid request.' }, { status: 400 }) }
   const id = String(body.id || '')
   if (!id) return NextResponse.json({ error: 'id is required.' }, { status: 400 })
 
   const data: Record<string, unknown> = {}
+  // Aral Track award tier — set both monthly + months together (or null both to clear).
+  if (body.awardMonthly !== undefined || body.awardMonths !== undefined) {
+    const m = body.awardMonthly, n = body.awardMonths
+    if (m == null && n == null) { data.awardMonthly = null; data.awardMonths = null }
+    else if (AWARD_TIERS.some(([tm, tn]) => tm === m && tn === n)) { data.awardMonthly = m; data.awardMonths = n }
+    else return NextResponse.json({ error: 'Invalid award tier.' }, { status: 400 })
+  }
   if (typeof body.status === 'string') {
     if (!STATUSES.includes(body.status as (typeof STATUSES)[number])) return NextResponse.json({ error: 'Invalid status.' }, { status: 400 })
     data.status = body.status
