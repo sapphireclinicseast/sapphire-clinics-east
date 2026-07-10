@@ -35,7 +35,14 @@ export async function GET(req: Request) {
       select: { id: true, name: true, type: true, affiliation: true, specialization: true },
       orderBy: { name: 'asc' },
     })
-    return NextResponse.json(referrers)
+    // Attach live referral counts (non-voided orders that name each referrer).
+    const grouped = await prisma.order.groupBy({
+      by: ['referrerId'],
+      where: { referrerId: { not: null }, status: { notIn: ['VOIDED'] } },
+      _count: { _all: true },
+    })
+    const counts = new Map(grouped.map(g => [g.referrerId as string, g._count._all]))
+    return NextResponse.json(referrers.map(r => ({ ...r, referralCount: counts.get(r.id) || 0 })))
   }
 
   const [referrers, total] = await Promise.all([

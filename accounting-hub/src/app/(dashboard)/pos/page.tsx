@@ -8242,7 +8242,7 @@ Signature:    _________________________
 const REFERRER_TYPE_LABEL: Record<string, string> = { DOCTOR: 'Doctor', LAW_FIRM: 'Law Firm' }
 
 function ReferrerSettingsPanel() {
-  const [referrers, setReferrers] = useState<{ id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null }[]>([])
+  const [referrers, setReferrers] = useState<{ id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; referralCount?: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -8251,6 +8251,16 @@ function ReferrerSettingsPanel() {
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [ordersFor, setOrdersFor] = useState<{ id: string; name: string } | null>(null)
+  const [orders, setOrders] = useState<{ id: string; orderNumber: number; date: string; patientName?: string | null; amount: number; branch: string }[]>([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+
+  const openOrders = async (r: { id: string; name: string }) => {
+    setOrdersFor(r); setOrders([]); setOrdersLoading(true)
+    try { const res = await fetch(`/api/referrers/orders?id=${r.id}`); setOrders(res.ok ? await res.json() : []) }
+    catch { setOrders([]) }
+    finally { setOrdersLoading(false) }
+  }
 
   const fetchReferrers = useCallback(async () => {
     setLoading(true)
@@ -8386,7 +8396,7 @@ function ReferrerSettingsPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--pale-teal)' }}>
-                {['Name', 'Type', 'Affiliation', 'Specialization', ''].map(h => (
+                {['Name', 'Type', 'Affiliation', 'Specialization', 'Count of Referrals', ''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>
                 ))}
               </tr>
@@ -8402,6 +8412,15 @@ function ReferrerSettingsPanel() {
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.affiliation || '—'}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.specialization || '—'}</td>
+                  <td className="px-4 py-3">
+                    {(r.referralCount ?? 0) > 0 ? (
+                      <button onClick={() => openOrders(r)} className="px-2.5 py-1 rounded-full text-xs font-semibold hover:underline" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }} title="View referred orders">
+                        {r.referralCount}
+                      </button>
+                    ) : (
+                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>0</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button onClick={() => openEdit(r)} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
@@ -8456,6 +8475,48 @@ function ReferrerSettingsPanel() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Referred-orders drill-down */}
+      {ordersFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setOrdersFor(null)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Referrals — {ordersFor.name}</h3>
+              <button onClick={() => setOrdersFor(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Orders that named this referrer.</p>
+            {ordersLoading ? (
+              <div className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</div>
+            ) : orders.length === 0 ? (
+              <div className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No orders found.</div>
+            ) : (
+              <div className="overflow-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--pale-teal)' }}>
+                      {['Order #', 'Date', 'Patient', 'Amount', 'Branch'].map(h => (
+                        <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map(o => (
+                      <tr key={o.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>#{o.orderNumber}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{new Date(o.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{o.patientName || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>₱{Number(o.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{o.branch}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="mt-3 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{orders.length} order{orders.length === 1 ? '' : 's'}</div>
           </div>
         </div>
       )}
