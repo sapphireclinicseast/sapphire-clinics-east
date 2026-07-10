@@ -490,9 +490,11 @@
   border-left: 3px solid var(--gold);
 }
 .annBoardHead {
+  display: flex; align-items: center; gap: 7px;
   font-family: var(--display); font-weight: 700; font-size: 12.5px;
   letter-spacing: 0.02em; color: var(--deep); margin: 0 0 8px;
 }
+.annBoardIcon { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.8; }
 .annItem { padding: 8px 0; border-top: 1px solid var(--line); }
 .annItem:first-of-type { border-top: 0; padding-top: 0; }
 .annItemTitle { font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--deep); }
