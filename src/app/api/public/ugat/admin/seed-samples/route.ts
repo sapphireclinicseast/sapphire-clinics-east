@@ -21,7 +21,7 @@ const SAMPLES = [
     school: 'University of the Philippines Manila (College of Allied Medical Professions)',
     program: 'Speech-Language Pathology', preferredField: 'Pediatric Speech Therapy',
     city: 'Manila', region: 'NCR', zip: '1000', addr1: '24 Kalayaan St.', addr2: 'Barangay Malaya',
-    professionalEmail: 'mcsantos@up.edu.ph', personalEmail: 'maria.santos.demo@gmail.com',
+    professionalEmail: 'hpjara@sapphireclinicseast.org', personalEmail: 'hpjara@sapphireclinicseast.org',
     answers: {
       q1WhyApply: 'I am applying because the UGAT Fellowship is the rare kind of support that sees a student as a whole person, not just a set of grades. A monthly stipend during internship would let me finish my clinical training without taking on side jobs that pull me away from my cases. More than the financial help, I want to grow inside a clinic that clearly values galing and paglilingkod — I want to become the kind of clinician who is both excellent and grounded.',
       q2Initiatives: 'In my third year I led a weekend "Salita at Laro" program in our barangay where we screened children for speech and language delays and coached parents on simple home activities. I also volunteered as a note-taker and buddy for a deaf classmate, which taught me patience and how much small accommodations matter. These are small things, but they are where galing (doing the work well), aral (learning together), and tindig (showing up honestly) meet for me.',
@@ -38,7 +38,7 @@ const SAMPLES = [
     school: 'University of Santo Tomas (College of Rehabilitation Sciences)',
     program: 'Occupational Therapy', preferredField: 'Pediatric Occupational Therapy',
     city: 'Quezon City', region: 'NCR', zip: '1105', addr1: '112 Maginhawa St.', addr2: 'Teachers Village',
-    professionalEmail: 'jmdelacruz@ust.edu.ph', personalEmail: 'juanmiguel.demo@gmail.com',
+    professionalEmail: 'hpjara@sapphireclinicseast.org', personalEmail: 'hpjara@sapphireclinicseast.org',
     answers: {
       q1WhyApply: 'I am applying because I want my final internship year to be about learning as much as I can, not scrambling to make ends meet. The fellowship would give me the stability to be fully present with my patients. I am also drawn to Aura because the return-service model feels honest and fair — you invest in us, and we give real, meaningful hours back. That is a partnership I want to be part of.',
       q2Initiatives: 'I co-founded a small student org that builds low-cost sensory kits for public-school special-education classrooms. We reused donated materials and trained the teachers to use them. I also spent two summers as a volunteer aide at a home for children with cerebral palsy. Those experiences taught me that excellence (galing) is meaningless unless it actually reaches the people who need it (paglilingkod).',
@@ -55,7 +55,7 @@ const SAMPLES = [
     school: 'De La Salle Medical and Health Sciences Institute',
     program: 'Speech-Language Pathology', preferredField: 'Adult Neuro Rehabilitation',
     city: 'Dasmariñas', region: 'Region IV-A', zip: '4114', addr1: '8 Aguinaldo Highway', addr2: 'Barangay Salawag',
-    professionalEmail: 'anreyes@dlshsi.edu.ph', personalEmail: 'andrea.reyes.demo@gmail.com',
+    professionalEmail: 'hpjara@sapphireclinicseast.org', personalEmail: 'hpjara@sapphireclinicseast.org',
     answers: {
       q1WhyApply: 'I am applying because I want to specialize in adult neuro-rehabilitation, and Aura’s clinics see exactly the caseload I hope to learn from. The stipend would let me focus on that learning instead of worrying about internship costs. I also value that the fellowship expects integrity (tindig) from its scholars — that is the kind of standard I want to be held to as I start my career.',
       q2Initiatives: 'I organized a "Kwentuhan Sessions" project at a local elder-care center, where we helped older adults with aphasia practice conversation in a low-pressure, joyful way. I also tutored underclassmen in phonetics for free because I remembered how lost I felt in that subject. For me, aral is something you pass on, not hoard.',
