@@ -21,7 +21,7 @@ function optDate(v?: string | null): Date | null | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d
 }
 
-function parse(body: { academicYear?: string; opensAt?: string; closesAt?: string; initialDeadline?: string | null; interviewDeadline?: string | null }) {
+function parse(body: { academicYear?: string; opensAt?: string; closesAt?: string; initialDeadline?: string | null; interviewDeadline?: string | null; softCopyDeadline?: string | null; hardCopyDeadline?: string | null }) {
   const academicYear = String(body.academicYear || '').trim()
   const opensAt = body.opensAt ? new Date(body.opensAt) : null
   const closesAt = body.closesAt ? new Date(body.closesAt) : null
@@ -31,9 +31,11 @@ function parse(body: { academicYear?: string; opensAt?: string; closesAt?: strin
   if (!opensAt || Number.isNaN(opensAt.getTime())) return { error: 'Please set a valid opening date.' }
   if (!closesAt || Number.isNaN(closesAt.getTime())) return { error: 'Please set a valid closing date.' }
   if (closesAt <= opensAt) return { error: 'The closing date must be after the opening date.' }
-  const out: { academicYear: string; opensAt: Date; closesAt: Date; initialDeadline?: Date | null; interviewDeadline?: Date | null } = { academicYear, opensAt, closesAt }
+  const out: { academicYear: string; opensAt: Date; closesAt: Date; initialDeadline?: Date | null; interviewDeadline?: Date | null; softCopyDeadline?: Date | null; hardCopyDeadline?: Date | null } = { academicYear, opensAt, closesAt }
   const id = optDate(body.initialDeadline); if (id !== undefined) out.initialDeadline = id
   const iv = optDate(body.interviewDeadline); if (iv !== undefined) out.interviewDeadline = iv
+  const sc = optDate(body.softCopyDeadline); if (sc !== undefined) out.softCopyDeadline = sc
+  const hc = optDate(body.hardCopyDeadline); if (hc !== undefined) out.hardCopyDeadline = hc
   return out
 }
 

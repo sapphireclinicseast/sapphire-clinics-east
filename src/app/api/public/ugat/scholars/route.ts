@@ -37,6 +37,7 @@ export async function GET(req: Request) {
       school: true, program: true, preferredField: true, expectedGraduationYear: true,
       permCity: true, status: true, emailVerifiedAt: true, disabledAt: true, createdAt: true,
       application: true,
+      acceptance: true,
       uploads: { select: { id: true, kind: true } },
     },
   })

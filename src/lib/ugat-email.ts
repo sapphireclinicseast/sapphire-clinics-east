@@ -234,6 +234,32 @@ export async function sendUgatInterviewEmail(params: {
   await send({ to, subject, html })
 }
 
+/** Accepted! Your Return Service Agreement is ready to review + e-sign. */
+export async function sendUgatContractEmail(params: { to: string | string[]; firstName: string; signUrl: string }): Promise<void> {
+  const { to, firstName, signUrl } = params
+  const subject = 'Congratulations! Your UGAT Fellowship agreement is ready'
+  const html = `
+  <div style="margin:0;padding:0;background:${CREAM};font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:560px;margin:0 auto;padding:32px 20px">
+      <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
+        <div style="background:${DEEP};padding:26px;text-align:center">
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:${GOLD};font-size:12px;letter-spacing:2px;text-transform:uppercase">You&rsquo;re a UGAT Fellow</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:24px;font-weight:800;margin-top:6px">Congratulations, ${escapeHtml(firstName)}!</div>
+        </div>
+        <div style="padding:28px 30px;color:${DEEP}">
+          <p style="margin:0 0 14px;line-height:1.6;font-size:15px">We&rsquo;re delighted to welcome you to the UGAT Fellowship Program. Your <strong>Return Service Agreement</strong> is now ready for you to review and sign online.</p>
+          <p style="margin:0 0 18px;line-height:1.6;font-size:15px">Sign in to your account to complete it — you&rsquo;ll fill in your co-maker&rsquo;s details, upload two valid IDs for each of you, and sign electronically. A hard copy will be signed in person when you visit an Aura Health Rehab branch.</p>
+          <div style="text-align:center;margin:22px 0">
+            <a href="${signUrl}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:15px;padding:13px 28px;border-radius:999px">Review &amp; sign my agreement</a>
+          </div>
+        </div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.</div>
+      </div>
+    </div>
+  </div>`
+  await send({ to, subject, html })
+}
+
 /** Empathic "not considered for the next step" notice. */
 export async function sendUgatRejectionEmail(params: { to: string | string[]; firstName: string }): Promise<void> {
   const { to, firstName } = params

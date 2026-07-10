@@ -1525,10 +1525,69 @@ model UgatScholar {
   verificationTokens UgatVerificationToken[]
   uploads            UgatUpload[]
   application        UgatApplication?
+  acceptance         UgatAcceptance?
 
   @@index([emailVerifiedAt])
   @@index([disabledAt])
   @@index([status])
+}
+
+/// Part III — Acceptance: the Return Service Agreement signing record + the
+/// co-maker's details. IDs (2 for the fellow, 2 for the co-maker) live in
+/// UgatUpload (VALID_ID_1/2, COMAKER_ID_1/2); the RSA signature is
+/// UgatUpload kind RSA_SIGNATURE.
+model UgatAcceptance {
+  id        String @id @default(cuid())
+  scholarId String @unique
+
+  /// Set when an admin "sends the contract" — unlocks the signing flow.
+  contractSentAt DateTime?
+
+  // Co-maker identity
+  comakerFirstName  String?
+  comakerMiddleName String?
+  comakerLastName   String?
+  comakerBirthdate  DateTime?
+  comakerEmail      String?
+  comakerOccupation String?
+
+  // Co-maker permanent address
+  cmPermAddress1 String?
+  cmPermAddress2 String?
+  cmPermCity     String?
+  cmPermRegion   String?
+  cmPermZip      String?
+
+  // Co-maker present address (may mirror permanent)
+  cmPresSameAsPerm Boolean @default(false)
+  cmPresAddress1   String?
+  cmPresAddress2   String?
+  cmPresCity       String?
+  cmPresRegion     String?
+  cmPresZip        String?
+
+  // Co-maker occupation address
+  cmOccAddress1 String?
+  cmOccAddress2 String?
+  cmOccCity     String?
+  cmOccRegion   String?
+  cmOccZip      String?
+
+  /// Fellow ticked the truthfulness / agreement statement.
+  truthAffirmed Boolean @default(false)
+  /// Fellow submitted the signed soft copy (RSA + co-maker + IDs + signature).
+  softCopySignedAt DateTime?
+  /// Admin marked the in-person hard copy as signed.
+  hardCopySignedAt DateTime?
+  hardCopyMarkedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+
+  @@index([contractSentAt])
+  @@index([softCopySignedAt])
 }
 
 /// A binary upload owned by a scholar: profile photo, motivational letter,
@@ -1615,6 +1674,10 @@ model UgatApplicationCycle {
   initialDeadline   DateTime?
   /// Deadline to finish deciding Part II (Interview → Acceptance).
   interviewDeadline DateTime?
+  /// Deadlines for the accepted fellow's soft-copy (e-sign) and in-person
+  /// hard-copy signing of the Return Service Agreement.
+  softCopyDeadline  DateTime?
+  hardCopyDeadline  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
