@@ -64,8 +64,10 @@ export async function postDividend(db: Db, opts: {
   return je.id
 }
 
-// Scholarship monthly release: DR the chosen scholarship-expense account /
-// CR bank (money out). Folds into the P&L as an operating expense.
+// Scholarship monthly release: DR the chosen scholarship account / CR bank
+// (money out). The DR account is configurable: an EQUITY "Scholarship Fund"
+// (appropriated retained earnings) keeps it OFF the income statement, while an
+// EXPENSE account would fold it into the P&L. The IS fold keys off account type.
 export async function postScholarship(db: Db, opts: {
   refId: string; date: Date; amount: number; bankAccountId?: string | null; expenseAccountId?: string | null; label: string; createdById: string
 }): Promise<string | null> {

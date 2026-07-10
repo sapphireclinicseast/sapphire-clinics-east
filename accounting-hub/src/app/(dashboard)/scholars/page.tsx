@@ -23,7 +23,7 @@ export default function ScholarsPage() {
   const [data, setData] = useState<{ scholars: any[]; matrix: any[]; filters: any; portalConnected: boolean; portalError: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [banks, setBanks] = useState<Bank[]>([])
-  const [expenseAccts, setExpenseAccts] = useState<Acct[]>([])
+  const [fundAccts, setFundAccts] = useState<Acct[]>([])
   const [reminders, setReminders] = useState<any[]>([])
   const [fAy, setFAy] = useState(''); const [fSchool, setFSchool] = useState(''); const [fType, setFType] = useState('')
   const [edit, setEdit] = useState<any | null>(null)
@@ -35,7 +35,7 @@ export default function ScholarsPage() {
   }, [])
   useEffect(() => { load() }, [load])
   useEffect(() => { fetch('/api/bank-accounts').then(r => r.ok ? r.json() : []).then(setBanks).catch(() => setBanks([])) }, [])
-  useEffect(() => { fetch('/api/chart-of-accounts?accountType=EXPENSE&pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(j => setExpenseAccts(((j.data || j.items || j || []) as Acct[]).map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle })))).catch(() => setExpenseAccts([])) }, [])
+  useEffect(() => { fetch('/api/chart-of-accounts?accountType=EQUITY&pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(j => setFundAccts(((j.data || j.items || j || []) as Acct[]).map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle })))).catch(() => setFundAccts([])) }, [])
   useEffect(() => { fetch('/api/scholars/reminders').then(r => r.ok ? r.json() : { reminders: [] }).then(j => setReminders(j.reminders || [])).catch(() => setReminders([])) }, [data])
 
   if (status === 'loading') return <div className="p-8 text-gray-400"><Loader2 className="animate-spin inline" size={18} /></div>
@@ -137,13 +137,13 @@ export default function ScholarsPage() {
         </tbody></table>
       </div>
 
-      {edit && <EditScholarModal scholar={edit} banks={banks} expenseAccts={expenseAccts} types={filters.types} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load() }} />}
-      {recording && <RecordReleaseModal scholars={scholars} banks={banks} expenseAccts={expenseAccts} onClose={() => setRecording(false)} onSaved={() => { setRecording(false); load() }} />}
+      {edit && <EditScholarModal scholar={edit} banks={banks} fundAccts={fundAccts} types={filters.types} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load() }} />}
+      {recording && <RecordReleaseModal scholars={scholars} banks={banks} fundAccts={fundAccts} onClose={() => setRecording(false)} onSaved={() => { setRecording(false); load() }} />}
     </div>
   )
 }
 
-function EditScholarModal({ scholar, banks, expenseAccts, types, onClose, onSaved }: { scholar: any; banks: Bank[]; expenseAccts: Acct[]; types: string[]; onClose: () => void; onSaved: () => void }) {
+function EditScholarModal({ scholar, banks, fundAccts, types, onClose, onSaved }: { scholar: any; banks: Bank[]; fundAccts: Acct[]; types: string[]; onClose: () => void; onSaved: () => void }) {
   const [ay, setAy] = useState(scholar.academicYear || '')
   const [type, setType] = useState(scholar.scholarshipType || '')
   const [awarded, setAwarded] = useState(String(scholar.amountAwarded || ''))
@@ -152,7 +152,7 @@ function EditScholarModal({ scholar, banks, expenseAccts, types, onClose, onSave
   const [day, setDay] = useState(String(scholar.releaseDay ?? ''))
   const [months, setMonths] = useState(String(scholar.numberOfMonths ?? ''))
   const [bankAccountId, setBank] = useState(scholar.bankAccountId || '')
-  const [expenseAccountId, setExp] = useState(scholar.expenseAccountId || '')
+  const [expenseAccountId, setExp] = useState(scholar.expenseAccountId || fundAccts.find(a => a.accountNumber === '6070')?.id || '')
   const [rsaUrls, setRsaUrls] = useState<string[]>(scholar.signedRsaUrls || [])
   const [busy, setBusy] = useState(false)
   const [releases, setReleases] = useState<any[]>([])
@@ -199,7 +199,7 @@ function EditScholarModal({ scholar, banks, expenseAccts, types, onClose, onSave
           <div><label className={lbl} style={mg}>End Month</label><input value={mkLabel(endM)} disabled className={inp} style={{ ...bc, background: 'var(--off-white)' }} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3 mb-3">
-          <div><label className={lbl} style={mg}>Scholarship Expense acct (DR)</label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{expenseAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Scholarship Fund (DR) <span className="font-normal text-gray-400">· off P&amp;L</span></label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{fundAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
         </div>
         <div className="mb-4"><label className={lbl} style={mg}>Signed RSA <span className="font-normal text-gray-400">(1+, QR/PDF)</span></label><div className="flex flex-wrap items-center gap-2">{rsaUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="scholars" prefix={`RSA-${scholar.portalScholarId.slice(-6)}`} existingCount={rsaUrls.length} label="Add RSA" onUploaded={u => setRsaUrls(p => [...p, u])} /></div></div>
@@ -231,12 +231,12 @@ function EditScholarModal({ scholar, banks, expenseAccts, types, onClose, onSave
   )
 }
 
-function RecordReleaseModal({ scholars, banks, expenseAccts, onClose, onSaved }: { scholars: any[]; banks: Bank[]; expenseAccts: Acct[]; onClose: () => void; onSaved: () => void }) {
+function RecordReleaseModal({ scholars, banks, fundAccts, onClose, onSaved }: { scholars: any[]; banks: Bank[]; fundAccts: Acct[]; onClose: () => void; onSaved: () => void }) {
   const now = new Date()
   const [monthKey, setMonthKey] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [bankAccountId, setBank] = useState('')
-  const [expenseAccountId, setExp] = useState('')
+  const [expenseAccountId, setExp] = useState(fundAccts.find(a => a.accountNumber === '6070')?.id || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
@@ -264,7 +264,7 @@ function RecordReleaseModal({ scholars, banks, expenseAccts, onClose, onSaved }:
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div><label className={lbl} style={mg}>Release month</label><input type="month" value={monthKey} onChange={e => setMonthKey(e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Deposit date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
-          <div><label className={lbl} style={mg}>Expense (DR)</label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— per scholar —</option>{expenseAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Scholarship Fund (DR)</label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— per scholar —</option>{fundAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Bank (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— per scholar —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
         </div>
         <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: 320 }}>
@@ -287,7 +287,7 @@ function RecordReleaseModal({ scholars, banks, expenseAccts, onClose, onSaved }:
           <div><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="scholars" prefix={`SCHOLREL-${monthKey}-PROOF`} existingCount={proofUrls.length} label="Add proof" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
           <div className="text-right"><p className="text-[11px]" style={mg}>{checked.size} scholar{checked.size === 1 ? '' : 's'}</p><p className="text-lg font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{peso(total)}</p></div>
         </div>
-        <p className="text-[11px] mb-2" style={mg}>Each release posts DR Scholarship Expense / CR Bank. Scholars without a bank/expense set (here or on their record) are recorded without a journal entry.</p>
+        <p className="text-[11px] mb-2" style={mg}>Each release posts DR Scholarship Fund (equity) / CR Bank — a drawdown of appropriated retained earnings, so it does <strong>not</strong> hit the income statement. Scholars without a fund/bank set (here or on their record) are recorded without a journal entry.</p>
         <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record {mkLabel(monthKey)} release</button>
       </div>
     </div>
