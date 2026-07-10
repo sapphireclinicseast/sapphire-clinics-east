@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import {
   Info, User, FileText, LayoutDashboard, GraduationCap, Settings as SettingsIcon,
-  ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff, Calendar, Mail,
+  ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff, Calendar, Mail, Megaphone,
 } from 'lucide-react'
 import s from './ugat.module.css'
 
@@ -45,7 +45,7 @@ export interface PortalSession {
   admin?: PortalAdmin
 }
 
-type SectionKey = 'about' | 'profile' | 'application' | 'dashboard' | 'schools' | 'settings' | 'access'
+type SectionKey = 'about' | 'profile' | 'application' | 'dashboard' | 'schools' | 'announce' | 'settings' | 'access'
 
 const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; roles: Role[] }[] = [
   { key: 'about', label: 'About Us', icon: Info, roles: ['SCHOLAR', 'STAFF_ADMIN', 'MAIN_ADMIN', 'UNIVERSITY_ADMIN'] },
@@ -53,6 +53,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; roles
   { key: 'application', label: 'Application', icon: FileText, roles: ['SCHOLAR', 'STAFF_ADMIN', 'MAIN_ADMIN', 'UNIVERSITY_ADMIN'] },
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'schools', label: 'Schools Data', icon: GraduationCap, roles: ['SCHOLAR', 'STAFF_ADMIN', 'MAIN_ADMIN'] },
+  { key: 'announce', label: 'Announcements', icon: Megaphone, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'settings', label: 'Settings', icon: SettingsIcon, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'access', label: 'User Access', icon: ShieldCheck, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
 ]
@@ -130,6 +131,7 @@ export default function Portal({
           )}
           {active === 'dashboard' && <Dashboard authHeaders={authHeaders} />}
           {active === 'schools' && <SchoolsData />}
+          {active === 'announce' && <AnnouncementsAdmin authHeaders={authHeaders} />}
           {active === 'settings' && <SettingsSection authHeaders={authHeaders} />}
           {active === 'access' && <UserAccess role={role} authHeaders={authHeaders} />}
         </div>
@@ -1261,6 +1263,95 @@ type Kind = 'SCHOOL' | 'PROGRAM' | 'FIELD'
 interface OptRow { id?: string; label: string; disabled: boolean }
 const KIND_TITLES: Record<Kind, string> = { SCHOOL: 'Schools', PROGRAM: 'Programs', FIELD: 'Preferred Field of Practice' }
 const OPT_KINDS: Kind[] = ['SCHOOL', 'PROGRAM', 'FIELD']
+
+// ══ Announcements (admin) ══════════════════════════════════════════
+interface AdminAnnouncement { id: string; title: string; details: string; published: boolean; createdAt: string }
+
+function AnnouncementsAdmin({ authHeaders }: { authHeaders: Record<string, string> }) {
+  const [rows, setRows] = useState<AdminAnnouncement[] | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+  const [nTitle, setNTitle] = useState('')
+  const [nDetails, setNDetails] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`${API}/announcements/admin`, { headers: authHeaders })
+    if (!r.ok) { setRows([]); return }
+    const d = await r.json()
+    setRows(d.announcements || [])
+  }, [authHeaders])
+  useEffect(() => { load() }, [load])
+
+  async function create() {
+    const title = nTitle.trim(), details = nDetails.trim()
+    if (!title || !details) { setMsg({ ok: false, t: 'Please enter a title and details.' }); return }
+    setBusy(true); setMsg(null)
+    const r = await fetch(`${API}/announcements/admin`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ title, details }) })
+    setBusy(false)
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setMsg({ ok: false, t: d.error || 'Could not post the announcement.' }); return }
+    setNTitle(''); setNDetails(''); setMsg({ ok: true, t: 'Posted — it is now live on the landing page.' })
+    await load()
+  }
+
+  async function patch(id: string, data: Partial<Pick<AdminAnnouncement, 'title' | 'details' | 'published'>>): Promise<boolean> {
+    const r = await fetch(`${API}/announcements/admin`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id, ...data }) })
+    if (!r.ok) { const d = await r.json().catch(() => ({})); setMsg({ ok: false, t: d.error || 'Could not update.' }); return false }
+    await load(); return true
+  }
+
+  async function remove(id: string) {
+    await fetch(`${API}/announcements/admin`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id }) })
+    await load()
+  }
+
+  return (
+    <div className={s.sec}>
+      <p className={s.muted} style={{ margin: 0 }}>Post announcements that appear on the public <b>UGAT Fellowship</b> landing page. Each has a <b>title</b> and <b>details</b>. Unpublish to hide one without deleting it — newest shows first.</p>
+      {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
+
+      <div className={s.card2}>
+        <h3 className={s.card2H}>New announcement</h3>
+        <div className={s.field}><input className={s.input} placeholder="Title (e.g. Cycle 2 applications now open!)" value={nTitle} maxLength={160} onChange={(e) => setNTitle(e.target.value)} /></div>
+        <div className={s.field}><textarea className={s.textarea} rows={4} placeholder="Details…" value={nDetails} maxLength={4000} onChange={(e) => setNDetails(e.target.value)} /></div>
+        <button className={s.btn2} disabled={busy} onClick={create}><Plus size={15} /> {busy ? 'Posting…' : 'Post announcement'}</button>
+      </div>
+
+      {rows === null ? <p className={s.muted}>Loading…</p>
+        : rows.length === 0 ? <p className={s.muted}>No announcements yet.</p>
+        : rows.map((a) => <AnnouncementRow key={a.id} a={a} onSave={patch} onDelete={remove} />)}
+    </div>
+  )
+}
+
+function AnnouncementRow({ a, onSave, onDelete }: { a: AdminAnnouncement; onSave: (id: string, data: Partial<Pick<AdminAnnouncement, 'title' | 'details' | 'published'>>) => Promise<boolean>; onDelete: (id: string) => void }) {
+  const [title, setTitle] = useState(a.title)
+  const [details, setDetails] = useState(a.details)
+  const [saving, setSaving] = useState(false)
+  const dirty = title.trim() !== a.title || details.trim() !== a.details
+
+  async function save() {
+    if (!dirty) return
+    setSaving(true)
+    await onSave(a.id, { title: title.trim(), details: details.trim() })
+    setSaving(false)
+  }
+
+  return (
+    <div className={s.card2}>
+      <div className={s.annAdminHead}>
+        <span className={a.published ? s.annPubBadge : s.annUnpubBadge}>{a.published ? 'Published' : 'Hidden'}</span>
+        <span className={s.muted} style={{ fontSize: 12 }}>{new Date(a.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        <div className={s.annAdminBtns}>
+          <button className={s.iconBtn} title={a.published ? 'Unpublish (hide from landing page)' : 'Publish'} onClick={() => onSave(a.id, { published: !a.published })}>{a.published ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+          <button className={`${s.iconBtn} ${s.iconDanger}`} title="Delete" onClick={() => { if (window.confirm('Delete this announcement? This cannot be undone.')) onDelete(a.id) }}><Trash2 size={15} /></button>
+        </div>
+      </div>
+      <div className={s.field}><input className={s.input} value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} /></div>
+      <div className={s.field}><textarea className={s.textarea} rows={3} value={details} maxLength={4000} onChange={(e) => setDetails(e.target.value)} /></div>
+      {dirty && <button className={s.btn2} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</button>}
+    </div>
+  )
+}
 
 function SettingsSection({ authHeaders }: { authHeaders: Record<string, string> }) {
   const [orig, setOrig] = useState<Record<Kind, OptRow[]> | null>(null)

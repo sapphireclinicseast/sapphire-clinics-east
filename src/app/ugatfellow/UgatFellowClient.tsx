@@ -171,6 +171,8 @@ export default function UgatFellowClient() {
                 <div className={`${s.alert} ${banner.kind === 'ok' ? s.alertOk : s.alertErr}`}>{banner.msg}</div>
               )}
 
+              <AnnouncementBoard />
+
               {view === 'checkEmail' ? (
                 <CheckEmail onBack={() => { setView('auth'); setTab('signin') }} />
               ) : (
@@ -267,10 +269,50 @@ function LeftPanel() {
 function ProgramTimeline() {
   return (
     <div className={s.timeline}>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>Jan – Apr</span><span>Applications accepted</span></div>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>May – Jun</span><span>Deliberations</span></div>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>July</span><span>Scholars announced</span></div>
-      <p className={s.timelineNote}>Extensions are usually announced.</p>
+      <p className={s.timelineTitle}>📅 Typical cycle — the year at a glance</p>
+
+      <p className={s.timelineCycle}>Cycle 1 <span>· Annual applicants</span></p>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>Jan – May</span><span>Applications open</span></div>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>Jun – Jul</span><span>Deliberations by our assessors</span></div>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>Jul – Aug</span><span>New fellows announced!</span></div>
+
+      <p className={s.timelineCycle}>Cycle 2 <span>· Semestral applicants</span></p>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>Jun – Aug</span><span>Applications open</span></div>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>Oct – Nov</span><span>Deliberations by our assessors</span></div>
+      <div className={s.timelineRow}><span className={s.timelineWhen}>Nov – Dec</span><span>New fellows announced!</span></div>
+
+      <p className={s.timelineNote}>May have adjustments depending on the intake of fellows.</p>
+    </div>
+  )
+}
+
+// ── Announcement board (public; managed by admins in the portal) ────
+interface Announcement { id: string; title: string; details: string; createdAt: string }
+
+function AnnouncementBoard() {
+  const [items, setItems] = useState<Announcement[] | null>(null)
+
+  useEffect(() => {
+    fetch(`${API}/announcements`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d: { announcements?: Announcement[] }) => setItems(d.announcements || []))
+      .catch(() => setItems([]))
+  }, [])
+
+  if (!items || items.length === 0) return null
+
+  return (
+    <div className={s.annBoard}>
+      <div className={s.annBoardHead}>📣 Announcements</div>
+      {items.map((a) => (
+        <div key={a.id} className={s.annItem}>
+          <div className={s.annItemTitle}>{a.title}</div>
+          <div className={s.annItemDetails}>{a.details}</div>
+          <div className={s.annItemDate}>
+            {new Date(a.createdAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

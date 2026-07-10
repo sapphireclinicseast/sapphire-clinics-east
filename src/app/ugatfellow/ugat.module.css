@@ -433,12 +433,22 @@
 
 /* ── Application timeline + partner CTA (left panel) ───────────── */
 .timeline { margin: 4px 0 16px; }
+.timelineTitle {
+  margin: 0 0 8px; font-family: var(--display); font-weight: 700;
+  font-size: 12.5px; letter-spacing: 0.02em; color: rgba(255,255,255,0.92);
+}
+.timelineCycle {
+  margin: 12px 0 2px; font-family: var(--display); font-weight: 700;
+  font-size: 12.5px; letter-spacing: 0.02em; color: var(--gold);
+}
+.timelineCycle span { font-weight: 600; color: rgba(237,243,217,0.72); }
 .timelineRow {
   display: flex; align-items: baseline; gap: 12px;
   padding: 5px 0; font-size: 13.5px; color: rgba(255,255,255,0.92);
   border-top: 1px solid rgba(237,243,217,0.18);
 }
-.timelineRow:first-child { border-top: 0; }
+.timelineRow:first-child,
+.timelineCycle + .timelineRow { border-top: 0; }
 .timelineWhen {
   font-family: var(--display); font-weight: 700; font-size: 12px;
   letter-spacing: 0.04em; color: var(--gold);
@@ -468,7 +478,38 @@
   .mobileProgram .timelineRow { color: var(--deep); border-top-color: var(--line); }
   .mobileProgram .timelineWhen { color: var(--green); }
   .mobileProgram .timelineNote { color: var(--deep-70); }
+  .mobileProgram .timelineTitle { color: var(--deep); }
+  .mobileProgram .timelineCycle { color: var(--green); }
+  .mobileProgram .timelineCycle span { color: var(--deep-70); }
 }
+
+/* ── Announcement board (public landing card) ─────────────────────── */
+.annBoard {
+  margin: 0 0 18px; padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(36,73,82,0.05);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold);
+}
+.annBoardHead {
+  font-family: var(--display); font-weight: 700; font-size: 12.5px;
+  letter-spacing: 0.02em; color: var(--deep); margin: 0 0 8px;
+}
+.annItem { padding: 8px 0; border-top: 1px solid var(--line); }
+.annItem:first-of-type { border-top: 0; padding-top: 0; }
+.annItemTitle { font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--deep); }
+.annItemDetails { font-size: 13px; line-height: 1.55; color: var(--ink); margin-top: 3px; white-space: pre-wrap; }
+.annItemDate { font-size: 11.5px; color: var(--deep-70); margin-top: 5px; }
+
+/* Announcements admin (portal Announcements section) */
+.annAdminHead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.annAdminBtns { margin-left: auto; display: flex; gap: 6px; }
+.annPubBadge, .annUnpubBadge {
+  font-family: var(--display); font-weight: 700; font-size: 11px;
+  letter-spacing: 0.03em; padding: 3px 8px; border-radius: 999px;
+}
+.annPubBadge { background: rgba(74,128,115,0.14); color: var(--green); }
+.annUnpubBadge { background: rgba(36,73,82,0.08); color: var(--deep-70); }
 
 /* ══════════════════════════════════════════════════════════════════
    PORTAL SHELL — sidebar + sections (authenticated hub)
