@@ -23,6 +23,7 @@ import {
   TrendingUp,
   Landmark,
   PieChart,
+  GraduationCap,
   Repeat,
   X,
 } from 'lucide-react'
@@ -93,6 +94,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/fund-transfer', icon: Repeat, label: 'Fund Transfer', roles: TAX_ACCESS },
       { href: '/equity', icon: PieChart, label: 'Equity', roles: EQUITY_ACCESS },
       { href: '/loans-and-advances', icon: Landmark, label: 'Loans & Advances', roles: LOANS_ACCESS },
+      { href: '/scholars', icon: GraduationCap, label: 'Scholars', roles: EQUITY_ACCESS },
     ],
   },
   {

@@ -64,6 +64,27 @@ export async function postDividend(db: Db, opts: {
   return je.id
 }
 
+// Scholarship monthly release: DR the chosen scholarship-expense account /
+// CR bank (money out). Folds into the P&L as an operating expense.
+export async function postScholarship(db: Db, opts: {
+  refId: string; date: Date; amount: number; bankAccountId?: string | null; expenseAccountId?: string | null; label: string; createdById: string
+}): Promise<string | null> {
+  if (!opts.bankAccountId || !opts.expenseAccountId || !(opts.amount > 0)) return null
+  const je = await postJournalEntry(db, {
+    entryDate: opts.date,
+    description: opts.label,
+    referenceType: 'SCHOLAR_RELEASE',
+    referenceId: opts.refId,
+    branch: 'ALL',
+    createdById: opts.createdById,
+    lines: [
+      { accountId: opts.expenseAccountId, debit: opts.amount, description: opts.label },
+      { accountId: opts.bankAccountId, credit: opts.amount, description: opts.label },
+    ],
+  })
+  return je.id
+}
+
 // Reverse any equity JE by referenceType+referenceId (for edits/deletes).
 export async function reverseEquityJournal(db: Db, referenceType: string, referenceId: string) {
   await db.journalEntry.deleteMany({ where: { referenceType, referenceId } })

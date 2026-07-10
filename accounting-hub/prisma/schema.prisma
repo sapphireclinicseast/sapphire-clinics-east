@@ -2194,6 +2194,57 @@ model PreferredDividendItem {
   @@index([releaseId])
 }
 
+// ── Scholars: award terms for approved fellowship scholars ────────
+// The approved roster (name, school, program) is pulled LIVE from the
+// scholarship portal (scholarship.sapphireclinicseast.org). Award financials
+// live here, keyed to the portal scholar id. One row per approved scholar.
+model ScholarAward {
+  id               String   @id @default(cuid())
+  portalScholarId  String   @unique // UgatScholar.id from the scholarship portal
+  scholarName      String            // snapshot for history if the portal row goes away
+  school           String?           // snapshot from the portal
+  email            String?           // snapshot from the portal (for release notices)
+  academicYear     String?           // e.g. "2025-2026" — entered here (portal has no A.Y.)
+  scholarshipType  String?           // free-text, self-building dropdown on the client
+  amountAwarded    Decimal  @default(0) // total award over the whole grant
+  monthlyAmount    Decimal  @default(0) // amount released each month
+  startMonth       String?           // "YYYY-MM" — first release month
+  releaseDay       Int?              // day of month the check is deposited (1..31)
+  numberOfMonths   Int?              // duration in months
+  signedRsaUrls    Json?             // uploaded signed RSA (Return Service Agreement) files
+  bankAccountId    String?           // default bank the release is paid from (CR)
+  expenseAccountId String?           // default scholarship-expense account (DR)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  releases         ScholarRelease[]
+  @@index([academicYear])
+  @@index([school])
+}
+
+// One recorded monthly disbursement for a scholar. Posts DR scholarship
+// expense / CR bank (refType SCHOLAR_RELEASE) so it folds into the P&L.
+model ScholarRelease {
+  id                 String   @id @default(cuid())
+  awardId            String
+  award              ScholarAward @relation(fields: [awardId], references: [id], onDelete: Cascade)
+  monthKey           String   // "YYYY-MM" the release is FOR (drives the matrix)
+  date               DateTime // actual deposit date
+  amount             Decimal
+  bankAccountId      String?
+  expenseAccountId   String?
+  journalEntryId     String?
+  proofOfDepositUrls Json?
+  emailedAt          DateTime?
+  createdById        String?
+  createdAt          DateTime @default(now())
+
+  @@unique([awardId, monthKey])
+  @@index([awardId])
+  @@index([monthKey])
+}
+
 // ── Loans & Advances: Advances ────────────────────────────────
 model Advance {
   id                String   @id @default(cuid())

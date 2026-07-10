@@ -82,6 +82,25 @@ export function advanceEmailHtml(o: { name: string; amount: number; date: Date }
   })
 }
 
+// Scholarship monthly-stipend release notice.
+export function scholarshipEmailHtml(o: { name: string; amount: number; date: Date; periodLabel?: string; scholarshipType?: string | null }): string {
+  const dateStr = o.date.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+  return emailShell({
+    heading: 'Your scholarship stipend has been released',
+    subheading: `${o.periodLabel ? o.periodLabel + ' · ' : ''}Deposited ${dateStr}`,
+    preheader: `Your scholarship stipend of ${peso(o.amount)} has been deposited.`,
+    bodyHtml: `
+      <p>Dear ${o.name},</p>
+      <p>We are pleased to let you know that your scholarship stipend${o.scholarshipType ? ` (<strong>${o.scholarshipType}</strong>)` : ''} of <strong>${peso(o.amount)}</strong> was deposited to your account on <strong>${dateStr}</strong>.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        ${o.periodLabel ? `<tr><td style="padding:12px 16px;background:#f8fafc;font-size:13px;color:#475569;">Covered month</td><td style="padding:12px 16px;background:#f8fafc;font-size:13px;color:#0f172a;text-align:right;font-weight:700;">${o.periodLabel}</td></tr>` : ''}
+        <tr><td style="padding:14px 16px;font-size:14px;color:#0f766e;font-weight:700;border-top:2px solid #0f766e;">Amount released</td><td style="padding:14px 16px;font-size:16px;color:#0f766e;text-align:right;font-weight:800;border-top:2px solid #0f766e;">${peso(o.amount)}</td></tr>
+      </table>
+      <p>Keep going — we're proud to walk this journey with you, and we can't wait to see all that you'll do. Study well, take care of yourself, and reach out anytime you need us.</p>
+      <p style="margin-bottom:0;">Your proof of deposit is attached for your records. With warm encouragement,<br/><strong>Sapphire Clinics East Inc.</strong></p>`,
+  })
+}
+
 async function send(from: string, replyTo: string | undefined, to: string, subject: string, html: string, attachments: MailAttachment[]) {
   return fetch('https://api.resend.com/emails', {
     method: 'POST',
