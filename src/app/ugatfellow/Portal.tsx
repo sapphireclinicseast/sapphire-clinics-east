@@ -834,6 +834,7 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
   const [cycles, setCycles] = useState<Cycle[] | null>(null)
   const [openAY, setOpenAY] = useState<string | undefined>(undefined)
   const [ayFilter, setAyFilter] = useState('ALL')
+  const [trackFilter, setTrackFilter] = useState<'ALL' | 'ARAL' | 'TINDIG'>('ALL')
   const [showCycles, setShowCycles] = useState(false)
 
   const loadCycles = useCallback(async () => {
@@ -852,9 +853,11 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
   const ays = Array.from(new Set(submittedAll.map((r) => r.application?.academicYear).filter(Boolean))) as string[]
   const hasUnassigned = submittedAll.some((r) => !r.application?.academicYear)
   const inAY = (r: AdminScholar) => ayFilter === 'ALL' || (ayFilter === 'UNASSIGNED' ? !r.application?.academicYear : r.application?.academicYear === ayFilter)
-  const submitted = submittedAll.filter(inAY)
+  const inTrack = (r: AdminScholar) => trackFilter === 'ALL' || (r.track || 'ARAL') === trackFilter
+  const inScope = (r: AdminScholar) => inAY(r) && inTrack(r)
+  const submitted = submittedAll.filter(inScope)
   const forInterview = submitted.filter((r) => r.application?.initialDecision === 'FOR_INTERVIEW')
-  const accepted = rows.filter((r) => r.status === 'ACCEPTED').filter(inAY)
+  const accepted = rows.filter((r) => r.status === 'ACCEPTED').filter(inScope)
 
   // Deadline reminders (1 day before, or after it lapses with Pending left).
   const openCycle = cycles?.find((c) => c.academicYear === openAY)
@@ -885,6 +888,13 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
         {!readOnly && <button className={s.btnGhost3} onClick={() => setShowCycles((v) => !v)}><Calendar size={15} /> Application timelines</button>}
       </div>
       {showCycles && !readOnly && <CyclesPanel authHeaders={authHeaders} cycles={cycles} reload={loadCycles} />}
+      <div className={s.subTabs}>
+        {(['ALL', 'ARAL', 'TINDIG'] as const).map((t) => (
+          <button key={t} className={`${s.chip} ${trackFilter === t ? s.chipActive : ''}`} onClick={() => setTrackFilter(t)}>
+            {t === 'ALL' ? 'All tracks' : TRACK_LABEL[t]} ({submittedAll.filter((r) => t === 'ALL' || (r.track || 'ARAL') === t).length})
+          </button>
+        ))}
+      </div>
       <div className={s.subTabs}>
         <button className={`${s.subTab} ${tab === 'initial' ? s.subTabActive : ''}`} onClick={() => setTab('initial')}>Initial</button>
         <button className={`${s.subTab} ${tab === 'interview' ? s.subTabActive : ''}`} onClick={() => setTab('interview')}>Interview</button>
@@ -1195,24 +1205,33 @@ function ApplicantDetail({ r, token, readOnly, onDecide }: { r: AdminScholar; to
 function Dashboard({ authHeaders }: { authHeaders: Record<string, string> }) {
   const { rows } = useScholars(authHeaders)
   const [filter, setFilter] = useState<'ALL' | 'ACCEPTED' | 'REJECTED'>('ALL')
+  const [trackTab, setTrackTab] = useState<'ALL' | 'ARAL' | 'TINDIG'>('ALL')
   if (!rows) return <div className={s.sec}><p className={s.muted}>Loading…</p></div>
 
-  const pop = filter === 'ALL' ? rows : rows.filter((r) => r.status === filter)
+  const base = trackTab === 'ALL' ? rows : rows.filter((r) => (r.track || 'ARAL') === trackTab)
+  const pop = filter === 'ALL' ? base : base.filter((r) => r.status === filter)
   const ages = pop.map((r) => r.age).filter((a): a is number => a != null)
   const avgAge = ages.length ? Math.round((ages.reduce((x, y) => x + y, 0) / ages.length) * 10) / 10 : null
-  const accepted = rows.filter((r) => r.status === 'ACCEPTED').length
-  const rejected = rows.filter((r) => r.status === 'REJECTED').length
-  const applicants = rows.filter((r) => r.application?.submittedAt).length
+  const accepted = base.filter((r) => r.status === 'ACCEPTED').length
+  const rejected = base.filter((r) => r.status === 'REJECTED').length
+  const applicants = base.filter((r) => r.application?.submittedAt).length
   const cities: Record<string, number> = {}
   for (const r of pop) { const c = (r.permCity || '').trim() || 'Unspecified'; cities[c] = (cities[c] || 0) + 1 }
   const cityList = Object.entries(cities).sort((a, b) => b[1] - a[1])
 
   return (
     <div className={s.sec}>
+      <div className={s.subTabs}>
+        {(['ALL', 'ARAL', 'TINDIG'] as const).map((t) => (
+          <button key={t} className={`${s.chip} ${trackTab === t ? s.chipActive : ''}`} onClick={() => setTrackTab(t)}>
+            {t === 'ALL' ? 'All tracks' : TRACK_LABEL[t]} ({(t === 'ALL' ? rows : rows.filter((r) => (r.track || 'ARAL') === t)).length})
+          </button>
+        ))}
+      </div>
       <div className={s.chips}>{(['ALL', 'ACCEPTED', 'REJECTED'] as const).map((k) => <button key={k} className={`${s.chip} ${filter === k ? s.chipActive : ''}`} onClick={() => setFilter(k)}>{k === 'ALL' ? 'All' : k === 'ACCEPTED' ? 'Accepted' : 'Rejected'}</button>)}</div>
       <div className={s.statRow}>
         <Stat label="Applicants" value={applicants} />
-        <Stat label="Registered" value={rows.length} />
+        <Stat label="Registered" value={base.length} />
         <Stat label="Average age" value={avgAge ?? '—'} />
         <Stat label="Accepted" value={accepted} accent />
         <Stat label="Rejected" value={rejected} />
