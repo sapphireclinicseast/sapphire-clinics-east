@@ -103,8 +103,7 @@ export async function sendUgatCycleOpenEmail(params: {
     <div style="max-width:560px;margin:0 auto;padding:32px 20px">
       <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
         <div style="background:${DEEP};padding:28px 28px 24px;text-align:center">
-          <div style="font-family:'Montserrat',Arial,sans-serif;color:${CREAM};font-size:13px;letter-spacing:3px;text-transform:uppercase">Aura Foundation</div>
-          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:26px;font-weight:800;margin-top:6px">UGAT Fellowship Program</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:26px;font-weight:800">UGAT Fellowship Program</div>
           <div style="color:${GOLD};font-size:12px;letter-spacing:1px;margin-top:6px">Ugnayan para sa Galing, Aral, at Tindig</div>
         </div>
         <div style="padding:30px 30px 26px;color:${DEEP}">
@@ -160,8 +159,7 @@ export async function sendUgatVerificationEmail(params: {
     <div style="max-width:560px;margin:0 auto;padding:32px 20px">
       <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
         <div style="background:${DEEP};padding:28px 28px 24px;text-align:center">
-          <div style="font-family:'Montserrat',Arial,sans-serif;color:${CREAM};font-size:13px;letter-spacing:3px;text-transform:uppercase">Aura Foundation</div>
-          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:26px;font-weight:800;margin-top:6px">UGAT Fellowship Program</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:26px;font-weight:800">UGAT Fellowship Program</div>
           <div style="color:${GOLD};font-size:12px;letter-spacing:1px;margin-top:6px">Ugnayan para sa Galing, Aral, at Tindig</div>
         </div>
         <div style="padding:30px 30px 26px;color:${DEEP}">
@@ -276,7 +274,7 @@ export async function sendUgatRejectionEmail(params: { to: string | string[]; fi
           <p style="margin:0 0 14px;line-height:1.65;font-size:15px">Thank you for applying to the UGAT Fellowship Program and for the time and heart you put into your application. It was a genuine privilege to learn about your journey.</p>
           <p style="margin:0 0 14px;line-height:1.65;font-size:15px">After careful consideration, we are unable to move your application forward to the next step at this time. Please know this reflects the limited number of slots we have — not your worth or your promise as a future clinician.</p>
           <p style="margin:0 0 14px;line-height:1.65;font-size:15px">We sincerely hope you&rsquo;ll consider applying again in a future cycle, and we wish you every success in your internship and licensure. Extensions and future openings are usually announced on your account and by email.</p>
-          <p style="margin:0;line-height:1.65;font-size:15px">With warmth and respect,<br><strong>The UGAT Fellowship Team</strong><br>Aura Foundation · Sapphire Clinics East, Inc.</p>
+          <p style="margin:0;line-height:1.65;font-size:15px">With warmth and respect,<br><strong>The UGAT Fellowship Team</strong><br>Sapphire Clinics East, Inc.</p>
         </div>
         <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">You&rsquo;re welcome to reach us anytime at scholarship@sapphireclinicseast.org.</div>
       </div>

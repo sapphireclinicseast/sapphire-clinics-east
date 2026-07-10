@@ -93,7 +93,7 @@ export default function Portal({
         <div className={s.sideBrand}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/ugat/ugat-mark.svg" alt="" className={s.sideMark} />
-          <div className={s.sideBrandText}><b>UGAT Fellowship</b><span>Aura Foundation</span></div>
+          <div className={s.sideBrandText}><b>UGAT Fellowship</b><span>Fellowship Program</span></div>
           <button className={s.sideClose} onClick={() => setNavOpen(false)} aria-label="Close menu"><X size={20} /></button>
         </div>
         <nav className={s.sideNav}>
@@ -149,7 +149,7 @@ function AboutUs() {
           <p className={s.aboutKicker}>Ugnayan para sa Galing, Aral, at Tindig</p>
           <h2 className={s.aboutH1}>Grow where your roots are honored.</h2>
           <p className={s.aboutLead}>
-            The <b>UGAT Fellowship Program</b> is Aura Foundation&rsquo;s fellowship for aspiring
+            The <b>UGAT Fellowship Program</b> is a fellowship for aspiring
             Allied Health Professionals — Speech-Language Pathology and Occupational Therapy — offered
             in two tracks: the <b>Aral Track</b> for final-year interns and the <b>Tindig Track</b> for
             graduates preparing for the licensure exam. It walks with you from training and review all the
