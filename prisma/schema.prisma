@@ -1736,3 +1736,18 @@ model UgatVerificationToken {
 
   @@index([scholarId])
 }
+
+/// A landing-page announcement (title + details) posted by an admin. Published
+/// rows show on the public /ugatfellow landing page; admins manage them in the
+/// portal's Announcements section.
+model UgatAnnouncement {
+  id        String   @id @default(cuid())
+  title     String
+  details   String
+  published Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, createdAt])
+}
