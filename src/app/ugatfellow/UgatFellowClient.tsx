@@ -616,11 +616,11 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: 'If I render service at the accredited partner clinics, is my professional compensation deducted?',
-    a: <>No. Your return service is fulfilled through the <b>hours you actually work — not through any salary deduction</b>, and you are fully and separately compensated for that work. In practice, you simply report for your regular clinical schedule (about five days a week) at an accredited partner clinic until the 1,500 hours are completed.</>,
+    a: <>No. Your return service is fulfilled through the <b>hours you actually work — not through any salary deduction</b>, and you are fully and separately compensated for that work. In practice, you simply report for your regular clinical schedule (about five days a week) at an accredited partner clinic until the 1,500 hours are completed. <br /><br />As a rough estimate, at about <b>six patient sessions a day, five days a week</b> — roughly 30 hours a week, or about 130 hours a month — you would complete the 1,500 hours in approximately <b>11 to 12 months</b> (a little under a year). Your actual pace depends on your caseload and schedule.</>,
   },
   {
     q: 'When does the stipend start to be released?',
-    a: <>The stipend is released beginning on the <b>first day of the first month of your internship period</b>, and every month thereafter for the duration of the award.</>,
+    a: <>Your stipend is remitted <b>on or before the 10th day of each month</b> of your internship period — starting in the first month of your internship and every month thereafter for the duration of the award.</>,
   },
   {
     q: 'How will the stipend be released to me?',
