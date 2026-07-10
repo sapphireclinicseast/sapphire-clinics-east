@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { reverseEquityJournal } from '@/lib/accounting/equity'
 import { scheduleMonths, endMonth, mkLabel } from '@/lib/scholars'
 
 export const dynamic = 'force-dynamic'
@@ -142,4 +143,22 @@ export async function POST(req: Request) {
     console.error('Scholar award upsert error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
   }
+}
+
+// Remove an award's terms + all its recorded releases (JEs reversed). Accepts
+// ?id= (awardId) or ?portalScholarId=. The scholar stays in the portal roster.
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  const sp = new URL(req.url).searchParams
+  const id = sp.get('id') || ''
+  const portalScholarId = sp.get('portalScholarId') || ''
+  if (!id && !portalScholarId) return NextResponse.json({ error: 'id or portalScholarId required' }, { status: 400 })
+  const award = await prisma.scholarAward.findFirst({ where: id ? { id } : { portalScholarId }, include: { releases: { select: { id: true } } } })
+  if (!award) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  await prisma.$transaction(async (tx) => {
+    for (const r of award.releases) await reverseEquityJournal(tx, 'SCHOLAR_RELEASE', r.id)
+    await tx.scholarAward.delete({ where: { id: award.id } }) // releases cascade
+  })
+  return NextResponse.json({ success: true })
 }

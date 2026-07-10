@@ -203,7 +203,10 @@ function EditScholarModal({ scholar, banks, expenseAccts, types, onClose, onSave
           <div><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
         </div>
         <div className="mb-4"><label className={lbl} style={mg}>Signed RSA <span className="font-normal text-gray-400">(1+, QR/PDF)</span></label><div className="flex flex-wrap items-center gap-2">{rsaUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="scholars" prefix={`RSA-${scholar.portalScholarId.slice(-6)}`} existingCount={rsaUrls.length} label="Add RSA" onUploaded={u => setRsaUrls(p => [...p, u])} /></div></div>
-        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2 mb-4" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Save scholar terms</button>
+        <div className="flex items-center gap-2 mb-4">
+          <button onClick={save} disabled={busy} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Save scholar terms</button>
+          {scholar.awardId && <button onClick={async () => { if (!confirm(`Remove ${scholar.name}'s award terms and all ${releases.length} recorded release(s)? Journal entries are reversed. The scholar stays in the portal.`)) return; await fetch(`/api/scholars?id=${scholar.awardId}`, { method: 'DELETE' }); onSaved() }} className="px-3 py-2.5 rounded-xl text-sm font-semibold border flex items-center gap-1.5" style={{ borderColor: '#fecaca', color: '#b91c1c' }}><Trash2 size={14} /> Remove terms</button>}
+        </div>
 
         {scholar.awardId && releases.length > 0 && (
           <div>
