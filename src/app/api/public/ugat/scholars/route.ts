@@ -32,7 +32,7 @@ export async function GET(req: Request) {
   const rows = await prisma.ugatScholar.findMany({
     orderBy: { createdAt: 'desc' },
     select: {
-      id: true, username: true, professionalEmail: true, personalEmail: true,
+      id: true, username: true, track: true, professionalEmail: true, personalEmail: true,
       firstName: true, middleName: true, lastName: true, studentNumber: true, birthdate: true,
       school: true, program: true, preferredField: true, expectedGraduationYear: true,
       permCity: true, status: true, emailVerifiedAt: true, disabledAt: true, createdAt: true,

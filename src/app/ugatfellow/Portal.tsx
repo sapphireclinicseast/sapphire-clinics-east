@@ -29,7 +29,7 @@ export interface AppData {
   interviewSlotId?: string | null; interviewDecision?: string
 }
 export interface PortalScholar {
-  id: string; username: string; professionalEmail: string; personalEmail: string
+  id: string; username: string; track?: string; professionalEmail: string; personalEmail: string
   firstName: string; middleName?: string | null; lastName: string; studentNumber: string
   birthdate?: string; school: string; program: string; preferredField: string
   expectedGraduationYear: number; status: string; photoId?: string | null
@@ -210,10 +210,12 @@ function ScholarProfile({ scholar, token }: { scholar: PortalScholar; token: str
   const fullName = [scholar.firstName, scholar.middleName, scholar.lastName].filter(Boolean).join(' ')
   const perm = [scholar.permAddress1, scholar.permAddress2, scholar.permCity, scholar.permRegion, scholar.permZip].filter(Boolean).join(', ')
   const pres = [scholar.presAddress1, scholar.presAddress2, scholar.presCity, scholar.presRegion, scholar.presZip].filter(Boolean).join(', ')
+  const isTindig = scholar.track === 'TINDIG'
   const rows: [string, string | number][] = [
-    ['Full name', fullName], ['Username', '@' + scholar.username], ['Student number', scholar.studentNumber],
+    ['Full name', fullName], ['Username', '@' + scholar.username], ['Track', TRACK_LABEL[scholar.track || 'ARAL']],
+    ['Student number', scholar.studentNumber],
     ['School', scholar.school], ['Program', scholar.program], ['Preferred field of practice', scholar.preferredField],
-    ['Expected graduation', scholar.expectedGraduationYear], ['Professional email', scholar.professionalEmail],
+    [isTindig ? 'Year of graduation' : 'Expected graduation', scholar.expectedGraduationYear], ['Professional email', scholar.professionalEmail],
     ['Personal email', scholar.personalEmail], ['Permanent address', perm], ['Present address', pres],
   ]
   const photoSrc = photoId ? `${API}/uploads/${photoId}?t=${token}&v=${ver}` : null
@@ -256,7 +258,7 @@ interface AcceptanceData {
   truthAffirmed?: boolean; softCopySignedAt?: string | null; hardCopySignedAt?: string | null
 }
 interface AdminScholar {
-  id: string; username: string; professionalEmail: string; personalEmail: string
+  id: string; username: string; track?: string; professionalEmail: string; personalEmail: string
   firstName: string; middleName?: string | null; lastName: string; studentNumber: string
   school: string; program: string; preferredField: string; expectedGraduationYear: number
   status: string; age: number | null; permCity: string; photoId: string | null
@@ -278,19 +280,27 @@ function useScholars(authHeaders: Record<string, string>) {
 
 function AdminStudentList({ token, authHeaders }: { token: string; authHeaders: Record<string, string> }) {
   const { rows } = useScholars(authHeaders)
+  const [trackTab, setTrackTab] = useState<'ALL' | 'ARAL' | 'TINDIG'>('ALL')
   if (!rows) return <div className={s.sec}><p className={s.muted}>Loading…</p></div>
+  const shown = trackTab === 'ALL' ? rows : rows.filter((r) => (r.track || 'ARAL') === trackTab)
+  const count = (t: 'ARAL' | 'TINDIG') => rows.filter((r) => (r.track || 'ARAL') === t).length
   return (
     <div className={s.sec}>
-      <p className={s.muted}>All students in the system.</p>
+      <div className={s.subTabs}>
+        <button className={`${s.subTab} ${trackTab === 'ALL' ? s.subTabActive : ''}`} onClick={() => setTrackTab('ALL')}>All ({rows.length})</button>
+        <button className={`${s.subTab} ${trackTab === 'ARAL' ? s.subTabActive : ''}`} onClick={() => setTrackTab('ARAL')}>Aral Track ({count('ARAL')})</button>
+        <button className={`${s.subTab} ${trackTab === 'TINDIG' ? s.subTabActive : ''}`} onClick={() => setTrackTab('TINDIG')}>Tindig Track ({count('TINDIG')})</button>
+      </div>
       <div className={s.tableWrap}>
         <table className={s.table}>
-          <thead><tr><th>Photo</th><th>Name (Last, First Middle)</th><th>Age</th><th>Program</th><th>School</th><th>Permanent City</th><th>Status</th></tr></thead>
+          <thead><tr><th>Photo</th><th>Name (Last, First Middle)</th><th>Track</th><th>Age</th><th>Program</th><th>School</th><th>Permanent City</th><th>Status</th></tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={7} className={s.muted} style={{ padding: 20 }}>No students yet.</td></tr>}
-            {rows.map((r) => (
+            {shown.length === 0 && <tr><td colSpan={8} className={s.muted} style={{ padding: 20 }}>No students{trackTab !== 'ALL' ? ' in this track' : ''} yet.</td></tr>}
+            {shown.map((r) => (
               <tr key={r.id} className={r.disabledAt ? s.rowDisabled : ''}>
                 <td><div className={s.avatarSm}>{r.photoId ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={`${API}/uploads/${r.photoId}?t=${token}`} alt="" /> : <User size={16} />}</div></td>
                 <td className={s.cellName}>{[r.lastName, [r.firstName, r.middleName].filter(Boolean).join(' ')].filter(Boolean).join(', ')}<div className={s.cellSub}>@{r.username}</div></td>
+                <td><span className={s.tagType}>{TRACK_LABEL[r.track || 'ARAL']}</span></td>
                 <td>{r.age ?? '—'}</td><td>{r.program}</td><td>{r.school}</td><td>{r.permCity || '—'}</td>
                 <td><span className={`${s.statusPill} ${STATUS_CLASS[r.status] || ''}`}>{STATUS_LABEL[r.status] || r.status}</span></td>
               </tr>
@@ -417,7 +427,8 @@ function FileField({ label, kind, accept, uploads, token, onFile }: { label: str
 // ══ Application (scholar) ═════════════════════════════════════════
 function ScholarApplication({ session, token, authHeaders }: { session: PortalSession; token: string; authHeaders: Record<string, string> }) {
   const app0 = session.application || null
-  const [track, setTrack] = useState<Track | null>(app0?.track === 'TINDIG' || app0?.track === 'ARAL' ? (app0.track as Track) : app0 ? 'ARAL' : null)
+  // Track is fixed by the scholar's registration.
+  const track: Track = session.scholar?.track === 'TINDIG' ? 'TINDIG' : 'ARAL'
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     const o: Record<string, string> = {}
     for (const q of ARAL_QUESTIONS) o[q.field] = (app0?.[q.field] as string) || ''
@@ -445,11 +456,6 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
     setUploads((u) => ({ ...u, [kind]: d.id })); setMsg({ ok: true, t: 'File uploaded.' })
   }
 
-  async function chooseTrack(t: Track) {
-    setTrack(t)
-    fetch(`${API}/application`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ track: t, answers }) }).catch(() => {})
-  }
-
   async function saveDraft() {
     setBusy('draft'); setMsg(null)
     const r = await fetch(`${API}/application`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ answers, truthAffirmed: truth, track }) })
@@ -468,7 +474,7 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
     if (!r.ok) { setMsg({ ok: false, t: d.error || 'Could not submit.' }); return }
     setSubmitted(true)
   }
-  const QS = questionsFor(track || 'ARAL')
+  const QS = questionsFor(track)
 
   const tabs: { k: 'initial' | 'interview' | 'acceptance'; label: string; show: boolean }[] = [
     { k: 'initial', label: 'Initial', show: true },
@@ -508,12 +514,10 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
             Your account is ready, so you can apply as soon as it opens.
           </p>
         </div>
-      ) : track === null ? (
-        <TrackChooser onChoose={chooseTrack} />
       ) : (
         <>
           {win.academicYear && <div className={s.ayBadge}>You are applying for <b>Academic Year {win.academicYear}</b>.{win.closesAt ? ` Applications close ${new Date(win.closesAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}.` : ''}</div>}
-          <div className={s.trackHeader}>You are applying to the <b>{TRACK_LABEL[track]}</b>. <button className={s.linkBtn2} onClick={() => setTrack(null)}>Change track</button></div>
+          <div className={s.trackHeader}>You are applying to the <b>{TRACK_LABEL[track]}</b> — the track you registered with.</div>
           {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
           <div className={s.appToolbar}>
             <span className={s.muted} style={{ margin: 0 }}>Complete Steps 1–4, then submit. You can save a draft anytime.</span>

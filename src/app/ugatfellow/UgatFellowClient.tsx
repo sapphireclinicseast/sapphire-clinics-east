@@ -378,6 +378,9 @@ function SignUp({
   const [err, setErr] = useState<string | null>(null)
   const topRef = useRef<HTMLHeadingElement | null>(null)
 
+  // Which track the applicant is registering for.
+  const [track, setTrack] = useState<'ARAL' | 'TINDIG'>('ARAL')
+
   // Preferred field of practice is multi-select + an "Others" free-text.
   const [prefFields, setPrefFields] = useState<string[]>([])
   const [otherOn, setOtherOn] = useState(false)
@@ -400,6 +403,7 @@ function SignUp({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...f,
+          track,
           preferredField: chosenFields.join(', '),
           expectedGraduationYear: Number(f.expectedGraduationYear),
           presSameAsPerm: sameAddr,
@@ -463,6 +467,14 @@ function SignUp({
 
       {err && <div className={`${s.alert} ${s.alertErr}`}>{err}</div>}
 
+      <div className={s.field}>
+        <label className={s.label}>Which track are you registering for?</label>
+        <div className={s.checkGrid}>
+          <button type="button" className={`${s.checkPill} ${track === 'ARAL' ? s.checkPillOn : ''}`} onClick={() => setTrack('ARAL')}><span><b>Aral Track</b> — final-year intern</span></button>
+          <button type="button" className={`${s.checkPill} ${track === 'TINDIG' ? s.checkPillOn : ''}`} onClick={() => setTrack('TINDIG')}><span><b>Tindig Track</b> — graduate (licensure review)</span></button>
+        </div>
+      </div>
+
       <div className={s.grid2}>
         <div className={s.field}>
           <label className={s.label}>First Name</label>
@@ -483,8 +495,8 @@ function SignUp({
           <input className={s.input} required value={f.studentNumber} onChange={(e) => set('studentNumber', e.target.value)} />
         </div>
         <div className={s.field}>
-          <label className={s.label}>Expected Year of Graduation</label>
-          <input className={s.input} required inputMode="numeric" placeholder="e.g. 2027" value={f.expectedGraduationYear} onChange={(e) => set('expectedGraduationYear', e.target.value)} />
+          <label className={s.label}>{track === 'TINDIG' ? 'Year of Graduation' : 'Expected Year of Graduation'}</label>
+          <input className={s.input} required inputMode="numeric" placeholder={track === 'TINDIG' ? 'e.g. 2026' : 'e.g. 2027'} value={f.expectedGraduationYear} onChange={(e) => set('expectedGraduationYear', e.target.value)} />
         </div>
       </div>
       <div className={s.field}>

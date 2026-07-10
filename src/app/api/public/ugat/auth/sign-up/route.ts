@@ -15,6 +15,7 @@ const PUBLIC_URL = process.env.UGAT_PUBLIC_URL || 'https://scholarship.sapphirec
 
 interface Body {
   username?: string
+  track?: string
   professionalEmail?: string
   personalEmail?: string
   password?: string
@@ -128,6 +129,7 @@ export async function POST(req: Request) {
     scholar = await prisma.ugatScholar.create({
       data: {
         username,
+        track: body.track === 'TINDIG' ? 'TINDIG' : 'ARAL',
         professionalEmail,
         personalEmail,
         passwordHash,
