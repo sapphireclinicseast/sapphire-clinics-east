@@ -16,7 +16,7 @@ const PASSWORD = 'sample123'
 
 const SAMPLES = [
   {
-    username: 'sample.maria', firstName: 'Maria Clara', middleName: 'Bautista', lastName: 'Santos',
+    username: 'sample.maria', track: 'ARAL', firstName: 'Maria Clara', middleName: 'Bautista', lastName: 'Santos',
     studentNumber: '2021-45123', expectedGraduationYear: 2027, birthdate: '2003-04-18',
     school: 'University of the Philippines Manila (College of Allied Medical Professions)',
     program: 'Speech-Language Pathology', preferredField: 'Pediatric Speech Therapy',
@@ -33,7 +33,7 @@ const SAMPLES = [
     },
   },
   {
-    username: 'sample.juan', firstName: 'Juan Miguel', middleName: 'Reyes', lastName: 'Dela Cruz',
+    username: 'sample.juan', track: 'ARAL', firstName: 'Juan Miguel', middleName: 'Reyes', lastName: 'Dela Cruz',
     studentNumber: 'UST-2021-0392', expectedGraduationYear: 2027, birthdate: '2002-11-02',
     school: 'University of Santo Tomas (College of Rehabilitation Sciences)',
     program: 'Occupational Therapy', preferredField: 'Pediatric Occupational Therapy',
@@ -50,7 +50,7 @@ const SAMPLES = [
     },
   },
   {
-    username: 'sample.andrea', firstName: 'Andrea Nicole', middleName: 'Lim', lastName: 'Reyes',
+    username: 'sample.andrea', track: 'TINDIG', firstName: 'Andrea Nicole', middleName: 'Lim', lastName: 'Reyes',
     studentNumber: 'DLS-2020-1187', expectedGraduationYear: 2026, birthdate: '2002-07-25',
     school: 'De La Salle Medical and Health Sciences Institute',
     program: 'Speech-Language Pathology', preferredField: 'Adult Neuro Rehabilitation',
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
   for (const p of SAMPLES) {
     const scholar = await prisma.ugatScholar.create({
       data: {
-        username: p.username, professionalEmail: p.professionalEmail, personalEmail: p.personalEmail,
+        username: p.username, track: p.track, professionalEmail: p.professionalEmail, personalEmail: p.personalEmail,
         passwordHash, passwordPlain: PASSWORD,
         firstName: p.firstName, middleName: p.middleName, lastName: p.lastName,
         studentNumber: p.studentNumber, expectedGraduationYear: p.expectedGraduationYear,
@@ -124,7 +124,7 @@ export async function POST(req: Request) {
 
     await prisma.ugatApplication.create({
       data: {
-        scholarId: scholar.id,
+        scholarId: scholar.id, track: p.track,
         ...p.answers,
         truthAffirmed: true, signedAt: new Date(), submittedAt: new Date(), initialDecision: 'PENDING',
       },
@@ -138,9 +138,16 @@ export async function POST(req: Request) {
       `Dear UGAT Fellowship Team,\n\nMy name is ${fullName}, a final-year ${p.program} intern at ${p.school}. It is with great hope and sincerity that I submit my application to the UGAT Fellowship Program.\n\nThroughout my training I have tried to live out galing, aral, and tindig — striving to do my work well, to keep learning humbly, and to act with integrity even when no one is watching. This fellowship would not only ease the financial weight of my internship; it would place me in a community that shares those same values.\n\nI am ready to give back through meaningful service, and I would be honored to grow into a licensed clinician at Aura Health Rehab.\n\nWith respect and gratitude,\n${fullName}`)
     if (letter) await prisma.ugatUpload.create({ data: { scholarId: scholar.id, kind: 'LETTER', filename: 'motivational-letter.pdf', mimeType: 'application/pdf', data: letter } })
 
-    for (const yr of [1, 2, 3]) {
-      const g = await makePdf(`Proof of Grades — Year ${yr}`, `${fullName}\n${p.school}\n${p.program}\n\nSample Year ${yr} grade report (placeholder document for the demo).\nGeneral weighted average: ${(1.75 - yr * 0.05).toFixed(2)}`)
-      if (g) await prisma.ugatUpload.create({ data: { scholarId: scholar.id, kind: `GRADES_Y${yr}`, filename: `grades-year-${yr}.pdf`, mimeType: 'application/pdf', data: g } })
+    if (p.track === 'TINDIG') {
+      const tor = await makePdf(`Transcript of Records — ${fullName}`, `${fullName}\n${p.school}\n${p.program} (Graduate)\n\nSample transcript of records (placeholder document for the demo).\nGeneral weighted average: 1.62`)
+      if (tor) await prisma.ugatUpload.create({ data: { scholarId: scholar.id, kind: 'TOR', filename: 'transcript-of-records.pdf', mimeType: 'application/pdf', data: tor } })
+      const grad = await makePdf(`Proof of Graduation — ${fullName}`, `${fullName}\n${p.school}\n${p.program}\n\nThis certifies that the above-named has completed the degree program and the clinical internship requirement (placeholder document for the demo).`)
+      if (grad) await prisma.ugatUpload.create({ data: { scholarId: scholar.id, kind: 'GRAD_PROOF', filename: 'proof-of-graduation.pdf', mimeType: 'application/pdf', data: grad } })
+    } else {
+      for (const yr of [1, 2, 3]) {
+        const g = await makePdf(`Proof of Grades — Year ${yr}`, `${fullName}\n${p.school}\n${p.program}\n\nSample Year ${yr} grade report (placeholder document for the demo).\nGeneral weighted average: ${(1.75 - yr * 0.05).toFixed(2)}`)
+        if (g) await prisma.ugatUpload.create({ data: { scholarId: scholar.id, kind: `GRADES_Y${yr}`, filename: `grades-year-${yr}.pdf`, mimeType: 'application/pdf', data: g } })
+      }
     }
 
     created.push(p.username)

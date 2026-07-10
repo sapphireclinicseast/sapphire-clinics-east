@@ -1476,6 +1476,10 @@ model UgatScholar {
   personalEmail     String
   passwordHash String
 
+  /// Which track the scholar registered for: ARAL (final-year interns) |
+  /// TINDIG (graduates preparing for the licensure exam). Chosen at sign-up.
+  track String @default("ARAL")
+
   firstName   String
   middleName  String?
   lastName    String

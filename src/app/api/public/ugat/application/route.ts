@@ -55,8 +55,10 @@ export async function PUT(req: Request) {
 
   if (!(await getWindow()).open) return NextResponse.json({ error: 'Applications are currently closed.' }, { status: 403 })
 
-  const track = cleanTrack(body.track)
-  const data = { ...cleanAnswers(body.answers), ...(typeof body.truthAffirmed === 'boolean' ? { truthAffirmed: body.truthAffirmed } : {}), ...(track ? { track } : {}) }
+  // Track is the scholar's registered track (source of truth).
+  const sc = await prisma.ugatScholar.findUnique({ where: { id: sid }, select: { track: true } })
+  const track = cleanTrack(sc?.track) || 'ARAL'
+  const data = { ...cleanAnswers(body.answers), ...(typeof body.truthAffirmed === 'boolean' ? { truthAffirmed: body.truthAffirmed } : {}), track }
   await prisma.ugatApplication.upsert({ where: { scholarId: sid }, create: { scholarId: sid, ...data }, update: data })
   return NextResponse.json({ ok: true })
 }
@@ -73,7 +75,8 @@ export async function POST(req: Request) {
   const win = await getWindow()
   if (!win.open) return NextResponse.json({ error: 'Applications are currently closed.' }, { status: 403 })
 
-  const track = cleanTrack(body.track) || (existing?.track as 'ARAL' | 'TINDIG') || 'ARAL'
+  const sc = await prisma.ugatScholar.findUnique({ where: { id: sid }, select: { track: true } })
+  const track = cleanTrack(sc?.track) || (existing?.track as 'ARAL' | 'TINDIG') || 'ARAL'
   const answers = cleanAnswers(body.answers)
   for (const f of Q_FIELDS) {
     if (!answers[f] || !answers[f].trim()) {
