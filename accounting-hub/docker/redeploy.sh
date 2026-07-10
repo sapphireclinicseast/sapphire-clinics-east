@@ -87,6 +87,7 @@ ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "assetAddedAt" TIMESTAMP(3
 ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "inventoryRecordedAt" TIMESTAMP(3);
 ALTER TABLE "Asset" ADD COLUMN IF NOT EXISTS "fromPettyCash" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "fromPettyCash" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Referrer" ADD COLUMN IF NOT EXISTS "type" TEXT NOT NULL DEFAULT 'DOCTOR';
 
 -- SOA Settings (singleton row for bank details, signatories)
 CREATE TABLE IF NOT EXISTS "SoaSettings" (

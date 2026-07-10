@@ -553,6 +553,7 @@ enum WalletType {
 model Referrer {
   id             String   @id @default(cuid())
   name           String
+  type           String   @default("DOCTOR") // DOCTOR | LAW_FIRM
   affiliation    String?
   specialization String?
   isActive       Boolean  @default(true)

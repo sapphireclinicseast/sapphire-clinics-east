@@ -3,7 +3,9 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK', 'MEDREP']
+const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM']
+const normType = (t: unknown) => (REFERRER_TYPES.includes(String(t)) ? String(t) : 'DOCTOR')
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -30,7 +32,7 @@ export async function GET(req: Request) {
   if (all) {
     const referrers = await prisma.referrer.findMany({
       where,
-      select: { id: true, name: true, affiliation: true, specialization: true },
+      select: { id: true, name: true, type: true, affiliation: true, specialization: true },
       orderBy: { name: 'asc' },
     })
     return NextResponse.json(referrers)
@@ -56,7 +58,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, affiliation, specialization } = await req.json()
+    const { name, type, affiliation, specialization } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Referrer name is required' }, { status: 400 })
@@ -72,6 +74,7 @@ export async function POST(req: Request) {
     const referrer = await prisma.referrer.create({
       data: {
         name: name.trim(),
+        type: normType(type),
         affiliation: affiliation?.trim() || null,
         specialization: specialization?.trim() || null,
         createdById: session.user.id,
@@ -101,7 +104,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, affiliation, specialization } = await req.json()
+    const { id, name, type, affiliation, specialization } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Referrer ID is required' }, { status: 400 })
@@ -110,6 +113,7 @@ export async function PUT(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     if (name !== undefined) data.name = name.trim()
+    if (type !== undefined) data.type = normType(type)
     if (affiliation !== undefined) data.affiliation = affiliation?.trim() || null
     if (specialization !== undefined) data.specialization = specialization?.trim() || null
 

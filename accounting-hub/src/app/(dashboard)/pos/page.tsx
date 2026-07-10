@@ -103,6 +103,7 @@ interface Order {
 interface Referrer {
   id: string
   name: string
+  type?: string | null
   affiliation?: string | null
   specialization?: string | null
 }
@@ -553,6 +554,19 @@ export default function POSPage() {
     )
   }
 
+  // Medical Representatives only manage the Referrers directory — no sales, orders,
+  // products or sales-summary access. Render a dedicated referrers-only view.
+  if (session.user.role === 'MEDREP') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Referrers</h1>
+        </div>
+        <ReferrerSettingsPanel />
+      </div>
+    )
+  }
+
   const branch = userBranch(session)
   // A user assigned to a single branch (branch != ALL) is locked to it, even if their role
   // would otherwise let them pick a branch.
@@ -634,7 +648,7 @@ function ServicesSection({
     { key: 'wallet' as const, label: 'Digital Wallet' },
     { key: 'discounts' as const, label: 'Discount Settings' },
     { key: 'payment-modes' as const, label: 'Payment Mode Settings' },
-    { key: 'referrers' as const, label: 'Doctor Referrers' },
+    { key: 'referrers' as const, label: 'Referrers' },
   ]
 
   return (
@@ -886,7 +900,7 @@ function OrderFormModal({
   const [referrerSearch, setReferrerSearch] = useState('')
   const [showReferrerDrop, setShowReferrerDrop] = useState(false)
   const [showAddReferrer, setShowAddReferrer] = useState(false)
-  const [newRef, setNewRef] = useState({ name: '', affiliation: '', specialization: '' })
+  const [newRef, setNewRef] = useState({ name: '', type: 'DOCTOR', affiliation: '', specialization: '' })
   const [showWalletPay, setShowWalletPay] = useState(false)
   const [walletBarcode, setWalletBarcode] = useState('')
   const [walletSearch, setWalletSearch] = useState('')
@@ -1542,7 +1556,7 @@ function OrderFormModal({
         setReferrers(prev => [...prev, d])
         setReferrerId(d.id)
         setShowAddReferrer(false)
-        setNewRef({ name: '', affiliation: '', specialization: '' })
+        setNewRef({ name: '', type: 'DOCTOR', affiliation: '', specialization: '' })
       }
     } catch {}
   }
@@ -1838,6 +1852,15 @@ function OrderFormModal({
                 <div className="mt-2 p-3 rounded-xl border space-y-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                   <input value={newRef.name} onChange={e => setNewRef({ ...newRef, name: e.target.value })} placeholder="Name *"
                     className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  <div className="flex gap-2">
+                    {(['DOCTOR', 'LAW_FIRM'] as const).map(t => (
+                      <label key={t} className="flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl border cursor-pointer text-xs flex-1"
+                        style={newRef.type === t ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                        <input type="radio" name="newRefType" checked={newRef.type === t} onChange={() => setNewRef({ ...newRef, type: t })} />
+                        {t === 'LAW_FIRM' ? 'Law Firm' : 'Doctor'}
+                      </label>
+                    ))}
+                  </div>
                   <input value={newRef.affiliation} onChange={e => setNewRef({ ...newRef, affiliation: e.target.value })} placeholder="Affiliation"
                     className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   <input value={newRef.specialization} onChange={e => setNewRef({ ...newRef, specialization: e.target.value })} placeholder="Specialization"
@@ -8216,12 +8239,14 @@ Signature:    _________________________
 /* ══════════════════════════════════════════════════════════════
    REFERRER SETTINGS PANEL
    ══════════════════════════════════════════════════════════════ */
+const REFERRER_TYPE_LABEL: Record<string, string> = { DOCTOR: 'Doctor', LAW_FIRM: 'Law Firm' }
+
 function ReferrerSettingsPanel() {
-  const [referrers, setReferrers] = useState<{ id: string; name: string; affiliation?: string | null; specialization?: string | null }[]>([])
+  const [referrers, setReferrers] = useState<{ id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', affiliation: '', specialization: '' })
+  const [form, setForm] = useState({ name: '', type: 'DOCTOR', affiliation: '', specialization: '' })
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -8245,8 +8270,8 @@ function ReferrerSettingsPanel() {
     r.specialization?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const openCreate = () => { setEditingId(null); setForm({ name: '', affiliation: '', specialization: '' }); setError(''); setShowForm(true) }
-  const openEdit = (r: typeof referrers[0]) => { setEditingId(r.id); setForm({ name: r.name, affiliation: r.affiliation || '', specialization: r.specialization || '' }); setError(''); setShowForm(true) }
+  const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '' }); setError(''); setShowForm(true) }
+  const openEdit = (r: typeof referrers[0]) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '' }); setError(''); setShowForm(true) }
 
   const save = async () => {
     if (!form.name.trim()) { setError('Name is required'); return }
@@ -8254,7 +8279,7 @@ function ReferrerSettingsPanel() {
     setError('')
     setSaving(true)
     try {
-      const body = { id: editingId, name: form.name.trim(), affiliation: form.affiliation.trim() || null, specialization: form.specialization.trim() || null }
+      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: form.affiliation.trim() || null, specialization: form.specialization.trim() || null }
       const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (res.ok) { setShowForm(false); fetchReferrers() }
       else { const d = await res.json(); setError(d.error || 'Failed to save') }
@@ -8281,9 +8306,10 @@ function ReferrerSettingsPanel() {
       for (const line of dataLines) {
         const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''))
         if (!cols[0]) continue
+        const type = /law/i.test(cols[3] || '') ? 'LAW_FIRM' : 'DOCTOR'
         const res = await fetch('/api/referrers', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: cols[0], affiliation: cols[1] || null, specialization: cols[2] || null }),
+          body: JSON.stringify({ name: cols[0], type, affiliation: cols[1] || null, specialization: cols[2] || null }),
         })
         if (res.ok) created++
       }
@@ -8294,40 +8320,40 @@ function ReferrerSettingsPanel() {
   }
 
   const downloadCsv = () => {
-    const rows = [['Name', 'Affiliation', 'Specialization'], ...referrers.map(r => [r.name, r.affiliation || '', r.specialization || ''])]
+    const rows = [['Name', 'Type', 'Affiliation', 'Specialization'], ...referrers.map(r => [r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || ''])]
     const csv = rows.map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'doctor_referrers.csv'; a.click(); URL.revokeObjectURL(a.href)
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'referrers.csv'; a.click(); URL.revokeObjectURL(a.href)
   }
 
   const downloadPdf = async () => {
     const { jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
     const doc = new jsPDF()
-    doc.setFontSize(14); doc.text('Doctor Referrers', 14, 16)
+    doc.setFontSize(14); doc.text('Referrers', 14, 16)
     doc.setFontSize(8); doc.setTextColor(120); doc.text(`Generated ${new Date().toLocaleDateString('en-PH')}`, 14, 22); doc.setTextColor(0)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     autoTable(doc as any, {
       startY: 28,
-      head: [['#', 'Name', 'Affiliation', 'Specialization']],
-      body: referrers.map((r, i) => [i + 1, r.name, r.affiliation || '', r.specialization || '']),
+      head: [['#', 'Name', 'Type', 'Affiliation', 'Specialization']],
+      body: referrers.map((r, i) => [i + 1, r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || '']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [46, 94, 90] },
     })
-    doc.save('doctor_referrers.pdf')
+    doc.save('referrers.pdf')
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Doctor Referrers</h2>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Manage referring doctors. Upload CSV (Name, Affiliation, Specialization) or add individually.</p>
+          <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Referrers</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Manage referrers (doctors and law firms). Upload CSV (Name, Affiliation, Specialization, Type) or add individually.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={downloadCsv} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>CSV</button>
           <button onClick={downloadPdf} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>PDF</button>
           <button onClick={() => {
-            const csv = 'Name,Affiliation,Specialization\nDr. Juan Dela Cruz,Manila Medical Center,Orthopedics\n'
+            const csv = 'Name,Affiliation,Specialization,Type\nDr. Juan Dela Cruz,Manila Medical Center,Orthopedics,Doctor\nCruz & Associates Law Firm,Makati,,Law Firm\n'
             const blob = new Blob([csv], { type: 'text/csv' })
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'referrer_template.csv'; a.click(); URL.revokeObjectURL(a.href)
           }} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
@@ -8360,7 +8386,7 @@ function ReferrerSettingsPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--pale-teal)' }}>
-                {['Name', 'Affiliation', 'Specialization', ''].map(h => (
+                {['Name', 'Type', 'Affiliation', 'Specialization', ''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>
                 ))}
               </tr>
@@ -8369,6 +8395,11 @@ function ReferrerSettingsPanel() {
               {filtered.map(r => (
                 <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+                  <td className="px-4 py-3">
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={r.type === 'LAW_FIRM' ? { background: '#fef3c7', color: '#92400e' } : { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                      {REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.affiliation || '—'}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.specialization || '—'}</td>
                   <td className="px-4 py-3 text-right">
@@ -8394,6 +8425,18 @@ function ReferrerSettingsPanel() {
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Name *</label>
               <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Classification</label>
+              <div className="flex gap-2">
+                {(['DOCTOR', 'LAW_FIRM'] as const).map(t => (
+                  <label key={t} className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm flex-1"
+                    style={form.type === t ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    <input type="radio" name="referrerType" checked={form.type === t} onChange={() => setForm({ ...form, type: t })} />
+                    {REFERRER_TYPE_LABEL[t]}
+                  </label>
+                ))}
+              </div>
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Affiliation</label>

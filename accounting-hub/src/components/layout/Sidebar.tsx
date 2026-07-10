@@ -88,6 +88,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/asset-management', icon: Building2, label: 'Asset Management', roles: SERVICES_POS_ACCESS },
       { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_PAYROLL },
       { href: '/pos', icon: ShoppingCart, label: 'Point of Sale', roles: SERVICES_POS_PAYROLL },
+      { href: '/pos', icon: ShoppingCart, label: 'Referrers', roles: ['MEDREP'] },
       { href: '/accounts-receivable', icon: FileCheck, label: 'Accounts Receivable', roles: AR_ACCESS },
       { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll', roles: PAYROLL_ACCESS },
       { href: '/taxes', icon: Landmark, label: 'Taxes', roles: TAX_ACCESS },
