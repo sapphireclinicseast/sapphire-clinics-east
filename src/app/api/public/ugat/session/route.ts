@@ -34,6 +34,7 @@ export async function GET(req: Request) {
         firstName: true, middleName: true, lastName: true, studentNumber: true,
         birthdate: true, school: true, program: true, preferredField: true,
         expectedGraduationYear: true, status: true,
+        awardMonthly: true, awardMonths: true,
         permAddress1: true, permAddress2: true, permCity: true, permRegion: true, permZip: true,
         presAddress1: true, presAddress2: true, presCity: true, presRegion: true, presZip: true,
         emailVerifiedAt: true, disabledAt: true, createdAt: true,

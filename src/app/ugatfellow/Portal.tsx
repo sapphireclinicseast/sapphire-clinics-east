@@ -33,6 +33,7 @@ export interface PortalScholar {
   firstName: string; middleName?: string | null; lastName: string; studentNumber: string
   birthdate?: string; school: string; program: string; preferredField: string
   expectedGraduationYear: number; status: string; photoId?: string | null
+  awardMonthly?: number | null; awardMonths?: number | null
   permAddress1: string; permAddress2?: string | null; permCity: string; permRegion: string; permZip: string
   presAddress1: string; presAddress2?: string | null; presCity: string; presRegion: string; presZip: string
 }
@@ -263,6 +264,7 @@ interface AdminScholar {
   id: string; username: string; track?: string; professionalEmail: string; personalEmail: string
   firstName: string; middleName?: string | null; lastName: string; studentNumber: string
   school: string; program: string; preferredField: string; expectedGraduationYear: number
+  awardMonthly?: number | null; awardMonths?: number | null
   status: string; age: number | null; permCity: string; photoId: string | null
   uploadKinds: Record<string, string>; application: AppData | null; acceptance?: AcceptanceData | null
   passwordPlain?: string | null
@@ -334,6 +336,26 @@ const INTEGRITY_NOTE = 'The Fellowship Team holds integrity in the highest regar
 
 type Track = 'ARAL' | 'TINDIG'
 const TRACK_LABEL: Record<string, string> = { ARAL: 'Aral Track', TINDIG: 'Tindig Track' }
+
+// Aral Track award tiers: monthly stipend × duration in months. An admin picks
+// one at acceptance; it is woven into the Return Service Agreement the fellow
+// reads and signs. Order matches the four options the program offers.
+const AWARD_TIERS: { monthly: number; months: number }[] = [
+  { monthly: 5000, months: 10 },
+  { monthly: 10000, months: 10 },
+  { monthly: 5000, months: 5 },
+  { monthly: 10000, months: 5 },
+]
+const tierValue = (m?: number | null, n?: number | null) => (m && n ? `${m}x${n}` : '')
+const tierLabel = (m: number, n: number) => `₱${m.toLocaleString()}/mo × ${n} months (₱${(m * n).toLocaleString()} total)`
+// Peso/month amounts spelled out for the formal RSA text (only the handful the
+// tiers can produce).
+const AMOUNT_WORDS: Record<number, string> = {
+  5: 'five', 10: 'ten',
+  5000: 'Five Thousand', 10000: 'Ten Thousand',
+  25000: 'Twenty-Five Thousand', 50000: 'Fifty Thousand', 100000: 'One Hundred Thousand',
+}
+const inWords = (n: number) => AMOUNT_WORDS[n] || n.toLocaleString()
 
 const ARAL_QUESTIONS: { field: keyof AppData; label: string }[] = [
   { field: 'q1WhyApply', label: 'Why do you want to apply for this fellowship?' },
@@ -655,22 +677,71 @@ const CM_ADDR = [
   { key: 'Occ', label: 'Address of occupation' },
 ] as const
 
-function RSAText({ name, program, school }: { name: string; program: string; school: string }) {
+function RSAText({ name, program, school, monthly, months }: { name: string; program: string; school: string; monthly?: number | null; months?: number | null }) {
+  const m = monthly && months ? monthly : 10000
+  const n = monthly && months ? months : 10
+  const total = m * n
+  const peso = (v: number) => `${inWords(v)} Pesos (PHP ${v.toLocaleString()}.00)`
   return (
     <div className={s.rsaDoc}>
-      <h4>Return Service Agreement — key terms</h4>
-      <p>This summarizes the agreement between <b>Sapphire Clinics East, Inc. (SCEI)</b>, operating <b>Aura Health Rehab</b>, and <b>{name}</b>, a {program} student of {school} (the &ldquo;Fellow&rdquo;), together with the Fellow&rsquo;s parent/guardian as <b>Co-Maker</b>.</p>
-      <ol>
-        <li><b>Allowance.</b> SCEI grants a monthly allowance (₱5,000 or ₱10,000, per your award) for up to ten (10) months during your clinical internship.</li>
-        <li><b>Return service.</b> In consideration, you render <b>1,500 hours</b> of direct patient treatment sessions as a licensed clinician at any Aura Health Rehab clinic, commencing within <b>60 days</b> of receiving your PRC license. You receive full market compensation for these hours — return service is discharged by hours rendered, not by salary deduction.</li>
-        <li><b>Assignment.</b> You agree to be willing to serve at either the <b>East</b> (Pasig) or <b>Greenhills</b> (San Juan) branch, or any future SCEI location, based on operational need.</li>
-        <li><b>If the internship is cut short.</b> The allowance stops as of the discontinuance date; you and your Co-Maker reimburse the allowance actually received plus an 8% surcharge within 90 days. SCEI may waive, reduce, or restructure this with compassion in cases of illness, bereavement, or circumstances beyond your control.</li>
-        <li><b>Buyout option.</b> Unrendered hours may be settled at ₱150/hour plus an 8% surcharge.</li>
-        <li><b>Co-Maker.</b> Your Co-Maker is jointly and severally liable with you for any monetary obligations arising under this agreement.</li>
-        <li><b>Completion.</b> Upon rendering the 1,500 hours, SCEI issues a Certificate of Completion and all obligations are extinguished; continued employment afterward is optional and by mutual agreement.</li>
-        <li><b>Data privacy.</b> Your data is processed under the Data Privacy Act of 2012 (RA 10173) solely to administer this agreement.</li>
-      </ol>
-      <p className={s.muted} style={{ marginBottom: 0 }}>This on-screen summary is for your convenience; the full Return Service Agreement governs, and a hard copy will be signed in person at an Aura Health Rehab branch.</p>
+      <h4>Return Service Agreement</h4>
+      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Scholarship Program · Allowance-Based Internship Scholarship</p>
+      <div className={s.rsaAward}>
+        Your award: <b>₱{m.toLocaleString()} / month for {n} months</b> — an estimated total allowance of <b>₱{total.toLocaleString()}</b>. The full agreement below reflects this award.
+      </div>
+      <div className={s.rsaScroll}>
+        <p><b>KNOW ALL PERSONS BY THESE PRESENTS:</b></p>
+        <p>This Return Service Agreement (the &ldquo;Agreement&rdquo;) is made and entered into by and among <b>SAPPHIRE CLINICS EAST INCORPORATED</b>, a corporation duly organized under Philippine law, operating <b>Aura Health Rehab</b>, with principal office at Level 8, GH Tower Offices, Greenhills, San Juan City (&ldquo;SCEI&rdquo; or the &ldquo;Clinic&rdquo;); <b>{name || '________'}</b>, of legal age, Filipino, a {program} student intern of {school} (the &ldquo;SCHOLAR&rdquo;); and the SCHOLAR&rsquo;s parent / guardian (the &ldquo;CO-MAKER&rdquo;). SCEI, the SCHOLAR, and the CO-MAKER are collectively the &ldquo;Parties.&rdquo;</p>
+        <p><b>W I T N E S S E T H : T H A T</b></p>
+        <p><b>WHEREAS</b>, SCEI has established the UGAT Scholarship Program — <i>Ugnayan para sa Galing, Aral, at Tindig</i> — an allowance-based scholarship for qualified student interns undergoing their clinical internship;</p>
+        <p><b>WHEREAS</b>, the SCHOLAR has applied for and has been awarded a scholarship under the UGAT Program, by which SCEI shall provide the SCHOLAR a regular monthly financial allowance throughout the duration of the SCHOLAR&rsquo;s clinical internship;</p>
+        <p><b>WHEREAS</b>, in consideration of the allowance extended, the SCHOLAR has agreed to render return service to SCEI following the successful completion of the internship and licensure;</p>
+        <p><b>NOW, THEREFORE</b>, for and in consideration of the foregoing premises and the mutual covenants set forth below, the Parties hereby agree as follows:</p>
+
+        <h5>1. DEFINITIONS</h5>
+        <p><b>Allowance.</b> The monthly financial stipend of {peso(m)} for {inWords(n)} ({n}) months paid by SCEI to the SCHOLAR for the duration of the internship under the UGAT Program. Where the SCHOLAR is admitted mid-internship, the Allowance is paid only for the remaining months of the internship, up to a maximum of {inWords(n)} ({n}) months.</p>
+        <p><b>Internship Period.</b> The SCHOLAR&rsquo;s clinical internship for the applicable School Year.</p>
+        <p><b>Total Allowance.</b> The cumulative Allowance actually disbursed over the Internship Period, estimated at {peso(total)}.</p>
+        <p><b>Return Service Obligation.</b> The obligation of the SCHOLAR to render One Thousand Five Hundred (1,500) hours of direct patient treatment sessions at any SCEI clinic following licensure, as set out in Section 4.</p>
+        <p><b>Licensure.</b> The SCHOLAR&rsquo;s passing of the applicable Professional Licensure Examination and receipt of the corresponding Certificate of Registration and Professional Identification Card from the Professional Regulation Commission (PRC).</p>
+
+        <h5>2. GRANT OF SCHOLARSHIP AND ALLOWANCE</h5>
+        <p><b>2.1 Grant.</b> SCEI grants to the SCHOLAR a scholarship under the UGAT Program, consisting of a monthly Allowance of {peso(m)} payable for the duration of the Internship Period for {inWords(n)} ({n}) months. Where only part of the internship year remains, the Allowance is paid only for the remaining months; the Return Service Obligation nonetheless remains the full One Thousand Five Hundred (1,500) hours.</p>
+        <p><b>2.2 Disbursement.</b> The Allowance shall be remitted to the SCHOLAR&rsquo;s nominated bank account on or before the tenth (10th) day of each month during the Internship Period.</p>
+        <p><b>2.3 Acknowledgment of Indebtedness.</b> The SCHOLAR and CO-MAKER acknowledge that the Allowance, together with the clinical training and supervision extended by SCEI, constitutes sufficient and valuable consideration for the Return Service Obligation, which is fixed at One Thousand Five Hundred (1,500) hours regardless of the actual amount of Allowance disbursed.</p>
+        <p><b>2.4 Cut-Short of Internship.</b> Should the SCHOLAR be unable to continue or complete the internship for any reason, the Allowance ceases as of the date of discontinuance, and the SCHOLAR and CO-MAKER agree to reimburse the Allowance actually received up to that date, plus an eight percent (8%) surcharge, within ninety (90) days. SCEI may, in its discretion, waive, reduce, or restructure the reimbursement — particularly where the discontinuance arises from serious illness, a death in the immediate family, or other circumstances beyond the SCHOLAR&rsquo;s control.</p>
+        <p><b>2.5 Extension or Delayed Graduation.</b> The Allowance is fixed at {inWords(n)} ({n}) months and shall not be extended under any circumstance. Should the internship be extended or graduation delayed, the SCHOLAR completes the internship at his/her own cost beyond the {n === 10 ? 'tenth (10th)' : 'fifth (5th)'} month, and no additional Allowance shall be due. The Return Service Obligation of One Thousand Five Hundred (1,500) hours remains in full force.</p>
+
+        <h5>3. OBLIGATIONS DURING THE INTERNSHIP</h5>
+        <p>During the Internship Period, the SCHOLAR shall: maintain good standing as an enrolled intern; faithfully perform all duties, rotations, and clinical responsibilities assigned; comply with the SCEI Code of Conduct and clinic policies; maintain a passing academic and clinical standing throughout the internship year; signify willingness to be assigned to either or both of SCEI&rsquo;s clinics (East and Greenhills) for the Return Service Obligation; disclose any change in enrollment status within seven (7) days; and sit for and complete the Licensure Examination at the next available date after eligibility.</p>
+
+        <h5>4. RETURN SERVICE OBLIGATION</h5>
+        <p><b>4.1 Hours Owed.</b> In consideration of the Allowance and clinical training, the SCHOLAR shall render a total of One Thousand Five Hundred (1,500) hours of direct patient treatment sessions as a licensed professional at any SCEI clinic. The obligation is fixed at 1,500 hours for all scholars regardless of the number of months of Allowance actually funded.</p>
+        <p><b>4.2 Commencement.</b> The SCHOLAR shall commence return service within sixty (60) days from receipt of the official PRC Certificate of Registration / Professional Identification Card, rendered continuously and in good faith until completed.</p>
+        <p><b>4.3 Crediting of Hours.</b> Each hour of direct patient treatment actually rendered post-licensure is credited toward the 1,500-hour obligation, recorded in real time through SCEI&rsquo;s ERP system, which serves as the official record of hours rendered and the remaining balance.</p>
+        <p><b>4.4 Compensation.</b> During the return service period, the SCHOLAR receives the standard market compensation for the position of a licensed professional. The obligation is discharged through hours rendered and is <b>not</b> satisfied by salary deduction; the SCHOLAR receives full compensation for hours worked in addition to credit against the obligation.</p>
+        <p><b>4.5 Geographic Assignment.</b> The SCHOLAR agrees to be willing to serve at either or both of SCEI&rsquo;s clinics — <b>Aura Health Rehab – East Branch</b> (Robinsons Metro East, Pasig) and <b>Greenhills Branch</b> (GH Tower, San Juan) — or any future SCEI location, based on operational need. Reasonable preference is considered but not guaranteed.</p>
+
+        <h5>5. COMPLETION AND CERTIFICATION</h5>
+        <p>Upon rendering the full 1,500 hours, the Return Service Obligation is deemed fully discharged and SCEI shall issue a Certificate of Completion of Return Service; the obligations of the SCHOLAR and CO-MAKER are thereupon extinguished. Continued engagement with the Clinic afterward is entirely optional and by mutual agreement of the Parties under a separate arrangement.</p>
+
+        <h5>6. SETTLEMENT IN LIEU OF SERVICE</h5>
+        <p><b>6.1 Cash Buyout.</b> Should the SCHOLAR elect not to render, or be unable to complete, the obligation, it may be discharged through a cash payment equal to the number of unrendered hours multiplied by an Hourly Credit Rate (PHP 150.00 per hour), plus a flat eight percent (8%) surcharge. By illustration, the buyout for the full 1,500 hours equals PHP 225,000.00 plus the 8% surcharge, totaling PHP 243,000.00.</p>
+        <p><b>6.2 Election &amp; Pro-Ration.</b> The SCHOLAR elects a buyout by written notice with at least thirty (30) days&rsquo; lead time; service rendered in good faith is credited, and only the unrendered balance is subject to buyout.</p>
+
+        <h5>7. DEFAULT AND ACCELERATION</h5>
+        <p>Events of Default include failure to commence return service on time, voluntary abandonment (other than for serious illness, bereavement, or force majeure), failure to take or pass the Licensure Examination within two (2) cycles after eligibility, or material misrepresentation. SCEI shall give written notice and a thirty (30)-day cure period. Upon an uncured default, the cash value of all unrendered hours becomes immediately due, with an 8% surcharge, a 5% penalty, and interest at 8% per annum from acceleration until fully paid.</p>
+
+        <h5>8. CO-MAKER OBLIGATIONS</h5>
+        <p>THE CO-MAKER expressly acknowledges and agrees that he/she is <b>JOINTLY AND SEVERALLY LIABLE</b> with the SCHOLAR for all monetary obligations arising under this Agreement, including any cash buyout, surcharge, penalty, accrued interest, and costs of collection, waiving the benefits of demand, presentment, notice of dishonor, and order of enforcement.</p>
+
+        <h5>9. CONFIDENTIALITY AND DATA PRIVACY</h5>
+        <p>This Agreement and related records are confidential and protected consistent with R.A. 10173 (Data Privacy Act of 2012). The SCHOLAR and CO-MAKER consent to SCEI&rsquo;s collection, processing, and use of their personal data to administer this Agreement, including disclosure to SCEI&rsquo;s accountants, auditors, and legal counsel as needed.</p>
+
+        <h5>10. GENERAL PROVISIONS</h5>
+        <p>This Agreement is governed by the laws of the Republic of the Philippines, with venue exclusively before the proper courts of San Juan City. It constitutes the entire agreement between the Parties, supersedes all prior understandings, and may be amended only in writing signed by all Parties. If any provision is held invalid, the remaining provisions remain in full force. This Agreement binds the Parties and their respective heirs, successors, and permitted assigns.</p>
+      </div>
+      <p className={s.muted} style={{ margin: '12px 0 0' }}>By signing below you confirm you have read and understood this full agreement. A hard copy will also be signed in person at an Aura Health Rehab branch.</p>
     </div>
   )
 }
@@ -752,7 +823,7 @@ function ScholarAcceptance({ scholar, token, authHeaders }: { scholar: PortalSch
 
   return (
     <div className={s.sec} style={{ padding: 0 }}>
-      <RSAText name={fullName} program={scholar.program} school={scholar.school} />
+      <RSAText name={fullName} program={scholar.program} school={scholar.school} monthly={scholar.awardMonthly} months={scholar.awardMonths} />
       {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
       {deadlines.softCopy && <div className={s.ayBadge}>Please sign online by <b>{fmtWhen(deadlines.softCopy)}</b>.</div>}
 
@@ -1030,6 +1101,9 @@ function AcceptanceStage({ fellows, token, authHeaders, readOnly, reloadScholars
     if (!window.confirm('Send the Return Service Agreement to this fellow so they can sign online? They will be emailed a link.')) return
     setBusy(id); await fetch(`${API}/acceptance/admin`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ scholarId: id }) }); setBusy(''); reloadScholars()
   }
+  async function setAward(id: string, monthly: number | null, months: number | null) {
+    setBusy(id); await fetch(`${API}/scholars`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id, awardMonthly: monthly, awardMonths: months }) }); setBusy(''); reloadScholars()
+  }
   async function toggleHard(id: string, signed: boolean) {
     await fetch(`${API}/acceptance/admin`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ scholarId: id, hardCopySigned: signed }) }); reloadScholars()
   }
@@ -1042,6 +1116,8 @@ function AcceptanceStage({ fellows, token, authHeaders, readOnly, reloadScholars
         const a = r.acceptance
         const stage = !a?.contractSentAt ? 'Not sent' : a?.hardCopySignedAt ? 'Hard copy signed' : a?.softCopySignedAt ? 'Soft copy signed' : 'Awaiting signature'
         const cls = stage === 'Hard copy signed' ? s.stAccepted : stage === 'Not sent' ? s.stApplied : s.stWait
+        const isAral = (r.track || 'ARAL') === 'ARAL'
+        const hasAward = !!(r.awardMonthly && r.awardMonths)
         return (
           <div key={r.id} className={s.appRow}>
             <div className={s.intvRow}>
@@ -1050,10 +1126,21 @@ function AcceptanceStage({ fellows, token, authHeaders, readOnly, reloadScholars
                 <span className={s.appRowName}>{[r.lastName, [r.firstName, r.middleName].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</span>
                 <span className={`${s.statusPill} ${cls}`}>{stage}</span>
               </button>
-              {!readOnly && !a?.contractSentAt && <button className={s.btn2} disabled={busy === r.id} onClick={() => sendContract(r.id)}><Mail size={15} /> {busy === r.id ? 'Sending…' : 'Send Contract'}</button>}
+              <div className={s.acceptCtl}>
+                {isAral && !readOnly && !a?.contractSentAt && (
+                  <select className={s.awardSelect} value={tierValue(r.awardMonthly, r.awardMonths)} disabled={busy === r.id}
+                    onChange={(e) => { const v = e.target.value; if (!v) { setAward(r.id, null, null); return } const [m, n] = v.split('x').map(Number); setAward(r.id, m, n) }}>
+                    <option value="">Award tier…</option>
+                    {AWARD_TIERS.map((t) => { const val = tierValue(t.monthly, t.months); return <option key={val} value={val}>{tierLabel(t.monthly, t.months)}</option> })}
+                  </select>
+                )}
+                {isAral && hasAward && a?.contractSentAt && <span className={s.awardTag}>{tierLabel(r.awardMonthly!, r.awardMonths!)}</span>}
+                {!readOnly && !a?.contractSentAt && <button className={s.btn2} disabled={busy === r.id || (isAral && !hasAward)} title={isAral && !hasAward ? 'Choose an award tier first' : undefined} onClick={() => sendContract(r.id)}><Mail size={15} /> {busy === r.id ? 'Sending…' : 'Send Contract'}</button>}
+              </div>
             </div>
             {openId === r.id && (
               <div className={s.appDetail}>
+                {isAral && <p className={s.muted} style={{ margin: '0 0 8px' }}>Award tier: {hasAward ? <b>{tierLabel(r.awardMonthly!, r.awardMonths!)}</b> : <span style={{ color: '#b4690e' }}>not set — choose a tier before sending the contract</span>}{hasAward && a?.contractSentAt ? ' (locked — reflected in the signed agreement)' : ''}</p>}
                 {!a?.contractSentAt && <p className={s.muted}>Send the contract to unlock the fellow&rsquo;s signing form.</p>}
                 {a?.contractSentAt && (
                   <>

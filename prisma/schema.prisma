@@ -1480,6 +1480,13 @@ model UgatScholar {
   /// TINDIG (graduates preparing for the licensure exam). Chosen at sign-up.
   track String @default("ARAL")
 
+  /// Aral Track award tier, chosen by an admin at acceptance. The monthly
+  /// stipend (5000 or 10000) and its duration in months (5 or 10) are woven
+  /// into the Return Service Agreement the fellow reads and signs. Null until
+  /// an admin awards the tier.
+  awardMonthly Int?
+  awardMonths  Int?
+
   firstName   String
   middleName  String?
   lastName    String

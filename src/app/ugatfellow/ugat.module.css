@@ -874,6 +874,15 @@
 .rsaDoc ol { margin: 0 0 12px; padding-left: 20px; }
 .rsaDoc li { font-size: 13px; line-height: 1.65; color: var(--ink); margin-bottom: 6px; }
 .rsaDoc li::marker { font-weight: 700; color: var(--green); }
+.rsaDoc h5 { font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: 0.03em; color: var(--deep); margin: 16px 0 6px; }
+.rsaAward { background: var(--cream); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 12.5px; line-height: 1.5; color: var(--ink); margin: 0 0 14px; }
+.rsaScroll { max-height: 340px; overflow-y: auto; padding: 4px 16px 4px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.rsaScroll p:first-child { margin-top: 4px; }
+.rsaScroll h5:first-of-type { margin-top: 8px; }
+.acceptCtl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.awardSelect { appearance: none; font-family: var(--body); font-size: 12.5px; color: var(--deep); background: #fff; border: 1.5px solid var(--line); border-radius: 9px; padding: 7px 12px; cursor: pointer; }
+.awardSelect:focus { outline: none; border-color: var(--green); }
+.awardTag { font-size: 12px; font-weight: 600; color: var(--deep); background: var(--cream); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; white-space: nowrap; }
 .sectionLabel2 { font-family: var(--display); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--deep-70); margin: 6px 0 8px; }
 
 /* ── Track chooser (Aral / Tindig) ─────────────────────────────── */
