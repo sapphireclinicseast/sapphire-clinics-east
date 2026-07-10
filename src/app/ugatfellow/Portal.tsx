@@ -242,12 +242,22 @@ function ScholarProfile({ scholar, token }: { scholar: PortalScholar; token: str
   )
 }
 
+interface AcceptanceData {
+  contractSentAt?: string | null
+  comakerFirstName?: string | null; comakerMiddleName?: string | null; comakerLastName?: string | null
+  comakerBirthdate?: string | null; comakerEmail?: string | null; comakerOccupation?: string | null
+  cmPermAddress1?: string | null; cmPermAddress2?: string | null; cmPermCity?: string | null; cmPermRegion?: string | null; cmPermZip?: string | null
+  cmPresSameAsPerm?: boolean
+  cmPresAddress1?: string | null; cmPresAddress2?: string | null; cmPresCity?: string | null; cmPresRegion?: string | null; cmPresZip?: string | null
+  cmOccAddress1?: string | null; cmOccAddress2?: string | null; cmOccCity?: string | null; cmOccRegion?: string | null; cmOccZip?: string | null
+  truthAffirmed?: boolean; softCopySignedAt?: string | null; hardCopySignedAt?: string | null
+}
 interface AdminScholar {
   id: string; username: string; professionalEmail: string; personalEmail: string
   firstName: string; middleName?: string | null; lastName: string; studentNumber: string
   school: string; program: string; preferredField: string; expectedGraduationYear: number
   status: string; age: number | null; permCity: string; photoId: string | null
-  uploadKinds: Record<string, string>; application: AppData | null
+  uploadKinds: Record<string, string>; application: AppData | null; acceptance?: AcceptanceData | null
   passwordPlain?: string | null
   emailVerifiedAt?: string | null; disabledAt?: string | null; createdAt: string
 }
@@ -504,7 +514,7 @@ function ScholarApplication({ session, token, authHeaders }: { session: PortalSe
       ))}
 
       {tab === 'interview' && <ScholarInterview app={app0} authHeaders={authHeaders} />}
-      {tab === 'acceptance' && <div className={s.card2}><h3 className={s.card2H}>Acceptance</h3><p className={s.muted}>Congratulations! Your Return Service Agreement and onboarding steps will appear here.</p></div>}
+      {tab === 'acceptance' && session.scholar && <ScholarAcceptance scholar={session.scholar} token={token} authHeaders={authHeaders} />}
     </div>
   )
 }
@@ -574,13 +584,185 @@ function ScholarInterview({ app, authHeaders }: { app: AppData | null; authHeade
   )
 }
 
+// ══ Acceptance (scholar) — Return Service Agreement e-signing ══════
+type CmField = keyof AcceptanceData
+const CM_ADDR = [
+  { key: 'Perm', label: 'Permanent address' },
+  { key: 'Pres', label: 'Present address' },
+  { key: 'Occ', label: 'Address of occupation' },
+] as const
+
+function RSAText({ name, program, school }: { name: string; program: string; school: string }) {
+  return (
+    <div className={s.rsaDoc}>
+      <h4>Return Service Agreement — key terms</h4>
+      <p>This summarizes the agreement between <b>Sapphire Clinics East, Inc. (SCEI)</b>, operating <b>Aura Health Rehab</b>, and <b>{name}</b>, a {program} student of {school} (the &ldquo;Fellow&rdquo;), together with the Fellow&rsquo;s parent/guardian as <b>Co-Maker</b>.</p>
+      <ol>
+        <li><b>Allowance.</b> SCEI grants a monthly allowance (₱5,000 or ₱10,000, per your award) for up to ten (10) months during your clinical internship.</li>
+        <li><b>Return service.</b> In consideration, you render <b>1,500 hours</b> of direct patient treatment sessions as a licensed clinician at any Aura Health Rehab clinic, commencing within <b>60 days</b> of receiving your PRC license. You receive full market compensation for these hours — return service is discharged by hours rendered, not by salary deduction.</li>
+        <li><b>Assignment.</b> You agree to be willing to serve at either the <b>East</b> (Pasig) or <b>Greenhills</b> (San Juan) branch, or any future SCEI location, based on operational need.</li>
+        <li><b>If the internship is cut short.</b> The allowance stops as of the discontinuance date; you and your Co-Maker reimburse the allowance actually received plus an 8% surcharge within 90 days. SCEI may waive, reduce, or restructure this with compassion in cases of illness, bereavement, or circumstances beyond your control.</li>
+        <li><b>Buyout option.</b> Unrendered hours may be settled at ₱150/hour plus an 8% surcharge.</li>
+        <li><b>Co-Maker.</b> Your Co-Maker is jointly and severally liable with you for any monetary obligations arising under this agreement.</li>
+        <li><b>Completion.</b> Upon rendering the 1,500 hours, SCEI issues a Certificate of Completion and all obligations are extinguished; continued employment afterward is optional and by mutual agreement.</li>
+        <li><b>Data privacy.</b> Your data is processed under the Data Privacy Act of 2012 (RA 10173) solely to administer this agreement.</li>
+      </ol>
+      <p className={s.muted} style={{ marginBottom: 0 }}>This on-screen summary is for your convenience; the full Return Service Agreement governs, and a hard copy will be signed in person at an Aura Health Rehab branch.</p>
+    </div>
+  )
+}
+
+function ScholarAcceptance({ scholar, token, authHeaders }: { scholar: PortalScholar; token: string; authHeaders: Record<string, string> }) {
+  const [loading, setLoading] = useState(true)
+  const [contractSent, setContractSent] = useState(false)
+  const [signed, setSigned] = useState<string | null>(null)
+  const [hardSigned, setHardSigned] = useState<string | null>(null)
+  const [deadlines, setDeadlines] = useState<{ softCopy?: string | null; hardCopy?: string | null }>({})
+  const [c, setC] = useState<AcceptanceData>({})
+  const [uploads, setUploads] = useState<Record<string, string>>({})
+  const [truth, setTruth] = useState(false)
+  const [busy, setBusy] = useState<'' | 'draft' | 'submit'>('')
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+  const sigRef = useRef<SignaturePadHandle>(null)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`${API}/acceptance`, { headers: authHeaders })
+    if (r.ok) {
+      const d = await r.json()
+      setContractSent(!!d.acceptance?.contractSentAt)
+      setSigned(d.acceptance?.softCopySignedAt || null)
+      setHardSigned(d.acceptance?.hardCopySignedAt || null)
+      setDeadlines(d.deadlines || {})
+      if (d.acceptance) setC(d.acceptance); if (d.acceptance?.truthAffirmed) setTruth(true)
+      setUploads(d.uploadKinds || {})
+    }
+    setLoading(false)
+  }, [authHeaders])
+  useEffect(() => { load() }, [load])
+
+  const set = (k: CmField, v: string | boolean) => setC((p) => ({ ...p, [k]: v }))
+  async function upload(kind: string, f: File) {
+    const dataBase64 = await fileToBase64(f)
+    const r = await fetch(`${API}/uploads`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ kind, filename: f.name, mimeType: f.type, dataBase64 }) })
+    const d = await r.json(); if (!r.ok) { setMsg({ ok: false, t: d.error || 'Upload failed.' }); return }
+    setUploads((u) => ({ ...u, [kind]: d.id })); setMsg({ ok: true, t: 'File uploaded.' })
+  }
+  function payload() {
+    const bd = c.comakerBirthdate ? String(c.comakerBirthdate).slice(0, 10) : undefined
+    return { comaker: c, comakerBirthdate: bd, cmPresSameAsPerm: !!c.cmPresSameAsPerm, truthAffirmed: truth }
+  }
+  async function saveDraft() {
+    setBusy('draft'); setMsg(null)
+    const r = await fetch(`${API}/acceptance`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(payload()) })
+    setBusy(''); setMsg(r.ok ? { ok: true, t: 'Draft saved.' } : { ok: false, t: 'Could not save.' })
+  }
+  async function submit() {
+    setBusy('submit'); setMsg(null)
+    const sig = sigRef.current?.toDataUrl()
+    if (sig && !uploads.RSA_SIGNATURE) {
+      await fetch(`${API}/uploads`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ kind: 'RSA_SIGNATURE', filename: 'rsa-signature.png', mimeType: 'image/png', dataBase64: sig }) })
+        .then((r) => r.json()).then((d) => d.id && setUploads((u) => ({ ...u, RSA_SIGNATURE: d.id }))).catch(() => {})
+    }
+    const r = await fetch(`${API}/acceptance`, { method: 'POST', headers: authHeaders, body: JSON.stringify(payload()) })
+    const d = await r.json(); setBusy('')
+    if (!r.ok) { setMsg({ ok: false, t: d.error || 'Could not submit.' }); return }
+    setSigned(new Date().toISOString())
+  }
+
+  if (loading) return <div className={s.card2}><p className={s.muted} style={{ margin: 0 }}>Loading…</p></div>
+  const fullName = [scholar.firstName, scholar.middleName, scholar.lastName].filter(Boolean).join(' ')
+
+  if (!contractSent) return (
+    <div className={s.card2}><div className={s.acceptedBox}><CheckCircle2 size={26} /><div>
+      <h3 className={s.card2H} style={{ margin: '0 0 4px' }}>Congratulations — you&rsquo;ve been accepted! 🌱</h3>
+      <p className={s.muted} style={{ margin: 0 }}>Welcome to the UGAT Fellowship. We&rsquo;re preparing your Return Service Agreement — it will appear here for you to review and sign shortly, and we&rsquo;ll email you when it&rsquo;s ready.</p>
+    </div></div></div>
+  )
+
+  if (signed) return (
+    <div className={s.card2}><div className={s.acceptedBox}><CheckCircle2 size={26} /><div>
+      <h3 className={s.card2H} style={{ margin: '0 0 4px' }}>Thank you — your signed agreement is received</h3>
+      <p className={s.muted} style={{ margin: '0 0 8px' }}>To finalize, please sign the <b>hard copy in person</b> at <b>Aura Health Rehab – East</b> (Robinsons Metro East, Pasig) or <b>Greenhills</b> (GH Tower, San Juan){deadlines.hardCopy ? <> by <b>{fmtWhen(deadlines.hardCopy)}</b></> : ''}.</p>
+      {hardSigned ? <p className={s.muted} style={{ margin: 0, color: '#2c6b5b' }}><b>Hard copy signed ✓</b> — you&rsquo;re all set. Welcome aboard!</p> : <p className={s.muted} style={{ margin: 0 }}>Your co-maker should come with you, bringing the valid IDs uploaded here.</p>}
+    </div></div></div>
+  )
+
+  return (
+    <div className={s.sec} style={{ padding: 0 }}>
+      <RSAText name={fullName} program={scholar.program} school={scholar.school} />
+      {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
+      {deadlines.softCopy && <div className={s.ayBadge}>Please sign online by <b>{fmtWhen(deadlines.softCopy)}</b>.</div>}
+
+      <div className={s.card2}>
+        <h3 className={s.card2H}>Co-Maker details</h3>
+        <p className={s.muted}>Your co-maker is a parent or guardian who co-signs the agreement with you.</p>
+        <div className={s.grid2}>
+          <div className={s.field2}><label className={s.qLabel}>First name</label><input className={s.input2} value={c.comakerFirstName || ''} onChange={(e) => set('comakerFirstName', e.target.value)} /></div>
+          <div className={s.field2}><label className={s.qLabel}>Middle name</label><input className={s.input2} value={c.comakerMiddleName || ''} onChange={(e) => set('comakerMiddleName', e.target.value)} /></div>
+        </div>
+        <div className={s.grid2}>
+          <div className={s.field2}><label className={s.qLabel}>Last name</label><input className={s.input2} value={c.comakerLastName || ''} onChange={(e) => set('comakerLastName', e.target.value)} /></div>
+          <div className={s.field2}><label className={s.qLabel}>Birthdate</label><input type="date" className={s.input2} value={c.comakerBirthdate ? String(c.comakerBirthdate).slice(0, 10) : ''} onChange={(e) => set('comakerBirthdate', e.target.value)} /></div>
+        </div>
+        <div className={s.grid2}>
+          <div className={s.field2}><label className={s.qLabel}>Personal email</label><input type="email" className={s.input2} value={c.comakerEmail || ''} onChange={(e) => set('comakerEmail', e.target.value)} /></div>
+          <div className={s.field2}><label className={s.qLabel}>Occupation</label><input className={s.input2} value={c.comakerOccupation || ''} onChange={(e) => set('comakerOccupation', e.target.value)} /></div>
+        </div>
+        {CM_ADDR.map((blk) => {
+          const pre = `cm${blk.key}` as const
+          const same = blk.key === 'Pres' && !!c.cmPresSameAsPerm
+          const g = (suffix: string) => (c[`${pre}${suffix}` as CmField] as string) || ''
+          const sfield = (suffix: string, v: string) => set(`${pre}${suffix}` as CmField, v)
+          return (
+            <div key={blk.key} style={{ marginTop: 10 }}>
+              <div className={s.sectionLabel2}>{blk.label}</div>
+              {blk.key === 'Pres' && <label className={s.check}><input type="checkbox" checked={!!c.cmPresSameAsPerm} onChange={(e) => set('cmPresSameAsPerm', e.target.checked)} /><span>Same as Permanent Address</span></label>}
+              {!same && <>
+                <div className={s.field2}><input className={s.input2} placeholder="Address Line 1" value={g('Address1')} onChange={(e) => sfield('Address1', e.target.value)} /></div>
+                <div className={s.field2}><input className={s.input2} placeholder="Address Line 2 (optional)" value={g('Address2')} onChange={(e) => sfield('Address2', e.target.value)} /></div>
+                <div className={s.grid3}>
+                  <input className={s.input2} placeholder="Municipality / City" value={g('City')} onChange={(e) => sfield('City', e.target.value)} />
+                  <input className={s.input2} placeholder="Region" value={g('Region')} onChange={(e) => sfield('Region', e.target.value)} />
+                  <input className={s.input2} placeholder="Zip" value={g('Zip')} onChange={(e) => sfield('Zip', e.target.value)} />
+                </div>
+              </>}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className={s.card2}>
+        <h3 className={s.card2H}>Valid IDs</h3>
+        <p className={s.muted}>Upload two valid IDs each for you and your co-maker (JPG, PNG, or PDF).</p>
+        <FileField label="Your Valid ID #1" kind="VALID_ID_1" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+        <FileField label="Your Valid ID #2" kind="VALID_ID_2" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+        <FileField label="Co-maker Valid ID #1" kind="COMAKER_ID_1" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+        <FileField label="Co-maker Valid ID #2" kind="COMAKER_ID_2" accept="image/jpeg,image/png,application/pdf" uploads={uploads} token={token} onFile={upload} />
+      </div>
+
+      <div className={s.card2}>
+        <h3 className={s.card2H}>Sign the agreement</h3>
+        <label className={s.check}><input type="checkbox" checked={truth} onChange={(e) => setTruth(e.target.checked)} /><span>I have read and understood the Return Service Agreement, my co-maker details are true and correct, and I agree to be bound by its terms.</span></label>
+        <p className={s.muted} style={{ marginTop: 14 }}>Sign below (or upload an e-signature image).</p>
+        <SignaturePad ref={sigRef} />
+        <FileField label="Or upload e-signature (PNG/JPG)" kind="RSA_SIGNATURE" accept="image/png,image/jpeg" uploads={uploads} token={token} onFile={upload} />
+      </div>
+
+      <div className={s.appToolbar}>
+        <button className={s.btnGhost3} disabled={!!busy} onClick={saveDraft}>{busy === 'draft' ? 'Saving…' : 'Save Draft'}</button>
+        <button className={s.btn2Lg} disabled={!!busy} onClick={submit}>{busy === 'submit' ? 'Submitting…' : 'Sign & submit agreement'}</button>
+      </div>
+    </div>
+  )
+}
+
 // ══ Application (admin) ════════════════════════════════════════════
 const DECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_INTERVIEW']
 const DECISION_LABEL: Record<string, string> = { NOT_CONSIDERED: 'Not Considered', PENDING: 'Pending', FOR_INTERVIEW: 'For Interview' }
 const IDECISIONS = ['NOT_CONSIDERED', 'PENDING', 'FOR_ACCEPTANCE']
 const IDECISION_LABEL: Record<string, string> = { NOT_CONSIDERED: 'Not Considered', PENDING: 'Pending', FOR_ACCEPTANCE: 'For Acceptance' }
 
-interface Cycle { id: string; academicYear: string; opensAt: string; closesAt: string; initialDeadline?: string | null; interviewDeadline?: string | null }
+interface Cycle { id: string; academicYear: string; opensAt: string; closesAt: string; initialDeadline?: string | null; interviewDeadline?: string | null; softCopyDeadline?: string | null; hardCopyDeadline?: string | null }
 interface Slot { id: string; startsAt: string; durationMins: number; capacity: number; booked: number }
 const fmtWhen = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
@@ -667,14 +849,7 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
 
       {tab === 'interview' && <InterviewStage students={forInterview} authHeaders={authHeaders} readOnly={readOnly} reloadScholars={load} />}
 
-      {tab === 'acceptance' && (
-        <div className={s.card2}>
-          <h3 className={s.card2H}>Acceptance stage</h3>
-          <p className={s.muted}>Accepted fellows. The “Send Contract” Return Service Agreement portal, co-maker details, and valid-ID uploads ship in the next phase.</p>
-          {accepted.map((r) => <div key={r.id} className={s.accessItem}><div><b>{[r.firstName, r.lastName].filter(Boolean).join(' ')}</b><span className={s.cellSub}>@{r.username}</span></div></div>)}
-          {accepted.length === 0 && <p className={s.muted}>No accepted fellows yet. <button className={s.linkBtn2} onClick={() => onGoTo('dashboard')}>Open Dashboard</button></p>}
-        </div>
-      )}
+      {tab === 'acceptance' && <AcceptanceStage fellows={accepted} token={token} authHeaders={authHeaders} readOnly={readOnly} reloadScholars={load} onGoTo={onGoTo} />}
     </div>
   )
 }
@@ -772,6 +947,68 @@ function InterviewStage({ students, authHeaders, readOnly, reloadScholars }: { s
   )
 }
 
+// ══ Acceptance stage (admin) — send contract, review, hard copy ════
+function AcceptanceStage({ fellows, token, authHeaders, readOnly, reloadScholars, onGoTo }: { fellows: AdminScholar[]; token: string; authHeaders: Record<string, string>; readOnly: boolean; reloadScholars: () => void; onGoTo: (k: SectionKey) => void }) {
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string>('')
+
+  async function sendContract(id: string) {
+    if (!window.confirm('Send the Return Service Agreement to this fellow so they can sign online? They will be emailed a link.')) return
+    setBusy(id); await fetch(`${API}/acceptance/admin`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ scholarId: id }) }); setBusy(''); reloadScholars()
+  }
+  async function toggleHard(id: string, signed: boolean) {
+    await fetch(`${API}/acceptance/admin`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ scholarId: id, hardCopySigned: signed }) }); reloadScholars()
+  }
+
+  return (
+    <div className={s.card2}>
+      <h3 className={s.card2H}>Accepted fellows</h3>
+      {fellows.length === 0 && <p className={s.muted}>No accepted fellows yet. Mark an interviewed applicant &ldquo;For Acceptance&rdquo; in the Interview tab, or check the <button className={s.linkBtn2} onClick={() => onGoTo('dashboard')}>Dashboard</button>.</p>}
+      {fellows.map((r) => {
+        const a = r.acceptance
+        const stage = !a?.contractSentAt ? 'Not sent' : a?.hardCopySignedAt ? 'Hard copy signed' : a?.softCopySignedAt ? 'Soft copy signed' : 'Awaiting signature'
+        const cls = stage === 'Hard copy signed' ? s.stAccepted : stage === 'Not sent' ? s.stApplied : s.stWait
+        return (
+          <div key={r.id} className={s.appRow}>
+            <div className={s.intvRow}>
+              <button className={s.appRowHead} style={{ flex: 1, padding: '4px 0' }} onClick={() => setOpenId(openId === r.id ? null : r.id)}>
+                <ChevronDown size={16} className={openId === r.id ? s.rot : ''} />
+                <span className={s.appRowName}>{[r.lastName, [r.firstName, r.middleName].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</span>
+                <span className={`${s.statusPill} ${cls}`}>{stage}</span>
+              </button>
+              {!readOnly && !a?.contractSentAt && <button className={s.btn2} disabled={busy === r.id} onClick={() => sendContract(r.id)}><Mail size={15} /> {busy === r.id ? 'Sending…' : 'Send Contract'}</button>}
+            </div>
+            {openId === r.id && (
+              <div className={s.appDetail}>
+                {!a?.contractSentAt && <p className={s.muted}>Send the contract to unlock the fellow&rsquo;s signing form.</p>}
+                {a?.contractSentAt && (
+                  <>
+                    <div className={s.qaList}>
+                      <div className={s.qa}><div className={s.qaQ}>Co-maker</div><div className={s.qaA}>{[a.comakerFirstName, a.comakerMiddleName, a.comakerLastName].filter(Boolean).join(' ') || '—'}{a.comakerOccupation ? ` · ${a.comakerOccupation}` : ''}{a.comakerEmail ? ` · ${a.comakerEmail}` : ''}</div></div>
+                      <div className={s.qa}><div className={s.qaQ}>Co-maker permanent address</div><div className={s.qaA}>{[a.cmPermAddress1, a.cmPermAddress2, a.cmPermCity, a.cmPermRegion, a.cmPermZip].filter(Boolean).join(', ') || '—'}</div></div>
+                      <div className={s.qa}><div className={s.qaQ}>Co-maker occupation address</div><div className={s.qaA}>{[a.cmOccAddress1, a.cmOccAddress2, a.cmOccCity, a.cmOccRegion, a.cmOccZip].filter(Boolean).join(', ') || '—'}</div></div>
+                    </div>
+                    <div className={s.docLinks} style={{ marginTop: 10 }}>
+                      {(['VALID_ID_1', 'VALID_ID_2', 'COMAKER_ID_1', 'COMAKER_ID_2'] as const).map((k) => r.uploadKinds[k]
+                        ? <a key={k} className={s.miniBtn} href={`${API}/uploads/${r.uploadKinds[k]}?t=${token}`} target="_blank" rel="noreferrer">{k.replace('VALID_ID_', 'ID ').replace('COMAKER_ID_', 'Co-maker ID ')}</a>
+                        : <span key={k} className={s.muted}>{k.replace('VALID_ID_', 'ID ').replace('COMAKER_ID_', 'Co-maker ID ')}: —</span>)}
+                      {r.uploadKinds.RSA_SIGNATURE ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={`${API}/uploads/${r.uploadKinds.RSA_SIGNATURE}?t=${token}`} alt="signature" className={s.sigView} /> : null}
+                    </div>
+                    <p className={s.muted} style={{ marginTop: 8 }}>Soft copy: {a.softCopySignedAt ? `signed ${fmtWhen(a.softCopySignedAt)}` : 'not yet signed'} · Hard copy: {a.hardCopySignedAt ? `signed ${fmtWhen(a.hardCopySignedAt)}` : 'not yet signed'}</p>
+                    {!readOnly && a.softCopySignedAt && (
+                      <label className={s.check}><input type="checkbox" checked={!!a.hardCopySignedAt} onChange={(e) => toggleHard(r.id, e.target.checked)} /><span>Hard copy signed in person</span></label>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // Local <input type="datetime-local"> value <-> ISO helpers.
 function toLocalInput(iso?: string) {
   if (!iso) return ''
@@ -780,7 +1017,7 @@ function toLocalInput(iso?: string) {
 }
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
-const emptyCycleForm = { id: '', academicYear: '', opensAt: '', closesAt: '', initialDeadline: '', interviewDeadline: '' }
+const emptyCycleForm = { id: '', academicYear: '', opensAt: '', closesAt: '', initialDeadline: '', interviewDeadline: '', softCopyDeadline: '', hardCopyDeadline: '' }
 
 function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<string, string>; cycles: Cycle[] | null; reload: () => void }) {
   const [form, setForm] = useState({ ...emptyCycleForm })
@@ -799,6 +1036,8 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
       closesAt: form.closesAt ? new Date(form.closesAt).toISOString() : '',
       initialDeadline: iso(form.initialDeadline),
       interviewDeadline: iso(form.interviewDeadline),
+      softCopyDeadline: iso(form.softCopyDeadline),
+      hardCopyDeadline: iso(form.hardCopyDeadline),
     }
     const r = await fetch(`${API}/cycles`, { method: editing ? 'PATCH' : 'POST', headers: authHeaders, body: JSON.stringify(payload) })
     const d = await r.json().catch(() => ({})); setBusy(false)
@@ -806,7 +1045,7 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
     setMsg({ ok: true, t: editing ? 'Cycle updated.' : 'Cycle added.' })
     setForm({ ...emptyCycleForm }); reload()
   }
-  function edit(c: Cycle) { setForm({ id: c.id, academicYear: c.academicYear, opensAt: toLocalInput(c.opensAt), closesAt: toLocalInput(c.closesAt), initialDeadline: toLocalInput(c.initialDeadline || undefined), interviewDeadline: toLocalInput(c.interviewDeadline || undefined) }); setMsg(null) }
+  function edit(c: Cycle) { setForm({ id: c.id, academicYear: c.academicYear, opensAt: toLocalInput(c.opensAt), closesAt: toLocalInput(c.closesAt), initialDeadline: toLocalInput(c.initialDeadline || undefined), interviewDeadline: toLocalInput(c.interviewDeadline || undefined), softCopyDeadline: toLocalInput(c.softCopyDeadline || undefined), hardCopyDeadline: toLocalInput(c.hardCopyDeadline || undefined) }); setMsg(null) }
   async function remove(c: Cycle) {
     if (!window.confirm(`Delete the A.Y. ${c.academicYear} cycle? Submitted applications keep their year tag.`)) return
     await fetch(`${API}/cycles`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id: c.id }) }); reload()
@@ -839,6 +1078,8 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
         <label className={s.dtField}>Closes<input type="datetime-local" className={s.input2} value={form.closesAt} onChange={(e) => setForm({ ...form, closesAt: e.target.value })} required /></label>
         <label className={s.dtField}>Initial-decision deadline<input type="datetime-local" className={s.input2} value={form.initialDeadline} onChange={(e) => setForm({ ...form, initialDeadline: e.target.value })} /></label>
         <label className={s.dtField}>Interview-decision deadline<input type="datetime-local" className={s.input2} value={form.interviewDeadline} onChange={(e) => setForm({ ...form, interviewDeadline: e.target.value })} /></label>
+        <label className={s.dtField}>Soft-copy signing deadline<input type="datetime-local" className={s.input2} value={form.softCopyDeadline} onChange={(e) => setForm({ ...form, softCopyDeadline: e.target.value })} /></label>
+        <label className={s.dtField}>Hard-copy signing deadline<input type="datetime-local" className={s.input2} value={form.hardCopyDeadline} onChange={(e) => setForm({ ...form, hardCopyDeadline: e.target.value })} /></label>
         <button className={s.btn2} disabled={busy}>{editing ? 'Save cycle' : <><Plus size={16} /> Add cycle</>}</button>
         {editing && <button type="button" className={s.btnGhost3} onClick={() => setForm({ ...emptyCycleForm })}>Cancel</button>}
       </form>

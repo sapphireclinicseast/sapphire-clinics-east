@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 
 const KINDS = new Set([
   'PHOTO', 'LETTER', 'GRADES_Y1', 'GRADES_Y2', 'GRADES_Y3', 'SIGNATURE',
-  'VALID_ID_1', 'VALID_ID_2', 'COMAKER_ID_1', 'COMAKER_ID_2',
+  'VALID_ID_1', 'VALID_ID_2', 'COMAKER_ID_1', 'COMAKER_ID_2', 'RSA_SIGNATURE',
 ])
 const MAX_BYTES = 15 * 1024 * 1024 // 15 MB
 const ALLOWED_MIME: Record<string, RegExp> = {
@@ -25,6 +25,7 @@ const ALLOWED_MIME: Record<string, RegExp> = {
   VALID_ID_2: /^(image\/(jpe?g|png)|application\/pdf)$/,
   COMAKER_ID_1: /^(image\/(jpe?g|png)|application\/pdf)$/,
   COMAKER_ID_2: /^(image\/(jpe?g|png)|application\/pdf)$/,
+  RSA_SIGNATURE: /^image\/(png|jpe?g)$/,
 }
 
 export async function POST(req: Request) {

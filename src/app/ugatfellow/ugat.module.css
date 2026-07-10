@@ -825,3 +825,12 @@
 .slotBtn b { color: var(--deep); font-size: 13.5px; }
 .slotBtn span { font-size: 11.5px; color: var(--deep-70); }
 .intvRow { display: flex; align-items: center; gap: 12px; padding: 11px 2px; }
+
+/* ── Acceptance / RSA document ─────────────────────────────────── */
+.rsaDoc { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; }
+.rsaDoc h4 { font-family: var(--display); font-size: 16px; color: var(--deep); margin: 0 0 10px; font-weight: 700; }
+.rsaDoc p { font-size: 13px; line-height: 1.6; color: var(--ink); margin: 0 0 12px; }
+.rsaDoc ol { margin: 0 0 12px; padding-left: 20px; }
+.rsaDoc li { font-size: 13px; line-height: 1.65; color: var(--ink); margin-bottom: 6px; }
+.rsaDoc li::marker { font-weight: 700; color: var(--green); }
+.sectionLabel2 { font-family: var(--display); font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--deep-70); margin: 6px 0 8px; }
