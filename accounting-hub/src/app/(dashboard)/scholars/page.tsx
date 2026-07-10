@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { GraduationCap, Plus, Loader2, X, Eye, Trash2, Pencil, CalendarClock, Wifi, WifiOff } from 'lucide-react'
+import { GraduationCap, Plus, Loader2, X, Eye, Trash2, Pencil, CalendarClock, Wifi, WifiOff, Landmark } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -28,12 +28,15 @@ export default function ScholarsPage() {
   const [fAy, setFAy] = useState(''); const [fSchool, setFSchool] = useState(''); const [fType, setFType] = useState('')
   const [edit, setEdit] = useState<any | null>(null)
   const [recording, setRecording] = useState(false)
+  const [fund, setFund] = useState<any | null>(null)
+  const [topUp, setTopUp] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try { const r = await fetch('/api/scholars'); setData(r.ok ? await r.json() : null) } catch { setData(null) } finally { setLoading(false) }
   }, [])
-  useEffect(() => { load() }, [load])
+  const loadFund = useCallback(async () => { try { const r = await fetch('/api/scholars/fund'); setFund(r.ok ? await r.json() : null) } catch { setFund(null) } }, [])
+  useEffect(() => { load(); loadFund() }, [load, loadFund])
   useEffect(() => { fetch('/api/bank-accounts').then(r => r.ok ? r.json() : []).then(setBanks).catch(() => setBanks([])) }, [])
   useEffect(() => { fetch('/api/chart-of-accounts?accountType=EQUITY&pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(j => setFundAccts(((j.data || j.items || j || []) as Acct[]).map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle })))).catch(() => setFundAccts([])) }, [])
   useEffect(() => { fetch('/api/scholars/reminders').then(r => r.ok ? r.json() : { reminders: [] }).then(j => setReminders(j.reminders || [])).catch(() => setReminders([])) }, [data])
@@ -76,6 +79,21 @@ export default function ScholarsPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Scholarship Fund status */}
+      {fund?.fundAccount && (
+        <div className="rounded-2xl border bg-white p-4 flex items-center justify-between flex-wrap gap-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2"><Landmark size={18} style={{ color: 'var(--teal)' }} /><span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{fund.fundAccount.accountNumber} · Scholarship Fund</span></div>
+            <div className="flex items-center gap-4 text-xs">
+              <div><span style={{ color: 'var(--mid-gray)' }}>Appropriated</span> <span className="font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(fund.appropriated)}</span></div>
+              <div><span style={{ color: 'var(--mid-gray)' }}>Released</span> <span className="font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(fund.released)}</span></div>
+              <div><span style={{ color: 'var(--mid-gray)' }}>Remaining</span> <span className="font-mono font-bold" style={{ color: fund.balance < 0 ? '#b91c1c' : '#166534' }}>{peso(fund.balance)}</span>{fund.balance < 0 && <span className="ml-1 text-[10px]" style={{ color: '#b91c1c' }}>(over-released — top up)</span>}</div>
+            </div>
+          </div>
+          <button onClick={() => setTopUp(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> Top up fund</button>
         </div>
       )}
 
@@ -137,8 +155,9 @@ export default function ScholarsPage() {
         </tbody></table>
       </div>
 
-      {edit && <EditScholarModal scholar={edit} banks={banks} fundAccts={fundAccts} types={filters.types} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load() }} />}
-      {recording && <RecordReleaseModal scholars={scholars} banks={banks} fundAccts={fundAccts} onClose={() => setRecording(false)} onSaved={() => { setRecording(false); load() }} />}
+      {edit && <EditScholarModal scholar={edit} banks={banks} fundAccts={fundAccts} types={filters.types} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); loadFund() }} />}
+      {recording && <RecordReleaseModal scholars={scholars} banks={banks} fundAccts={fundAccts} onClose={() => setRecording(false)} onSaved={() => { setRecording(false); load(); loadFund() }} />}
+      {topUp && <TopUpFundModal fund={fund} onClose={() => setTopUp(false)} onSaved={() => { setTopUp(false); loadFund() }} />}
     </div>
   )
 }
@@ -289,6 +308,61 @@ function RecordReleaseModal({ scholars, banks, fundAccts, onClose, onSaved }: { 
         </div>
         <p className="text-[11px] mb-2" style={mg}>Each release posts DR Scholarship Fund (equity) / CR Bank — a drawdown of appropriated retained earnings, so it does <strong>not</strong> hit the income statement. Scholars without a fund/bank set (here or on their record) are recorded without a journal entry.</p>
         <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record {mkLabel(monthKey)} release</button>
+      </div>
+    </div>
+  )
+}
+
+function TopUpFundModal({ fund, onClose, onSaved }: { fund: any; onClose: () => void; onSaved: () => void }) {
+  const eq: Acct[] = fund?.equityAccts || []
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [retainedAccountId, setRet] = useState(fund?.retainedAccount?.id || '')
+  const [fundAccountId, setFundAcct] = useState(fund?.fundAccount?.id || '')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const appropriations: any[] = fund?.appropriations || []
+  const save = async () => {
+    if (!(Number(amount) > 0)) { alert('Enter an amount.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/scholars/fund', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: Number(amount), date, retainedAccountId, fundAccountId, note }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+  const delAppr = async (a: any) => { if (!confirm(`Delete the ${String(a.date).slice(0, 10)} appropriation of ${peso(a.amount)}? Its journal entry is reversed.`)) return; await fetch(`/api/scholars/fund?id=${a.id}`, { method: 'DELETE' }); onSaved() }
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }; const lbl = 'block text-xs font-semibold mb-1'
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1"><h2 className="text-lg font-bold text-gray-900">Top up Scholarship Fund</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <p className="text-xs mb-4" style={mg}>Appropriates retained earnings into the fund: DR Retained Earnings / CR Scholarship Fund. Both are equity — this never touches the income statement.</p>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div><label className={lbl} style={mg}>Amount</label><input type="number" value={amount} onChange={e => setAmount(e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Retained Earnings (DR)</label><select value={retainedAccountId} onChange={e => setRet(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{eq.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Scholarship Fund (CR)</label><select value={fundAccountId} onChange={e => setFundAcct(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{eq.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+        </div>
+        <div className="mb-3"><label className={lbl} style={mg}>Note <span className="font-normal text-gray-400">(optional)</span></label><input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Board Res. 2026-01 · AY 2025-2026 scholarship budget" className={inp} style={bc} /></div>
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2 mb-4" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record appropriation</button>
+        {appropriations.length > 0 && (
+          <div>
+            <h3 className="text-xs font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Appropriations</h3>
+            <div className="rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+              <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Date', 'Amount', 'Note', ''].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>
+                {appropriations.map((a: any) => (
+                  <tr key={a.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className="px-3 py-1.5">{String(a.date).slice(0, 10)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono font-semibold">{peso(a.amount)}</td>
+                    <td className="px-3 py-1.5 truncate max-w-[180px]" style={mg}>{a.description}</td>
+                    <td className="px-3 py-1.5 text-right"><button onClick={() => delAppr(a)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
+                  </tr>
+                ))}
+              </tbody></table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
