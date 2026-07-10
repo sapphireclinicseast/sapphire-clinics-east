@@ -163,7 +163,7 @@ export default function UgatFellowClient() {
                 <LeafMark />
                 <div>
                   <b>UGAT Fellowship</b>
-                  <span>Aura Foundation</span>
+                  <span>Fellowship Program</span>
                 </div>
               </div>
 
@@ -239,7 +239,7 @@ function LeftPanel() {
         <LeafMark className={s.leftMark} />
         <div className={s.leftBrand}>
           <b>UGAT Fellowship</b>
-          <span>Aura Foundation</span>
+          <span>Fellowship Program</span>
         </div>
       </div>
       <div className={s.leftBody}>
@@ -695,7 +695,7 @@ function FaqModal({ onClose }: { onClose: () => void }) {
       <div className={s.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className={s.modalHead}>
           <h2>Frequently Asked Questions</h2>
-          <p>UGAT Fellowship Program · Aura Foundation · Sapphire Clinics East, Inc.</p>
+          <p>UGAT Fellowship Program · Sapphire Clinics East, Inc.</p>
         </div>
         <div className={s.modalBody}>
           {FAQS.map((f, i) => (
@@ -720,11 +720,11 @@ function PrivacyModal({ onClose }: { onClose: () => void }) {
       <div className={s.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className={s.modalHead}>
           <h2>Data Privacy Notice</h2>
-          <p>UGAT Fellowship Program · Aura Foundation · Sapphire Clinics East, Inc.</p>
+          <p>UGAT Fellowship Program · Sapphire Clinics East, Inc.</p>
         </div>
         <div className={s.modalBody}>
           <p>
-            Sapphire Clinics East, Inc. (&ldquo;SCEI&rdquo;), through the Aura Foundation, respects your
+            Sapphire Clinics East, Inc. (&ldquo;SCEI&rdquo;) respects your
             right to privacy and is committed to protecting your personal data in accordance with the
             <b> Data Privacy Act of 2012 (Republic Act No. 10173)</b>, its Implementing Rules and
             Regulations, and the issuances of the National Privacy Commission (NPC).
@@ -757,7 +757,7 @@ function PrivacyModal({ onClose }: { onClose: () => void }) {
 
           <h3>Sharing and disclosure</h3>
           <p>
-            Your data is treated as confidential and accessed only by authorized SCEI / Aura Foundation
+            Your data is treated as confidential and accessed only by authorized SCEI
             personnel. We do not sell your data. We may share it with your school or with service
             providers (e.g., for stipend disbursement) strictly as necessary and under appropriate
             confidentiality and data-sharing safeguards, or when required by law.

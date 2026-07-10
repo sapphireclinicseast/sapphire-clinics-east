@@ -18,7 +18,7 @@ const arimo = Arimo({
 const UGAT_URL = 'https://scholarship.sapphireclinicseast.org/ugatfellow'
 const OG_IMAGE = 'https://scholarship.sapphireclinicseast.org/ugat/og.png'
 const DESCRIPTION =
-  'The UGAT Fellowship Program by the Aura Foundation provides a monthly stipend to Allied Health Professionals in their final year of university.'
+  'The UGAT Fellowship Program provides a monthly stipend to Allied Health Professionals in their final year of university.'
 
 export const metadata: Metadata = {
   title: 'UGAT Fellowship Program',
@@ -37,9 +37,9 @@ export const metadata: Metadata = {
     type: 'website',
     title: 'UGAT Fellowship Program',
     description: DESCRIPTION,
-    siteName: 'UGAT Fellowship — Aura Foundation',
+    siteName: 'UGAT Fellowship',
     url: UGAT_URL,
-    images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: 'UGAT Fellowship Program — Aura Foundation' }],
+    images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: 'UGAT Fellowship Program' }],
   },
   twitter: {
     card: 'summary_large_image',
