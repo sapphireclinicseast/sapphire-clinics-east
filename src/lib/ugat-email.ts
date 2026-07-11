@@ -65,6 +65,45 @@ async function send(params: { to: string | string[]; subject: string; html: stri
   await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
 }
 
+/** Build a multipart/mixed message with an HTML body + one PDF attachment. */
+function buildRawWithPdf(to: string[], subject: string, html: string, filename: string, pdf: Buffer): string {
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`
+  const b = 'ugat_mixed_boundary_2f8c1e'
+  const htmlB64 = Buffer.from(html, 'utf-8').toString('base64').replace(/(.{76})/g, '$1\r\n')
+  const pdfB64 = pdf.toString('base64').replace(/(.{76})/g, '$1\r\n')
+  const message = [
+    `From: ${FROM_NAME} <${FROM_ADDRESS}>`,
+    `To: ${to.join(', ')}`,
+    `Reply-To: ${FROM_ADDRESS}`,
+    `Subject: ${subjectEncoded}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${b}"`,
+    '',
+    `--${b}`,
+    'Content-Type: text/html; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    htmlB64,
+    `--${b}`,
+    `Content-Type: application/pdf; name="${filename}"`,
+    `Content-Disposition: attachment; filename="${filename}"`,
+    'Content-Transfer-Encoding: base64',
+    '',
+    pdfB64,
+    `--${b}--`,
+  ].join('\r\n')
+  return Buffer.from(message).toString('base64url')
+}
+
+async function sendWithPdf(params: { to: string | string[]; subject: string; html: string; filename: string; pdf: Buffer }): Promise<void> {
+  const recipients = (Array.isArray(params.to) ? params.to : [params.to]).filter(Boolean)
+  if (recipients.length === 0) throw new Error('No recipients')
+  const refreshToken = await resolveRefreshToken()
+  const gmail = await getGmailClient(refreshToken)
+  const raw = buildRawWithPdf(recipients, params.subject, params.html, params.filename, params.pdf)
+  await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+}
+
 /** Build a broadcast message: To the mailbox itself, everyone on Bcc (so
  *  recipients don't see each other). */
 function buildRawBcc(bcc: string[], subject: string, html: string): string {
@@ -256,6 +295,31 @@ export async function sendUgatContractEmail(params: { to: string | string[]; fir
     </div>
   </div>`
   await send({ to, subject, html })
+}
+
+/** Confirmation that the soft copy was signed, with the generated PDF attached. */
+export async function sendUgatSignedRsaEmail(params: { to: string | string[]; firstName: string; track?: string | null; pdf: Buffer }): Promise<void> {
+  const { to, firstName, track, pdf } = params
+  const trackLabel = track === 'TINDIG' ? 'Tindig Track' : 'Aral Track'
+  const subject = 'Your signed UGAT Fellowship Return Service Agreement'
+  const html = `
+  <div style="margin:0;padding:0;background:${CREAM};font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:560px;margin:0 auto;padding:32px 20px">
+      <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
+        <div style="background:${DEEP};padding:26px;text-align:center">
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:${GOLD};font-size:12px;letter-spacing:2px;text-transform:uppercase">Agreement signed &mdash; soft copy</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:22px;font-weight:800;margin-top:6px">Thank you, ${escapeHtml(firstName)}!</div>
+        </div>
+        <div style="padding:28px 30px;color:${DEEP}">
+          <p style="margin:0 0 14px;line-height:1.6;font-size:15px">We&rsquo;ve received your electronically signed <strong>Return Service Agreement</strong> (UGAT Fellowship &mdash; ${trackLabel}). A PDF copy is attached to this email for your records.</p>
+          <p style="margin:0 0 14px;line-height:1.6;font-size:15px"><strong>One step remains:</strong> to finalize, please sign the <strong>hard copy in person</strong>, together with your co-maker, at <strong>Aura Health Rehab &ndash; East</strong> (Robinsons Metro East, Pasig) or <strong>Greenhills</strong> (GH Tower, San Juan). Kindly bring the valid IDs you uploaded.</p>
+          <p style="margin:0;line-height:1.6;font-size:14px;color:${GREEN}">Welcome aboard &mdash; we&rsquo;re glad to have you with us.</p>
+        </div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.</div>
+      </div>
+    </div>
+  </div>`
+  await sendWithPdf({ to, subject, html, filename: 'UGAT-Return-Service-Agreement-Signed.pdf', pdf })
 }
 
 /** Empathic "not considered for the next step" notice. */

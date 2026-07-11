@@ -858,6 +858,7 @@ function ScholarAcceptance({ scholar, token, authHeaders }: { scholar: PortalSch
     const d = await r.json(); setBusy('')
     if (!r.ok) { setMsg({ ok: false, t: d.error || 'Could not submit.' }); return }
     setSigned(new Date().toISOString())
+    load() // refresh so the generated signed-copy PDF link appears
   }
 
   if (loading) return <div className={s.card2}><p className={s.muted} style={{ margin: 0 }}>Loading…</p></div>
@@ -875,6 +876,7 @@ function ScholarAcceptance({ scholar, token, authHeaders }: { scholar: PortalSch
       <h3 className={s.card2H} style={{ margin: '0 0 4px' }}>Thank you — your signed agreement is received</h3>
       <p className={s.muted} style={{ margin: '0 0 8px' }}>To finalize, please sign the <b>hard copy in person</b> at <b>Aura Health Rehab – East</b> (Robinsons Metro East, Pasig) or <b>Greenhills</b> (GH Tower, San Juan){deadlines.hardCopy ? <> by <b>{fmtWhen(deadlines.hardCopy)}</b></> : ''}.</p>
       {hardSigned ? <p className={s.muted} style={{ margin: 0, color: '#2c6b5b' }}><b>Hard copy signed ✓</b> — you&rsquo;re all set. Welcome aboard!</p> : <p className={s.muted} style={{ margin: 0 }}>Your co-maker should come with you, bringing the valid IDs uploaded here.</p>}
+      {uploads.RSA_PDF && <p style={{ margin: '12px 0 0' }}><a className={s.miniBtn} href={`${API}/uploads/${uploads.RSA_PDF}?t=${token}`} target="_blank" rel="noreferrer">Download your signed agreement (PDF)</a> <span className={s.muted}>— we&rsquo;ve also emailed this copy to you.</span></p>}
     </div></div></div>
   )
 
@@ -1212,6 +1214,7 @@ function AcceptanceStage({ fellows, token, authHeaders, readOnly, reloadScholars
                         : <span key={k} className={s.muted}>{k.replace('VALID_ID_', 'ID ').replace('COMAKER_ID_', 'Co-maker ID ')}: —</span>)}
                       {r.uploadKinds.RSA_SIGNATURE ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={`${API}/uploads/${r.uploadKinds.RSA_SIGNATURE}?t=${token}`} alt="signature" className={s.sigView} /> : null}
                     </div>
+                    {r.uploadKinds.RSA_PDF && <div className={s.docLinks} style={{ marginTop: 8 }}><a className={s.miniBtn} href={`${API}/uploads/${r.uploadKinds.RSA_PDF}?t=${token}`} target="_blank" rel="noreferrer">Signed agreement (PDF)</a></div>}
                     <p className={s.muted} style={{ marginTop: 8 }}>Soft copy: {a.softCopySignedAt ? `signed ${fmtWhen(a.softCopySignedAt)}` : 'not yet signed'} · Hard copy: {a.hardCopySignedAt ? `signed ${fmtWhen(a.hardCopySignedAt)}` : 'not yet signed'}</p>
                     {!readOnly && a.softCopySignedAt && (
                       <label className={s.check}><input type="checkbox" checked={!!a.hardCopySignedAt} onChange={(e) => toggleHard(r.id, e.target.checked)} /><span>Hard copy signed in person</span></label>

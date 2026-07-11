@@ -7,6 +7,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { tokenFromRequest } from '@/lib/ugat-auth'
+import { generateSignedRsaPdf } from '@/lib/ugat-rsa-pdf'
+import { sendUgatSignedRsaEmail } from '@/lib/ugat-email'
 
 export const dynamic = 'force-dynamic'
 
@@ -122,9 +124,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Please tick the agreement statement.' }, { status: 400 })
   }
 
+  const signedAt = new Date()
   await prisma.ugatAcceptance.update({
     where: { scholarId: c.scholarId },
-    data: { ...data, cmPresSameAsPerm: !!same, truthAffirmed: true, softCopySignedAt: new Date() },
+    data: { ...data, cmPresSameAsPerm: !!same, truthAffirmed: true, softCopySignedAt: signedAt },
   })
+
+  // Generate the signed-copy PDF, store it, and email it to the fellow.
+  // Best-effort: never fail the signing if PDF/email has trouble.
+  try {
+    const sch = await prisma.ugatScholar.findUnique({
+      where: { id: c.scholarId },
+      select: { firstName: true, middleName: true, lastName: true, professionalEmail: true, personalEmail: true, track: true, program: true, school: true, awardMonthly: true, awardMonths: true },
+    })
+    const sig = await prisma.ugatUpload.findFirst({ where: { scholarId: c.scholarId, kind: 'RSA_SIGNATURE' }, select: { data: true, mimeType: true } })
+    if (sch) {
+      const fellowName = [sch.firstName, sch.middleName, sch.lastName].filter(Boolean).join(' ')
+      const comakerName = [merged.comakerFirstName, merged.comakerMiddleName, merged.comakerLastName].filter(Boolean).map(String).join(' ')
+      const pdf = await generateSignedRsaPdf({
+        track: sch.track, fellowName, program: sch.program, school: sch.school,
+        monthly: sch.awardMonthly, months: sch.awardMonths, comakerName,
+        signaturePng: sig?.data ? Buffer.from(sig.data) : null, signatureMime: sig?.mimeType || null,
+        dateSigned: signedAt,
+      })
+      if (pdf) {
+        await prisma.ugatUpload.deleteMany({ where: { scholarId: c.scholarId, kind: 'RSA_PDF' } })
+        await prisma.ugatUpload.create({ data: { scholarId: c.scholarId, kind: 'RSA_PDF', filename: 'UGAT-Return-Service-Agreement-Signed.pdf', mimeType: 'application/pdf', data: pdf } })
+        const emails = [...new Set([sch.personalEmail, sch.professionalEmail].filter(Boolean))]
+        if (emails.length) {
+          try { await sendUgatSignedRsaEmail({ to: emails, firstName: sch.firstName, track: sch.track, pdf }) }
+          catch (e) { console.error('[ugat] signed-RSA email failed:', e) }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[ugat] signed-RSA PDF step failed:', e)
+  }
+
   return NextResponse.json({ ok: true, signed: true })
 }
