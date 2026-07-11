@@ -53,7 +53,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; roles
   { key: 'profile', label: 'Profile', icon: User, roles: ['SCHOLAR', 'STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'application', label: 'Application', icon: FileText, roles: ['SCHOLAR', 'STAFF_ADMIN', 'MAIN_ADMIN', 'UNIVERSITY_ADMIN'] },
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
-  { key: 'schools', label: 'Schools Data', icon: GraduationCap, roles: ['SCHOLAR', 'STAFF_ADMIN', 'MAIN_ADMIN'] },
+  { key: 'schools', label: 'Schools Data', icon: GraduationCap, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'announce', label: 'Announcements', icon: Megaphone, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'settings', label: 'Settings', icon: SettingsIcon, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'access', label: 'User Access', icon: ShieldCheck, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
