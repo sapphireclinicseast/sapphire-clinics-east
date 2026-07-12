@@ -776,7 +776,7 @@ export async function GET(req: Request) {
         date: { gte: effectiveStart, lt: endDate },
         ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
       },
-      select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, distributeMonthly: true },
+      select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, distributeMonthly: true, skipReports: true },
     })
     for (const e of pettyCashEntries) {
       if (!e.accountTitle || !e.date) continue
@@ -785,6 +785,9 @@ export async function GET(req: Request) {
       // ones are amortized separately below; non-distributed ones are templates
       // (the real expense is the One-time entry generated from them). Skip both.
       if (e.recordType === 'RECURRING') continue
+      // A one-time payment copy of a distributed recurring entry: the recurring entry
+      // already amortizes the expense, so this copy stays out of the P&L.
+      if (e.skipReports) continue
       const gross = Number(e.grossAmount)
       if (!gross) continue
       const net = e.vatable === 'VAT' ? gross / 1.12 : gross

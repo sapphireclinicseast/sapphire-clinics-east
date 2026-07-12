@@ -1728,6 +1728,11 @@ model PettyCashEntry {
   recordType        String   @default("PETTY_CASH")
   finalized         Boolean  @default(false)
   audited           Boolean  @default(false)
+  // A one-time copy made from a distributed recurring entry so the FULL amount can be
+  // RFP'd/paid. The recurring entry already amortizes to the P&L, so this copy is kept
+  // OUT of the Income Statement (skipReports) to avoid double-counting the expense.
+  skipReports       Boolean  @default(false)
+  sourceRecurringId String?  // links this one-time payment copy back to its recurring setup
   recurFrequency    String?
   recurDeadlineDay  Int?
   distributeMonthly Boolean  @default(false)

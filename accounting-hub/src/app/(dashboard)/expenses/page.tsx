@@ -689,6 +689,16 @@ export default function ExpensesPage() {
     // Asset-classification entries are added to Asset Management via the dedicated
     // "Add to Asset Management" button under the Account Title (works anytime).
   }
+
+  // Distributed recurring entry → create a one-time payment copy (full amount) for RFP.
+  const addToOneTime = async (e: Entry) => {
+    const r = await fetch('/api/expenses/recurring-to-onetime', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recurringId: e.id }) })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) { alert(j.error || 'Failed to create one-time copy'); return }
+    alert(j.existing
+      ? `Already in One-time as ${j.pcvNumber}. Open the "One-time expense" tab to audit it and include it in an RFP.`
+      : `Added to One-time as ${j.pcvNumber} for the full amount. Open the "One-time expense" tab to audit it and include it in an RFP.\n\nThis recurring entry stays put and keeps amortizing monthly, so the expense is not double-counted.`)
+  }
   const confirmAddAsset = async () => {
     if (!assetPrompt) return
     setAssetBusy(true)
@@ -1294,6 +1304,11 @@ export default function ExpensesPage() {
                               <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
                                 <Trash2 size={13} style={{ color: '#dc2626' }} />
                               </button>
+                              {isRecurringTab && e.distributeMonthly && (
+                                <button onClick={() => addToOneTime(e)} title="Add a one-time copy (full amount) for RFP — this recurring entry stays and keeps amortizing monthly" className="p-1 rounded hover:bg-teal-50">
+                                  <FileText size={13} style={{ color: 'var(--teal)' }} />
+                                </button>
+                              )}
                             </div>
                           )}
                         </td>
