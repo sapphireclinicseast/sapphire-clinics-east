@@ -701,9 +701,12 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
               {matrix.map((m: any) => {
                 const full = m.due > 0 && m.paid >= m.due
                 const partial = m.paid > 0 && m.paid < m.due
-                const bg = full ? '#dcfce7' : partial ? '#fef9c3' : '#f8fafc'
-                const col = full ? '#166534' : partial ? '#854d0e' : 'var(--mid-gray)'
-                return <td key={m.quarterKey} className="px-3 py-2 text-center font-semibold" style={{ background: bg, color: col }}>{m.due > 0 ? `${m.paid > 0 ? '✓ ' : ''}${m.paid}/${m.due}` : '—'}</td>
+                // A quarter outside the computed schedule (due 0) but with a recorded payout.
+                const extra = m.due === 0 && m.paid > 0
+                const bg = full ? '#dcfce7' : partial || extra ? '#fef9c3' : '#f8fafc'
+                const col = full ? '#166534' : partial || extra ? '#854d0e' : 'var(--mid-gray)'
+                const text = m.due > 0 ? `${m.paid > 0 ? '✓ ' : ''}${m.paid}/${m.due}` : (extra ? `✓ ${m.paid}` : '—')
+                return <td key={m.quarterKey} className="px-3 py-2 text-center font-semibold" style={{ background: bg, color: col }}>{text}</td>
               })}
             </tr>
           </tbody></table>
