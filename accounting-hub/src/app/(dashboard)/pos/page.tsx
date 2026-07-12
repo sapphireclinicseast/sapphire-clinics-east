@@ -3645,6 +3645,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [walletDetail, setWalletDetail] = useState<DigitalWallet | null>(null)
   const [walletEditing, setWalletEditing] = useState(false)
   const [walletEditForm, setWalletEditForm] = useState<Record<string, string>>({})
+  const [adjustOpen, setAdjustOpen] = useState(false)
+  const [adjustForm, setAdjustForm] = useState({ amount: '', orderNumber: '', reason: '' })
+  const [adjusting, setAdjusting] = useState(false)
   const [walletEditAttachments, setWalletEditAttachments] = useState<string[]>([])
   const [editApprovedServices, setEditApprovedServices] = useState<string[]>([])
   const [walletEditSaving, setWalletEditSaving] = useState(false)
@@ -3874,6 +3877,19 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } catch {
       setWalletDetail(null)
     }
+  }
+
+  const submitAdjust = async () => {
+    if (!walletDetail) return
+    const amt = parseFloat(adjustForm.amount)
+    if (!(amt > 0)) { alert('Enter an amount greater than zero.'); return }
+    setAdjusting(true)
+    try {
+      const r = await fetch(`/api/pos/wallets/${walletDetail.id}/adjust`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: amt, orderNumber: adjustForm.orderNumber, reason: adjustForm.reason }) })
+      if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to adjust balance'); return }
+      setAdjustForm({ amount: '', orderNumber: '', reason: '' }); setAdjustOpen(false)
+      await loadWalletDetail(walletDetail); fetchWallets()
+    } finally { setAdjusting(false) }
   }
 
   const startWalletEdit = () => {
@@ -5703,12 +5719,39 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   <div className="flex items-center justify-between mb-1">
                     <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Running Balance</h4>
                     {walletDetail.walletType === 'GL' && (
-                      <a href={`/accounts-receivable?type=GL&wallet=${walletDetail.id}`}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                        See Accounts Receivables
-                      </a>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setAdjustOpen(o => !o)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                          {adjustOpen ? 'Cancel adjustment' : 'Adjust balance'}
+                        </button>
+                        <a href={`/accounts-receivable?type=GL&wallet=${walletDetail.id}`}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                          See Accounts Receivables
+                        </a>
+                      </div>
                     )}
                   </div>
+                  {walletDetail.walletType === 'GL' && adjustOpen && (
+                    <div className="rounded-xl border p-3 mb-3" style={{ borderColor: 'var(--teal)', background: 'var(--off-white)' }}>
+                      <p className="text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Restore balance from a voided order</p>
+                      <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Use this when a voided transaction did not return its amount to the wallet. It adds the amount back and tags the voided order in the ledger.</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Amount to restore (₱)</label>
+                          <input value={adjustForm.amount} onChange={e => setAdjustForm(f => ({ ...f, amount: e.target.value }))} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-lg border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Voided order #</label>
+                          <input value={adjustForm.orderNumber} onChange={e => setAdjustForm(f => ({ ...f, orderNumber: e.target.value }))} placeholder="e.g. 3999" className="w-full px-3 py-2 rounded-lg border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reason <span className="font-normal text-gray-400">(optional)</span></label>
+                          <input value={adjustForm.reason} onChange={e => setAdjustForm(f => ({ ...f, reason: e.target.value }))} placeholder="e.g. void not auto-reversed" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                      </div>
+                      <button onClick={submitAdjust} disabled={adjusting} className="mt-3 px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{adjusting ? 'Saving…' : 'Restore balance'}</button>
+                    </div>
+                  )}
                   {walletDetail.walletType === 'GL' && (
                     <p className="text-[10px] mb-2" style={{ color: 'var(--mid-gray)' }}>
                       Tracks consumption of the Consumable Balance (②). Starting balance reflects the usable amount at the time this GL wallet was created or imported.
