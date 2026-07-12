@@ -160,14 +160,15 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     doc.setDrawColor(150); doc.line(M, y, M + W, y); y += 6
     para('IN WITNESS WHEREOF, the Parties have signed this Agreement.', { bold: true, gap: 3 })
 
+    ensure(16) // keep the SCEI signatory block together
     para('For SAPPHIRE CLINICS EAST INC.:', { bold: true, gap: 1 })
     para('Hannah Jara — CEO and President', { gap: 5 })
 
+    ensure(46) // keep the FELLOW label + name + signature image + caption together
     para('THE FELLOW:', { bold: true, gap: 1 })
     para(input.fellowName || '____________', { gap: 1 })
     if (input.signaturePng) {
       try {
-        ensure(24)
         const mime = (input.signatureMime || 'image/png').includes('jpeg') ? 'JPEG' : 'PNG'
         const dataUrl = `data:${input.signatureMime || 'image/png'};base64,${input.signaturePng.toString('base64')}`
         doc.addImage(dataUrl, mime, M, y, 55, 20)
@@ -176,6 +177,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     }
     para('Signature over printed name', { size: 8, gap: 5 })
 
+    ensure(16) // keep the CO-MAKER block together
     para('THE CO-MAKER:', { bold: true, gap: 1 })
     para(input.comakerName || '____________', { gap: 1 })
     para('Signature over printed name', { size: 8, gap: 5 })
