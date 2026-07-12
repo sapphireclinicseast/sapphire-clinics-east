@@ -82,6 +82,26 @@ export function advanceEmailHtml(o: { name: string; amount: number; date: Date }
   })
 }
 
+// Loan amortization / repayment notice — warm and grateful, mirrors the advance note.
+export function loanPaymentEmailHtml(o: { name: string; amount: number; date: Date; principalPortion?: number; interestPortion?: number }): string {
+  const dateStr = o.date.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+  const p = Number(o.principalPortion || 0), i = Number(o.interestPortion || 0)
+  const breakdown = (p > 0 || i > 0)
+    ? `<p style="color:#475569;font-size:14px;">This payment covers ${p > 0 ? `<strong>${peso(p)}</strong> in principal` : ''}${p > 0 && i > 0 ? ' and ' : ''}${i > 0 ? `<strong>${peso(i)}</strong> in interest` : ''}.</p>`
+    : ''
+  return emailShell({
+    heading: 'Your loan payment has been deposited',
+    subheading: `Deposited ${dateStr}`,
+    preheader: `${peso(o.amount)} toward your loan has been deposited.`,
+    bodyHtml: `
+      <p>Dear ${o.name},</p>
+      <p>We're glad to confirm that <strong>${peso(o.amount)}</strong> toward your loan was deposited to your account on <strong>${dateStr}</strong>.</p>
+      ${breakdown}
+      <p>We don't take for granted what it means that you extended this support to Sapphire Clinics East. Your trust is a responsibility we carry with real care, and honoring it — on schedule, in full, and transparently — is part of how we keep faith with the people who believed in us early. Thank you for standing with us; it genuinely helps us keep caring for the families and patients we serve.</p>
+      <p style="margin-bottom:0;">Your proof of payment is attached for your records. With sincere gratitude,<br/><strong>Sapphire Clinics East Inc.</strong></p>`,
+  })
+}
+
 // Scholarship monthly-stipend release notice.
 export function scholarshipEmailHtml(o: { name: string; amount: number; date: Date; periodLabel?: string; scholarshipType?: string | null }): string {
   const dateStr = o.date.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })

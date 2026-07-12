@@ -59,6 +59,7 @@ export async function GET() {
       dateAcquired: c.dateAcquired, agreementType: c.agreementType, assignedToShareholderId: c.assignedToShareholderId,
       agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls, validIdUrls: c.validIdUrls, shareClass: c.shareClass,
       numberOfShares: num(c.numberOfShares), truePar: num(c.truePar), apic: num(c.apic), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
+      soldFromTreasury: c.soldFromTreasury,
       // % equity is share-count based: this holding's shares ÷ total shares (common + preferred).
       equityStake: totalShares > 0 ? (num(c.numberOfShares) / totalShares) * 100 : 0,
       bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId,
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
           proofOfDepositUrls: Array.isArray(body.proofOfDepositUrls) ? body.proofOfDepositUrls : undefined,
           validIdUrls: Array.isArray(body.validIdUrls) ? body.validIdUrls : undefined,
           shareClass: body.shareClass?.trim() || null,
-          numberOfShares: shares, truePar, apic, pricePerShare: price, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
+          numberOfShares: shares, truePar, apic, pricePerShare: price, soldFromTreasury: !!body.soldFromTreasury, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
           createdById: userId,
         },
       })
@@ -142,7 +143,7 @@ export async function PUT(req: Request) {
         proofOfDepositUrls: Array.isArray(body.proofOfDepositUrls) ? body.proofOfDepositUrls : undefined,
         validIdUrls: Array.isArray(body.validIdUrls) ? body.validIdUrls : undefined,
         shareClass: body.shareClass?.trim() || null,
-        numberOfShares: shares, truePar, apic, pricePerShare: price, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
+        numberOfShares: shares, truePar, apic, pricePerShare: price, soldFromTreasury: !!body.soldFromTreasury, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
       } })
       const jeId = await postEquityIssuance(tx, { kind: 'COMMON', refId: id, date: new Date(body.dateAcquired), amount: shares * price, bankAccountId: body.bankAccountId, equityAccountId: body.equityAccountId, investor: (body.name || existing.shareholder.name), createdById: userId })
       await tx.commonShare.update({ where: { id }, data: { journalEntryId: jeId } })

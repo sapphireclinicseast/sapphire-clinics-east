@@ -60,6 +60,8 @@ export default function LoansAndAdvancesPage() {
         <h1 className="text-2xl font-semibold text-gray-900">Loans &amp; Advances</h1>
       </div>
 
+      <NearDuePaymentsPopup onGoToHistory={() => setTab('history')} />
+
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
         {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['history', 'Payment History']] as const).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
@@ -560,6 +562,65 @@ function SettleCreditLineModal({ line, banks, accts, onClose, onSaved }: { line:
   )
 }
 
+// Popup that nags the accountant about loan/advance payments due within 3 days
+// (or overdue), across both advances and loans. Mirrors the scholars near-due popup.
+function NearDuePaymentsPopup({ onGoToHistory }: { onGoToHistory: () => void }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [due, setDue] = useState<any[]>([])
+  const [dismissed, setDismissed] = useState(false)
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      fetch('/api/loans/payments?type=loans').then(r => r.ok ? r.json() : { rows: [] }).catch(() => ({ rows: [] })),
+      fetch('/api/loans/payments?type=advances').then(r => r.ok ? r.json() : { rows: [] }).catch(() => ({ rows: [] })),
+    ]).then(([l, a]) => {
+      if (!alive) return
+      const now = Date.now()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const soon = [...(l.rows || []), ...(a.rows || [])].filter((r: any) => {
+        if (r.status === 'PAID') return false
+        const diff = new Date(r.dueDate).getTime() - now
+        return diff <= 3 * 864e5 && diff > -365 * 864e5 // due within 3 days, or overdue up to a year
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }).sort((x: any, y: any) => new Date(x.dueDate).getTime() - new Date(y.dueDate).getTime())
+      setDue(soon)
+    })
+    return () => { alive = false }
+  }, [])
+  if (dismissed || due.length === 0) return null
+  const now = Date.now()
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDismissed(true)}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#9a3412' }}><Landmark size={18} /> Payments due soon</h2>
+          <button onClick={() => setDismissed(true)}><X size={18} className="text-gray-500" /></button>
+        </div>
+        <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>{due.length} loan/advance payment{due.length === 1 ? ' is' : 's are'} due within 3 days or overdue. Please settle and record them.</p>
+        <div className="rounded-xl border overflow-auto mb-4" style={{ borderColor: 'var(--light-gray)', maxHeight: 280 }}>
+          <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Name', 'Type', 'Due', 'Amount'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>
+            {due.map((r, i) => {
+              const overdue = new Date(r.dueDate).getTime() < now
+              return (
+                <tr key={`${r.parentId}-${r.seq}-${i}`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-3 py-1.5" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+                  <td className="px-3 py-1.5" style={{ color: 'var(--mid-gray)' }}>{r.kind === 'loan' ? 'Loan' : 'Advance'}</td>
+                  <td className="px-3 py-1.5" style={{ color: overdue ? '#b91c1c' : 'var(--mid-gray)', fontWeight: overdue ? 600 : 400 }}>{String(r.dueDate).slice(0, 10)}{overdue ? ' · overdue' : ''}</td>
+                  <td className="px-3 py-1.5 text-right font-mono font-semibold">{peso(r.amount)}</td>
+                </tr>
+              )
+            })}
+          </tbody></table>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => { setDismissed(true); onGoToHistory() }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Go to Payment History</button>
+          <button onClick={() => setDismissed(true)} className="px-4 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Dismiss</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Payment History ───────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PayRow = any
@@ -579,7 +640,7 @@ function PaymentHistoryTab({ banks }: { banks: Bank[] }) {
     if (!r.payoutId) return
     setEmailing(r.payoutId)
     try {
-      const res = await fetch('/api/loans/payments/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payoutId: r.payoutId }) })
+      const res = await fetch('/api/loans/payments/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payoutId: r.payoutId, kind: r.kind }) })
       const j = await res.json()
       if (res.ok) { alert(`Emailed ${j.to} (from ${j.from}).`); load() } else alert(j.error || 'Email failed')
     } finally { setEmailing('') }
@@ -612,7 +673,7 @@ function PaymentHistoryTab({ banks }: { banks: Bank[] }) {
               <td className="px-3 py-2">{r.status === 'PAID' ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Paid {r.paidDate ? String(r.paidDate).slice(0, 10) : ''}</span> : <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fef9c3', color: '#854d0e' }}>Pending</span>}</td>
               <td className="px-3 py-2 text-right whitespace-nowrap">
                 {r.status !== 'PAID' && <button onClick={() => setRecordFor(r)} className="text-[11px] px-2 py-1 rounded-lg font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>Record payment</button>}
-                {r.status === 'PAID' && sub === 'advances' && r.payoutId && <button onClick={() => sendEmail(r)} disabled={emailing === r.payoutId} className="text-[11px] px-2 py-1 rounded-lg font-semibold disabled:opacity-50" style={{ background: r.emailedAt ? '#dcfce7' : 'var(--pale-teal)', color: r.emailedAt ? '#166534' : 'var(--teal)' }}>{emailing === r.payoutId ? '…' : r.emailedAt ? 'Emailed ✓' : 'Email shareholder'}</button>}
+                {r.status === 'PAID' && r.payoutId && r.email && <button onClick={() => sendEmail(r)} disabled={emailing === r.payoutId} className="text-[11px] px-2 py-1 rounded-lg font-semibold disabled:opacity-50" style={{ background: r.emailedAt ? '#dcfce7' : 'var(--pale-teal)', color: r.emailedAt ? '#166534' : 'var(--teal)' }}>{emailing === r.payoutId ? '…' : r.emailedAt ? 'Emailed ✓' : 'Email shareholder'}</button>}
               </td>
             </tr>
           ))}

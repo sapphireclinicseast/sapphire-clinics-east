@@ -43,19 +43,21 @@ export async function GET(req: Request) {
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   const type = new URL(req.url).searchParams.get('type') || 'advances'
   if (type === 'loans') {
-    const [loans, paid] = await Promise.all([prisma.loan.findMany({ orderBy: { dateAcquired: 'asc' } }), prisma.loanPayout.findMany()])
+    const [loans, paid, shareholders] = await Promise.all([prisma.loan.findMany({ orderBy: { dateAcquired: 'asc' } }), prisma.loanPayout.findMany(), prisma.shareholder.findMany({ select: { id: true, email: true } })])
     const paidBy = new Map(paid.map(p => [`${p.loanId}|${new Date(p.dueDate).toISOString().slice(0, 10)}`, p]))
+    const emailById = new Map(shareholders.map(s => [s.id, s.email]))
     const rows = loans.flatMap(l => occurrences(l).map(o => {
       const rec = paidBy.get(`${l.id}|${o.dueDate.slice(0, 10)}`)
-      return { kind: 'loan', parentId: l.id, name: l.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, bankAccountId: l.bankAccountId, creditAccountId: l.creditAccountId, interestExpenseAccountId: l.interestExpenseAccountId }
+      return { kind: 'loan', parentId: l.id, name: l.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, shareholderId: l.shareholderId, email: l.shareholderId ? (emailById.get(l.shareholderId) || null) : null, bankAccountId: l.bankAccountId, creditAccountId: l.creditAccountId, interestExpenseAccountId: l.interestExpenseAccountId }
     }))
     return NextResponse.json({ rows })
   }
-  const [advances, paid] = await Promise.all([prisma.advance.findMany({ orderBy: { dateAcquired: 'asc' } }), prisma.advancePayout.findMany()])
+  const [advances, paid, shareholders] = await Promise.all([prisma.advance.findMany({ orderBy: { dateAcquired: 'asc' } }), prisma.advancePayout.findMany(), prisma.shareholder.findMany({ select: { id: true, email: true } })])
   const paidBy = new Map(paid.map(p => [`${p.advanceId}|${new Date(p.dueDate).toISOString().slice(0, 10)}`, p]))
+  const emailById = new Map(shareholders.map(s => [s.id, s.email]))
   const rows = advances.flatMap(a => occurrences(a).map(o => {
     const rec = paidBy.get(`${a.id}|${o.dueDate.slice(0, 10)}`)
-    return { kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, bankAccountId: a.bankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }
+    return { kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, email: a.shareholderId ? (emailById.get(a.shareholderId) || null) : null, bankAccountId: a.bankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }
   }))
   return NextResponse.json({ rows })
 }

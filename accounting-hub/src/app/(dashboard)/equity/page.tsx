@@ -32,6 +32,7 @@ interface CommonRow {
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
   stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
   totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
+  soldFromTreasury: boolean
   boughtBack: boolean; buybackShares: number; buybacks: Buyback[]
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
@@ -131,7 +132,7 @@ export default function EquityPage() {
                 : (data?.rows || []).map(r => (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.boughtBack ? '#fef2f2' : undefined }}>
                     <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.shNumber}</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{r.soldFromTreasury && <span className="ml-1 text-[10px] px-1 rounded" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.stockCertNumber || '—'}</td>
@@ -145,8 +146,8 @@ export default function EquityPage() {
                       ? <>{peso((r.numberOfShares - r.buybackShares) * r.pricePerShare)}<span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>(Previously {peso(r.totalCapitalization)} but shares bought back)</span></>
                       : peso(r.totalCapitalization)}</td>
                     <td className="px-3 py-2 text-right">{r.equityStake.toFixed(2)}%</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{bankLabel(r.bankAccountId)}</td>
-                    <td className="px-3 py-2">{r.boughtBack ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }} title={r.buybacks.map(b => `${String(b.date).slice(0, 10)}: ${b.shares.toLocaleString('en-PH')} @ ${peso(b.price)}`).join('\n')}>Yes · {r.buybackShares.toLocaleString('en-PH')}{r.buybacks.length > 1 ? ` in ${r.buybacks.length} buybacks` : r.buybacks[0] ? ` @ ${peso(r.buybacks[0].price)}` : ''}</span> : 'No'}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)', overflow: 'hidden', wordBreak: 'break-word' }} title={bankLabel(r.bankAccountId)}>{bankLabel(r.bankAccountId)}</td>
+                    <td className="px-3 py-2" style={{ overflow: 'hidden' }}>{r.boughtBack ? <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c', wordBreak: 'break-word', maxWidth: '100%' }} title={r.buybacks.map(b => `${String(b.date).slice(0, 10)}: ${b.shares.toLocaleString('en-PH')} @ ${peso(b.price)}`).join('\n')}>Yes · {r.buybackShares.toLocaleString('en-PH')}{r.buybacks.length > 1 ? ` (${r.buybacks.length}×)` : ''}</span> : 'No'}</td>
                     <td className="px-3 py-2">
                       <span className="inline-flex gap-1.5">
                         {(r.validIdUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Valid ID" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}
@@ -186,7 +187,7 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload,
     email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '', shareClass: row?.shareClass || '',
     stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '',
-    bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
+    bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '', soldFromTreasury: row?.soldFromTreasury || false,
   })
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.agreementUrls || [])
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
@@ -300,6 +301,10 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload,
               <ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div>
           </div>
         </div>
+
+        <label className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+          <input type="checkbox" checked={f.soldFromTreasury} onChange={e => set('soldFromTreasury', e.target.checked)} /> Sold share from Treasury Shares <span className="font-normal text-gray-400">(shares reissued from bought-back stock)</span>
+        </label>
 
         {/* Buybacks (multiple per shareholder) */}
         <div className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>

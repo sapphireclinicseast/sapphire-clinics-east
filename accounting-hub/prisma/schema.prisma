@@ -2053,6 +2053,7 @@ model CommonShare {
   truePar          Decimal? // par value per share (PHP)
   apic             Decimal? // additional paid-in capital per share (PHP)
   pricePerShare    Decimal  // = truePar + apic (issue price per share)
+  soldFromTreasury Boolean  @default(false) // shares reissued from treasury (bought-back) stock
   bankAccountId    String?  // COA bank account the equity was debited into
   equityAccountId  String?  // COA equity account credited on issuance (chosen from CoA)
   journalEntryId   String?
