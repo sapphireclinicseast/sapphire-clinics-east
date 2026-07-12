@@ -104,8 +104,10 @@ export async function POST(req: Request) {
       })
       if (entries.length === 0) throw new Error(`No eligible audited ${k === 'VALID' ? 'valid' : 'invalid'} expense entries (already in an RFP / not audited?)`)
       const grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
-      // Auto-fill Payee = the payee (registeredName) of the first line item in the group.
-      const firstPayee = [...entries].sort((a, b) => (a.pcvSeq - b.pcvSeq) || ((a.pcvSub || 0) - (b.pcvSub || 0)))[0]?.registeredName?.trim() || null
+      // Auto-fill "Payable to" = the Payee (requestor) of the first line item in the
+      // group; fall back to its supplier (registeredName) only if that Payee is blank.
+      const firstEntry = [...entries].sort((a, b) => (a.pcvSeq - b.pcvSeq) || ((a.pcvSub || 0) - (b.pcvSub || 0)))[0]
+      const firstPayee = firstEntry?.requestor?.trim() || firstEntry?.registeredName?.trim() || null
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch, nextPcvSeq: 1 } })

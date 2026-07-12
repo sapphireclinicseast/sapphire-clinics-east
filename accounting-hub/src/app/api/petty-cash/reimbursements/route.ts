@@ -107,10 +107,11 @@ export async function POST(req: Request) {
       let eligibleIds: string[] = []
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let ceoEligible: any[] = []
-      // Auto-filled Payee = the payee (registeredName) of the first line item in the group.
+      // Auto-filled "Payable to" = the Payee (requestor) of the first line item in the
+      // group; fall back to its supplier (registeredName) only if that Payee is blank.
       let firstPayee: string | null = null
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const firstPayeeOf = (rows: any[]) => [...rows].sort((a, b) => (a.pcvSeq - b.pcvSeq) || ((a.pcvSub || 0) - (b.pcvSub || 0)))[0]?.registeredName?.trim() || null
+      const firstPayeeOf = (rows: any[]) => { const f = [...rows].sort((a, b) => (a.pcvSeq - b.pcvSeq) || ((a.pcvSub || 0) - (b.pcvSub || 0)))[0]; return f?.requestor?.trim() || f?.registeredName?.trim() || null }
 
       if (ceoBranch) {
         const entries = await tx.pettyCashEntry.findMany({
