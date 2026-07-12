@@ -735,20 +735,32 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
 }
 
 function AddPreferredDividendModal({ shareholders, banks, equityAccts, onClose, onSaved }: { shareholders: any[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const now = new Date()
+  const curY = now.getUTCFullYear(), curQ = Math.floor(now.getUTCMonth() / 3) + 1
+  // Last calendar day of a given quarter → default payout date for that quarter.
+  const qEndDate = (y: number, q: number) => new Date(Date.UTC(y, q * 3, 0)).toISOString().slice(0, 10)
+  const [year, setYear] = useState(curY)
+  const [quarter, setQuarter] = useState(curQ)
+  const [date, setDate] = useState(qEndDate(curY, curQ))
   const [bankAccountId, setBank] = useState('')
   const [expenseAccountId, setExp] = useState('')
   const [checked, setChecked] = useState<Set<string>>(() => new Set(shareholders.map(s => s.shareholderId)))
+  const [amounts, setAmounts] = useState<Record<string, string>>(() => Object.fromEntries(shareholders.map(s => [s.shareholderId, String(s.quarterly || 0)])))
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const toggle = (id: string) => setChecked(c => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const total = shareholders.filter(s => checked.has(s.shareholderId)).reduce((s, x) => s + (x.quarterly || 0), 0)
-  const [y, m] = date.split('-'); const q = Math.floor((Number(m) - 1) / 3) + 1; const qLabel = `Q${q} ${y}`
+  const amtOf = (id: string) => { const v = Number(amounts[id]); return isNaN(v) ? 0 : v }
+  const total = shareholders.filter(s => checked.has(s.shareholderId)).reduce((s, x) => s + amtOf(x.shareholderId), 0)
+  const qLabel = `Q${quarter} ${year}`, quarterKey = `${year}-Q${quarter}`
+  const pickQuarter = (y: number, q: number) => { setYear(y); setQuarter(q); setDate(qEndDate(y, q)) }
+  const years = Array.from({ length: 8 }, (_, i) => curY - i)
+  const isPast = year < curY || (year === curY && quarter < curQ)
   const save = async () => {
     if (checked.size === 0) { alert('Tick at least one preferred shareholder.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/equity/dividends-preferred', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, shareholderIds: [...checked], bankAccountId, expenseAccountId, proofOfDepositUrls: proofUrls }) })
+      const amts = Object.fromEntries([...checked].map(id => [id, amtOf(id)]))
+      const r = await fetch('/api/equity/dividends-preferred', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, quarterKey, periodLabel: qLabel, shareholderIds: [...checked], amounts: amts, bankAccountId, expenseAccountId, proofOfDepositUrls: proofUrls }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
     } finally { setBusy(false) }
@@ -757,34 +769,37 @@ function AddPreferredDividendModal({ shareholders, banks, equityAccts, onClose, 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Add Preferred Dividend Release · <span style={{ color: 'var(--teal)' }}>{qLabel}</span></h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        <div className="flex items-center justify-between mb-1"><h2 className="text-lg font-bold text-gray-900">Add Preferred Dividend Release · <span style={{ color: 'var(--teal)' }}>{qLabel}</span>{isPast && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full align-middle" style={{ background: '#fef9c3', color: '#854d0e' }}>past quarter</span>}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <p className="text-xs mb-4" style={mg}>Pick any quarter (including past ones) to backfill history. Amounts default to each shareholder&apos;s current quarterly dividend — edit them to match what was actually paid.</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+          <div><label className={lbl} style={mg}>Quarter</label><select value={quarter} onChange={e => pickQuarter(year, Number(e.target.value))} className={inp} style={bc}>{[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Year</label><select value={year} onChange={e => pickQuarter(Number(e.target.value), quarter)} className={inp} style={bc}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Payout date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Retained Earnings / interest (DR)</label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
-          <div><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div className="sm:col-span-4"><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
         </div>
         <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: 320 }}>
           <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
             <th className="px-3 py-2 font-semibold"><input type="checkbox" checked={checked.size === shareholders.length && shareholders.length > 0} onChange={e => setChecked(e.target.checked ? new Set(shareholders.map(s => s.shareholderId)) : new Set())} /></th>
-            {['Shareholder', 'Preferred Shares', 'Quarterly Dividend'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}
+            {['Shareholder', 'Preferred Shares', 'Amount Paid'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}
           </tr></thead><tbody>
             {shareholders.map(s => (
               <tr key={s.shareholderId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                 <td className="px-3 py-1.5"><input type="checkbox" checked={checked.has(s.shareholderId)} onChange={() => toggle(s.shareholderId)} /></td>
                 <td className="px-3 py-1.5">{s.name}{!s.email && <span className="ml-1 text-[10px]" style={{ color: '#b91c1c' }}>(no email)</span>}</td>
                 <td className="px-3 py-1.5 text-right">{Number(s.shares).toLocaleString('en-PH')}</td>
-                <td className="px-3 py-1.5 text-right font-mono">{peso(s.quarterly || 0)}</td>
+                <td className="px-3 py-1.5 text-right"><input value={amounts[s.shareholderId] ?? ''} onChange={e => setAmounts(a => ({ ...a, [s.shareholderId]: e.target.value }))} inputMode="decimal" disabled={!checked.has(s.shareholderId)} className="w-28 px-2 py-1 rounded-lg border text-xs text-right font-mono disabled:opacity-40" style={bc} /></td>
               </tr>
             ))}
             {shareholders.length === 0 && <tr><td colSpan={4} className="text-center py-6 text-gray-400">No preferred shareholders.</td></tr>}
           </tbody></table>
         </div>
         <div className="flex items-center justify-between mb-3">
-          <div><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`PREFDIV-${date}-PROOF`} existingCount={proofUrls.length} label="Add proof" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
+          <div><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`PREFDIV-${quarterKey}-PROOF`} existingCount={proofUrls.length} label="Add proof" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
           <div className="text-right"><p className="text-[11px]" style={mg}>{checked.size} shareholder{checked.size === 1 ? '' : 's'}</p><p className="text-lg font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{peso(total)}</p></div>
         </div>
         {bankAccountId && expenseAccountId && total > 0 && <p className="text-[11px] mb-2 font-mono" style={{ color: '#334155' }}>DR {equityAccts.find(a => a.id === expenseAccountId)?.accountTitle} {peso(total)} / CR {banks.find(b => b.id === bankAccountId)?.accountTitle} {peso(total)}</p>}
-        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record preferred dividend payout</button>
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record {qLabel} preferred dividend</button>
       </div>
     </div>
   )

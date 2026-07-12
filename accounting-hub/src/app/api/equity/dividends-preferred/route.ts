@@ -76,10 +76,20 @@ export async function POST(req: Request) {
     const ids: string[] = Array.isArray(b.shareholderIds) ? b.shareholderIds : []
     if (ids.length === 0) return NextResponse.json({ error: 'Select at least one preferred shareholder' }, { status: 400 })
     const per = await preferredSummary()
-    const items = ids.map(id => per.get(id)).filter(Boolean).map(h => ({ shareholderId: h!.shareholderId, shareholderName: h!.name, shares: h!.shares, amount: Math.round(h!.quarterly * 100) / 100, paidDate: date }))
+    // Per-shareholder amount overrides (for recording past quarters whose amounts
+    // may differ from today's computed quarterly). Falls back to the computed value.
+    const amounts: Record<string, unknown> = (b.amounts && typeof b.amounts === 'object') ? b.amounts : {}
+    const items = ids.map(id => per.get(id)).filter(Boolean).map(h => {
+      const ov = amounts[h!.shareholderId]
+      const amount = (ov != null && ov !== '' && !isNaN(Number(ov))) ? Math.round(Number(ov) * 100) / 100 : Math.round(h!.quarterly * 100) / 100
+      return { shareholderId: h!.shareholderId, shareholderName: h!.name, shares: h!.shares, amount, paidDate: date }
+    })
     if (items.length === 0) return NextResponse.json({ error: 'No matching preferred shareholders' }, { status: 400 })
     const total = items.reduce((s, i) => s + i.amount, 0)
-    const { key, label } = qkDate(date)
+    // Explicit quarter (from the picker) wins; otherwise derive from the payout date.
+    const derived = qkDate(date)
+    const key = typeof b.quarterKey === 'string' && b.quarterKey ? b.quarterKey : derived.key
+    const label = typeof b.periodLabel === 'string' && b.periodLabel ? b.periodLabel : derived.label
     const created = await prisma.$transaction(async (tx) => {
       const rel = await tx.preferredDividendRelease.create({ data: {
         date, quarterKey: key, periodLabel: label, bankAccountId: b.bankAccountId || null, expenseAccountId: b.expenseAccountId || null,
