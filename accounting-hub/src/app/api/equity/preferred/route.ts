@@ -33,19 +33,21 @@ export async function GET() {
   const total = commonCap + prefCap
   // % equity is share-count based: total shares across common + preferred.
   const totalShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0) + prefs.reduce((s, p) => s + num(p.numberOfShares), 0)
+  const preferredShares = prefs.reduce((s, p) => s + num(p.numberOfShares), 0)
+  const retiredPreferredShares = prefs.reduce((s, p) => s + num(p.retiredShares), 0)
   const rows = prefs.map(p => {
     const cap = num(p.numberOfShares) * num(p.pricePerShare)
     return {
       id: p.id, shareholderId: p.shareholderId, shNumber: p.shareholder.shNumber, name: p.shareholder.name,
       tin: p.shareholder.tin, birthdate: p.shareholder.birthdate, email: p.shareholder.email, address: p.shareholder.address,
       dateAcquired: p.dateAcquired, agreementType: p.agreementType, agreementUrls: p.agreementUrls, stockCertNumber: p.stockCertNumber,
-      proofOfDepositUrls: p.proofOfDepositUrls, validIdUrls: p.validIdUrls, shareClass: p.shareClass, numberOfShares: num(p.numberOfShares), truePar: num(p.truePar), apic: num(p.apic), pricePerShare: num(p.pricePerShare), totalCapitalization: cap,
+      proofOfDepositUrls: p.proofOfDepositUrls, validIdUrls: p.validIdUrls, shareClass: p.shareClass, numberOfShares: num(p.numberOfShares), retiredShares: num(p.retiredShares), truePar: num(p.truePar), apic: num(p.apic), pricePerShare: num(p.pricePerShare), totalCapitalization: cap,
       equityStake: totalShares > 0 ? (num(p.numberOfShares) / totalShares) * 100 : 0, bankAccountId: p.bankAccountId, equityAccountId: p.equityAccountId,
       annualInterest: p.annualInterest != null ? num(p.annualInterest) : null, maturityYears: p.maturityYears, buybackPrice: p.buybackPrice != null ? num(p.buybackPrice) : null,
       payoutSchedule: p.payoutSchedule, payoutStartMonth: p.payoutStartMonth, payoutStartYear: p.payoutStartYear, payoutDay: p.payoutDay, pdcUrls: p.pdcUrls,
     }
   })
-  return NextResponse.json({ rows, shareholders, figures: { totalCapitalization: total, preferredCapitalization: prefCap } })
+  return NextResponse.json({ rows, shareholders, figures: { totalCapitalization: total, preferredCapitalization: prefCap, preferredShares, retiredPreferredShares } })
 }
 
 function dataFrom(b: Record<string, unknown>) {
@@ -55,7 +57,7 @@ function dataFrom(b: Record<string, unknown>) {
     proofOfDepositUrls: Array.isArray(b.proofOfDepositUrls) ? b.proofOfDepositUrls : undefined,
     validIdUrls: Array.isArray(b.validIdUrls) ? b.validIdUrls : undefined,
     shareClass: (b.shareClass as string)?.trim() || null,
-    numberOfShares: num(b.numberOfShares), truePar: num(b.truePar), apic: num(b.apic), pricePerShare: priceOf(b), bankAccountId: (b.bankAccountId as string) || null, equityAccountId: (b.equityAccountId as string) || null,
+    numberOfShares: num(b.numberOfShares), retiredShares: num(b.retiredShares), truePar: num(b.truePar), apic: num(b.apic), pricePerShare: priceOf(b), bankAccountId: (b.bankAccountId as string) || null, equityAccountId: (b.equityAccountId as string) || null,
     annualInterest: b.annualInterest != null ? num(b.annualInterest) : null, maturityYears: b.maturityYears ? Number(b.maturityYears) : null,
     buybackPrice: b.buybackPrice != null ? num(b.buybackPrice) : null,
     payoutSchedule: (b.payoutSchedule as string) || null, payoutStartMonth: b.payoutStartMonth ? Number(b.payoutStartMonth) : null,

@@ -416,23 +416,39 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 interface PrefRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
   dateAcquired: string; agreementType: string; agreementUrls: string[] | null; stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null
-  numberOfShares: number; truePar: number; apic: number; pricePerShare: number; totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
+  numberOfShares: number; retiredShares: number; truePar: number; apic: number; pricePerShare: number; totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
   annualInterest: number | null; maturityYears: number | null; buybackPrice: number | null
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; pdcUrls: string[] | null
 }
+interface PrefFigures { preferredCapitalization: number; preferredShares: number; retiredPreferredShares: number }
 
 function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { banks: Bank[]; equityAccts: EquityAcct[]; onChanged: () => void; canWrite?: boolean }) {
   const [rows, setRows] = useState<PrefRow[]>([])
   const [shareholders, setShareholders] = useState<Shareholder[]>([])
+  const [fig, setFig] = useState<PrefFigures | null>(null)
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<PrefRow | null>(null)
   const [showAdd, setShowAdd] = useState(false)
-  const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/equity/preferred'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []); setShareholders(j?.shareholders || []) } catch { setRows([]) } finally { setLoading(false) } }, [])
+  const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/equity/preferred'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []); setShareholders(j?.shareholders || []); setFig(j?.figures || null) } catch { setRows([]) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
   const del = async (r: PrefRow) => { if (!confirm(`Delete ${r.shNumber} — ${r.name}'s preferred shares?`)) return; await fetch(`/api/equity/preferred?id=${r.id}`, { method: 'DELETE' }); load(); onChanged() }
   const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? `${b.accountNumber} ${b.accountTitle}` : '—' }
   return (
     <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)' }}>
+          <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Preferred Capitalization</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(fig?.preferredCapitalization || 0)}</p>
+        </div>
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Preferred Shares</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.preferredShares || 0).toLocaleString('en-PH')}</p>
+        </div>
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Retired Preferred Shares</p>
+          <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{(fig?.retiredPreferredShares || 0).toLocaleString('en-PH')}</p>
+        </div>
+      </div>
       {canWrite && <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button></div>}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
@@ -471,7 +487,7 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '', email: row?.email || '', address: row?.address || '',
     dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10), agreementType: row?.agreementType || 'SUBSCRIPTION', stockCertNumber: row?.stockCertNumber || '', shareClass: row?.shareClass || '',
-    numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '', bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
+    numberOfShares: row ? String(row.numberOfShares) : '', retiredShares: row?.retiredShares ? String(row.retiredShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '', bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
     annualInterest: row?.annualInterest != null ? String(row.annualInterest) : '', maturityYears: row?.maturityYears ? String(row.maturityYears) : '', buybackPrice: row?.buybackPrice != null ? String(row.buybackPrice) : '',
     payoutSchedule: row?.payoutSchedule || '', payoutStartMonth: row?.payoutStartMonth ? String(row.payoutStartMonth) : '', payoutStartYear: row?.payoutStartYear ? String(row.payoutStartYear) : '', payoutDay: row?.payoutDay ? String(row.payoutDay) : '',
   })
@@ -490,7 +506,7 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
     if (!(n(f.numberOfShares) > 0) || !(pricePerShare > 0) || !f.name.trim()) { alert('Enter name, shares and True Par / APIC.'); return }
     setBusy(true)
     try {
-      const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), truePar: n(f.truePar), apic: n(f.apic), pricePerShare, annualInterest: f.annualInterest ? n(f.annualInterest) : null, maturityYears: f.maturityYears ? Number(f.maturityYears) : null, buybackPrice: f.buybackPrice ? n(f.buybackPrice) : null, payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null, agreementUrls, proofOfDepositUrls: proofUrls, validIdUrls, pdcUrls }
+      const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), retiredShares: n(f.retiredShares), truePar: n(f.truePar), apic: n(f.apic), pricePerShare, annualInterest: f.annualInterest ? n(f.annualInterest) : null, maturityYears: f.maturityYears ? Number(f.maturityYears) : null, buybackPrice: f.buybackPrice ? n(f.buybackPrice) : null, payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null, agreementUrls, proofOfDepositUrls: proofUrls, validIdUrls, pdcUrls }
       const r = await fetch('/api/equity/preferred', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
@@ -513,6 +529,7 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
           <div><label className={lbl} style={mg}>Agreement type</label><select value={f.agreementType} onChange={e => set('agreementType', e.target.value)} className={inp} style={bc}><option value="SUBSCRIPTION">Subscription</option><option value="DEED_OF_ASSIGNMENT">Deed of Assignment</option></select></div>
           <div><label className={lbl} style={mg}>Stock Certificate No.</label><input value={f.stockCertNumber} onChange={e => set('stockCertNumber', e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Number of Shares</label><input value={f.numberOfShares} onChange={e => set('numberOfShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Retired Shares <span className="font-normal text-gray-400">(redeemed)</span></label><input value={f.retiredShares} onChange={e => set('retiredShares', e.target.value)} inputMode="decimal" placeholder="0" className={inp + ' font-mono'} style={bc} /></div>
           <div><label className={lbl} style={mg}>True Par (PHP)</label><input value={f.truePar} onChange={e => set('truePar', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
           <div><label className={lbl} style={mg}>APIC (PHP)</label><input value={f.apic} onChange={e => set('apic', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
           <div><label className={lbl} style={mg}>Price/Share (PHP) <span className="font-normal text-gray-400">(par + APIC)</span></label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(pricePerShare)}</div></div>

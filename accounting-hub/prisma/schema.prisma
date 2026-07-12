@@ -2105,6 +2105,7 @@ model PreferredShare {
   validIdUrls      Json?    // shareholder's valid ID(s) — multi-file, QR upload
   shareClass       String?  // e.g. "Preferred – Voting – with Par" / "Redeemable Preferred – …"
   numberOfShares   Decimal
+  retiredShares    Decimal? @default(0) // preferred shares redeemed/retired
   truePar          Decimal? // par value per share (PHP)
   apic             Decimal? // additional paid-in capital per share (PHP)
   pricePerShare    Decimal  // = truePar + apic (issue price per share)

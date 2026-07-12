@@ -24,7 +24,7 @@ const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
 // Credit card is intentionally NOT a payment method here — credit-card expenses now
 // flow through the Credit Card SOA pipeline, and the RFP that settles an SOA is paid
 // to the bank via check / cash / transfer.
-const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', "Deposit to admin officer's bank account"]
+const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', "Deposit to admin officer's bank account", 'Telegraphic Transfer']
 const RECUR_FREQ = [
   { v: 'MONTHLY', label: 'Monthly' },
   { v: 'QUARTERLY', label: 'Quarterly' },
@@ -1719,15 +1719,17 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
   const isCheck = method === 'Check deposit' || method === 'Check encashment to deposit as cash'
   const isCard = method === 'Credit card'
   const isPayroll = method === "Deposit to admin officer's bank account"
+  const isTT = method === 'Telegraphic Transfer'
 
   const submit = () => {
     if (!datePaid) { alert('Enter the Date of Payment.'); return }
     if (!method) { alert('Select a Payment Method.'); return }
     if (isCheck && (!checkNumber || !bankAccount)) { alert('Enter the Check Number and bank account.'); return }
+    if (isTT && (!checkNumber || !bankAccount)) { alert('Enter the Reference Number and bank account.'); return }
     if (isCard && !cardId) { alert('Choose a credit card.'); return }
     if (isPayroll && !payrollAccount) { alert("Enter the admin officer's bank account number."); return }
     const selCard = cards.find(c => c.id === cardId)
-    onSubmit({ datePaid, paymentMethod: method, checkNumber: isCheck ? checkNumber : '', paymentBankAccount: isCheck ? bankAccount : '', creditCard: isCard && selCard ? cardLabel(selCard) : '', creditCardId: isCard ? cardId : '', payrollAccount: isPayroll ? payrollAccount : '' })
+    onSubmit({ datePaid, paymentMethod: method, checkNumber: (isCheck || isTT) ? checkNumber : '', paymentBankAccount: (isCheck || isTT) ? bankAccount : '', creditCard: isCard && selCard ? cardLabel(selCard) : '', creditCardId: isCard ? cardId : '', payrollAccount: isPayroll ? payrollAccount : '' })
   }
 
   const saveNewCard = async () => {
@@ -1764,6 +1766,20 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
             <input type="text" inputMode="numeric" value={checkNumber} onChange={e => setCheckNumber(e.target.value)}
               placeholder="e.g. 0001234" className="w-full px-3 py-2 rounded-xl border text-sm mb-1 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Leading zeros are preserved.</p>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Bank account</label>
+            <select value={bankAccount} onChange={e => setBankAccount(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">Select account…</option>
+              {bankOptions.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </>
+        )}
+
+        {isTT && (
+          <>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reference Number</label>
+            <input type="text" value={checkNumber} onChange={e => setCheckNumber(e.target.value)}
+              placeholder="e.g. BPA-07122026-123807-07716309" className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Bank account</label>
             <select value={bankAccount} onChange={e => setBankAccount(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
