@@ -7,7 +7,9 @@ import { redirect } from 'next/navigation'
 import { PieChart, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 
-const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Per-share values (par, APIC, price/share) can carry sub-centavo precision, so
+// show up to 3 decimals; whole/2-decimal amounts still render with 2.
+const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 3 })
 
 interface Bank { id: string; accountNumber: string; accountTitle: string }
 interface Shareholder { id: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null }
