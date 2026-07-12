@@ -2056,7 +2056,8 @@ model CommonShare {
   bankAccountId    String?  // COA bank account the equity was debited into
   equityAccountId  String?  // COA equity account credited on issuance (chosen from CoA)
   journalEntryId   String?
-  // Buyback → Treasury Shares
+  // Buyback → Treasury Shares. Legacy single-buyback columns kept for back-compat;
+  // buybacks are now recorded as ShareBuyback rows (multiple per shareholder).
   boughtBack       Boolean  @default(false)
   buybackPrice     Decimal?
   buybackShares    Decimal?
@@ -2064,11 +2065,31 @@ model CommonShare {
   treasuryAccountId String? // COA equity/treasury account debited on buyback
   buybackProofUrls Json?
   buybackJournalEntryId String?
+  buybacks         ShareBuyback[]
   createdById      String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   @@index([shareholderId])
+}
+
+// A single buyback event against a common shareholding. A shareholder may have
+// several. Each posts its own DR Treasury / CR Bank journal entry.
+model ShareBuyback {
+  id                String      @id @default(cuid())
+  commonShareId     String
+  commonShare       CommonShare @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
+  date              DateTime
+  shares            Decimal
+  price             Decimal
+  bankAccountId     String?
+  treasuryAccountId String?
+  journalEntryId    String?
+  proofUrls         Json?
+  createdById       String?
+  createdAt         DateTime    @default(now())
+
+  @@index([commonShareId])
 }
 
 model PreferredShare {

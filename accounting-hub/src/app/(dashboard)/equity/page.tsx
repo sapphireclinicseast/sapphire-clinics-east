@@ -26,12 +26,13 @@ const PREFERRED_SHARE_CLASSES = [
   'Redeemable Preferred – Non-Voting – with Par',
 ]
 
+interface Buyback { id: string; date: string; shares: number; price: number; amount: number; bankAccountId: string | null; treasuryAccountId: string | null; proofUrls: string[] | null }
 interface CommonRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
   stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
   totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
-  boughtBack: boolean; buybackPrice: number; buybackShares: number; buybackBankAccountId: string | null; treasuryAccountId: string | null; buybackProofUrls: string[] | null
+  boughtBack: boolean; buybackShares: number; buybacks: Buyback[]
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
 interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number }
@@ -145,7 +146,7 @@ export default function EquityPage() {
                       : peso(r.totalCapitalization)}</td>
                     <td className="px-3 py-2 text-right">{r.equityStake.toFixed(2)}%</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{bankLabel(r.bankAccountId)}</td>
-                    <td className="px-3 py-2">{r.boughtBack ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Yes · {r.buybackShares.toLocaleString('en-PH')} @ {peso(r.buybackPrice)}</span> : 'No'}</td>
+                    <td className="px-3 py-2">{r.boughtBack ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }} title={r.buybacks.map(b => `${String(b.date).slice(0, 10)}: ${b.shares.toLocaleString('en-PH')} @ ${peso(b.price)}`).join('\n')}>Yes · {r.buybackShares.toLocaleString('en-PH')}{r.buybacks.length > 1 ? ` in ${r.buybacks.length} buybacks` : r.buybacks[0] ? ` @ ${peso(r.buybacks[0].price)}` : ''}</span> : 'No'}</td>
                     <td className="px-3 py-2">
                       <span className="inline-flex gap-1.5">
                         {(r.validIdUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Valid ID" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}
@@ -174,25 +175,22 @@ export default function EquityPage() {
       {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} canWrite />}
       {isAdmin && effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} />}
 
-      {(showAdd || edit) && <CommonModal row={edit} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
+      {(showAdd || edit) && <CommonModal row={edit} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
   )
 }
 
-function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }: { row: CommonRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
+function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload, onSaved }: { row: CommonRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onReload: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '',
     email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '', shareClass: row?.shareClass || '',
     stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '',
     bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
-    boughtBack: row?.boughtBack || false, buybackPrice: row?.buybackPrice ? String(row.buybackPrice) : '', buybackShares: row?.buybackShares ? String(row.buybackShares) : '',
-    buybackBankAccountId: row?.buybackBankAccountId || '', treasuryAccountId: row?.treasuryAccountId || '',
   })
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.agreementUrls || [])
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
   const [validIdUrls, setValidIdUrls] = useState<string[]>(row?.validIdUrls || [])
-  const [buybackProofUrls, setBuybackProofUrls] = useState<string[]>(row?.buybackProofUrls || [])
   const [busy, setBusy] = useState(false)
   const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
   const n = (v: string) => Number(v) || 0
@@ -212,7 +210,7 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), truePar: n(f.truePar), apic: n(f.apic), pricePerShare,
-        buybackPrice: n(f.buybackPrice), buybackShares: n(f.buybackShares), agreementUrls, proofOfDepositUrls: proofUrls, validIdUrls, buybackProofUrls }
+        agreementUrls, proofOfDepositUrls: proofUrls, validIdUrls }
       const r = await fetch('/api/equity/common', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
@@ -303,36 +301,107 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
           </div>
         </div>
 
-        {/* Buyback */}
+        {/* Buybacks (multiple per shareholder) */}
         <div className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-          <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700">
-            <input type="checkbox" checked={f.boughtBack} onChange={e => set('boughtBack', e.target.checked)} /> Bought back? <span className="font-normal text-gray-400">(records to Treasury Shares)</span>
-          </label>
-          {f.boughtBack && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
-              <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price at Buyback</label><input value={f.buybackPrice} onChange={e => set('buybackPrice', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
-              <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Shares bought back</label><input value={f.buybackShares} onChange={e => set('buybackShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
-              <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account used to pay</label>
-                <select value={f.buybackBankAccountId} onChange={e => set('buybackBankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
-                  <option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
-                </select>
-              </div>
-              <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Treasury account to debit <span className="font-normal text-gray-400">(CoA)</span></label>
-                <select value={f.treasuryAccountId} onChange={e => set('treasuryAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
-                  <option value="">— Select equity account —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of Buyback</label>
-                <div className="flex flex-wrap items-center gap-2">{buybackProofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
-                  <ScanUpload compact section="equity" prefix={`${prefix}-BUYBACK`} existingCount={buybackProofUrls.length} label="Add" onUploaded={u => setBuybackProofUrls(p => [...p, u])} /></div>
-                {n(f.buybackShares) > 0 && n(f.buybackPrice) > 0 && f.treasuryAccountId && f.buybackBankAccountId && <p className="text-[11px] mt-1 font-mono" style={{ color: '#334155' }}>DR {equityAccts.find(a => a.id === f.treasuryAccountId)?.accountTitle} {peso(n(f.buybackShares) * n(f.buybackPrice))} / CR {banks.find(b => b.id === f.buybackBankAccountId)?.accountTitle} {peso(n(f.buybackShares) * n(f.buybackPrice))}</p>}
-              </div>
-            </div>
+          <p className="text-sm font-semibold text-gray-700 mb-1">Buybacks <span className="font-normal text-gray-400">(records to Treasury Shares)</span></p>
+          {row ? (
+            <BuybackManager share={row} banks={banks} equityAccts={equityAccts} onChanged={onReload} />
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Save the shareholder first, then reopen this record to add one or more buybacks.</p>
           )}
         </div>
 
         <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add shareholder'}</button>
       </div>
+    </div>
+  )
+}
+
+// Manages the list of buybacks for one common shareholding: list existing (with
+// delete) + an inline "add buyback" form. Each add/delete hits /api/equity/buybacks
+// and posts/reverses its own Treasury/Bank journal entry, then reloads the parent.
+function BuybackManager({ share, banks, equityAccts, onChanged }: { share: CommonRow; banks: Bank[]; equityAccts: EquityAcct[]; onChanged: () => void }) {
+  const [list, setList] = useState<Buyback[]>(share.buybacks || [])
+  const [d, setD] = useState({ date: new Date().toISOString().slice(0, 10), shares: '', price: '', bankAccountId: '', treasuryAccountId: '' })
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const n = (v: string) => Number(v) || 0
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm outline-none'
+  const lbl = 'block text-xs font-semibold mb-1'
+  const boughtBackTotal = list.reduce((s, b) => s + b.shares, 0)
+  const remaining = share.numberOfShares - boughtBackTotal
+  const set = (k: string, v: string) => setD(p => ({ ...p, [k]: v }))
+
+  const refresh = async () => {
+    try { const r = await fetch(`/api/equity/buybacks?commonShareId=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
+    onChanged()
+  }
+  const add = async () => {
+    if (!(n(d.shares) > 0)) { alert('Enter shares bought back.'); return }
+    if (!(n(d.price) > 0)) { alert('Enter the buyback price.'); return }
+    if (n(d.shares) > remaining + 1e-9) { alert(`Only ${remaining.toLocaleString('en-PH')} shares remain to buy back.`); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/equity/buybacks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commonShareId: share.id, date: d.date, shares: n(d.shares), price: n(d.price), bankAccountId: d.bankAccountId || null, treasuryAccountId: d.treasuryAccountId || null, proofUrls }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setD({ date: new Date().toISOString().slice(0, 10), shares: '', price: '', bankAccountId: '', treasuryAccountId: '' }); setProofUrls([]); setAdding(false)
+      await refresh()
+    } finally { setBusy(false) }
+  }
+  const del = async (b: Buyback) => {
+    if (!confirm(`Delete the ${String(b.date).slice(0, 10)} buyback of ${b.shares.toLocaleString('en-PH')} shares @ ${peso(b.price)}? Its journal entry is reversed.`)) return
+    await fetch(`/api/equity/buybacks?id=${b.id}`, { method: 'DELETE' })
+    await refresh()
+  }
+
+  return (
+    <div>
+      <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>Holds {share.numberOfShares.toLocaleString('en-PH')} · bought back {boughtBackTotal.toLocaleString('en-PH')} · <span style={{ color: remaining <= 0 ? '#b91c1c' : '#166534', fontWeight: 600 }}>{remaining.toLocaleString('en-PH')} remaining</span></p>
+      {list.length > 0 && (
+        <div className="rounded-xl border overflow-auto mb-2" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <table className="w-full text-xs"><thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>{['Date', 'Shares', 'Price', 'Amount', 'Proof', ''].map(h => <th key={h} className="px-2.5 py-1.5 font-semibold">{h}</th>)}</tr></thead><tbody>
+            {list.map(b => (
+              <tr key={b.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-2.5 py-1.5">{String(b.date).slice(0, 10)}</td>
+                <td className="px-2.5 py-1.5 font-mono">{b.shares.toLocaleString('en-PH')}</td>
+                <td className="px-2.5 py-1.5 font-mono">{peso(b.price)}</td>
+                <td className="px-2.5 py-1.5 font-mono font-semibold">{peso(b.amount)}</td>
+                <td className="px-2.5 py-1.5">{(Array.isArray(b.proofUrls) ? b.proofUrls : []).map((u: string, i: number) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 mr-1" style={{ color: 'var(--teal)' }}><Eye size={11} />{i + 1}</a>)}</td>
+                <td className="px-2.5 py-1.5 text-right"><button type="button" onClick={() => del(b)} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} className="text-red-400" /></button></td>
+              </tr>
+            ))}
+          </tbody></table>
+        </div>
+      )}
+      {adding ? (
+        <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Date</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Shares bought back</label><input value={d.shares} onChange={e => set('shares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price at buyback</label><input value={d.price} onChange={e => set('price', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account used to pay</label>
+              <select value={d.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select>
+            </div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Treasury account to debit <span className="font-normal text-gray-400">(CoA)</span></label>
+              <select value={d.treasuryAccountId} onChange={e => set('treasuryAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select equity account —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select>
+            </div>
+            <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of buyback</label>
+              <div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
+                <ScanUpload compact section="equity" prefix={`${share.stockCertNumber || share.name}-BUYBACK`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div>
+            </div>
+          </div>
+          {n(d.shares) > 0 && n(d.price) > 0 && d.treasuryAccountId && d.bankAccountId && <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>DR {equityAccts.find(a => a.id === d.treasuryAccountId)?.accountTitle} {peso(n(d.shares) * n(d.price))} / CR {banks.find(b => b.id === d.bankAccountId)?.accountTitle} {peso(n(d.shares) * n(d.price))}</p>}
+          <div className="flex gap-2 mt-3">
+            <button type="button" onClick={add} disabled={busy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={13} className="animate-spin" />} Record buyback</button>
+            <button type="button" onClick={() => { setAdding(false); setProofUrls([]) }} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        remaining > 0
+          ? <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> Add buyback</button>
+          : <p className="text-[11px]" style={{ color: '#b91c1c' }}>All shares have been bought back.</p>
+      )}
     </div>
   )
 }
