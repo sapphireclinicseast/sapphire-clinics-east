@@ -42,9 +42,16 @@ export async function GET() {
   const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
   const prefCap = preferreds.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
   const totalCapitalization = commonCap + prefCap
-  const totalShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0) + preferreds.reduce((s, p) => s + num(p.numberOfShares), 0)
-  // Buybacks are now recorded as ShareBuyback rows (multiple per shareholder).
-  const treasuryShares = commons.reduce((s, c) => s + c.buybacks.reduce((t, b) => t + num(b.shares), 0), 0)
+  const grossShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0) + preferreds.reduce((s, p) => s + num(p.numberOfShares), 0)
+  // Shares reissued out of treasury (holdings tagged "sold from treasury") were
+  // already issued — they come back out of the company's bought-back stock, so they
+  // reduce BOTH the treasury balance and the issued-share total (no new shares are
+  // created; reissuing must not push us past authorized capital).
+  const reissuedFromTreasury = commons.reduce((s, c) => s + (c.soldFromTreasury ? num(c.numberOfShares) : 0), 0)
+  const totalShares = grossShares - reissuedFromTreasury
+  // Buybacks are ShareBuyback rows (multiple per shareholder), net of any reissued.
+  const treasuryBought = commons.reduce((s, c) => s + c.buybacks.reduce((t, b) => t + num(b.shares), 0), 0)
+  const treasuryShares = Math.max(0, treasuryBought - reissuedFromTreasury)
 
   const rows = commons.map(c => {
     const cap = num(c.numberOfShares) * num(c.pricePerShare)
@@ -60,8 +67,8 @@ export async function GET() {
       agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls, validIdUrls: c.validIdUrls, shareClass: c.shareClass,
       numberOfShares: num(c.numberOfShares), truePar: num(c.truePar), apic: num(c.apic), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
       soldFromTreasury: c.soldFromTreasury,
-      // % equity is share-count based: this holding's shares ÷ total shares (common + preferred).
-      equityStake: totalShares > 0 ? (num(c.numberOfShares) / totalShares) * 100 : 0,
+      // % equity is share-count based: this holding's shares ÷ gross shares (common + preferred).
+      equityStake: grossShares > 0 ? (num(c.numberOfShares) / grossShares) * 100 : 0,
       bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId,
       boughtBack: buybacks.length > 0, buybackShares, buybacks,
     }
