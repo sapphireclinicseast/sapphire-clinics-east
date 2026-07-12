@@ -3892,6 +3892,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } finally { setAdjusting(false) }
   }
 
+  const deleteAdjustment = async (logId: string) => {
+    if (!walletDetail) return
+    if (!window.confirm('Delete this balance adjustment? The amount will be removed from the wallet balance.')) return
+    const r = await fetch(`/api/pos/wallets/${walletDetail.id}/adjust?logId=${logId}`, { method: 'DELETE' })
+    if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to delete adjustment'); return }
+    await loadWalletDetail(walletDetail); fetchWallets()
+  }
+
   const startWalletEdit = () => {
     if (!walletDetail) return
     // For GL wallets: detect any existing "(Nth Application)" suffix in the name
@@ -5827,7 +5835,12 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                                   {log.action}
                                 </span>
                               </td>
-                              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{log.description}</td>
+                              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                                {log.description}
+                                {walletDetail.walletType === 'GL' && log.action === 'VOID_REVERSAL' && (log.description || '').startsWith('Balance adjustment:') && (
+                                  <button onClick={() => deleteAdjustment(log.id)} className="ml-2 inline-flex items-center gap-0.5 text-[11px] font-semibold" style={{ color: '#b91c1c' }} title="Delete this adjustment (reverses the balance)"><Trash2 size={11} /> Delete</button>
+                                )}
+                              </td>
                               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{log.sessions ?? '—'}</td>
                               {isRewardEligible && (
                                 <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{log.pointsChange ? `${log.pointsChange > 0 ? '+' : ''}${log.pointsChange}` : '—'}</td>
