@@ -283,7 +283,12 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onSaved }
               <ScanUpload compact section="equity" prefix={`${prefix}-AGREEMENT`} existingCount={agreementUrls.length} label="Add" onUploaded={u => setAgreementUrls(p => [...p, u])} /></div>
           </div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of deposit</label>
-            <div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
+            <div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => (
+              <span key={u} className="text-xs inline-flex items-center gap-1 rounded-lg border px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
+                <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>
+                <button type="button" onClick={() => setProofUrls(p => p.filter(x => x !== u))} title="Remove"><X size={11} className="text-red-400" /></button>
+              </span>
+            ))}
               <ScanUpload compact section="equity" prefix={`${prefix}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div>
           </div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Valid ID <span className="font-normal text-gray-400">(one or more; scan via QR)</span></label>
@@ -447,7 +452,12 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-3">
           <div><label className={lbl} style={mg}>Subscription / Deed</label><div className="flex flex-wrap items-center gap-2">{agreementUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-AGREEMENT`} existingCount={agreementUrls.length} label="Add" onUploaded={u => setAgreementUrls(p => [...p, u])} /></div></div>
-          <div><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
+          <div><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => (
+            <span key={u} className="text-xs inline-flex items-center gap-1 rounded-lg border px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
+              <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>
+              <button type="button" onClick={() => setProofUrls(p => p.filter(x => x !== u))} title="Remove"><X size={11} className="text-red-400" /></button>
+            </span>
+          ))}<ScanUpload compact section="equity" prefix={`${prefix}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
           <div><label className={lbl} style={mg}>Valid ID <span className="font-normal text-gray-400">(1+, QR)</span></label><div className="flex flex-wrap items-center gap-2">{validIdUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div></div>
           <div><label className={lbl} style={mg}>PDCs</label><div className="flex flex-wrap items-center gap-2">{pdcUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-PDC`} existingCount={pdcUrls.length} label="Add" onUploaded={u => setPdcUrls(p => [...p, u])} /></div></div>
         </div>
