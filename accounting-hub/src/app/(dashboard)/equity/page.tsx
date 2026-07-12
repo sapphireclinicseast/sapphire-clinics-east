@@ -132,11 +132,15 @@ export default function EquityPage() {
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.stockCertNumber || '—'}</td>
-                    <td className="px-3 py-2 text-right">{r.numberOfShares.toLocaleString('en-PH')}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">{r.boughtBack && r.buybackShares > 0
+                      ? <>{(r.numberOfShares - r.buybackShares).toLocaleString('en-PH')}<span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>(Previously {r.numberOfShares.toLocaleString('en-PH')} with {r.buybackShares.toLocaleString('en-PH')} bought back)</span></>
+                      : r.numberOfShares.toLocaleString('en-PH')}</td>
                     <td className="px-3 py-2 text-right">{peso(r.truePar)}</td>
                     <td className="px-3 py-2 text-right">{peso(r.apic)}</td>
                     <td className="px-3 py-2 text-right font-semibold">{peso(r.pricePerShare)}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{peso(r.totalCapitalization)}</td>
+                    <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{r.boughtBack && r.buybackShares > 0
+                      ? <>{peso((r.numberOfShares - r.buybackShares) * r.pricePerShare)}<span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>(Previously {peso(r.totalCapitalization)} but shares bought back)</span></>
+                      : peso(r.totalCapitalization)}</td>
                     <td className="px-3 py-2 text-right">{r.equityStake.toFixed(2)}%</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{bankLabel(r.bankAccountId)}</td>
                     <td className="px-3 py-2">{r.boughtBack ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Yes · {r.buybackShares.toLocaleString('en-PH')} @ {peso(r.buybackPrice)}</span> : 'No'}</td>
