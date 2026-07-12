@@ -4,6 +4,8 @@
 // Aral Track — the awarded stipend tier and Coverage Period. The fellow's
 // e-signature image and the soft-copy signing date are stamped at the end.
 
+import { CEO_SIGNATURE_PNG_B64 } from './ugat-ceo-signature'
+
 type Block = { h: true; t: string } | { h?: false; t: string }
 const H = (t: string): Block => ({ h: true, t })
 const P = (t: string): Block => ({ t })
@@ -23,6 +25,9 @@ type PdfInput = {
 
 const fmtDate = (d: Date) =>
   d.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+// Date + time in Manila (PHT) for the per-page e-sign stamp.
+const fmtDateTime = (d: Date) =>
+  d.toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) + ' PHT'
 
 function aralBlocks(i: PdfInput): Block[] {
   const prof = i.program || 'Allied Health'
@@ -125,11 +130,17 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
     const M = 20
     const W = 170
-    const BOTTOM = 280
+    const BOTTOM = 244 // leave room at the foot of each page for the e-sign stamp
     let y = 20
 
     const isTindig = input.track === 'TINDIG'
     const ensure = (h: number) => { if (y + h > BOTTOM) { doc.addPage(); y = 20 } }
+    // Signature images + stamp text prepared once.
+    const ceoDataUrl = CEO_SIGNATURE_PNG_B64 ? `data:image/png;base64,${CEO_SIGNATURE_PNG_B64}` : null
+    const fellowMime = (input.signatureMime || 'image/png').includes('jpeg') ? 'JPEG' : 'PNG'
+    const fellowDataUrl = input.signaturePng ? `data:${input.signatureMime || 'image/png'};base64,${input.signaturePng.toString('base64')}` : null
+    const stampTime = fmtDateTime(input.dateSigned)
+    const fellowShort = (input.fellowName || 'The Fellow').split(/\s+/).slice(0, 3).join(' ')
     const heading = (t: string) => {
       ensure(9); y += 2
       doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5)
@@ -155,26 +166,21 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     const blocks = isTindig ? tindigBlocks(input) : aralBlocks(input)
     for (const b of blocks) { if (b.h) heading(b.t); else para(b.t) }
 
-    // Signature block
+    // Signature block. This page (and any after) is the signature page — not stamped.
     ensure(60); y += 4
+    const sigStartPage = doc.getNumberOfPages()
     doc.setDrawColor(150); doc.line(M, y, M + W, y); y += 6
     para('IN WITNESS WHEREOF, the Parties have signed this Agreement.', { bold: true, gap: 3 })
 
-    ensure(16) // keep the SCEI signatory block together
+    ensure(34) // keep the SCEI signatory block (with signature) together
     para('For SAPPHIRE CLINICS EAST INC.:', { bold: true, gap: 1 })
+    if (ceoDataUrl) { try { doc.addImage(ceoDataUrl, 'PNG', M, y, 46, 25); y += 26 } catch { /* skip image on failure */ } }
     para('Hannah Jara — CEO and President', { gap: 5 })
 
     ensure(46) // keep the FELLOW label + name + signature image + caption together
     para('THE FELLOW:', { bold: true, gap: 1 })
     para(input.fellowName || '____________', { gap: 1 })
-    if (input.signaturePng) {
-      try {
-        const mime = (input.signatureMime || 'image/png').includes('jpeg') ? 'JPEG' : 'PNG'
-        const dataUrl = `data:${input.signatureMime || 'image/png'};base64,${input.signaturePng.toString('base64')}`
-        doc.addImage(dataUrl, mime, M, y, 55, 20)
-        y += 22
-      } catch { /* skip image on failure */ }
-    }
+    if (fellowDataUrl) { try { doc.addImage(fellowDataUrl, fellowMime, M, y, 55, 20); y += 22 } catch { /* skip image on failure */ } }
     para('Signature over printed name', { size: 8, gap: 5 })
 
     ensure(16) // keep the CO-MAKER block together
@@ -185,6 +191,23 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     ensure(14)
     doc.setDrawColor(150); doc.line(M, y, M + W, y); y += 5
     para(`Signed electronically (soft copy) by the FELLOW on ${fmtDate(input.dateSigned)}. This soft copy will be countersigned in person (hard copy) with the CO-MAKER at an Aura Health Rehab branch, before witnesses and a Notary Public, to complete execution.`, { size: 8 })
+
+    // Per-page e-sign stamp — right foot of every non-signature page, showing both
+    // signatures (CEO + fellow) with the signing date & time (PHT).
+    const drawStamp = (p: number) => {
+      doc.setPage(p)
+      const rx = 192
+      doc.setDrawColor(205); doc.setLineWidth(0.3); doc.roundedRect(118, 249, 76, 36, 2, 2)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(5.6); doc.setTextColor(120)
+      doc.text('ELECTRONICALLY SIGNED', rx, 253, { align: 'right' })
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(70)
+      if (ceoDataUrl) { try { doc.addImage(ceoDataUrl, 'PNG', 121, 254, 24, 13) } catch { /* skip */ } }
+      doc.setFontSize(6); doc.text('Hannah Jara · CEO', rx, 259, { align: 'right' }); doc.text(stampTime, rx, 262, { align: 'right' })
+      if (fellowDataUrl) { try { doc.addImage(fellowDataUrl, fellowMime, 121, 269, 24, 10) } catch { /* skip */ } }
+      doc.text(fellowShort, rx, 273, { align: 'right' }); doc.text(stampTime, rx, 276, { align: 'right' })
+      doc.setTextColor(0); doc.setLineWidth(0.2)
+    }
+    for (let p = 1; p < sigStartPage; p++) drawStamp(p)
 
     return Buffer.from(doc.output('arraybuffer'))
   } catch (e) {
