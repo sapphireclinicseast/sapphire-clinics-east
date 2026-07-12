@@ -986,7 +986,7 @@ export default function ExpensesPage() {
                         <ColResizeHandle rz={gridRz} index={ci + 1} />
                       </th>
                     ))}
-                    <th className="border-r border-b px-2 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />
+                    <th className="border-r border-b px-2 py-2 text-center text-[11px] font-semibold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', position: 'sticky', right: 0, zIndex: 12, color: 'var(--mid-gray)' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1290,7 +1290,7 @@ export default function ExpensesPage() {
                             </select>
                           </td>
                         )}
-                        <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)', position: 'sticky', right: 0, zIndex: 4, background: '#fff', boxShadow: '-5px 0 6px -4px rgba(0,0,0,0.18)' }}>
                           {canWrite && !e.reimbursementId && (e.recordType === 'RECURRING' || !e.paidAt) && (
                             <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
                               <button onClick={() => finalizeEntry(e)} disabled={!!e.finalized}
@@ -1305,8 +1305,8 @@ export default function ExpensesPage() {
                                 <Trash2 size={13} style={{ color: '#dc2626' }} />
                               </button>
                               {isRecurringTab && e.distributeMonthly && (
-                                <button onClick={() => addToOneTime(e)} title="Add a one-time copy (full amount) for RFP — this recurring entry stays and keeps amortizing monthly" className="p-1 rounded hover:bg-teal-50">
-                                  <FileText size={13} style={{ color: 'var(--teal)' }} />
+                                <button onClick={() => addToOneTime(e)} title="Add a one-time copy (full amount) for RFP — this recurring entry stays and keeps amortizing monthly" className="ml-0.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                                  <FileText size={12} /> To One-time (RFP)
                                 </button>
                               )}
                             </div>
