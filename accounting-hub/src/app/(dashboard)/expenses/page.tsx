@@ -1307,8 +1307,8 @@ export default function ExpensesPage() {
                                 </button>
                               </div>
                               {isRecurringTab && e.distributeMonthly && (
-                                <button onClick={() => addToOneTime(e)} title="Add a one-time copy (full amount) for RFP — this recurring entry stays and keeps amortizing monthly" className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-                                  <FileText size={12} /> To One-time
+                                <button onClick={() => addToOneTime(e)} title="Add a one-time copy (full amount) for RFP — this recurring entry stays and keeps amortizing monthly" className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                  <FileText size={12} style={{ flexShrink: 0 }} /> To One-time
                                 </button>
                               )}
                             </div>
