@@ -825,7 +825,8 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
             onDrillDown={() => onDrillDown('Accounts Receivable', 'AR_PAYMENTS', 0)} />
         )}
         {accountsReceivable && Object.entries(accountsReceivable.byType).map(([type, bal]) => (
-          bal > 0 ? <AnnualRow key={type} label={`    ${type === 'HMO' ? 'HMO Receivables' : type === 'GL' ? 'Guarantee Letter Receivables' : type}`} amount={bal} indent={3} /> : null
+          bal > 0 ? <AnnualRow key={type} label={`    ${type === 'HMO' ? 'HMO Receivables' : type === 'GL' ? 'Guarantee Letter Receivables' : type}`} amount={bal} indent={3}
+            onDrillDown={() => onDrillDown(type === 'HMO' ? 'HMO Receivables' : type === 'GL' ? 'Guarantee Letter Receivables' : type, 'AR_BALANCE', 0, type)} /> : null
         ))}
         {currentAssetAccounts.filter(a => a.accountNumber !== '1010').map((a) => {
           const acctKey = `${a.accountNumber} ${a.accountTitle}`

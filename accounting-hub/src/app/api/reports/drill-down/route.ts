@@ -76,6 +76,29 @@ export async function GET(req: Request) {
   const branchFilter: any = branch !== 'ALL' ? { branch: orderBranch } : {}
 
   try {
+    // ── Accounts Receivable balance breakdown, per HMO/GL wallet (patient) ──
+    // accountKey carries the wallet type ('HMO' or 'GL'). HMO AR = wallet balance;
+    // GL AR = totalGlAmount (the full approved amount). Matches the balance sheet total.
+    if (category === 'AR_BALANCE') {
+      const arType = (accountKey || 'HMO').toUpperCase()
+      const wt = arType === 'GL' ? WalletType.GL : WalletType.HMO
+      const wallets = await prisma.digitalWallet.findMany({
+        where: { isActive: true, walletType: wt },
+        select: { patientName: true, balance: true, totalGlAmount: true, agency: true, branch: true, dateObtained: true },
+        orderBy: { patientName: 'asc' },
+      })
+      const items = wallets.map(w => {
+        const amount = wt === WalletType.GL && w.totalGlAmount ? Number(w.totalGlAmount) : Number(w.balance)
+        return {
+          date: w.dateObtained ? w.dateObtained.toISOString().split('T')[0] : '',
+          type: `${w.patientName}${w.agency ? ` · ${w.agency}` : ''}`,
+          branch: BRANCH_LABELS[w.branch] || w.branch,
+          amount,
+        }
+      }).filter(i => Math.abs(i.amount) > 0.005).sort((a, b) => b.amount - a.amount)
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
     // ── Depreciation expense detail (per-asset, per-month rows) ──
     if (category === 'DEPRECIATION_EXPENSE') {
       const assets = await prisma.asset.findMany({
