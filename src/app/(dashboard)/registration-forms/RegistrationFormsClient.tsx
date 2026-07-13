@@ -46,6 +46,15 @@ export default function RegistrationFormsClient({ role }: Props) {
   const [editingItem, setEditingItem]   = useState<ResponseItem | null>(null)
   const [editValues, setEditValues]     = useState<Record<string, string>>({})
   const [saving, setSaving]             = useState(false)
+  const [newCutoff, setNewCutoff]       = useState<Date | null>(null)
+
+  // Fetch the per-user "dismissed at" cutoff so we can highlight new entries
+  useEffect(() => {
+    fetch('/api/notifications', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if (d.dismissedAt) setNewCutoff(new Date(d.dismissedAt)) })
+      .catch(() => {})
+  }, [])
 
   const isSBEA     = role.startsWith('SBEA')
   const isSBGH     = role.startsWith('SBGH')
@@ -388,11 +397,30 @@ export default function RegistrationFormsClient({ role }: Props) {
                         </tr>
                       </thead>
                       <tbody>
-                        {results.items.map((item, i) => (
-                          <tr key={item.landing_id || i} className="hover:bg-gray-50 transition-colors" style={{ borderTop: '1px solid var(--border)' }}>
-                            <td className="px-3 py-2">{i + 1}</td>
+                        {results.items.map((item, i) => {
+                          const isNew = newCutoff && item.submitted_at
+                            ? new Date(item.submitted_at) > newCutoff
+                            : false
+                          return (
+                          <tr
+                            key={item.landing_id || i}
+                            className="transition-colors"
+                            style={{
+                              borderTop: '1px solid var(--border)',
+                              background: isNew ? '#F0FDF4' : undefined,
+                              borderLeft: isNew ? '3px solid #16A34A' : '3px solid transparent',
+                            }}
+                          >
+                            <td className="px-3 py-2" style={{ color: isNew ? '#15803D' : undefined, fontWeight: isNew ? 600 : undefined }}>{i + 1}</td>
                             <td className="px-3 py-2 whitespace-nowrap">
-                              {item.submitted_at ? new Date(item.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }) : '—'}
+                              <div className="flex items-center gap-2">
+                                {item.submitted_at ? new Date(item.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }) : '—'}
+                                {isNew && (
+                                  <span style={{ background: '#16A34A', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em' }}>
+                                    NEW
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             {isAdmin && selectedForm.sbgh && (
                               <td className="px-3 py-2">
@@ -435,7 +463,8 @@ export default function RegistrationFormsClient({ role }: Props) {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>

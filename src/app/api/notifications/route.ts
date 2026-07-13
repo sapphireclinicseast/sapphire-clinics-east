@@ -59,5 +59,5 @@ export async function GET() {
     forms = 0
   }
 
-  return NextResponse.json({ bookings, forms })
+  return NextResponse.json({ bookings, forms, dismissedAt: since.toISOString() })
 }
