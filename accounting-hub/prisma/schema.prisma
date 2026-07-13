@@ -1702,6 +1702,15 @@ model InvoiceSettings {
   updatedAt   DateTime @updatedAt
 }
 
+// Corporate equity anchor (singleton). Authorized shares fix the total issued
+// capital; Treasury Shares are derived as authorizedShares − outstanding, so the
+// available-for-sale figure stays correct even if a reissuance wasn't tagged.
+model EquitySettings {
+  id               String   @id @default("singleton")
+  authorizedShares Int      @default(20000000)
+  updatedAt        DateTime @updatedAt
+}
+
 // ── Petty Cash module ─────────────────────────────────────────
 model PettyCashEntry {
   id                String   @id @default(cuid())

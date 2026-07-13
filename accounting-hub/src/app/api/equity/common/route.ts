@@ -33,11 +33,13 @@ export async function GET() {
   const session = await auth()
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
 
-  const [commons, preferreds, shareholders] = await Promise.all([
+  const [commons, preferreds, shareholders, settings] = await Promise.all([
     prisma.commonShare.findMany({ include: { shareholder: true, buybacks: { orderBy: { date: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
     prisma.preferredShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, address: true } }),
+    prisma.equitySettings.findUnique({ where: { id: 'singleton' } }),
   ])
+  const authorizedShares = settings?.authorizedShares ?? 20000000
 
   const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
   const prefCap = preferreds.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
@@ -55,7 +57,12 @@ export async function GET() {
   // treasury rows) minus every share bought back into treasury. Preferred shares have
   // their own card and are intentionally excluded here — no double counting.
   const totalShares = grossCommonShares - treasuryBought
-  const treasuryShares = Math.max(0, treasuryBought - reissuedFromTreasury)
+  // Treasury (available-for-sale) = authorized issued capital − outstanding. Anchoring
+  // to the authorized total keeps this correct even if a reissuance was entered without
+  // the "sold from treasury" tag. Fall back to the tag-based figure only if authorized
+  // hasn't been set. reissuedFromTreasury is retained for the tag-based cross-check.
+  void reissuedFromTreasury
+  const treasuryShares = Math.max(0, authorizedShares - totalShares)
 
   const rows = commons.map(c => {
     const cap = num(c.numberOfShares) * num(c.pricePerShare)
@@ -80,7 +87,7 @@ export async function GET() {
 
   return NextResponse.json({
     rows, shareholders,
-    figures: { totalCapitalization, totalShares, treasuryShares },
+    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares },
   })
 }
 

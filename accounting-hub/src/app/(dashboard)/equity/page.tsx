@@ -38,7 +38,7 @@ interface CommonRow {
   boughtBack: boolean; buybackShares: number; buybacks: Buyback[]
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
-interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number }
+interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number }
 
 const EQUITY_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -55,6 +55,9 @@ export default function EquityPage() {
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<CommonRow | null>(null)
   const [showAdd, setShowAdd] = useState(false)
+  const [editAuth, setEditAuth] = useState(false)
+  const [authInput, setAuthInput] = useState('')
+  const [savingAuth, setSavingAuth] = useState(false)
 
   const load = useCallback(async () => {
     // Common-shares data is admin-only; accountants/bookkeepers see the Preferred tab only.
@@ -108,6 +111,17 @@ export default function EquityPage() {
     }
   }
 
+  const saveAuth = async () => {
+    const val = Math.round(Number(authInput.replace(/[, ]/g, '')))
+    if (!Number.isFinite(val) || val < 0) { alert('Enter a valid number of authorized shares.'); return }
+    setSavingAuth(true)
+    try {
+      const r = await fetch('/api/equity/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authorizedShares: val }) })
+      if (!r.ok) { alert('Failed to save authorized shares.'); return }
+      setEditAuth(false); load()
+    } finally { setSavingAuth(false) }
+  }
+
   const fig = data?.figures
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
@@ -118,17 +132,31 @@ export default function EquityPage() {
 
       {/* Top figures — org-wide equity totals (admin only) */}
       {isAdmin && (
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Total Capitalization</p>
           <p className="text-2xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(fig?.totalCapitalization || 0)}</p>
         </div>
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Authorized Shares</p>
+            {!editAuth && <button onClick={() => { setAuthInput(String(fig?.authorizedShares ?? 20000000)); setEditAuth(true) }} className="p-1 rounded hover:bg-gray-100" title="Edit authorized shares"><Pencil size={13} className="text-blue-500" /></button>}
+          </div>
+          {editAuth ? (
+            <div className="flex items-center gap-1.5 mt-1">
+              <input autoFocus value={authInput} onChange={e => setAuthInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAuth(); if (e.key === 'Escape') setEditAuth(false) }}
+                className="w-full px-2 py-1 rounded-lg border text-lg font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} inputMode="numeric" />
+              <button onClick={saveAuth} disabled={savingAuth} className="px-2 py-1 rounded-lg text-white text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>{savingAuth ? <Loader2 size={13} className="animate-spin" /> : 'Save'}</button>
+              <button onClick={() => setEditAuth(false)} className="p-1 rounded hover:bg-gray-100"><X size={14} className="text-gray-400" /></button>
+            </div>
+          ) : <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.authorizedShares ?? 20000000).toLocaleString('en-PH')}</p>}
+        </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Number of Shares</p>
+          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Number of Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
           <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.totalShares || 0).toLocaleString('en-PH')}</p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: '#fef2f2' }}>
-          <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Total Treasury Shares</p>
+          <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Total Treasury Shares <span className="font-normal" style={{ color: '#d4a0a0' }}>(available for sale)</span></p>
           <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{(fig?.treasuryShares || 0).toLocaleString('en-PH')}</p>
         </div>
       </div>

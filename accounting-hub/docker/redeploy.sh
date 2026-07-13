@@ -94,6 +94,14 @@ ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "skipReports" BOOLEAN NOT 
 ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "sourceRecurringId" TEXT;
 ALTER TABLE "Service" ADD COLUMN IF NOT EXISTS "isHmoGl" BOOLEAN NOT NULL DEFAULT false;
 
+-- Equity Settings (singleton): authorized shares anchor; Treasury = authorized − outstanding
+CREATE TABLE IF NOT EXISTS "EquitySettings" (
+    "id"               TEXT    NOT NULL DEFAULT 'singleton',
+    "authorizedShares" INTEGER NOT NULL DEFAULT 20000000,
+    "updatedAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "EquitySettings_pkey" PRIMARY KEY ("id")
+);
+
 -- SOA Settings (singleton row for bank details, signatories)
 CREATE TABLE IF NOT EXISTS "SoaSettings" (
     "id"                   TEXT        NOT NULL DEFAULT 'singleton',
