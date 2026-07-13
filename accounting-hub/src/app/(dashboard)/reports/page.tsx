@@ -261,6 +261,7 @@ function fmtSigned(n: number): string {
    SHARED ROW COMPONENTS  (QuickBooks-style clean design)
    ═══════════════════════════════════════════════════════════════ */
 
+const pctOf = (part: number, whole: number) => whole ? Math.round((part / whole) * 100) : 0
 const ROW_FONT = '0.7rem'
 const ROW_FONT_MONO = ROW_FONT
 const GRID_MONTHLY = '210px repeat(12, minmax(96px,1fr)) 116px'
@@ -318,9 +319,11 @@ function SubSectionHeader({ label }: { label: string }) {
 
 function AnnualRow({
   label, amount, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false, muted = false, onDrillDown,
+  expandable = false, expanded = false, onToggleExpand, pctOfParent,
 }: {
   label: string; amount: number; indent?: number; bold?: boolean
   isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean; muted?: boolean; onDrillDown?: () => void
+  expandable?: boolean; expanded?: boolean; onToggleExpand?: () => void; pctOfParent?: number | null
 }) {
   const isNeg = negative && amount < 0
   return (
@@ -340,7 +343,11 @@ function AnnualRow({
         color: muted ? '#6b7280' : '#111827',
       }}
     >
-      <span>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: expandable ? 'pointer' : undefined }}
+        onClick={expandable ? onToggleExpand : undefined}>
+        {expandable && <ChevronDown size={12} style={{ flexShrink: 0, color: '#6b7280', transition: 'transform 0.15s', transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)' }} />}
+        {label}
+      </span>
       <span
         style={{
           textAlign: 'right',
@@ -355,6 +362,7 @@ function AnnualRow({
         onMouseLeave={e => { if (onDrillDown) (e.target as HTMLElement).style.textDecoration = 'none' }}
       >
         {negative ? fmtSigned(amount) : fmt(amount)}
+        {pctOfParent != null && <span style={{ color: '#9ca3af', marginLeft: 5, fontStyle: 'italic' }}>({pctOfParent}%)</span>}
       </span>
     </div>
   )
@@ -364,10 +372,12 @@ function AnnualRow({
 
 function MonthlyRow({
   label, values, total, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false, muted = false, onClickCell,
+  expandable = false, expanded = false, onToggleExpand, pctOfParent,
 }: {
   label: string; values: number[]; total: number; indent?: number; bold?: boolean
   isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean; muted?: boolean
   onClickCell?: (month: number | null) => void
+  expandable?: boolean; expanded?: boolean; onToggleExpand?: () => void; pctOfParent?: number | null
 }) {
   return (
     <div
@@ -387,7 +397,12 @@ function MonthlyRow({
         minWidth: GRID_MONTHLY_MINW,
       }}
     >
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '6px' }}>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden', paddingRight: '6px', cursor: expandable ? 'pointer' : undefined }}
+        onClick={expandable ? onToggleExpand : undefined}>
+        {expandable && <ChevronDown size={12} style={{ flexShrink: 0, color: '#6b7280', transition: 'transform 0.15s', transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)' }} />}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        {pctOfParent != null && <span style={{ color: '#9ca3af', marginLeft: 2, flexShrink: 0 }}>({pctOfParent}%)</span>}
+      </span>
       {values.map((v, i) => {
         const isNeg = negative && v < 0
         return (
@@ -980,6 +995,9 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
   const { monthly, accounts } = data
   const [col, setCol] = useState<Record<string, boolean>>({})
   const tog = (k: string) => setCol(p => ({ ...p, [k]: !p[k] }))
+  // Per-revenue-account breakdown expand (Cash/Receivables + product sub-types). Collapsed by default.
+  const [expRev, setExpRev] = useState<Record<string, boolean>>({})
+  const togRev = (k: string) => setExpRev(p => ({ ...p, [k]: !p[k] }))
 
   // COA-driven: Revenue accounts — gather from ALL revenue subTypes, not just OPERATING/NON_OPERATING
   const allRevenueSubTypes = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
@@ -1075,13 +1093,17 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
               return (
                 <Fragment key={a.accountNumber}>
                   <AnnualRow label={acctKey} amount={total} indent={1}
-                    onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
-                  {rcv > 0 && (<>
-                    <AnnualRow key={`${a.accountNumber}-cash`} label="Cash Sales" amount={total - rcv} indent={2} muted />
-                    <AnnualRow key={`${a.accountNumber}-rcv`} label="Receivables Sales (HMO/GL)" amount={rcv} indent={2} muted />
+                    onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)}
+                    expandable={rcv > 0 || isProductIncome} expanded={!!expRev[a.accountNumber]} onToggleExpand={() => togRev(a.accountNumber)} />
+                  {expRev[a.accountNumber] && rcv > 0 && (<>
+                    <AnnualRow key={`${a.accountNumber}-cash`} label="Cash Sales" amount={total - rcv} indent={2} muted pctOfParent={pctOf(total - rcv, total)}
+                      onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
+                    <AnnualRow key={`${a.accountNumber}-rcv`} label="Receivables Sales (HMO/GL)" amount={rcv} indent={2} muted pctOfParent={pctOf(rcv, total)}
+                      onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
                   </>)}
-                  {isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
-                    <AnnualRow key={`${a.accountNumber}-${label}`} label={label} amount={amt} indent={2} muted />
+                  {expRev[a.accountNumber] && isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
+                    <AnnualRow key={`${a.accountNumber}-${label}`} label={label} amount={amt} indent={2} muted pctOfParent={pctOf(amt, total)}
+                      onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
                   ))}
                 </Fragment>
               )
@@ -1214,14 +1236,18 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
                 <MonthlyRow label={acctKey}
                   values={totArr}
                   total={acctTotal} indent={1}
-                  onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
-                {rcvTotal > 0 && (<>
-                  <MonthlyRow key={`${a.accountNumber}-cash`} label="Cash Sales" values={totArr.map((v, i) => v - (rcvArr[i] || 0))} total={acctTotal - rcvTotal} indent={2} muted />
-                  <MonthlyRow key={`${a.accountNumber}-rcv`} label="Receivables Sales (HMO/GL)" values={rcvArr} total={rcvTotal} indent={2} muted />
+                  onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)}
+                  expandable={rcvTotal > 0 || isProductIncome} expanded={!!expRev[a.accountNumber]} onToggleExpand={() => togRev(a.accountNumber)} />
+                {expRev[a.accountNumber] && rcvTotal > 0 && (<>
+                  <MonthlyRow key={`${a.accountNumber}-cash`} label="Cash Sales" values={totArr.map((v, i) => v - (rcvArr[i] || 0))} total={acctTotal - rcvTotal} indent={2} muted pctOfParent={pctOf(acctTotal - rcvTotal, acctTotal)}
+                    onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
+                  <MonthlyRow key={`${a.accountNumber}-rcv`} label="Receivables Sales (HMO/GL)" values={rcvArr} total={rcvTotal} indent={2} muted pctOfParent={pctOf(rcvTotal, acctTotal)}
+                    onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
                 </>)}
-                {isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
+                {expRev[a.accountNumber] && isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
                   <MonthlyRow key={`${a.accountNumber}-${label}`} label={label}
-                    values={subtypeMonthly(label)} total={amt} indent={2} muted />
+                    values={subtypeMonthly(label)} total={amt} indent={2} muted pctOfParent={pctOf(amt, acctTotal)}
+                    onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
                 ))}
               </Fragment>
             )
