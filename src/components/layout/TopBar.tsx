@@ -16,34 +16,23 @@ interface NotifCounts {
   forms: number
 }
 
-const POLL_MS = 5 * 60 * 1000 // 5 minutes
-const LS_KEY  = 'notif_dismissed_at'
+const POLL_MS = 5 * 60 * 1000 // poll every 5 minutes
 
 export default function TopBar({ user, onMenuClick }: TopBarProps) {
-  const [counts, setCounts]   = useState<NotifCounts>({ bookings: 0, forms: 0 })
-  const [open, setOpen]       = useState(false)
-  const dropdownRef           = useRef<HTMLDivElement>(null)
-  const sinceRef              = useRef<string>('')
-
-  function getSince(): string {
-    if (sinceRef.current) return sinceRef.current
-    const stored  = typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) : null
-    const default_ = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    sinceRef.current = stored ?? default_
-    return sinceRef.current
-  }
+  const [counts, setCounts] = useState<NotifCounts>({ bookings: 0, forms: 0 })
+  const [open, setOpen]     = useState(false)
+  const dropdownRef         = useRef<HTMLDivElement>(null)
 
   const fetchCounts = useCallback(async () => {
     try {
-      const since = getSince()
-      const res = await fetch(`/api/notifications?since=${encodeURIComponent(since)}`, { cache: 'no-store' })
+      const res = await fetch('/api/notifications', { cache: 'no-store' })
       if (!res.ok) return
       const data = await res.json()
       setCounts({ bookings: data.bookings ?? 0, forms: data.forms ?? 0 })
     } catch {
-      // silently ignore — bell stays at 0
+      // silently ignore network errors — bell stays at current value
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // Initial fetch + 5-minute poll + re-fetch on window focus
   useEffect(() => {
@@ -56,7 +45,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
     }
   }, [fetchCounts])
 
-  // Close dropdown when clicking outside
+  // Close dropdown on outside click
   useEffect(() => {
     if (!open) return
     function onOutside(e: MouseEvent) {
@@ -68,10 +57,10 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
     return () => document.removeEventListener('mousedown', onOutside)
   }, [open])
 
-  function dismiss() {
-    const now = new Date().toISOString()
-    localStorage.setItem(LS_KEY, now)
-    sinceRef.current = now
+  async function dismiss() {
+    try {
+      await fetch('/api/notifications/dismiss', { method: 'POST' })
+    } catch { /* ignore */ }
     setCounts({ bookings: 0, forms: 0 })
     setOpen(false)
   }
@@ -111,21 +100,21 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
             {total > 0 && (
               <span
                 style={{
-                  position:    'absolute',
-                  top:         2,
-                  right:       2,
-                  minWidth:    16,
-                  height:      16,
-                  borderRadius: 9999,
-                  background:  '#DC2626',
-                  color:       '#fff',
-                  fontSize:    10,
-                  fontWeight:  700,
-                  display:     'flex',
-                  alignItems:  'center',
+                  position:       'absolute',
+                  top:            2,
+                  right:          2,
+                  minWidth:       16,
+                  height:         16,
+                  borderRadius:   9999,
+                  background:     '#DC2626',
+                  color:          '#fff',
+                  fontSize:       10,
+                  fontWeight:     700,
+                  display:        'flex',
+                  alignItems:     'center',
                   justifyContent: 'center',
-                  padding:     '0 3px',
-                  lineHeight:  1,
+                  padding:        '0 3px',
+                  lineHeight:     1,
                 }}
               >
                 {total > 99 ? '99+' : total}
@@ -136,17 +125,17 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
           {open && (
             <div
               style={{
-                position:  'absolute',
-                right:     0,
-                top:       '100%',
-                marginTop: 8,
-                width:     288,
-                background: '#fff',
-                border:    '1px solid var(--light-gray)',
+                position:     'absolute',
+                right:        0,
+                top:          '100%',
+                marginTop:    8,
+                width:        288,
+                background:   '#fff',
+                border:       '1px solid var(--light-gray)',
                 borderRadius: 12,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-                zIndex:    50,
-                overflow:  'hidden',
+                boxShadow:    '0 8px 24px rgba(0,0,0,0.10)',
+                zIndex:       50,
+                overflow:     'hidden',
               }}
             >
               {/* Header */}
@@ -206,7 +195,6 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
                 </>
               )}
 
-              {/* Mark all as read */}
               {total > 0 && (
                 <div style={{ padding: '8px 16px', borderTop: '1px solid var(--light-gray)' }}>
                   <button

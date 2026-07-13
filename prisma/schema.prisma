@@ -1758,3 +1758,11 @@ model UgatAnnouncement {
 
   @@index([published, createdAt])
 }
+
+/// Tracks per-user notification dismiss timestamp so the bell badge persists
+/// across sign-out / refresh / cache clear and stays independent per user.
+model UserNotificationState {
+  userId      String   @id  // = User.id (session.user.id)
+  dismissedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

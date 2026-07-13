@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -15,17 +15,18 @@ const ALL_FORM_IDS = [
   'X2YDKTaH',              // Psych Registration Form (SBEA only)
 ]
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const sinceParam = req.nextUrl.searchParams.get('since')
-  // Default: last 24 h — so on first visit staff see today's new entries
-  const since = sinceParam && !isNaN(Date.parse(sinceParam))
-    ? new Date(sinceParam)
-    : new Date(Date.now() - 24 * 60 * 60 * 1000)
+  // Look up when THIS user last dismissed notifications
+  const state = await prisma.userNotificationState.findUnique({
+    where: { userId: session.user.id },
+  })
+  // New users default to 24 h ago so they see today's activity on first login
+  const since = state?.dismissedAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000)
 
-  // ── New patient booking requests since `since` ──────────────────────────────
+  // ── New patient booking requests since this user's last dismiss ─────────────
   const bookings = await prisma.patientBooking.count({
     where: {
       createdAt: { gt: since },
@@ -33,9 +34,8 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  // ── New registration form responses since `since` ───────────────────────────
-  // Fetch all form IDs in parallel; sum responses newer than `since`.
-  // Gracefully returns 0 per form if HR Platform is unreachable.
+  // ── New registration form responses since this user's last dismiss ───────────
+  // Parallel fetch from HR Platform; gracefully returns 0 per form if unreachable.
   let forms = 0
   try {
     const counts = await Promise.all(
