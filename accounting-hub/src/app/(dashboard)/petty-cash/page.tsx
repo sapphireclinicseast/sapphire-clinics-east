@@ -1560,11 +1560,11 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
         </select>
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Deposited to (bank account)</label>
-        <select value={deposit} onChange={e => setDeposit(e.target.value)}
-          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
-          <option value="">Select account…</option>
-          {bankOptions.map(a => <option key={a} value={a}>{a}</option>)}
-        </select>
+        <input list="pc-deposit-bank-accounts" value={deposit} onChange={e => setDeposit(e.target.value)}
+          placeholder="Select a company account or type any external account"
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+        <datalist id="pc-deposit-bank-accounts">{bankOptions.map(a => <option key={a} value={a} />)}</datalist>
+        <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Pick one of our accounts from the list, or type the payee&apos;s / any bank account not in the chart of accounts.</p>
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of deposit (image / PDF)</label>
         <label className="flex items-center gap-2 cursor-pointer mb-1">
