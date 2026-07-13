@@ -3648,6 +3648,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [adjustOpen, setAdjustOpen] = useState(false)
   const [adjustForm, setAdjustForm] = useState({ amount: '', orderNumber: '', reason: '' })
   const [adjusting, setAdjusting] = useState(false)
+  const [startOpen, setStartOpen] = useState(false)
+  const [startVal, setStartVal] = useState('')
+  const [startBusy, setStartBusy] = useState(false)
   const [walletEditAttachments, setWalletEditAttachments] = useState<string[]>([])
   const [editApprovedServices, setEditApprovedServices] = useState<string[]>([])
   const [walletEditSaving, setWalletEditSaving] = useState(false)
@@ -3890,6 +3893,20 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       setAdjustForm({ amount: '', orderNumber: '', reason: '' }); setAdjustOpen(false)
       await loadWalletDetail(walletDetail); fetchWallets()
     } finally { setAdjusting(false) }
+  }
+
+  const submitStarting = async () => {
+    if (!walletDetail) return
+    const v = parseFloat(startVal)
+    if (isNaN(v) || v < 0) { alert('Enter a valid starting balance.'); return }
+    if (!window.confirm(`Set the starting balance to ₱${v.toLocaleString('en-PH', { minimumFractionDigits: 2 })}? The remaining balance shifts by the same amount.`)) return
+    setStartBusy(true)
+    try {
+      const r = await fetch(`/api/pos/wallets/${walletDetail.id}/starting-balance`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startingBalance: v }) })
+      if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to set starting balance'); return }
+      setStartOpen(false); setStartVal('')
+      await loadWalletDetail(walletDetail); fetchWallets()
+    } finally { setStartBusy(false) }
   }
 
   const deleteAdjustment = async (logId: string) => {
@@ -5728,7 +5745,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Running Balance</h4>
                     {walletDetail.walletType === 'GL' && (
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setAdjustOpen(o => !o)}
+                        <button onClick={() => { setStartOpen(o => !o); setAdjustOpen(false) }}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                          {startOpen ? 'Cancel' : 'Edit starting balance'}
+                        </button>
+                        <button onClick={() => { setAdjustOpen(o => !o); setStartOpen(false) }}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                           {adjustOpen ? 'Cancel adjustment' : 'Adjust balance'}
                         </button>
@@ -5758,6 +5779,19 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         </div>
                       </div>
                       <button onClick={submitAdjust} disabled={adjusting} className="mt-3 px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{adjusting ? 'Saving…' : 'Restore balance'}</button>
+                    </div>
+                  )}
+                  {walletDetail.walletType === 'GL' && startOpen && (
+                    <div className="rounded-xl border p-3 mb-3" style={{ borderColor: 'var(--teal)', background: 'var(--off-white)' }}>
+                      <p className="text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Correct the starting balance</p>
+                      <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Sets the usable amount at creation (the &ldquo;Starting Balance&rdquo; row). The remaining balance shifts by the same difference; no ledger entry is added.</p>
+                      <div className="flex items-end gap-2 flex-wrap">
+                        <div>
+                          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Starting balance (₱)</label>
+                          <input value={startVal} onChange={e => setStartVal(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-44 px-3 py-2 rounded-lg border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <button onClick={submitStarting} disabled={startBusy} className="px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{startBusy ? 'Saving…' : 'Set starting balance'}</button>
+                      </div>
                     </div>
                   )}
                   {walletDetail.walletType === 'GL' && (
