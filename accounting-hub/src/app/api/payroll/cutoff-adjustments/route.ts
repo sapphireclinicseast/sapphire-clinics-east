@@ -151,7 +151,9 @@ export async function PUT(req: Request) {
     prevHalf = 1
   }
 
-  const prevCutoff = `${prevYear}-${prevMonth}-${prevHalf}`
+  // Match the frontend's zero-padded month format (e.g. "2026-07-1"), else the
+  // previous cutoff is never found and the pre-fill silently returns nothing.
+  const prevCutoff = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${prevHalf}`
 
   const prevAdjustments = await prisma.cutoffAdjustment.findMany({
     where: { cutoffPeriod: prevCutoff, branch },
