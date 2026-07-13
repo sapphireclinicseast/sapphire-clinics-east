@@ -350,6 +350,19 @@ export default function ServicesPage() {
   }
 
   /* ── Download Handler ───────────────────────────────────── */
+  const [taggingHmoGl, setTaggingHmoGl] = useState(false)
+  const autoTagHmoGl = async () => {
+    if (!confirm('Tag all PT/OT/SLP HMO services (AMAPHIL, PHILCARE, SUNLIFE, …) and GL services ("- OP") as HMO/GL? Their sales will post as Receivables Sales.')) return
+    setTaggingHmoGl(true)
+    try {
+      const r = await fetch('/api/services/auto-tag-hmogl', { method: 'POST' })
+      if (!r.ok) { alert('Failed to auto-tag.'); return }
+      const d = await r.json()
+      alert(`Matched ${d.matched} HMO/GL service(s); newly tagged ${d.newlyTagged?.length ?? 0}.${d.newlyTagged?.length ? '\n\n' + d.newlyTagged.slice(0, 40).join('\n') + (d.newlyTagged.length > 40 ? `\n…and ${d.newlyTagged.length - 40} more` : '') : ''}`)
+      fetchServices()
+    } finally { setTaggingHmoGl(false) }
+  }
+
   const handleDownloadServices = (format: 'xlsx' | 'pdf') => {
     // Determine the effective branch for price resolution
     const effectiveBranch = filterBranch || (isFrontDesk ? userBranch : '') || ''
@@ -415,6 +428,13 @@ export default function ServicesPage() {
         </div>
         <div className="flex items-center gap-2">
           <DownloadMenu onDownload={handleDownloadServices} label="Download" />
+          {canWrite && (
+            <button onClick={autoTagHmoGl} disabled={taggingHmoGl}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Tag PT/OT/SLP HMO providers + '- OP' GL services as HMO/GL">
+              {taggingHmoGl ? '…' : 'Auto-tag HMO/GL'}
+            </button>
+          )}
           {canWrite && (
             <button onClick={openCreate}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
