@@ -57,8 +57,13 @@ export async function GET(req: Request) {
           const name = formatName(`${s.firstName} ${s.lastName}`)
           const dept = s.department || ''
           const br = s.branch || ''
-          // Skip front desk only — ADMINISTRATION consultants (e.g. admin staff who are also clinicians) should still sync
+          // Skip front desk, and anyone the source marks as an employee — they belong
+          // in the Employees tab, not Consultants (employmentType==='employee' is the
+          // same discriminator the Employee sync uses; clinicians carry a different type).
+          // Not adding their id to syncedExternalIds lets Phase 3 deactivate any that were
+          // previously mis-synced as consultants.
           if (dept === 'FRONT_DESK') continue
+          if (s.employmentType === 'employee') continue
 
           syncedExternalIds.add(s.id)
 
