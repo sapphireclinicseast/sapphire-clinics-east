@@ -6,11 +6,12 @@ import {
   getUsers, hydrateUsers, getWaivers, saveWaiver,
   hydrateWaiverForStudent, syncLocalWaiversToServer,
   teacherAssignedPairs, hydrateAssignments,
-  paymentStatusFor,
+  paymentStatusFor, inferPaymentPlanFor,
   hydrateFrontDeskPayments,
   uploadDocumentBlob,
   levelLabel,
   type StoredUser, type EnrollmentLevel, type Branch, type WaiverRecord,
+  type PaymentPlan,
 } from '@/lib/session'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import StudentDetail from './StudentDetail'
@@ -261,6 +262,7 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
                 <th className="py-2 px-3">Email</th>
                 <th className="py-2 px-3">Level</th>
                 <th className="py-2 px-3">Branch</th>
+                <th className="py-2 px-3">Plan</th>
                 <th className="py-2 px-3">Enrolled</th>
                 <th className="py-2 px-3">Payment</th>
                 <th className="py-2 px-3"></th>
@@ -268,13 +270,26 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
+                <tr><td colSpan={8} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
                   {students.length === 0 ? 'No students yet.' : 'No students match this search.'}
                 </td></tr>
               )}
               {filtered.map(s => {
                 const ps = paymentStatusFor(s.id)
                 const branchLabel = s.branch === 'EAST' ? 'East' : s.branch === 'GREENHILLS' ? 'Greenhills' : '—'
+                // Inferred from the student's latest PaymentRecord.
+                // Undefined for students who have never had a payment
+                // recorded (fresh enrolees) — front desk sees "—" as
+                // a cue to ask the parent which cadence they picked.
+                const plan: PaymentPlan | undefined = inferPaymentPlanFor(s.id)
+                const planLabel = plan === 'ANNUAL' ? 'Annual' : plan === 'BIANNUAL' ? 'Bi-annual' : plan === 'MONTHLY' ? 'Monthly' : '—'
+                const planStyle = plan === 'ANNUAL'
+                  ? { background: '#d1fae5', color: '#065f46' }        // sage — one-shot lump
+                  : plan === 'BIANNUAL'
+                    ? { background: '#e0e7ff', color: '#3730a3' }      // indigo — twice a year
+                    : plan === 'MONTHLY'
+                      ? { background: '#fed7aa', color: '#9a3412' }    // amber — monthly cadence
+                      : { background: 'var(--paper-2)', color: 'var(--mid-gray)' }
                 return (
                   <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)] cursor-pointer" style={{ borderColor: 'var(--paper-3)' }} onClick={() => setSelected(s)}>
                     <td className="py-2.5 px-3 font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}</td>
@@ -283,6 +298,20 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
                     <td className="py-2.5 px-3 text-[12.5px]">
                       <span className="badge" style={{ background: s.branch === 'EAST' ? '#dbeafe' : s.branch === 'GREENHILLS' ? '#fef3c7' : 'var(--paper-2)', color: s.branch === 'EAST' ? '#1e40af' : s.branch === 'GREENHILLS' ? '#92400e' : 'var(--mid-gray)' }}>
                         {branchLabel}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-[12.5px]">
+                      <span
+                        className="badge"
+                        style={planStyle}
+                        title={
+                          plan === 'MONTHLY'  ? 'Monthly — charge every 5th of the month' :
+                          plan === 'BIANNUAL' ? 'Bi-annual — charge every 5th of June + 5th of December' :
+                          plan === 'ANNUAL'   ? 'Annual — one lump sum, due 5th of June' :
+                                                'No plan on file yet — parent hasn\'t recorded a payment. Ask which plan they picked.'
+                        }
+                      >
+                        {planLabel}
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-[12.5px] text-[color:var(--mid-gray)]">{new Date(s.createdAt).toLocaleDateString()}</td>
