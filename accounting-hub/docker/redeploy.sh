@@ -97,6 +97,10 @@ ALTER TABLE "Loan" ADD COLUMN IF NOT EXISTS "payoutAmountPerPeriod" DECIMAL(65,3
 ALTER TABLE "Loan" ADD COLUMN IF NOT EXISTS "repaymentMode" TEXT;
 ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "payoutAmountPerPeriod" DECIMAL(65,30);
 ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "repaymentMode" TEXT;
+ALTER TABLE "Loan" ADD COLUMN IF NOT EXISTS "principalPerPeriod" DECIMAL(65,30);
+ALTER TABLE "Loan" ADD COLUMN IF NOT EXISTS "paymentBankAccountId" TEXT;
+ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "principalPerPeriod" DECIMAL(65,30);
+ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "paymentBankAccountId" TEXT;
 
 -- Equity Settings (singleton): authorized shares anchor; Treasury = authorized − outstanding
 CREATE TABLE IF NOT EXISTS "EquitySettings" (

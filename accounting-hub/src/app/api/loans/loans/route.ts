@@ -129,6 +129,8 @@ function loanData(b: any, principal: number, interest: ReturnType<typeof compute
     payoutSchedule: b.payoutSchedule || null, payoutStartMonth: b.payoutStartMonth || null, payoutStartYear: b.payoutStartYear || null, payoutDay: b.payoutDay || null,
     payoutAmountPerPeriod: b.payoutAmountPerPeriod != null && b.payoutAmountPerPeriod !== '' ? num(b.payoutAmountPerPeriod) : null,
     repaymentMode: b.loanType === 'CORPORATE_BOND' ? 'INTEREST_ONLY' : (b.repaymentMode || null),
+    principalPerPeriod: b.principalPerPeriod != null && b.principalPerPeriod !== '' ? num(b.principalPerPeriod) : null,
+    paymentBankAccountId: b.paymentBankAccountId || null,
     loanAgreementUrls: Array.isArray(b.loanAgreementUrls) ? b.loanAgreementUrls : undefined,
     pdcUrls: Array.isArray(b.pdcUrls) ? b.pdcUrls : undefined, netAmountToDebit: netDebit, remarks: b.remarks?.trim() || null,
     fromCreditLineId: b.fromCreditLineId || null,

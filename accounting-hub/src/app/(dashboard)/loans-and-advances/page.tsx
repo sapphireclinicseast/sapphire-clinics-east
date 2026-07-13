@@ -19,7 +19,7 @@ interface AdvanceRow {
   principalAmount: number; hasInterest: boolean; interestMode: string | null; annualPct: number | null; termMonths: number | null
   monthlyAmortization: number | null; computedAnnualPct: number | null; totalInterest: number | null
   proofOfDepositUrls: string[] | null; bankAccountId: string | null; creditAccountId: string | null; interestExpenseAccountId: string | null
-  payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null
+  payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null; principalPerPeriod: number | null; paymentBankAccountId: string | null
   pdcUrls: string[] | null; remarks: string | null
 }
 
@@ -143,6 +143,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
     bankAccountId: row?.bankAccountId || '', creditAccountId: row?.creditAccountId || '', interestExpenseAccountId: row?.interestExpenseAccountId || '',
     payoutSchedule: row?.payoutSchedule || '', payoutStartMonth: row?.payoutStartMonth ? String(row.payoutStartMonth) : '', payoutStartYear: row?.payoutStartYear ? String(row.payoutStartYear) : '', payoutDay: row?.payoutDay ? String(row.payoutDay) : '',
     payoutAmountPerPeriod: row?.payoutAmountPerPeriod != null ? String(row.payoutAmountPerPeriod) : '', repaymentMode: row?.repaymentMode || '',
+    principalPerPeriod: row?.principalPerPeriod != null ? String(row.principalPerPeriod) : '', paymentBankAccountId: row?.paymentBankAccountId || '',
     remarks: row?.remarks || '',
   })
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
@@ -206,7 +207,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank Account Debited</label><select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={bc}><option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank Account Debited <span className="font-normal text-gray-400">(release received here)</span></label><select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={bc}><option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Account to be Credited <span className="font-normal text-gray-400">(principal)</span></label><select value={f.creditAccountId} onChange={e => set('creditAccountId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{accts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Account to be Expensed <span className="font-normal text-gray-400">(interest)</span></label><select value={f.interestExpenseAccountId} onChange={e => set('interestExpenseAccountId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{accts.filter(a => a.accountType === 'EXPENSE').map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
         </div>
@@ -222,13 +223,18 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Every nth (day)</label><input value={f.payoutDay} onChange={e => set('payoutDay', e.target.value)} inputMode="numeric" placeholder="30" className={inp + ' font-mono'} style={bc} /></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Repayment</label><select value={f.repaymentMode} onChange={e => set('repaymentMode', e.target.value)} className={inp} style={bc}><option value="">Amortizing (default)</option><option value="AMORTIZING">Amortizing (principal + interest)</option><option value="INTEREST_ONLY">Interest-only (principal at maturity)</option></select></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Amount per period <span className="font-normal text-gray-400">(optional)</span></label><input value={f.payoutAmountPerPeriod} onChange={e => set('payoutAmountPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>
+            {f.repaymentMode !== 'INTEREST_ONLY' && <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Principal per period <span className="font-normal text-gray-400">(interest = rest)</span></label><input value={f.principalPerPeriod} onChange={e => set('principalPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>}
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank for payments <span className="font-normal text-gray-400">(credited)</span></label><select value={f.paymentBankAccountId} onChange={e => set('paymentBankAccountId', e.target.value)} className={inp} style={bc}><option value="">— same as debited —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
           </div>
           {(() => {
             const step = f.payoutSchedule === 'MONTHLY' ? 1 : f.payoutSchedule === 'QUARTERLY' ? 3 : f.payoutSchedule === 'BIANNUALLY' ? 6 : f.payoutSchedule === 'ANNUALLY' ? 12 : 0
             if (!step || !n(f.termMonths)) return null
             const count = Math.max(1, Math.round(n(f.termMonths) / step))
             const per = n(f.payoutAmountPerPeriod)
-            return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'}{per > 0 ? ` of ${peso(per)} each${f.repaymentMode === 'INTEREST_ONLY' ? ` + ${peso(n(f.principalAmount))} principal on the last` : ''}` : ' (amount auto-derived from principal & interest)'}</p>
+            if (f.repaymentMode === 'INTEREST_ONLY') return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} of {per > 0 ? peso(per) : 'derived'} interest + {peso(n(f.principalAmount))} principal on the last</p>
+            const prin = n(f.principalPerPeriod) > 0 ? n(f.principalPerPeriod) : n(f.principalAmount) / count
+            const int = per > 0 ? Math.max(0, per - prin) : null
+            return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} · principal {peso(prin)}{int != null ? ` + interest ${peso(int)} = ${peso(prin + int)} each` : ' + interest (auto-derived)'}</p>
           })()}
         </div>
 
@@ -255,7 +261,7 @@ interface LoanRow {
   principalAmount: number; hasInterest: boolean; interestMode: string | null; annualPct: number | null; termMonths: number | null
   monthlyAmortization: number | null; computedAnnualPct: number | null; totalInterest: number | null; maturityDate: string | null
   proofOfDepositUrls: string[] | null; bankAccountId: string | null; creditAccountId: string | null; interestExpenseAccountId: string | null
-  payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null
+  payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null; principalPerPeriod: number | null; paymentBankAccountId: string | null
   loanAgreementUrls: string[] | null; pdcUrls: string[] | null; netAmountToDebit: number | null; remarks: string | null; fromCreditLineId: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   charges: any[]
@@ -312,6 +318,7 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
     bankAccountId: row?.bankAccountId || '', creditAccountId: row?.creditAccountId || '', interestExpenseAccountId: row?.interestExpenseAccountId || '',
     payoutSchedule: row?.payoutSchedule || '', payoutStartMonth: row?.payoutStartMonth ? String(row.payoutStartMonth) : '', payoutStartYear: row?.payoutStartYear ? String(row.payoutStartYear) : '', payoutDay: row?.payoutDay ? String(row.payoutDay) : '',
     payoutAmountPerPeriod: row?.payoutAmountPerPeriod != null ? String(row.payoutAmountPerPeriod) : '', repaymentMode: row?.repaymentMode || '',
+    principalPerPeriod: row?.principalPerPeriod != null ? String(row.principalPerPeriod) : '', paymentBankAccountId: row?.paymentBankAccountId || '',
     remarks: row?.remarks || '',
   })
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
@@ -395,33 +402,49 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-          <div><label className={lbl} style={mg}>Bank Account Debited</label><select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={bc}><option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Bank Account Debited <span className="font-normal text-gray-400">(release received here)</span></label><select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={bc}><option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Account to be Credited <span className="font-normal text-gray-400">(principal)</span></label><select value={f.creditAccountId} onChange={e => set('creditAccountId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{accts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Account to be Expensed <span className="font-normal text-gray-400">(interest)</span></label><select value={f.interestExpenseAccountId} onChange={e => set('interestExpenseAccountId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{accts.filter(a => a.accountType === 'EXPENSE').map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
         </div>
         {f.bankAccountId && f.creditAccountId && n(f.principalAmount) > 0 && <p className="text-[11px] mt-1 font-mono" style={{ color: '#334155' }}>Release: DR {banks.find(b => b.id === f.bankAccountId)?.accountTitle} {peso(n(f.principalAmount))} / CR {accts.find(a => a.id === f.creditAccountId)?.accountTitle} {peso(n(f.principalAmount))}</p>}
 
-        {/* Payout schedule (not shown for bonds) */}
-        {!isBond && (
-          <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-            <p className="text-sm font-semibold text-gray-700 mb-2">Payment schedule <span className="font-normal text-gray-400">(drives the Payment History table)</span></p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div><label className={lbl} style={mg}>Frequency</label><select value={f.payoutSchedule} onChange={e => set('payoutSchedule', e.target.value)} className={inp} style={bc}><option value="">—</option>{['ANNUALLY', 'BIANNUALLY', 'QUARTERLY', 'MONTHLY'].map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}</select></div>
-              <div><label className={lbl} style={mg}>Start month</label><select value={f.payoutStartMonth} onChange={e => set('payoutStartMonth', e.target.value)} className={inp} style={bc}><option value="">—</option>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></div>
-              <div><label className={lbl} style={mg}>Start year</label><input value={f.payoutStartYear} onChange={e => set('payoutStartYear', e.target.value)} inputMode="numeric" placeholder="2026" className={inp + ' font-mono'} style={bc} /></div>
-              <div><label className={lbl} style={mg}>Every nth (day)</label><input value={f.payoutDay} onChange={e => set('payoutDay', e.target.value)} inputMode="numeric" placeholder="30" className={inp + ' font-mono'} style={bc} /></div>
+        {/* Payment schedule — drives the Payment History table (bonds + regular loans) */}
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-sm font-semibold text-gray-700 mb-2">Payment schedule <span className="font-normal text-gray-400">(drives the Payment History table)</span></p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className={lbl} style={mg}>Frequency</label><select value={f.payoutSchedule} onChange={e => set('payoutSchedule', e.target.value)} className={inp} style={bc}><option value="">—</option>{['ANNUALLY', 'BIANNUALLY', 'QUARTERLY', 'MONTHLY'].map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}</select></div>
+            <div><label className={lbl} style={mg}>Start month</label><select value={f.payoutStartMonth} onChange={e => set('payoutStartMonth', e.target.value)} className={inp} style={bc}><option value="">—</option>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></div>
+            <div><label className={lbl} style={mg}>Start year</label><input value={f.payoutStartYear} onChange={e => set('payoutStartYear', e.target.value)} inputMode="numeric" placeholder="2026" className={inp + ' font-mono'} style={bc} /></div>
+            <div><label className={lbl} style={mg}>Every nth (day)</label><input value={f.payoutDay} onChange={e => set('payoutDay', e.target.value)} inputMode="numeric" placeholder="30" className={inp + ' font-mono'} style={bc} /></div>
+            {isBond ? (
+              <div><label className={lbl} style={mg}>Coupon per period <span className="font-normal text-gray-400">(interest; blank = from %)</span></label><input value={f.payoutAmountPerPeriod} onChange={e => set('payoutAmountPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>
+            ) : (<>
               <div><label className={lbl} style={mg}>Repayment</label><select value={f.repaymentMode} onChange={e => set('repaymentMode', e.target.value)} className={inp} style={bc}><option value="">Amortizing (default)</option><option value="AMORTIZING">Amortizing (principal + interest)</option><option value="INTEREST_ONLY">Interest-only (principal at maturity)</option></select></div>
               <div><label className={lbl} style={mg}>Amount per period <span className="font-normal text-gray-400">(optional)</span></label><input value={f.payoutAmountPerPeriod} onChange={e => set('payoutAmountPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>
-            </div>
-            {(() => {
-              const step = f.payoutSchedule === 'MONTHLY' ? 1 : f.payoutSchedule === 'QUARTERLY' ? 3 : f.payoutSchedule === 'BIANNUALLY' ? 6 : f.payoutSchedule === 'ANNUALLY' ? 12 : 0
-              if (!step || !n(f.termMonths)) return null
-              const count = Math.max(1, Math.round(n(f.termMonths) / step))
-              const per = n(f.payoutAmountPerPeriod)
-              return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'}{per > 0 ? ` of ${peso(per)} each${f.repaymentMode === 'INTEREST_ONLY' ? ` + ${peso(n(f.principalAmount))} principal on the last` : ''}` : ' (amount auto-derived from principal & interest)'}</p>
-            })()}
+              {f.repaymentMode !== 'INTEREST_ONLY' && <div><label className={lbl} style={mg}>Principal per period <span className="font-normal text-gray-400">(interest = rest)</span></label><input value={f.principalPerPeriod} onChange={e => set('principalPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>}
+            </>)}
+            <div><label className={lbl} style={mg}>Bank for payments <span className="font-normal text-gray-400">(credited)</span></label><select value={f.paymentBankAccountId} onChange={e => set('paymentBankAccountId', e.target.value)} className={inp} style={bc}><option value="">— same as debited —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
           </div>
-        )}
+          {(() => {
+            const step = f.payoutSchedule === 'MONTHLY' ? 1 : f.payoutSchedule === 'QUARTERLY' ? 3 : f.payoutSchedule === 'BIANNUALLY' ? 6 : f.payoutSchedule === 'ANNUALLY' ? 12 : 0
+            if (!step) return null
+            if (isBond) {
+              if (!n(f.payoutStartMonth) || !n(f.payoutStartYear) || !f.maturityDate) return null
+              const mat = new Date(f.maturityDate)
+              const months = (mat.getUTCFullYear() - n(f.payoutStartYear)) * 12 + (mat.getUTCMonth() + 1 - n(f.payoutStartMonth))
+              const count = Math.max(1, Math.floor(months / step) + 1)
+              const coupon = n(f.payoutAmountPerPeriod) > 0 ? n(f.payoutAmountPerPeriod) : n(f.principalAmount) * n(f.annualPct) / 100 * (step / 12)
+              return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} coupon payment{count === 1 ? '' : 's'} of {peso(coupon)} + {peso(n(f.principalAmount))} principal at maturity</p>
+            }
+            if (!n(f.termMonths)) return null
+            const count = Math.max(1, Math.round(n(f.termMonths) / step))
+            const per = n(f.payoutAmountPerPeriod)
+            if (f.repaymentMode === 'INTEREST_ONLY') return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} of {per > 0 ? peso(per) : 'derived'} interest + {peso(n(f.principalAmount))} principal on the last</p>
+            const prin = n(f.principalPerPeriod) > 0 ? n(f.principalPerPeriod) : n(f.principalAmount) / count
+            const int = per > 0 ? Math.max(0, per - prin) : null
+            return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} · principal {peso(prin)}{int != null ? ` + interest ${peso(int)} = ${peso(prin + int)} each` : ' + interest (auto-derived)'}</p>
+          })()}
+        </div>
 
         {/* One-time charges */}
         <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
@@ -760,7 +783,7 @@ function PaymentHistoryTab({ banks }: { banks: Bank[] }) {
 // Record several scheduled payments at once (one date + bank + proof for all ticked cells).
 function BatchRecordModal({ occs, banks, onClose, onSaved }: { occs: PayRow[]; banks: Bank[]; onClose: () => void; onSaved: () => void }) {
   const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10))
-  const [bankAccountId, setBankAccountId] = useState(occs[0]?.bankAccountId || '')
+  const [bankAccountId, setBankAccountId] = useState(occs[0]?.paymentBankAccountId || occs[0]?.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(0)
@@ -801,7 +824,7 @@ function BatchRecordModal({ occs, banks, onClose, onSaved }: { occs: PayRow[]; b
 
 function RecordPaymentModal({ occ, banks, onClose, onSaved }: { occ: PayRow; banks: Bank[]; onClose: () => void; onSaved: () => void }) {
   const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10))
-  const [bankAccountId, setBankAccountId] = useState(occ.bankAccountId || '')
+  const [bankAccountId, setBankAccountId] = useState(occ.paymentBankAccountId || occ.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const save = async () => {

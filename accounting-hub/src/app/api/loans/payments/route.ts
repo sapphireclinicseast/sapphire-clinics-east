@@ -48,9 +48,11 @@ function occurrences(item: any): Occ[] {
       return { seq: i + 1, dueDate: new Date(Date.UTC(d.y, d.m - 1, d.d)).toISOString(), principalPortion, interestPortion: perInterest, amount: r2(perInterest + principalPortion) }
     })
   }
-  // Amortizing (default / legacy): principal + interest each period. An explicit
-  // per-period amount keeps principal amortizing straight-line and treats the rest as interest.
-  const perPrincipal = r2(principal / count)
+  // Amortizing (default / legacy): principal + interest each period.
+  // - principalPerPeriod (when set) fixes the principal split explicitly (e.g. ₱16,444.44).
+  // - otherwise principal amortizes straight-line (principal ÷ count).
+  // Interest is the remainder of an explicit per-period amount, else totalInterest ÷ count.
+  const perPrincipal = num(item.principalPerPeriod) > 0 ? r2(num(item.principalPerPeriod)) : r2(principal / count)
   const perInterest = override > 0 ? Math.max(0, r2(override - perPrincipal)) : r2(totalInterest / count)
   return dates.map((d, i) => ({ seq: i + 1, dueDate: new Date(Date.UTC(d.y, d.m - 1, d.d)).toISOString(), principalPortion: perPrincipal, interestPortion: perInterest, amount: r2(perPrincipal + perInterest) }))
 }
@@ -66,7 +68,7 @@ export async function GET(req: Request) {
     const emailById = new Map(shareholders.map(s => [s.id, s.email]))
     const rows = loans.flatMap(l => occurrences(l).map(o => {
       const rec = paidBy.get(`${l.id}|${o.dueDate.slice(0, 10)}`)
-      return { kind: 'loan', parentId: l.id, name: l.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, shareholderId: l.shareholderId, email: l.shareholderId ? (emailById.get(l.shareholderId) || null) : null, bankAccountId: l.bankAccountId, creditAccountId: l.creditAccountId, interestExpenseAccountId: l.interestExpenseAccountId }
+      return { kind: 'loan', parentId: l.id, name: l.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, shareholderId: l.shareholderId, email: l.shareholderId ? (emailById.get(l.shareholderId) || null) : null, bankAccountId: l.bankAccountId, paymentBankAccountId: l.paymentBankAccountId, creditAccountId: l.creditAccountId, interestExpenseAccountId: l.interestExpenseAccountId }
     }))
     return NextResponse.json({ rows })
   }
@@ -75,7 +77,7 @@ export async function GET(req: Request) {
   const emailById = new Map(shareholders.map(s => [s.id, s.email]))
   const rows = advances.flatMap(a => occurrences(a).map(o => {
     const rec = paidBy.get(`${a.id}|${o.dueDate.slice(0, 10)}`)
-    return { kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, email: a.shareholderId ? (emailById.get(a.shareholderId) || null) : null, bankAccountId: a.bankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }
+    return { kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, email: a.shareholderId ? (emailById.get(a.shareholderId) || null) : null, bankAccountId: a.bankAccountId, paymentBankAccountId: a.paymentBankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }
   }))
   return NextResponse.json({ rows })
 }

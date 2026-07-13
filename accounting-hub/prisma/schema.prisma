@@ -2310,6 +2310,8 @@ model Advance {
   payoutDay         Int?
   payoutAmountPerPeriod Decimal? // explicit cash-out per period (overrides derived amount)
   repaymentMode     String?  // INTEREST_ONLY | AMORTIZING (null = legacy amortizing)
+  principalPerPeriod Decimal? // explicit principal portion per period (interest = amount − principal)
+  paymentBankAccountId String? // bank credited on each amortization payment (CR)
   pdcUrls           Json?
   remarks           String?
   journalEntryId    String?
@@ -2374,6 +2376,8 @@ model Loan {
   payoutDay         Int?
   payoutAmountPerPeriod Decimal? // explicit cash-out per period (overrides derived amount)
   repaymentMode     String?  // INTEREST_ONLY | AMORTIZING (null = legacy amortizing)
+  principalPerPeriod Decimal? // explicit principal portion per period (interest = amount − principal)
+  paymentBankAccountId String? // bank credited on each amortization/coupon payment (CR)
   loanAgreementUrls Json?
   pdcUrls           Json?
   netAmountToDebit  Decimal? // principal − charges deducted from disbursement
