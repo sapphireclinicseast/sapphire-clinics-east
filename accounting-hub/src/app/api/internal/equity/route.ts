@@ -44,6 +44,7 @@ function mapRow(r: any) {
     class: r.shareClass || '',
     dateAcquired: r.dateAcquired,
     shares: num(r.numberOfShares),
+    buybackShares: (Array.isArray(r.buybacks) ? r.buybacks : []).reduce((s: number, b: { shares?: unknown }) => s + num(b.shares), 0),
     truePar: num(r.truePar),
     apic: num(r.apic),
     pricePerShare: num(r.pricePerShare),
@@ -56,14 +57,31 @@ function mapRow(r: any) {
 export async function GET(req: NextRequest) {
   if (!verify(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
   try {
-    const [commons, preferreds] = await Promise.all([
-      prisma.commonShare.findMany({ include: { shareholder: true }, orderBy: { createdAt: 'asc' } }),
+    const [commons, preferreds, settings] = await Promise.all([
+      prisma.commonShare.findMany({ include: { shareholder: true, buybacks: true }, orderBy: { createdAt: 'asc' } }),
       prisma.preferredShare.findMany({ include: { shareholder: true }, orderBy: { createdAt: 'asc' } }),
+      prisma.equitySettings.findUnique({ where: { id: 'singleton' } }).catch(() => null),
     ])
+    // Authoritative equity figures — computed exactly like the accounting Equity page.
+    const authorizedShares = settings?.authorizedShares ?? 20000000
+    const grossCommonShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0)
+    const treasuryBought = commons.reduce((s, c) => s + (c.buybacks || []).reduce((t, b) => t + num(b.shares), 0), 0)
+    const totalShares = grossCommonShares - treasuryBought            // outstanding common (net of buybacks)
+    const treasuryShares = Math.max(0, authorizedShares - totalShares) // available-for-sale
+    const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
+    const prefCap = preferreds.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
     return NextResponse.json({
       ok: true,
       common: commons.map(mapRow),
       preferred: preferreds.map(mapRow),
+      figures: {
+        authorizedShares,
+        grossCommonShares,
+        outstandingCommonShares: totalShares,   // == accounting "Total Number of Shares (outstanding)"
+        treasuryBought,
+        treasuryShares,
+        totalCapitalization: commonCap + prefCap,
+      },
     })
   } catch (err) {
     console.error('[internal/equity] failed:', err)
