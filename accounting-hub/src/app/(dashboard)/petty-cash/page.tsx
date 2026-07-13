@@ -10,6 +10,8 @@ import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciating
 import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
+import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import type { BVLine } from '@/lib/billing-voucher'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -172,6 +174,7 @@ export default function PettyCashPage() {
   const [generating, setGenerating] = useState(false)
   const [bankOptions, setBankOptions] = useState<string[]>([])
   const [payTarget, setPayTarget] = useState<Reimb | null>(null)
+  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch?: string; defaultBilledTo?: string } | null>(null)
   const [supplierNames, setSupplierNames] = useState<Set<string>>(new Set())
   const [suppliers, setSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
@@ -552,6 +555,14 @@ export default function PettyCashPage() {
       a.href = pdfData; a.download = `${rep.refNumber}.pdf`
       document.body.appendChild(a); a.click(); a.remove()
     } catch { /* ignore */ }
+  }
+
+  const openBillingVoucher = async (rep: Reimb) => {
+    try {
+      const res = await fetch(`/api/petty-cash/reimbursements?id=${rep.id}&items=1`)
+      const d = res.ok ? await res.json() : { lines: [] }
+      setBvTarget({ refNumber: rep.refNumber, date: new Date(rep.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }), lines: d.lines || [], branch, defaultBilledTo: rep.payableTo || '' })
+    } catch { alert('Could not load RFP line items.') }
   }
 
   const recordPaid = async (rep: Reimb, debitAccount: string, depositAccount: string, file: File | null, datePaid: string, paymentMethod: string, checkNumber: string, transferRef: string) => {
@@ -1201,6 +1212,11 @@ export default function PettyCashPage() {
                       style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                       <FileDown size={13} /> PDF
                     </button>
+                    <button onClick={() => openBillingVoucher(r)} title="Billing Voucher"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      <FileText size={13} /> BV
+                    </button>
                     {r.proofUrl && (
                       <>
                         <a href={r.proofUrl} target="_blank" rel="noopener noreferrer" title="View proof of deposit"
@@ -1321,6 +1337,8 @@ export default function PettyCashPage() {
         <ReimbModal entries={entries.filter(e => selected.has(e.id))} generating={generating}
           onClose={() => setShowReimbModal(false)} onGenerate={generateReimbursement} />
       )}
+
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
 
       {payTarget && (
         <RecordPaidModal report={payTarget} bankOptions={bankOptions}

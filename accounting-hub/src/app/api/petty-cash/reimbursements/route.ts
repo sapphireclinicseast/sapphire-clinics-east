@@ -16,6 +16,36 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
   const id = sp.get('id')
+  // Billing-Voucher line items for one RFP (mirrors the Expenses BV).
+  if (id && sp.get('items')) {
+    const r = await prisma.reimbursementReport.findUnique({
+      where: { id },
+      select: { meta: true, entries: { select: { accountTitle: true, description: true, requestor: true, vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } } },
+    })
+    if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const bvLine = (accountTitle: string | null, description: string | null, vatable: string | null, gross: number, hasEwt: boolean, ewtRate: number | null) => {
+      const netVat = vatable === 'VAT' ? gross / 1.12 : gross
+      const vat = gross - netVat
+      const ewt = hasEwt && ewtRate ? netVat * (ewtRate / 100) : 0
+      return { account: accountTitle || '', description: description || '', gross, vat, netVat, ewt, netEwt: gross - ewt }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meta = r.meta as any
+    let lines
+    if (meta && Array.isArray(meta.items)) {
+      // CEO branch RFP: allocated portions live in meta.items (account/desc from the entry).
+      const ids = meta.items.map((i: { entryId?: string }) => i.entryId).filter(Boolean)
+      const ents = await prisma.pettyCashEntry.findMany({ where: { id: { in: ids } }, select: { id: true, accountTitle: true, description: true, requestor: true } })
+      const byId = new Map(ents.map(e => [e.id, e]))
+      lines = meta.items.map((i: { entryId?: string; gross: number; vatable: string | null; hasEwt?: boolean; ewtRate?: number | null }) => {
+        const e = i.entryId ? byId.get(i.entryId) : null
+        return bvLine(e?.accountTitle ?? null, e?.description || e?.requestor || null, i.vatable ?? null, Number(i.gross), !!i.hasEwt, i.ewtRate ?? null)
+      })
+    } else {
+      lines = r.entries.map(e => bvLine(e.accountTitle, e.description || e.requestor, e.vatable, Number(e.grossAmount), e.hasEwt, e.ewtRate))
+    }
+    return NextResponse.json({ lines })
+  }
   if (id) {
     const r = await prisma.reimbursementReport.findUnique({ where: { id }, select: { pdfData: true, refNumber: true } })
     if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })
