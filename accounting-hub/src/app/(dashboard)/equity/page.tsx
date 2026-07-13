@@ -780,40 +780,87 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [open, setOpen] = useState<any | null>(null)
+  const [year, setYear] = useState(new Date().getUTCFullYear())
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [batchOpen, setBatchOpen] = useState(false)
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/equity/dividends-preferred'); setData(r.ok ? await r.json() : null) } catch { setData(null) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
   const del = async (r: any) => { if (!confirm(`Delete preferred dividend release ${r.periodLabel || ''}? Its journal entry is reversed.`)) return; await fetch(`/api/equity/dividends-preferred?id=${r.id}`, { method: 'DELETE' }); load() }
   const releases = data?.releases || []
-  const matrix = data?.matrix || []
+  const shareholders = data?.shareholders || []
+
+  // Build the shareholder × month projection for the selected year.
+  const months = Array.from({ length: 12 }, (_, i) => i + 1)
+  const cellKey = (sid: string, m: number) => `${sid}|${year}|${m}`
+  const rows = shareholders.map((s: any) => {
+    const cells: Record<number, any> = {}
+    ;(s.periods || []).forEach((p: any) => { if (p.year === year) cells[p.month] = p })
+    return { shareholderId: s.shareholderId, name: s.name, email: s.email, shares: s.shares, cells }
+  }).filter((r: any) => Object.keys(r.cells).length > 0)
+  const colTotal = (m: number) => rows.reduce((sum: number, r: any) => sum + (r.cells[m] ? Number(r.cells[m].amount) : 0), 0)
+  const grandTotal = months.reduce((s, m) => s + colTotal(m), 0)
+  const toggle = (sid: string, m: number) => setSelected(s => { const n = new Set(s); const k = cellKey(sid, m); n.has(k) ? n.delete(k) : n.add(k); return n })
+  const selectedCells = rows.flatMap((r: any) => months.filter(m => r.cells[m] && !r.cells[m].paid && selected.has(cellKey(r.shareholderId, m))).map(m => ({ shareholderId: r.shareholderId, name: r.name, month: m, amount: Number(r.cells[m].amount), quarterKey: r.cells[m].quarterKey })))
+  const selectedTotal = selectedCells.reduce((s: number, c: any) => s + c.amount, 0)
+
   return (
     <div className="space-y-3">
-      <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Dividend Release</button></div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Record dividend manually</button>
+        <div className="flex items-center gap-1 ml-auto">
+          <button onClick={() => setYear(y => y - 1)} className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>◀</button>
+          <span className="px-2 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{year}</span>
+          <button onClick={() => setYear(y => y + 1)} className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>▶</button>
+        </div>
+      </div>
 
-      {/* Per-quarter completion matrix */}
-      {matrix.length > 0 && (
-        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-          <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-            <th className="px-3 py-2.5 font-semibold whitespace-nowrap sticky left-0" style={{ background: 'var(--off-white)' }}>Payout quarter →</th>
-            {matrix.map((m: any) => <th key={m.quarterKey} className="px-3 py-2.5 font-semibold text-center whitespace-nowrap">{m.label}</th>)}
-          </tr></thead><tbody>
-            <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-              <td className="px-3 py-2 font-semibold sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>Preferred paid</td>
-              {matrix.map((m: any) => {
-                const full = m.due > 0 && m.paid >= m.due
-                const partial = m.paid > 0 && m.paid < m.due
-                // A quarter outside the computed schedule (due 0) but with a recorded payout.
-                const extra = m.due === 0 && m.paid > 0
-                const bg = full ? '#dcfce7' : partial || extra ? '#fef9c3' : '#f8fafc'
-                const col = full ? '#166534' : partial || extra ? '#854d0e' : 'var(--mid-gray)'
-                const text = m.due > 0 ? `${m.paid > 0 ? '✓ ' : ''}${m.paid}/${m.due}` : (extra ? `✓ ${m.paid}` : '—')
-                return <td key={m.quarterKey} className="px-3 py-2 text-center font-semibold" style={{ background: bg, color: col }}>{text}</td>
-              })}
-            </tr>
-          </tbody></table>
+      {selected.size > 0 && (
+        <div className="rounded-xl border p-3 flex items-center justify-between gap-3 sticky top-0 z-10" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
+          <div className="text-sm" style={{ color: 'var(--deep-teal)' }}><strong>{selectedCells.length} dividend{selectedCells.length === 1 ? '' : 's'} selected</strong> · total <strong>{peso(selectedTotal)}</strong></div>
+          <div className="flex gap-2">
+            <button onClick={() => setSelected(new Set())} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>
+            <button onClick={() => setBatchOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Record {selectedCells.length} selected</button>
+          </div>
         </div>
       )}
 
-      {/* Releases */}
+      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Projected preferred dividends by month. Tick the amounts you&apos;ll include in a payment, then <strong>Record selected</strong> — you can skip anyone. Green = already released.</p>
+
+      {/* Shareholder × month projection matrix */}
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="text-xs" style={{ minWidth: '900px' }}><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+          <th className="px-3 py-2.5 font-semibold whitespace-nowrap sticky left-0" style={{ background: 'var(--off-white)', minWidth: 200 }}>Shareholder</th>
+          {months.map(m => <th key={m} className="px-2 py-2.5 font-semibold text-right whitespace-nowrap">{m}/{year}</th>)}
+        </tr></thead><tbody>
+          {loading ? <tr><td colSpan={13} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /></td></tr>
+            : rows.map((r: any) => (
+              <tr key={r.shareholderId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-3 py-2 sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>{r.name}{!r.email && <span className="ml-1 text-[10px]" style={{ color: '#b91c1c' }}>(no email)</span>}</td>
+                {months.map(m => {
+                  const c = r.cells[m]
+                  if (!c) return <td key={m} className="px-2 py-2 text-right text-gray-300">·</td>
+                  const on = selected.has(cellKey(r.shareholderId, m))
+                  return (
+                    <td key={m} className="px-2 py-2 text-right whitespace-nowrap" style={{ background: c.paid ? '#dcfce7' : on ? 'var(--pale-teal)' : undefined }}>
+                      <label className="inline-flex items-center gap-1 justify-end cursor-pointer" title={`${r.name} · ${c.quarterKey}`}>
+                        {!c.paid && <input type="checkbox" checked={on} onChange={() => toggle(r.shareholderId, m)} />}
+                        <span className="font-mono" style={{ color: c.paid ? '#166534' : 'var(--charcoal)' }}>{Number(c.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{c.paid && ' ✓'}</span>
+                      </label>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          {!loading && rows.length === 0 && <tr><td colSpan={13} className="text-center py-10 text-gray-400">No projected preferred dividends in {year}. Set a payout schedule on the preferred shares, or change the year.</td></tr>}
+        </tbody>
+        {rows.length > 0 && <tfoot><tr className="border-t-2 font-bold" style={{ borderColor: 'var(--teal)', background: 'var(--off-white)' }}>
+          <td className="px-3 py-2 sticky left-0" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>TOTAL <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>({peso(grandTotal)})</span></td>
+          {months.map(m => { const t = colTotal(m); return <td key={m} className="px-2 py-2 text-right font-mono" style={{ color: t > 0 ? 'var(--deep-teal)' : 'var(--light-gray)' }}>{t > 0 ? t.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '·'}</td> })}
+        </tr></tfoot>}
+        </table>
+      </div>
+
+      {/* Recorded releases */}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Date', 'Quarter', 'Shareholders', 'Total Paid', 'Emailed', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold">{h}</th>)}</tr></thead><tbody>
           {loading ? <tr><td colSpan={6} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /></td></tr>
@@ -827,12 +874,67 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
                 <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setOpen(r)} className="text-[11px] font-semibold mr-2" style={{ color: 'var(--teal)' }}>Open →</button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
               </tr>
             ))}
-          {!loading && releases.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-gray-400">No preferred dividend releases yet.</td></tr>}
+          {!loading && releases.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-gray-400">No dividends recorded yet.</td></tr>}
         </tbody></table>
       </div>
 
       {showAdd && <AddPreferredDividendModal shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load() }} />}
+      {batchOpen && <BatchPreferredDividendModal cells={selectedCells} banks={banks} equityAccts={equityAccts} onClose={() => setBatchOpen(false)} onSaved={() => { setBatchOpen(false); setSelected(new Set()); load() }} />}
       {open && <PreferredDividendDetail release={open} onClose={() => setOpen(null)} onChanged={load} />}
+    </div>
+  )
+}
+
+// Record several ticked projected dividends at once. Cells are grouped by quarter into
+// one release each (so the accounting quarter labels stay correct).
+function BatchPreferredDividendModal({ cells, banks, equityAccts, onClose, onSaved }: { cells: any[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [bankAccountId, setBank] = useState('')
+  const [expenseAccountId, setExp] = useState('')
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  // Group by quarter → { shareholderId: {name, amount} }.
+  const groups = new Map<string, Map<string, { name: string; amount: number }>>()
+  cells.forEach(c => {
+    if (!groups.has(c.quarterKey)) groups.set(c.quarterKey, new Map())
+    const g = groups.get(c.quarterKey)!
+    const ex = g.get(c.shareholderId)
+    g.set(c.shareholderId, { name: c.name, amount: (ex?.amount || 0) + c.amount })
+  })
+  const total = cells.reduce((s, c) => s + c.amount, 0)
+  const labelOf = (qk: string) => { const [y, q] = qk.split('-Q'); return `Q${q} ${y}` }
+  const save = async () => {
+    setBusy(true)
+    try {
+      for (const [qk, g] of groups) {
+        const shareholderIds = [...g.keys()]
+        const amounts = Object.fromEntries([...g.entries()].map(([id, v]) => [id, v.amount]))
+        const r = await fetch('/api/equity/dividends-preferred', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, quarterKey: qk, periodLabel: labelOf(qk), shareholderIds, amounts, bankAccountId, expenseAccountId, proofOfDepositUrls: proofUrls }) })
+        if (!r.ok) { alert(`Failed on ${labelOf(qk)}: ${(await r.json()).error || 'error'}`); return }
+      }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }; const lbl = 'block text-xs font-semibold mb-1'
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Record {cells.length} Preferred Dividend{cells.length === 1 ? '' : 's'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: 200 }}>
+          <table className="w-full text-xs"><tbody>
+            {[...groups.entries()].map(([qk, g]) => [...g.entries()].map(([id, v]) => <tr key={qk + id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}><td className="px-3 py-1.5">{v.name}</td><td className="px-3 py-1.5" style={mg}>{labelOf(qk)}</td><td className="px-3 py-1.5 text-right font-mono font-semibold">{peso(v.amount)}</td></tr>))}
+          </tbody></table>
+        </div>
+        <div className="flex items-center justify-between mb-3"><span className="text-sm font-semibold" style={mg}>Total to release</span><span className="text-lg font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{peso(total)}</span></div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div><label className={lbl} style={mg}>Date paid</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Retained Earnings (DR)</label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+        </div>
+        <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit <span className="font-normal text-gray-400">(applied to all)</span></label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix="PREFDIV-BATCH-PROOF" existingCount={proofUrls.length} label="Add proof" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
+        {bankAccountId && expenseAccountId && total > 0 && <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>DR {equityAccts.find(a => a.id === expenseAccountId)?.accountTitle} {peso(total)} / CR {banks.find(b => b.id === bankAccountId)?.accountTitle} {peso(total)}</p>}
+        <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record {cells.length} dividend{cells.length === 1 ? '' : 's'} ({peso(total)})</button>
+      </div>
     </div>
   )
 }

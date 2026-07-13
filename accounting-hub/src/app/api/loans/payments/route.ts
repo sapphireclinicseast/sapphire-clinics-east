@@ -10,11 +10,17 @@ const stepOf = (s: string) => s === 'MONTHLY' ? 1 : s === 'QUARTERLY' ? 3 : s ==
 
 interface Occ { seq: number; dueDate: string; principalPortion: number; interestPortion: number; amount: number }
 
-// Compute the scheduled payout occurrences for an advance or loan (straight-line).
+const r2 = (n: number) => Math.round(n * 100) / 100
+
+// Compute the scheduled payout occurrences for an advance or loan.
+// payoutAmountPerPeriod (when set) overrides the derived per-period cash-out.
+// repaymentMode: INTEREST_ONLY → interest each period, principal in the final payment;
+// AMORTIZING (default) → principal + interest split each period.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function occurrences(item: any): Occ[] {
   const sched = item.payoutSchedule, sm = item.payoutStartMonth, sy = item.payoutStartYear, day = item.payoutDay
   const principal = num(item.principalAmount), totalInterest = num(item.totalInterest)
+  const override = num(item.payoutAmountPerPeriod)
   // Corporate bond: coupon each period until maturity, principal repaid at maturity.
   if (item.loanType === 'CORPORATE_BOND') {
     if (!sched || !sm || !sy || !item.maturityDate) return []
@@ -22,19 +28,31 @@ function occurrences(item: any): Occ[] {
     const mat = new Date(item.maturityDate)
     const monthsToMat = (mat.getUTCFullYear() - sy) * 12 + (mat.getUTCMonth() + 1 - sm)
     const count = Math.max(1, Math.floor(monthsToMat / step) + 1)
-    const couponPerPeriod = principal * (num(item.annualPct) / 100) * (step / 12)
+    const derivedCoupon = principal * (num(item.annualPct) / 100) * (step / 12)
+    const couponPerPeriod = r2(override > 0 ? override : derivedCoupon)
     const dates = scheduleDates(sm, sy, sched, day || 0, count)
-    const occ: Occ[] = dates.map((d, i) => ({ seq: i + 1, dueDate: new Date(Date.UTC(d.y, d.m - 1, d.d)).toISOString(), principalPortion: 0, interestPortion: Math.round(couponPerPeriod * 100) / 100, amount: Math.round(couponPerPeriod * 100) / 100 }))
+    const occ: Occ[] = dates.map((d, i) => ({ seq: i + 1, dueDate: new Date(Date.UTC(d.y, d.m - 1, d.d)).toISOString(), principalPortion: 0, interestPortion: couponPerPeriod, amount: couponPerPeriod }))
     occ.push({ seq: occ.length + 1, dueDate: mat.toISOString(), principalPortion: principal, interestPortion: 0, amount: principal })
     return occ
   }
   if (!sched || !sm || !sy || !item.termMonths) return []
   const step = stepOf(sched)
   const count = Math.max(1, Math.round(num(item.termMonths) / step))
-  const perPrincipal = Math.round((principal / count) * 100) / 100
-  const perInterest = Math.round((totalInterest / count) * 100) / 100
   const dates = scheduleDates(sm, sy, sched, day || 0, count)
-  return dates.map((d, i) => ({ seq: i + 1, dueDate: new Date(Date.UTC(d.y, d.m - 1, d.d)).toISOString(), principalPortion: perPrincipal, interestPortion: perInterest, amount: Math.round((perPrincipal + perInterest) * 100) / 100 }))
+  // Interest-only: interest each period; principal repaid with the final payment.
+  if (item.repaymentMode === 'INTEREST_ONLY') {
+    const perInterest = r2(override > 0 ? override : totalInterest / count)
+    return dates.map((d, i) => {
+      const isLast = i === count - 1
+      const principalPortion = isLast ? principal : 0
+      return { seq: i + 1, dueDate: new Date(Date.UTC(d.y, d.m - 1, d.d)).toISOString(), principalPortion, interestPortion: perInterest, amount: r2(perInterest + principalPortion) }
+    })
+  }
+  // Amortizing (default / legacy): principal + interest each period. An explicit
+  // per-period amount keeps principal amortizing straight-line and treats the rest as interest.
+  const perPrincipal = r2(principal / count)
+  const perInterest = override > 0 ? Math.max(0, r2(override - perPrincipal)) : r2(totalInterest / count)
+  return dates.map((d, i) => ({ seq: i + 1, dueDate: new Date(Date.UTC(d.y, d.m - 1, d.d)).toISOString(), principalPortion: perPrincipal, interestPortion: perInterest, amount: r2(perPrincipal + perInterest) }))
 }
 
 // GET /api/loans/payments?type=advances|loans  → occurrences + recorded payments

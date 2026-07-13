@@ -93,6 +93,10 @@ ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "retiredShares" DECIMAL(65
 ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "skipReports" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "sourceRecurringId" TEXT;
 ALTER TABLE "Service" ADD COLUMN IF NOT EXISTS "isHmoGl" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Loan" ADD COLUMN IF NOT EXISTS "payoutAmountPerPeriod" DECIMAL(65,30);
+ALTER TABLE "Loan" ADD COLUMN IF NOT EXISTS "repaymentMode" TEXT;
+ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "payoutAmountPerPeriod" DECIMAL(65,30);
+ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "repaymentMode" TEXT;
 
 -- Equity Settings (singleton): authorized shares anchor; Treasury = authorized − outstanding
 CREATE TABLE IF NOT EXISTS "EquitySettings" (

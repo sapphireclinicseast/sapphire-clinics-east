@@ -68,6 +68,8 @@ export async function POST(req: Request) {
         proofOfDepositUrls: Array.isArray(b.proofOfDepositUrls) ? b.proofOfDepositUrls : undefined,
         bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, interestExpenseAccountId: b.interestExpenseAccountId || null,
         payoutSchedule: b.payoutSchedule || null, payoutStartMonth: b.payoutStartMonth || null, payoutStartYear: b.payoutStartYear || null, payoutDay: b.payoutDay || null,
+        payoutAmountPerPeriod: b.payoutAmountPerPeriod != null && b.payoutAmountPerPeriod !== '' ? num(b.payoutAmountPerPeriod) : null,
+        repaymentMode: b.repaymentMode || null,
         pdcUrls: Array.isArray(b.pdcUrls) ? b.pdcUrls : undefined, remarks: b.remarks?.trim() || null, createdById: userId,
       } })
       const jeId = await releaseJE(tx, { id: a.id, name: a.name, principalAmount: principal, bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, date: new Date(b.dateAcquired), createdById: userId })
@@ -101,6 +103,8 @@ export async function PUT(req: Request) {
         proofOfDepositUrls: Array.isArray(b.proofOfDepositUrls) ? b.proofOfDepositUrls : undefined,
         bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, interestExpenseAccountId: b.interestExpenseAccountId || null,
         payoutSchedule: b.payoutSchedule || null, payoutStartMonth: b.payoutStartMonth || null, payoutStartYear: b.payoutStartYear || null, payoutDay: b.payoutDay || null,
+        payoutAmountPerPeriod: b.payoutAmountPerPeriod != null && b.payoutAmountPerPeriod !== '' ? num(b.payoutAmountPerPeriod) : null,
+        repaymentMode: b.repaymentMode || null,
         pdcUrls: Array.isArray(b.pdcUrls) ? b.pdcUrls : undefined, remarks: b.remarks?.trim() || null,
       } })
       const jeId = await releaseJE(tx, { id: b.id, name: b.name.trim(), principalAmount: principal, bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, date: new Date(b.dateAcquired), createdById: userId })

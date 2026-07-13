@@ -8,32 +8,40 @@ import { join } from 'path'
 
 const ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const num = (v: unknown) => Number(v || 0)
+const stepOf = (s: string) => s === 'MONTHLY' ? 1 : s === 'QUARTERLY' ? 3 : s === 'BIANNUALLY' ? 6 : 12
 
 function qkOf(y: number, m0: number) { const q = Math.floor(m0 / 3) + 1; return { key: `${y}-Q${q}`, label: `Q${q} ${y}` } }
 function qkDate(d: Date) { return qkOf(d.getUTCFullYear(), d.getUTCMonth()) }
 
+interface Period { year: number; month: number; amount: number }
+
 // Per-shareholder preferred summary: total shares, quarterly dividend (interest/4),
-// and the set of quarters the shareholder is due (from each preferred share's payout
-// start over its maturity, quarterly).
+// the set of quarters the shareholder is due, and a month-by-month projection of
+// scheduled interest (honoring each preferred share's own payout frequency & start).
 async function preferredSummary() {
   const shares = await prisma.preferredShare.findMany({ include: { shareholder: { select: { name: true, email: true } } } })
-  const per = new Map<string, { shareholderId: string; name: string; email: string | null; shares: number; quarterly: number; quarters: Set<string> }>()
+  const per = new Map<string, { shareholderId: string; name: string; email: string | null; shares: number; quarterly: number; quarters: Set<string>; periods: Map<string, Period> }>()
   for (const p of shares) {
     const invest = num(p.numberOfShares) * num(p.pricePerShare)
     const annual = invest * (num(p.annualInterest) / 100)
     const quarterly = annual / 4
-    const cur = per.get(p.shareholderId) || { shareholderId: p.shareholderId, name: p.shareholder.name, email: p.shareholder.email, shares: 0, quarterly: 0, quarters: new Set<string>() }
+    const cur = per.get(p.shareholderId) || { shareholderId: p.shareholderId, name: p.shareholder.name, email: p.shareholder.email, shares: 0, quarterly: 0, quarters: new Set<string>(), periods: new Map<string, Period>() }
     cur.shares += num(p.numberOfShares)
     cur.quarterly += quarterly
-    // Due quarters = quarterly from the payout start over the maturity. If no explicit
-    // payout start, fall back to the acquisition date so the matrix has a denominator.
+    // Projected release schedule from the payout start over the maturity, at the share's
+    // own frequency. If no explicit payout start, fall back to the acquisition date.
     const startY = p.payoutStartYear || (p.dateAcquired ? new Date(p.dateAcquired).getUTCFullYear() : null)
     const startM = p.payoutStartMonth || (p.dateAcquired ? new Date(p.dateAcquired).getUTCMonth() + 1 : null)
     if (startY && startM) {
-      const n = (p.maturityYears || 5) * 4
+      const step = stepOf(p.payoutSchedule || 'QUARTERLY')
+      const perAmt = annual * (step / 12)
+      const n = (p.maturityYears || 5) * (12 / step)
       for (let i = 0; i < n; i++) {
-        const d = new Date(Date.UTC(startY, (startM - 1) + i * 3, 1))
+        const d = new Date(Date.UTC(startY, (startM - 1) + i * step, 1))
         cur.quarters.add(qkDate(d).key)
+        const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1, key = `${y}-${m}`
+        const ex = cur.periods.get(key)
+        cur.periods.set(key, { year: y, month: m, amount: (ex?.amount || 0) + perAmt })
       }
     }
     per.set(p.shareholderId, cur)
@@ -48,7 +56,6 @@ export async function GET() {
     prisma.preferredDividendRelease.findMany({ include: { items: true }, orderBy: { date: 'desc' } }),
     preferredSummary(),
   ])
-  const shareholders = [...per.values()].map(h => ({ shareholderId: h.shareholderId, name: h.name, email: h.email, shares: h.shares, quarterly: Math.round(h.quarterly * 100) / 100 }))
 
   // Per-quarter matrix: due = # shareholders active that quarter, paid = # with a paid item that quarter.
   const dueBy = new Map<string, Set<string>>()
@@ -60,6 +67,17 @@ export async function GET() {
     const [y, qq] = q.split('-Q')
     return { quarterKey: q, label: `Q${qq} ${y}`, due: dueBy.get(q)?.size || 0, paid: [...(paidBy.get(q) || [])].filter(id => dueBy.get(q)?.has(id) ?? true).length }
   })
+
+  // Shareholders with their month-by-month projection; each period flagged paid when a
+  // release item exists for that shareholder in the same quarter.
+  const shareholders = [...per.values()].map(h => ({
+    shareholderId: h.shareholderId, name: h.name, email: h.email, shares: h.shares, quarterly: Math.round(h.quarterly * 100) / 100,
+    periods: [...h.periods.values()].map(pp => ({
+      year: pp.year, month: pp.month, amount: Math.round(pp.amount * 100) / 100,
+      quarterKey: qkOf(pp.year, pp.month - 1).key,
+      paid: paidBy.get(qkOf(pp.year, pp.month - 1).key)?.has(h.shareholderId) || false,
+    })),
+  }))
 
   return NextResponse.json({
     releases: releases.map(r => ({ ...r, totalAmountPaid: num(r.totalAmountPaid), items: r.items.map(i => ({ ...i, shares: num(i.shares), amount: num(i.amount) })) })),

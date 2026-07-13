@@ -127,6 +127,8 @@ function loanData(b: any, principal: number, interest: ReturnType<typeof compute
     proofOfDepositUrls: Array.isArray(b.proofOfDepositUrls) ? b.proofOfDepositUrls : undefined,
     bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, interestExpenseAccountId: b.interestExpenseAccountId || null,
     payoutSchedule: b.payoutSchedule || null, payoutStartMonth: b.payoutStartMonth || null, payoutStartYear: b.payoutStartYear || null, payoutDay: b.payoutDay || null,
+    payoutAmountPerPeriod: b.payoutAmountPerPeriod != null && b.payoutAmountPerPeriod !== '' ? num(b.payoutAmountPerPeriod) : null,
+    repaymentMode: b.loanType === 'CORPORATE_BOND' ? 'INTEREST_ONLY' : (b.repaymentMode || null),
     loanAgreementUrls: Array.isArray(b.loanAgreementUrls) ? b.loanAgreementUrls : undefined,
     pdcUrls: Array.isArray(b.pdcUrls) ? b.pdcUrls : undefined, netAmountToDebit: netDebit, remarks: b.remarks?.trim() || null,
     fromCreditLineId: b.fromCreditLineId || null,
