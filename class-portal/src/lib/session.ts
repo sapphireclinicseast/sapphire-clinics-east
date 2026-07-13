@@ -1478,6 +1478,86 @@ export function paymentStatusFor(studentId: string): 'PAID' | 'PENDING' | 'NONE'
   return 'PENDING'
 }
 
+/**
+ * Plan-aware, current-period payment status for the front-desk +
+ * admin Students list. Answers the question "does this student owe
+ * money RIGHT NOW?" rather than "have they paid ever?".
+ *
+ *   PAID → current period's installment is already PAID.
+ *          • ANNUAL:   any PAID row exists for the SY
+ *          • BIANNUAL: the currently-active tranche is PAID
+ *                      (first half up to Dec 5, second half after)
+ *          • MONTHLY:  a PAID row whose period covers the current
+ *                      calendar month exists (handles both "July 2026"
+ *                      and back-balance ranges like "Back balance ·
+ *                      June–September 2026")
+ *   DUE  → student has a plan on file but the current period isn't
+ *          paid yet. Front desk should be actively charging.
+ *   NONE → no payment record at all — parent never opened /pay.
+ */
+export function currentPeriodPaymentStatusFor(studentId: string): 'PAID' | 'DUE' | 'NONE' {
+  const list = getPaymentsForStudent(studentId)
+  if (list.length === 0) return 'NONE'
+
+  const plan = inferPaymentPlanFor(studentId)
+  // Unknown plan → fall back to any-PAID semantics so we don't
+  // suddenly mark long-paid students as DUE.
+  if (!plan) return list.some(p => p.status === 'PAID') ? 'PAID' : 'DUE'
+
+  const today = new Date()
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December']
+  const currentMonthName = monthNames[today.getMonth()]
+
+  if (plan === 'ANNUAL') {
+    // Annual is one lump per SY. Any PAID row = current period covered.
+    return list.some(p => p.status === 'PAID') ? 'PAID' : 'DUE'
+  }
+
+  if (plan === 'MONTHLY') {
+    const covered = list.some(p => p.status === 'PAID' && periodCoversMonth(p.period, currentMonthName))
+    return covered ? 'PAID' : 'DUE'
+  }
+
+  if (plan === 'BIANNUAL') {
+    // First half runs Jun 5 – Dec 4 (before Dec 5 due date). Second half
+    // runs Dec 5 – Jun 4 next year. We treat Dec 5 as the boundary.
+    const m = today.getMonth()
+    const d = today.getDate()
+    const inSecondHalf = (m === 11 && d >= 5) || (m >= 0 && m <= 4)
+    const halfRegex = inSecondHalf ? /second[- ]?half/i : /first[- ]?half/i
+    const covered = list.some(p => p.status === 'PAID' && p.plan === 'BIANNUAL' && halfRegex.test(p.period))
+    return covered ? 'PAID' : 'DUE'
+  }
+
+  return 'DUE'
+}
+
+/**
+ * Does a PaymentRecord's `period` string cover the given calendar
+ * month? Handles two shapes:
+ *   • Direct match:  "July 2026" covers "July"
+ *   • Back-balance range: "Back balance · June–September 2026" covers
+ *                          any month from June through September
+ */
+function periodCoversMonth(period: string, targetMonthName: string): boolean {
+  if (!period) return false
+  if (period.includes(targetMonthName)) return true
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December']
+  const m = period.match(/([A-Z][a-z]+)\s*[–-]\s*([A-Z][a-z]+)/)
+  if (!m) return false
+  const startIdx = monthNames.indexOf(m[1])
+  const endIdx = monthNames.indexOf(m[2])
+  const targetIdx = monthNames.indexOf(targetMonthName)
+  if (startIdx < 0 || endIdx < 0 || targetIdx < 0) return false
+  // Normal range (Jun–Sep). SY doesn't wrap monthly ranges in practice
+  // (back-balance always starts in June and ends in the current month),
+  // but handle wrap-around defensively for anything year-spanning.
+  if (startIdx <= endIdx) return targetIdx >= startIdx && targetIdx <= endIdx
+  return targetIdx >= startIdx || targetIdx <= endIdx
+}
+
 /** Most recent payment record (by createdAt) for a student, if any. */
 export function latestPaymentFor(studentId: string): PaymentRecord | undefined {
   const list = getPaymentsForStudent(studentId)
