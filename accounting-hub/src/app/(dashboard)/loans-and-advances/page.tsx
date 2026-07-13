@@ -721,6 +721,12 @@ function PaymentHistoryTab({ banks }: { banks: Bank[] }) {
   const selectedOccs = payees.flatMap(p => months.map(m => p.cells[m]).filter(o => o && o.status !== 'PAID' && selected.has(cellKey(o.parentId, new Date(o.dueDate).getUTCMonth() + 1))))
   const selectedTotal = selectedOccs.reduce((s, o) => s + Number(o.amount), 0)
   const toggle = (o: PayRow) => { const k = cellKey(o.parentId, new Date(o.dueDate).getUTCMonth() + 1); setSelected(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n }) }
+  // Click a month header to select/deselect every pending (unpaid) cell in that column.
+  const toggleColumn = (m: number) => {
+    const keys = payees.map(p => p.cells[m]).filter(o => o && o.status !== 'PAID').map(o => cellKey(o.parentId, m))
+    if (keys.length === 0) return
+    setSelected(s => { const n = new Set(s); const allOn = keys.every(k => n.has(k)); keys.forEach(k => allOn ? n.delete(k) : n.add(k)); return n })
+  }
 
   return (
     <div className="space-y-3">
@@ -753,9 +759,9 @@ function PaymentHistoryTab({ banks }: { banks: Bank[] }) {
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Tick the amounts you&apos;ll include in a payment, then <strong>Record selected</strong>. Green = already paid. Amounts come from each {sub === 'advances' ? 'advance' : 'loan'}&apos;s payment schedule.</p>
 
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="text-xs" style={{ minWidth: '900px' }}><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+        <table className="w-full text-xs" style={{ minWidth: '900px' }}><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
           <th className="px-3 py-2.5 font-semibold whitespace-nowrap sticky left-0" style={{ background: 'var(--off-white)', minWidth: 180 }}>Payee</th>
-          {months.map(m => <th key={m} className="px-2 py-2.5 font-semibold text-right whitespace-nowrap">{m}/{year}</th>)}
+          {months.map(m => <th key={m} onClick={() => toggleColumn(m)} className="px-2 py-2.5 font-semibold text-right whitespace-nowrap cursor-pointer hover:underline" title="Select/deselect all pending in this month">{m}/{year}</th>)}
         </tr></thead><tbody>
           {loading ? <tr><td colSpan={13} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           : payees.map(p => (

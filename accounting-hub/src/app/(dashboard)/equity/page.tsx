@@ -855,7 +855,7 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
 
       {/* Shareholder × month projection matrix */}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="text-xs" style={{ minWidth: '900px' }}><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+        <table className="w-full text-xs" style={{ minWidth: '900px' }}><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
           <th className="px-3 py-2.5 font-semibold whitespace-nowrap sticky left-0" style={{ background: 'var(--off-white)', minWidth: 200 }}>Shareholder</th>
           {months.map(m => <th key={m} className="px-2 py-2.5 font-semibold text-right whitespace-nowrap">{m}/{year}</th>)}
         </tr></thead><tbody>
