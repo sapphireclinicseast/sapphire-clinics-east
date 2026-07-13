@@ -116,29 +116,41 @@ export default function LoansAndAdvancesPage() {
   )
 }
 
-// Live IRR/amortization preview (mirrors the server helper).
-function amortPreview(principal: number, mode: string, annualPct: number, monthly: number, months: number) {
-  if (!(principal > 0) || !(months > 0)) return null
-  const perMonthPrincipal = principal / months
-  let interestPerMonth = 0, totalInterest = 0, amort = 0, effective = 0
-  if (mode === 'MONTHLY_AMORT' && monthly > 0) { amort = monthly; interestPerMonth = monthly - perMonthPrincipal; totalInterest = interestPerMonth * months }
-  else if (mode === 'ANNUAL_PCT' && annualPct > 0) { totalInterest = principal * (annualPct / 100) * (months / 12); interestPerMonth = totalInterest / months; amort = perMonthPrincipal + interestPerMonth }
-  const flat = principal > 0 ? (totalInterest / principal / (months / 12)) * 100 : 0
+// Payment-frequency helpers: the amortization "term" is expressed in the payout
+// frequency's periods (months / quarters / half-years / years), converted to months
+// (periods × step) for storage so the payment schedule generates one payment per period.
+const SCHED_STEP: Record<string, number> = { MONTHLY: 1, QUARTERLY: 3, BIANNUALLY: 6, ANNUALLY: 12 }
+const stepMonths = (s: string) => SCHED_STEP[s] || 1
+const PERIOD_ADJ: Record<string, string> = { MONTHLY: 'Monthly', QUARTERLY: 'Quarterly', BIANNUALLY: 'Biannual', ANNUALLY: 'Annual' }
+const PERIOD_PLURAL: Record<string, string> = { MONTHLY: 'months', QUARTERLY: 'quarters', BIANNUALLY: 'half-years', ANNUALLY: 'years' }
+const periodAdj = (s: string) => PERIOD_ADJ[s] || 'Monthly'
+const periodPlural = (s: string) => PERIOD_PLURAL[s] || 'months'
+
+// Live IRR/amortization preview (mirrors the server helper). "perPeriod" values are
+// per payment period at the chosen frequency; step = months per period.
+function amortPreview(principal: number, mode: string, annualPct: number, perPeriodAmort: number, numPeriods: number, step: number) {
+  if (!(principal > 0) || !(numPeriods > 0)) return null
+  const horizonMonths = numPeriods * step
+  const perPeriodPrincipal = principal / numPeriods
+  let interestPerPeriod = 0, totalInterest = 0, amort = 0, effective = 0
+  if (mode === 'MONTHLY_AMORT' && perPeriodAmort > 0) { amort = perPeriodAmort; interestPerPeriod = perPeriodAmort - perPeriodPrincipal; totalInterest = interestPerPeriod * numPeriods }
+  else if (mode === 'ANNUAL_PCT' && annualPct > 0) { totalInterest = principal * (annualPct / 100) * (horizonMonths / 12); interestPerPeriod = totalInterest / numPeriods; amort = perPeriodPrincipal + interestPerPeriod }
+  const flat = horizonMonths > 0 ? (totalInterest / principal / (horizonMonths / 12)) * 100 : 0
   // effective annual (IRR) via bisection — shown as the true cost of funds
-  if (amort > 0 && amort * months > principal) {
-    const pv = (r: number) => r === 0 ? amort * months : amort * (1 - Math.pow(1 + r, -months)) / r
+  if (amort > 0 && amort * numPeriods > principal) {
+    const pv = (r: number) => r === 0 ? amort * numPeriods : amort * (1 - Math.pow(1 + r, -numPeriods)) / r
     let lo = 0, hi = 1
     for (let i = 0; i < 200; i++) { const mid = (lo + hi) / 2; if (pv(mid) > principal) lo = mid; else hi = mid }
-    effective = (Math.pow(1 + (lo + hi) / 2, 12) - 1) * 100
+    effective = (Math.pow(1 + (lo + hi) / 2, 12 / step) - 1) * 100
   }
-  return { perMonthPrincipal, interestPerMonth, totalInterest, amort, flat, effective }
+  return { perPeriodPrincipal, interestPerPeriod, totalInterest, amort, flat, effective }
 }
 
 function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { row: AdvanceRow | null; shareholders: SH[]; banks: Bank[]; accts: Acct[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     advanceType: row?.advanceType || 'CASH', kindType: row?.kindType || '', principalAmount: row ? String(row.principalAmount) : '',
-    hasInterest: row?.hasInterest || false, interestMode: row?.interestMode || 'ANNUAL_PCT', annualPct: row?.annualPct ? String(row.annualPct) : '', termMonths: row?.termMonths ? String(row.termMonths) : '',
+    hasInterest: row?.hasInterest || false, interestMode: row?.interestMode || 'ANNUAL_PCT', annualPct: row?.annualPct ? String(row.annualPct) : '', termMonths: row?.termMonths ? String(row.termMonths / stepMonths(row?.payoutSchedule || '')) : '',
     monthlyAmortization: row?.monthlyAmortization ? String(row.monthlyAmortization) : '',
     bankAccountId: row?.bankAccountId || '', creditAccountId: row?.creditAccountId || '', interestExpenseAccountId: row?.interestExpenseAccountId || '',
     payoutSchedule: row?.payoutSchedule || '', payoutStartMonth: row?.payoutStartMonth ? String(row.payoutStartMonth) : '', payoutStartYear: row?.payoutStartYear ? String(row.payoutStartYear) : '', payoutDay: row?.payoutDay ? String(row.payoutDay) : '',
@@ -152,7 +164,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
   const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
   const n = (v: string) => Number(v) || 0
   const prefix = (f.name || 'ADVANCE').replace(/\s+/g, '_')
-  const prev = f.hasInterest ? amortPreview(n(f.principalAmount), f.interestMode, n(f.annualPct), n(f.monthlyAmortization), n(f.termMonths)) : null
+  const prev = f.hasInterest ? amortPreview(n(f.principalAmount), f.interestMode, n(f.annualPct), n(f.monthlyAmortization), n(f.termMonths), stepMonths(f.payoutSchedule)) : null
 
   const pickSh = (id: string) => { const sh = shareholders.find(s => s.id === id); setF(p => ({ ...p, shareholderId: id, name: sh ? sh.name : p.name })) }
   const save = async () => {
@@ -160,7 +172,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, principalAmount: n(f.principalAmount),
-        annualPct: f.annualPct ? n(f.annualPct) : null, termMonths: f.termMonths ? Number(f.termMonths) : null, monthlyAmortization: f.monthlyAmortization ? n(f.monthlyAmortization) : null,
+        annualPct: f.annualPct ? n(f.annualPct) : null, termMonths: f.termMonths ? Number(f.termMonths) * stepMonths(f.payoutSchedule) : null, monthlyAmortization: f.monthlyAmortization ? n(f.monthlyAmortization) : null,
         payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null,
         proofOfDepositUrls: proofUrls, pdcUrls }
       const r = await fetch('/api/loans/advances', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -193,15 +205,15 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
           {f.hasInterest && (
             <div className="mt-2">
               <div className="flex gap-2 mb-2 text-xs">
-                {(['ANNUAL_PCT', 'MONTHLY_AMORT'] as const).map(m => <button key={m} onClick={() => set('interestMode', m)} className="px-3 py-1.5 rounded-lg font-semibold" style={f.interestMode === m ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{m === 'ANNUAL_PCT' ? 'Annual % + months' : 'Monthly amortization + months'}</button>)}
+                {(['ANNUAL_PCT', 'MONTHLY_AMORT'] as const).map(m => <button key={m} onClick={() => set('interestMode', m)} className="px-3 py-1.5 rounded-lg font-semibold" style={f.interestMode === m ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{m === 'ANNUAL_PCT' ? `Annual % + ${periodPlural(f.payoutSchedule)}` : `${periodAdj(f.payoutSchedule)} amortization + ${periodPlural(f.payoutSchedule)}`}</button>)}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {f.interestMode === 'ANNUAL_PCT'
                   ? <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Annual %</label><input value={f.annualPct} onChange={e => set('annualPct', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
-                  : <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Monthly amortization</label><input value={f.monthlyAmortization} onChange={e => set('monthlyAmortization', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>}
-                <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>For how many months</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
+                  : <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>{periodAdj(f.payoutSchedule)} amortization</label><input value={f.monthlyAmortization} onChange={e => set('monthlyAmortization', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>}
+                <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>For how many {periodPlural(f.payoutSchedule)}</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
               </div>
-              {prev && <p className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#fff', color: '#334155' }}>≈ {prev.flat.toFixed(2)}% p.a. (flat) · true cost {prev.effective.toFixed(2)}% eff. · monthly {peso(prev.amort)} = principal {peso(prev.perMonthPrincipal)} + interest {peso(prev.interestPerMonth)} · total interest {peso(prev.totalInterest)}</p>}
+              {prev && <p className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#fff', color: '#334155' }}>≈ {prev.flat.toFixed(2)}% p.a. (flat) · true cost {prev.effective.toFixed(2)}% eff. · {periodAdj(f.payoutSchedule).toLowerCase()} {peso(prev.amort)} = principal {peso(prev.perPeriodPrincipal)} + interest {peso(prev.interestPerPeriod)} · total interest {peso(prev.totalInterest)}</p>}
             </div>
           )}
         </div>
@@ -313,7 +325,7 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
     loanEntity: row?.loanEntity || (preset ? 'OTHER' : 'BANK'), shareholderId: row?.shareholderId || '', entityName: row?.entityName || preset?.entityName || '', name: row?.name || preset?.entityName || '',
     dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     loanType: row?.loanType || 'CASH', kindType: row?.kindType || '', principalAmount: row ? String(row.principalAmount) : '',
-    hasInterest: row?.hasInterest ?? (preset ? (preset.annualPct != null && preset.annualPct > 0) : false), interestMode: row?.interestMode || 'ANNUAL_PCT', annualPct: row?.annualPct != null ? String(row.annualPct) : (preset?.annualPct != null ? String(preset.annualPct) : ''), termMonths: row?.termMonths ? String(row.termMonths) : '',
+    hasInterest: row?.hasInterest ?? (preset ? (preset.annualPct != null && preset.annualPct > 0) : false), interestMode: row?.interestMode || 'ANNUAL_PCT', annualPct: row?.annualPct != null ? String(row.annualPct) : (preset?.annualPct != null ? String(preset.annualPct) : ''), termMonths: row?.termMonths ? String(row.termMonths / stepMonths(row?.payoutSchedule || '')) : '',
     monthlyAmortization: row?.monthlyAmortization ? String(row.monthlyAmortization) : '', maturityDate: row?.maturityDate ? String(row.maturityDate).slice(0, 10) : '',
     bankAccountId: row?.bankAccountId || '', creditAccountId: row?.creditAccountId || '', interestExpenseAccountId: row?.interestExpenseAccountId || '',
     payoutSchedule: row?.payoutSchedule || '', payoutStartMonth: row?.payoutStartMonth ? String(row.payoutStartMonth) : '', payoutStartYear: row?.payoutStartYear ? String(row.payoutStartYear) : '', payoutDay: row?.payoutDay ? String(row.payoutDay) : '',
@@ -331,7 +343,7 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
   const n = (v: string) => Number(v) || 0
   const isBond = f.loanType === 'CORPORATE_BOND'
   const prefix = (f.name || f.entityName || 'LOAN').replace(/\s+/g, '_')
-  const prev = !isBond && f.hasInterest ? amortPreview(n(f.principalAmount), f.interestMode, n(f.annualPct), n(f.monthlyAmortization), n(f.termMonths)) : null
+  const prev = !isBond && f.hasInterest ? amortPreview(n(f.principalAmount), f.interestMode, n(f.annualPct), n(f.monthlyAmortization), n(f.termMonths), stepMonths(f.payoutSchedule)) : null
   const deducted = charges.filter(c => c.deductedFromDebit).reduce((s, c) => s + n(c.amount), 0)
   const netDebit = Math.max(0, n(f.principalAmount) - deducted)
   const setCharge = (i: number, patch: Partial<LoanCharge>) => setCharges(cs => cs.map((c, idx) => idx === i ? { ...c, ...patch } : c))
@@ -346,7 +358,7 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, name: nm, principalAmount: n(f.principalAmount),
-        annualPct: f.annualPct ? n(f.annualPct) : null, termMonths: f.termMonths ? Number(f.termMonths) : null, monthlyAmortization: f.monthlyAmortization ? n(f.monthlyAmortization) : null,
+        annualPct: f.annualPct ? n(f.annualPct) : null, termMonths: f.termMonths ? Number(f.termMonths) * stepMonths(f.payoutSchedule) : null, monthlyAmortization: f.monthlyAmortization ? n(f.monthlyAmortization) : null,
         payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null,
         proofOfDepositUrls: proofUrls, pdcUrls, loanAgreementUrls: agreementUrls,
         fromCreditLineId: preset?.fromCreditLineId ?? row?.fromCreditLineId ?? null,
@@ -388,14 +400,14 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
             <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700"><input type="checkbox" checked={f.hasInterest} onChange={e => set('hasInterest', e.target.checked)} /> Has interest?</label>
             {f.hasInterest && (
               <div className="mt-2">
-                <div className="flex gap-2 mb-2 text-xs">{(['ANNUAL_PCT', 'MONTHLY_AMORT'] as const).map(m => <button key={m} onClick={() => set('interestMode', m)} className="px-3 py-1.5 rounded-lg font-semibold" style={f.interestMode === m ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{m === 'ANNUAL_PCT' ? 'Annual % + months' : 'Monthly amortization + months'}</button>)}</div>
+                <div className="flex gap-2 mb-2 text-xs">{(['ANNUAL_PCT', 'MONTHLY_AMORT'] as const).map(m => <button key={m} onClick={() => set('interestMode', m)} className="px-3 py-1.5 rounded-lg font-semibold" style={f.interestMode === m ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{m === 'ANNUAL_PCT' ? `Annual % + ${periodPlural(f.payoutSchedule)}` : `${periodAdj(f.payoutSchedule)} amortization + ${periodPlural(f.payoutSchedule)}`}</button>)}</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {f.interestMode === 'ANNUAL_PCT'
                     ? <div><label className={lbl} style={mg}>Annual %</label><input value={f.annualPct} onChange={e => set('annualPct', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
-                    : <div><label className={lbl} style={mg}>Monthly amortization</label><input value={f.monthlyAmortization} onChange={e => set('monthlyAmortization', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>}
-                  <div><label className={lbl} style={mg}>For how many months</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
+                    : <div><label className={lbl} style={mg}>{periodAdj(f.payoutSchedule)} amortization</label><input value={f.monthlyAmortization} onChange={e => set('monthlyAmortization', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>}
+                  <div><label className={lbl} style={mg}>For how many {periodPlural(f.payoutSchedule)}</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
                 </div>
-                {prev && <p className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#fff', color: '#334155' }}>≈ {prev.flat.toFixed(2)}% p.a. (flat) · true cost {prev.effective.toFixed(2)}% eff. · monthly {peso(prev.amort)} = principal {peso(prev.perMonthPrincipal)} + interest {peso(prev.interestPerMonth)} · total interest {peso(prev.totalInterest)}</p>}
+                {prev && <p className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#fff', color: '#334155' }}>≈ {prev.flat.toFixed(2)}% p.a. (flat) · true cost {prev.effective.toFixed(2)}% eff. · {periodAdj(f.payoutSchedule).toLowerCase()} {peso(prev.amort)} = principal {peso(prev.perPeriodPrincipal)} + interest {peso(prev.interestPerPeriod)} · total interest {peso(prev.totalInterest)}</p>}
               </div>
             )}
           </div>

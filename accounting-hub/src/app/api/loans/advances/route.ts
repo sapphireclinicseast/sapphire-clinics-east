@@ -7,10 +7,14 @@ import { fromAnnualPct, fromMonthlyAmort } from '@/lib/amortization'
 const ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const num = (v: unknown) => Number(v || 0)
 
-function computeInterest(body: { hasInterest?: boolean; interestMode?: string; principalAmount: number; annualPct?: number; termMonths?: number; monthlyAmortization?: number }) {
+const schedStep = (s?: string) => s === 'QUARTERLY' ? 3 : s === 'BIANNUALLY' ? 6 : s === 'ANNUALLY' ? 12 : 1
+function computeInterest(body: { hasInterest?: boolean; interestMode?: string; principalAmount: number; annualPct?: number; termMonths?: number; monthlyAmortization?: number; payoutSchedule?: string }) {
   if (!body.hasInterest || !body.termMonths) return { computedAnnualPct: null as number | null, totalInterest: null as number | null, monthlyAmortization: null as number | null }
+  // termMonths is the true horizon (numPeriods × step); the periodic amortization is per
+  // payment period, so pass the number of PERIODS (not months) to the amort helper.
+  const numPeriods = Math.max(1, Math.round(body.termMonths / schedStep(body.payoutSchedule)))
   if (body.interestMode === 'MONTHLY_AMORT' && body.monthlyAmortization) {
-    const r = fromMonthlyAmort(body.principalAmount, num(body.monthlyAmortization), body.termMonths)
+    const r = fromMonthlyAmort(body.principalAmount, num(body.monthlyAmortization), numPeriods)
     return { computedAnnualPct: r.flatAnnualPct, totalInterest: r.totalInterest, monthlyAmortization: r.monthlyAmortization }
   }
   if (body.interestMode === 'ANNUAL_PCT' && body.annualPct != null) {

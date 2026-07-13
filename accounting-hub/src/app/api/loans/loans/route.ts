@@ -10,15 +10,19 @@ const num = (v: unknown) => Number(v || 0)
 // Interest math for CASH / KIND loans (straight-line, mirrors Advances).
 // Corporate bonds carry an annual coupon only (principal repaid at maturity),
 // so no amortization split is computed here.
-function computeInterest(b: { loanType?: string; hasInterest?: boolean; interestMode?: string; principalAmount: number; annualPct?: number; termMonths?: number; monthlyAmortization?: number }) {
+const schedStep = (s?: string) => s === 'QUARTERLY' ? 3 : s === 'BIANNUALLY' ? 6 : s === 'ANNUALLY' ? 12 : 1
+function computeInterest(b: { loanType?: string; hasInterest?: boolean; interestMode?: string; principalAmount: number; annualPct?: number; termMonths?: number; monthlyAmortization?: number; payoutSchedule?: string }) {
   const none = { computedAnnualPct: null as number | null, totalInterest: null as number | null, monthlyAmortization: null as number | null }
   if (b.loanType === 'CORPORATE_BOND') {
     // Annual coupon; total interest is per-year and settled each period until maturity.
     return { computedAnnualPct: b.annualPct != null ? num(b.annualPct) : null, totalInterest: null, monthlyAmortization: null }
   }
   if (!b.hasInterest || !b.termMonths) return none
+  // termMonths is the true horizon (numPeriods × step); the periodic amortization is per
+  // payment period, so pass the number of PERIODS (not months) to the amort helper.
+  const numPeriods = Math.max(1, Math.round(b.termMonths / schedStep(b.payoutSchedule)))
   if (b.interestMode === 'MONTHLY_AMORT' && b.monthlyAmortization) {
-    const r = fromMonthlyAmort(b.principalAmount, num(b.monthlyAmortization), b.termMonths)
+    const r = fromMonthlyAmort(b.principalAmount, num(b.monthlyAmortization), numPeriods)
     return { computedAnnualPct: r.flatAnnualPct, totalInterest: r.totalInterest, monthlyAmortization: r.monthlyAmortization }
   }
   if (b.interestMode === 'ANNUAL_PCT' && b.annualPct != null) {
