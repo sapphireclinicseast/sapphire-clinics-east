@@ -4447,8 +4447,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
             <select value={holidayBranchFilter} onChange={e => setHolidayBranchFilter(e.target.value)}
               className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
               <option value="">All Branches</option>
-              <option value="SBEA">SBEA</option>
-              <option value="SBGH">SBGH</option>
+              <option value="SBEA">AHEA</option>
+              <option value="SBGH">AHGH</option>
               <option value="VERDANA">Verdana</option>
             </select>
             {canWrite && (

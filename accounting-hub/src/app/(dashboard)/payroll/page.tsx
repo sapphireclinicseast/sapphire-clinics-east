@@ -3352,8 +3352,8 @@ export default function PayrollPage() {
                         <select value={incForm.branch} onChange={e => setIncForm({ ...incForm, branch: e.target.value })}
                           className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                           <option value="">All branches</option>
-                          <option value="SBEA">East Branch (SBEA)</option>
-                          <option value="SBGH">Greenhills Branch (SBGH)</option>
+                          <option value="SBEA">East Branch (AHEA)</option>
+                          <option value="SBGH">Greenhills Branch (AHGH)</option>
                           <option value="VERDANA">Verdana Store</option>
                         </select>
                       </div>
