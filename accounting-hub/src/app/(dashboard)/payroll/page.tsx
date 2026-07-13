@@ -1270,7 +1270,9 @@ export default function PayrollPage() {
         if (previewRes.ok) {
           const d = await previewRes.json()
           const payrolls: PayrollPreview[] = d.payrolls || []
-          setPayrollPreviews(payrolls)
+          // ADMINISTRATION staff are salaried employees, not consultants — never show
+          // them in consultant payslip generation (already excluded from payslip PDFs).
+          setPayrollPreviews(payrolls.filter(p => p.department !== 'ADMINISTRATION'))
           const newAdj: Record<string, AdjustmentLine[]> = {}
           const newExtra: Record<string, ExtraUnitPayLine[]> = {}
           for (const p of payrolls) {
@@ -1305,7 +1307,9 @@ export default function PayrollPage() {
         if (previewRes.ok) {
           const d = await previewRes.json()
           const payrolls: PayrollPreview[] = d.payrolls || []
-          setPayrollPreviews(payrolls)
+          // ADMINISTRATION staff are salaried employees, not consultants — never show
+          // them in consultant payslip generation (already excluded from payslip PDFs).
+          setPayrollPreviews(payrolls.filter(p => p.department !== 'ADMINISTRATION'))
           const newAdj: Record<string, AdjustmentLine[]> = {}
           const newExtra: Record<string, ExtraUnitPayLine[]> = {}
           for (const p of payrolls) {
