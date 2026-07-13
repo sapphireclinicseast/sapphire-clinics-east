@@ -6,7 +6,7 @@ import {
   getUsers, hydrateUsers, getWaivers, saveWaiver,
   hydrateWaiverForStudent, syncLocalWaiversToServer,
   teacherAssignedPairs, hydrateAssignments,
-  paymentStatusFor, inferPaymentPlanFor,
+  paymentStatusFor, currentPeriodPaymentStatusFor, inferPaymentPlanFor,
   hydrateFrontDeskPayments,
   uploadDocumentBlob,
   levelLabel,
@@ -275,7 +275,11 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
                 </td></tr>
               )}
               {filtered.map(s => {
-                const ps = paymentStatusFor(s.id)
+                // Current-period-aware: PAID only when the student's
+                // current installment is settled. DUE = plan on file
+                // but this month's / this half's payment hasn't landed
+                // yet. Front-desk should be actively charging DUE rows.
+                const ps = currentPeriodPaymentStatusFor(s.id)
                 const branchLabel = s.branch === 'EAST' ? 'East' : s.branch === 'GREENHILLS' ? 'Greenhills' : '—'
                 // Inferred from the student's latest PaymentRecord.
                 // Undefined for students who have never had a payment
@@ -408,8 +412,9 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
   )
 }
 
-function PaymentStatusBadge({ status }: { status: 'PAID' | 'PENDING' | 'NONE' }) {
+function PaymentStatusBadge({ status }: { status: 'PAID' | 'DUE' | 'PENDING' | 'NONE' }) {
   if (status === 'PAID')    return <span className="badge badge-paid">Paid</span>
+  if (status === 'DUE')     return <span className="badge" style={{ background: '#fed7aa', color: '#9a3412' }} title="Current installment not yet paid — charge this student.">Due</span>
   if (status === 'PENDING') return <span className="badge badge-pending">Pending</span>
   return <span className="badge badge-pending">No payment yet</span>
 }
