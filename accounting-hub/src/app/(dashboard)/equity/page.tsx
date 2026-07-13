@@ -33,7 +33,7 @@ interface CommonRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
   stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
-  totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
+  totalCapitalization: number; equityStake: number; equityStakeCurrent: number; equityStakeTotal: number; bankAccountId: string | null; equityAccountId: string | null
   soldFromTreasury: boolean
   boughtBack: boolean; buybackShares: number; buybacks: Buyback[]
 }
@@ -93,14 +93,14 @@ export default function EquityPage() {
   const exportCommon = (format: 'xlsx' | 'pdf') => {
     const rows = data?.rows || []
     const num = (n: number) => n.toLocaleString('en-PH')
-    const headers = ['SH #', 'Investor', 'Class', 'Date Acquired', 'Stock Cert.', 'Net Shares', 'Bought Back', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake', 'Bank Debited']
+    const headers = ['SH #', 'Investor', 'Class', 'Date Acquired', 'Stock Cert.', 'Net Shares', 'Bought Back', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake (Current)', '% Stake (Total)', 'Bank Debited']
     const body = rows.map(r => {
       const netShares = r.numberOfShares - (r.buybackShares || 0)
       return [
         r.shNumber, r.name, r.shareClass || '', String(r.dateAcquired).slice(0, 10), r.stockCertNumber || '',
         num(netShares), r.buybackShares ? num(r.buybackShares) : '',
         r.truePar, r.apic, r.pricePerShare,
-        (netShares * r.pricePerShare), r.equityStake.toFixed(3) + '%', bankLabel(r.bankAccountId),
+        (netShares * r.pricePerShare), r.equityStakeCurrent.toFixed(3) + '%', r.equityStakeTotal.toFixed(3) + '%', bankLabel(r.bankAccountId),
       ]
     })
     const totalNet = rows.reduce((s, r) => s + (r.numberOfShares - (r.buybackShares || 0)), 0)
@@ -182,10 +182,10 @@ export default function EquityPage() {
             <table ref={commonTableRef} className="w-full text-xs" style={commonRz.tableStyle}>
               <ResizableColgroup rz={commonRz} />
               <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Investor', 'Class', 'Date Acq.', 'Stock Cert.', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Bank Debited', 'Bought back?', 'Valid ID', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={commonRz} index={i} /></th>)}
+                {['SH #', 'Investor', 'Class', 'Date Acq.', 'Stock Cert.', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake (Current)', '% Stake (Total)', 'Bank Debited', 'Bought back?', 'Valid ID', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={commonRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={16} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                {loading ? <tr><td colSpan={17} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 : (data?.rows || []).map(r => (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.boughtBack ? '#fef2f2' : undefined }}>
                     <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.shNumber}</td>
@@ -202,7 +202,8 @@ export default function EquityPage() {
                     <td className="px-3 py-2 text-right font-semibold" style={{ overflow: 'hidden' }}>{r.boughtBack && r.buybackShares > 0
                       ? <><span className="whitespace-nowrap">{peso((r.numberOfShares - r.buybackShares) * r.pricePerShare)}</span><span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {peso(r.totalCapitalization)} but shares bought back)</span></>
                       : <span className="whitespace-nowrap">{peso(r.totalCapitalization)}</span>}</td>
-                    <td className="px-3 py-2 text-right">{r.equityStake.toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right">{r.equityStakeCurrent.toFixed(3)}%</td>
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{r.equityStakeTotal.toFixed(3)}%</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)', overflow: 'hidden', wordBreak: 'break-word' }} title={bankLabel(r.bankAccountId)}>{bankLabel(r.bankAccountId)}</td>
                     <td className="px-3 py-2" style={{ overflow: 'hidden' }}>{r.boughtBack ? <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c', wordBreak: 'break-word', maxWidth: '100%' }} title={r.buybacks.map(b => `${String(b.date).slice(0, 10)}: ${b.shares.toLocaleString('en-PH')} @ ${peso(b.price)}`).join('\n')}>Yes · {r.buybackShares.toLocaleString('en-PH')}{r.buybacks.length > 1 ? ` (${r.buybacks.length}×)` : ''}</span> : 'No'}</td>
                     <td className="px-3 py-2">
@@ -222,7 +223,7 @@ export default function EquityPage() {
                     </td>
                   </tr>
                 ))}
-                {!loading && (data?.rows || []).length === 0 && <tr><td colSpan={16} className="text-center py-10 text-gray-400">No common shareholders yet.</td></tr>}
+                {!loading && (data?.rows || []).length === 0 && <tr><td colSpan={17} className="text-center py-10 text-gray-400">No common shareholders yet.</td></tr>}
               </tbody>
             </table>
           </div>

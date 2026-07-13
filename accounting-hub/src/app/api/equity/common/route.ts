@@ -71,6 +71,7 @@ export async function GET() {
       bankAccountId: b.bankAccountId, treasuryAccountId: b.treasuryAccountId, proofUrls: b.proofUrls,
     }))
     const buybackShares = buybacks.reduce((s, b) => s + b.shares, 0)
+    const netShares = num(c.numberOfShares) - buybackShares
     return {
       id: c.id, shareholderId: c.shareholderId, shNumber: c.shareholder.shNumber, name: c.shareholder.name,
       tin: c.shareholder.tin, birthdate: c.shareholder.birthdate, email: c.shareholder.email, address: c.shareholder.address,
@@ -78,8 +79,11 @@ export async function GET() {
       agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls, validIdUrls: c.validIdUrls, shareClass: c.shareClass,
       numberOfShares: num(c.numberOfShares), truePar: num(c.truePar), apic: num(c.apic), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
       soldFromTreasury: c.soldFromTreasury,
-      // % equity is share-count based: this holding's shares ÷ gross shares (common + preferred).
-      equityStake: grossShares > 0 ? (num(c.numberOfShares) / grossShares) * 100 : 0,
+      // % equity is share-count based on this holding's NET (post-buyback) shares.
+      // Current = ÷ outstanding common (subscribed) shares; Total = ÷ authorized shares.
+      equityStakeCurrent: totalShares > 0 ? (netShares / totalShares) * 100 : 0,
+      equityStakeTotal: authorizedShares > 0 ? (netShares / authorizedShares) * 100 : 0,
+      equityStake: totalShares > 0 ? (netShares / totalShares) * 100 : 0,
       bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId,
       boughtBack: buybacks.length > 0, buybackShares, buybacks,
     }
