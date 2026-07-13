@@ -19,17 +19,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
     }
 
-    // Validate file type
+    // Validate file type. Some browsers (esp. iOS) send an empty or generic MIME type
+    // for HEIC photos, so fall back to the file extension when the MIME isn't recognised.
     const allowedTypes = [
-      'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
+      'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/gif', 'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'text/csv',
     ]
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: 'File must be an image (JPG, PNG, WebP), PDF, Word, or Excel document' }, { status: 400 })
+    const allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv']
+    const uploadExt = (file.name.split('.').pop() || '').toLowerCase()
+    if (!allowedTypes.includes(file.type) && !allowedExts.includes(uploadExt)) {
+      return NextResponse.json({ error: 'File must be an image (JPG, PNG, WebP, HEIC, GIF), PDF, Word, or Excel document' }, { status: 400 })
     }
 
     // Max 10MB
