@@ -92,6 +92,7 @@ ALTER TABLE "CommonShare" ADD COLUMN IF NOT EXISTS "soldFromTreasury" BOOLEAN NO
 ALTER TABLE "PreferredShare" ADD COLUMN IF NOT EXISTS "retiredShares" DECIMAL(65,30) DEFAULT 0;
 ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "skipReports" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "sourceRecurringId" TEXT;
+ALTER TABLE "Service" ADD COLUMN IF NOT EXISTS "isHmoGl" BOOLEAN NOT NULL DEFAULT false;
 
 -- SOA Settings (singleton row for bank details, signatories)
 CREATE TABLE IF NOT EXISTS "SoaSettings" (

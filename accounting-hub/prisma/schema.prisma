@@ -201,6 +201,7 @@ model Service {
   thresholdCounted      Boolean       @default(false) // include in daily patient-threshold incentive count
   thresholdQty          Decimal       @default(1)     // sessions credited per unit (e.g. 2 for a 2-hour, 0.5 for a half session)
   issuedOfficialInvoice Boolean       @default(false)
+  isHmoGl               Boolean       @default(false) // service billed to HMO / Guarantee Letter → sales are receivables
   isActive              Boolean       @default(true)
   createdById           String
   createdBy             User          @relation("ServiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

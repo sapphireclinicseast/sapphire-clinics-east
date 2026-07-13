@@ -136,7 +136,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { name, department, branch, price, newPrice, newPriceEffectiveDate, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, eligibleServices, branchPrices } = body
+            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, eligibleServices, branchPrices } = body
 
     const hasBranchPrices = Array.isArray(branchPrices) && branchPrices.some((bp: { price?: unknown }) => bp.price != null && bp.price !== '')
     if (!name?.trim() || !department || !branch || (price == null && !hasBranchPrices)) {
@@ -176,6 +176,7 @@ export async function POST(req: Request) {
         unitPayId: unitPayId || null,
         unitPayEnabled: unitPayEnabled !== undefined ? unitPayEnabled : true,
         thresholdCounted: thresholdCounted || false,
+        isHmoGl: isHmoGl || false,
         thresholdQty: thresholdQty != null ? Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2) : 1,
         issuedOfficialInvoice: issuedOfficialInvoice || false,
         createdById: session.user.id,
@@ -237,7 +238,7 @@ export async function PUT(req: Request) {
     const body = await req.json()
     const { id, name, department, branch, price, newPrice, newPriceEffectiveDate, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, eligibleServices, branchPrices } = body
+            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, eligibleServices, branchPrices } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
@@ -277,6 +278,7 @@ export async function PUT(req: Request) {
     if (thresholdCounted !== undefined) data.thresholdCounted = !!thresholdCounted
     if (thresholdQty !== undefined) data.thresholdQty = Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2)
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
+    if (isHmoGl !== undefined) data.isHmoGl = !!isHmoGl
 
     const service = await prisma.service.update({ where: { id }, data })
 
