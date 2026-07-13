@@ -88,13 +88,15 @@ interface ReportData {
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
 type ViewMode = 'annual' | 'monthly'
-type OnDrillDown = (label: string, category: string, month: number, accountKey?: string) => void
+type OnDrillDown = (label: string, category: string, month: number, accountKey?: string, opts?: { subtype?: string; portion?: string }) => void
 
 interface DrillDownState {
   label: string
   category: string
   month: number
   accountKey?: string  // e.g. "7020 Occupational Therapy Services Revenue"
+  subtype?: string     // product sub-classification, e.g. "Occupational Therapy · Toys"
+  portion?: string     // 'CASH' | 'RECEIVABLE' for the Cash/Receivables split
 }
 
 interface DrillDownItem {
@@ -492,6 +494,8 @@ function DrillDownPanel({
       category: target.category,
     })
     if (target.accountKey) params.set('accountKey', target.accountKey)
+    if (target.subtype) params.set('subtype', target.subtype)
+    if (target.portion) params.set('portion', target.portion)
     fetch(`/api/reports/drill-down?${params}`)
       .then((r) => r.json())
       .then((data) => {
@@ -1097,13 +1101,13 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
                     expandable={rcv > 0 || isProductIncome} expanded={!!expRev[a.accountNumber]} onToggleExpand={() => togRev(a.accountNumber)} />
                   {expRev[a.accountNumber] && rcv > 0 && (<>
                     <AnnualRow key={`${a.accountNumber}-cash`} label="Cash Sales" amount={total - rcv} indent={2} muted pctOfParent={pctOf(total - rcv, total)}
-                      onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
+                      onDrillDown={() => onDrillDown('Cash Sales', 'REVENUE', 0, acctKey, { portion: 'CASH' })} />
                     <AnnualRow key={`${a.accountNumber}-rcv`} label="Receivables Sales (HMO/GL)" amount={rcv} indent={2} muted pctOfParent={pctOf(rcv, total)}
-                      onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
+                      onDrillDown={() => onDrillDown('Receivables Sales (HMO/GL)', 'REVENUE', 0, acctKey, { portion: 'RECEIVABLE' })} />
                   </>)}
                   {expRev[a.accountNumber] && isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
                     <AnnualRow key={`${a.accountNumber}-${label}`} label={label} amount={amt} indent={2} muted pctOfParent={pctOf(amt, total)}
-                      onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
+                      onDrillDown={() => onDrillDown(label, 'REVENUE', 0, acctKey, { subtype: label })} />
                   ))}
                 </Fragment>
               )
@@ -1240,14 +1244,14 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
                   expandable={rcvTotal > 0 || isProductIncome} expanded={!!expRev[a.accountNumber]} onToggleExpand={() => togRev(a.accountNumber)} />
                 {expRev[a.accountNumber] && rcvTotal > 0 && (<>
                   <MonthlyRow key={`${a.accountNumber}-cash`} label="Cash Sales" values={totArr.map((v, i) => v - (rcvArr[i] || 0))} total={acctTotal - rcvTotal} indent={2} muted pctOfParent={pctOf(acctTotal - rcvTotal, acctTotal)}
-                    onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
+                    onClickCell={(m) => onDrillDown('Cash Sales', 'REVENUE', m ?? 0, acctKey, { portion: 'CASH' })} />
                   <MonthlyRow key={`${a.accountNumber}-rcv`} label="Receivables Sales (HMO/GL)" values={rcvArr} total={rcvTotal} indent={2} muted pctOfParent={pctOf(rcvTotal, acctTotal)}
-                    onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
+                    onClickCell={(m) => onDrillDown('Receivables Sales (HMO/GL)', 'REVENUE', m ?? 0, acctKey, { portion: 'RECEIVABLE' })} />
                 </>)}
                 {expRev[a.accountNumber] && isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
                   <MonthlyRow key={`${a.accountNumber}-${label}`} label={label}
                     values={subtypeMonthly(label)} total={amt} indent={2} muted pctOfParent={pctOf(amt, acctTotal)}
-                    onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
+                    onClickCell={(m) => onDrillDown(label, 'REVENUE', m ?? 0, acctKey, { subtype: label })} />
                 ))}
               </Fragment>
             )
@@ -1496,8 +1500,8 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
 
-  const handleDrillDown: OnDrillDown = (label, category, month, accountKey) => {
-    setDrillDown({ label, category, month, accountKey })
+  const handleDrillDown: OnDrillDown = (label, category, month, accountKey, opts) => {
+    setDrillDown({ label, category, month, accountKey, subtype: opts?.subtype, portion: opts?.portion })
   }
 
   // Med-rep: read-only, Income Statement / monthly / gross-revenue only, no drill-down. Branch

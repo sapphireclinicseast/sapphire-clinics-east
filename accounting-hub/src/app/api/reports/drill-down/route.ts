@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { WalletType } from '@prisma/client'
+import { productSubtypeLabel } from '@/lib/sku-taxonomy'
+
+// HMO / GL payments make an order's revenue a receivable (mirrors the income statement).
+const AR_PAYMENT_METHODS = new Set(['HMO', 'GL'])
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -52,6 +56,8 @@ export async function GET(req: Request) {
   const month = parseInt(searchParams.get('month') || '0')
   const category = searchParams.get('category') || ''
   const accountKey = searchParams.get('accountKey') || '' // e.g. "7020 Occupational Therapy Services Revenue"
+  const subtype = searchParams.get('subtype') || ''  // product sub-classification, e.g. "Occupational Therapy · Toys"
+  const portion = searchParams.get('portion') || ''  // 'CASH' | 'RECEIVABLE' for the cash/receivables split
 
   const startDate = month > 0
     ? new Date(Date.UTC(year, month - 1, 1))
@@ -799,7 +805,7 @@ export async function GET(req: Request) {
         }),
         prisma.inventoryItem.findMany({
           where: { isActive: true, revenueAccountId: { not: null } },
-          select: { name: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } },
+          select: { name: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } },
         }),
       ])
       const svcNameMap: Record<string, { acctKey: string; dept: string; name: string }> = {}
@@ -811,12 +817,12 @@ export async function GET(req: Request) {
           }
         }
       }
-      const invNameMap: Record<string, { acctKey: string; dept: string; name: string }> = {}
+      const invNameMap: Record<string, { acctKey: string; dept: string; name: string; category: string | null }> = {}
       for (const i of invLookup) {
         if (i.revenueAccount) {
           invNameMap[i.name.trim().toUpperCase()] = {
             acctKey: `${i.revenueAccount.accountNumber} ${i.revenueAccount.accountTitle}`,
-            dept: i.skuDepartment, name: i.name,
+            dept: i.skuDepartment, name: i.name, category: i.skuCategory,
           }
         }
       }
@@ -829,13 +835,14 @@ export async function GET(req: Request) {
           orderType: true,
           branch: true,
           patientName: true,
+          payments: { select: { method: true } },
           items: {
             select: {
               name: true,
               lineTotal: true,
               quantity: true,
-              service: { select: { name: true, department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
-              inventoryItem: { select: { name: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
+              service: { select: { name: true, department: true, isHmoGl: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
+              inventoryItem: { select: { name: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
             },
           },
         },
@@ -860,6 +867,18 @@ export async function GET(req: Request) {
           const dept = item.service?.department || item.inventoryItem?.skuDepartment
             || svcNameMap[item.name?.trim().toUpperCase() || '']?.dept
             || invNameMap[item.name?.trim().toUpperCase() || '']?.dept || 'OTHER'
+
+          // Product sub-classification filter (7080 "Department · Category" sub-rows).
+          if (subtype) {
+            const catCode = item.inventoryItem?.skuCategory || invNameMap[item.name?.trim().toUpperCase() || '']?.category
+            if (productSubtypeLabel(dept, catCode) !== subtype) continue
+          }
+          // Cash vs Receivables split: receivable when paid via HMO/GL or the service is HMO/GL.
+          if (portion) {
+            const isRcv = o.payments.some(p => AR_PAYMENT_METHODS.has(p.method)) || !!item.service?.isHmoGl
+            if (portion === 'CASH' && isRcv) continue
+            if (portion === 'RECEIVABLE' && !isRcv) continue
+          }
           const name = item.service?.name || item.inventoryItem?.name || item.name || ''
           items.push({
             date: o.transactionDate.toISOString().split('T')[0],
@@ -871,7 +890,9 @@ export async function GET(req: Request) {
       }
 
       // Also include any journal entry credits to this revenue account
-      // (handles accounts fed by both POS orders and manual journal entries)
+      // (handles accounts fed by both POS orders and manual journal entries).
+      // Skipped for subtype/portion drills — those splits only classify POS order items.
+      if (!subtype && !portion) {
       const [jeAcctNum, ...jeTitleParts] = accountKey.split(' ')
       const jeAcctTitle = jeTitleParts.join(' ')
       const jeLines = await prisma.journalEntryLine.findMany({
@@ -900,6 +921,7 @@ export async function GET(req: Request) {
           branch: BRANCH_LABELS[line.journalEntry.branch] || line.journalEntry.branch,
           amount: amt,
         })
+      }
       }
 
       return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
