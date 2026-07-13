@@ -2837,7 +2837,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                     <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{o.orderNumber}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {o.branch === 'SANDBOX_EAST' ? 'SBEA' : o.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : o.branch === 'VERDANA_STORE' ? 'Verdana' : o.branch}
+                      {o.branch === 'SANDBOX_EAST' ? 'AHEA' : o.branch === 'SANDBOX_GREENHILLS' ? 'AHGH' : o.branch === 'VERDANA_STORE' ? 'Verdana' : o.branch}
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs px-1.5 py-0.5 rounded" style={o.orderType === 'SERVICE' ? { background: '#dbeafe', color: '#1e40af' } : { background: '#fef3c7', color: '#92400e' }}>
@@ -2949,7 +2949,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
               {/* Details grid */}
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                 <div><span style={{ color: 'var(--mid-gray)' }}>Date:</span> <span style={{ color: 'var(--charcoal)' }}>{formatDate(viewOrder.transactionDate)}</span></div>
-                <div><span style={{ color: 'var(--mid-gray)' }}>Branch:</span> <span style={{ color: 'var(--charcoal)' }}>{viewOrder.branch === 'SANDBOX_EAST' ? 'SBEA' : viewOrder.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : viewOrder.branch === 'VERDANA_STORE' ? 'Verdana' : viewOrder.branch}</span></div>
+                <div><span style={{ color: 'var(--mid-gray)' }}>Branch:</span> <span style={{ color: 'var(--charcoal)' }}>{viewOrder.branch === 'SANDBOX_EAST' ? 'AHEA' : viewOrder.branch === 'SANDBOX_GREENHILLS' ? 'AHGH' : viewOrder.branch === 'VERDANA_STORE' ? 'Verdana' : viewOrder.branch}</span></div>
                 <div><span style={{ color: 'var(--mid-gray)' }}>Patient:</span> <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{viewOrder.patientName || '—'}</span></div>
                 <div><span style={{ color: 'var(--mid-gray)' }}>Clinician:</span> <span style={{ color: 'var(--charcoal)' }}>{formatClinicianName(viewOrder.clinicianName)}</span></div>
                 <div className="col-span-2"><span style={{ color: 'var(--mid-gray)' }}>Reference #:</span> <span className="font-mono" style={{ color: 'var(--charcoal)' }}>{viewOrder.referenceNumber || <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></div>

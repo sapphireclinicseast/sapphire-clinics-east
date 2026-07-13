@@ -383,6 +383,41 @@ export async function GET(req: Request) {
           amount: net,
         })
       }
+      // Distributed (prepaid) recurring entries classified here amortize monthly — the
+      // IS shows net/n per month, so surface each amortized month that falls in range.
+      const distRows = await prisma.pettyCashEntry.findMany({
+        where: {
+          accountTitle: accountKey, recordType: 'RECURRING', distributeMonthly: true,
+          distributeStart: { not: null }, distributeEnd: { not: null },
+          ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
+        },
+      })
+      for (const e of distRows) {
+        if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
+        if (!e.distributeStart || !e.distributeEnd) continue
+        const gross = Number(e.grossAmount)
+        const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+        if (!net) continue
+        const sd = new Date(e.distributeStart), ed = new Date(e.distributeEnd)
+        const sIdx = sd.getUTCFullYear() * 12 + sd.getUTCMonth()
+        const eIdx = ed.getUTCFullYear() * 12 + ed.getUTCMonth()
+        const count = eIdx - sIdx + 1
+        if (count <= 0) continue
+        const monthlyNet = net / count
+        for (let idx = sIdx; idx <= eIdx; idx++) {
+          const y = Math.floor(idx / 12), m0 = idx % 12
+          const mDate = new Date(Date.UTC(y, m0, 1))
+          if (mDate >= startDate && mDate < endDate) {
+            items.push({
+              date: `${y}-${String(m0 + 1).padStart(2, '0')}-01`,
+              type: `${e.pcvNumber} — ${e.description || ''} · Prepaid amortization (${count}-mo)`,
+              branch: 'PETTY CASH',
+              amount: Math.round(monthlyNet * 100) / 100,
+            })
+          }
+        }
+      }
+
       // CEO petty cash allocated to this expense account for the filtered branch
       const ceoRows = await prisma.pettyCashEntry.findMany({
         where: {

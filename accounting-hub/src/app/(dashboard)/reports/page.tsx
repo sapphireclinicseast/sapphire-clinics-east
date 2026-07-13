@@ -147,6 +147,12 @@ const BRANCH_LABELS: Record<string, string> = {
   SANDBOX_EAST: 'East Branch',
   SANDBOX_GREENHILLS: 'Greenhills Branch',
 }
+// Short branch codes for the drill-down subtitle / exports (current AHEA/AHGH naming).
+const BRANCH_CODE: Record<string, string> = {
+  SBEA: 'AHEA', SBGH: 'AHGH', VERD: 'VER', VERDANA_STORE: 'VER',
+  SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH',
+}
+const branchCode = (b: string) => b === 'ALL' ? 'All Branches' : (BRANCH_CODE[b] || b)
 
 const SUB_TYPE_LABELS: Record<string, string> = {
   CURRENT_ASSETS: 'Current Assets',
@@ -256,7 +262,8 @@ function fmtSigned(n: number): string {
 
 const ROW_FONT = '0.7rem'
 const ROW_FONT_MONO = ROW_FONT
-const GRID_MONTHLY = '210px repeat(12, minmax(0,1fr)) 108px'
+const GRID_MONTHLY = '210px repeat(12, minmax(96px,1fr)) 116px'
+const GRID_MONTHLY_MINW = '1470px'
 
 function SectionHeader({ label, collapsed, onToggle }: { label: string; collapsed?: boolean; onToggle?: () => void }) {
   return (
@@ -376,7 +383,7 @@ function MonthlyRow({
         borderBottom: isGrandTotal ? '3px double #111827' : isTotal ? '1px solid #d1d5db' : undefined,
         background: isGrandTotal ? '#f0f9f8' : undefined,
         color: muted ? '#6b7280' : '#111827',
-        minWidth: '1100px',
+        minWidth: GRID_MONTHLY_MINW,
       }}
     >
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '6px' }}>{label}</span>
@@ -432,7 +439,7 @@ function MonthlyHeader() {
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        minWidth: '1100px',
+        minWidth: GRID_MONTHLY_MINW,
       }}
     >
       <span>Line Item</span>
@@ -484,10 +491,10 @@ function DrillDownPanel({
   const handleDownloadCsv = () => {
     if (items.length === 0) return
     const safeLabel = target.label.replace(/[/\\?%*:|"<>]/g, '-')
-    const filename = `${safeLabel} — ${monthLabel} — ${branch === 'ALL' ? 'All Branches' : branch}`
+    const filename = `${safeLabel} — ${monthLabel} — ${branchCode(branch)}`
     const rows = [
       ['Date', 'Type of Transaction', 'Branch', 'Amount'],
-      ...items.map(item => [item.date, item.type, item.branch, item.amount.toFixed(2)]),
+      ...items.map(item => [item.date, item.type, branchCode(item.branch), item.amount.toFixed(2)]),
       ['', '', 'TOTAL', total.toFixed(2)],
     ]
     const csv = rows.map(row =>
@@ -519,7 +526,7 @@ function DrillDownPanel({
               {target.label}
             </h3>
             <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-              {monthLabel} &bull; {branch === 'ALL' ? 'All Branches' : branch}
+              {monthLabel} &bull; {branchCode(branch)}
             </p>
           </div>
           <div className="flex items-center gap-2">
