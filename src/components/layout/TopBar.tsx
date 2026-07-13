@@ -57,12 +57,11 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
     return () => document.removeEventListener('mousedown', onOutside)
   }, [open])
 
-  async function dismiss() {
-    try {
-      await fetch('/api/notifications/dismiss', { method: 'POST' })
-    } catch { /* ignore */ }
+  function dismiss() {
+    // Optimistic: clear the badge immediately, fire-and-forget the server update
     setCounts({ bookings: 0, forms: 0 })
     setOpen(false)
+    fetch('/api/notifications/dismiss', { method: 'POST' }).catch(() => {})
   }
 
   const total = counts.bookings + counts.forms
@@ -154,7 +153,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
                   {counts.bookings > 0 && (
                     <Link
                       href="/decking"
-                      onClick={() => setOpen(false)}
+                      onClick={dismiss}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: counts.forms > 0 ? '1px solid var(--light-gray)' : 'none', textDecoration: 'none' }}
                       className="hover:bg-gray-50 transition-colors"
                     >
@@ -175,7 +174,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
                   {counts.forms > 0 && (
                     <Link
                       href="/registration-forms"
-                      onClick={() => setOpen(false)}
+                      onClick={dismiss}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', textDecoration: 'none' }}
                       className="hover:bg-gray-50 transition-colors"
                     >
