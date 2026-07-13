@@ -107,7 +107,7 @@ export async function GET(req: Request) {
               quantity: true,
               lineTotal: true,
               refundAmount: true,
-              service: { select: { department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } } },
+              service: { select: { department: true, isHmoGl: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } } },
               cogsCost: true,
               inventoryItem: { select: { unitCost: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } }, expenseAccount: { select: { accountNumber: true, accountTitle: true } } } },
             },
@@ -412,6 +412,7 @@ export async function GET(req: Request) {
       cogs: number
       revenueByDept: Record<string, number>
       revenueByAccount: Record<string, number>
+      receivableByAccount: Record<string, number>  // portion of revenueByAccount that is a receivable (HMO/GL / flagged service)
       productRevenueBySubtype: Record<string, number>  // 7080 broken out by product Department · Category
       revenueByBranch: Record<string, number>
       cogsByDept: Record<string, number>
@@ -429,7 +430,7 @@ export async function GET(req: Request) {
     for (let m = 1; m <= 12; m++) {
       monthly[m] = {
         serviceRevenue: 0, productRevenue: 0, unearnedRevenue: 0,
-        cogs: 0, revenueByDept: {}, revenueByAccount: {}, productRevenueBySubtype: {},
+        cogs: 0, revenueByDept: {}, revenueByAccount: {}, receivableByAccount: {}, productRevenueBySubtype: {},
         revenueByBranch: {}, cogsByDept: {}, cogsByAccount: {}, cashReceived: 0,
         paymentsByMethod: {}, deductionsByMethod: {}, deductionsByType: {},
         deductionsByAccount: {}, cashByAccount: {}, expenseByAccount: {},
@@ -463,6 +464,10 @@ export async function GET(req: Request) {
       // Revenue by branch
       m.revenueByBranch[order.branch] = (m.revenueByBranch[order.branch] || 0) + net
 
+      // Receivable sale? Paid via an HMO/GL wallet (agency owes us). Per-item HMO/GL
+      // services are also treated as receivables below.
+      const orderRcv = order.payments.some(p => AR_PAYMENT_METHODS.has(p.method))
+
       // Revenue by department, by COA account + COGS from product items
       for (const item of order.items) {
         const nameKey = item.name?.trim().toUpperCase() || ''
@@ -484,6 +489,7 @@ export async function GET(req: Request) {
             // lineTotal is the full gross sale (incl. returned units). Revenue = lineTotal;
             // the refunded portion is booked as a Refund deduction (7160). Net = gross − refund.
             m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
+            if (orderRcv || item.service?.isHmoGl) m.receivableByAccount[acctKey] = (m.receivableByAccount[acctKey] || 0) + lineAmt
             // Sub-classify the product-income line (7080) by product subtype (Dept · Category).
             if (productIncomeAcctKey && acctKey === productIncomeAcctKey) {
               const catCode = item.inventoryItem?.skuCategory || inventoryNameToAccount[nameKey]?.category

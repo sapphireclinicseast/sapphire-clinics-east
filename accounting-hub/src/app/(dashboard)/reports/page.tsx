@@ -22,6 +22,7 @@ interface MonthData {
   cogs: number
   revenueByDept: Record<string, number>
   revenueByAccount: Record<string, number>
+  receivableByAccount?: Record<string, number>
   productRevenueBySubtype: Record<string, number>
   revenueByBranch: Record<string, number>
   cogsByDept: Record<string, number>
@@ -1069,10 +1070,16 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
             {grossRevenueAccts.map((a) => {
               const acctKey = `${a.accountNumber} ${a.accountTitle}`
               const isProductIncome = productIncomeAcctKey === acctKey && productSubtypeAnnual.length > 0
+              const total = acctAmount(a.accountNumber, a.accountTitle)
+              const rcv = sumMonths(monthly, (m) => (m.receivableByAccount || {})[acctKey] || 0)
               return (
                 <Fragment key={a.accountNumber}>
-                  <AnnualRow label={acctKey} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+                  <AnnualRow label={acctKey} amount={total} indent={1}
                     onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
+                  {rcv > 0 && (<>
+                    <AnnualRow key={`${a.accountNumber}-cash`} label="Cash Sales" amount={total - rcv} indent={2} muted />
+                    <AnnualRow key={`${a.accountNumber}-rcv`} label="Receivables Sales (HMO/GL)" amount={rcv} indent={2} muted />
+                  </>)}
                   {isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
                     <AnnualRow key={`${a.accountNumber}-${label}`} label={label} amount={amt} indent={2} muted />
                   ))}
@@ -1198,12 +1205,20 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
           {grossRevenueAccts.map((a) => {
             const acctKey = `${a.accountNumber} ${a.accountTitle}`
             const isProductIncome = productIncomeAcctKey === acctKey && productSubtypeAnnual.length > 0
+            const rcvArr = getMonthlyArray(monthly, (m) => (m.receivableByAccount || {})[acctKey] || 0)
+            const totArr = acctMonthly(a.accountNumber, a.accountTitle)
+            const rcvTotal = rcvArr.reduce((s, v) => s + v, 0)
+            const acctTotal = acctAmount(a.accountNumber, a.accountTitle)
             return (
               <Fragment key={a.accountNumber}>
                 <MonthlyRow label={acctKey}
-                  values={acctMonthly(a.accountNumber, a.accountTitle)}
-                  total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+                  values={totArr}
+                  total={acctTotal} indent={1}
                   onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
+                {rcvTotal > 0 && (<>
+                  <MonthlyRow key={`${a.accountNumber}-cash`} label="Cash Sales" values={totArr.map((v, i) => v - (rcvArr[i] || 0))} total={acctTotal - rcvTotal} indent={2} muted />
+                  <MonthlyRow key={`${a.accountNumber}-rcv`} label="Receivables Sales (HMO/GL)" values={rcvArr} total={rcvTotal} indent={2} muted />
+                </>)}
                 {isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
                   <MonthlyRow key={`${a.accountNumber}-${label}`} label={label}
                     values={subtypeMonthly(label)} total={amt} indent={2} muted />
