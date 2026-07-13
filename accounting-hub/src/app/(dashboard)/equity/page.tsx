@@ -6,6 +6,8 @@ import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/compo
 import { redirect } from 'next/navigation'
 import { PieChart, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
+import DownloadMenu from '@/components/ui/DownloadMenu'
+import { downloadXlsx, downloadPdf } from '@/lib/export'
 
 // Per-share values (par, APIC, price/share) can carry sub-centavo precision, so
 // show up to 3 decimals; whole/2-decimal amounts still render with 2.
@@ -82,6 +84,30 @@ export default function EquityPage() {
   }
   const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? `${b.accountNumber} ${b.accountTitle}` : '—' }
 
+  // Export the common-shareholder list (net-of-buyback shares & capitalization) to Excel/PDF.
+  const exportCommon = (format: 'xlsx' | 'pdf') => {
+    const rows = data?.rows || []
+    const num = (n: number) => n.toLocaleString('en-PH')
+    const headers = ['SH #', 'Investor', 'Class', 'Date Acquired', 'Stock Cert.', 'Net Shares', 'Bought Back', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake', 'Bank Debited']
+    const body = rows.map(r => {
+      const netShares = r.numberOfShares - (r.buybackShares || 0)
+      return [
+        r.shNumber, r.name, r.shareClass || '', String(r.dateAcquired).slice(0, 10), r.stockCertNumber || '',
+        num(netShares), r.buybackShares ? num(r.buybackShares) : '',
+        r.truePar, r.apic, r.pricePerShare,
+        (netShares * r.pricePerShare), r.equityStake.toFixed(3) + '%', bankLabel(r.bankAccountId),
+      ]
+    })
+    const totalNet = rows.reduce((s, r) => s + (r.numberOfShares - (r.buybackShares || 0)), 0)
+    const totalCap = rows.reduce((s, r) => s + (r.numberOfShares - (r.buybackShares || 0)) * r.pricePerShare, 0)
+    const subtitle = `${rows.length} common shareholders · ${num(totalNet)} outstanding shares · ₱${totalCap.toLocaleString('en-PH', { minimumFractionDigits: 2 })} capitalization`
+    if (format === 'xlsx') {
+      downloadXlsx('Common-Shareholders', [{ name: 'Common Shareholders', headers, rows: body }])
+    } else {
+      downloadPdf({ title: 'Common Shareholders', subtitle, headers, rows: body, landscape: true })
+    }
+  }
+
   const fig = data?.figures
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
@@ -118,7 +144,8 @@ export default function EquityPage() {
 
       {effectiveTab === 'common' && (
         <div className="space-y-3">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <DownloadMenu onDownload={exportCommon} size="md" />
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Common Shareholder</button>
           </div>
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
@@ -433,6 +460,26 @@ function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { bank
   useEffect(() => { load() }, [load])
   const del = async (r: PrefRow) => { if (!confirm(`Delete ${r.shNumber} — ${r.name}'s preferred shares?`)) return; await fetch(`/api/equity/preferred?id=${r.id}`, { method: 'DELETE' }); load(); onChanged() }
   const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? `${b.accountNumber} ${b.accountTitle}` : '—' }
+  const exportPreferred = (format: 'xlsx' | 'pdf') => {
+    const num = (n: number) => n.toLocaleString('en-PH')
+    const headers = ['SH #', 'Investor', 'Class', 'Date', 'Shares', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank']
+    const body = rows.map(r => [
+      r.shNumber, r.name, r.shareClass || '', String(r.dateAcquired).slice(0, 10),
+      num(r.numberOfShares), r.truePar, r.apic, r.pricePerShare, r.totalCapitalization,
+      r.equityStake.toFixed(3) + '%', r.annualInterest != null ? `${r.annualInterest}%` : '',
+      r.maturityYears ? `${r.maturityYears}y${r.buybackPrice ? ` @ ₱${r.buybackPrice}` : ''}` : '',
+      r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '',
+      bankLabel(r.bankAccountId),
+    ])
+    const totalShares = rows.reduce((s, r) => s + r.numberOfShares, 0)
+    const totalCap = rows.reduce((s, r) => s + r.totalCapitalization, 0)
+    const subtitle = `${rows.length} preferred shareholders · ${num(totalShares)} shares · ₱${totalCap.toLocaleString('en-PH', { minimumFractionDigits: 2 })} capitalization`
+    if (format === 'xlsx') {
+      downloadXlsx('Preferred-Shareholders', [{ name: 'Preferred Shareholders', headers, rows: body }])
+    } else {
+      downloadPdf({ title: 'Preferred Shareholders', subtitle, headers, rows: body, landscape: true })
+    }
+  }
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -449,7 +496,10 @@ function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { bank
           <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{(fig?.retiredPreferredShares || 0).toLocaleString('en-PH')}</p>
         </div>
       </div>
-      {canWrite && <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button></div>}
+      <div className="flex justify-end gap-2">
+        <DownloadMenu onDownload={exportPreferred} size="md" />
+        {canWrite && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button>}
+      </div>
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
           {['SH #', 'Investor', 'Class', 'Date', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank', 'Valid ID', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}

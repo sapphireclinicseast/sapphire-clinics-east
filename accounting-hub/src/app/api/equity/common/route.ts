@@ -42,15 +42,19 @@ export async function GET() {
   const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
   const prefCap = preferreds.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
   const totalCapitalization = commonCap + prefCap
-  const grossShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0) + preferreds.reduce((s, p) => s + num(p.numberOfShares), 0)
-  // Shares reissued out of treasury (holdings tagged "sold from treasury") were
-  // already issued — they come back out of the company's bought-back stock, so they
-  // reduce BOTH the treasury balance and the issued-share total (no new shares are
-  // created; reissuing must not push us past authorized capital).
-  const reissuedFromTreasury = commons.reduce((s, c) => s + (c.soldFromTreasury ? num(c.numberOfShares) : 0), 0)
-  const totalShares = grossShares - reissuedFromTreasury
-  // Buybacks are ShareBuyback rows (multiple per shareholder), net of any reissued.
+  // Gross common = every common holding ever issued, including rows reissued out of
+  // treasury. Used only as the % equity denominator (kept stable across the cap table).
+  const grossCommonShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0)
+  const grossShares = grossCommonShares + preferreds.reduce((s, p) => s + num(p.numberOfShares), 0)
+  // Buybacks are ShareBuyback rows (multiple per shareholder); they move shares into
+  // treasury (no longer outstanding). Reissued-from-treasury holdings ("sold from
+  // treasury") come back out of treasury and ARE outstanding again.
   const treasuryBought = commons.reduce((s, c) => s + c.buybacks.reduce((t, b) => t + num(b.shares), 0), 0)
+  const reissuedFromTreasury = commons.reduce((s, c) => s + (c.soldFromTreasury ? num(c.numberOfShares) : 0), 0)
+  // Total (outstanding) common shares = every issued common share (incl. reissued
+  // treasury rows) minus every share bought back into treasury. Preferred shares have
+  // their own card and are intentionally excluded here — no double counting.
+  const totalShares = grossCommonShares - treasuryBought
   const treasuryShares = Math.max(0, treasuryBought - reissuedFromTreasury)
 
   const rows = commons.map(c => {
