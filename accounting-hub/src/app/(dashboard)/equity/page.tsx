@@ -78,8 +78,10 @@ export default function EquityPage() {
   if (status === 'authenticated' && !EQUITY_ROLES.includes(role as string)) {
     return <div className="p-8 text-center text-gray-500">Equity is restricted to Admin, Accountant, and Bookkeeper roles.</div>
   }
-  // Accountants/bookkeepers are scoped to the Preferred Shares tab (view-only).
-  const effectiveTab = isAdmin ? tab : 'preferred'
+  // Accountants/bookkeepers get Preferred Shares + Dividend Release History; the
+  // Common Shares tab (and its figures) stays admin-only.
+  const allowedTabs = isAdmin ? ['common', 'preferred', 'dividends'] : ['preferred', 'dividends']
+  const effectiveTab = allowedTabs.includes(tab) ? tab : 'preferred'
 
   const del = async (row: CommonRow) => {
     if (!confirm(`Delete ${row.shNumber} — ${row.name}'s common shares? Its journal entries are reversed.`)) return
@@ -164,7 +166,7 @@ export default function EquityPage() {
 
       {/* Tabs — accountants/bookkeepers only see Preferred Shares */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {(isAdmin ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']] : [['preferred', 'Preferred Shares']]).map(([v, label]) => (
+        {(isAdmin ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']] : [['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']]).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v as 'common' | 'preferred' | 'dividends')} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
             style={{ borderColor: effectiveTab === v ? 'var(--teal)' : 'transparent', color: effectiveTab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
@@ -229,7 +231,7 @@ export default function EquityPage() {
 
       {/* Preferred shares are editable by admin, accountant, and bookkeeper. */}
       {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} canWrite />}
-      {isAdmin && effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} />}
+      {effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} isAdmin={isAdmin} />}
 
       {(showAdd || edit) && <CommonModal row={edit} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
@@ -339,7 +341,12 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload,
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Subscription / Deed of Assignment</label>
-            <div className="flex flex-wrap items-center gap-2">{agreementUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
+            <div className="flex flex-wrap items-center gap-2">{agreementUrls.map((u, i) => (
+              <span key={u} className="text-xs inline-flex items-center gap-1 rounded-lg border px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
+                <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>
+                <button type="button" onClick={() => setAgreementUrls(p => p.filter(x => x !== u))} title="Remove"><X size={11} className="text-red-400" /></button>
+              </span>
+            ))}
               <ScanUpload compact section="equity" prefix={`${prefix}-AGREEMENT`} existingCount={agreementUrls.length} label="Add" onUploaded={u => setAgreementUrls(p => [...p, u])} /></div>
           </div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of deposit</label>
@@ -352,7 +359,12 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload,
               <ScanUpload compact section="equity" prefix={`${prefix}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div>
           </div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Valid ID <span className="font-normal text-gray-400">(one or more; scan via QR)</span></label>
-            <div className="flex flex-wrap items-center gap-2">{validIdUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
+            <div className="flex flex-wrap items-center gap-2">{validIdUrls.map((u, i) => (
+              <span key={u} className="text-xs inline-flex items-center gap-1 rounded-lg border px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
+                <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>
+                <button type="button" onClick={() => setValidIdUrls(p => p.filter(x => x !== u))} title="Remove"><X size={11} className="text-red-400" /></button>
+              </span>
+            ))}
               <ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div>
           </div>
         </div>
@@ -626,14 +638,24 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
           <div><label className={lbl} style={mg}>Every nth (day)</label><input value={f.payoutDay} onChange={e => set('payoutDay', e.target.value)} inputMode="numeric" placeholder="30" className={inp + ' font-mono'} style={bc} /></div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-3">
-          <div><label className={lbl} style={mg}>Subscription / Deed</label><div className="flex flex-wrap items-center gap-2">{agreementUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-AGREEMENT`} existingCount={agreementUrls.length} label="Add" onUploaded={u => setAgreementUrls(p => [...p, u])} /></div></div>
+          <div><label className={lbl} style={mg}>Subscription / Deed</label><div className="flex flex-wrap items-center gap-2">{agreementUrls.map((u, i) => (
+            <span key={u} className="text-xs inline-flex items-center gap-1 rounded-lg border px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
+              <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>
+              <button type="button" onClick={() => setAgreementUrls(p => p.filter(x => x !== u))} title="Remove"><X size={11} className="text-red-400" /></button>
+            </span>
+          ))}<ScanUpload compact section="equity" prefix={`${prefix}-AGREEMENT`} existingCount={agreementUrls.length} label="Add" onUploaded={u => setAgreementUrls(p => [...p, u])} /></div></div>
           <div><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => (
             <span key={u} className="text-xs inline-flex items-center gap-1 rounded-lg border px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
               <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>
               <button type="button" onClick={() => setProofUrls(p => p.filter(x => x !== u))} title="Remove"><X size={11} className="text-red-400" /></button>
             </span>
           ))}<ScanUpload compact section="equity" prefix={`${prefix}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
-          <div><label className={lbl} style={mg}>Valid ID <span className="font-normal text-gray-400">(1+, QR)</span></label><div className="flex flex-wrap items-center gap-2">{validIdUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div></div>
+          <div><label className={lbl} style={mg}>Valid ID <span className="font-normal text-gray-400">(1+, QR)</span></label><div className="flex flex-wrap items-center gap-2">{validIdUrls.map((u, i) => (
+            <span key={u} className="text-xs inline-flex items-center gap-1 rounded-lg border px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
+              <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>
+              <button type="button" onClick={() => setValidIdUrls(p => p.filter(x => x !== u))} title="Remove"><X size={11} className="text-red-400" /></button>
+            </span>
+          ))}<ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div></div>
           <div><label className={lbl} style={mg}>PDCs</label><div className="flex flex-wrap items-center gap-2">{pdcUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-PDC`} existingCount={pdcUrls.length} label="Add" onUploaded={u => setPdcUrls(p => [...p, u])} /></div></div>
         </div>
         <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add preferred shareholder'}</button>
@@ -646,23 +668,27 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
 interface DivItem { id: string; shareholderId: string; shareholderName: string; shares: number; amount: number; emailedAt: string | null }
 interface DivRelease { id: string; date: string; boardResolutionUrls: string[] | null; dividendAmount: number; dividendType: string; totalAmountPaid: number; status: string; bankAccountId: string | null; retainedAccountId: string | null; proofOfDepositUrls: string[] | null; items: DivItem[] }
 
-function DividendTab({ banks, equityAccts }: { banks: Bank[]; equityAccts: EquityAcct[] }) {
-  const [sub, setSub] = useState<'common' | 'preferred'>('common')
+function DividendTab({ banks, equityAccts, isAdmin }: { banks: Bank[]; equityAccts: EquityAcct[]; isAdmin: boolean }) {
+  // Common dividends are an admin domain; accountants/bookkeepers see Preferred only.
+  const [sub, setSub] = useState<'common' | 'preferred'>(isAdmin ? 'common' : 'preferred')
+  const effSub = isAdmin ? sub : 'preferred'
   const [releases, setReleases] = useState<DivRelease[]>([])
   const [totalCommon, setTotalCommon] = useState(0)
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<DivRelease | null>(null)
   const [showAdd, setShowAdd] = useState(false)
-  const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/equity/dividends'); const j = r.ok ? await r.json() : null; setReleases(j?.releases || []); setTotalCommon(j?.totalCommonShares || 0) } catch { setReleases([]) } finally { setLoading(false) } }, [])
+  const load = useCallback(async () => { if (!isAdmin) { setLoading(false); return } setLoading(true); try { const r = await fetch('/api/equity/dividends'); const j = r.ok ? await r.json() : null; setReleases(j?.releases || []); setTotalCommon(j?.totalCommonShares || 0) } catch { setReleases([]) } finally { setLoading(false) } }, [isAdmin])
   useEffect(() => { load() }, [load])
   const del = async (r: DivRelease) => { if (!confirm(`Delete the ${String(r.date).slice(0, 10)} dividend release? Its journal entry is reversed and the payout table removed.`)) return; await fetch(`/api/equity/dividends?id=${r.id}`, { method: 'DELETE' }); load() }
   return (
     <div className="space-y-3">
+      {isAdmin && (
       <div className="flex items-center justify-between">
         <div className="flex gap-1">{(['common', 'preferred'] as const).map(v => <button key={v} onClick={() => setSub(v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={sub === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{v === 'common' ? 'Common' : 'Preferred'}</button>)}</div>
         {sub === 'common' && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Dividend Release</button>}
       </div>
-      {sub === 'common' ? (
+      )}
+      {effSub === 'common' ? (
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Date', 'Type', 'Per Share', 'Total Paid', 'Status', 'Emailed', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold">{h}</th>)}</tr></thead><tbody>
             {loading ? <tr><td colSpan={7} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /></td></tr>
