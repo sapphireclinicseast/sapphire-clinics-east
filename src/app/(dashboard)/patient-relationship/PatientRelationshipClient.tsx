@@ -25,6 +25,16 @@ const selectStyle: React.CSSProperties = {
 
 const PAGE_OPTIONS = [25, 50, 75, 100]
 
+function pageWindow(page: number, pages: number): (number | '…')[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1)
+  const result: (number | '…')[] = [1]
+  if (page > 3) result.push('…')
+  for (let p = Math.max(2, page - 1); p <= Math.min(pages - 1, page + 1); p++) result.push(p)
+  if (page < pages - 2) result.push('…')
+  result.push(pages)
+  return result
+}
+
 function Pagination({ total, page, perPage, onPage, onPerPage }: {
   total: number; page: number; perPage: number; onPage: (p: number) => void; onPerPage: (n: number) => void
 }) {
@@ -40,14 +50,22 @@ function Pagination({ total, page, perPage, onPage, onPerPage }: {
       </div>
       {pages > 1 && (
         <div className="flex items-center gap-1">
-          {Array.from({ length: Math.min(pages, 10) }, (_, i) => i + 1).map(p => (
-            <button key={p} onClick={() => onPage(p)}
-              style={{
-                padding: '2px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
-                background: page === p ? 'var(--teal)' : '#F3F4F6', color: page === p ? '#fff' : '#6B7280',
-              }}>{p}</button>
-          ))}
-          {pages > 10 && <span>...</span>}
+          <button onClick={() => onPage(page - 1)} disabled={page === 1}
+            style={{ padding: '2px 8px', borderRadius: 6, border: 'none', cursor: page === 1 ? 'default' : 'pointer', fontSize: '0.75rem', fontWeight: 600, background: '#F3F4F6', color: page === 1 ? '#D1D5DB' : '#6B7280' }}>
+            ‹
+          </button>
+          {pageWindow(page, pages).map((p, i) =>
+            p === '…'
+              ? <span key={`e${i}`} style={{ padding: '2px 2px', color: '#9CA3AF', userSelect: 'none' }}>…</span>
+              : <button key={p} onClick={() => onPage(p as number)}
+                  style={{ padding: '2px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, background: page === p ? 'var(--teal)' : '#F3F4F6', color: page === p ? '#fff' : '#6B7280' }}>
+                  {p}
+                </button>
+          )}
+          <button onClick={() => onPage(page + 1)} disabled={page === pages}
+            style={{ padding: '2px 8px', borderRadius: 6, border: 'none', cursor: page === pages ? 'default' : 'pointer', fontSize: '0.75rem', fontWeight: 600, background: '#F3F4F6', color: page === pages ? '#D1D5DB' : '#6B7280' }}>
+            ›
+          </button>
         </div>
       )}
     </div>
