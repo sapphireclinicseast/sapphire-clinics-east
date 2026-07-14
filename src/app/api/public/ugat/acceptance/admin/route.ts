@@ -9,7 +9,7 @@ import { sendUgatContractEmail } from '@/lib/ugat-email'
 
 export const dynamic = 'force-dynamic'
 
-const PUBLIC_URL = process.env.UGAT_PUBLIC_URL || 'https://scholarship.sapphireclinicseast.org'
+const APP_URL = process.env.UGAT_APP_URL || 'https://scholarship.sapphireclinicseast.org/ugatfellow'
 
 export async function POST(req: Request) {
   const tok = await tokenFromRequest(req)
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     await sendUgatContractEmail({
       to: [...new Set([scholar.personalEmail, scholar.professionalEmail].filter(Boolean))],
       firstName: scholar.firstName,
-      signUrl: `${PUBLIC_URL}/ugatfellow`,
+      signUrl: APP_URL,
     })
   } catch (e) {
     console.error('[ugat] contract email failed:', e)

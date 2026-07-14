@@ -11,7 +11,7 @@ import { sendUgatCycleOpenEmail } from '@/lib/ugat-email'
 
 export const dynamic = 'force-dynamic'
 
-const PUBLIC_URL = process.env.UGAT_PUBLIC_URL || 'https://scholarship.sapphireclinicseast.org'
+const APP_URL = process.env.UGAT_APP_URL || 'https://scholarship.sapphireclinicseast.org/ugatfellow'
 
 export async function POST(req: Request) {
   const tok = await tokenFromRequest(req)
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       recipients,
       academicYear: win.academicYear,
       closesAt: win.closesAt,
-      applyUrl: `${PUBLIC_URL}/ugatfellow`,
+      applyUrl: APP_URL,
     })
     return NextResponse.json({ ok: true, sent, accounts: scholars.length, academicYear: win.academicYear })
   } catch (e) {

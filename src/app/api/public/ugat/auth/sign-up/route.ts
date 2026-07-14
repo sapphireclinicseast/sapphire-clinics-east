@@ -11,7 +11,9 @@ import { sendUgatVerificationEmail } from '@/lib/ugat-email'
 
 export const dynamic = 'force-dynamic'
 
-const PUBLIC_URL = process.env.UGAT_PUBLIC_URL || 'https://scholarship.sapphireclinicseast.org'
+// Origin of the UGAT hub for API links. Derived from UGAT_APP_URL so it moves
+// with the app to fellowship.* at cutover; default preserves scholarship.*.
+const ORIGIN = new URL(process.env.UGAT_APP_URL || 'https://scholarship.sapphireclinicseast.org/ugatfellow').origin
 
 interface Body {
   username?: string
@@ -173,7 +175,7 @@ export async function POST(req: Request) {
 
   // Send to both addresses (dedupe if they entered the same one twice).
   const recipients = [...new Set([scholar.professionalEmail, scholar.personalEmail])]
-  const verifyUrl = `${PUBLIC_URL}/api/public/ugat/auth/verify?token=${encodeURIComponent(token)}`
+  const verifyUrl = `${ORIGIN}/api/public/ugat/auth/verify?token=${encodeURIComponent(token)}`
   try {
     await sendUgatVerificationEmail({ to: recipients, firstName: scholar.firstName, verifyUrl })
   } catch (e) {

@@ -53,6 +53,29 @@ export function middleware(req: NextRequest) {
     return NextResponse.rewrite(url)
   }
 
+  // ── fellowship.* subdomain → the UGAT Fellowship hub at its own root ──────
+  // Renamed off scholarship.*/ugatfellow so the program doesn't read as a
+  // "scholarship" (it is a student loan). Only the root maps to the app page;
+  // /ugat/* assets, /_next, and /api pass straight through to their real paths.
+  if (host.startsWith('fellowship.')) {
+    if (pathname === '/') {
+      const url = req.nextUrl.clone()
+      url.pathname = '/ugatfellow'
+      return NextResponse.rewrite(url)
+    }
+    return NextResponse.next()
+  }
+
+  // ── scholarship.*/ugatfellow → fellowship.* (301, once the new domain is
+  // live). Gated on UGAT_APP_URL pointing at fellowship.* so this never sends
+  // visitors to a domain that isn't serving yet.
+  if (host.startsWith('scholarship.') && (pathname === '/ugatfellow' || pathname.startsWith('/ugatfellow/'))) {
+    const appUrl = process.env.UGAT_APP_URL || ''
+    if (appUrl.includes('fellowship.')) {
+      return NextResponse.redirect(appUrl.replace(/\/$/, '') + (req.nextUrl.search || ''), 301)
+    }
+  }
+
   return NextResponse.next()
 }
 

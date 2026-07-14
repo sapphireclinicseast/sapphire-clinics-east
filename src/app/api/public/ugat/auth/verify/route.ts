@@ -7,10 +7,13 @@ import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
-const PUBLIC_URL = process.env.UGAT_PUBLIC_URL || 'https://scholarship.sapphireclinicseast.org'
+// Public landing URL of the UGAT hub. Default keeps the current
+// scholarship.*/ugatfellow location; set UGAT_APP_URL=https://fellowship.sapphireclinicseast.org
+// at cutover to move everything to the new subdomain (served at its root).
+const APP_URL = process.env.UGAT_APP_URL || 'https://scholarship.sapphireclinicseast.org/ugatfellow'
 
 function redirect(status: 'verified' | 'expired' | 'invalid' | 'already') {
-  const url = `${PUBLIC_URL}/ugatfellow?${status === 'verified' || status === 'already' ? 'verified=1' : `verify_error=${status}`}`
+  const url = `${APP_URL}?${status === 'verified' || status === 'already' ? 'verified=1' : `verify_error=${status}`}`
   return NextResponse.redirect(url, 302)
 }
 
