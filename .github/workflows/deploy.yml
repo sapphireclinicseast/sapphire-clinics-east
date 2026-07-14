@@ -175,6 +175,28 @@ jobs:
                echo "✅ SSL cert already exists for scholarship."
              fi'
 
+      # ── 6d. Provision SSL for fellowship subdomain (if needed) ──
+      # fellowship.sapphireclinicseast.org is the new home of the UGAT hub
+      # (moved off scholarship.*/ugatfellow). scripts/nginx.conf references
+      # this cert, so it must exist before `nginx -t` runs below.
+      - name: Setup fellowship SSL
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'if [ ! -d /etc/letsencrypt/live/fellowship.sapphireclinicseast.org ]; then
+               echo "→ Provisioning SSL for fellowship.sapphireclinicseast.org..."
+               certbot certonly --standalone --preferred-challenges http \
+                 -d fellowship.sapphireclinicseast.org \
+                 --non-interactive --agree-tos \
+                 -m admin@sapphireclinicseast.org \
+                 --pre-hook "systemctl stop nginx" \
+                 --post-hook "systemctl start nginx" \
+                 && echo "✅ SSL cert obtained." \
+                 || echo "⚠ SSL cert failed — will retry next deploy."
+             else
+               echo "✅ SSL cert already exists for fellowship."
+             fi'
+
       # ── 6. Update Nginx config & reload ─────────────────────────
       - name: Update Nginx config
         run: |
