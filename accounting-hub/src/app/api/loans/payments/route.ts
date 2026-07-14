@@ -98,11 +98,19 @@ export async function POST(req: Request) {
     const parent: any = isLoan ? await prisma.loan.findUnique({ where: { id: b.parentId } }) : await prisma.advance.findUnique({ where: { id: b.parentId } })
     if (!parent) return NextResponse.json({ error: 'Parent not found' }, { status: 404 })
 
-    // Straight-line amortization JE: DR liability (principal) + DR interest expense / CR bank.
+    // Other expenses tied to this payment transaction (bank/wire fees, DST, etc.):
+    // each DR its expense account and increases the total CR bank (cash out).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const otherExpenses = (Array.isArray(b.otherExpenses) ? b.otherExpenses : []).filter((e: any) => e && e.accountId && num(e.amount) > 0)
+    const otherTotal = otherExpenses.reduce((s: number, e: { amount: number }) => s + num(e.amount), 0)
+
+    // Straight-line amortization JE: DR liability (principal) + DR interest expense
+    // (+ DR any other expenses) / CR bank (principal + interest + other expenses).
     const lines: { accountId: string; debit?: number; credit?: number; description: string }[] = []
     if (parent.creditAccountId && principalPortion > 0) lines.push({ accountId: parent.creditAccountId, debit: principalPortion, description: 'Principal repayment' })
     if (parent.interestExpenseAccountId && interestPortion > 0) lines.push({ accountId: parent.interestExpenseAccountId, debit: interestPortion, description: 'Interest expense' })
-    lines.push({ accountId: b.bankAccountId, credit: amount, description: `${isLoan ? 'Loan' : 'Advance'} payment — ${parent.name}` })
+    for (const e of otherExpenses) lines.push({ accountId: e.accountId, debit: num(e.amount), description: (e.description || 'Other expense').trim() })
+    lines.push({ accountId: b.bankAccountId, credit: amount + otherTotal, description: `${isLoan ? 'Loan' : 'Advance'} payment — ${parent.name}` })
     let jeId: string | null = null
     if (lines.length >= 2 && parent.creditAccountId) {
       const je = await postJournalEntry(prisma as never, { entryDate: paidDate, description: `${isLoan ? 'Loan' : 'Advance'} amortization — ${parent.name}`, referenceType: isLoan ? 'LOAN_PAYMENT' : 'ADVANCE_PAYMENT', referenceId: b.parentId, branch: 'ALL', createdById: userId, lines })

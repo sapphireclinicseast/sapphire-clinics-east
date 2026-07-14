@@ -109,7 +109,7 @@ export default function LoansAndAdvancesPage() {
 
       {tab === 'loans' && <LoansTab shareholders={shareholders} banks={banks} accts={accts} />}
       {tab === 'creditline' && <CreditLineTab shareholders={shareholders} banks={banks} accts={accts} />}
-      {tab === 'history' && <PaymentHistoryTab banks={banks} />}
+      {tab === 'history' && <PaymentHistoryTab banks={banks} accts={accts} />}
 
       {(showAdd || edit) && <AdvanceModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
@@ -686,7 +686,7 @@ function NearDuePaymentsPopup({ onGoToHistory }: { onGoToHistory: () => void }) 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PayRow = any
 
-function PaymentHistoryTab({ banks }: { banks: Bank[] }) {
+function PaymentHistoryTab({ banks, accts }: { banks: Bank[]; accts: Acct[] }) {
   const [sub, setSub] = useState<'advances' | 'loans'>('advances')
   const [rows, setRows] = useState<PayRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -792,26 +792,63 @@ function PaymentHistoryTab({ banks }: { banks: Bank[] }) {
         </tr></tfoot>}
         </table>
       </div>
-      {recordFor && <RecordPaymentModal occ={recordFor} banks={banks} onClose={() => setRecordFor(null)} onSaved={() => { setRecordFor(null); load() }} />}
-      {batchOpen && <BatchRecordModal occs={selectedOccs} banks={banks} onClose={() => setBatchOpen(false)} onSaved={() => { setBatchOpen(false); setSelected(new Set()); load() }} />}
+      {recordFor && <RecordPaymentModal occ={recordFor} banks={banks} accts={accts} onClose={() => setRecordFor(null)} onSaved={() => { setRecordFor(null); load() }} />}
+      {batchOpen && <BatchRecordModal occs={selectedOccs} banks={banks} accts={accts} onClose={() => setBatchOpen(false)} onSaved={() => { setBatchOpen(false); setSelected(new Set()); load() }} />}
     </div>
   )
 }
 
 // Record several scheduled payments at once (one date + bank + proof for all ticked cells).
-function BatchRecordModal({ occs, banks, onClose, onSaved }: { occs: PayRow[]; banks: Bank[]; onClose: () => void; onSaved: () => void }) {
+interface OtherExp { description: string; accountId: string; amount: string }
+const cleanOtherExp = (rows: OtherExp[]) => rows.filter(e => e.accountId && (Number(e.amount) || 0) > 0).map(e => ({ accountId: e.accountId, description: e.description.trim(), amount: Number(e.amount) }))
+
+// Reusable "other expenses on this transaction" editor (bank/wire fees, DST, etc.).
+// These post to their expense account and add to the total cash out (CR bank).
+function OtherExpensesSection({ rows, setRows, accts }: { rows: OtherExp[]; setRows: (r: OtherExp[]) => void; accts: Acct[] }) {
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  const expAccts = accts.filter(a => a.accountType === 'EXPENSE')
+  const upd = (i: number, patch: Partial<OtherExp>) => setRows(rows.map((x, idx) => idx === i ? { ...x, ...patch } : x))
+  return (
+    <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold text-gray-700">Other expenses on this transaction <span className="font-normal text-gray-400">(bank/wire fees, DST…)</span></span>
+        <button type="button" onClick={() => setRows([...rows, { description: '', accountId: '', amount: '' }])} className="text-xs px-2 py-1 rounded-lg font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}><Plus size={12} className="inline" /> Add</button>
+      </div>
+      {rows.length === 0 ? <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>None. Add charges paid as part of this transaction — each posts to its expense account and adds to the total cash out.</p> : (
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={i} className="grid grid-cols-12 gap-2 items-center">
+              <input value={r.description} onChange={e => upd(i, { description: e.target.value })} placeholder="Description" className="col-span-5 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              <select value={r.accountId} onChange={e => upd(i, { accountId: e.target.value })} className="col-span-4 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}><option value="">— Expense account —</option>{expAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select>
+              <input value={r.amount} onChange={e => upd(i, { amount: e.target.value })} inputMode="decimal" placeholder="0.00" className="col-span-2 px-2 py-1.5 rounded-lg border text-xs text-right font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+              <button type="button" onClick={() => setRows(rows.filter((_, idx) => idx !== i))} className="col-span-1 p-1 rounded hover:bg-red-50 flex justify-center"><Trash2 size={12} className="text-red-400" /></button>
+            </div>
+          ))}
+          {total > 0 && <p className="text-[11px] font-mono text-right" style={{ color: '#334155' }}>Other expenses: {peso(total)}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BatchRecordModal({ occs, banks, accts, onClose, onSaved }: { occs: PayRow[]; banks: Bank[]; accts: Acct[]; onClose: () => void; onSaved: () => void }) {
   const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10))
   const [bankAccountId, setBankAccountId] = useState(occs[0]?.paymentBankAccountId || occs[0]?.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [otherExp, setOtherExp] = useState<OtherExp[]>([])
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(0)
   const total = occs.reduce((s, o) => s + Number(o.amount), 0)
+  const otherTotal = otherExp.reduce((s, r) => s + (Number(r.amount) || 0), 0)
   const save = async () => {
     if (!bankAccountId) { alert('Select the bank account.'); return }
     setBusy(true); setDone(0)
     try {
-      for (const occ of occs) {
-        const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls }) })
+      // Other expenses apply once to the whole batch transaction — attach to the first payment.
+      const cleaned = cleanOtherExp(otherExp)
+      for (let i = 0; i < occs.length; i++) {
+        const occ = occs[i]
+        const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls, otherExpenses: i === 0 ? cleaned : [] }) })
         if (!r.ok) { alert(`Failed on ${occ.name} (${String(occ.dueDate).slice(0, 10)}): ${(await r.json()).error || 'error'}`); return }
         setDone(d => d + 1)
       }
@@ -834,22 +871,26 @@ function BatchRecordModal({ occs, banks, onClose, onSaved }: { occs: PayRow[]; b
           <div><label className={lbl} style={mg}>Bank account credited</label><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
         </div>
         <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit <span className="font-normal text-gray-400">(applied to all)</span></label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix="BATCH-PAYMENT" existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
-        <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {busy ? `Recording ${done}/${occs.length}…` : `Record ${occs.length} payment${occs.length === 1 ? '' : 's'} (${peso(total)})`}</button>
+        <OtherExpensesSection rows={otherExp} setRows={setOtherExp} accts={accts} />
+        {otherTotal > 0 && <div className="flex items-center justify-between mt-3"><span className="text-sm font-semibold" style={mg}>Total cash out</span><span className="text-lg font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{peso(total + otherTotal)}</span></div>}
+        <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {busy ? `Recording ${done}/${occs.length}…` : `Record ${occs.length} payment${occs.length === 1 ? '' : 's'} (${peso(total + otherTotal)})`}</button>
       </div>
     </div>
   )
 }
 
-function RecordPaymentModal({ occ, banks, onClose, onSaved }: { occ: PayRow; banks: Bank[]; onClose: () => void; onSaved: () => void }) {
+function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayRow; banks: Bank[]; accts: Acct[]; onClose: () => void; onSaved: () => void }) {
   const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10))
   const [bankAccountId, setBankAccountId] = useState(occ.paymentBankAccountId || occ.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [otherExp, setOtherExp] = useState<OtherExp[]>([])
   const [busy, setBusy] = useState(false)
+  const otherTotal = otherExp.reduce((s, r) => s + (Number(r.amount) || 0), 0)
   const save = async () => {
     if (!bankAccountId) { alert('Select the bank account.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls }) })
+      const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls, otherExpenses: cleanOtherExp(otherExp) }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
     } finally { setBusy(false) }
@@ -865,8 +906,9 @@ function RecordPaymentModal({ occ, banks, onClose, onSaved }: { occ: PayRow; ban
           <div><label className={lbl} style={mg}>Bank account credited</label><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
         </div>
         <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${(occ.name || 'PAY').replace(/\s+/g, '_')}-PAYMENT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
-        <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>DR liability {peso(occ.principalPortion)} + DR interest {peso(occ.interestPortion)} / CR bank {peso(occ.amount)}</p>
-        <button onClick={save} disabled={busy} className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record payment</button>
+        <OtherExpensesSection rows={otherExp} setRows={setOtherExp} accts={accts} />
+        <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>DR liability {peso(occ.principalPortion)} + DR interest {peso(occ.interestPortion)}{otherTotal > 0 ? ` + DR other ${peso(otherTotal)}` : ''} / CR bank {peso(occ.amount + otherTotal)}</p>
+        <button onClick={save} disabled={busy} className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Record payment{otherTotal > 0 ? ` (${peso(occ.amount + otherTotal)})` : ''}</button>
       </div>
     </div>
   )
