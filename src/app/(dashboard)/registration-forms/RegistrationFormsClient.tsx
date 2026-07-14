@@ -56,6 +56,22 @@ export default function RegistrationFormsClient({ role }: Props) {
       .catch(() => {})
   }, [])
 
+  // Fetch all patient names so we can mark already-converted respondents
+  const [patientNames, setPatientNames] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    fetch('/api/patients?limit=10000')
+      .then(r => r.json())
+      .then(d => {
+        const names = new Set<string>()
+        for (const p of (d.patients || [])) {
+          const n = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase()
+          if (n) names.add(n)
+        }
+        setPatientNames(names)
+      })
+      .catch(() => {})
+  }, [])
+
   const isSBEA     = role.startsWith('SBEA')
   const isSBGH     = role.startsWith('SBGH')
   const branchRole = isSBEA ? 'SBEA' : isSBGH ? 'SBGH' : null
@@ -401,23 +417,31 @@ export default function RegistrationFormsClient({ role }: Props) {
                           const isNew = newCutoff && item.submitted_at
                             ? new Date(item.submitted_at) > newCutoff
                             : false
+                          const respName = getResponsePatientName(item, results.fields).toLowerCase().trim()
+                          const converted = respName !== '' && patientNames.has(respName)
                           return (
                           <tr
                             key={item.landing_id || i}
                             className="transition-colors"
                             style={{
                               borderTop: '1px solid var(--border)',
-                              background: isNew ? '#F0FDF4' : undefined,
-                              borderLeft: isNew ? '3px solid #16A34A' : '3px solid transparent',
+                              background: isNew ? '#F0FDF4' : converted ? '#F0FDFA' : undefined,
+                              borderLeft: isNew ? '3px solid #16A34A' : converted ? '3px solid #0D9488' : '3px solid transparent',
+                              opacity: converted ? 0.82 : 1,
                             }}
                           >
-                            <td className="px-3 py-2" style={{ color: isNew ? '#15803D' : undefined, fontWeight: isNew ? 600 : undefined }}>{i + 1}</td>
+                            <td className="px-3 py-2" style={{ color: isNew ? '#15803D' : converted ? '#0D9488' : undefined, fontWeight: (isNew || converted) ? 600 : undefined }}>{i + 1}</td>
                             <td className="px-3 py-2 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 {item.submitted_at ? new Date(item.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }) : '—'}
                                 {isNew && (
-                                  <span style={{ background: '#16A34A', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em' }}>
+                                  <span style={{ background: '#16A34A', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }}>
                                     NEW
+                                  </span>
+                                )}
+                                {converted && (
+                                  <span style={{ background: '#CCFBF1', color: '#0D9488', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }}>
+                                    CONVERTED
                                   </span>
                                 )}
                               </div>
@@ -559,6 +583,25 @@ export default function RegistrationFormsClient({ role }: Props) {
 }
 
 // ── Extract answer helper ────────────────────────────────────────────────────
+// Extract patient full name from a form response's answers array.
+// HR Platform stores names either as contact_info fields (a.contact.first_name/last_name)
+// or as plain text answers whose field title contains "name" + "patient".
+function getResponsePatientName(item: ResponseItem, fields: any[]): string {
+  for (const a of (item.answers || [])) {
+    if (a.contact) {
+      return `${a.contact.first_name || ''} ${a.contact.last_name || ''}`.trim()
+    }
+  }
+  for (const a of (item.answers || [])) {
+    const field = fields.find((f: any) => f.id === a.field?.id)
+    const title = (field?.title || '').toLowerCase()
+    if ((title.includes('name') && title.includes('patient')) || title.includes('name of')) {
+      if (a.text) return (a.text as string).trim()
+    }
+  }
+  return ''
+}
+
 function extractAnswer(answer: any): string {
   if (!answer) return '—'
   switch (answer.type) {
