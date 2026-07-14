@@ -425,16 +425,17 @@ export default function RegistrationFormsClient({ role }: Props) {
                             className="transition-colors"
                             style={{
                               borderTop: '1px solid var(--border)',
-                              background: (isNew || converted) ? '#F0FDF4' : undefined,
-                              borderLeft: (isNew || converted) ? '3px solid #16A34A' : '3px solid transparent',
+                              // Priority: if converted → green; if new only → yellow; else plain
+                              background: converted ? '#F0FDF4' : isNew ? '#FEFCE8' : undefined,
+                              borderLeft: converted ? '3px solid #16A34A' : isNew ? '3px solid #EAB308' : '3px solid transparent',
                             }}
                           >
-                            <td className="px-3 py-2" style={{ color: (isNew || converted) ? '#15803D' : undefined, fontWeight: (isNew || converted) ? 600 : undefined }}>{i + 1}</td>
+                            <td className="px-3 py-2" style={{ color: converted ? '#15803D' : isNew ? '#854D0E' : undefined, fontWeight: (isNew || converted) ? 600 : undefined }}>{i + 1}</td>
                             <td className="px-3 py-2 whitespace-nowrap">
                               <div className="flex items-center gap-2 flex-wrap">
                                 {item.submitted_at ? new Date(item.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' }) : '—'}
                                 {isNew && (
-                                  <span style={{ background: '#16A34A', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }}>
+                                  <span style={{ background: '#EAB308', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }}>
                                     NEW
                                   </span>
                                 )}
