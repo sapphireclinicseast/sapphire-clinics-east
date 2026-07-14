@@ -25,6 +25,9 @@ const BRANCHES = [
   { value: 'SBGH', label: 'Greenhills Branch' },
   { value: 'VERDANA', label: 'Verdana Store' },
 ]
+// Short branch code for exports/filenames (current AHEA/AHGH naming; enum keys unchanged).
+const BRANCH_SHORT: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VERD', VERDANA_STORE: 'VERD' }
+const branchShort = (b?: string | null) => (b ? (BRANCH_SHORT[b] || b) : '')
 
 const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
   SBEA: {
@@ -1020,7 +1023,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         totNonTaxAdj += nonTaxableAdj; totNetPay += netPay; totThirteenth += thirteenthMonth
 
         data.push([
-          cutoffLabel, p.branch,
+          cutoffLabel, branchShort(p.branch),
           emp.employeeBioId ?? '',
           `${emp.firstName} ${emp.lastName}`,
           r(dailyRate),
@@ -1052,7 +1055,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       XLSX.utils.book_append_sheet(wb, ws, 'Employee')
 
       const labelSafe = cutoffLabel.replace(/[^a-zA-Z0-9-]/g, '_')
-      XLSX.writeFile(wb, `payreg_employee_${labelSafe}${branch ? '_' + branch : ''}.xlsx`)
+      XLSX.writeFile(wb, `payreg_employee_${labelSafe}${branch ? '_' + branchShort(branch) : ''}.xlsx`)
     } catch (e) {
       alert('Failed to generate payreg: ' + (e instanceof Error ? e.message : String(e)))
     }
@@ -1813,7 +1816,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     const blob = new Blob([text], { type: 'text/plain' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `bank-employee-${cutoffPeriod}${branch ? `-${branch}` : ''}.txt`
+    a.download = `bank-employee-${cutoffPeriod}${branch ? `-${branchShort(branch)}` : ''}.txt`
     a.click()
     URL.revokeObjectURL(a.href)
   }

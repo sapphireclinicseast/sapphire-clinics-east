@@ -281,6 +281,9 @@ const BRANCH_LABELS: Record<string, string> = {
   VERDANA_STORE: 'Verdana Store',
 }
 const branchLabel = (b?: string | null) => (b ? (BRANCH_LABELS[b] || b) : '')
+// Short branch code for exports/filenames (current AHEA/AHGH naming; enum keys unchanged).
+const BRANCH_SHORT: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VERD', VERDANA_STORE: 'VERD' }
+const branchShort = (b?: string | null) => (b ? (BRANCH_SHORT[b] || b) : '')
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
@@ -1896,7 +1899,7 @@ export default function PayrollPage() {
         totTaxableAfter += taxableAfter; totNonTaxAdj += t.nonTaxedAdj; totNet += t.net
 
         consultantData.push([
-          cutoffLabel, p.branch, consultant?.bioId ?? '', p.consultantName,
+          cutoffLabel, branchShort(p.branch), consultant?.bioId ?? '', p.consultantName,
           Math.round(t.gross * 100) / 100,
           Math.round(t.taxedAdj * 100) / 100,
           Math.round(t.taxableBase * 100) / 100,
@@ -1933,7 +1936,7 @@ export default function PayrollPage() {
       XLSX.utils.book_append_sheet(wb, wsConsultant, 'Consultant')
 
       const labelSafe = cutoffLabel.replace(/[^a-zA-Z0-9-]/g, '_')
-      XLSX.writeFile(wb, `payreg_${labelSafe}${branch ? '_' + branch : ''}.xlsx`)
+      XLSX.writeFile(wb, `payreg_${labelSafe}${branch ? '_' + branchShort(branch) : ''}.xlsx`)
     } catch (e) { alert('Failed to generate payreg: ' + (e instanceof Error ? e.message : String(e))) }
   }
 
@@ -2029,7 +2032,7 @@ export default function PayrollPage() {
       XLSX.utils.book_append_sheet(wb, ws, 'Consultant')
 
       const labelSafe = cutoffLabel.replace(/[^a-zA-Z0-9-]/g, '_')
-      XLSX.writeFile(wb, `payroll_${labelSafe}${branch ? '_' + branch : ''}.xlsx`)
+      XLSX.writeFile(wb, `payroll_${labelSafe}${branch ? '_' + branchShort(branch) : ''}.xlsx`)
     } catch { alert('Failed to export payroll') }
   }
 
@@ -2073,7 +2076,7 @@ export default function PayrollPage() {
     const blob = new Blob([text], { type: 'text/plain' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `bank-${type.toLowerCase()}-${cutoffPeriod}${branch ? `-${branch}` : ''}.txt`
+    a.download = `bank-${type.toLowerCase()}-${cutoffPeriod}${branch ? `-${branchShort(branch)}` : ''}.txt`
     a.click()
     URL.revokeObjectURL(a.href)
   }
@@ -3888,7 +3891,7 @@ export default function PayrollPage() {
                   const consultant = therapist?.staffId ? consultantByStaffId.get(therapist.staffId) : undefined
                   const displayName = consultant?.name ?? therapist?.name ?? '(Unknown therapist)'
                   const dept = consultant?.department ?? therapist?.department ?? ''
-                  const branchLabel = consultant?.branch ?? therapist?.branch ?? ''
+                  const branchDisp = branchLabel(consultant?.branch ?? therapist?.branch ?? '')
                   const isOpen = ieprExpanded.has(key)
                   const uncountedCount = docs.filter(d => !d.countedInPayroll).length
 
@@ -3908,7 +3911,7 @@ export default function PayrollPage() {
                           {isOpen ? <ChevronDown size={14} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={14} style={{ color: 'var(--mid-gray)' }} />}
                           <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{displayName}</span>
                           {dept && <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{dept}</span>}
-                          {branchLabel && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{branchLabel}</span>}
+                          {branchDisp && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{branchDisp}</span>}
                         </div>
                         <div className="flex items-center gap-2">
                           {uncountedCount > 0 && (
