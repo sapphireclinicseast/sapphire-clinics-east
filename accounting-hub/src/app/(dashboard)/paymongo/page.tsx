@@ -3,16 +3,27 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { CreditCard, Loader2, ExternalLink, RefreshCw } from 'lucide-react'
+import { CreditCard, Loader2, ExternalLink, RefreshCw, Landmark } from 'lucide-react'
 
 const ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK', 'PAYROLL_OFFICER']
+const RECON_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+const BRANCHES = [
+  { value: 'SANDBOX_EAST', label: 'AHEA' },
+  { value: 'SANDBOX_GREENHILLS', label: 'AHGH' },
+  { value: 'VERDANA_STORE', label: 'Verdana' },
+]
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface Txn { id: string; referenceCode: string | null; description: string | null; branch: string | null; amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null; paidAt: string | null; livemode: boolean; createdAt: string }
+interface ServiceOpt { id: string; name: string; price: number | null }
+interface BankOpt { id: string; accountNumber: string; accountTitle: string }
+interface Unsettled { id: string; referenceCode: string | null; description: string | null; branch: string | null; amount: number; fee: number | null; netAmount: number | null; paidAt: string | null; livemode: boolean }
+interface SettledRow { id: string; payoutId: string | null; referenceCode: string | null; amount: number; fee: number | null; netAmount: number | null; paidAt: string | null }
 
 export default function PaymongoPage() {
   const { data: session, status } = useSession()
   const role = session?.user?.role
+  const canReconcile = RECON_ROLES.includes(role as string)
   const [cfg, setCfg] = useState<{ configured: boolean; livemode: boolean } | null>(null)
   const [txns, setTxns] = useState<Txn[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,28 +32,107 @@ export default function PaymongoPage() {
   const [busy, setBusy] = useState(false)
   const [lastUrl, setLastUrl] = useState('')
 
+  // Phase 2: record the paid link as a POS sale
+  const [recordAsOrder, setRecordAsOrder] = useState(true)
+  const [branch, setBranch] = useState('SANDBOX_EAST')
+  const [patientName, setPatientName] = useState('')
+  const [serviceId, setServiceId] = useState('')
+  const [services, setServices] = useState<ServiceOpt[]>([])
+
+  // Phase 2: payout reconciliation
+  const [unsettled, setUnsettled] = useState<Unsettled[]>([])
+  const [settled, setSettled] = useState<SettledRow[]>([])
+  const [netTotal, setNetTotal] = useState(0)
+  const [banks, setBanks] = useState<BankOpt[]>([])
+  const [bankId, setBankId] = useState('')
+  const [payoutBusy, setPayoutBusy] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try { const r = await fetch('/api/pos/paymongo/checkout'); const j = r.ok ? await r.json() : null; if (j) { setCfg({ configured: j.configured, livemode: j.livemode }); setTxns(j.recent || []) } }
     catch { /* ignore */ } finally { setLoading(false) }
   }, [])
-  useEffect(() => { load() }, [load])
+
+  const loadPayouts = useCallback(async () => {
+    if (!canReconcile) return
+    try {
+      const r = await fetch('/api/pos/paymongo/payouts')
+      if (r.ok) { const j = await r.json(); setUnsettled(j.unsettled || []); setSettled(j.settled || []); setNetTotal(j.netTotal || 0) }
+    } catch { /* ignore */ }
+  }, [canReconcile])
+
+  useEffect(() => { load(); loadPayouts() }, [load, loadPayouts])
+
+  // Load services for the chosen branch when recording as a POS order.
+  useEffect(() => {
+    if (!recordAsOrder) return
+    fetch(`/api/services?branch=${encodeURIComponent(branch)}&revenueType=EARNED&pageSize=1000`)
+      .then(r => r.json())
+      .then(d => setServices((Array.isArray(d) ? d : d.services || []).map((s: { id: string; name: string; price: number | null }) => ({ id: s.id, name: s.name, price: s.price }))))
+      .catch(() => setServices([]))
+  }, [recordAsOrder, branch])
+
+  // Load bank accounts for reconciliation.
+  useEffect(() => {
+    if (!canReconcile) return
+    fetch('/api/bank-accounts').then(r => r.json()).then(d => { const a = Array.isArray(d) ? d : []; setBanks(a); if (a[0] && !bankId) setBankId(a[0].id) }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canReconcile])
 
   if (status === 'unauthenticated') redirect('/login')
   if (status === 'authenticated' && !ACCESS.includes(role as string)) {
     return <div className="p-8 text-center text-gray-500">PayMongo is restricted to admin, accountant, bookkeeper, branch admin, and front desk.</div>
   }
 
+  const today = () => new Date().toISOString().slice(0, 10)
+
   const createLink = async () => {
     const amt = Number(amount)
     if (!(amt > 0)) { alert('Enter a positive amount.'); return }
     setBusy(true); setLastUrl('')
     try {
-      const r = await fetch('/api/pos/paymongo/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amountPhp: amt, description }) })
+      let orderId: string | undefined
+      // Phase 2: create the POS order first (unpaid); the webhook settles it net-of-fee when paid.
+      if (recordAsOrder) {
+        const svc = services.find(s => s.id === serviceId)
+        const itemName = svc?.name || description || 'PayMongo payment'
+        const or = await fetch('/api/pos/orders', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderType: 'SERVICE', branch, unpaid: true, revenueType: 'EARNED',
+            patientName: patientName || null, transactionDate: today(),
+            items: [{ serviceId: serviceId || undefined, name: itemName, quantity: 1, unitPrice: amt, lineTotal: amt }],
+          }),
+        })
+        const oj = await or.json()
+        if (!or.ok) { alert(oj.error || 'Failed to create the POS order'); setBusy(false); return }
+        orderId = oj.id
+      }
+      const r = await fetch('/api/pos/paymongo/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountPhp: amt, description: description || undefined, branch: recordAsOrder ? branch : undefined, orderId }),
+      })
       const j = await r.json()
       if (!r.ok) { alert(j.error || 'Failed to create link'); return }
-      setLastUrl(j.checkoutUrl); setAmount(''); setDescription(''); load()
+      setLastUrl(j.checkoutUrl); setAmount(''); setDescription(''); setPatientName(''); setServiceId(''); load()
     } finally { setBusy(false) }
+  }
+
+  const settlePayout = async () => {
+    if (!bankId) { alert('Select the bank account the payout landed in.'); return }
+    if (!unsettled.length) { alert('Nothing to reconcile.'); return }
+    if (!confirm(`Record a PayMongo payout of ${peso(netTotal)} into the selected bank? This posts DR Bank / CR PayMongo Clearing and marks ${unsettled.length} transaction(s) settled.`)) return
+    setPayoutBusy(true)
+    try {
+      const r = await fetch('/api/pos/paymongo/payouts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bankAccountId: bankId, payoutDate: today() }),
+      })
+      const j = await r.json()
+      if (!r.ok) { alert(j.error || 'Failed to reconcile'); return }
+      alert(`Reconciled ${j.count} transaction(s) — ${peso(j.net)} posted to bank.`)
+      loadPayouts()
+    } finally { setPayoutBusy(false) }
   }
 
   const statusBadge = (s: string) => {
@@ -58,7 +148,7 @@ export default function PaymongoPage() {
       <div className="flex items-center gap-3">
         <CreditCard size={24} className="text-teal-600" />
         <h1 className="text-2xl font-semibold text-gray-900">PayMongo</h1>
-        <button onClick={load} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><RefreshCw size={13} /> Refresh</button>
+        <button onClick={() => { load(); loadPayouts() }} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><RefreshCw size={13} /> Refresh</button>
       </div>
 
       {cfg && !cfg.configured && (
@@ -69,7 +159,7 @@ export default function PaymongoPage() {
       {cfg?.configured && (
         <div className="rounded-xl border p-3 text-sm flex items-center gap-2" style={{ borderColor: cfg.livemode ? '#fecaca' : 'var(--light-gray)', background: cfg.livemode ? '#fef2f2' : 'var(--off-white)' }}>
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: cfg.livemode ? '#b91c1c' : '#0d9488', color: '#fff' }}>{cfg.livemode ? 'LIVE MODE' : 'TEST MODE'}</span>
-          <span style={{ color: 'var(--mid-gray)' }}>Create a payment link below; it flips to <strong>Paid</strong> automatically when the customer pays (via webhook), with the PayMongo fee and net recorded.</span>
+          <span style={{ color: 'var(--mid-gray)' }}>When the customer pays, the link flips to <strong>Paid</strong> automatically (webhook). With <strong>Record as a POS sale</strong> on, it also posts a POS Order net of the PayMongo fee (revenue, fee, and clearing all booked).</span>
         </div>
       )}
 
@@ -80,6 +170,34 @@ export default function PaymongoPage() {
           <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Amount (PHP)</label><input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className={inp + ' font-mono'} style={bc} /></div>
           <div className="sm:col-span-2"><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Description</label><input value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. PT session — Juan Dela Cruz" className={inp} style={bc} /></div>
         </div>
+
+        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 select-none cursor-pointer">
+          <input type="checkbox" checked={recordAsOrder} onChange={e => setRecordAsOrder(e.target.checked)} />
+          Record as a POS sale (appears in POS → Orders when paid)
+        </label>
+
+        {recordAsOrder && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+              <select value={branch} onChange={e => setBranch(e.target.value)} className={inp} style={bc}>
+                {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Service (optional)</label>
+              <select value={serviceId} onChange={e => setServiceId(e.target.value)} className={inp} style={bc}>
+                <option value="">— Generic revenue (7000) —</option>
+                {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient / payer (optional)</label>
+              <input value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Name on the order" className={inp} style={bc} />
+            </div>
+          </div>
+        )}
+
         <button onClick={createLink} disabled={busy || !cfg?.configured} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} Create payment link</button>
         {lastUrl && (
           <div className="rounded-xl border p-3 text-sm flex items-center justify-between gap-3" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
@@ -88,6 +206,68 @@ export default function PaymongoPage() {
           </div>
         )}
       </div>
+
+      {/* Payout reconciliation */}
+      {canReconcile && (
+        <div className="rounded-2xl border p-4 bg-white space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex items-center gap-2">
+            <Landmark size={16} className="text-teal-600" />
+            <p className="text-sm font-semibold text-gray-700">Payout → bank reconciliation</p>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Paid PayMongo money sits in <strong>PayMongo Clearing</strong> until PayMongo pays it out to your bank. When a payout lands, settle it here — this posts <strong>DR Bank / CR PayMongo Clearing</strong> for the net and marks those transactions reconciled.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Awaiting payout</div>
+              <div className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(netTotal)}</div>
+              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{unsettled.length} transaction(s), net of fees</div>
+            </div>
+            <div className="min-w-[220px]">
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Deposit to bank</label>
+              <select value={bankId} onChange={e => setBankId(e.target.value)} className={inp} style={bc}>
+                {banks.length === 0 && <option value="">No bank accounts</option>}
+                {banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
+              </select>
+            </div>
+            <button onClick={settlePayout} disabled={payoutBusy || !unsettled.length || !bankId} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2" style={{ background: 'var(--teal)' }}>{payoutBusy && <Loader2 size={15} className="animate-spin" />} Settle to bank</button>
+          </div>
+          {unsettled.length > 0 && (
+            <div className="rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+              <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                {['Paid', 'Reference', 'Branch', 'Gross', 'Fee', 'Net'].map(h => <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">{h}</th>)}
+              </tr></thead><tbody>
+                {unsettled.map(u => (
+                  <tr key={u.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className="px-3 py-1.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{u.paidAt ? new Date(u.paidAt).toLocaleDateString('en-PH', { dateStyle: 'medium' }) : '—'}</td>
+                    <td className="px-3 py-1.5 font-mono">{u.referenceCode || '—'}</td>
+                    <td className="px-3 py-1.5">{u.branch || '—'}</td>
+                    <td className="px-3 py-1.5 text-right font-mono">{peso(u.amount)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono" style={{ color: '#d97706' }}>{u.fee != null ? peso(u.fee) : '—'}</td>
+                    <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{u.netAmount != null ? peso(u.netAmount) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody></table>
+            </div>
+          )}
+          {settled.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer font-semibold" style={{ color: 'var(--mid-gray)' }}>Settled batches ({settled.length})</summary>
+              <div className="mt-2 rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs"><tbody>
+                  {settled.map(s => (
+                    <tr key={s.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-1.5 font-mono">{s.payoutId}</td>
+                      <td className="px-3 py-1.5 font-mono">{s.referenceCode || '—'}</td>
+                      <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{s.netAmount != null ? peso(s.netAmount) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody></table>
+              </div>
+            </details>
+          )}
+        </div>
+      )}
 
       {/* Transactions */}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
