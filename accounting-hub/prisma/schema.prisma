@@ -815,6 +815,34 @@ model PaymentModeDeduction {
   @@index([paymentModeId])
 }
 
+// ── PayMongo integration ─────────────────────────────────
+// Tracks a PayMongo checkout session ↔ POS order, plus the settled payment fee/net.
+model PaymongoCheckout {
+  id            String    @id @default(cuid())
+  checkoutId    String    @unique   // PayMongo checkout_session id (cs_...)
+  referenceCode String?             // our reference (also sent as PayMongo metadata)
+  orderId       String?             // linked POS order (set when the sale is recorded)
+  branch        String?
+  description   String?
+  amount        Decimal             // gross (PHP)
+  status        String    @default("PENDING") // PENDING | PAID | FAILED | EXPIRED
+  checkoutUrl   String?
+  paymentId     String?             // pay_... once paid
+  fee           Decimal?            // PayMongo fee (PHP)
+  netAmount     Decimal?            // amount − fee
+  paidAt        DateTime?
+  payoutId      String?             // reconciliation: PayMongo payout that settled this
+  livemode      Boolean   @default(false)
+  raw           Json?               // last webhook/payment payload
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@index([orderId])
+  @@index([payoutId])
+}
+
 // ── Accounts Receivable Payments ─────────────────────────
 
 model ARPayment {
