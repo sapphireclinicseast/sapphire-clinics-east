@@ -48,12 +48,22 @@ export default function RegistrationFormsClient({ role }: Props) {
   const [saving, setSaving]             = useState(false)
   const [newCutoff, setNewCutoff]       = useState<Date | null>(null)
 
-  // Fetch the per-user "dismissed at" cutoff so we can highlight new entries
+  // Determine the "new since" cutoff for highlighting.
+  // If the user navigated here by clicking the notification bell, the URL
+  // carries ?newSince=<ISO> (the dismissedAt value captured BEFORE dismiss()
+  // ran), so we use that snapshot. Otherwise fall back to fetching the
+  // current per-user state from the notifications API.
   useEffect(() => {
-    fetch('/api/notifications', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => { if (d.dismissedAt) setNewCutoff(new Date(d.dismissedAt)) })
-      .catch(() => {})
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlNewSince = urlParams.get('newSince')
+    if (urlNewSince) {
+      setNewCutoff(new Date(urlNewSince))
+    } else {
+      fetch('/api/notifications', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => { if (d.dismissedAt) setNewCutoff(new Date(d.dismissedAt)) })
+        .catch(() => {})
+    }
   }, [])
 
   // Fetch all patient names so we can mark already-converted respondents

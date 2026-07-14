@@ -19,9 +19,10 @@ interface NotifCounts {
 const POLL_MS = 5 * 60 * 1000 // poll every 5 minutes
 
 export default function TopBar({ user, onMenuClick }: TopBarProps) {
-  const [counts, setCounts] = useState<NotifCounts>({ bookings: 0, forms: 0 })
-  const [open, setOpen]     = useState(false)
-  const dropdownRef         = useRef<HTMLDivElement>(null)
+  const [counts, setCounts]       = useState<NotifCounts>({ bookings: 0, forms: 0 })
+  const [open, setOpen]           = useState(false)
+  const [dismissedAt, setDismissedAt] = useState<string | null>(null)
+  const dropdownRef               = useRef<HTMLDivElement>(null)
 
   const fetchCounts = useCallback(async () => {
     try {
@@ -29,6 +30,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
       if (!res.ok) return
       const data = await res.json()
       setCounts({ bookings: data.bookings ?? 0, forms: data.forms ?? 0 })
+      setDismissedAt(data.dismissedAt ?? null)
     } catch {
       // silently ignore network errors — bell stays at current value
     }
@@ -173,7 +175,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
 
                   {counts.forms > 0 && (
                     <Link
-                      href="/registration-forms"
+                      href={dismissedAt ? `/registration-forms?newSince=${encodeURIComponent(dismissedAt)}` : '/registration-forms'}
                       onClick={dismiss}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', textDecoration: 'none' }}
                       className="hover:bg-gray-50 transition-colors"
