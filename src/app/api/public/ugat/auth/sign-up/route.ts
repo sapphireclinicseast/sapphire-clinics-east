@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 
 // Origin of the UGAT hub for API links. Derived from UGAT_APP_URL so it moves
 // with the app to fellowship.* at cutover; default preserves scholarship.*.
-const ORIGIN = new URL(process.env.UGAT_APP_URL || 'https://scholarship.sapphireclinicseast.org/ugatfellow').origin
+const ORIGIN = new URL(process.env.UGAT_APP_URL || 'https://fellowship.sapphireclinicseast.org').origin
 
 interface Body {
   username?: string

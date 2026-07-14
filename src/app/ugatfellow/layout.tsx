@@ -15,8 +15,8 @@ const arimo = Arimo({
   display: 'swap',
 })
 
-const UGAT_URL = 'https://scholarship.sapphireclinicseast.org/ugatfellow'
-const OG_IMAGE = 'https://scholarship.sapphireclinicseast.org/ugat/og.png'
+const UGAT_URL = 'https://fellowship.sapphireclinicseast.org'
+const OG_IMAGE = 'https://fellowship.sapphireclinicseast.org/ugat/og.png'
 const DESCRIPTION =
   'The UGAT Fellowship Program provides a monthly stipend to Allied Health Professionals in their final year of university.'
 
