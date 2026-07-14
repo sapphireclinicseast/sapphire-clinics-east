@@ -119,14 +119,19 @@ export function verifyWebhookSignature(rawBody: string, signatureHeader: string 
   if (!WEBHOOK_SECRET || !signatureHeader) return { valid: false, livemode: false }
   const parts = Object.fromEntries(signatureHeader.split(',').map(kv => kv.split('=') as [string, string]))
   const t = parts.t
-  const expected = crypto.createHmac('sha256', WEBHOOK_SECRET).update(`${t}.${rawBody}`).digest('hex')
   const testSig = parts.te || ''
   const liveSig = parts.li || ''
   const safeEq = (a: string, b: string) => {
     if (!a || !b || a.length !== b.length) return false
     return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
   }
-  if (safeEq(expected, liveSig)) return { valid: true, livemode: true }
-  if (safeEq(expected, testSig)) return { valid: true, livemode: false }
+  // Multiple webhook endpoints → multiple signing secrets. Accept if ANY matches
+  // (PAYMONGO_WEBHOOK_SECRET may be a comma/space-separated list).
+  const secrets = WEBHOOK_SECRET.split(/[\s,]+/).map(s => s.trim()).filter(Boolean)
+  for (const secret of secrets) {
+    const expected = crypto.createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex')
+    if (safeEq(expected, liveSig)) return { valid: true, livemode: true }
+    if (safeEq(expected, testSig)) return { valid: true, livemode: false }
+  }
   return { valid: false, livemode: false }
 }
