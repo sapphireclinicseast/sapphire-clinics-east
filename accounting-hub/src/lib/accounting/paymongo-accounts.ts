@@ -67,6 +67,33 @@ async function findOrCreateAccount(
   return created.id
 }
 
+// Resolve the merchant-discount (fee) account: 7140 Merchant Discount Rate by
+// number, then by title, then create it if it truly doesn't exist yet.
+async function resolveFeeAccount(prisma: PrismaClient, createdById: string): Promise<string> {
+  const byNumber = await prisma.account.findUnique({ where: { accountNumber: '7140' }, select: { id: true } })
+  if (byNumber) return byNumber.id
+  const byTitle = await prisma.account.findFirst({
+    where: { accountTitle: { contains: 'merchant discount', mode: 'insensitive' } },
+    select: { id: true },
+  })
+  if (byTitle) return byTitle.id
+  const accountNumber = await freeAccountNumber(prisma, '7140')
+  const created = await prisma.account.create({
+    data: {
+      accountNumber,
+      accountTitle: 'Merchant Discount Rate',
+      accountType: 'EXPENSE',
+      normalBalance: 'DEBIT',
+      subType: 'OPERATING_EXPENSES',
+      description: 'Merchant discount / payment-processor fees (incl. PayMongo).',
+      isActive: true,
+      createdById,
+    },
+    select: { id: true },
+  })
+  return created.id
+}
+
 /**
  * Resolve the PayMongo clearing + fee accounts and the PayMongo PaymentMode,
  * creating any that don't yet exist. `createdById` must be a real user id
@@ -81,13 +108,10 @@ export async function resolvePaymongoAccounts(prisma: PrismaClient, createdById:
     preferredNumber: '1055',
     createdById,
   })
-  const feeAccountId = await findOrCreateAccount(prisma, {
-    titleMatch: 'paymongo fee',
-    title: 'PayMongo Fees',
-    type: 'EXPENSE',
-    preferredNumber: '8135',
-    createdById,
-  })
+  // PayMongo processing fees are booked to the standard merchant-discount account
+  // (7140 Merchant Discount Rate), same bucket as card/e-wallet MDR — not a
+  // PayMongo-specific account. Resolve by number first, then title, then create.
+  const feeAccountId = await resolveFeeAccount(prisma, createdById)
 
   // PaymentMode named "PayMongo" → clearing account, no deduction (fee booked exactly, separately).
   let pm = await prisma.paymentMode.findFirst({ where: { name: { equals: 'PayMongo', mode: 'insensitive' } } })
