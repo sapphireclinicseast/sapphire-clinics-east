@@ -10,7 +10,7 @@ import { sendUgatVerificationEmail } from '@/lib/ugat-email'
 
 export const dynamic = 'force-dynamic'
 
-const ORIGIN = new URL(process.env.UGAT_APP_URL || 'https://scholarship.sapphireclinicseast.org/ugatfellow').origin
+const ORIGIN = new URL(process.env.UGAT_APP_URL || 'https://fellowship.sapphireclinicseast.org').origin
 
 export async function POST(req: Request) {
   let body: { username?: string }
