@@ -110,6 +110,9 @@ export async function postOrderJournal(
 
   // Aggregator: accountId → { debit, credit }
   const agg = new Map<string, { debit: number; credit: number; description?: string }>()
+  // Track which credited accounts are item Revenue (vs. the Inventory CR from the COGS
+  // pair) so an UNEARNED reclassification only defers revenue, never inventory.
+  const revenueAccountIds = new Set<string>()
   const addLine = (accountId: string, side: 'debit' | 'credit', amount: number, description?: string) => {
     if (amount <= 0) return
     const cur = agg.get(accountId) || { debit: 0, credit: 0, description }
@@ -127,6 +130,7 @@ export async function postOrderJournal(
       return { posted: false, reason: `item "${item.name}" has no revenue account and no 7000 fallback exists` }
     }
     addLine(revAcct.id, 'credit', lineTotal, `Revenue — ${item.name}`)
+    revenueAccountIds.add(revAcct.id)
   }
 
   /* ── 2. Discount (DR contra-revenue) ──────────────────────────── */
@@ -226,27 +230,20 @@ export async function postOrderJournal(
      from Revenue to Unearned Revenue. This affects ONLY the portion paid via
      HMO/GL (cash UNEARNED is a contradiction; ignored). */
   if (order.revenueType === 'UNEARNED' && defaultUnearnedAccount) {
-    const arPaid = order.payments
-      .filter(p => AR_METHODS.has(p.method))
-      .reduce((s, p) => s + Number(p.amount), 0)
-    if (arPaid > 0) {
-      // Allocate the AR-paid portion of the gross subtotal to Unearned.
-      const ratio = arPaid / Number(order.netAmount || 1)
-      const unearnedShare = Number(order.subtotal) * ratio
-      // Remove that much from each revenue line proportionally
-      const totalRevCredit = Array.from(agg.values()).reduce((s, l) => s + l.credit, 0)
-      if (totalRevCredit > 0) {
-        const scale = unearnedShare / totalRevCredit
-        for (const [accId, line] of agg) {
-          if (line.credit > 0) {
-            const moved = line.credit * scale
-            line.credit -= moved
-            agg.set(accId, line)
-          }
-        }
-        addLine(defaultUnearnedAccount.id, 'credit', unearnedShare, `Unearned (HMO/GL) — ${order.id}`)
+    // The whole order is unearned (e.g. a PayMongo downpayment/deposit): no tender's
+    // share should sit in Revenue yet. Move EVERY item-revenue credit to Unearned
+    // Revenue (deposit liability), whatever the payment method. Only the accounts we
+    // credited as revenue are moved — the Inventory CR from the COGS pair is left alone.
+    let unearnedShare = 0
+    for (const accId of revenueAccountIds) {
+      const line = agg.get(accId)
+      if (line && line.credit > 0) {
+        unearnedShare += line.credit
+        line.credit = 0
+        agg.set(accId, line)
       }
     }
+    if (unearnedShare > 0) addLine(defaultUnearnedAccount.id, 'credit', unearnedShare, `Unearned deposit — order ${order.id}`)
   }
 
   /* ── 6. Build & post ──────────────────────────────────────────── */
