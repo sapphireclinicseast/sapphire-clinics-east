@@ -34,10 +34,12 @@ export default function PaymongoPage() {
 
   // Phase 2: record the paid link as a POS sale
   const [recordAsOrder, setRecordAsOrder] = useState(true)
+  const [purpose, setPurpose] = useState<'DOWNPAYMENT' | 'TUITION'>('TUITION')
   const [branch, setBranch] = useState('SANDBOX_EAST')
   const [patientName, setPatientName] = useState('')
-  const [serviceId, setServiceId] = useState('')
   const [services, setServices] = useState<ServiceOpt[]>([])
+  const [lines, setLines] = useState<{ serviceId: string; name: string; amount: string }[]>([])
+  const [addServiceId, setAddServiceId] = useState('')
 
   // Phase 2: payout reconciliation
   const [unsettled, setUnsettled] = useState<Unsettled[]>([])
@@ -66,7 +68,7 @@ export default function PaymongoPage() {
   // Load services for the chosen branch when recording as a POS order.
   useEffect(() => {
     if (!recordAsOrder) return
-    fetch(`/api/services?branch=${encodeURIComponent(branch)}&revenueType=EARNED&pageSize=1000`)
+    fetch(`/api/services?branch=${encodeURIComponent(branch)}&pageSize=1000`)
       .then(r => r.json())
       .then(d => setServices((Array.isArray(d) ? d : d.services || []).map((s: { id: string; name: string; price: number | null }) => ({ id: s.id, name: s.name, price: s.price }))))
       .catch(() => setServices([]))
@@ -86,35 +88,44 @@ export default function PaymongoPage() {
 
   const today = () => new Date().toISOString().slice(0, 10)
 
+  const lineTotal = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+
   const createLink = async () => {
-    const amt = Number(amount)
-    if (!(amt > 0)) { alert('Enter a positive amount.'); return }
+    // With "Record as a POS sale" on, the amount is the sum of the service lines;
+    // otherwise it's the free-form amount field.
+    const amt = recordAsOrder ? lineTotal : Number(amount)
+    if (!(amt > 0)) { alert(recordAsOrder ? 'Add at least one service with an amount.' : 'Enter a positive amount.'); return }
+    const purposeLabel = purpose === 'DOWNPAYMENT' ? 'Downpayment' : 'Tuition'
     setBusy(true); setLastUrl('')
     try {
       let orderId: string | undefined
       // Phase 2: create the POS order first (unpaid); the webhook settles it net-of-fee when paid.
+      // Downpayments are booked as UNEARNED (deposit liability); tuition as EARNED revenue.
       if (recordAsOrder) {
-        const svc = services.find(s => s.id === serviceId)
-        const itemName = svc?.name || description || 'PayMongo payment'
         const or = await fetch('/api/pos/orders', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            orderType: 'SERVICE', branch, unpaid: true, revenueType: 'EARNED',
+            orderType: 'SERVICE', branch, unpaid: true,
+            revenueType: purpose === 'DOWNPAYMENT' ? 'UNEARNED' : 'EARNED',
             patientName: patientName || null, transactionDate: today(),
-            items: [{ serviceId: serviceId || undefined, name: itemName, quantity: 1, unitPrice: amt, lineTotal: amt }],
+            notes: purposeLabel + ' via PayMongo',
+            items: lines.map(l => ({ serviceId: l.serviceId, name: l.name, quantity: 1, unitPrice: Number(l.amount) || 0, lineTotal: Number(l.amount) || 0 })),
           }),
         })
         const oj = await or.json()
         if (!or.ok) { alert(oj.error || 'Failed to create the POS order'); setBusy(false); return }
         orderId = oj.id
       }
+      const desc = recordAsOrder
+        ? `${purposeLabel}${patientName ? ' — ' + patientName : ''}${description ? ' · ' + description : ''}`
+        : (description || undefined)
       const r = await fetch('/api/pos/paymongo/checkout', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amountPhp: amt, description: description || undefined, branch: recordAsOrder ? branch : undefined, orderId }),
+        body: JSON.stringify({ amountPhp: amt, description: desc, branch: recordAsOrder ? branch : undefined, orderId }),
       })
       const j = await r.json()
       if (!r.ok) { alert(j.error || 'Failed to create link'); return }
-      setLastUrl(j.checkoutUrl); setAmount(''); setDescription(''); setPatientName(''); setServiceId(''); load()
+      setLastUrl(j.checkoutUrl); setAmount(''); setDescription(''); setPatientName(''); setLines([]); setAddServiceId(''); load()
     } finally { setBusy(false) }
   }
 
@@ -166,34 +177,88 @@ export default function PaymongoPage() {
       {/* Create payment link */}
       <div className="rounded-2xl border p-4 bg-white space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
         <p className="text-sm font-semibold text-gray-700">Create a payment link</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Amount (PHP)</label><input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className={inp + ' font-mono'} style={bc} /></div>
-          <div className="sm:col-span-2"><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Description</label><input value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. PT session — Juan Dela Cruz" className={inp} style={bc} /></div>
-        </div>
-
         <label className="flex items-center gap-2 text-sm font-medium text-gray-700 select-none cursor-pointer">
           <input type="checkbox" checked={recordAsOrder} onChange={e => setRecordAsOrder(e.target.checked)} />
           Record as a POS sale (appears in POS → Orders when paid)
         </label>
 
+        {!recordAsOrder && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Amount (PHP)</label><input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className={inp + ' font-mono'} style={bc} /></div>
+            <div className="sm:col-span-2"><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Description</label><input value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. PT session — Juan Dela Cruz" className={inp} style={bc} /></div>
+          </div>
+        )}
+
         {recordAsOrder && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-            <div>
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
-              <select value={branch} onChange={e => setBranch(e.target.value)} className={inp} style={bc}>
-                {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-              </select>
+          <div className="space-y-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment type</label>
+                <select value={purpose} onChange={e => setPurpose(e.target.value as 'DOWNPAYMENT' | 'TUITION')} className={inp} style={bc}>
+                  <option value="TUITION">Tuition fee (earned revenue)</option>
+                  <option value="DOWNPAYMENT">Downpayment (unearned deposit)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+                <select value={branch} onChange={e => { setBranch(e.target.value); setLines([]); setAddServiceId('') }} className={inp} style={bc}>
+                  {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient / payer (optional)</label>
+                <input value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Name on the order" className={inp} style={bc} />
+              </div>
             </div>
+
             <div>
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Service (optional)</label>
-              <select value={serviceId} onChange={e => setServiceId(e.target.value)} className={inp} style={bc}>
-                <option value="">— Generic revenue (7000) —</option>
-                {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Services on this link</label>
+              <select
+                value={addServiceId}
+                onChange={e => {
+                  const s = services.find(x => x.id === e.target.value)
+                  if (s && !lines.some(l => l.serviceId === s.id)) {
+                    setLines(prev => [...prev, { serviceId: s.id, name: s.name, amount: s.price != null ? String(s.price) : '' }])
+                  }
+                  setAddServiceId('')
+                }}
+                className={inp} style={bc}
+              >
+                <option value="">+ Add a service…</option>
+                {services.filter(s => !lines.some(l => l.serviceId === s.id)).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}{s.price != null ? ` — ${peso(s.price)}` : ''}</option>
+                ))}
               </select>
+
+              {lines.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {lines.map((l, i) => (
+                    <div key={l.serviceId} className="flex items-center gap-2">
+                      <span className="flex-1 text-sm truncate" title={l.name}>{l.name}</span>
+                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>₱</span>
+                      <input
+                        value={l.amount}
+                        onChange={e => setLines(prev => prev.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
+                        inputMode="decimal" placeholder="0.00"
+                        className="w-28 px-2 py-1.5 rounded-lg border text-sm font-mono text-right" style={bc}
+                      />
+                      <button onClick={() => setLines(prev => prev.filter((_, j) => j !== i))} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#b91c1c' }}>Remove</button>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-end gap-2 pt-1 border-t text-sm font-semibold" style={{ borderColor: 'var(--light-gray)' }}>
+                    <span style={{ color: 'var(--mid-gray)' }}>Total</span>
+                    <span className="font-mono" style={{ color: 'var(--deep-teal)' }}>{peso(lineTotal)}</span>
+                  </div>
+                  {purpose === 'DOWNPAYMENT' && (
+                    <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Enter the downpayment amount per service (a partial amount is fine). It posts to Unearned Revenue until the service is delivered.</p>
+                  )}
+                </div>
+              )}
             </div>
+
             <div>
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient / payer (optional)</label>
-              <input value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Name on the order" className={inp} style={bc} />
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Note on the link (optional)</label>
+              <input value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. 1st installment, SY 2026–2027" className={inp} style={bc} />
             </div>
           </div>
         )}
