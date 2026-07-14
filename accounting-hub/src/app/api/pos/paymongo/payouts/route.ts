@@ -3,16 +3,30 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postJournalEntry } from '@/lib/accounting/posting'
 import { resolvePaymongoAccounts } from '@/lib/accounting/paymongo-accounts'
+import { syncPayouts } from '@/lib/accounting/paymongo-payouts'
 
 // Reconciliation is an accounting action.
 const RECON_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+const SYNC_THROTTLE_MS = 60 * 60 * 1000 // auto-poll at most hourly on page load
 
-// GET → unsettled paid PayMongo transactions (awaiting payout) + recent settled batches.
+async function getSettings() {
+  return prisma.paymongoSettings.findUnique({ where: { id: 'singleton' } })
+}
+
+// GET → unsettled paid transactions + settled batches + auto-reconcile settings.
+// Also runs a throttled payout sync so opening the page auto-books new payouts.
 export async function GET() {
   const session = await auth()
   if (!session?.user || !RECON_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
+
+  const settings = await getSettings()
+  const stale = !settings?.lastSyncAt || (Date.now() - new Date(settings.lastSyncAt).getTime()) > SYNC_THROTTLE_MS
+  if (settings?.autoReconcile && settings.bankAccountId && stale) {
+    try { await syncPayouts(prisma, session.user.id) } catch (e) { console.error('[PayMongo] on-load sync failed:', e) }
+  }
+
   const unsettled = await prisma.paymongoCheckout.findMany({
     where: { status: 'PAID', payoutId: null },
     orderBy: { paidAt: 'asc' },
@@ -25,19 +39,42 @@ export async function GET() {
     select: { id: true, payoutId: true, referenceCode: true, amount: true, fee: true, netAmount: true, paidAt: true },
   })
   const netTotal = unsettled.reduce((s, r) => s + Number(r.netAmount ?? (Number(r.amount) - Number(r.fee || 0))), 0)
-  return NextResponse.json({ unsettled, settled, netTotal })
+  const fresh = await getSettings()
+  return NextResponse.json({
+    unsettled, settled, netTotal,
+    settings: { bankAccountId: fresh?.bankAccountId ?? null, autoReconcile: fresh?.autoReconcile ?? true, lastSyncAt: fresh?.lastSyncAt ?? null },
+  })
 }
 
-// POST { bankAccountId, checkoutIds? } → post DR Bank / CR PayMongo Clearing for the
-// combined net, mark those checkouts settled (payoutId = batch ref). If checkoutIds is
-// omitted, settles ALL currently-unsettled paid transactions.
+// POST — three actions:
+//   { action: 'settings', bankAccountId, autoReconcile }  → save auto-reconcile config
+//   { action: 'sync' }                                    → force a payout sync now
+//   { bankAccountId, checkoutIds? }                       → manual settle (fallback)
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user || !RECON_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { bankAccountId, checkoutIds, payoutDate } = await req.json()
+    const body = await req.json()
+
+    if (body.action === 'settings') {
+      if (body.bankAccountId) {
+        const bank = await prisma.account.findUnique({ where: { id: body.bankAccountId }, select: { accountType: true } })
+        if (!bank || bank.accountType !== 'ASSET') return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
+      }
+      const data = { bankAccountId: body.bankAccountId || null, autoReconcile: body.autoReconcile !== false }
+      const saved = await prisma.paymongoSettings.upsert({ where: { id: 'singleton' }, create: { id: 'singleton', ...data }, update: data })
+      return NextResponse.json({ ok: true, settings: { bankAccountId: saved.bankAccountId, autoReconcile: saved.autoReconcile } })
+    }
+
+    if (body.action === 'sync') {
+      const res = await syncPayouts(prisma, session.user.id)
+      return NextResponse.json({ ok: true, ...res })
+    }
+
+    // Manual settle (fallback): post DR Bank / CR Clearing for the combined net.
+    const { bankAccountId, checkoutIds, payoutDate } = body
     if (!bankAccountId) return NextResponse.json({ error: 'Select the bank account the payout landed in' }, { status: 400 })
 
     const bank = await prisma.account.findUnique({ where: { id: bankAccountId }, select: { id: true, accountType: true } })
@@ -60,8 +97,6 @@ export async function POST(req: Request) {
     const payoutId = `PM-PAYOUT-${stamp}-${rows.length}`
 
     const { clearingAccountId } = await resolvePaymongoAccounts(prisma, session.user.id)
-
-    // Branch scope: if every settled txn shares one branch, tag the JE with it; else ALL.
     const branches = new Set(rows.map(r => r.branch).filter(Boolean))
     const branch = branches.size === 1 ? (rows[0].branch as string) : 'ALL'
 
@@ -79,7 +114,6 @@ export async function POST(req: Request) {
     })
 
     await prisma.paymongoCheckout.updateMany({ where: { id: { in: rows.map(r => r.id) } }, data: { payoutId } })
-
     return NextResponse.json({ ok: true, payoutId, count: rows.length, net })
   } catch (e) {
     console.error('PayMongo payout reconcile error:', e)

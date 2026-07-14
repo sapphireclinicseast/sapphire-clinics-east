@@ -48,6 +48,9 @@ export default function PaymongoPage() {
   const [banks, setBanks] = useState<BankOpt[]>([])
   const [bankId, setBankId] = useState('')
   const [payoutBusy, setPayoutBusy] = useState(false)
+  const [autoReconcile, setAutoReconcile] = useState(true)
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
+  const [savingCfg, setSavingCfg] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -59,7 +62,15 @@ export default function PaymongoPage() {
     if (!canReconcile) return
     try {
       const r = await fetch('/api/pos/paymongo/payouts')
-      if (r.ok) { const j = await r.json(); setUnsettled(j.unsettled || []); setSettled(j.settled || []); setNetTotal(j.netTotal || 0) }
+      if (r.ok) {
+        const j = await r.json()
+        setUnsettled(j.unsettled || []); setSettled(j.settled || []); setNetTotal(j.netTotal || 0)
+        if (j.settings) {
+          setAutoReconcile(j.settings.autoReconcile !== false)
+          setLastSyncAt(j.settings.lastSyncAt || null)
+          if (j.settings.bankAccountId) setBankId(j.settings.bankAccountId)
+        }
+      }
     } catch { /* ignore */ }
   }, [canReconcile])
 
@@ -127,6 +138,31 @@ export default function PaymongoPage() {
       if (!r.ok) { alert(j.error || 'Failed to create link'); return }
       setLastUrl(j.checkoutUrl); setAmount(''); setDescription(''); setPatientName(''); setLines([]); setAddServiceId(''); load()
     } finally { setBusy(false) }
+  }
+
+  const saveSettings = async (nextAuto?: boolean, nextBank?: string) => {
+    setSavingCfg(true)
+    try {
+      const r = await fetch('/api/pos/paymongo/payouts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'settings', bankAccountId: (nextBank ?? bankId) || null, autoReconcile: nextAuto ?? autoReconcile }),
+      })
+      const j = await r.json()
+      if (!r.ok) { alert(j.error || 'Failed to save settings'); return }
+      loadPayouts()
+    } finally { setSavingCfg(false) }
+  }
+
+  const syncNow = async () => {
+    setPayoutBusy(true)
+    try {
+      const r = await fetch('/api/pos/paymongo/payouts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync' }) })
+      const j = await r.json()
+      if (!r.ok) { alert(j.error || 'Sync failed'); return }
+      if (j.recorded) alert(`Booked ${j.recorded} payout(s) — ${peso(j.net)} settled to bank.`)
+      else alert(j.skipped ? `No new payouts booked (${j.skipped}).` : 'No new settled payouts from PayMongo yet.')
+      loadPayouts()
+    } finally { setPayoutBusy(false) }
   }
 
   const settlePayout = async () => {
@@ -280,22 +316,36 @@ export default function PaymongoPage() {
             <p className="text-sm font-semibold text-gray-700">Payout → bank reconciliation</p>
           </div>
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            Paid PayMongo money sits in <strong>PayMongo Clearing</strong> until PayMongo pays it out to your bank. When a payout lands, settle it here — this posts <strong>DR Bank / CR PayMongo Clearing</strong> for the net and marks those transactions reconciled.
+            Paid PayMongo money sits in <strong>PayMongo Clearing</strong> until PayMongo deposits it to your bank. With auto-reconcile on, settled payouts are pulled from PayMongo (checked when this page opens) and posted <strong>DR Bank / CR PayMongo Clearing</strong> automatically.
           </p>
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Awaiting payout</div>
-              <div className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(netTotal)}</div>
-              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{unsettled.length} transaction(s), net of fees</div>
-            </div>
-            <div className="min-w-[220px]">
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Deposit to bank</label>
-              <select value={bankId} onChange={e => setBankId(e.target.value)} className={inp} style={bc}>
-                {banks.length === 0 && <option value="">No bank accounts</option>}
+
+          {/* Auto-reconcile configuration */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 select-none cursor-pointer">
+              <input type="checkbox" checked={autoReconcile} onChange={e => { setAutoReconcile(e.target.checked); saveSettings(e.target.checked) }} />
+              Auto-reconcile payouts
+            </label>
+            <div className="min-w-[240px]">
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>PayMongo deposits to</label>
+              <select value={bankId} onChange={e => { setBankId(e.target.value); saveSettings(undefined, e.target.value) }} className={inp} style={bc}>
+                <option value="">— Select bank account —</option>
                 {banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
               </select>
             </div>
-            <button onClick={settlePayout} disabled={payoutBusy || !unsettled.length || !bankId} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2" style={{ background: 'var(--teal)' }}>{payoutBusy && <Loader2 size={15} className="animate-spin" />} Settle to bank</button>
+            <button onClick={syncNow} disabled={payoutBusy || !bankId} className="mt-4 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{payoutBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sync now</button>
+            <div className="mt-4 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              {savingCfg ? 'Saving…' : lastSyncAt ? `Last checked ${new Date(lastSyncAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}` : 'Not yet synced'}
+            </div>
+          </div>
+
+          {/* Awaiting payout + manual fallback */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Awaiting payout</div>
+              <div className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(netTotal)}</div>
+              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{unsettled.length} transaction(s) in clearing, net of fees</div>
+            </div>
+            <button onClick={settlePayout} disabled={payoutBusy || !unsettled.length || !bankId} title="Post the full clearing balance to the selected bank now, without waiting for the PayMongo payout record" className="px-3 py-2 rounded-xl text-xs font-semibold disabled:opacity-50 flex items-center gap-2 border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>{payoutBusy && <Loader2 size={14} className="animate-spin" />} Settle manually now</button>
           </div>
           {unsettled.length > 0 && (
             <div className="rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>

@@ -109,6 +109,37 @@ export async function listPayments(params: { limit?: number; before?: string; af
   return json.data || []
 }
 
+// ── Payouts (bank settlement) ──────────────────────────────────────────────
+// PayMongo deposits collected money to your bank as periodic payouts. There is no
+// payout webhook, so reconciliation polls this endpoint.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function listPayouts(params: { limit?: number } = {}): Promise<any[]> {
+  const q = new URLSearchParams()
+  q.set('limit', String(params.limit || 20))
+  const json = await pmFetch(`/payouts?${q.toString()}`)
+  return json.data || []
+}
+
+// Normalise a PayMongo payout resource → PHP net/fee + settled flag.
+// Field names vary by account; we read defensively. `settled` = money has landed
+// in the bank (as opposed to pending/in-transit).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function parsePayout(p: any): { payoutId: string; netPhp: number; feePhp: number; status: string; settled: boolean; paidAt: Date | null } {
+  const a = p?.attributes || {}
+  const feePhp = toPhp(a.fee)
+  // Prefer an explicit net; else total amount less fee.
+  const netPhp = a.net_amount != null ? toPhp(a.net_amount) : toPhp(a.amount) - feePhp
+  const status = String(a.status || '').toLowerCase()
+  const SETTLED = new Set(['paid', 'settled', 'completed', 'succeeded', 'success'])
+  const ts = a.paid_at || a.updated_at || a.created_at
+  return {
+    payoutId: p?.id || '',
+    netPhp, feePhp, status,
+    settled: SETTLED.has(status),
+    paidAt: ts ? new Date(Number(ts) * 1000) : null,
+  }
+}
+
 /**
  * Verify a PayMongo webhook signature.
  * Header format: "t=<unix>,te=<test_sig>,li=<live_sig>". The signed payload is

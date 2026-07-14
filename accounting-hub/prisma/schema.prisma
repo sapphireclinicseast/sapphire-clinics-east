@@ -843,6 +843,17 @@ model PaymongoCheckout {
   @@index([payoutId])
 }
 
+// Singleton config for PayMongo payout auto-reconciliation. When autoReconcile is
+// on and a settlement bank is set, settled PayMongo payouts are pulled from the
+// Payouts API and posted DR Bank / CR PayMongo Clearing automatically.
+model PaymongoSettings {
+  id            String    @id @default("singleton")
+  bankAccountId String?   // COA bank account PayMongo deposits payouts into
+  autoReconcile Boolean   @default(true)
+  lastSyncAt    DateTime? // throttle marker for the on-load poll
+  updatedAt     DateTime  @updatedAt @default(now())
+}
+
 // ── Accounts Receivable Payments ─────────────────────────
 
 model ARPayment {
