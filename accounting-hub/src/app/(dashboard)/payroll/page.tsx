@@ -1816,7 +1816,9 @@ export default function PayrollPage() {
       const res = await fetch(`/api/payroll/generate?${params}`)
       const data = await res.json()
       const payrolls: PayrollPreview[] = data.payrolls || []
-      setPayrollPreviews(payrolls)
+      // ADMINISTRATION staff are salaried employees, not consultants — never show them in
+      // consultant payslip generation (also excluded from payslip PDFs).
+      setPayrollPreviews(payrolls.filter(p => p.department !== 'ADMINISTRATION'))
       setGeneratedDateRange({ start: customDates.start.toISOString(), end: customDates.end.toISOString() })
       if (resetExtras) {
         // User clicked Generate — fresh slate
