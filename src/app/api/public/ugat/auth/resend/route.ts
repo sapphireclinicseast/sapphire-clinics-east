@@ -10,7 +10,7 @@ import { sendUgatVerificationEmail } from '@/lib/ugat-email'
 
 export const dynamic = 'force-dynamic'
 
-const PUBLIC_URL = process.env.UGAT_PUBLIC_URL || 'https://scholarship.sapphireclinicseast.org'
+const ORIGIN = new URL(process.env.UGAT_APP_URL || 'https://scholarship.sapphireclinicseast.org/ugatfellow').origin
 
 export async function POST(req: Request) {
   let body: { username?: string }
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       data: { scholarId: scholar.id, token, expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) },
     })
     const recipients = [...new Set([scholar.professionalEmail, scholar.personalEmail])]
-    const verifyUrl = `${PUBLIC_URL}/api/public/ugat/auth/verify?token=${encodeURIComponent(token)}`
+    const verifyUrl = `${ORIGIN}/api/public/ugat/auth/verify?token=${encodeURIComponent(token)}`
     try {
       await sendUgatVerificationEmail({ to: recipients, firstName: scholar.firstName, verifyUrl })
     } catch (e) {
