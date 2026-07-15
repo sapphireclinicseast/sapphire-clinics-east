@@ -81,7 +81,11 @@ export default function PaymongoPage() {
     if (!recordAsOrder) return
     fetch(`/api/services?branch=${encodeURIComponent(branch)}&pageSize=1000`)
       .then(r => r.json())
-      .then(d => setServices((Array.isArray(d) ? d : d.services || []).map((s: { id: string; name: string; price: number | null }) => ({ id: s.id, name: s.name, price: s.price }))))
+      // /api/services returns a paginated shape: { data, total, page, ... }
+      .then(d => {
+        const arr = Array.isArray(d) ? d : (d.data || d.services || [])
+        setServices(arr.map((s: { id: string; name: string; price: number | string | null }) => ({ id: s.id, name: s.name, price: s.price != null ? Number(s.price) : null })))
+      })
       .catch(() => setServices([]))
   }, [recordAsOrder, branch])
 
