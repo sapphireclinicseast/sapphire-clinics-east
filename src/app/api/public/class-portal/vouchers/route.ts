@@ -18,6 +18,16 @@ interface VoucherRow {
   enabled: boolean
   updatedAt: string | null
   updatedBy: string | null
+  // Populated for personal early-bird vouchers; null for regular
+  // shared codes like AURA30 that any student can redeem.
+  dedicatedStudentId: string | null
+  dedicatedStudent: null | {
+    id: string
+    firstName: string | null
+    lastName: string | null
+    email: string
+    branch: 'EAST' | 'GREENHILLS' | null
+  }
 }
 
 export async function OPTIONS(req: Request) {
@@ -34,7 +44,9 @@ function jsonError(origin: string | null, e: unknown): NextResponse {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toRow(r: any): VoucherRow {
+function toRow(r: any, studentById: Map<string, any>): VoucherRow {
+  const dedicatedStudentId: string | null = r.dedicatedStudentId ?? null
+  const s = dedicatedStudentId ? studentById.get(dedicatedStudentId) : null
   return {
     id: r.id,
     code: r.code,
@@ -43,6 +55,10 @@ function toRow(r: any): VoucherRow {
     enabled: r.enabled,
     updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : (r.updatedAt ?? null),
     updatedBy: r.updatedBy ?? null,
+    dedicatedStudentId,
+    dedicatedStudent: s
+      ? { id: s.id, firstName: s.firstName ?? null, lastName: s.lastName ?? null, email: s.email, branch: s.branch ?? null }
+      : null,
   }
 }
 
@@ -67,8 +83,23 @@ export async function GET(req: Request) {
     await requireAuth(req, ['ADMIN', 'BRANCH_ADMIN'])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (prisma as any).classPortalVoucher.findMany({ orderBy: { createdAt: 'desc' } })
+    // Hydrate student details for personal vouchers in one round-trip
+    // instead of N — the admin vouchers page renders both regular and
+    // personal codes together and needs "who is this for?" for each
+    // personal row.
+    const studentIds = Array.from(new Set(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rows.map((r: any) => r.dedicatedStudentId).filter((x: any): x is string => typeof x === 'string')
+    ))
+    const students = studentIds.length
+      ? await prisma.classPortalUser.findMany({
+          where: { id: { in: studentIds } },
+          select: { id: true, firstName: true, lastName: true, email: true, branch: true },
+        })
+      : []
+    const studentById = new Map(students.map(s => [s.id, s]))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const vouchers = rows.map((r: any) => toRow(r))
+    const vouchers = rows.map((r: any) => toRow(r, studentById))
     return withCors(NextResponse.json({ vouchers }), origin)
   } catch (e) { return jsonError(origin, e) }
 }
@@ -99,11 +130,14 @@ export async function PUT(req: Request) {
       valid.push({ code, discountPercent, validUntil, enabled: v.enabled !== false })
     }
 
-    // Replace the full set in one transaction so the admin UI is the source
-    // of truth — codes removed in the UI disappear from the DB.
+    // Replace the SHARED voucher set in one transaction so the admin UI is
+    // the source of truth for shared codes. IMPORTANT: only wipe rows with
+    // dedicatedStudentId IS NULL — personal early-bird vouchers minted for
+    // individual students are managed via /vouchers/mint-personal and must
+    // NOT be nuked here.
     await prisma.$transaction([
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (prisma as any).classPortalVoucher.deleteMany({}),
+      (prisma as any).classPortalVoucher.deleteMany({ where: { dedicatedStudentId: null } }),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ...valid.map(v => (prisma as any).classPortalVoucher.create({
         data: { ...v, updatedBy: auth.email },
@@ -113,7 +147,7 @@ export async function PUT(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (prisma as any).classPortalVoucher.findMany({ orderBy: { createdAt: 'desc' } })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const vouchers = rows.map((r: any) => toRow(r))
+    const vouchers = rows.map((r: any) => toRow(r, new Map()))
     return withCors(NextResponse.json({ vouchers }), origin)
   } catch (e) { return jsonError(origin, e) }
 }

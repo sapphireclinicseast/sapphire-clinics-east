@@ -3256,6 +3256,17 @@ export interface Voucher {
   enabled: boolean
   updatedAt?: string | null
   updatedBy?: string | null
+  /** Set when the voucher was minted for a specific early-bird student. */
+  dedicatedStudentId?: string | null
+  /** Hydrated by the admin GET so the vouchers panel can show "who is
+   *  this for?" without an extra round-trip per row. Null for shared codes. */
+  dedicatedStudent?: null | {
+    id: string
+    firstName: string | null
+    lastName: string | null
+    email: string
+    branch: 'EAST' | 'GREENHILLS' | null
+  }
 }
 
 export function getVouchers(): Voucher[] {

@@ -23,6 +23,7 @@ import { downloadFeeSchedulePdf, openFeeSchedulePdf } from '@/lib/fee-schedule-p
 import {
   fetchFeeSummary, issueRegistrationLetter,
   listPersonalVouchersFor, mintPersonalVoucher,
+  currentPeriodPaymentStatusFor,
   type FeeSummary, type IssuedRegistrationLetter, type PersonalVoucher,
 } from '@/lib/session'
 // Removed `generateAffidavitPdf` / `AffidavitInput` imports — the
@@ -91,7 +92,21 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
   }, [student.id, student.email])
 
   const e = student.enrollment ?? {}
-  const isPaid = payments.some(p => p.status === 'PAID')
+  // Payment status has TWO meanings we care about here:
+  //   • hasEverPaid: any PAID row exists — used to gate "Record PayMongo
+  //     payment" (only offer that action if nothing has been paid yet).
+  //   • currentPeriodStatus: is THIS month's / this half's / this year's
+  //     installment covered? This is what drives the badge, so a monthly
+  //     student who paid June but not July shows DUE — matching the
+  //     Students list — instead of the misleading "Tuition paid".
+  const hasEverPaid = payments.some(p => p.status === 'PAID')
+  const currentPeriodStatus = currentPeriodPaymentStatusFor(student.id)
+  const badgeClass = currentPeriodStatus === 'PAID' ? 'badge-paid'
+    : currentPeriodStatus === 'DUE' ? 'badge-due'
+    : 'badge-pending'
+  const badgeLabel = currentPeriodStatus === 'PAID' ? 'Tuition paid'
+    : currentPeriodStatus === 'DUE' ? `Due for ${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}`
+    : 'Payment pending'
 
   return (
     <div className="space-y-6">
@@ -116,13 +131,13 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <span className={`badge ${isPaid ? 'badge-paid' : 'badge-pending'}`}>
-              {isPaid ? 'Tuition paid' : 'Payment pending'}
+            <span className={`badge ${badgeClass}`}>
+              {badgeLabel}
             </span>
             {viewerRole === 'STUDENT' && (
               <a href="/pay" className="btn-cta text-xs whitespace-nowrap">Pay tuition fee →</a>
             )}
-            {viewerRole === 'ADMIN' && !isPaid && (
+            {viewerRole === 'ADMIN' && !hasEverPaid && (
               <PayMongoRecorder
                 student={student}
                 onRecorded={async () => {

@@ -852,14 +852,25 @@ function toVoucherRow(v: Voucher): VoucherRow {
 
 function VouchersPanel({ adminEmail }: { adminEmail: string }) {
   const [rows, setRows] = useState<VoucherRow[]>([])
+  // Personal early-bird vouchers minted per-student via mint-personal.
+  // Kept as their own list so the "Save vouchers" bulk-editor CANNOT
+  // touch them (and so the admin sees who each code is for).
+  const [personal, setPersonal] = useState<Voucher[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
 
+  function splitAndSet(v: Voucher[]) {
+    const shared = v.filter(x => !x.dedicatedStudentId)
+    const dedicated = v.filter(x => !!x.dedicatedStudentId)
+    setRows(shared.map(toVoucherRow))
+    setPersonal(dedicated)
+  }
+
   useEffect(() => {
-    setRows(getVouchers().map(toVoucherRow))
-    hydrateVouchers().then(v => { setRows(v.map(toVoucherRow)); setLoading(false) })
+    splitAndSet(getVouchers())
+    hydrateVouchers().then(v => { splitAndSet(v); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
 
@@ -893,7 +904,11 @@ function VouchersPanel({ adminEmail }: { adminEmail: string }) {
         validUntil: r.validUntil,
         enabled: r.enabled,
       })))
-      setRows(saved.map(toVoucherRow))
+      // saveVouchers returns EVERY voucher (shared + personal); the
+      // server only clobbers shared rows, so re-split to keep the
+      // personal section in sync (a fresh mint from elsewhere would
+      // show up on the next save).
+      splitAndSet(saved)
       setInfo('Voucher codes saved. Parents can use them on the Pay portal right away.')
     } catch (e) { setErr((e as Error).message) }
     finally { setSaving(false) }
@@ -955,6 +970,66 @@ function VouchersPanel({ adminEmail }: { adminEmail: string }) {
         <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">{saving ? 'Saving…' : 'Save vouchers'}</button>
       </div>
       <p className="text-[11px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>Editing as {adminEmail}.</p>
+
+      {/* ── Personal early-bird vouchers ── */}
+      <div className="pt-6 mt-2 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+        <h3 className="text-[16px] leading-tight text-[color:var(--deep-teal)]">Personal early-bird vouchers</h3>
+        <p className="text-sm text-[color:var(--mid-gray)] mt-1">
+          Codes issued to individual students who availed of the AURA30 early-bird promo before the deadline. Each code can only be redeemed by its assigned student, so parents on monthly / bi-annual plans keep the 30% discount for the rest of the school year. Issue new ones from the student&rsquo;s profile → <span className="font-semibold">Personal Vouchers</span> card.
+        </p>
+        {personal.length === 0 ? (
+          <div className="text-[12.5px] text-[color:var(--mid-gray)] italic py-3">No personal vouchers issued yet.</div>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ fontFamily: 'var(--font-display)', borderColor: 'var(--paper-3)' }}>
+                  <th className="text-left py-2 pr-3">Student</th>
+                  <th className="text-left py-2 pr-3">Branch</th>
+                  <th className="text-left py-2 pr-3">Code</th>
+                  <th className="text-right py-2 pr-3">Discount</th>
+                  <th className="text-left py-2 pr-3">Valid until</th>
+                  <th className="text-left py-2 pr-3">Status</th>
+                  <th className="text-left py-2 pr-3">Issued by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {personal.map(v => {
+                  const expired = isExpired(v.validUntil.slice(0, 10))
+                  const s = v.dedicatedStudent
+                  const name = s ? [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email : '(unknown student)'
+                  return (
+                    <tr key={v.id ?? v.code} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                      <td className="py-2 pr-3">
+                        <div className="font-semibold text-[color:var(--deep-teal)]">{name}</div>
+                        {s && <div className="text-[11px] text-[color:var(--mid-gray)]">{s.email}</div>}
+                      </td>
+                      <td className="py-2 pr-3 text-[color:var(--mid-gray)]">{s?.branch ?? '—'}</td>
+                      <td className="py-2 pr-3">
+                        <button
+                          type="button"
+                          className="font-mono text-[12.5px] px-2 py-1 rounded bg-[color:var(--paper-2)] hover:bg-[color:var(--sage-tint)] border"
+                          style={{ borderColor: 'var(--paper-3)' }}
+                          onClick={() => { try { navigator.clipboard?.writeText(v.code) } catch { /* no-op */ } }}
+                          title="Click to copy"
+                        >{v.code}</button>
+                      </td>
+                      <td className="py-2 pr-3 text-right font-semibold">{v.discountPercent}%</td>
+                      <td className="py-2 pr-3 text-[color:var(--mid-gray)]">{new Date(v.validUntil).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                      <td className="py-2 pr-3">
+                        {!v.enabled ? <span className="badge badge-rejected">Disabled</span>
+                          : expired ? <span className="badge badge-rejected">Expired</span>
+                          : <span className="badge badge-paid">Active</span>}
+                      </td>
+                      <td className="py-2 pr-3 text-[11.5px] text-[color:var(--mid-gray)]">{v.updatedBy ?? '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
