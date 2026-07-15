@@ -40,6 +40,9 @@ export default function PaymongoPage() {
   const [services, setServices] = useState<ServiceOpt[]>([])
   const [lines, setLines] = useState<{ serviceId: string; name: string; amount: string }[]>([])
   const [addServiceId, setAddServiceId] = useState('')
+  const [discKind, setDiscKind] = useState<'FIXED' | 'PERCENT'>('FIXED')
+  const [discValue, setDiscValue] = useState('')
+  const [voucherLabel, setVoucherLabel] = useState('')
 
   // Phase 2: payout reconciliation
   const [unsettled, setUnsettled] = useState<Unsettled[]>([])
@@ -104,12 +107,23 @@ export default function PaymongoPage() {
   const today = () => new Date().toISOString().slice(0, 10)
 
   const lineTotal = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+  // Staff-entered voucher/discount (fixed ₱ or % of the subtotal), clamped to the subtotal.
+  const discountAmt = Math.min(
+    Math.max(discKind === 'PERCENT' ? lineTotal * (Number(discValue) || 0) / 100 : (Number(discValue) || 0), 0),
+    lineTotal,
+  )
+  const netAfterDiscount = Math.round((lineTotal - discountAmt) * 100) / 100
 
   const createLink = async () => {
-    // With "Record as a POS sale" on, the amount is the sum of the service lines;
-    // otherwise it's the free-form amount field.
-    const amt = recordAsOrder ? lineTotal : Number(amount)
-    if (!(amt > 0)) { alert(recordAsOrder ? 'Add at least one service with an amount.' : 'Enter a positive amount.'); return }
+    // With "Record as a POS sale" on, the charged amount is the service subtotal less
+    // any voucher/discount; otherwise it's the free-form amount field.
+    const amt = recordAsOrder ? netAfterDiscount : Number(amount)
+    if (!(amt > 0)) {
+      alert(recordAsOrder
+        ? (lineTotal > 0 ? 'The discount leaves nothing to charge — lower it.' : 'Add at least one service with an amount.')
+        : 'Enter a positive amount.')
+      return
+    }
     const purposeLabel = purpose === 'DOWNPAYMENT' ? 'Downpayment' : 'Tuition'
     setBusy(true); setLastUrl('')
     try {
@@ -124,6 +138,7 @@ export default function PaymongoPage() {
             revenueType: purpose === 'DOWNPAYMENT' ? 'UNEARNED' : 'EARNED',
             patientName: patientName || null, transactionDate: today(),
             notes: purposeLabel + ' via PayMongo',
+            ...(discountAmt > 0 ? { discountType: 'CUSTOM', discountAmount: discountAmt, discountLabel: voucherLabel || 'Voucher' } : {}),
             items: lines.filter(l => (Number(l.amount) || 0) > 0).map(l => ({ serviceId: l.serviceId, name: l.name, quantity: 1, unitPrice: Number(l.amount) || 0, lineTotal: Number(l.amount) || 0 })),
           }),
         })
@@ -140,7 +155,7 @@ export default function PaymongoPage() {
       })
       const j = await r.json()
       if (!r.ok) { alert(j.error || 'Failed to create link'); return }
-      setLastUrl(j.checkoutUrl); setAmount(''); setDescription(''); setPatientName(''); setLines([]); setAddServiceId(''); load()
+      setLastUrl(j.checkoutUrl); setAmount(''); setDescription(''); setPatientName(''); setLines([]); setAddServiceId(''); setDiscValue(''); setVoucherLabel(''); load()
     } finally { setBusy(false) }
   }
 
@@ -285,10 +300,26 @@ export default function PaymongoPage() {
                       <button onClick={() => setLines(prev => prev.filter((_, j) => j !== i))} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#b91c1c' }}>Remove</button>
                     </div>
                   ))}
-                  <div className="flex items-center justify-end gap-2 pt-1 border-t text-sm font-semibold" style={{ borderColor: 'var(--light-gray)' }}>
-                    <span style={{ color: 'var(--mid-gray)' }}>Total</span>
-                    <span className="font-mono" style={{ color: 'var(--deep-teal)' }}>{peso(lineTotal)}</span>
+                  {/* Voucher / discount */}
+                  <div className="pt-2 mt-1 border-t space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
+                    <label className="block text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Voucher / discount (optional)</label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select value={discKind} onChange={e => setDiscKind(e.target.value as 'FIXED' | 'PERCENT')} className="px-2 py-1.5 rounded-lg border text-sm" style={bc}>
+                        <option value="FIXED">Fixed ₱</option>
+                        <option value="PERCENT">Percent %</option>
+                      </select>
+                      <input value={discValue} onChange={e => setDiscValue(e.target.value)} inputMode="decimal" placeholder={discKind === 'PERCENT' ? '0 %' : '0.00'} className="w-24 px-2 py-1.5 rounded-lg border text-sm font-mono text-right" style={bc} />
+                      <input value={voucherLabel} onChange={e => setVoucherLabel(e.target.value)} placeholder="Voucher / reason (e.g. Scholarship)" className="flex-1 min-w-[160px] px-2 py-1.5 rounded-lg border text-sm" style={bc} />
+                    </div>
                   </div>
+
+                  {/* Totals */}
+                  <div className="pt-1 space-y-0.5 text-sm">
+                    <div className="flex items-center justify-end gap-2"><span style={{ color: 'var(--mid-gray)' }}>Subtotal</span><span className="font-mono w-28 text-right">{peso(lineTotal)}</span></div>
+                    {discountAmt > 0 && <div className="flex items-center justify-end gap-2" style={{ color: '#b91c1c' }}><span>Discount{voucherLabel ? ` (${voucherLabel})` : ''}</span><span className="font-mono w-28 text-right">−{peso(discountAmt)}</span></div>}
+                    <div className="flex items-center justify-end gap-2 font-semibold pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}><span style={{ color: 'var(--mid-gray)' }}>To charge</span><span className="font-mono w-28 text-right" style={{ color: 'var(--deep-teal)' }}>{peso(netAfterDiscount)}</span></div>
+                  </div>
+
                   {purpose === 'DOWNPAYMENT' && (
                     <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Enter the downpayment amount per service (a partial amount is fine). It posts to Unearned Revenue until the service is delivered.</p>
                   )}
