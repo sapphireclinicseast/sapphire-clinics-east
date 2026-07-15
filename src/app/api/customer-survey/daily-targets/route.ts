@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     const session = await auth()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const role = (session.user as { role?: string }).role ?? ''
-    isAdmin = ['ADMIN', 'MARKETING_ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN'].includes(role)
+    isAdmin = ['ADMIN', 'MARKETING_ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN'].includes(role)
     const roleBranch = branchFromRole(role)
     if (isAdmin) {
       authedBranch = queryBranch ?? roleBranch ?? 'SBEA'

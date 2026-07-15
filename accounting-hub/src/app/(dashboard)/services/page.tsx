@@ -92,7 +92,7 @@ export default function ServicesPage() {
   const initialLoaded = useRef(false)
   const [search, setSearch] = useState('')
   const [filterDept, setFilterDept] = useState('')
-  const isFrontDesk = session?.user?.role && ['SBEA_FRONTDESK', 'SBGH_FRONTDESK'].includes(session.user.role as string)
+  const isFrontDesk = session?.user?.role && ['AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(session.user.role as string)
   const userBranch = session?.user?.branch as string | undefined
   const scope = userBranchScope(userBranch)
   // Any branch-locked user (or front desk) is pinned to their branch.
@@ -144,7 +144,7 @@ export default function ServicesPage() {
   const [eligibleResults, setEligibleResults] = useState<Service[]>([])
   const [eligibleLoading, setEligibleLoading] = useState(false)
 
-  const canWrite = session?.user?.role && ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
+  const canWrite = session?.user?.role && ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
   const fetchServices = useCallback(async () => {
     try {

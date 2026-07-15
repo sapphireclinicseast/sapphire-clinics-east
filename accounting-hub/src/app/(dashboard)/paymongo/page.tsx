@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { CreditCard, Loader2, ExternalLink, RefreshCw, Landmark } from 'lucide-react'
 
-const ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK', 'PAYROLL_OFFICER']
+const ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER']
 const RECON_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'AHEA' },

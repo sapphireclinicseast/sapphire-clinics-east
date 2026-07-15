@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
 
 function allowedBranches(role: string): string[] | null {
-  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
-  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'AHEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'AHGH_ADMIN') return ['SBGH', 'VERDANA']
   if (role === 'VERDANA_ADMIN') return ['VERDANA']
   return null
 }
@@ -104,7 +104,7 @@ export async function PUT(req: Request) {
   // Check approval authority: branch admins cannot approve requests from excluded positions
   if (status === 'APPROVED' && existing.employee) {
     const role = session.user.role as string
-    const isBranchAdmin = ['SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(role)
+    const isBranchAdmin = ['AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes(role)
     if (isBranchAdmin) {
       const settings = await prisma.employeeSettings.findFirst()
       const excludedPositions = (settings?.requestApprovalExcludedPositions as string[] | null) || []

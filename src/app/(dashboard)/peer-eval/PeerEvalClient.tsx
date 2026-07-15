@@ -628,8 +628,8 @@ function FrontDeskPendingView({ role }: { role: string }) {
 function AssignmentsTab({ role }: { role: string }) {
   const isFrontDesk = ['AHEA_FRONT_DESK', 'AHGH_FRONT_DESK'].includes(role)
   const canManage   = !isFrontDesk
-  const defaultBranch = role === 'SBEA_ADMIN' || role === 'AHEA_FRONT_DESK' ? 'SBEA'
-                      : role === 'SBGH_ADMIN' || role === 'AHGH_FRONT_DESK' ? 'SBGH'
+  const defaultBranch = role === 'AHEA_ADMIN' || role === 'AHEA_FRONT_DESK' ? 'SBEA'
+                      : role === 'AHGH_ADMIN' || role === 'AHGH_FRONT_DESK' ? 'SBGH'
                       : ''
 
   const [filterFormType, setFilterFormType] = useState('')
@@ -891,7 +891,7 @@ function AssignmentsTab({ role }: { role: string }) {
 // ─── By-Assessee Tab ──────────────────────────────────────────────────────────
 
 function ByAssesseeTab({ role }: { role: string }) {
-  const defaultBranch = role === 'SBEA_ADMIN' ? 'SBEA' : role === 'SBGH_ADMIN' ? 'SBGH' : ''
+  const defaultBranch = role === 'AHEA_ADMIN' ? 'SBEA' : role === 'AHGH_ADMIN' ? 'SBGH' : ''
 
   const [filterFormType, setFilterFormType] = useState('')
   const [filterBranch, setFilterBranch]     = useState(defaultBranch)
@@ -1136,7 +1136,7 @@ function ExpandedRow({ assignment }: { assignment: Assignment }) {
 // ─── Results Tab ──────────────────────────────────────────────────────────────
 
 function ResultsTab({ role }: { role: string }) {
-  const defaultBranch = role === 'SBEA_ADMIN' ? 'SBEA' : role === 'SBGH_ADMIN' ? 'SBGH' : ''
+  const defaultBranch = role === 'AHEA_ADMIN' ? 'SBEA' : role === 'AHGH_ADMIN' ? 'SBGH' : ''
 
   const [filterBranch, setFilterBranch] = useState(defaultBranch)
   const [filterYear, setFilterYear]     = useState(new Date().getFullYear())
@@ -1428,8 +1428,8 @@ function ResultsTab({ role }: { role: string }) {
 // ─── Generate Tab ─────────────────────────────────────────────────────────────
 
 function GenerateTab({ role }: { role: string }) {
-  const defaultBranch = role === 'SBEA_ADMIN' ? 'SBEA' : role === 'SBGH_ADMIN' ? 'SBGH' : ''
-  const isAdmin = ['ADMIN', 'MARKETING_ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN'].includes(role)
+  const defaultBranch = role === 'AHEA_ADMIN' ? 'SBEA' : role === 'AHGH_ADMIN' ? 'SBGH' : ''
+  const isAdmin = ['ADMIN', 'MARKETING_ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN'].includes(role)
 
   const [formType, setFormType] = useState<PeerEvalType>('HR08_PEER')
   const [branch, setBranch]     = useState(defaultBranch || 'SBEA')
@@ -1557,7 +1557,7 @@ function GenerateTab({ role }: { role: string }) {
 // ─── Settings Tab ─────────────────────────────────────────────────────────────
 
 function SettingsTab({ role }: { role: string }) {
-  const defaultBranch = role === 'SBEA_ADMIN' ? 'SBEA' : role === 'SBGH_ADMIN' ? 'SBGH' : ''
+  const defaultBranch = role === 'AHEA_ADMIN' ? 'SBEA' : role === 'AHGH_ADMIN' ? 'SBGH' : ''
 
   const [filterBranch, setFilterBranch] = useState(defaultBranch || 'SBEA')
   const [configs, setConfigs]   = useState<AdminConfig[]>([])
@@ -1770,8 +1770,8 @@ export default function PeerEvalClient({ role }: { role: string }) {
   const isFrontDesk = ['AHEA_FRONT_DESK', 'AHGH_FRONT_DESK'].includes(role)
   const isMainAdmin = ['ADMIN', 'MARKETING_ADMIN'].includes(role)
 
-  const defaultBranch = role === 'SBEA_ADMIN' || role === 'AHEA_FRONT_DESK' ? 'SBEA'
-                      : role === 'SBGH_ADMIN' || role === 'AHGH_FRONT_DESK' ? 'SBGH'
+  const defaultBranch = role === 'AHEA_ADMIN' || role === 'AHEA_FRONT_DESK' ? 'SBEA'
+                      : role === 'AHGH_ADMIN' || role === 'AHGH_FRONT_DESK' ? 'SBGH'
                       : ''
 
   const [activeTab, setActiveTab] = useState<Tab>('assignments')

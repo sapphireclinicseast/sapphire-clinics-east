@@ -143,7 +143,7 @@ export default function SalesAnalysisPage() {
   const [showUnknown, setShowUnknown] = useState(false)
   const [error, setError] = useState('')
 
-  const allowed = ['ADMIN', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+  const allowed = ['ADMIN', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
   const role = (session?.user as { role?: string })?.role || ''
   const hasAccess = !!session?.user && allowed.includes(role)
 

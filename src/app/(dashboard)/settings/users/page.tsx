@@ -6,8 +6,8 @@ import { Users, Plus, Trash2, ShieldCheck, UserCircle, X, Pencil, Check } from '
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Admin',
   MARKETING_ADMIN: 'Marketing Admin',
-  SBEA_ADMIN: 'AHEA Admin',
-  SBGH_ADMIN: 'AHGH Admin',
+  AHEA_ADMIN: 'AHEA Admin',
+  AHGH_ADMIN: 'AHGH Admin',
   VERDANA_ADMIN: 'Verdana Admin',
   AHEA_FRONT_DESK: 'AHEA Front Desk',
   AHGH_FRONT_DESK: 'AHGH Front Desk',
@@ -177,8 +177,8 @@ export default function UsersPage() {
                 >
                   <option value="ADMIN">Admin — all branches, all modules</option>
                   <option value="MARKETING_ADMIN">Marketing Admin — all modules except Clinic Schedule</option>
-                  <option value="SBEA_ADMIN">AHEA Admin — East Branch social only</option>
-                  <option value="SBGH_ADMIN">AHGH Admin — Greenhills Branch social only</option>
+                  <option value="AHEA_ADMIN">AHEA Admin — East Branch social only</option>
+                  <option value="AHGH_ADMIN">AHGH Admin — Greenhills Branch social only</option>
                   <option value="VERDANA_ADMIN">Verdana Admin — Verdana Store social only</option>
                   <option value="AHEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
                   <option value="AHGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
@@ -322,8 +322,8 @@ export default function UsersPage() {
                         >
                           <option value="ADMIN">Admin — all branches, all modules</option>
                           <option value="MARKETING_ADMIN">Marketing Admin — all modules except Clinic Schedule</option>
-                          <option value="SBEA_ADMIN">AHEA Admin — East Branch social only</option>
-                          <option value="SBGH_ADMIN">AHGH Admin — Greenhills Branch social only</option>
+                          <option value="AHEA_ADMIN">AHEA Admin — East Branch social only</option>
+                          <option value="AHGH_ADMIN">AHGH Admin — Greenhills Branch social only</option>
                           <option value="VERDANA_ADMIN">Verdana Admin — Verdana Store social only</option>
                           <option value="AHEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
                           <option value="AHGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>

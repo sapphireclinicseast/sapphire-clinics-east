@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { consumeFifoLots, restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import crypto from 'crypto'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 /**
  * Bulk physical-count shrinkage — POST

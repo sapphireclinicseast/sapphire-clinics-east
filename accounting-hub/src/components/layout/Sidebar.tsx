@@ -30,10 +30,10 @@ import {
 
 // Roles that see all accounting modules (excludes front desk and HMO Officer).
 // Bookkeeper now has the same visibility as Accountant (everything except Analysis).
-const FULL_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const FULL_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const ENTRY_ACCESS = FULL_ACCESS
 // Roles that see Services + POS (front desk + full access + Payroll Officer)
-const SERVICES_POS_ACCESS = [...FULL_ACCESS, 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+const SERVICES_POS_ACCESS = [...FULL_ACCESS, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const SERVICES_POS_PAYROLL = [...SERVICES_POS_ACCESS, 'PAYROLL_OFFICER']
 // Roles that see the Dashboard overview
 const DASHBOARD_ACCESS = SERVICES_POS_ACCESS
@@ -49,7 +49,7 @@ const LOANS_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // Payroll: full access + the dedicated Payroll Officer.
 const PAYROLL_ACCESS = [...FULL_ACCESS, 'PAYROLL_OFFICER']
 // Products & Sales Analysis: main admin + branch admins + viewer (NOT accountant/bookkeeper).
-const ANALYSIS_ACCESS = ['ADMIN', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const ANALYSIS_ACCESS = ['ADMIN', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 interface NavItem {
   href: string

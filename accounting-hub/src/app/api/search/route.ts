@@ -44,8 +44,8 @@ export async function GET(req: Request) {
     VERDANA_STORE: ['VERDANA_STORE', 'VER', 'VERDANA'],
   }
   const ROLE_BRANCH: Record<string, string> = {
-    SBEA_ADMIN: 'SANDBOX_EAST', SBGH_ADMIN: 'SANDBOX_GREENHILLS', VERDANA_ADMIN: 'VERDANA_STORE',
-    SBEA_FRONTDESK: 'SANDBOX_EAST', SBGH_FRONTDESK: 'SANDBOX_GREENHILLS',
+    AHEA_ADMIN: 'SANDBOX_EAST', AHGH_ADMIN: 'SANDBOX_GREENHILLS', VERDANA_ADMIN: 'VERDANA_STORE',
+    AHEA_FRONTDESK: 'SANDBOX_EAST', AHGH_FRONTDESK: 'SANDBOX_GREENHILLS',
   }
   const scopeBranch = ROLE_BRANCH[(session.user.role as string) || '']
   const scope = scopeBranch ? BRANCH_SETS[scopeBranch] : null

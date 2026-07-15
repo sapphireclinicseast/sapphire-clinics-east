@@ -108,8 +108,8 @@ const DEPARTMENT_OPTIONS = [
 ]
 
 // Front-desk can add/edit assets (photos, renaming); delete + audits stay with accounting.
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
-const MANAGE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+const MANAGE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -173,7 +173,7 @@ export default function AssetManagementPage() {
   const { data: session, status } = useSession()
 
   const userRole = session?.user?.role as string
-  const isBranchRestricted = ['SBEA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_ADMIN', 'SBGH_FRONTDESK', 'VERDANA_ADMIN'].includes(userRole)
+  const isBranchRestricted = ['AHEA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_ADMIN', 'AHGH_FRONTDESK', 'VERDANA_ADMIN'].includes(userRole)
   const userBranch = userRole?.includes('SBEA')
     ? 'SANDBOX_EAST'
     : userRole?.includes('SBGH')

@@ -16,7 +16,7 @@ import { auth } from '@/lib/auth'
 import PendingQueueWidget from '@/components/dashboard/PendingQueueWidget'
 import { ReminderCard } from '@/components/dashboard/RecurringReminders'
 
-const FRONT_DESK_ROLES = ['SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+const FRONT_DESK_ROLES = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 const ALL_MODULES = [
   {

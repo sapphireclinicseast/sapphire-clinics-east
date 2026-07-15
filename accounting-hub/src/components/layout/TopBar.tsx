@@ -19,11 +19,11 @@ const ROLE_LABELS: Record<string, string> = {
   ACCOUNTANT: 'Accountant',
   BOOKKEEPER: 'Bookkeeper',
   VIEWER: 'Viewer',
-  SBEA_ADMIN: 'AHEA Admin',
-  SBGH_ADMIN: 'AHGH Admin',
+  AHEA_ADMIN: 'AHEA Admin',
+  AHGH_ADMIN: 'AHGH Admin',
   VERDANA_ADMIN: 'Verdana Admin',
-  SBEA_FRONTDESK: 'AHEA Front Desk',
-  SBGH_FRONTDESK: 'AHGH Front Desk',
+  AHEA_FRONTDESK: 'AHEA Front Desk',
+  AHGH_FRONTDESK: 'AHGH Front Desk',
 }
 
 export default function TopBar({ user, onMenuClick }: TopBarProps) {

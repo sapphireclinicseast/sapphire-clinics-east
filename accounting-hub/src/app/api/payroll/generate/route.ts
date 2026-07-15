@@ -13,11 +13,11 @@ function toFloat(v: unknown): number {
   return parseFloat(String(v)) || 0
 }
 
-const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 function allowedBranches(role: string): string[] | null {
-  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
-  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'AHEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'AHGH_ADMIN') return ['SBGH', 'VERDANA']
   if (role === 'VERDANA_ADMIN') return ['VERDANA']
   return null
 }

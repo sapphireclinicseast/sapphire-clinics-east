@@ -11,7 +11,7 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ALLOWED_ROLES = ['ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
 
 const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS'] as const
 const DEPT_LABELS: Record<string, string> = {

@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const ALLOWED_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const ALLOWED_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 const TELETHERAPY_URL = (process.env.TELETHERAPY_HUB_URL ?? 'https://teletherapy.sapphireclinicseast.org').replace(/\/$/, '')
 const INTERNAL_KEY = process.env.TELETHERAPY_INTERNAL_API_KEY ?? ''

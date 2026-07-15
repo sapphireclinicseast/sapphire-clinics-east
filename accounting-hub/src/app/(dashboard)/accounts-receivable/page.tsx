@@ -1832,7 +1832,7 @@ export default function AccountsReceivablePage() {
       {tab === 'HMO' && hmoSubTab === 'soa-report' && (
         <SoaReport
           wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName, branch: w.branch }))}
-          isAdmin={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes((session?.user as { role?: string })?.role || '')}
+          isAdmin={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes((session?.user as { role?: string })?.role || '')}
         />
       )}
 

@@ -5,8 +5,8 @@ const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://operations.s
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
 function allowedBranches(role: string): string[] | null {
-  if (role === 'SBEA_ADMIN' || role === 'SBEA_FRONTDESK') return ['SBEA', 'VERDANA']
-  if (role === 'SBGH_ADMIN' || role === 'SBGH_FRONTDESK') return ['SBGH', 'VERDANA']
+  if (role === 'AHEA_ADMIN' || role === 'AHEA_FRONTDESK') return ['SBEA', 'VERDANA']
+  if (role === 'AHGH_ADMIN' || role === 'AHGH_FRONTDESK') return ['SBGH', 'VERDANA']
   if (role === 'VERDANA_ADMIN') return ['VERDANA']
   return null
 }

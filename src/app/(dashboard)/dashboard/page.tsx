@@ -116,7 +116,7 @@ export default async function DashboardPage() {
   // continue to see their assigned branch as before.
   const role = session?.user?.role
   const branch =
-    role === 'AHGH_FRONT_DESK' || role === 'SBGH_ADMIN' ? 'SBGH' :
+    role === 'AHGH_FRONT_DESK' || role === 'AHGH_ADMIN' ? 'SBGH' :
     'SBEA'
   const userName = session?.user?.name ?? undefined
   const birthdayPatients = await getBirthdayPatients(branch)

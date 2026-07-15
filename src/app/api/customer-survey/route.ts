@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 // Roles that can access the Results tab
-const RESULTS_ROLES = ['MARKETING_ADMIN', 'SUPERADMIN', 'ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN']
+const RESULTS_ROLES = ['MARKETING_ADMIN', 'SUPERADMIN', 'ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN']
 
 function branchFromRole(role: string): string | null {
   if (role.startsWith('SBEA_')) return 'SBEA'
@@ -49,13 +49,13 @@ export async function GET(req: NextRequest) {
   }
 
   if (view === 'results') {
-    // Access control: only Admin, SBEA_ADMIN, SBGH_ADMIN
+    // Access control: only Admin, AHEA_ADMIN, AHGH_ADMIN
     const canViewResults = RESULTS_ROLES.includes(role)
     if (!canViewResults) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
     // Branch admins only see their branch
-    const resultsBranch = role === 'SBEA_ADMIN' ? 'SBEA' : role === 'SBGH_ADMIN' ? 'SBGH' : null
+    const resultsBranch = role === 'AHEA_ADMIN' ? 'SBEA' : role === 'AHGH_ADMIN' ? 'SBGH' : null
 
     const assignments = await prisma.surveyAssignment.findMany({
       where: resultsBranch ? { branch: resultsBranch } : {},
@@ -83,12 +83,12 @@ export async function GET(req: NextRequest) {
   }
 
   if (view === 'results-dashboard') {
-    // Access control: only Admin, SBEA_ADMIN, SBGH_ADMIN
+    // Access control: only Admin, AHEA_ADMIN, AHGH_ADMIN
     const canViewResults = RESULTS_ROLES.includes(role)
     if (!canViewResults) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
-    const resultsBranch = role === 'SBEA_ADMIN' ? 'SBEA' : role === 'SBGH_ADMIN' ? 'SBGH' : null
+    const resultsBranch = role === 'AHEA_ADMIN' ? 'SBEA' : role === 'AHGH_ADMIN' ? 'SBGH' : null
 
     // Optional filters from query string
     const filterBranch = searchParams.get('branch') || null
@@ -649,7 +649,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   // Branch admins can only delete within their branch
-  const deleteBranch = role === 'SBEA_ADMIN' ? 'SBEA' : role === 'SBGH_ADMIN' ? 'SBGH' : null
+  const deleteBranch = role === 'AHEA_ADMIN' ? 'SBEA' : role === 'AHGH_ADMIN' ? 'SBGH' : null
   if (deleteBranch && assignment.branch !== deleteBranch) {
     return NextResponse.json({ error: 'You can only delete results from your branch' }, { status: 403 })
   }

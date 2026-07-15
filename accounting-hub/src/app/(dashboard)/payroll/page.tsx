@@ -754,7 +754,7 @@ async function _legacyBuildPayslipPdf_REMOVED_OLD(
    ═══════════════════════════════════════════════════════════════ */
 export default function PayrollPage() {
   const { data: session } = useSession()
-  const canWrite = session?.user?.role && ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
+  const canWrite = session?.user?.role && ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
   const now = new Date()
   const [branch, setBranch] = useState('')

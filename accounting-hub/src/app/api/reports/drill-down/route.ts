@@ -7,7 +7,7 @@ import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 // HMO / GL payments make an order's revenue a receivable (mirrors the income statement).
 const AR_PAYMENT_METHODS = new Set(['HMO', 'GL'])
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 const CASH_METHODS = ['CASH', 'GCASH', 'PAYMAYA', 'PAYMONGO', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK']
 

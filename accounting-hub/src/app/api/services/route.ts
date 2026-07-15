@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 
-const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_DEPARTMENTS = ['ALL', 'PT', 'MD', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'ORTHOSIS_PROSTHESIS']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'ALL']
 const VALID_PRICE_TYPES = ['FIXED', 'ADJUSTABLE']
@@ -113,8 +113,8 @@ export async function GET(req: Request) {
   // For branch-specific users, filter branchPrices to only their branch
   const userRole = session.user.role as string
   let restrictBranch: string | null = null
-  if (userRole === 'SBEA_ADMIN' || userRole === 'SBEA_FRONTDESK') restrictBranch = 'SANDBOX_EAST'
-  else if (userRole === 'SBGH_ADMIN' || userRole === 'SBGH_FRONTDESK') restrictBranch = 'SANDBOX_GREENHILLS'
+  if (userRole === 'AHEA_ADMIN' || userRole === 'AHEA_FRONTDESK') restrictBranch = 'SANDBOX_EAST'
+  else if (userRole === 'AHGH_ADMIN' || userRole === 'AHGH_FRONTDESK') restrictBranch = 'SANDBOX_GREENHILLS'
 
   const filtered = restrictBranch
     ? services.map(s => ({

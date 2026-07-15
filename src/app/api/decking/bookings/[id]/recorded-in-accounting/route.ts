@@ -11,7 +11,7 @@ import { prisma } from '@/lib/prisma'
 
 const ALLOWED_ROLES = new Set([
   'ADMIN', 'MARKETING_ADMIN',
-  'SBEA_ADMIN', 'SBGH_ADMIN',
+  'AHEA_ADMIN', 'AHGH_ADMIN',
   'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK',
 ])
 

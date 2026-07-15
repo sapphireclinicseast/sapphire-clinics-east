@@ -300,7 +300,7 @@ export default function SalesSummaryPage() {
   }, [branch, dateFrom, dateTo, showWithInvoice, showWithoutInvoice])
 
   // Permission guard — AFTER all hooks so hook order never changes between renders (fixes React #310).
-  const allowed = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+  const allowed = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
   if (!session?.user || !allowed.includes((session.user as { role?: string }).role || '')) {
     return (
       <div className="p-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>

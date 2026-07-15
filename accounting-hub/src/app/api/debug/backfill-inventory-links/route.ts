@@ -10,7 +10,7 @@ import { prisma } from '@/lib/prisma'
  * POST = apply fixes
  */
 
-const ADMIN_ROLES = ['ADMIN', 'SBEA_ADMIN']
+const ADMIN_ROLES = ['ADMIN', 'AHEA_ADMIN']
 
 export async function GET() {
   const session = await auth()
