@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   getFile, putFile, deleteFile, uploadDocumentBlob,
   getPaymentsForStudent, getWaivers, hydrateWaiverForStudent,
@@ -64,6 +64,10 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
 
   useEffect(() => { setStudent(studentProp) }, [studentProp])
 
+  // Bumps every time we finish hydrating payments so the badge
+  // re-runs currentPeriodPaymentStatusFor against fresh localStorage.
+  const [paymentsRev, setPaymentsRev] = useState(0)
+
   useEffect(() => {
     setPayments(getPaymentsForStudent(student.id))
     // First paint from this device's local cache so the card renders
@@ -88,6 +92,16 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
       const pdfExists = await hasServerWaiverPdf(student.id)
       if (!cancelled) setWaiverPdfOnServer(pdfExists)
     })
+    // Also pull the latest payments from the server on mount so the
+    // "Tuition paid / Due for <Month>" badge computes against fresh
+    // data — StudentListPanel already hydrates on mount, but a direct
+    // link to a profile (or a hard refresh here) would otherwise leave
+    // the badge running against stale localStorage.
+    void hydrateFrontDeskPayments().then(() => {
+      if (cancelled) return
+      setPayments(getPaymentsForStudent(student.id))
+      setPaymentsRev(r => r + 1)
+    })
     return () => { cancelled = true }
   }, [student.id, student.email])
 
@@ -100,7 +114,9 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
   //     student who paid June but not July shows DUE — matching the
   //     Students list — instead of the misleading "Tuition paid".
   const hasEverPaid = payments.some(p => p.status === 'PAID')
-  const currentPeriodStatus = currentPeriodPaymentStatusFor(student.id)
+  // Re-run when paymentsRev bumps (i.e., after we hydrate from server).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const currentPeriodStatus = useMemo(() => currentPeriodPaymentStatusFor(student.id), [student.id, paymentsRev, payments])
   const badgeClass = currentPeriodStatus === 'PAID' ? 'badge-paid'
     : currentPeriodStatus === 'DUE' ? 'badge-due'
     : 'badge-pending'
