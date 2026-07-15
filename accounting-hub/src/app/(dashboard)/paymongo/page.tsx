@@ -120,11 +120,11 @@ export default function PaymongoPage() {
         const or = await fetch('/api/pos/orders', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            orderType: 'SERVICE', branch, unpaid: true,
+            orderType: 'SERVICE', branch, unpaid: true, payments: [],
             revenueType: purpose === 'DOWNPAYMENT' ? 'UNEARNED' : 'EARNED',
             patientName: patientName || null, transactionDate: today(),
             notes: purposeLabel + ' via PayMongo',
-            items: lines.map(l => ({ serviceId: l.serviceId, name: l.name, quantity: 1, unitPrice: Number(l.amount) || 0, lineTotal: Number(l.amount) || 0 })),
+            items: lines.filter(l => (Number(l.amount) || 0) > 0).map(l => ({ serviceId: l.serviceId, name: l.name, quantity: 1, unitPrice: Number(l.amount) || 0, lineTotal: Number(l.amount) || 0 })),
           }),
         })
         const oj = await or.json()

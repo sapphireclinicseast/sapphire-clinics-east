@@ -352,7 +352,7 @@ export async function POST(req: Request) {
     // HMO: increment balance (accumulate charges as AR)
     // GL: decrement balance (use up the pre-set GL amount)
     const RECEIVABLE_METHODS = ['HMO', 'GL']
-    for (const p of payments) {
+    for (const p of (payments || [])) {
       if (RECEIVABLE_METHODS.includes(p.method) && p.walletId) {
         try {
           if (p.method === 'GL') {
