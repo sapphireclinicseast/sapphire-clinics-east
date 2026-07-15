@@ -20,7 +20,11 @@ import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import { downloadEnrollmentPdf, generateEnrollmentPdf } from '@/lib/enrollment-pdf'
 import { downloadRegistrationLetterPdf, openRegistrationLetterPdf } from '@/lib/registration-letter-pdf'
 import { downloadFeeSchedulePdf, openFeeSchedulePdf } from '@/lib/fee-schedule-pdf'
-import { fetchFeeSummary, issueRegistrationLetter, type FeeSummary, type IssuedRegistrationLetter } from '@/lib/session'
+import {
+  fetchFeeSummary, issueRegistrationLetter,
+  listPersonalVouchersFor, mintPersonalVoucher,
+  type FeeSummary, type IssuedRegistrationLetter, type PersonalVoucher,
+} from '@/lib/session'
 // Removed `generateAffidavitPdf` / `AffidavitInput` imports — the
 // admin-preview Annex 3 card was deleted (regenerated affidavit had
 // blank fields that confused users into thinking it was the official
@@ -362,6 +366,10 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
           {viewerRole === 'ADMIN' && (
             <FeeScheduleCard student={student} />
           )}
+          {/* Personal vouchers — student sees their own codes; admin
+              can mint a new one (e.g. the AURA30 early-bird
+              continuity code after the public code expired). */}
+          <PersonalVouchersCard student={student} viewerRole={viewerRole} />
           <StaffUploadedDocCard
             docKey="form_137_sf10"
             title="Form 137 / SF10"
@@ -1106,6 +1114,145 @@ function FeeScheduleCard({ student }: { student: StoredUser }) {
           {busy ? 'Loading…' : 'Download PDF'}
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Personal-vouchers card. Two audiences share the same widget:
+ *
+ * • STUDENT: sees their own dedicated codes with a copy-to-clipboard
+ *   affordance. Used to grab the code before heading to /pay.
+ *
+ * • ADMIN / FRONT DESK (viewer role = ADMIN in this component's terms):
+ *   sees the same list AND a "Issue AURA30 early-bird voucher" button
+ *   that mints a fresh 30% code tied to this student for the rest of
+ *   the school year. Powers the AURA30-post-expiry continuity workflow.
+ */
+function PersonalVouchersCard({ student, viewerRole }: { student: StoredUser; viewerRole: 'STUDENT' | 'TEACHER' | 'ADMIN' }) {
+  const [vouchers, setVouchers] = useState<PersonalVoucher[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [copiedCode, setCopiedCode] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void listPersonalVouchersFor(student.id).then(v => { if (!cancelled) setVouchers(v) })
+    return () => { cancelled = true }
+  }, [student.id])
+
+  // Teachers don't need to see this — it's a payment concern.
+  if (viewerRole === 'TEACHER') return null
+
+  async function handleIssue() {
+    if (busy) return
+    setErr(null); setBusy(true)
+    const res = await mintPersonalVoucher({ studentId: student.id, discountPercent: 30 })
+    if ('error' in res) {
+      setErr(res.error)
+    } else {
+      setVouchers(prev => [res, ...(prev ?? [])])
+    }
+    setBusy(false)
+  }
+
+  async function copyCode(code: string) {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopiedCode(code)
+      setTimeout(() => setCopiedCode(prev => prev === code ? null : prev), 2000)
+    } catch { /* clipboard blocked — the code is still visible */ }
+  }
+
+  const active = (vouchers ?? []).filter(v => v.enabled && new Date(v.validUntil).getTime() >= Date.now())
+  const expired = (vouchers ?? []).filter(v => !(v.enabled && new Date(v.validUntil).getTime() >= Date.now()))
+  const isLoading = vouchers === null
+  // Only render for admin viewers if there are none — this keeps the
+  // student view clean (no empty "You have no vouchers" card).
+  if (viewerRole === 'STUDENT' && !isLoading && active.length === 0 && expired.length === 0) return null
+
+  return (
+    <div className="rounded-2xl p-4 border sm:col-span-2" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Personal Vouchers
+          </div>
+          <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+            {viewerRole === 'STUDENT'
+              ? 'These codes are tied to this account. Paste them on the Pay tuition page (voucher / promo code field) to get the discount on your next installment.'
+              : 'Personalized voucher codes tied to this student only. Issue one for a monthly / bi-annual early-bird enrollee whose AURA30 public code has since expired.'}
+          </div>
+        </div>
+        {viewerRole === 'ADMIN' && (
+          <button
+            type="button"
+            className="btn-secondary text-xs whitespace-nowrap"
+            onClick={() => void handleIssue()}
+            disabled={busy}
+            title="Mints a fresh 30% code tied to this student, valid through May 31."
+          >
+            {busy ? 'Issuing…' : '+ Issue AURA30 early-bird voucher'}
+          </button>
+        )}
+      </div>
+
+      {err && (
+        <div className="mt-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12px] text-rose-800">{err}</div>
+      )}
+
+      {isLoading ? (
+        <div className="text-[12px] text-[color:var(--mid-gray)] mt-3 italic">Loading vouchers…</div>
+      ) : (active.length === 0 && expired.length === 0) ? (
+        <div className="text-[12px] text-[color:var(--mid-gray)] mt-3 italic">
+          {viewerRole === 'ADMIN' ? 'No personal vouchers issued yet.' : 'You have no personal vouchers.'}
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {active.map(v => {
+            const expiresLabel = new Date(v.validUntil).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+            return (
+              <div
+                key={v.id}
+                className="rounded-xl px-3 py-3 border flex items-center gap-3 flex-wrap"
+                style={{ borderColor: 'var(--sage)', background: 'var(--sage-tint)' }}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-[14px] font-bold text-[color:var(--deep-teal)] tracking-wide select-all break-all">
+                    {v.code}
+                  </div>
+                  <div className="text-[11.5px] text-[color:var(--ink)] mt-0.5">
+                    {v.discountPercent}% off tuition · valid until {expiresLabel}
+                    {v.issuedBy && viewerRole === 'ADMIN' && <> · issued by <span className="font-semibold">{v.issuedBy}</span></>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary text-xs whitespace-nowrap"
+                  onClick={() => void copyCode(v.code)}
+                >
+                  {copiedCode === v.code ? '✓ Copied' : 'Copy code'}
+                </button>
+              </div>
+            )
+          })}
+          {expired.length > 0 && (
+            <details className="mt-2">
+              <summary className="text-[12px] text-[color:var(--mid-gray)] cursor-pointer">
+                {expired.length} expired / disabled voucher{expired.length === 1 ? '' : 's'}
+              </summary>
+              <div className="mt-2 space-y-2">
+                {expired.map(v => (
+                  <div key={v.id} className="rounded-xl px-3 py-2 border text-[11.5px] text-[color:var(--mid-gray)]" style={{ borderColor: 'var(--paper-3)' }}>
+                    <span className="font-mono line-through">{v.code}</span>
+                    {' · '}{v.discountPercent}% off · expired {new Date(v.validUntil).toLocaleDateString()}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
     </div>
   )
 }

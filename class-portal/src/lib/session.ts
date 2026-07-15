@@ -1249,6 +1249,54 @@ export async function fetchFeeSummary(studentId: string): Promise<FeeSummary | n
   }
 }
 
+/**
+ * Personal (student-locked) voucher. Only redeemable by the student
+ * whose id matches dedicatedStudentId. Powers the "personal early-
+ * bird voucher" feature: after AURA30 expired, existing early-bird
+ * students each get their own dedicated code so their remaining
+ * monthly / bi-annual installments still get 30% off.
+ */
+export interface PersonalVoucher {
+  id: string
+  code: string
+  discountPercent: number
+  validUntil: string          // ISO
+  enabled: boolean
+  dedicatedStudentId: string
+  issuedAt: string            // ISO
+  issuedBy: string | null     // email of staff who minted it
+}
+
+export async function listPersonalVouchersFor(studentId: string): Promise<PersonalVoucher[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  try {
+    const { vouchers } = await backendJson<{ vouchers: PersonalVoucher[] }>(`/api/public/class-portal/students/${encodeURIComponent(studentId)}/personal-vouchers`)
+    return vouchers
+  } catch (e) {
+    console.warn('[listPersonalVouchersFor] failed:', e)
+    return []
+  }
+}
+
+export async function mintPersonalVoucher(args: {
+  studentId: string
+  discountPercent?: number     // default 30
+  validUntil?: string          // ISO; default end of SY
+}): Promise<PersonalVoucher | { error: string }> {
+  if (typeof window === 'undefined') return { error: 'server-side' }
+  if (!getToken()) return { error: 'not authenticated' }
+  try {
+    const { voucher } = await backendJson<{ voucher: PersonalVoucher }>('/api/public/class-portal/vouchers/mint-personal', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    })
+    return voucher
+  } catch (e) {
+    return { error: (e as Error).message || 'Could not mint voucher.' }
+  }
+}
+
 export interface IssuedRegistrationLetter {
   id: string
   referenceNumber: string             // AURA-REG-YYYY-NNNN
