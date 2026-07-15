@@ -1399,9 +1399,17 @@ model ClassPortalVoucher {
   discountPercent Int      @default(0) // 0–100
   validUntil      DateTime // last date the discount applies (inclusive)
   enabled         Boolean  @default(true)
+  /// When set, only this ClassPortalUser.id may validate/use this
+  /// voucher. Powers the "personal early-bird" vouchers issued to
+  /// individual monthly students after the public AURA30 code expired
+  /// — each of them keeps their 30% discount for the rest of the SY.
+  /// Null = public voucher (anyone with the code can use it).
+  dedicatedStudentId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   updatedBy       String?
+
+  @@index([dedicatedStudentId])
 }
 
 /// Admin-editable FAQ templates for the Sappy patient-portal chatbot.

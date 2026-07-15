@@ -26,7 +26,7 @@ function jsonError(origin: string | null, e: unknown): NextResponse {
 export async function POST(req: Request) {
   const origin = req.headers.get('origin')
   try {
-    await requireAuth(req)
+    const auth = await requireAuth(req)
     const body = await req.json().catch(() => ({})) as { code?: string }
     const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : ''
     if (!code) {
@@ -42,6 +42,15 @@ export async function POST(req: Request) {
     const validUntil = row.validUntil instanceof Date ? row.validUntil : new Date(row.validUntil)
     if (Date.now() > validUntil.getTime()) {
       return withCors(NextResponse.json({ valid: false, reason: 'This voucher has expired.' }), origin)
+    }
+
+    // Personal voucher gate — issued to a specific student, only that
+    // student may redeem it. This is how the post-AURA30-expiry personal
+    // early-bird vouchers stay locked to their intended recipient.
+    if (row.dedicatedStudentId) {
+      if (auth.role !== 'STUDENT' || auth.userId !== row.dedicatedStudentId) {
+        return withCors(NextResponse.json({ valid: false, reason: 'This voucher is personal to another student and cannot be used on this account.' }), origin)
+      }
     }
 
     return withCors(NextResponse.json({
