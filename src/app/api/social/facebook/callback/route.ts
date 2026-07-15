@@ -9,10 +9,17 @@ import {
   META_API_BASE,
 } from '@/lib/meta'
 
+// Use NEXTAUTH_URL as base for all redirects so they always go to the public
+// domain even when req.url sees the internal Docker address (0.0.0.0:3000).
+function appUrl(path: string) {
+  const base = process.env.NEXTAUTH_URL || 'https://operations.sapphireclinicseast.org'
+  return new URL(path, base)
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) {
-    return NextResponse.redirect(new URL('/login', req.url))
+    return NextResponse.redirect(appUrl('/login'))
   }
 
   const { searchParams } = new URL(req.url)
@@ -26,13 +33,13 @@ export async function GET(req: NextRequest) {
       ? 'You cancelled the Facebook connection.'
       : `Facebook error: ${error}`
     return NextResponse.redirect(
-      new URL(`/settings/accounts?fb_error=${encodeURIComponent(msg)}`, req.url)
+      appUrl(`/settings/accounts?fb_error=${encodeURIComponent(msg)}`)
     )
   }
 
   if (!code || !state) {
     return NextResponse.redirect(
-      new URL('/settings/accounts?fb_error=missing_code', req.url)
+      appUrl('/settings/accounts?fb_error=missing_code')
     )
   }
 
@@ -43,7 +50,7 @@ export async function GET(req: NextRequest) {
 
   if (!savedState || savedState !== state) {
     return NextResponse.redirect(
-      new URL('/settings/accounts?fb_error=invalid_state', req.url)
+      appUrl('/settings/accounts?fb_error=invalid_state')
     )
   }
 
@@ -65,7 +72,7 @@ export async function GET(req: NextRequest) {
     if (!tokenRes.ok || !tokenData.access_token) {
       console.error('Facebook code exchange error:', tokenData)
       return NextResponse.redirect(
-        new URL(`/settings/accounts?fb_error=${encodeURIComponent(tokenData.error?.message ?? 'token_exchange_failed')}`, req.url)
+        appUrl(`/settings/accounts?fb_error=${encodeURIComponent(tokenData.error?.message ?? 'token_exchange_failed')}`)
       )
     }
 
@@ -162,13 +169,9 @@ export async function GET(req: NextRequest) {
     }
 
     const summary = `${fbAdded}fb${igAdded}ig`
-    return NextResponse.redirect(
-      new URL(`/settings/accounts?fb_connected=${summary}`, req.url)
-    )
+    return NextResponse.redirect(appUrl(`/settings/accounts?fb_connected=${summary}`))
   } catch (err) {
     console.error('Facebook OAuth callback error:', err)
-    return NextResponse.redirect(
-      new URL('/settings/accounts?fb_error=unexpected_error', req.url)
-    )
+    return NextResponse.redirect(appUrl('/settings/accounts?fb_error=unexpected_error'))
   }
 }

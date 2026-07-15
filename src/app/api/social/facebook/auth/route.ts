@@ -18,7 +18,8 @@ export async function GET() {
   const appId = process.env.META_APP_ID
   if (!appId) return NextResponse.json({ error: 'META_APP_ID not configured' }, { status: 500 })
 
-  const redirectUri = `${process.env.NEXTAUTH_URL}/api/social/facebook/callback`
+  const baseUrl = process.env.NEXTAUTH_URL || 'https://operations.sapphireclinicseast.org'
+  const redirectUri = `${baseUrl}/api/social/facebook/callback`
   const state = crypto.randomUUID()
 
   // Store state in cookie to prevent CSRF
