@@ -84,6 +84,12 @@ export async function retrieveCheckout(id: string): Promise<any> {
   return (await pmFetch(`/checkout_sessions/${id}`)).data
 }
 
+// Expire a checkout session so its link can no longer be paid. Best-effort:
+// PayMongo rejects expiring an already-paid/expired session — callers ignore that.
+export async function expireCheckout(id: string): Promise<void> {
+  await pmFetch(`/checkout_sessions/${id}/expire`, { method: 'POST' })
+}
+
 // Normalise a PayMongo payment resource → PHP amount / fee / net.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function parsePayment(p: any): { paymentId: string; amountPhp: number; feePhp: number; netPhp: number; status: string; paidAt: Date | null } {

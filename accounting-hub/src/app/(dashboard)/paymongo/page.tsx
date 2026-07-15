@@ -184,6 +184,15 @@ export default function PaymongoPage() {
     } finally { setPayoutBusy(false) }
   }
 
+  const deleteLink = async (t: Txn) => {
+    if (t.status === 'PAID') { alert('This link is already paid — void the POS order instead.'); return }
+    if (!confirm(`Delete this ${t.status.toLowerCase()} payment link${t.description ? ` — ${t.description}` : ''}? The link is expired so it can no longer be paid, and its unpaid order is voided.`)) return
+    const r = await fetch(`/api/pos/paymongo/checkout?id=${encodeURIComponent(t.id)}`, { method: 'DELETE' })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) { alert(j.error || 'Failed to delete'); return }
+    load(); loadPayouts()
+  }
+
   const settlePayout = async () => {
     if (!bankId) { alert('Select the bank account the payout landed in.'); return }
     if (!unsettled.length) { alert('Nothing to reconcile.'); return }
@@ -434,7 +443,10 @@ export default function PaymongoPage() {
                 <td className="px-3 py-2 text-right font-mono" style={{ color: '#d97706' }}>{t.fee != null ? peso(t.fee) : '—'}</td>
                 <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{t.netAmount != null ? peso(t.netAmount) : '—'}</td>
                 <td className="px-3 py-2">{statusBadge(t.status)}{t.livemode ? '' : <span className="ml-1 text-[9px]" style={{ color: 'var(--mid-gray)' }}>test</span>}</td>
-                <td className="px-3 py-2 text-right whitespace-nowrap">{t.status === 'PENDING' && t.checkoutUrl && <a href={t.checkoutUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold" style={{ color: 'var(--teal)' }}>Open →</a>}</td>
+                <td className="px-3 py-2 text-right whitespace-nowrap">
+                  {t.status === 'PENDING' && t.checkoutUrl && <a href={t.checkoutUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold" style={{ color: 'var(--teal)' }}>Open →</a>}
+                  {t.status !== 'PAID' && <button onClick={() => deleteLink(t)} className="ml-2 text-[11px] font-semibold" style={{ color: '#b91c1c' }}>Delete</button>}
+                </td>
               </tr>
             ))}
           {!loading && txns.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-gray-400">No PayMongo transactions yet.</td></tr>}
