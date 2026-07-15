@@ -161,7 +161,7 @@ function TrackFlowchart() {
   )
   const arr = { stroke: '#9aa8a0', strokeWidth: 1.4, fill: 'none', markerEnd: 'url(#ugatArrow)' }
   return (
-    <svg className={s.flowSvg} viewBox="0 0 720 692" role="img" aria-label="The two UGAT track paths: apply, receive a condonable loan, complete internship or review, pass the licensure exam, then either render 1,500 patient-session hours to condone the loan (Option A) or repay the principal plus a flat 10% interest (Option B).">
+    <svg className={s.flowSvg} viewBox="0 0 720 692" role="img" aria-label="The two UGAT track paths: apply, receive a forgivable loan, complete internship or review, pass the licensure exam, then either render 1,500 patient-session hours to have the loan forgiven (Option A) or repay the principal plus a flat 10% interest (Option B).">
       <defs>
         <marker id="ugatArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M2 1L8 5L2 9" fill="none" stroke="#9aa8a0" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
@@ -185,12 +185,12 @@ function TrackFlowchart() {
       <path d="M540 320 L540 342 L360 342 L360 360" {...arr} />
       <Node x={210} y={360} w={300} h={56} c={SH} title="Licensure exam" sub="pass the PRC board" />
       <line x1={360} y1={416} x2={360} y2={452} {...arr} />
-      <Node x={180} y={452} w={360} h={56} c={SH} title="Discharge the loan — pick one" sub="the loan is fully condonable" />
+      <Node x={180} y={452} w={360} h={56} c={SH} title="Discharge the loan — pick one" sub="the loan can be forgiven" />
       <path d="M360 508 L360 534 L180 534 L180 556" {...arr} />
       <path d="M360 508 L360 534 L540 534 L540 556" {...arr} />
-      <text x={262} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>condone it</text>
+      <text x={262} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>work it off</text>
       <text x={452} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>or repay it</text>
-      <Node x={30} y={556} w={300} h={60} c={GREEN} title="Option A — render service" sub="1,500 patient-session hrs → condoned" />
+      <Node x={30} y={556} w={300} h={60} c={GREEN} title="Option A — render service" sub="1,500 patient-session hrs → loan forgiven" />
       <Node x={390} y={556} w={300} h={60} c={GOLD} title="Option B — repay in cash" sub="principal + flat 10%" />
       <text x={180} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ fully paid at market rate; pay nothing</text>
       <text x={540} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ 6 mos (Aral) / 3 mos (Tindig)</text>
@@ -209,7 +209,7 @@ function AboutUs() {
             The <b>UGAT Fellowship Program</b> is a fellowship for aspiring
             Allied Health Professionals — Speech-Language Pathology and Occupational Therapy — offered
             in two tracks: the <b>Aral Track</b> for final-year interns and the <b>Tindig Track</b> for
-            graduates preparing for the licensure exam. It is structured as a <b>fully condonable fellowship loan</b> —
+            graduates preparing for the licensure exam. It is structured as a <b>fully forgivable fellowship loan</b> —
             one you never have to repay in cash if you begin your career with us — walking with you from
             training and review all the way into your first years as a licensed professional.
           </p>
@@ -218,9 +218,9 @@ function AboutUs() {
         <img className={s.aboutHeroMark} src="/ugat/ugat-mark.svg" alt="" aria-hidden="true" />
       </div>
       <div className={s.aboutGrid}>
-        <div className={s.aboutCard}><h3>A fully condonable loan</h3><p><b>Aral Track</b> (final-year interns): a fellowship loan released as a monthly allowance of <b>₱5,000 or ₱10,000</b> for 5–10 months. <b>Tindig Track</b> (graduates): a <b>₱30,000</b> review-support loan toward your licensure — review fees, or ₱5,000/month for six months. In both tracks the loan is <b>fully condonable</b>: render <b>1,500 patient-session hours</b> of service with us after licensure and it is written off in full — you pay nothing.</p></div>
+        <div className={s.aboutCard}><h3>A fully forgivable loan</h3><p><b>Aral Track</b> (final-year interns): a fellowship loan released as a monthly allowance of <b>₱5,000 or ₱10,000</b> for 5–10 months. <b>Tindig Track</b> (graduates): a <b>₱30,000</b> review-support loan toward your licensure — review fees, or ₱5,000/month for six months. In both tracks the loan is <b>fully forgivable</b>: render <b>1,500 patient-session hours</b> of service with us after licensure and it is written off in full — you pay nothing.</p></div>
         <div className={s.aboutCard}><h3>Mentorship at Aura Health Rehab</h3><p>Upon receiving your license, you will receive additional mentorship training alongside our senior therapists across Aura Health Rehab&rsquo;s <b>East</b> and <b>Greenhills</b> branches — real caseloads, real supervision, and a team invested in your craft (<i>galing</i>).</p></div>
-        <div className={s.aboutCard}><h3>Two ways to settle — one costs nothing</h3><p>After licensure you choose: <b>Option A</b> — render 1,500 patient-session hours as a fully-compensated clinician at Aura, and the entire loan (principal and interest) is <b>condoned</b>, so you pay nothing; or <b>Option B</b> — repay the principal in equal monthly installments with a flat 10% interest. Rendering service is never compelled — it&rsquo;s simply the path designed to cost you nothing.</p></div>
+        <div className={s.aboutCard}><h3>Two ways to settle — one costs nothing</h3><p>After licensure you choose: <b>Option A</b> — render 1,500 patient-session hours as a fully-compensated clinician at Aura, and the entire loan (principal and interest) is <b>forgiven</b>, so you pay nothing; or <b>Option B</b> — repay the principal in equal monthly installments with a flat 10% interest. Rendering service is never compelled — it&rsquo;s simply the path designed to cost you nothing.</p></div>
         <div className={s.aboutCard}><h3>Values that stay grounded</h3><p>Much like strong roots (<i>ugat</i>), we hope our fellows stay grounded in their values as they grow — pursuing excellence (<i>galing</i>), upholding integrity (<i>tindig</i>), and giving back through service (<i>paglilingkod</i>).</p></div>
       </div>
       <div className={s.aboutNote}>
@@ -228,7 +228,7 @@ function AboutUs() {
         <ol className={s.aboutSteps}>
           <li><b>Aral Track</b> — for qualified final-year SLP and OT interns, coursed through your University; a fellowship loan, released as a monthly allowance, supports you through your internship.</li>
           <li><b>Tindig Track</b> — for graduates who&rsquo;ve completed their internship and are preparing for the licensure exam; a review-support loan (applied for directly to SCEI) covers review fees or a monthly review stipend.</li>
-          <li>Upon licensure you settle the loan one of two ways: <b>Option A</b> — render 1,500 clinical hours at Aura as a fully-paid professional and the loan is <b>condoned in full</b> (you pay nothing, and receive a Certificate of Full Condonation); or <b>Option B</b> — repay the principal in monthly installments with a flat 10% interest.</li>
+          <li>Upon licensure you settle the loan one of two ways: <b>Option A</b> — render 1,500 clinical hours at Aura as a fully-paid professional and the loan is <b>forgiven in full</b> (you pay nothing, and receive a certificate that it&rsquo;s fully written off); or <b>Option B</b> — repay the principal in monthly installments with a flat 10% interest.</li>
           <li>Fellows are also expected to <b>actively participate in &ldquo;Araw ng Kalinga&rdquo;</b> — a one-day annual event by Sapphire Clinics East, Inc. that provides free therapy screening and medical services in partnership with a local government unit (LGU) or NGO, as our shared opportunity to give back to the community (<i>paglilingkod</i>).</li>
           <li>Handled with fairness and compassion, consistent with the <b>Data Privacy Act of 2012</b>.</li>
         </ol>
@@ -739,11 +739,11 @@ function RSAText({ track, name, program, school, monthly, months }: { track?: st
   return (
     <div className={s.rsaDoc}>
       <h4>Fellowship Loan Agreement</h4>
-      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · fully condonable through service</p>
+      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · fully forgivable through service</p>
       <div className={s.rsaAward}>
         {isTindig
-          ? <>Your award is a <b>review-support loan of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months). It is <b>fully condonable — you pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you repay the principal in <b>3 monthly installments</b> with a <b>flat 10% interest</b> (Option B).</>
-          : <>Your award is a fellowship <b>loan</b> released as <b>{m && n ? `₱${m.toLocaleString()} / month for ${n} months` : 'a monthly allowance'}</b>{total ? <> (principal ≈ <b>₱{total.toLocaleString()}</b>)</> : ''}. It is <b>fully condonable — you pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you repay the principal in <b>6 monthly installments</b> with a <b>flat 10% interest</b> (Option B).</>}
+          ? <>Your award is a <b>review-support loan of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months). It is <b>fully forgivable — you pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you repay the principal in <b>3 monthly installments</b> with a <b>flat 10% interest</b> (Option B).</>
+          : <>Your award is a fellowship <b>loan</b> released as <b>{m && n ? `₱${m.toLocaleString()} / month for ${n} months` : 'a monthly allowance'}</b>{total ? <> (principal ≈ <b>₱{total.toLocaleString()}</b>)</> : ''}. It is <b>fully forgivable — you pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you repay the principal in <b>6 monthly installments</b> with a <b>flat 10% interest</b> (Option B).</>}
       </div>
       <div className={s.rsaScroll}>
         {blocks.map((b, i) =>
