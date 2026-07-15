@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 }
 
 // Canonical public URL attendees land on when they scan the QR at the booth.
-const GAME_URL = 'https://marketing.sapphireclinicseast.org/games'
+const GAME_URL = 'https://operations.sapphireclinicseast.org/games'
 
 export default async function GamesPage() {
   // Render the booth QR server-side so the client bundle stays lean and the

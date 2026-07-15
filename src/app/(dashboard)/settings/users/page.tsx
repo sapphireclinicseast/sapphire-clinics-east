@@ -126,7 +126,7 @@ export default function UsersPage() {
           Team Members
         </h1>
         <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-          Add and manage users who can access the Sapphire Marketing Hub.
+          Add and manage users who can access the Sapphire Operations Hub.
         </p>
       </div>
 

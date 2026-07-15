@@ -8,7 +8,7 @@ const EMAIL_BODY = (name: string, code: string) =>
   [
     `Hi ${name},`,
     '',
-    'You requested a password reset for your Sapphire Marketing Hub account.',
+    'You requested a password reset for your Sapphire Operations Hub account.',
     '',
     `Your reset code is:  ${code}`,
     '',
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       const { data, error } = await resend.emails.send({
         from: 'Sapphire Clinics East <noreply@do-not-reply.sapphireclinicseast.org>',
         to: [email],
-        subject: 'Password Reset Code — Sapphire Marketing Hub',
+        subject: 'Password Reset Code — Sapphire Operations Hub',
         text: body,
       })
       if (error) throw new Error(error.message)
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     if (gmailAcct) {
       const raw = makeEmailBody(
         email,
-        'Password Reset Code — Sapphire Marketing Hub',
+        'Password Reset Code — Sapphire Operations Hub',
         body,
         gmailAcct.email
       )
