@@ -1,4 +1,4 @@
-// The accepted fellow's Return Service Agreement signing (Part III).
+// The accepted fellow's Fellowship Loan Agreement signing (Part III).
 //   GET  → { acceptance, uploadKinds, deadlines }
 //   PUT  → save co-maker draft (partial)
 //   POST → submit signed soft copy (validates co-maker + IDs + signature)
@@ -149,7 +149,7 @@ export async function POST(req: Request) {
       })
       if (pdf) {
         await prisma.ugatUpload.deleteMany({ where: { scholarId: c.scholarId, kind: 'RSA_PDF' } })
-        await prisma.ugatUpload.create({ data: { scholarId: c.scholarId, kind: 'RSA_PDF', filename: 'UGAT-Return-Service-Agreement-Signed.pdf', mimeType: 'application/pdf', data: pdf } })
+        await prisma.ugatUpload.create({ data: { scholarId: c.scholarId, kind: 'RSA_PDF', filename: 'UGAT-Fellowship-Loan-Agreement-Signed.pdf', mimeType: 'application/pdf', data: pdf } })
         const emails = [...new Set([sch.personalEmail, sch.professionalEmail].filter(Boolean))]
         if (emails.length) {
           try { await sendUgatSignedRsaEmail({ to: emails, firstName: sch.firstName, track: sch.track, pdf }) }
