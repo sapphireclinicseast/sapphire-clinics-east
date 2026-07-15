@@ -154,29 +154,30 @@ function AboutUs() {
             The <b>UGAT Fellowship Program</b> is a fellowship for aspiring
             Allied Health Professionals — Speech-Language Pathology and Occupational Therapy — offered
             in two tracks: the <b>Aral Track</b> for final-year interns and the <b>Tindig Track</b> for
-            graduates preparing for the licensure exam. It walks with you from training and review all the
-            way into your first years as a licensed professional.
+            graduates preparing for the licensure exam. It is structured as a <b>fully condonable fellowship loan</b> —
+            one you never have to repay in cash if you begin your career with us — walking with you from
+            training and review all the way into your first years as a licensed professional.
           </p>
         </div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className={s.aboutHeroMark} src="/ugat/ugat-mark.svg" alt="" aria-hidden="true" />
       </div>
       <div className={s.aboutGrid}>
-        <div className={s.aboutCard}><h3>Two tracks of support</h3><p><b>Aral Track</b> (final-year interns): a monthly allowance of <b>₱5,000 or ₱10,000</b> for up to ten months during your internship. <b>Tindig Track</b> (graduates): a <b>₱30,000</b> review-support grant toward your licensure — review fees, or ₱5,000/month for six months. Every fellow, in either track, renders the same <b>1,500 hours</b> of return service after licensure.</p></div>
+        <div className={s.aboutCard}><h3>A fully condonable loan</h3><p><b>Aral Track</b> (final-year interns): a fellowship loan released as a monthly allowance of <b>₱5,000 or ₱10,000</b> for 5–10 months. <b>Tindig Track</b> (graduates): a <b>₱30,000</b> review-support loan toward your licensure — review fees, or ₱5,000/month for six months. In both tracks the loan is <b>fully condonable</b>: render <b>1,500 hours</b> of service with us after licensure and it is written off in full — you pay nothing.</p></div>
         <div className={s.aboutCard}><h3>Mentorship at Aura Health Rehab</h3><p>Upon receiving your license, you will receive additional mentorship training alongside our senior therapists across Aura Health Rehab&rsquo;s <b>East</b> and <b>Greenhills</b> branches — real caseloads, real supervision, and a team invested in your craft (<i>galing</i>).</p></div>
-        <div className={s.aboutCard}><h3>A guaranteed runway into your career</h3><p>After you pass your licensure, you give back through <b>return service</b> — practicing as a fully-compensated licensed clinician at Aura. It&rsquo;s not a deduction; it&rsquo;s a head start: a place waiting for you the day you become licensed.</p></div>
+        <div className={s.aboutCard}><h3>Two ways to settle — one costs nothing</h3><p>After licensure you choose: <b>Option A</b> — render 1,500 hours as a fully-compensated clinician at Aura, and the entire loan (principal and interest) is <b>condoned</b>, so you pay nothing; or <b>Option B</b> — repay the principal in equal monthly installments with a flat 10% interest. Rendering service is never compelled — it&rsquo;s simply the path designed to cost you nothing.</p></div>
         <div className={s.aboutCard}><h3>Values that stay grounded</h3><p>Much like strong roots (<i>ugat</i>), we hope our fellows stay grounded in their values as they grow — pursuing excellence (<i>galing</i>), upholding integrity (<i>tindig</i>), and giving back through service (<i>paglilingkod</i>).</p></div>
       </div>
       <div className={s.aboutNote}>
         <h3>How the fellowship works</h3>
         <ol className={s.aboutSteps}>
-          <li><b>Aral Track</b> — for qualified final-year SLP and OT interns, coursed through your University; a monthly allowance supports you through your internship.</li>
-          <li><b>Tindig Track</b> — for graduates who&rsquo;ve completed their internship and are preparing for the licensure exam; a review-support grant (applied for directly to SCEI) covers review fees or a monthly review stipend.</li>
-          <li>Upon licensure, every fellow renders return-service clinical hours at Aura as a licensed, fully-paid professional — with a Certificate of Completion and the option to stay on.</li>
+          <li><b>Aral Track</b> — for qualified final-year SLP and OT interns, coursed through your University; a fellowship loan, released as a monthly allowance, supports you through your internship.</li>
+          <li><b>Tindig Track</b> — for graduates who&rsquo;ve completed their internship and are preparing for the licensure exam; a review-support loan (applied for directly to SCEI) covers review fees or a monthly review stipend.</li>
+          <li>Upon licensure you settle the loan one of two ways: <b>Option A</b> — render 1,500 clinical hours at Aura as a fully-paid professional and the loan is <b>condoned in full</b> (you pay nothing, and receive a Certificate of Full Condonation); or <b>Option B</b> — repay the principal in monthly installments with a flat 10% interest.</li>
           <li>Fellows are also expected to <b>actively participate in &ldquo;Araw ng Kalinga&rdquo;</b> — a one-day annual event by Sapphire Clinics East, Inc. that provides free therapy screening and medical services in partnership with a local government unit (LGU) or NGO, as our shared opportunity to give back to the community (<i>paglilingkod</i>).</li>
           <li>Handled with fairness and compassion, consistent with the <b>Data Privacy Act of 2012</b>.</li>
         </ol>
-        <p className={s.aboutTimeline}><b>Applications</b> accepted January–April · <b>deliberations</b> May–June · <b>scholars announced</b> July. Extensions are usually announced.</p>
+        <p className={s.aboutTimeline}><b>Applications</b> accepted January–April · <b>deliberations</b> May–June · <b>fellows announced</b> July. Extensions are usually announced.</p>
       </div>
       <div className={s.aboutPartner}>Interested to have your school partner with us for accepting fellows for Speech-Language Pathology or Occupational Therapy? Contact us at <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>.</div>
     </div>
@@ -682,8 +683,8 @@ function RSAText({ track, name, program, school, monthly, months }: { track?: st
       <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · fully condonable through service</p>
       <div className={s.rsaAward}>
         {isTindig
-          ? <>Your award is a <b>review-support loan of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months). It is <b>fully condonable — you pay nothing</b> if you render 1,500 hours of service with SCEI after licensure (Option A). Otherwise you simply repay the principal plus 10% p.a. over 3 months (Option B).</>
-          : <>Your award is a fellowship <b>loan</b> released as <b>{m && n ? `₱${m.toLocaleString()} / month for ${n} months` : 'a monthly allowance'}</b>{total ? <> (principal ≈ <b>₱{total.toLocaleString()}</b>)</> : ''}. It is <b>fully condonable — you pay nothing</b> if you render 1,500 hours of service with SCEI after licensure (Option A). Otherwise you simply repay the principal plus 10% p.a. over 3–6 months (Option B).</>}
+          ? <>Your award is a <b>review-support loan of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months). It is <b>fully condonable — you pay nothing</b> if you render 1,500 hours of service with SCEI after licensure (Option A). Otherwise you repay the principal in <b>3 monthly installments</b> with a <b>flat 10% interest</b> (Option B).</>
+          : <>Your award is a fellowship <b>loan</b> released as <b>{m && n ? `₱${m.toLocaleString()} / month for ${n} months` : 'a monthly allowance'}</b>{total ? <> (principal ≈ <b>₱{total.toLocaleString()}</b>)</> : ''}. It is <b>fully condonable — you pay nothing</b> if you render 1,500 hours of service with SCEI after licensure (Option A). Otherwise you repay the principal in <b>6 monthly installments</b> with a <b>flat 10% interest</b> (Option B).</>}
       </div>
       <div className={s.rsaScroll}>
         {blocks.map((b, i) =>

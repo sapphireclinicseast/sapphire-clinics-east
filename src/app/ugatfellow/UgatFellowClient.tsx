@@ -206,7 +206,7 @@ export default function UgatFellowClient() {
               {/* Program info for mobile (left panel is hidden < 900px). */}
               <div className={s.mobileProgram}>
                 <p className={s.mobileProgramDesc}>
-                  The UGAT Fellowship Program provides a monthly stipend to Allied Health
+                  The UGAT Fellowship Program is a fully condonable fellowship loan for Allied Health
                   Professionals in their final year of university — helping fellows stay
                   grounded in their values (<i>ugat</i>) as they pursue excellence
                   (<i>galing</i>), integrity (<i>tindig</i>), and service (<i>paglilingkod</i>).
@@ -247,7 +247,7 @@ function LeftPanel() {
         <h1 className={s.leftTitle}>Rooted in values.<br />Growing in service.</h1>
         <p className={s.leftTagline}>A fellowship for the next generation of Allied Health Professionals.</p>
         <p className={s.leftDesc}>
-          The UGAT Fellowship Program provides a monthly stipend to Allied Health
+          The UGAT Fellowship Program is a fully condonable fellowship loan for Allied Health
           Professionals in their final year of university. Much like strong roots
           (<i>ugat</i>), we hope our fellows stay firmly grounded in their values even
           as they grow — pursuing excellence (<i>galing</i>) in their craft, upholding
@@ -656,7 +656,7 @@ function PrivacyStrip() {
 const FAQS: { q: string; a: React.ReactNode }[] = [
   {
     q: 'What is the difference between the Aral Track and the Tindig Track?',
-    a: <>The fellowship has two tracks. The <b>Aral Track</b> is for <b>final-year interns</b> still undergoing their clinical internship — it provides a monthly allowance (₱5,000 or ₱10,000) for up to ten months. The <b>Tindig Track</b> is for <b>graduates preparing for the Licensure Examination</b> who have completed their internship and were not Aral awardees — it provides a ₱30,000 review-support grant (review fees, or ₱5,000/month for six months). Both tracks share the same 1,500-hour return service after you are licensed. When you apply, you&rsquo;ll first choose the track that fits you.</>,
+    a: <>The fellowship has two tracks. The <b>Aral Track</b> is for <b>final-year interns</b> still undergoing their clinical internship — a fellowship loan released as a monthly allowance (₱5,000 or ₱10,000) for 5–10 months. The <b>Tindig Track</b> is for <b>graduates preparing for the Licensure Examination</b> who have completed their internship and were not Aral awardees — a ₱30,000 review-support loan (review fees, or ₱5,000/month for six months). In both tracks the loan is <b>fully condonable</b>: after you are licensed, render <b>1,500 hours</b> of service with us and it is written off in full — you pay nothing. When you apply, you&rsquo;ll first choose the track that fits you.</>,
   },
   {
     q: 'I am not yet in my final year of college. Can I apply?',
@@ -668,19 +668,19 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: 'What happens if I am unable to complete my internship?',
-    a: <>If you cannot continue or complete your clinical internship for any reason, your monthly allowance simply stops as of that date. Because you would not yet proceed to licensure and render your return service, you (together with your co-maker) would reimburse the allowance actually received up to that point, plus an <b>8% surcharge</b>, within <b>90 days</b>. Full reimbursement completely and finally settles the agreement, with no further obligation on either side. SCEI handles each case fairly and with compassion, and may waive, reduce, or restructure this — especially in cases of serious illness, a death in the immediate family, or other circumstances beyond your control.</>,
+    a: <>If you cannot continue or complete your clinical internship for any reason, your monthly allowance simply stops as of that date. Because you would not yet proceed to licensure, you (together with your co-maker) would repay the <b>principal actually received</b> up to that point — in equal monthly installments with a <b>flat 10% interest</b> — commencing <b>90 days</b> from discontinuance. Full payment completely and finally settles the agreement, with no further obligation on either side. SCEI handles each case fairly and with compassion, and may waive, reduce, or restructure this — especially in cases of serious illness, a death in the immediate family, or other circumstances beyond your control — and may, once you are licensed, let you condone the balance through service instead.</>,
   },
   {
     q: 'Does the fellowship require a co-maker?',
-    a: <>Yes. A <b>co-maker</b> is a parent or guardian, of legal age, who co-signs your Return Service Agreement and agrees to be <b>jointly and severally liable</b> with you for any monetary obligations that may arise under it — for example, a reimbursement or cash buyout, together with any surcharge or penalty — should you be unable to fulfill the fellowship&rsquo;s terms. In practice, the co-maker is a trusted family member who stands with you in your commitment.</>,
+    a: <>Yes. A <b>co-maker</b> is a parent or guardian, of legal age, who co-signs your <b>Fellowship Loan Agreement</b> and agrees to be <b>jointly and severally liable</b> with you for any monetary obligations that may arise under it — for example, repayment of the loan (principal plus interest) and the 5% default penalty — should you be unable to fulfill the terms. In practice, the co-maker is a trusted family member who stands with you in your commitment. If you condone the loan through service, the co-maker&rsquo;s liability is extinguished along with yours — nothing is owed.</>,
   },
   {
     q: 'Do I have obligations after availing of the fellowship?',
-    a: <>Yes. In return for the fellowship, you render a <b>return service of 1,500 hours of patient sessions</b> at our partner, the <b>Aura Health Rehab</b> clinics. This begins within <b>60 days</b> after you receive your professional license. Because the service is rendered on-site, please make sure you are able to reach and work at Aura Health Rehab&rsquo;s clinic locations.</>,
+    a: <>After you are licensed, you settle the loan one of two ways. <b>Option A — Service Condonation:</b> render <b>1,500 hours</b> of patient sessions at <b>Aura Health Rehab</b> as a fully-compensated licensed clinician (beginning within <b>60 days</b> of receiving your license) and the entire loan is <b>condoned</b> — you pay nothing. <b>Option B — Cash Repayment:</b> repay the principal in equal monthly installments with a flat 10% interest. Service is never compelled; Option A is simply the path designed to cost you nothing. Because service is rendered on-site, please make sure you can reach and work at Aura Health Rehab&rsquo;s clinic locations.</>,
   },
   {
     q: 'If I render service at the accredited partner clinics, is my professional compensation deducted?',
-    a: <>No. Your return service is fulfilled through the <b>hours you actually work — not through any salary deduction</b>, and you are fully and separately compensated for that work. In practice, you simply report for your regular clinical schedule (about five days a week) at an accredited partner clinic until the 1,500 hours are completed. <br /><br />As a rough estimate, at about <b>six patient sessions a day, five days a week</b> — roughly 30 hours a week, or about 130 hours a month — you would complete the 1,500 hours in approximately <b>11 to 12 months</b> (a little under a year). Your actual pace depends on your caseload and schedule.</>,
+    a: <>No. Under Option A, the service is fulfilled through the <b>hours you actually work — not through any salary deduction</b>, and you are fully and separately compensated for that work. In practice, you simply report for your regular clinical schedule (about five days a week) at an accredited partner clinic until the 1,500 hours are completed. <br /><br />As a rough estimate, at about <b>six patient sessions a day, five days a week</b> — roughly 30 hours a week, or about 130 hours a month — you would complete the 1,500 hours in approximately <b>11 to 12 months</b> (a little under a year). Your actual pace depends on your caseload and schedule.</>,
   },
   {
     q: 'When does the stipend start to be released?',
