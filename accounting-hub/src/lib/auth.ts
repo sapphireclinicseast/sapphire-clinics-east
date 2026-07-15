@@ -20,6 +20,21 @@ declare module 'next-auth' {
   }
 }
 
+// Backward-compat: the SBEA/SBGH branch roles were renamed to AHEA/AHGH. Sessions
+// (JWTs) minted before the rename still carry the old value, which no longer matches
+// any role check → spurious "Insufficient permissions". Migrate them on the fly so
+// lingering sessions keep working without a forced re-login.
+const LEGACY_ROLE_ALIASES: Record<string, string> = {
+  SBEA_ADMIN: 'AHEA_ADMIN',
+  SBGH_ADMIN: 'AHGH_ADMIN',
+  SBEA_FRONTDESK: 'AHEA_FRONTDESK',
+  SBGH_FRONTDESK: 'AHGH_FRONTDESK',
+  SBEA_FRONT_DESK: 'AHEA_FRONTDESK',
+  SBGH_FRONT_DESK: 'AHGH_FRONTDESK',
+}
+const normalizeRole = (r?: string | null): string | null | undefined =>
+  (r && LEGACY_ROLE_ALIASES[r]) || r
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   session: { strategy: 'jwt' },
@@ -85,12 +100,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role
         token.branch = user.branch
       }
+      // Migrate any legacy branch role stored in an existing token.
+      if (token.role) token.role = normalizeRole(token.role as string)
       return token
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string
-        session.user.role = token.role as string
+        session.user.role = normalizeRole(token.role as string) as string
         session.user.branch = (token.branch as string) ?? null
       }
       return session
