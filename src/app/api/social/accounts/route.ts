@@ -6,6 +6,7 @@ import {
   getInstagramAccountForPage,
   exchangeForLongLivedToken,
   verifyToken,
+  META_API_BASE,
 } from '@/lib/meta'
 
 // GET — list all connected social accounts
@@ -152,6 +153,56 @@ export async function POST(req: NextRequest) {
     fbAdded,
     igAdded,
   })
+}
+
+// PATCH — sync page names from Facebook/Instagram Graph API
+export async function PATCH() {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const accounts = await prisma.socialAccount.findMany()
+  let updated = 0
+
+  await Promise.all(
+    accounts.map(async (account) => {
+      try {
+        if (account.platform === 'FACEBOOK') {
+          const res = await fetch(
+            `${META_API_BASE}/${account.accountId}?fields=name&access_token=${account.accessToken}`
+          )
+          if (!res.ok) return
+          const data = await res.json()
+          if (data.name && data.name !== account.pageName) {
+            await prisma.socialAccount.update({
+              where: { id: account.id },
+              data: { pageName: data.name, updatedAt: new Date() },
+            })
+            updated++
+          }
+        } else if (account.platform === 'INSTAGRAM') {
+          const res = await fetch(
+            `${META_API_BASE}/${account.accountId}?fields=username&access_token=${account.accessToken}`
+          )
+          if (!res.ok) return
+          const data = await res.json()
+          if (data.username) {
+            const newName = `@${data.username}`
+            if (newName !== account.pageName) {
+              await prisma.socialAccount.update({
+                where: { id: account.id },
+                data: { pageName: newName, updatedAt: new Date() },
+              })
+              updated++
+            }
+          }
+        }
+      } catch {
+        // Skip accounts with expired/invalid tokens
+      }
+    })
+  )
+
+  return NextResponse.json({ message: `Synced names for ${updated} account(s)`, updated })
 }
 
 // DELETE — disconnect an account

@@ -71,6 +71,8 @@ export default function AccountsPage() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState('')
   const [refreshTargetId, setRefreshTargetId] = useState<string | null>(null)
+  const [syncingNames, setSyncingNames] = useState(false)
+  const [syncResult, setSyncResult] = useState('')
 
   async function fetchAccounts() {
     setLoading(true)
@@ -163,6 +165,21 @@ export default function AccountsPage() {
       alert(err instanceof Error ? err.message : 'Failed to connect account')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleSyncNames() {
+    setSyncingNames(true)
+    setSyncResult('')
+    try {
+      const res = await fetch('/api/social/accounts', { method: 'PATCH' })
+      const data = await res.json()
+      setSyncResult(data.updated > 0 ? `Updated ${data.updated} name(s)` : 'All names are already up to date')
+      fetchAccounts()
+    } catch {
+      setSyncResult('Sync failed — check account tokens')
+    } finally {
+      setSyncingNames(false)
     }
   }
 
@@ -421,6 +438,24 @@ export default function AccountsPage() {
               {saving ? 'Connecting…' : 'Connect Account'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Sync names */}
+      {accounts.length > 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSyncNames}
+            disabled={syncingNames}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold"
+            style={{ background: 'var(--pale-teal)', color: 'var(--teal)', border: '1px solid rgba(26,123,138,0.2)' }}
+          >
+            <RefreshCw size={12} className={syncingNames ? 'animate-spin' : ''} />
+            {syncingNames ? 'Syncing…' : 'Sync Names from Facebook'}
+          </button>
+          {syncResult && (
+            <span className="text-xs" style={{ color: 'var(--teal)' }}>{syncResult}</span>
+          )}
         </div>
       )}
 
