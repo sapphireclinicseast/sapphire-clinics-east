@@ -609,6 +609,9 @@
 .aboutSteps li::marker { font-family: var(--display); font-weight: 700; color: var(--green); }
 .aboutNote li { font-size: 13.5px; line-height: 1.7; color: var(--ink); }
 .aboutTimeline { font-size: 13px; color: var(--deep-70); margin: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.aboutFlow { margin-top: 18px; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+.aboutFlow h3 { font-family: var(--display); font-size: 16px; color: var(--deep); margin: 0 0 8px; }
+.flowSvg { width: 100%; height: auto; max-width: 760px; display: block; margin: 4px auto 0; }
 .aboutPartner {
   background: rgba(198,152,73,0.12); border: 1px solid rgba(198,152,73,0.4);
   border-radius: 14px; padding: 16px 20px; font-size: 13.5px; line-height: 1.6; color: var(--deep);
