@@ -10,6 +10,7 @@ import {
   ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff, Calendar, Mail, Megaphone,
 } from 'lucide-react'
 import s from './ugat.module.css'
+import { loanAgreementBlocks, annexTables, annexIntro, annexNote } from '@/lib/ugat-loan-agreement'
 
 const API = '/api/public/ugat'
 const QUESTION_MAX = 1500
@@ -338,7 +339,7 @@ type Track = 'ARAL' | 'TINDIG'
 const TRACK_LABEL: Record<string, string> = { ARAL: 'Aral Track', TINDIG: 'Tindig Track' }
 
 // Aral Track award tiers: monthly stipend × duration in months. An admin picks
-// one at acceptance; it is woven into the Return Service Agreement the fellow
+// one at acceptance; it is woven into the Fellowship Loan Agreement the fellow
 // reads and signs. Order matches the four options the program offers.
 const AWARD_TIERS: { monthly: number; months: number }[] = [
   { monthly: 5000, months: 10 },
@@ -348,14 +349,6 @@ const AWARD_TIERS: { monthly: number; months: number }[] = [
 ]
 const tierValue = (m?: number | null, n?: number | null) => (m && n ? `${m}x${n}` : '')
 const tierLabel = (m: number, n: number) => `₱${m.toLocaleString()}/mo × ${n} months (₱${(m * n).toLocaleString()} total)`
-// Peso/month amounts spelled out for the formal RSA text (only the handful the
-// tiers can produce).
-const AMOUNT_WORDS: Record<number, string> = {
-  5: 'five', 10: 'ten',
-  5000: 'Five Thousand', 10000: 'Ten Thousand',
-  25000: 'Twenty-Five Thousand', 50000: 'Fifty Thousand', 100000: 'One Hundred Thousand',
-}
-const inWords = (n: number) => AMOUNT_WORDS[n] || n.toLocaleString()
 
 const ARAL_QUESTIONS: { field: keyof AppData; label: string }[] = [
   { field: 'q1WhyApply', label: 'Why do you want to apply for this fellowship?' },
@@ -669,7 +662,7 @@ function ScholarInterview({ app, authHeaders }: { app: AppData | null; authHeade
   )
 }
 
-// ══ Acceptance (scholar) — Return Service Agreement e-signing ══════
+// ══ Acceptance (scholar) — Fellowship Loan Agreement e-signing ══════
 type CmField = keyof AcceptanceData
 const CM_ADDR = [
   { key: 'Perm', label: 'Permanent address' },
@@ -679,126 +672,41 @@ const CM_ADDR = [
 
 function RSAText({ track, name, program, school, monthly, months }: { track?: string; name: string; program: string; school: string; monthly?: number | null; months?: number | null }) {
   const isTindig = track === 'TINDIG'
-  const prof = program || 'Allied Health'          // e.g. "Speech-Language Pathology"
-  const uni = school || 'the University'
-  const who = name || '________________'
-  const m = monthly && months ? monthly : null     // Aral awarded monthly stipend
-  const n = monthly && months ? months : null      // Aral awarded coverage months
+  const m = monthly && months ? monthly : null
+  const n = monthly && months ? months : null
   const total = m && n ? m * n : null
-
-  // Sections 4.2 onward are identical across both tracks (§4.1's closing clause
-  // differs and is rendered by each branch below).
-  const tail = (
-    <>
-      <p><b>4.2 Commencement.</b> The FELLOW shall commence return service within sixty (60) days from receipt of the official Certificate of Registration / Professional Identification Card from the PRC. The 1,500 hours of treatment sessions shall be rendered continuously and in good faith until completed, subject to the Clinic&rsquo;s regular scheduling, patient caseload, and operational needs.</p>
-      <p><b>4.3 Crediting of Hours.</b> Each hour of direct patient treatment sessions actually rendered by the FELLOW at any SCEI clinic post-licensure shall be credited toward the 1,500-hour Return Service Obligation. Hours are recorded and monitored in real time through SCEI&rsquo;s Enterprise Resource Planning (ERP) system, which shall serve as the official record of hours rendered and of the remaining balance. Any discrepancy shall be raised in writing within fifteen (15) days of receipt of a statement; otherwise the ERP record shall be deemed conclusive.</p>
-      <p><b>4.4 Compensation.</b> During the return service period, the FELLOW shall receive the standard market compensation based on the Clinic&rsquo;s compensation structure at the time of employment for the position of a licensed {prof} professional. The Return Service Obligation is discharged through hours rendered and is <b>not</b> satisfied by salary deduction; the FELLOW receives full compensation for hours worked in addition to credit against the obligation.</p>
-      <p><b>4.5 Geographic Assignment.</b> The FELLOW expressly agrees, as a condition of this fellowship, to be willing to accept assignment to either or both of SCEI&rsquo;s two existing clinics based on operational need — (a) <b>Aura Health Rehab – East Branch</b>, Robinsons Metro East, Marcos Highway, Santolan, Pasig; and (b) <b>Aura Health Rehab – Greenhills Branch</b>, GH Tower Offices, Ortigas Avenue, Greenhills, San Juan — or any future SCEI location. Reasonable preference is considered but not guaranteed.</p>
-      <p><b>4.6 Exclusive Engagement During Return Service.</b> The FELLOW shall render the full 1,500 hours exclusively with SCEI and its clinics. From commencement of return service until the 1,500 hours are completed, the FELLOW shall not render professional services as a {prof} professional — whether as employee, independent contractor, consultant, private practitioner, or otherwise — to or for any other clinic, hospital, therapy center, school-based program, or similar facility. SCEI may, in writing and in its sole discretion, permit limited exceptions (such as academic or teaching engagements) that do not interfere with the FELLOW&rsquo;s SCEI schedule and duties. Any breach is an Event of Default under Section 7.1, subject to the notice and cure provisions of Section 7.2.</p>
-
-      <h5>5. COMPLETION AND CERTIFICATION</h5>
-      <p>Upon the FELLOW&rsquo;s rendering of the full 1,500 hours, the Return Service Obligation is deemed fully and completely discharged, and SCEI shall issue a Certificate of Completion of Return Service; the obligations of the FELLOW and CO-MAKER are thereupon extinguished. Following completion, continued engagement with the Clinic is entirely optional and by mutual agreement of the Parties under a separate arrangement, and shall not revive any obligation under this Agreement.</p>
-
-      <h5>6. SETTLEMENT IN LIEU OF SERVICE</h5>
-      <p><b>6.1 Cash Buyout.</b> Should the FELLOW elect not to render, or be unable to complete, the Return Service Obligation, it may be discharged through a cash payment equal to the number of unrendered hours multiplied by an Hourly Credit Rate (PHP 150.00 per hour), plus a flat ten percent (10%) surcharge. By way of illustration, the buyout for the full 1,500 hours equals PHP 225,000.00 plus the 10% surcharge, totaling PHP 247,500.00.</p>
-      <p><b>6.2 Election &amp; Pro-Ration.</b> The FELLOW shall elect a cash buyout by written notice with at least thirty (30) days&rsquo; lead time; service rendered in good faith prior to election is credited, and only the unrendered balance of hours is subject to buyout.</p>
-
-      <h5>7. DEFAULT AND ACCELERATION</h5>
-      <p>Events of Default include failure to commence return service on time (absent a CEO-approved extension), voluntary abandonment of return service (other than for serious illness, death of an immediate family member, or other force majeure), failure to take or pass the Licensure Examination within two (2) examination cycles after eligibility (absent a CEO-approved extension), and material misrepresentation. Prior to any declaration of default, SCEI shall furnish the FELLOW and CO-MAKER written notice and a thirty (30)-day cure period. Upon an uncured default, the cash value of all unrendered return-service hours becomes immediately due and payable, together with a ten percent (10%) surcharge, a five percent (5%) penalty on the outstanding amount, and interest at eight percent (8%) per annum from the date of acceleration until fully paid.</p>
-
-      <h5>8. CO-MAKER OBLIGATIONS</h5>
-      <p>THE CO-MAKER expressly acknowledges and agrees that he/she is <b>JOINTLY AND SEVERALLY LIABLE</b> with the FELLOW for all monetary obligations arising under this Agreement, including any cash buyout, surcharge, penalty, accrued interest, and costs of collection. The CO-MAKER waives the benefits of demand, presentment, notice of dishonor, and the order of enforcement, and SCEI may proceed against the CO-MAKER directly without first proceeding against the FELLOW.</p>
-
-      <h5>9. CONFIDENTIALITY AND DATA PRIVACY</h5>
-      <p>This Agreement and any related records are confidential and shall be protected consistent with R.A. 10173 (Data Privacy Act of 2012). The FELLOW and CO-MAKER consent to SCEI&rsquo;s collection, processing, and use of their personal data to administer this Agreement, including disclosure to SCEI&rsquo;s accountants, auditors, and legal counsel as needed.</p>
-
-      <h5>10. GENERAL PROVISIONS</h5>
-      <p>This Agreement is governed by the laws of the Republic of the Philippines, with venue exclusively before the proper courts of San Juan City. It constitutes the entire agreement between the Parties, supersedes all prior or contemporaneous understandings, and may be amended only in writing signed by all Parties. If any provision is held invalid, the remaining provisions remain in full force. This Agreement takes effect upon execution and binds the Parties and their respective heirs, executors, administrators, successors, and permitted assigns.</p>
-
-      <p style={{ marginTop: 14 }}>IN WITNESS WHEREOF, the Parties sign this Agreement: for SCEI, <b>Hannah Jara</b>, CEO and President; the <b>FELLOW</b>; and the <b>CO-MAKER</b> — in the presence of witnesses (a representative of {uni} and a member of the SCEI Board of Directors), and acknowledged before a Notary Public.</p>
-    </>
-  )
-
+  const blocks = loanAgreementBlocks({ track, fellowName: name, program, school, monthly, months, comakerName: '' })
   return (
     <div className={s.rsaDoc}>
-      <h4>Return Service Agreement</h4>
-      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · {isTindig ? 'Licensure Review Fellowship' : 'Allowance-Based Internship Fellowship'}</p>
+      <h4>Fellowship Loan Agreement</h4>
+      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · fully condonable through service</p>
       <div className={s.rsaAward}>
         {isTindig
-          ? <>Your award: <b>₱30,000 review-support grant</b> — availed either as SCEI&rsquo;s direct payment of your licensure review fees (up to ₱30,000), or as a <b>₱5,000 / month stipend for six (6) months</b>. The full agreement below reflects this award.</>
-          : <>Your award: <b>{m && n ? `₱${m.toLocaleString()} / month for ${n} months` : 'to be set by the Program Assessors'}</b>{total ? <> — an estimated total allowance of <b>₱{total.toLocaleString()}</b></> : ''}. The full agreement below reflects this award.</>}
+          ? <>Your award is a <b>review-support loan of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months). It is <b>fully condonable — you pay nothing</b> if you render 1,500 hours of service with SCEI after licensure (Option A). Otherwise you simply repay the principal plus 10% p.a. over 3 months (Option B).</>
+          : <>Your award is a fellowship <b>loan</b> released as <b>{m && n ? `₱${m.toLocaleString()} / month for ${n} months` : 'a monthly allowance'}</b>{total ? <> (principal ≈ <b>₱{total.toLocaleString()}</b>)</> : ''}. It is <b>fully condonable — you pay nothing</b> if you render 1,500 hours of service with SCEI after licensure (Option A). Otherwise you simply repay the principal plus 10% p.a. over 3–6 months (Option B).</>}
       </div>
       <div className={s.rsaScroll}>
-        <p><b>KNOW ALL PERSONS BY THESE PRESENTS:</b></p>
-        {isTindig ? (
-          <p>This Return Service Agreement (the &ldquo;Agreement&rdquo;) is made and entered into by and among <b>SAPPHIRE CLINICS EAST INCORPORATED</b>, a corporation duly organized under Philippine law, operating <b>Aura Health Rehab</b>, with principal office at Level 8, GH Tower Offices, Greenhills, San Juan City (&ldquo;SCEI&rdquo; or the &ldquo;Clinic&rdquo;); <b>{who}</b>, of legal age, Filipino, a graduate of the {prof} program of {uni} preparing for the {prof} Licensure Examination (the &ldquo;FELLOW&rdquo;); and the FELLOW&rsquo;s parent / guardian (the &ldquo;CO-MAKER&rdquo;). SCEI, the FELLOW, and the CO-MAKER are collectively the &ldquo;Parties.&rdquo;</p>
-        ) : (
-          <p>This Return Service Agreement (the &ldquo;Agreement&rdquo;) is made and entered into by and among <b>SAPPHIRE CLINICS EAST INCORPORATED</b>, a corporation duly organized under Philippine law, operating <b>Aura Health Rehab</b>, with principal office at Level 8, GH Tower Offices, Greenhills, San Juan City (&ldquo;SCEI&rdquo; or the &ldquo;Clinic&rdquo;); <b>{who}</b>, of legal age, Filipino, a {prof} student intern of {uni} (the &ldquo;FELLOW&rdquo;); and the FELLOW&rsquo;s parent / guardian (the &ldquo;CO-MAKER&rdquo;). SCEI, the FELLOW, and the CO-MAKER are collectively the &ldquo;Parties.&rdquo;</p>
+        {blocks.map((b, i) =>
+          'h' in b ? <h5 key={i}>{b.h}</h5>
+          : 'li' in b ? <p key={i} style={{ margin: '0 0 6px', paddingLeft: 12 }}>• {b.li}</p>
+          : <p key={i}>{b.lead ? <><b>{b.lead}</b> </> : null}{b.text}</p>
         )}
-        <p><b>W I T N E S S E T H : T H A T</b></p>
-
-        {isTindig ? (
-          <>
-            <p><b>WHEREAS</b>, SCEI has established the UGAT Fellowship Program — <i>Ugnayan para sa Galing, Aral, at Tindig</i> — whose <b>Tindig Track</b> is a review-support fellowship offered, upon special application directly to SCEI, to qualified graduates who have completed the University&rsquo;s clinical internship requirement, have not been awarded under the Aral Track, and are preparing for the {prof} Licensure Examination;</p>
-            <p><b>WHEREAS</b>, the FELLOW has been awarded a fellowship under the Tindig Track, by which SCEI shall provide a review-support Grant of Thirty Thousand Pesos (PHP 30,000.00), availed as payment of licensure review fees or as a monthly review stipend, as provided herein;</p>
-            <p><b>WHEREAS</b>, in consideration of the Grant extended, the FELLOW has agreed to render return service to SCEI following licensure;</p>
-            <p><b>NOW, THEREFORE</b>, the Parties agree as follows:</p>
-
-            <h5>1. DEFINITIONS</h5>
-            <p><b>Grant.</b> The review-support grant of Thirty Thousand Pesos (PHP 30,000.00) awarded to the FELLOW, availed in one of two ways: (a) SCEI&rsquo;s direct payment of licensure review fees, up to PHP 30,000.00; or (b) a monthly review stipend of Five Thousand Pesos (PHP 5,000.00) for six (6) months during the Review Period.</p>
-            <p><b>Review Period.</b> The period during which the FELLOW undertakes review for the {prof} Licensure Examination, ending upon completion of the Examination.</p>
-            <p><b>Total Grant.</b> The cumulative Grant actually disbursed in any manner of availment, not exceeding PHP 30,000.00.</p>
-            <p><b>Return Service Obligation.</b> The obligation of the FELLOW to render One Thousand Five Hundred (1,500) hours of direct patient treatment sessions at any SCEI clinic following licensure, as set out in Section 4.</p>
-            <p><b>Licensure.</b> The FELLOW&rsquo;s passing of the {prof} Licensure Examination and receipt of the Certificate of Registration and Professional Identification Card from the PRC.</p>
-            <p><b>Program Assessors.</b> The panel or officers designated by SCEI to evaluate applications (including special applications under the Tindig Track) and determine the award of the Grant. Their determination is final.</p>
-
-            <h5>2. GRANT OF FELLOWSHIP AND REVIEW SUPPORT</h5>
-            <p><b>2.1 Grant.</b> SCEI grants the FELLOW a review-support Grant of Thirty Thousand Pesos (PHP 30,000.00). The FELLOW shall elect in writing, subject to SCEI&rsquo;s approval, one of two ways of availing: (a) direct payment by SCEI of review fees — including enrolment in a licensure review program and related materials — up to PHP 30,000.00; or (b) a monthly review stipend of PHP 5,000.00 for six (6) months. Under option (a), SCEI pays only the review fees actually incurred: any shortfall below PHP 30,000.00 is not paid out or refunded, and any excess above PHP 30,000.00 is for the FELLOW&rsquo;s sole account. In all cases, the Return Service Obligation remains the full 1,500 hours regardless of the manner or amount of the Grant availed.</p>
-            <p><b>2.2 Disbursement.</b> Stipend availments are remitted to the FELLOW&rsquo;s nominated bank account on or before the tenth (10th) day of each month during the Review Period. Review-fee availments are paid by SCEI directly to the review provider upon presentation of enrolment documents or billing, or reimbursed against official receipts.</p>
-            <p><b>2.3 Acknowledgment of Indebtedness.</b> The FELLOW and CO-MAKER acknowledge that the Grant constitutes sufficient and valuable consideration for the Return Service Obligation, which is fixed at 1,500 hours regardless of the manner of availment or the actual amount disbursed. SCEI shall furnish a Statement of Disbursement upon conclusion of the Review Period, deemed accepted unless contested in writing within fifteen (15) days.</p>
-            <p><b>2.4 Discontinuance of Review.</b> Should the FELLOW abandon or discontinue the review, or fail to sit for the Licensure Examination as required, further disbursements cease as of the date of discontinuance, and the FELLOW and CO-MAKER agree to reimburse the Grant actually received plus a ten percent (10%) surcharge within ninety (90) days. Full reimbursement finally settles the Parties&rsquo; obligations. SCEI may, with compassion, waive, reduce, or restructure the reimbursement — particularly for serious illness, a death in the immediate family, or circumstances beyond the FELLOW&rsquo;s control.</p>
-            <p><b>2.5 One-Time Award.</b> The Grant is a one-time award fixed at PHP 30,000.00 and shall not be increased, renewed, or extended under any circumstance, including any extension of the review period or any retaking of the Licensure Examination. Any review beyond the Grant is at the FELLOW&rsquo;s own cost. The Return Service Obligation of 1,500 hours remains in full force.</p>
-
-            <h5>3. OBLIGATIONS DURING THE REVIEW PERIOD</h5>
-            <p>During the Review Period, the FELLOW shall: enrol in and diligently attend a licensure review program (or pursue a structured self-review plan disclosed to SCEI) and exert faithful effort to prepare; provide SCEI proof of enrolment and reasonable updates on review progress; signify willingness to be assigned to either or both of SCEI&rsquo;s clinics (East and Greenhills) for the Return Service Obligation; disclose any change in review or examination plans within seven (7) days; sit for and complete the {prof} Licensure Examination at the next available date after eligibility, exerting best efforts to pass; and actively participate in <i>&ldquo;Araw ng Kalinga,&rdquo;</i> SCEI&rsquo;s one-day annual community outreach providing free therapy screening and medical services in partnership with an LGU or NGO, whenever held during the Review Period or the return service period.</p>
-
-            <h5>4. RETURN SERVICE OBLIGATION</h5>
-            <p><b>4.1 Hours Owed.</b> In consideration of the Grant, the FELLOW shall render One Thousand Five Hundred (1,500) hours of direct patient treatment sessions as a licensed {prof} professional at any SCEI clinic. A &ldquo;treatment session&rdquo; is time in direct, billable therapy or intervention with a patient, including attendant assessment, documentation, and case-management time; purely administrative, training, or non-clinical hours are not credited unless approved in writing. The obligation is fixed at 1,500 hours for all fellows regardless of the manner of availment or the amount of the Grant actually disbursed.</p>
-          </>
-        ) : (
-          <>
-            <p><b>WHEREAS</b>, SCEI has established the UGAT Fellowship Program — <i>Ugnayan para sa Galing, Aral, at Tindig</i> — whose <b>Aral Track</b> is an allowance-based fellowship offered to qualified {prof} student interns undergoing their clinical internship;</p>
-            <p><b>WHEREAS</b>, the FELLOW has been awarded a fellowship under the Aral Track, by which SCEI shall provide a monthly financial allowance, in the amount and for the Coverage Period determined by the Program Assessors, during the FELLOW&rsquo;s clinical internship;</p>
-            <p><b>WHEREAS</b>, in consideration of the allowance extended, the FELLOW has agreed to render return service to SCEI following completion of the internship and licensure;</p>
-            <p><b>NOW, THEREFORE</b>, the Parties agree as follows:</p>
-
-            <h5>1. DEFINITIONS</h5>
-            <p><b>Allowance.</b> The monthly financial stipend of either Five Thousand Pesos (PHP 5,000.00) or Ten Thousand Pesos (PHP 10,000.00) — the tier awarded to the FELLOW as determined by the Program Assessors — paid by SCEI for the Coverage Period awarded.</p>
-            <p><b>Internship Period.</b> The FELLOW&rsquo;s clinical internship in {prof} for the applicable School Year.</p>
-            <p><b>Coverage Period.</b> The number of months for which the Allowance is awarded: ten (10) months for a full-year award, or five (5) months for a semestral award. A semestral award is available only to applicants applying for the second semester of the internship year.</p>
-            <p><b>Total Allowance.</b> The cumulative Allowance actually disbursed over the Internship Period, ranging from Twenty-Five Thousand Pesos (PHP 25,000.00) to One Hundred Thousand Pesos (PHP 100,000.00), depending on the stipend tier and Coverage Period awarded.</p>
-            <p><b>Return Service Obligation.</b> The obligation of the FELLOW to render One Thousand Five Hundred (1,500) hours of direct patient treatment sessions at any SCEI clinic following licensure, as set out in Section 4.</p>
-            <p><b>Licensure.</b> The FELLOW&rsquo;s passing of the {prof} Licensure Examination and receipt of the Certificate of Registration and Professional Identification Card from the PRC.</p>
-            <p><b>Program Assessors.</b> The panel or officers designated by SCEI to evaluate applications and determine the monthly stipend tier (PHP 5,000.00 or PHP 10,000.00) and the Coverage Period awarded to each FELLOW. Their determination is final.</p>
-
-            <h5>2. GRANT OF FELLOWSHIP AND ALLOWANCE</h5>
-            <p><b>2.1 Grant.</b> SCEI grants the FELLOW a fellowship consisting of a monthly Allowance of either PHP 5,000.00 or PHP 10,000.00, payable for the Coverage Period awarded (ten (10) months full-year, or five (5) months semestral — the latter available only to applicants applying for the second semester). The stipend tier and Coverage Period are determined by the Program Assessors and are final. <b>The monthly Allowance awarded to the FELLOW under this Agreement is {m ? `PHP ${m.toLocaleString()}.00` : 'PHP ____________'} per month, for a Coverage Period of {n ? `${n} (${inWords(n)})` : '____________'} months.</b> In all cases, the Return Service Obligation remains the full 1,500 hours regardless of the tier or Coverage Period awarded.</p>
-            <p><b>2.2 Disbursement.</b> The Allowance is remitted to the FELLOW&rsquo;s nominated bank account on or before the tenth (10th) day of each month during the Internship Period.</p>
-            <p><b>2.3 Acknowledgment of Indebtedness.</b> The FELLOW and CO-MAKER acknowledge that the Allowance, together with the clinical training and supervision extended by SCEI, constitutes sufficient consideration for the Return Service Obligation, which is fixed at 1,500 hours regardless of the stipend tier awarded or the actual amount disbursed. Where the Allowance is awarded at the lower tier, on a semestral five-month Coverage Period, or otherwise for fewer than ten months, the obligation nevertheless remains fixed at 1,500 hours.</p>
-            <p><b>2.4 Cut-Short of Internship.</b> Should the FELLOW be unable to continue or complete the internship for any reason, the Allowance ceases as of the date of discontinuance, and the FELLOW and CO-MAKER agree to reimburse the Allowance actually received plus a ten percent (10%) surcharge within ninety (90) days. Full reimbursement finally settles the Parties&rsquo; obligations. SCEI may, with compassion, waive, reduce, or restructure the reimbursement — particularly for serious illness, a death in the immediate family, or circumstances beyond the FELLOW&rsquo;s control.</p>
-            <p><b>2.5 Extension or Delayed Graduation.</b> The Allowance is fixed at the Coverage Period awarded and shall not be extended under any circumstance, including any extension of the internship, repetition of requirements, or delayed graduation. Beyond the final month of the Coverage Period the FELLOW continues at his/her own cost, and no additional Allowance is due. The Return Service Obligation of 1,500 hours remains in full force.</p>
-            <p><b>2.6 Application of Unused Allowance to Review Fees.</b> Where the University&rsquo;s internship runs fewer months than the Coverage Period awarded (e.g., an 8- or 9-month internship against a 10-month Coverage Period) and the FELLOW completes the full internship requirement, the FELLOW may use the unused balance of the Allowance — the monthly stipend awarded multiplied by the undisbursed months — to cover {prof} licensure review fees. The balance is released upon proof of completion of the internship requirement and proof of enrolment in (or receipts for) a review program, and shall not exceed the undisbursed balance at the tier awarded. Any amount so released forms part of the Allowance disbursed for all purposes, does not apply where the internship is cut short, and does not affect the fixed 1,500-hour obligation.</p>
-
-            <h5>3. OBLIGATIONS DURING THE INTERNSHIP</h5>
-            <p>During the Internship Period, the FELLOW shall: maintain good standing as an enrolled {prof} student intern; faithfully perform all duties, rotations, and clinical responsibilities assigned; comply with the SCEI Code of Conduct, clinic policies, and the school&rsquo;s requirements; maintain a passing grade throughout the internship year (equivalent to a grade of 3.0 or better under the University of the Philippines system); signify willingness to be assigned to either or both of SCEI&rsquo;s clinics (East and Greenhills) for the Return Service Obligation; disclose any change in academic or enrolment status within seven (7) days; sit for and complete the {prof} Licensure Examination at the next available date after eligibility; and actively participate in <i>&ldquo;Araw ng Kalinga,&rdquo;</i> SCEI&rsquo;s one-day annual community outreach providing free therapy screening and medical services in partnership with an LGU or NGO, whenever held during the Internship Period or the return service period.</p>
-
-            <h5>4. RETURN SERVICE OBLIGATION</h5>
-            <p><b>4.1 Hours Owed.</b> In consideration of the Allowance and clinical training, the FELLOW shall render One Thousand Five Hundred (1,500) hours of direct patient treatment sessions as a licensed {prof} professional at any SCEI clinic. A &ldquo;treatment session&rdquo; is time in direct, billable therapy or intervention with a patient, including attendant assessment, documentation, and case-management time; purely administrative, training, or non-clinical hours are not credited unless approved in writing. The obligation is fixed at 1,500 hours for all fellows regardless of the stipend tier awarded (PHP 5,000.00 or PHP 10,000.00), the Coverage Period awarded (ten (10) or five (5) months), or the number of months actually funded.</p>
-          </>
-        )}
-        {tail}
+        <h5 style={{ marginTop: 18 }}>ANNEX &ldquo;A&rdquo; — Sample loan computation (Cash Repayment, Option B)</h5>
+        <p className={s.muted}>{annexIntro(isTindig)}</p>
+        {annexTables(isTindig).map((t, i) => (
+          <div key={i} style={{ marginBottom: 14 }}>
+            <p style={{ fontWeight: 600, margin: '0 0 6px' }}>{t.caption}</p>
+            <div className={s.annexTableWrap}>
+              <table className={s.annexTable}>
+                <thead><tr>{t.headers.map((h, j) => <th key={j}>{h}</th>)}</tr></thead>
+                <tbody>{t.rows.map((r, ri) => <tr key={ri} className={/^total$/i.test(r[0]) ? s.annexTotal : ''}>{r.map((c, ci) => <td key={ci} style={{ textAlign: ci === 0 ? 'center' : 'right' }}>{c}</td>)}</tr>)}</tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+        <p className={s.muted} style={{ margin: 0 }}>Note: {annexNote}</p>
       </div>
-      <p className={s.muted} style={{ margin: '12px 0 0' }}>By signing below you confirm you have read and understood this full agreement. A hard copy will also be signed in person at an Aura Health Rehab branch.</p>
+      <p className={s.muted} style={{ margin: '12px 0 0' }}>By signing below you confirm you have read and understood this full loan agreement. A hard copy will also be signed in person at an Aura Health Rehab branch.</p>
     </div>
   )
 }
@@ -867,7 +775,7 @@ function ScholarAcceptance({ scholar, token, authHeaders }: { scholar: PortalSch
   if (!contractSent) return (
     <div className={s.card2}><div className={s.acceptedBox}><CheckCircle2 size={26} /><div>
       <h3 className={s.card2H} style={{ margin: '0 0 4px' }}>Congratulations — you&rsquo;ve been accepted! 🌱</h3>
-      <p className={s.muted} style={{ margin: 0 }}>Welcome to the UGAT Fellowship. We&rsquo;re preparing your Return Service Agreement — it will appear here for you to review and sign shortly, and we&rsquo;ll email you when it&rsquo;s ready.</p>
+      <p className={s.muted} style={{ margin: 0 }}>Welcome to the UGAT Fellowship. We&rsquo;re preparing your Fellowship Loan Agreement — it will appear here for you to review and sign shortly, and we&rsquo;ll email you when it&rsquo;s ready.</p>
     </div></div></div>
   )
 
@@ -935,7 +843,7 @@ function ScholarAcceptance({ scholar, token, authHeaders }: { scholar: PortalSch
 
       <div className={s.card2}>
         <h3 className={s.card2H}>Sign the agreement</h3>
-        <label className={s.check}><input type="checkbox" checked={truth} onChange={(e) => setTruth(e.target.checked)} /><span>I have read and understood the Return Service Agreement, my co-maker details are true and correct, and I agree to be bound by its terms.</span></label>
+        <label className={s.check}><input type="checkbox" checked={truth} onChange={(e) => setTruth(e.target.checked)} /><span>I have read and understood the Fellowship Loan Agreement, my co-maker details are true and correct, and I agree to be bound by its terms.</span></label>
         <p className={s.muted} style={{ marginTop: 14 }}>Sign below (or upload an e-signature image).</p>
         <SignaturePad ref={sigRef} />
         <FileField label="Or upload e-signature (PNG/JPG)" kind="RSA_SIGNATURE" accept="image/png,image/jpeg" uploads={uploads} token={token} onFile={upload} />
@@ -1157,7 +1065,7 @@ function AcceptanceStage({ fellows, token, authHeaders, readOnly, reloadScholars
   const [busy, setBusy] = useState<string>('')
 
   async function sendContract(id: string) {
-    if (!window.confirm('Send the Return Service Agreement to this fellow so they can sign online? They will be emailed a link.')) return
+    if (!window.confirm('Send the Fellowship Loan Agreement to this fellow so they can sign online? They will be emailed a link.')) return
     setBusy(id); await fetch(`${API}/acceptance/admin`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ scholarId: id }) }); setBusy(''); reloadScholars()
   }
   async function setAward(id: string, monthly: number | null, months: number | null) {

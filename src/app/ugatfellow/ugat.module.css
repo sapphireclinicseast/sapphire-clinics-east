@@ -879,6 +879,11 @@
 .rsaScroll { max-height: 340px; overflow-y: auto; padding: 4px 16px 4px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .rsaScroll p:first-child { margin-top: 4px; }
 .rsaScroll h5:first-of-type { margin-top: 8px; }
+.annexTableWrap { overflow-x: auto; margin-bottom: 4px; }
+.annexTable { border-collapse: collapse; width: 100%; font-size: 11px; }
+.annexTable th, .annexTable td { border: 1px solid var(--line); padding: 4px 7px; white-space: nowrap; }
+.annexTable th { background: var(--cream); font-weight: 600; color: var(--deep); text-align: center; font-size: 10.5px; }
+.annexTotal td { font-weight: 700; }
 .acceptCtl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .awardSelect { appearance: none; font-family: var(--body); font-size: 12.5px; color: var(--deep); background: #fff; border: 1.5px solid var(--line); border-radius: 9px; padding: 7px 12px; cursor: pointer; }
 .awardSelect:focus { outline: none; border-color: var(--green); }
