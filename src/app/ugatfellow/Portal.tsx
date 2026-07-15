@@ -143,6 +143,61 @@ export default function Portal({
 }
 
 // ══ About Us ═══════════════════════════════════════════════════════
+// The two-track journey as an on-brand SVG (Apply → loan → licensure →
+// Option A condonation / Option B cash repayment at a flat 10%).
+function TrackFlowchart() {
+  const ARAL = { fill: '#e9f2ef', stroke: '#4a8073' }
+  const TIN = { fill: '#f8f0da', stroke: '#c69849' }
+  const SH = { fill: '#ffffff', stroke: '#cdd8d2' }
+  const GREEN = { fill: '#e6f2ea', stroke: '#4a8073' }
+  const GOLD = { fill: '#f8f0da', stroke: '#b4821f' }
+  const T = '#244952', SUB = '#5a6b64'
+  const Node = ({ x, y, w, h, c, title, sub }: { x: number; y: number; w: number; h: number; c: { fill: string; stroke: string }; title: string; sub?: string }) => (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={10} fill={c.fill} stroke={c.stroke} strokeWidth={1.2} />
+      <text x={x + w / 2} y={sub ? y + h / 2 - 8 : y + h / 2} textAnchor="middle" dominantBaseline="central" fill={T} fontSize={14} fontWeight={600}>{title}</text>
+      {sub && <text x={x + w / 2} y={y + h / 2 + 9} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>{sub}</text>}
+    </g>
+  )
+  const arr = { stroke: '#9aa8a0', strokeWidth: 1.4, fill: 'none', markerEnd: 'url(#ugatArrow)' }
+  return (
+    <svg className={s.flowSvg} viewBox="0 0 720 692" role="img" aria-label="The two UGAT track paths: apply, receive a condonable loan, complete internship or review, pass the licensure exam, then either render 1,500 hours of service to condone the loan (Option A) or repay the principal plus a flat 10% interest (Option B).">
+      <defs>
+        <marker id="ugatArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#9aa8a0" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+        </marker>
+      </defs>
+      <Node x={30} y={12} w={300} h={56} c={ARAL} title="Aral track" sub="for final-year interns" />
+      <Node x={390} y={12} w={300} h={56} c={TIN} title="Tindig track" sub="for graduates, pre-boards" />
+      <line x1={180} y1={68} x2={180} y2={96} {...arr} />
+      <line x1={540} y1={68} x2={540} y2={96} {...arr} />
+      <Node x={30} y={96} w={300} h={56} c={ARAL} title="Submit application" sub="via your partner school" />
+      <Node x={390} y={96} w={300} h={56} c={TIN} title="Submit application" sub="directly to SCEI" />
+      <line x1={180} y1={152} x2={180} y2={180} {...arr} />
+      <line x1={540} y1={152} x2={540} y2={180} {...arr} />
+      <Node x={30} y={180} w={300} h={56} c={ARAL} title="Approved — loan awarded" sub="₱5k or ₱10k / mo · 5–10 mo" />
+      <Node x={390} y={180} w={300} h={56} c={TIN} title="Approved — loan awarded" sub="₱30k: fees, or ₱5k × 6 mo" />
+      <line x1={180} y1={236} x2={180} y2={264} {...arr} />
+      <line x1={540} y1={236} x2={540} y2={264} {...arr} />
+      <Node x={30} y={264} w={300} h={56} c={ARAL} title="Internship" sub="allowance paid monthly" />
+      <Node x={390} y={264} w={300} h={56} c={TIN} title="Review period" sub="prepare for the exam" />
+      <path d="M180 320 L180 342 L360 342 L360 360" {...arr} />
+      <path d="M540 320 L540 342 L360 342 L360 360" {...arr} />
+      <Node x={210} y={360} w={300} h={56} c={SH} title="Licensure exam" sub="pass the PRC board" />
+      <line x1={360} y1={416} x2={360} y2={452} {...arr} />
+      <Node x={180} y={452} w={360} h={56} c={SH} title="Discharge the loan — pick one" sub="the loan is fully condonable" />
+      <path d="M360 508 L360 534 L180 534 L180 556" {...arr} />
+      <path d="M360 508 L360 534 L540 534 L540 556" {...arr} />
+      <text x={262} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>condone it</text>
+      <text x={452} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>or repay it</text>
+      <Node x={30} y={556} w={300} h={60} c={GREEN} title="Option A — render service" sub="1,500 hrs → loan condoned" />
+      <Node x={390} y={556} w={300} h={60} c={GOLD} title="Option B — repay in cash" sub="principal + flat 10%" />
+      <text x={180} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ pay nothing; certificate issued</text>
+      <text x={540} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ 6 mos (Aral) / 3 mos (Tindig)</text>
+    </svg>
+  )
+}
+
 function AboutUs() {
   return (
     <div className={s.sec}>
@@ -178,6 +233,10 @@ function AboutUs() {
           <li>Handled with fairness and compassion, consistent with the <b>Data Privacy Act of 2012</b>.</li>
         </ol>
         <p className={s.aboutTimeline}><b>Applications</b> accepted January–April · <b>deliberations</b> May–June · <b>fellows announced</b> July. Extensions are usually announced.</p>
+      </div>
+      <div className={s.aboutFlow}>
+        <h3>The two paths at a glance</h3>
+        <TrackFlowchart />
       </div>
       <div className={s.aboutPartner}>Interested to have your school partner with us for accepting fellows for Speech-Language Pathology or Occupational Therapy? Contact us at <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>.</div>
     </div>
