@@ -6,7 +6,7 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_AD
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
 const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERDANA' }
 
-interface Sup { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null }
+interface Sup { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null; validity: string }
 
 // GET /api/expenses/suppliers?branch=&from=&to=&all=1
 // Merged view: suppliers derived from entries + manually stored suppliers.
@@ -16,21 +16,51 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams
   const branch = sp.get('branch') || ''
   if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
+
+  // ?transactions=<registeredName> → the expense entries recorded against that supplier.
+  const txnName = sp.get('transactions')
+  if (txnName != null) {
+    const tx = await prisma.pettyCashEntry.findMany({
+      where: { branch, registeredName: { equals: txnName, mode: 'insensitive' } },
+      select: { date: true, description: true, validity: true, grossAmount: true, vatable: true, pcvNumber: true },
+      orderBy: { date: 'desc' },
+    })
+    return NextResponse.json({
+      transactions: tx.map(e => {
+        const gross = Number(e.grossAmount)
+        const netVat = e.vatable === 'VAT' ? gross / 1.12 : gross
+        return {
+          date: e.date ? e.date.toISOString().slice(0, 10) : null,
+          pcvNumber: e.pcvNumber || '',
+          description: e.description || '',
+          validity: e.validity || '',
+          gross, vat: gross - netVat, netVat,
+        }
+      }),
+    })
+  }
+
   const from = sp.get('from'), to = sp.get('to'), all = sp.get('all') === '1'
 
   const entries = await prisma.pettyCashEntry.findMany({
     where: { branch, registeredName: { not: null } },
-    select: { registeredName: true, registeredAddress: true, tinNumber: true, date: true },
+    select: { registeredName: true, registeredAddress: true, tinNumber: true, date: true, validity: true },
   })
+  // Per-supplier validity: 'Valid' if they have ANY valid transaction (both → Valid),
+  // 'Invalid' only if every transaction is Invalid.
+  const validAny = new Map<string, boolean>()
+  const anyTxn = new Set<string>()
   const map = new Map<string, Sup & { _fa: Date | null }>()
   for (const e of entries) {
     const name = (e.registeredName || '').trim()
     if (!name) continue
     const key = name.toLowerCase()
+    anyTxn.add(key)
+    if (e.validity !== 'Invalid') validAny.set(key, true)
     const d = e.date ? new Date(e.date) : null
     const cur = map.get(key)
     if (!cur) {
-      map.set(key, { id: null, registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '', branch, branchLabel: BRANCH_LABEL[branch], firstAppeared: null, _fa: d })
+      map.set(key, { id: null, registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '', branch, branchLabel: BRANCH_LABEL[branch], firstAppeared: null, validity: 'Valid', _fa: d })
     } else {
       if (d && (!cur._fa || d < cur._fa)) cur._fa = d
       if (!cur.registeredAddress && e.registeredAddress) cur.registeredAddress = e.registeredAddress
@@ -41,9 +71,11 @@ export async function GET(req: Request) {
   for (const s of stored) {
     const key = s.registeredName.trim().toLowerCase()
     const cur = map.get(key)
-    if (!cur) map.set(key, { id: s.id, registeredName: s.registeredName, registeredAddress: s.registeredAddress || '', tin: s.tin || '', branch, branchLabel: BRANCH_LABEL[branch], firstAppeared: null, _fa: null })
+    if (!cur) map.set(key, { id: s.id, registeredName: s.registeredName, registeredAddress: s.registeredAddress || '', tin: s.tin || '', branch, branchLabel: BRANCH_LABEL[branch], firstAppeared: null, validity: 'Valid', _fa: null })
     else { cur.id = s.id; if (s.registeredAddress) cur.registeredAddress = s.registeredAddress; if (s.tin) cur.tin = s.tin }
   }
+  // Finalize validity: Invalid only when they have transactions and none are Valid.
+  for (const [key, sup] of map) sup.validity = (anyTxn.has(key) && !validAny.get(key)) ? 'Invalid' : 'Valid'
 
   let list = [...map.values()].map(x => ({ ...x, firstAppeared: x._fa ? x._fa.toISOString().slice(0, 10) : null }))
   if (!all && (from || to)) {

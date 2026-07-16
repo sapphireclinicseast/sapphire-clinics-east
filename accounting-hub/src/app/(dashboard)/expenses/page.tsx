@@ -91,7 +91,8 @@ interface Entry {
 }
 
 interface Card { id: string; branch: string; bank: string; cardNumber: string; bankCode: string }
-interface Supplier { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null }
+interface Supplier { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null; validity: string }
+interface SupTxn { date: string | null; pcvNumber: string; description: string; validity: string; gross: number; vat: number; netVat: number }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
   module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
@@ -2420,6 +2421,9 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
   const [na, setNa] = useState(''); const [nad, setNad] = useState(''); const [nt, setNt] = useState('')
   const [editing, setEditing] = useState<Supplier | null>(null)
   const [ena, setEna] = useState(''); const [enad, setEnad] = useState(''); const [ent, setEnt] = useState('')
+  const [validityFilter, setValidityFilter] = useState<'all' | 'Valid' | 'Invalid'>('all')
+  const [txnFor, setTxnFor] = useState<Supplier | null>(null)
+  const [txns, setTxns] = useState<SupTxn[]>([]); const [txnLoading, setTxnLoading] = useState(false)
   const [importing, setImporting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -2452,6 +2456,14 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
     if (!confirm('Remove this saved supplier? (Entries that reference it are not affected.)')) return
     setRows(prev => prev.filter(s => s.id !== id))
     try { await fetch(`/api/expenses/suppliers?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }
+  const openTxns = async (s: Supplier) => {
+    setTxnFor(s); setTxns([]); setTxnLoading(true)
+    try {
+      const r = await fetch(`/api/expenses/suppliers?branch=${branch}&transactions=${encodeURIComponent(s.registeredName)}`)
+      const d = r.ok ? await r.json() : { transactions: [] }
+      setTxns(d.transactions || [])
+    } catch { setTxns([]) } finally { setTxnLoading(false) }
   }
   const openEdit = (s: Supplier) => { setEditing(s); setEna(s.registeredName); setEnad(s.registeredAddress || ''); setEnt(s.tin || '') }
   const saveEdit = async () => {
@@ -2508,6 +2520,7 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
 
   const q = search.trim().toLowerCase()
   let shown = rows.filter(s => {
+    if (validityFilter !== 'all' && s.validity !== validityFilter) return false
     if (q && ![s.tin, s.registeredName, s.registeredAddress, s.branchLabel].some(v => (v || '').toLowerCase().includes(q))) return false
     for (const k of ['tin', 'branchLabel', 'registeredName', 'registeredAddress'] as SupSortKey[]) {
       const f = colFilter[k].trim().toLowerCase()
@@ -2576,6 +2589,14 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
           <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
           <input type="date" value={to} disabled={seeAll} onChange={e => setTo(e.target.value)} className="px-3 py-2 rounded-xl border text-sm disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }} />
         </div>
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Validity</label>
+          <select value={validityFilter} onChange={e => setValidityFilter(e.target.value as 'all' | 'Valid' | 'Invalid')} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+            <option value="all">All</option>
+            <option value="Valid">Valid only</option>
+            <option value="Invalid">Invalid only</option>
+          </select>
+        </div>
         <span className="text-xs pb-2" style={{ color: 'var(--mid-gray)' }}>{shown.length} supplier(s)</span>
       </div>
 
@@ -2597,17 +2618,21 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
                       className="mt-1 w-full px-2 py-1 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
                   </th>
                 ))}
+                <th className="border-r border-b px-3 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>Validity</th>
                 <th className="border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}></th>
               </tr>
             </thead>
             <tbody>
               {shown.map((s, i) => (
-                <tr key={(s.id || '') + s.registeredName + i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <tr key={(s.id || '') + s.registeredName + i} onClick={() => openTxns(s)} className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }} title="View transactions with this supplier">
                   <td className="border-r border-b px-3 py-2 font-mono whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{s.tin || '—'}</td>
                   <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{s.branchLabel}</td>
                   <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)', fontWeight: 600 }}>{s.registeredName}</td>
                   <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{s.registeredAddress || '—'}</td>
-                  <td className="border-b px-3 py-2 text-right whitespace-nowrap" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)' }}>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={s.validity === 'Invalid' ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#dcfce7', color: '#166534' }}>{s.validity}</span>
+                  </td>
+                  <td className="border-b px-3 py-2 text-right whitespace-nowrap" onClick={e => e.stopPropagation()} style={{ borderColor: 'var(--light-gray)' }}>
                     {canWrite && s.id && (
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => openEdit(s)} title="Edit supplier details" className="p-1 rounded hover:bg-gray-100">
@@ -2622,7 +2647,7 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
                 </tr>
               ))}
               {shown.length === 0 && (
-                <tr><td colSpan={5} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No suppliers{q || !seeAll ? ' match the filters' : ' yet'}.</td></tr>
+                <tr><td colSpan={6} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No suppliers{q || validityFilter !== 'all' || !seeAll ? ' match the filters' : ' yet'}.</td></tr>
               )}
             </tbody>
           </table>
@@ -2661,6 +2686,57 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>TIN</label>
             <input value={ent} onChange={e => setEnt(e.target.value)} placeholder="XXX-XXX-XXX-XXXXX" className="w-full px-3 py-2 rounded-xl border text-sm mb-4 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             <button onClick={saveEdit} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Save Changes</button>
+          </div>
+        </div>
+      )}
+
+      {txnFor && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setTxnFor(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Transactions — {txnFor.registeredName}</h2>
+              <button onClick={() => setTxnFor(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Expense entries recorded against this supplier at {txnFor.branchLabel}.</p>
+            {txnLoading ? (
+              <div className="py-10 text-center"><Loader2 className="animate-spin inline" size={18} style={{ color: 'var(--teal)' }} /></div>
+            ) : txns.length === 0 ? (
+              <div className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No transactions found.</div>
+            ) : (
+              <div className="overflow-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0" style={{ background: 'var(--off-white)' }}>
+                    <tr>
+                      {['Date', 'Description', 'Validity', 'Gross Amount', 'VAT', 'Net of VAT'].map((h, hi) => (
+                        <th key={h} className={`px-3 py-2 font-semibold whitespace-nowrap ${hi >= 3 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {txns.map((t, i) => (
+                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date || '—'}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{t.description || '—'}</td>
+                        <td className="px-3 py-2">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={t.validity === 'Invalid' ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#dcfce7', color: '#166534' }}>{t.validity || '—'}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(t.gross)}</td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(t.vat)}</td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(t.netVat)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <td className="px-3 py-2" colSpan={3} style={{ color: 'var(--charcoal)' }}>Total ({txns.length})</td>
+                      <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(txns.reduce((s, t) => s + t.gross, 0))}</td>
+                      <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(txns.reduce((s, t) => s + t.vat, 0))}</td>
+                      <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{peso(txns.reduce((s, t) => s + t.netVat, 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
