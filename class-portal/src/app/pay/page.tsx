@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, getPaymentsForStudent, savePayment, putFile,
   levelLabel, getFeeFor, hydrateFees, hydrateFrontDeskPayments, validateVoucher,
+  listPersonalVouchersFor,
   type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser, type FeeSchedule,
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
@@ -172,6 +173,19 @@ export default function PayPage() {
     // Pull the marketing-hub view so any cashier-converted payment shows up
     // here as PAID without the parent having to manually refresh.
     hydrateFrontDeskPayments().then(() => setHistory(getPaymentsForStudent(u.id))).catch(() => { /* ignore */ })
+    // Auto-apply the student's personal early-bird voucher on mount so
+    // monthly / bi-annual parents don't have to remember to type the
+    // code every time. If they have multiple (rare), pick the highest
+    // discount among enabled + not-yet-expired ones. Parent can still
+    // remove it via the voucher card if they want to pay full price.
+    listPersonalVouchersFor(u.id).then(vouchers => {
+      const now = Date.now()
+      const active = vouchers.filter(v => v.enabled && new Date(v.validUntil).getTime() > now)
+      if (active.length === 0) return
+      const best = active.reduce((a, b) => (b.discountPercent > a.discountPercent ? b : a))
+      setAppliedVoucher({ code: best.code, discountPercent: best.discountPercent, validUntil: best.validUntil })
+      setVoucherInput(best.code)
+    }).catch(() => { /* ignore */ })
   }, [router])
 
   const plans = useMemo(() => fee ? plansFor(fee) : [], [fee])
