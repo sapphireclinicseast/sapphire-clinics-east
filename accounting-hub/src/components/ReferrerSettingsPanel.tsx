@@ -55,7 +55,7 @@ export default function ReferrerSettingsPanel() {
   const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [] }); setError(''); setShowForm(true) }
   const openEdit = (r: typeof referrers[0]) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [] }); setError(''); setShowForm(true) }
   const toggleBranch = (b: string) => setForm(f => ({ ...f, branches: f.branches.includes(b) ? f.branches.filter(x => x !== b) : [...f.branches, b] }))
-  const BRANCH_OPTS: [string, string][] = [['SANDBOX_EAST', 'East'], ['SANDBOX_GREENHILLS', 'Greenhills']]
+  const BRANCH_VALUES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
 
   const save = async () => {
     if (!form.name.trim()) { setError('Name is required'); return }
@@ -192,7 +192,7 @@ export default function ReferrerSettingsPanel() {
                       <div className="flex flex-wrap gap-1">
                         {r.branches.map(b => (
                           <span key={b} className="px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                            {b === 'SANDBOX_EAST' ? 'East' : b === 'SANDBOX_GREENHILLS' ? 'Greenhills' : b}
+                            {branchLabel(b)}
                           </span>
                         ))}
                       </div>
@@ -256,11 +256,11 @@ export default function ReferrerSettingsPanel() {
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Visible to branch</label>
               <div className="flex gap-2">
-                {BRANCH_OPTS.map(([val, label]) => (
+                {BRANCH_VALUES.map(val => (
                   <label key={val} className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm flex-1"
                     style={form.branches.includes(val) ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                     <input type="checkbox" checked={form.branches.includes(val)} onChange={() => toggleBranch(val)} />
-                    {label}
+                    {branchLabel(val)}
                   </label>
                 ))}
               </div>
