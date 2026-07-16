@@ -176,8 +176,8 @@ function TrackFlowchart() {
       <Node x={390} y={96} w={300} h={56} c={TIN} title="Submit application" sub="directly to SCEI" />
       <line x1={180} y1={152} x2={180} y2={180} {...arr} />
       <line x1={540} y1={152} x2={540} y2={180} {...arr} />
-      <Node x={30} y={180} w={300} h={56} c={ARAL} title="Approved — assistance awarded" sub="₱5k or ₱10k / mo · 5–10 mo" />
-      <Node x={390} y={180} w={300} h={56} c={TIN} title="Approved — assistance awarded" sub="₱30k: fees, or ₱5k × 6 mo" />
+      <Node x={30} y={180} w={300} h={56} c={ARAL} title="Fellowship assistance awarded" sub="₱5k or ₱10k / mo · 5–10 mo" />
+      <Node x={390} y={180} w={300} h={56} c={TIN} title="Fellowship assistance awarded" sub="₱30k: fees, or ₱5k × 6 mo" />
       <line x1={180} y1={236} x2={180} y2={264} {...arr} />
       <line x1={540} y1={236} x2={540} y2={264} {...arr} />
       <Node x={30} y={264} w={300} h={56} c={ARAL} title="Internship" sub="allowance paid monthly" />
@@ -186,13 +186,13 @@ function TrackFlowchart() {
       <path d="M540 320 L540 342 L360 342 L360 360" {...arr} />
       <Node x={210} y={360} w={300} h={56} c={SH} title="Licensure exam" sub="pass the PRC board" />
       <line x1={360} y1={416} x2={360} y2={452} {...arr} />
-      <Node x={180} y={452} w={360} h={56} c={SH} title="Discharge it — pick one" sub="it can be fully forgiven" />
+      <Node x={180} y={452} w={360} h={56} c={SH} title="Settle it — pick one" sub="forgiven, or pay back only what you got" />
       <path d="M360 508 L360 534 L180 534 L180 556" {...arr} />
       <path d="M360 508 L360 534 L540 534 L540 556" {...arr} />
       <text x={262} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>work it off</text>
       <text x={452} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>or pay it back</text>
       <Node x={30} y={556} w={300} h={60} c={GREEN} title="Option A — render service" sub="1,500 patient-session hrs → forgiven" />
-      <Node x={390} y={556} w={300} h={60} c={GOLD} title="Option B — reimburse in cash" sub="only what you received · no interest" />
+      <Node x={390} y={556} w={300} h={60} c={GOLD} title="Option B — pay it back" sub="only what you received · no interest" />
       <text x={180} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ fully paid at market rate; pay nothing</text>
       <text x={540} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ 3–6 mos (Aral) / 3 mos (Tindig)</text>
     </svg>
