@@ -15,7 +15,7 @@ const BRANCHES = [
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface Txn { id: string; referenceCode: string | null; description: string | null; branch: string | null; amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null; paidAt: string | null; livemode: boolean; createdAt: string }
-interface ServiceOpt { id: string; name: string; price: number | null }
+interface ServiceOpt { id: string; name: string; price: number | null; branchPrices: { branch: string; price: number | null }[] }
 interface BankOpt { id: string; accountNumber: string; accountTitle: string }
 interface Unsettled { id: string; referenceCode: string | null; description: string | null; branch: string | null; amount: number; fee: number | null; netAmount: number | null; paidAt: string | null; livemode: boolean }
 interface SettledRow { id: string; payoutId: string | null; referenceCode: string | null; amount: number; fee: number | null; netAmount: number | null; paidAt: string | null }
@@ -87,7 +87,11 @@ export default function PaymongoPage() {
       // /api/services returns a paginated shape: { data, total, page, ... }
       .then(d => {
         const arr = Array.isArray(d) ? d : (d.data || d.services || [])
-        setServices(arr.map((s: { id: string; name: string; price: number | string | null }) => ({ id: s.id, name: s.name, price: s.price != null ? Number(s.price) : null })))
+        setServices(arr.map((s: { id: string; name: string; price: number | string | null; branchPrices?: { branch: string; price: number | string | null }[] }) => ({
+          id: s.id, name: s.name,
+          price: s.price != null ? Number(s.price) : null,
+          branchPrices: (s.branchPrices || []).map(bp => ({ branch: bp.branch, price: bp.price != null ? Number(bp.price) : null })),
+        })))
       })
       .catch(() => setServices([]))
   }, [recordAsOrder, branch])
@@ -105,6 +109,13 @@ export default function PaymongoPage() {
   }
 
   const today = () => new Date().toISOString().slice(0, 10)
+
+  // Resolve a service's price for the selected branch: use the per-branch override
+  // when one exists (e.g. tuition priced differently East vs GH), else the default.
+  const priceForBranch = (s: ServiceOpt): number | null => {
+    const bp = s.branchPrices.find(b => b.branch === branch && b.price != null)
+    return bp ? bp.price : s.price
+  }
 
   const lineTotal = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
   // Staff-entered voucher/discount (fixed ₱ or % of the subtotal), clamped to the subtotal.
@@ -282,16 +293,18 @@ export default function PaymongoPage() {
                 onChange={e => {
                   const s = services.find(x => x.id === e.target.value)
                   if (s && !lines.some(l => l.serviceId === s.id)) {
-                    setLines(prev => [...prev, { serviceId: s.id, name: s.name, amount: s.price != null ? String(s.price) : '' }])
+                    const p = priceForBranch(s)
+                    setLines(prev => [...prev, { serviceId: s.id, name: s.name, amount: p != null ? String(p) : '' }])
                   }
                   setAddServiceId('')
                 }}
                 className={inp} style={bc}
               >
                 <option value="">+ Add a service…</option>
-                {services.filter(s => !lines.some(l => l.serviceId === s.id)).map(s => (
-                  <option key={s.id} value={s.id}>{s.name}{s.price != null ? ` — ${peso(s.price)}` : ''}</option>
-                ))}
+                {services.filter(s => !lines.some(l => l.serviceId === s.id)).map(s => {
+                  const p = priceForBranch(s)
+                  return <option key={s.id} value={s.id}>{s.name}{p != null && p > 0 ? ` — ${peso(p)}` : ''}</option>
+                })}
               </select>
 
               {lines.length > 0 && (
