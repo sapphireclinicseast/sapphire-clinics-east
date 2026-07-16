@@ -120,7 +120,9 @@ export default function ReferrerSettingsPanel() {
     setError('')
     setSaving(true)
     try {
-      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: form.affiliation.trim() || null, specialization: form.specialization.trim() || null, branches: form.branches }
+      // Affiliation/Specialization apply to doctors only; clear them for schools/law firms.
+      const isDoctor = form.type === 'DOCTOR'
+      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: isDoctor ? (form.affiliation.trim() || null) : null, specialization: isDoctor ? (form.specialization.trim() || null) : null, branches: form.branches }
       const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (res.ok) { setShowForm(false); fetchReferrers() }
       else { const d = await res.json(); setError(d.error || 'Failed to save') }
@@ -246,16 +248,20 @@ export default function ReferrerSettingsPanel() {
                 ))}
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Affiliation</label>
-              <input value={form.affiliation} onChange={e => setForm({ ...form, affiliation: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Specialization</label>
-              <input value={form.specialization} onChange={e => setForm({ ...form, specialization: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-            </div>
+            {form.type === 'DOCTOR' && (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Affiliation</label>
+                  <input value={form.affiliation} onChange={e => setForm({ ...form, affiliation: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Specialization</label>
+                  <input value={form.specialization} onChange={e => setForm({ ...form, specialization: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+              </>
+            )}
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Visible to branch</label>
               <div className="flex gap-2">
