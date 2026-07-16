@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { Users, UserPlus, Loader2, X, Trash2, Search } from 'lucide-react'
 import ReferrerSettingsPanel, { REFERRER_TYPE_LABEL } from '@/components/ReferrerSettingsPanel'
+import { branchLabel } from '@/lib/branch'
 
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -280,7 +281,7 @@ function SessionsModal({ rp, onClose }: { rp: RP; onClose: () => void }) {
                   <tr key={s.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(s.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.services}{s.paymentStatus === 'UNPAID' ? <span className="ml-1 text-[10px] font-semibold" style={{ color: '#b45309' }}>(unpaid)</span> : null}</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{s.branch}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{branchLabel(s.branch)}</td>
                     <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(s.netAmount)}</td>
                   </tr>
                 ))}

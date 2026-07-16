@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, Search, Pencil, Trash2, X } from 'lucide-react'
+import { branchLabel } from '@/lib/branch'
 
 export const REFERRER_TYPE_LABEL: Record<string, string> = { DOCTOR: 'Doctor', LAW_FIRM: 'Law Firm', PARTNER_SCHOOL: 'Partner School' }
 const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM', 'PARTNER_SCHOOL'] as const
@@ -281,7 +282,7 @@ export default function ReferrerSettingsPanel() {
                         <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{new Date(o.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                         <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{o.patientName || '—'}</td>
                         <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>₱{Number(o.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{o.branch}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{branchLabel(o.branch)}</td>
                       </tr>
                     ))}
                   </tbody>
