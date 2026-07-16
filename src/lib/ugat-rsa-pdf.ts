@@ -1,9 +1,9 @@
-// Generates the signed UGAT Fellowship Loan Agreement as a PDF (jsPDF,
+// Generates the signed UGAT Fellowship Agreement as a PDF (jsPDF,
 // server-side — same pattern as the sample seeder). Content comes from the
 // shared source of truth in ugat-loan-agreement.ts, so the PDF and the
 // on-screen reader never drift. The CEO signature is auto-embedded, the
 // fellow's e-signature + signing timestamp are stamped on every body page,
-// and Annex A (the sample loan computation) is appended.
+// and Annex A (the sample reimbursement computation) is appended.
 
 import { CEO_SIGNATURE_PNG_B64 } from './ugat-ceo-signature'
 import { loanAgreementBlocks, loanSubtitle, annexIntro, annexNote, annexTables } from './ugat-loan-agreement'
@@ -112,10 +112,11 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     // ── Header ──
     para('SAPPHIRE CLINICS EAST INCORPORATED', { center: true, bold: true, size: 12, gap: 0.5 })
     para(`UGAT FELLOWSHIP PROGRAM — ${isTindig ? 'TINDIG' : 'ARAL'} TRACK`, { center: true, bold: true, size: 10, gap: 0.5 })
-    para('FELLOWSHIP LOAN AGREEMENT', { center: true, bold: true, size: 11, gap: 0.5 })
+    para('UGAT FELLOWSHIP AGREEMENT', { center: true, bold: true, size: 11, gap: 0.5 })
+    para('(Educational Assistance with Full Condonation through Professional Service)', { center: true, size: 8, gap: 0.5 })
     para(loanSubtitle(isTindig), { center: true, size: 8, gap: 3 })
-    if (isTindig) para('Your award: a review-support loan of up to PHP 30,000 (review fees, or PHP 5,000/month for 6 months) — fully condonable through service.', { size: 8.5, gap: 3 })
-    else para(`Your award: a fellowship loan released as ${m ? `PHP ${m.toLocaleString()}/month for ${n} months (principal approx. PHP ${(m * (n || 0)).toLocaleString()})` : 'a monthly allowance'} — fully condonable through service.`, { size: 8.5, gap: 3 })
+    if (isTindig) para('Your award: review-support fellowship assistance of up to PHP 30,000 (review fees, or PHP 5,000/month for 6 months) — fully condonable through service; reimbursed with no interest if you choose Option B.', { size: 8.5, gap: 3 })
+    else para(`Your award: fellowship assistance released as ${m ? `PHP ${m.toLocaleString()}/month for ${n} months (assistance amount approx. PHP ${(m * (n || 0)).toLocaleString()})` : 'a monthly allowance'} — fully condonable through service; reimbursed with no interest if you choose Option B.`, { size: 8.5, gap: 3 })
 
     // ── Body (shared source of truth) ──
     const blocks = loanAgreementBlocks({ track: input.track, fellowName: input.fellowName, program: input.program, school: input.school, monthly: input.monthly, months: input.months, comakerName: input.comakerName })
@@ -155,7 +156,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     // ── Annex A (fresh page) ──
     doc.addPage(); y = 20
     para('ANNEX “A”', { center: true, bold: true, size: 12, gap: 0.5 })
-    para('SAMPLE LOAN COMPUTATION — CASH REPAYMENT OPTION (OPTION B)', { center: true, bold: true, size: 9.5, gap: 3 })
+    para('SAMPLE REIMBURSEMENT COMPUTATION — REIMBURSEMENT OPTION (OPTION B)', { center: true, bold: true, size: 9.5, gap: 3 })
     para(annexIntro(isTindig), { size: 8.5, gap: 3 })
     for (const tbl of annexTables(isTindig)) {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
@@ -183,7 +184,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
 
     return Buffer.from(doc.output('arraybuffer'))
   } catch (e) {
-    console.error('[ugat] Loan Agreement PDF generation failed:', e)
+    console.error('[ugat] Fellowship Agreement PDF generation failed:', e)
     return null
   }
 }
