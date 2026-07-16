@@ -202,7 +202,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
                           </div>
                           <div className="text-[11px] mt-0.5" style={{ color: '#6b7280' }}>
                             {item.type === 'REGISTRATION'
-                              ? 'New patient registration'
+                              ? 'New Patient added in Patient CRM'
                               : item.type === 'FORM_RESPONSE'
                               ? 'New form submission'
                               : item.status === 'PAID'
