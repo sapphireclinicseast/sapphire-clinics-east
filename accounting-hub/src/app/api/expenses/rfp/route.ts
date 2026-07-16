@@ -17,7 +17,9 @@ export async function GET(req: Request) {
     const r = await prisma.reimbursementReport.findUnique({ where: { id }, select: { module: true, meta: true, grossTotal: true } })
     if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     if (r.module === 'EXPENSE') {
-      const entries = await prisma.pettyCashEntry.findMany({ where: { reimbursementId: id }, select: { accountTitle: true, description: true, requestor: true, grossAmount: true, vatable: true, hasEwt: true, ewtRate: true } })
+      // Order the Billing-Voucher lines the same way they were entered (PCV sequence),
+      // matching the RFP Summary — without this Postgres returns them in arbitrary order.
+      const entries = await prisma.pettyCashEntry.findMany({ where: { reimbursementId: id }, orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }], select: { accountTitle: true, description: true, requestor: true, grossAmount: true, vatable: true, hasEwt: true, ewtRate: true } })
       return NextResponse.json({ lines: entries.map(e => {
         const gross = Number(e.grossAmount)
         const netVat = e.vatable === 'VAT' ? gross / 1.12 : gross
