@@ -84,6 +84,32 @@ export async function POST(req: Request) {
   }
 }
 
+// PUT /api/expenses/suppliers — edit an existing saved supplier's details.
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  try {
+    const { id, registeredName, registeredAddress, tin } = await req.json()
+    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    const name = String(registeredName || '').trim()
+    if (!name) return NextResponse.json({ error: 'Registered Name is required' }, { status: 400 })
+    const updated = await prisma.expenseSupplier.update({
+      where: { id },
+      data: { registeredName: name, registeredAddress: registeredAddress ? String(registeredAddress) : null, tin: tin ? String(tin) : null },
+    })
+    return NextResponse.json(updated)
+  } catch (e) {
+    // Unique (branch, registeredName) collision when renaming to an existing supplier.
+    if (e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === 'P2002') {
+      return NextResponse.json({ error: 'A supplier with this Registered Name already exists for this branch.' }, { status: 409 })
+    }
+    console.error('Supplier update error:', e)
+    return NextResponse.json({ error: 'Failed to update supplier' }, { status: 500 })
+  }
+}
+
 // DELETE /api/expenses/suppliers?id=...
 export async function DELETE(req: Request) {
   const session = await auth()

@@ -2418,6 +2418,8 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
   const [colFilter, setColFilter] = useState<Record<SupSortKey, string>>({ tin: '', branchLabel: '', registeredName: '', registeredAddress: '' })
   const [showAdd, setShowAdd] = useState(false)
   const [na, setNa] = useState(''); const [nad, setNad] = useState(''); const [nt, setNt] = useState('')
+  const [editing, setEditing] = useState<Supplier | null>(null)
+  const [ena, setEna] = useState(''); const [enad, setEnad] = useState(''); const [ent, setEnt] = useState('')
   const [importing, setImporting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -2450,6 +2452,19 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
     if (!confirm('Remove this saved supplier? (Entries that reference it are not affected.)')) return
     setRows(prev => prev.filter(s => s.id !== id))
     try { await fetch(`/api/expenses/suppliers?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }
+  const openEdit = (s: Supplier) => { setEditing(s); setEna(s.registeredName); setEnad(s.registeredAddress || ''); setEnt(s.tin || '') }
+  const saveEdit = async () => {
+    if (!editing?.id) return
+    if (!ena.trim()) { alert('Registered Name is required'); return }
+    try {
+      const r = await fetch('/api/expenses/suppliers', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editing.id, registeredName: ena.trim(), registeredAddress: enad.trim(), tin: ent.trim() }),
+      })
+      if (r.ok) { setEditing(null); await load() }
+      else alert((await r.json()).error || 'Failed to update')
+    } catch { alert('Failed to update') }
   }
 
   const downloadTemplate = async () => {
@@ -2592,11 +2607,16 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
                   <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{s.branchLabel}</td>
                   <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)', fontWeight: 600 }}>{s.registeredName}</td>
                   <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{s.registeredAddress || '—'}</td>
-                  <td className="border-b px-3 py-2 text-right" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="border-b px-3 py-2 text-right whitespace-nowrap" style={{ borderColor: 'var(--light-gray)' }}>
                     {canWrite && s.id && (
-                      <button onClick={() => deleteSupplier(s.id)} title="Remove saved supplier" className="p-1 rounded hover:bg-red-50">
-                        <Trash2 size={13} style={{ color: '#dc2626' }} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => openEdit(s)} title="Edit supplier details" className="p-1 rounded hover:bg-gray-100">
+                          <Pencil size={13} style={{ color: 'var(--teal)' }} />
+                        </button>
+                        <button onClick={() => deleteSupplier(s.id)} title="Remove saved supplier" className="p-1 rounded hover:bg-red-50">
+                          <Trash2 size={13} style={{ color: '#dc2626' }} />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -2623,6 +2643,24 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>TIN</label>
             <input value={nt} onChange={e => setNt(e.target.value)} placeholder="XXX-XXX-XXX-XXXXX" className="w-full px-3 py-2 rounded-xl border text-sm mb-4 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             <button onClick={addSupplier} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Add Supplier</button>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setEditing(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Edit Supplier</h2>
+              <button onClick={() => setEditing(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Registered Name</label>
+            <input value={ena} onChange={e => setEna(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Registered Address</label>
+            <input value={enad} onChange={e => setEnad(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>TIN</label>
+            <input value={ent} onChange={e => setEnt(e.target.value)} placeholder="XXX-XXX-XXX-XXXXX" className="w-full px-3 py-2 rounded-xl border text-sm mb-4 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+            <button onClick={saveEdit} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Save Changes</button>
           </div>
         </div>
       )}
