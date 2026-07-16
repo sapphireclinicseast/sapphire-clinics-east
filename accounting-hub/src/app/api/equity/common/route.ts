@@ -40,6 +40,8 @@ export async function GET() {
     prisma.equitySettings.findUnique({ where: { id: 'singleton' } }),
   ])
   const authorizedShares = settings?.authorizedShares ?? 20000000
+  const authorizedCommonShares = settings?.authorizedCommonShares ?? null
+  const authorizedFounderShares = settings?.authorizedFounderShares ?? null
 
   const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
   const prefCap = preferreds.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
@@ -91,7 +93,7 @@ export async function GET() {
 
   return NextResponse.json({
     rows, shareholders,
-    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares },
+    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares, authorizedCommonShares, authorizedFounderShares },
   })
 }
 

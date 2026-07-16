@@ -1763,9 +1763,11 @@ model InvoiceSettings {
 // capital; Treasury Shares are derived as authorizedShares − outstanding, so the
 // available-for-sale figure stays correct even if a reissuance wasn't tagged.
 model EquitySettings {
-  id               String   @id @default("singleton")
-  authorizedShares Int      @default(20000000)
-  updatedAt        DateTime @updatedAt
+  id                      String   @id @default("singleton")
+  authorizedShares        Int      @default(20000000)
+  authorizedCommonShares  Int?     // sub-limit of authorized shares reserved for Common classes
+  authorizedFounderShares Int?     // sub-limit reserved for Founders classes
+  updatedAt               DateTime @updatedAt
 }
 
 // ── Petty Cash module ─────────────────────────────────────────

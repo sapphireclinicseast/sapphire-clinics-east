@@ -38,7 +38,7 @@ interface CommonRow {
   boughtBack: boolean; buybackShares: number; buybacks: Buyback[]
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
-interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number }
+interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null }
 
 const EQUITY_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -57,6 +57,8 @@ export default function EquityPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [editAuth, setEditAuth] = useState(false)
   const [authInput, setAuthInput] = useState('')
+  const [authCommonInput, setAuthCommonInput] = useState('')
+  const [authFounderInput, setAuthFounderInput] = useState('')
   const [savingAuth, setSavingAuth] = useState(false)
 
   const load = useCallback(async () => {
@@ -120,9 +122,15 @@ export default function EquityPage() {
   const saveAuth = async () => {
     const val = Math.round(Number(authInput.replace(/[, ]/g, '')))
     if (!Number.isFinite(val) || val < 0) { alert('Enter a valid number of authorized shares.'); return }
+    const parseLimit = (s: string) => { const t = s.replace(/[, ]/g, '').trim(); if (t === '') return null; const n = Math.round(Number(t)); return Number.isFinite(n) && n >= 0 ? n : NaN }
+    const common = parseLimit(authCommonInput), founder = parseLimit(authFounderInput)
+    if (Number.isNaN(common) || Number.isNaN(founder)) { alert('Class limits must be blank or a non-negative number.'); return }
+    if ((common || 0) + (founder || 0) > val && (common != null || founder != null)) {
+      if (!confirm(`Common + Founder limits (${((common || 0) + (founder || 0)).toLocaleString('en-PH')}) exceed total authorized (${val.toLocaleString('en-PH')}). Save anyway?`)) return
+    }
     setSavingAuth(true)
     try {
-      const r = await fetch('/api/equity/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authorizedShares: val }) })
+      const r = await fetch('/api/equity/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authorizedShares: val, authorizedCommonShares: common, authorizedFounderShares: founder }) })
       if (!r.ok) { alert('Failed to save authorized shares.'); return }
       setEditAuth(false); load()
     } finally { setSavingAuth(false) }
@@ -133,12 +141,30 @@ export default function EquityPage() {
   const netOf = (r: CommonRow) => r.numberOfShares - (r.buybackShares || 0)
   const foundersShares = (data?.rows || []).filter(r => (r.shareClass || '').toLowerCase().startsWith('founders')).reduce((s, r) => s + netOf(r), 0)
   const commonClassShares = (data?.rows || []).filter(r => (r.shareClass || '').toLowerCase().startsWith('common')).reduce((s, r) => s + netOf(r), 0)
+  // Over-authorization alarms.
+  const authTotal = fig?.authorizedShares ?? 20000000
+  const authCommon = fig?.authorizedCommonShares ?? null
+  const authFounder = fig?.authorizedFounderShares ?? null
+  const overCommon = authCommon != null && commonClassShares > authCommon
+  const overFounder = authFounder != null && foundersShares > authFounder
+  const overTotal = (fig?.totalShares ?? 0) > authTotal
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
         <PieChart size={24} className="text-teal-600" />
         <h1 className="text-2xl font-semibold text-gray-900">Equity</h1>
       </div>
+
+      {(overTotal || overCommon || overFounder) && (
+        <div className="rounded-xl border p-3 text-sm flex items-start gap-2" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
+          <span className="font-bold whitespace-nowrap">⚠ Over authorized:</span>
+          <span>
+            {overTotal && <>Outstanding shares {(fig?.totalShares || 0).toLocaleString('en-PH')} exceed total authorized {authTotal.toLocaleString('en-PH')}. </>}
+            {overCommon && <>Common {commonClassShares.toLocaleString('en-PH')} exceeds its authorized limit {authCommon!.toLocaleString('en-PH')}. </>}
+            {overFounder && <>Founders {foundersShares.toLocaleString('en-PH')} exceeds its authorized limit {authFounder!.toLocaleString('en-PH')}. </>}
+          </span>
+        </div>
+      )}
 
       {/* Top figures — org-wide equity totals (admin only) */}
       {isAdmin && (
@@ -150,16 +176,35 @@ export default function EquityPage() {
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Authorized Shares</p>
-            {!editAuth && <button onClick={() => { setAuthInput(String(fig?.authorizedShares ?? 20000000)); setEditAuth(true) }} className="p-1 rounded hover:bg-gray-100" title="Edit authorized shares"><Pencil size={13} className="text-blue-500" /></button>}
+            {!editAuth && <button onClick={() => { setAuthInput(String(fig?.authorizedShares ?? 20000000)); setAuthCommonInput(fig?.authorizedCommonShares != null ? String(fig.authorizedCommonShares) : ''); setAuthFounderInput(fig?.authorizedFounderShares != null ? String(fig.authorizedFounderShares) : ''); setEditAuth(true) }} className="p-1 rounded hover:bg-gray-100" title="Edit authorized shares"><Pencil size={13} className="text-blue-500" /></button>}
           </div>
           {editAuth ? (
-            <div className="flex items-center gap-1.5 mt-1">
-              <input autoFocus value={authInput} onChange={e => setAuthInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAuth(); if (e.key === 'Escape') setEditAuth(false) }}
-                className="w-full px-2 py-1 rounded-lg border text-lg font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} inputMode="numeric" />
-              <button onClick={saveAuth} disabled={savingAuth} className="px-2 py-1 rounded-lg text-white text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>{savingAuth ? <Loader2 size={13} className="animate-spin" /> : 'Save'}</button>
-              <button onClick={() => setEditAuth(false)} className="p-1 rounded hover:bg-gray-100"><X size={14} className="text-gray-400" /></button>
+            <div className="space-y-1.5 mt-1">
+              <div className="flex items-center gap-1.5">
+                <input autoFocus value={authInput} onChange={e => setAuthInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAuth(); if (e.key === 'Escape') setEditAuth(false) }} placeholder="Total authorized"
+                  className="w-full px-2 py-1 rounded-lg border text-lg font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} inputMode="numeric" />
+                <button onClick={saveAuth} disabled={savingAuth} className="px-2 py-1 rounded-lg text-white text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>{savingAuth ? <Loader2 size={13} className="animate-spin" /> : 'Save'}</button>
+                <button onClick={() => setEditAuth(false)} className="p-1 rounded hover:bg-gray-100"><X size={14} className="text-gray-400" /></button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>Common</span>
+                <input value={authCommonInput} onChange={e => setAuthCommonInput(e.target.value)} placeholder="no sub-limit" className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} inputMode="numeric" />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>Founders</span>
+                <input value={authFounderInput} onChange={e => setAuthFounderInput(e.target.value)} placeholder="no sub-limit" className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} inputMode="numeric" />
+              </div>
             </div>
-          ) : <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.authorizedShares ?? 20000000).toLocaleString('en-PH')}</p>}
+          ) : (
+            <>
+              <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.authorizedShares ?? 20000000).toLocaleString('en-PH')}</p>
+              {(fig?.authorizedCommonShares != null || fig?.authorizedFounderShares != null) && (
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  Common: {fig?.authorizedCommonShares != null ? fig.authorizedCommonShares.toLocaleString('en-PH') : '—'} · Founders: {fig?.authorizedFounderShares != null ? fig.authorizedFounderShares.toLocaleString('en-PH') : '—'}
+                </p>
+              )}
+            </>
+          )}
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Number of Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
@@ -250,12 +295,12 @@ export default function EquityPage() {
       {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} canWrite />}
       {effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} isAdmin={isAdmin} />}
 
-      {(showAdd || edit) && <CommonModal row={edit} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
+      {(showAdd || edit) && <CommonModal row={edit} rows={data?.rows || []} authCommon={authCommon} authFounder={authFounder} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
   )
 }
 
-function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload, onSaved }: { row: CommonRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onReload: () => void; onSaved: () => void }) {
+function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, equityAccts, onClose, onReload, onSaved }: { row: CommonRow | null; rows: CommonRow[]; authCommon: number | null; authFounder: number | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onReload: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '',
     email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
@@ -272,6 +317,16 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload,
   const pricePerShare = n(f.truePar) + n(f.apic)
   const cap = n(f.numberOfShares) * pricePerShare
   const prefix = f.stockCertNumber || f.name || 'SHARE'
+  // Over-authorization check for the selected class group (excludes the row being edited).
+  const cls = (f.shareClass || '').toLowerCase()
+  const classGroup = cls.startsWith('founders') ? 'founders' : cls.startsWith('common') ? 'common' : null
+  const classLimit = classGroup === 'founders' ? authFounder : classGroup === 'common' ? authCommon : null
+  const existingClass = classGroup
+    ? rows.filter(r => r.id !== row?.id && (r.shareClass || '').toLowerCase().startsWith(classGroup)).reduce((s, r) => s + (r.numberOfShares - (r.buybackShares || 0)), 0)
+    : 0
+  const projectedClass = existingClass + n(f.numberOfShares)
+  const overLimit = classLimit != null && projectedClass > classLimit
+  const limitLabel = classGroup === 'founders' ? 'Founders' : 'Common'
 
   const pickShareholder = (id: string) => {
     const sh = shareholders.find(s => s.id === id)
@@ -282,6 +337,9 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload,
   const save = async () => {
     if (!(n(f.numberOfShares) > 0) || !(pricePerShare > 0)) { alert('Enter shares and True Par / APIC.'); return }
     if (!f.name.trim()) { alert('Investor name is required.'); return }
+    if (overLimit) {
+      if (!window.confirm(`⚠ This exceeds the authorized ${limitLabel} shares.\n\nAuthorized ${limitLabel}: ${classLimit!.toLocaleString('en-PH')}\nAfter this: ${projectedClass.toLocaleString('en-PH')} (over by ${(projectedClass - classLimit!).toLocaleString('en-PH')})\n\nSave anyway?`)) return
+    }
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), truePar: n(f.truePar), apic: n(f.apic), pricePerShare,
@@ -298,6 +356,11 @@ function CommonModal({ row, shareholders, banks, equityAccts, onClose, onReload,
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">{row ? `Edit ${row.shNumber}` : 'Add Common Shareholder'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
+        {overLimit && (
+          <div className="mb-3 rounded-xl border p-2.5 text-xs" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
+            ⚠ This will bring {limitLabel} shares to <b>{projectedClass.toLocaleString('en-PH')}</b>, exceeding the authorized {limitLabel} limit of <b>{classLimit!.toLocaleString('en-PH')}</b> (over by {(projectedClass - classLimit!).toLocaleString('en-PH')}).
+          </div>
+        )}
 
         {!row && (
           <div className="mb-3">
