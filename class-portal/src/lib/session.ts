@@ -1668,16 +1668,16 @@ export function didPayForBiannualHalf(studentId: string, half: 'FIRST' | 'SECOND
  * Did a student pay for a specific (year, monthIdx) month? Matches on:
  *   1. Explicit period text ("July 2026")
  *   2. A range in the period ("June–September 2026")
- *   3. Fallback: the EARLIER of createdAt / paidAt, since front-desk
- *      cash records let staff type period as free text (e.g.
- *      "2026-2027"). Picking the earlier of the two timestamps handles
- *      both flows cleanly:
- *        * self-serve: createdAt ≈ paidAt, both equal the paid month
- *        * frontdesk submitted Jun 20, cashier confirmed Jul 1: use
- *          createdAt (Jun 20) — parent's submit is the intended month
- *        * frontdesk logged Jul 11 with the paymentDate backdated to
- *          Jun 21 (via the edit modal): use paidAt (Jun 21) — that's
- *          the corrected actual-payment date the staff entered
+ *
+ * NO timestamp fallback: we deliberately only trust records whose
+ * `period` text names a specific month. Free-text periods like
+ * "2026-2027" or "AY 2026-2027" don't count as any specific month
+ * — the frontdesk staff need to edit the record's period to
+ * "August 2026" (or whichever month it covers) via the edit-payment
+ * modal before it counts as paid for that month. This avoids the
+ * failure mode where a vaguely-labeled enrollment/first-installment
+ * record silently marks a random month as paid based on when the
+ * row happened to be created.
  */
 export function didPayForMonth(studentId: string, year: number, monthIdx: number): boolean {
   const list = getPaymentsForStudent(studentId).filter(p => p.status === 'PAID' && p.plan === 'MONTHLY')
@@ -1686,20 +1686,12 @@ export function didPayForMonth(studentId: string, year: number, monthIdx: number
   const targetName = monthNames[monthIdx]
   const targetYear = String(year)
   return list.some(p => {
-    // 1. Direct match: "July 2026"
-    if (p.period.includes(targetName) && p.period.includes(targetYear)) return true
+    // 1. Direct match: "July 2026" (case-insensitive so "JULY 2026" works too)
+    const periodLower = p.period.toLowerCase()
+    if (periodLower.includes(targetName.toLowerCase()) && p.period.includes(targetYear)) return true
     // 2. Range: "Back balance · June–September 2026" — must include the year
     if (p.period.includes(targetYear) && periodCoversMonth(p.period, targetName)) return true
-    // 3. Timestamp fallback — earliest of createdAt / paidAt.
-    const createdMs = new Date(p.createdAt).getTime()
-    const paidMs    = p.paidAt ? new Date(p.paidAt).getTime() : Number.POSITIVE_INFINITY
-    const stampMs   = Math.min(
-      Number.isFinite(createdMs) ? createdMs : Number.POSITIVE_INFINITY,
-      Number.isFinite(paidMs)    ? paidMs    : Number.POSITIVE_INFINITY,
-    )
-    if (!Number.isFinite(stampMs)) return false
-    const stamp = new Date(stampMs)
-    return stamp.getFullYear() === year && stamp.getMonth() === monthIdx
+    return false
   })
 }
 
