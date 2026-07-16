@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  getPayments, getUsers, hydrateUsers, getFile,
+  getPayments, getUsers, hydrateUsers, hydrateFrontDeskPayments, getFile,
   saveNotification, deleteUser,
   levelLabel,
+  currentPeriodPaymentStatusFor, inferPaymentPlanFor,
   type PaymentRecord, type PaymentMethod, type PaymentPlan,
   type StoredUser, type EnrollmentLevel,
 } from '@/lib/session'
@@ -39,6 +40,28 @@ interface Row {
   status: 'PAID' | 'PENDING'
   plan: PaymentPlan | null
   deadline: Date | null
+}
+
+/** Current-period deadline for a student who has no PENDING record on
+ *  file yet — used by the pending-list to surface DUE students whose
+ *  parent never opened /pay for this month / half / year. */
+function currentPeriodDeadline(plan: PaymentPlan, today: Date, currentMonthLabel: string): Date {
+  void currentMonthLabel
+  const y = today.getFullYear()
+  if (plan === 'ANNUAL') return new Date(y, 5, 5) // Jun 5 (annual due)
+  if (plan === 'BIANNUAL') {
+    const m = today.getMonth()
+    const d = today.getDate()
+    const inSecondHalf = (m === 11 && d >= 5) || (m >= 0 && m <= 4)
+    // Second-half due Dec 5 (of the tranche start year); first half Jun 5.
+    if (inSecondHalf) {
+      const startYear = m === 11 ? y : y - 1
+      return new Date(startYear, 11, 5)
+    }
+    return new Date(y, 5, 5)
+  }
+  // MONTHLY — due the 5th of the current month.
+  return new Date(y, today.getMonth(), 5)
 }
 
 /** Best-effort deadline date for a pending payment, used to sort the
@@ -100,6 +123,10 @@ export default function PaymentsGrouped({
   useEffect(() => {
     hydrateUsers().then(us => setStudents(activeStudentsOnly(us))).catch(() => setStudents(activeStudentsOnly(getUsers())))
     setPayments(getPayments())
+    // Pull fresh front-desk payments so the current-period status uses
+    // server truth (matches the badge on the student profile). Without
+    // this the pending list computes against stale localStorage.
+    void hydrateFrontDeskPayments().then(() => setPayments(getPayments())).catch(() => { /* ignore */ })
   }, [])
 
   /**
@@ -124,11 +151,17 @@ export default function PaymentsGrouped({
     }
   }
 
-  /** One row per student. For each, pick the "representative" record:
-   *  latest PAID if any, otherwise latest PENDING (with proof preferred). */
+  /** One row per student. Status is CURRENT-PERIOD-AWARE — matches the
+   *  badge on the student profile / Students list. A monthly student who
+   *  paid June but not July shows PENDING here (they owe July) even
+   *  though a PAID row exists for June. Representative record picks the
+   *  latest PAID (for the "last paid" columns) OR the freshest PENDING
+   *  when nothing is paid. */
   const rows: Row[] = useMemo(() => {
     const byStudent: Record<string, PaymentRecord[]> = {}
     for (const p of payments) (byStudent[p.studentId] ??= []).push(p)
+    const today = new Date()
+    const monthLabel = today.toLocaleString('en-US', { month: 'long', year: 'numeric' })
     const out: Row[] = students.map(s => {
       const list = (byStudent[s.id] ?? [])
       const paidList = list.filter(p => p.status === 'PAID')
@@ -141,14 +174,28 @@ export default function PaymentsGrouped({
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       const latestPendingWithProof = pendingByRecency.find(p => p.proofFileId)
       const latestPending = latestPendingWithProof ?? pendingByRecency[0] ?? null
-      const representative = latestPaid ?? latestPending
-      return {
-        student: s,
-        payment: representative,
-        status: latestPaid ? 'PAID' : 'PENDING',
-        plan: representative?.plan ?? null,
-        deadline: latestPaid ? null : deadlineFor(latestPending),
-      }
+      // Current-period status trumps ever-paid: a MONTHLY student who
+      // paid June is PENDING for July until they pay again.
+      const periodStatus = currentPeriodPaymentStatusFor(s.id)
+      const status: 'PAID' | 'PENDING' = periodStatus === 'PAID' ? 'PAID' : 'PENDING'
+      // For PAID rows, show the latest paid record. For PENDING rows,
+      // prefer a real PENDING record (has proof/amount/method to show)
+      // over a stale PAID one — leaving representative null when the
+      // parent hasn't opened /pay for the current period yet, so the
+      // Amount / Period / Method cells render "—".
+      const representative = status === 'PAID' ? latestPaid : latestPending
+      const plan = representative?.plan ?? latestPaid?.plan ?? inferPaymentPlanFor(s.id) ?? null
+      // Deadline picks the current-period one (July 5 for monthly, next
+      // tranche's 5th for biannual) when the student is DUE without an
+      // explicit PENDING record on file.
+      const deadline: Date | null = status === 'PAID'
+        ? null
+        : latestPending
+          ? deadlineFor(latestPending)
+          : plan
+            ? currentPeriodDeadline(plan, today, monthLabel)
+            : null
+      return { student: s, payment: representative, status, plan, deadline }
     })
     return out
   }, [students, payments])

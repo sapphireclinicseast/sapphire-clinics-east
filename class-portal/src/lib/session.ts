@@ -1573,9 +1573,41 @@ export function currentPeriodPaymentStatusFor(studentId: string): 'PAID' | 'DUE'
     const m = today.getMonth()
     const d = today.getDate()
     const inSecondHalf = (m === 11 && d >= 5) || (m >= 0 && m <= 4)
+
+    // Pass 1: literal period-string match. This is what /pay emits
+    // ("First half SY 2026–2027") — cheapest and most direct.
     const halfRegex = inSecondHalf ? /second[- ]?half/i : /first[- ]?half/i
-    const covered = list.some(p => p.status === 'PAID' && p.plan === 'BIANNUAL' && halfRegex.test(p.period))
-    return covered ? 'PAID' : 'DUE'
+    if (list.some(p => p.status === 'PAID' && p.plan === 'BIANNUAL' && halfRegex.test(p.period))) {
+      return 'PAID'
+    }
+
+    // Pass 2: timestamp-window fallback. Front-desk records let staff
+    // type the period as free text (e.g. "2026-2027" or "AY 2026-2027"),
+    // which never matches "first-half" / "second-half". Instead, treat
+    // any PAID biannual record whose paidAt/createdAt lands in the
+    // current tranche window as covering it. Windows:
+    //   first half:  Jun 5 (year Y)  → Dec 4 23:59 (year Y)
+    //   second half: Dec 5 (year Y)  → Jun 4 23:59 (year Y+1)
+    // where Y is picked so `today` falls inside the window.
+    const y = today.getFullYear()
+    let start: number
+    let end: number
+    if (inSecondHalf) {
+      // If we're in Dec, second-half started this Dec 5. If we're in
+      // Jan–May, second-half started last Dec 5.
+      const startYear = m === 11 ? y : y - 1
+      start = Date.UTC(startYear, 11, 5, 0, 0, 0)
+      end   = Date.UTC(startYear + 1, 5, 4, 23, 59, 59)
+    } else {
+      start = Date.UTC(y, 5, 5, 0, 0, 0)
+      end   = Date.UTC(y, 11, 4, 23, 59, 59)
+    }
+    const inWindow = list.some(p => {
+      if (p.status !== 'PAID' || p.plan !== 'BIANNUAL') return false
+      const stamp = new Date(p.paidAt ?? p.createdAt).getTime()
+      return Number.isFinite(stamp) && stamp >= start && stamp <= end
+    })
+    return inWindow ? 'PAID' : 'DUE'
   }
 
   return 'DUE'
