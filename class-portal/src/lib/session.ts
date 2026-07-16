@@ -1553,9 +1553,6 @@ export function currentPeriodPaymentStatusFor(studentId: string): 'PAID' | 'DUE'
   if (!plan) return list.some(p => p.status === 'PAID') ? 'PAID' : 'DUE'
 
   const today = new Date()
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December']
-  const currentMonthName = monthNames[today.getMonth()]
 
   if (plan === 'ANNUAL') {
     // Annual is one lump per SY. Any PAID row = current period covered.
@@ -1563,8 +1560,10 @@ export function currentPeriodPaymentStatusFor(studentId: string): 'PAID' | 'DUE'
   }
 
   if (plan === 'MONTHLY') {
-    const covered = list.some(p => p.status === 'PAID' && periodCoversMonth(p.period, currentMonthName))
-    return covered ? 'PAID' : 'DUE'
+    // Delegate to didPayForMonth so this stays in lock-step with the
+    // Payments panel's per-month filter (both use the createdAt-month
+    // fallback for free-text periods like "2026-2027").
+    return didPayForMonth(studentId, today.getFullYear(), today.getMonth()) ? 'PAID' : 'DUE'
   }
 
   if (plan === 'BIANNUAL') {
@@ -1666,9 +1665,13 @@ export function didPayForBiannualHalf(studentId: string, half: 'FIRST' | 'SECOND
 }
 
 /**
- * Did a student pay for a specific (year, monthIdx) month? Matches on
- * period text ("July 2026" or a "June–September 2026" range) — the
- * monthly period column is well-structured in practice.
+ * Did a student pay for a specific (year, monthIdx) month? Matches on:
+ *   1. Explicit period text ("July 2026")
+ *   2. A range in the period ("June–September 2026")
+ *   3. Fallback: createdAt month, since front-desk cash records let
+ *      staff type period as free text (e.g. "2026-2027") — and in
+ *      practice parents pay in the same calendar month they're paying
+ *      FOR, so record.createdAt is the best month proxy.
  */
 export function didPayForMonth(studentId: string, year: number, monthIdx: number): boolean {
   const list = getPaymentsForStudent(studentId).filter(p => p.status === 'PAID' && p.plan === 'MONTHLY')
@@ -1677,11 +1680,17 @@ export function didPayForMonth(studentId: string, year: number, monthIdx: number
   const targetName = monthNames[monthIdx]
   const targetYear = String(year)
   return list.some(p => {
-    // Direct match: "July 2026"
+    // 1. Direct match: "July 2026"
     if (p.period.includes(targetName) && p.period.includes(targetYear)) return true
-    // Range: "Back balance · June–September 2026" — must include the year
-    if (!p.period.includes(targetYear)) return false
-    return periodCoversMonth(p.period, targetName)
+    // 2. Range: "Back balance · June–September 2026" — must include the year
+    if (p.period.includes(targetYear) && periodCoversMonth(p.period, targetName)) return true
+    // 3. createdAt fallback for free-text periods. Use createdAt (not
+    //    paidAt) — a parent submitting a payment on Jun 20 that a
+    //    cashier only confirms on Jul 1 is paying for June, not July.
+    const created = new Date(p.createdAt)
+    return Number.isFinite(created.getTime())
+      && created.getFullYear() === year
+      && created.getMonth() === monthIdx
   })
 }
 
