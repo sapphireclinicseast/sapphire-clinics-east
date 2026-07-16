@@ -206,7 +206,9 @@ model Patient {
   lastName    String
   email       String?
   phone       String?
+  username    String?     @unique  // portal login handle; lets siblings sharing one email pick distinct logins
   passwordHash String?         // optional self-service portal login (bcrypt); null = no portal account yet
+  profilePhoto String?        // patient-uploaded avatar, stored as a resized base64 data URL
   dob         DateTime?
   patientType PatientType
   branch      Branch?          // legacy single-branch (kept for backward compat)
@@ -531,6 +533,7 @@ model SurveySettings {
   weightSatisfaction    Int      @default(50)  // % weight for avg satisfaction score
   showLeaderboard       Boolean  @default(false) // Show leaderboard on TV queue display
   showComplaintForm     Boolean  @default(false) // Show patient complaint form QR on TV display
+  adSlideDuration       Int      @default(12)    // Seconds each static/image ad is shown on the TV
   updatedAt             DateTime @updatedAt
 }
 
@@ -1437,4 +1440,337 @@ model ChatSetting {
   value     String
   updatedBy String?
   updatedAt DateTime @default(now()) @updatedAt
+}
+// ══════════════════════════════════════════════════════════════════
+//  UGAT Fellowship Program — scholar hub (scholarship.*/ugatfellow)
+//  Self-service scholar accounts with email verification. Admin (the
+//  hardcoded main@ SCEI login) manages the School / Program / Field
+//  dropdown options via UgatOption rows.
+// ══════════════════════════════════════════════════════════════════
+
+/// Which signup dropdown a UgatOption row belongs to.
+enum UgatOptionKind {
+  SCHOOL
+  PROGRAM
+  FIELD // preferred field of practice
+}
+
+/// Editable dropdown option for the signup form. Admin CRUDs these in the
+/// /ugatfellow/admin settings tab. Existing scholar rows snapshot the chosen
+/// label as plain text, so renaming/removing an option never breaks history.
+model UgatOption {
+  id         String         @id @default(cuid())
+  kind       UgatOptionKind
+  label      String
+  sortOrder  Int            @default(0)
+  /// Soft-hide from the signup dropdowns without deleting. Null = active.
+  disabledAt DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([kind, label])
+  @@index([kind, disabledAt, sortOrder])
+}
+
+/// A fellowship scholar account.
+model UgatScholar {
+  id           String   @id @default(cuid())
+  /// Login handle (lowercased). Sign-in is by username, not email.
+  username     String   @unique
+  /// School / professional email + personal email. Verification links are
+  /// sent to both. Not unique — two scholars could share a school domain
+  /// alias in edge cases; uniqueness is enforced on username only.
+  professionalEmail String
+  personalEmail     String
+  passwordHash String
+
+  /// Which track the scholar registered for: ARAL (final-year interns) |
+  /// TINDIG (graduates preparing for the licensure exam). Chosen at sign-up.
+  track String @default("ARAL")
+
+  /// Aral Track award tier, chosen by an admin at acceptance. The monthly
+  /// stipend (5000 or 10000) and its duration in months (5 or 10) are woven
+  /// into the Return Service Agreement the fellow reads and signs. Null until
+  /// an admin awards the tier.
+  awardMonthly Int?
+  awardMonths  Int?
+
+  firstName   String
+  middleName  String?
+  lastName    String
+  studentNumber        String
+  expectedGraduationYear Int
+  birthdate   DateTime
+
+  /// Snapshots of the chosen dropdown labels (see UgatOption).
+  school         String
+  program        String
+  preferredField String
+
+  // Permanent address
+  permAddress1 String
+  permAddress2 String?
+  permCity     String
+  permRegion   String
+  permZip      String
+
+  // Present address (may mirror permanent)
+  presSameAsPerm Boolean @default(false)
+  presAddress1   String
+  presAddress2   String?
+  presCity       String
+  presRegion     String
+  presZip        String
+
+  /// Set the moment the scholar clicks their emailed verification link.
+  /// Null = unverified; such accounts cannot sign in.
+  emailVerifiedAt DateTime?
+
+  /// Application status shown on the admin Dashboard.
+  /// APPLIED | ACCEPTED | WAITLISTED | REJECTED. Default APPLIED.
+  status String @default("APPLIED")
+
+  /// Soft-disable (admin). Null = active.
+  disabledAt DateTime?
+  disabledBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Admin-viewable password copy (User Access shows usernames + passwords).
+  /// Kept in sync with passwordHash on signup + resets.
+  passwordPlain String?
+
+  verificationTokens UgatVerificationToken[]
+  uploads            UgatUpload[]
+  application        UgatApplication?
+  acceptance         UgatAcceptance?
+
+  @@index([emailVerifiedAt])
+  @@index([disabledAt])
+  @@index([status])
+}
+
+/// Part III — Acceptance: the Return Service Agreement signing record + the
+/// co-maker's details. IDs (2 for the fellow, 2 for the co-maker) live in
+/// UgatUpload (VALID_ID_1/2, COMAKER_ID_1/2); the RSA signature is
+/// UgatUpload kind RSA_SIGNATURE.
+model UgatAcceptance {
+  id        String @id @default(cuid())
+  scholarId String @unique
+
+  /// Set when an admin "sends the contract" — unlocks the signing flow.
+  contractSentAt DateTime?
+
+  // Co-maker identity
+  comakerFirstName  String?
+  comakerMiddleName String?
+  comakerLastName   String?
+  comakerBirthdate  DateTime?
+  comakerEmail      String?
+  comakerOccupation String?
+
+  // Co-maker permanent address
+  cmPermAddress1 String?
+  cmPermAddress2 String?
+  cmPermCity     String?
+  cmPermRegion   String?
+  cmPermZip      String?
+
+  // Co-maker present address (may mirror permanent)
+  cmPresSameAsPerm Boolean @default(false)
+  cmPresAddress1   String?
+  cmPresAddress2   String?
+  cmPresCity       String?
+  cmPresRegion     String?
+  cmPresZip        String?
+
+  // Co-maker occupation address
+  cmOccAddress1 String?
+  cmOccAddress2 String?
+  cmOccCity     String?
+  cmOccRegion   String?
+  cmOccZip      String?
+
+  /// Fellow ticked the truthfulness / agreement statement.
+  truthAffirmed Boolean @default(false)
+  /// Fellow submitted the signed soft copy (RSA + co-maker + IDs + signature).
+  softCopySignedAt DateTime?
+  /// Admin marked the in-person hard copy as signed.
+  hardCopySignedAt DateTime?
+  hardCopyMarkedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+
+  @@index([contractSentAt])
+  @@index([softCopySignedAt])
+}
+
+/// A binary upload owned by a scholar: profile photo, motivational letter,
+/// proof-of-grades images, application signature, valid IDs, etc.
+model UgatUpload {
+  id        String   @id @default(cuid())
+  scholarId String
+  /// PHOTO | LETTER | GRADES_Y1 | GRADES_Y2 | GRADES_Y3 | SIGNATURE |
+  /// VALID_ID_1 | VALID_ID_2 | COMAKER_ID_1 | COMAKER_ID_2
+  kind      String
+  filename  String
+  mimeType  String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+
+  @@index([scholarId, kind])
+}
+
+/// One application per scholar. Part I (Initial) fields live here; Interview
+/// and Acceptance columns are added in later-phase migrations.
+model UgatApplication {
+  id        String @id @default(cuid())
+  scholarId String @unique
+
+  /// Which sub-category the applicant applied to: ARAL (internship allowance,
+  /// current interns) | TINDIG (licensure review-support, graduates).
+  track String @default("ARAL")
+
+  // Step 1 — application questions
+  q1WhyApply      String?
+  q2Initiatives   String?
+  q3WhyProgram    String?
+  q4StipendUse    String?
+  q5ReturnService String?
+  q6ArawNgKalinga String?
+  q7FiveYearPlan  String?
+
+  // Step 4 — truthfulness attestation + signature
+  truthAffirmed Boolean   @default(false)
+  signedAt      DateTime?
+
+  /// Null while a draft; set when the applicant submits Part I.
+  submittedAt DateTime?
+  /// Academic year this application belongs to (e.g. "2026-2027"), stamped at
+  /// submission from whichever UgatApplicationCycle was open at the time.
+  academicYear String?
+  /// Admin decision on Part I: NOT_CONSIDERED | PENDING | FOR_INTERVIEW
+  initialDecision String @default("PENDING")
+
+  // ── Part II: Interview ──────────────────────────────────────────
+  /// The interview slot the scholar booked, plus a snapshot of its time so
+  /// deleting a slot doesn't lose the booking.
+  interviewSlotId       String?
+  interviewAt           DateTime?
+  interviewDurationMins Int?
+  jitsiUrl              String?
+  /// Admin decision after interview: NOT_CONSIDERED | PENDING | FOR_ACCEPTANCE
+  interviewDecision String @default("PENDING")
+
+  /// Set when the empathic "not considered" email has been sent (prevents
+  /// double-sending).
+  rejectionEmailedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+
+  @@index([submittedAt])
+  @@index([initialDecision])
+  @@index([interviewDecision])
+  @@index([academicYear])
+}
+
+/// An application cycle: an academic year and the window during which the
+/// application form is open. Submissions during a window are stamped with that
+/// cycle's academicYear. Outside every window, the student portal shows a
+/// "applications are closed" notice instead of the form.
+model UgatApplicationCycle {
+  id           String   @id @default(cuid())
+  academicYear String   @unique
+  opensAt      DateTime
+  closesAt     DateTime
+  /// Deadline to finish deciding Part I (Initial). Used for the reminder popup
+  /// + the empathic "not considered" notification.
+  initialDeadline   DateTime?
+  /// Deadline to finish deciding Part II (Interview → Acceptance).
+  interviewDeadline DateTime?
+  /// Deadlines for the accepted fellow's soft-copy (e-sign) and in-person
+  /// hard-copy signing of the Return Service Agreement.
+  softCopyDeadline  DateTime?
+  hardCopyDeadline  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([opensAt, closesAt])
+}
+
+/// An interview slot the admin offers. Scholars marked "For Interview" book
+/// one; capacity lets several fit the same window if needed (default 1).
+model UgatInterviewSlot {
+  id           String   @id @default(cuid())
+  startsAt     DateTime
+  durationMins Int      @default(30)
+  capacity     Int      @default(1)
+  createdAt    DateTime @default(now())
+
+  @@index([startsAt])
+}
+
+/// A staff- or university-admin account for the UGAT hub. The single MAIN
+/// admin (username `main`) is virtual/hardcoded and has no row here.
+model UgatAdmin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  /// Admin-viewable password copy (User Access shows usernames + passwords).
+  passwordPlain String?
+  name         String
+  /// Account type: STAFF | UNIVERSITY. University admins get a read-only,
+  /// restricted view (About Us + Application only).
+  kind         String   @default("STAFF")
+  createdAt    DateTime @default(now())
+  createdBy    String?
+  disabledAt   DateTime?
+
+  @@index([disabledAt])
+}
+
+/// One-time email-verification token, emailed from scholarship@ on signup.
+model UgatVerificationToken {
+  id        String    @id @default(cuid())
+  scholarId String
+  token     String    @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+
+  @@index([scholarId])
+}
+
+/// A landing-page announcement (title + details) posted by an admin. Published
+/// rows show on the public /ugatfellow landing page; admins manage them in the
+/// portal's Announcements section.
+model UgatAnnouncement {
+  id        String   @id @default(cuid())
+  title     String
+  details   String
+  published Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, createdAt])
+}
+
+/// Tracks per-user notification dismiss timestamp so the bell badge persists
+/// across sign-out / refresh / cache clear and stays independent per user.
+model UserNotificationState {
+  userId      String   @id  // = User.id (session.user.id)
+  dismissedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
