@@ -692,7 +692,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: 'My school is not yet included in the list of partner schools. Can I still apply?',
-    a: <>At the moment, we only accept applications from our <b>partner schools</b>. We&rsquo;d love to change that — you may reach out to your <b>College</b> or <b>Office of Student Relations</b> so they can partner with us. You can also write to us at <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>, and we&rsquo;ll be glad to help start the conversation.</>,
+    a: <>It depends on your track. The <b>Aral Track</b> (for current final-year interns) is coursed through your University, so it is open to our <b>partner schools</b> — you may ask your <b>College</b> or <b>Office of Student Relations</b> to partner with us. The <b>Tindig Track</b> (for graduates preparing for the licensure exam) has <b>no partner-school requirement</b>: as long as you are a <b>graduate of an SLP or OT program we accept fellows in</b>, you may apply <b>directly to SCEI</b>. Either way, feel free to write to us at <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a> and we&rsquo;ll be glad to help.</>,
   },
 ]
 function FaqModal({ onClose }: { onClose: () => void }) {
