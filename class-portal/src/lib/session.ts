@@ -1752,6 +1752,11 @@ export interface PaymentBadgeInfo {
   // but skipped one or more earlier SY months. Rendered as one badge
   // per missing month, e.g. "Owes for June 2026".
   owedMonthLabels?: string[]
+  // MONTHLY only — every paid SY month EXCEPT the current one, oldest
+  // first. Lets the profile stack green "Paid for June 2026", "Paid
+  // for July 2026", etc. so the front desk sees a full month-by-month
+  // history at a glance without opening the payment table.
+  paidPastMonthLabels?: string[]
 }
 export function paymentBadgeInfoFor(studentId: string): PaymentBadgeInfo {
   const list = getPaymentsForStudent(studentId)
@@ -1788,8 +1793,33 @@ export function paymentBadgeInfoFor(studentId: string): PaymentBadgeInfo {
     ? backMissing.map(m => `Owes for ${monthNames[m.monthIdx]} ${m.year}`)
     : undefined
 
+  // Every paid SY month except the current one — walked oldest→newest
+  // so the profile stacks e.g. "Paid for June 2026", "Paid for July
+  // 2026" (June above July). Excludes the current month because the
+  // primary currentLabel badge already covers it when it's PAID.
+  const syStartYear = today.getMonth() > 5 || (today.getMonth() === 5 && today.getDate() >= 5)
+    ? today.getFullYear() : today.getFullYear() - 1
+  const paidPastMonthLabels: string[] = []
+  {
+    const cursor = new Date(syStartYear, 5, 1) // Jun of SY start
+    for (let i = 0; i < 12; i += 1) {
+      if (cursor.getFullYear() > today.getFullYear()
+        || (cursor.getFullYear() === today.getFullYear() && cursor.getMonth() >= today.getMonth())) break
+      if (didPayForMonth(studentId, cursor.getFullYear(), cursor.getMonth())) {
+        paidPastMonthLabels.push(`Paid for ${monthNames[cursor.getMonth()]} ${cursor.getFullYear()}`)
+      }
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+  }
+  const paidPastMonthLabelsOrUndef = paidPastMonthLabels.length ? paidPastMonthLabels : undefined
+
   if (status === 'PAID') {
-    return { status, currentLabel: `Paid for ${monthLabel}`, owedMonthLabels }
+    return {
+      status,
+      currentLabel: `Paid for ${monthLabel}`,
+      owedMonthLabels,
+      paidPastMonthLabels: paidPastMonthLabelsOrUndef,
+    }
   }
   // DUE — find the most recent PAID monthly period to show alongside
   // ("Paid for June" beside "Due for July" is more readable than just
@@ -1811,7 +1841,13 @@ export function paymentBadgeInfoFor(studentId: string): PaymentBadgeInfo {
       lastPaidLabel = `Paid for ${paidMonthly[0].period}`
     }
   }
-  return { status, currentLabel: `Due for ${monthLabel}`, lastPaidLabel, owedMonthLabels }
+  return {
+    status,
+    currentLabel: `Due for ${monthLabel}`,
+    lastPaidLabel,
+    owedMonthLabels,
+    paidPastMonthLabels: paidPastMonthLabelsOrUndef,
+  }
 }
 
 /**

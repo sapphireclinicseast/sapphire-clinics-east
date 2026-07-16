@@ -145,19 +145,30 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="flex flex-col items-end gap-1.5">
+              {/* Every paid SY month except the current one, oldest→newest,
+                  so the front desk sees a full month-by-month history
+                  above the current-period badge — e.g.
+                    Paid for June 2026
+                    Paid for July 2026
+                    (current-month badge — Paid or Due)
+                  Skipped when paidPastMonthLabels is undefined (no
+                  history yet). Falls back to lastPaidLabel for the DUE
+                  case when the fuller list didn't compute anything. */}
+              {badgeInfo.paidPastMonthLabels?.map(label => (
+                <span key={label} className="badge badge-paid">{label}</span>
+              ))}
               {/* Late-enrollee back-balance: one amber "Owes for <month>"
-                  badge per missing SY month. Rendered above the current-
-                  period badge so a Ragnar-type student who paid July but
-                  skipped June shows an amber "Owes for June 2026" +
-                  green "Paid for July 2026". */}
+                  badge per missing SY month. Rendered between the paid
+                  history and the current-period badge so a Ragnar-type
+                  student shows chronological "…Paid for X, Owes for Y,
+                  Paid/Due for now". */}
               {badgeInfo.owedMonthLabels?.map(label => (
                 <span key={label} className="badge badge-due">{label}</span>
               ))}
-              {/* Show "Paid for <past month>" alongside the "Due for
-                  <current month>" badge for MONTHLY students who've
-                  fallen a month behind, so the front desk sees both the
-                  last-paid state AND the current-period ask. */}
-              {badgeInfo.lastPaidLabel && (
+              {/* Fallback last-paid for DUE-only students whose
+                  paidPastMonthLabels didn't populate (e.g. legacy
+                  free-text period the walk-back couldn't parse). */}
+              {!badgeInfo.paidPastMonthLabels && badgeInfo.lastPaidLabel && (
                 <span className="badge badge-paid">{badgeInfo.lastPaidLabel}</span>
               )}
               <span className={`badge ${primaryBadgeClass}`}>
