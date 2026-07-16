@@ -1668,10 +1668,16 @@ export function didPayForBiannualHalf(studentId: string, half: 'FIRST' | 'SECOND
  * Did a student pay for a specific (year, monthIdx) month? Matches on:
  *   1. Explicit period text ("July 2026")
  *   2. A range in the period ("June–September 2026")
- *   3. Fallback: createdAt month, since front-desk cash records let
- *      staff type period as free text (e.g. "2026-2027") — and in
- *      practice parents pay in the same calendar month they're paying
- *      FOR, so record.createdAt is the best month proxy.
+ *   3. Fallback: the EARLIER of createdAt / paidAt, since front-desk
+ *      cash records let staff type period as free text (e.g.
+ *      "2026-2027"). Picking the earlier of the two timestamps handles
+ *      both flows cleanly:
+ *        * self-serve: createdAt ≈ paidAt, both equal the paid month
+ *        * frontdesk submitted Jun 20, cashier confirmed Jul 1: use
+ *          createdAt (Jun 20) — parent's submit is the intended month
+ *        * frontdesk logged Jul 11 with the paymentDate backdated to
+ *          Jun 21 (via the edit modal): use paidAt (Jun 21) — that's
+ *          the corrected actual-payment date the staff entered
  */
 export function didPayForMonth(studentId: string, year: number, monthIdx: number): boolean {
   const list = getPaymentsForStudent(studentId).filter(p => p.status === 'PAID' && p.plan === 'MONTHLY')
@@ -1684,13 +1690,16 @@ export function didPayForMonth(studentId: string, year: number, monthIdx: number
     if (p.period.includes(targetName) && p.period.includes(targetYear)) return true
     // 2. Range: "Back balance · June–September 2026" — must include the year
     if (p.period.includes(targetYear) && periodCoversMonth(p.period, targetName)) return true
-    // 3. createdAt fallback for free-text periods. Use createdAt (not
-    //    paidAt) — a parent submitting a payment on Jun 20 that a
-    //    cashier only confirms on Jul 1 is paying for June, not July.
-    const created = new Date(p.createdAt)
-    return Number.isFinite(created.getTime())
-      && created.getFullYear() === year
-      && created.getMonth() === monthIdx
+    // 3. Timestamp fallback — earliest of createdAt / paidAt.
+    const createdMs = new Date(p.createdAt).getTime()
+    const paidMs    = p.paidAt ? new Date(p.paidAt).getTime() : Number.POSITIVE_INFINITY
+    const stampMs   = Math.min(
+      Number.isFinite(createdMs) ? createdMs : Number.POSITIVE_INFINITY,
+      Number.isFinite(paidMs)    ? paidMs    : Number.POSITIVE_INFINITY,
+    )
+    if (!Number.isFinite(stampMs)) return false
+    const stamp = new Date(stampMs)
+    return stamp.getFullYear() === year && stamp.getMonth() === monthIdx
   })
 }
 
