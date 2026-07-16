@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { getAuth, type Branch } from '@/lib/session'
 import StudentListPanel from '@/components/StudentListPanel'
 import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
+import PaymentsGrouped from '@/components/PaymentsGrouped'
 import PaidStudentsSpreadsheet from '@/components/PaidStudentsSpreadsheet'
 import CurriculumPanel from '@/components/CurriculumPanel'
 import TemplatesPanel from '@/components/TemplatesPanel'
@@ -87,19 +88,26 @@ export default function FrontdeskPage() {
       )}
 
       {tab === 'PAYMENTS' && (
-        // FrontDeskPaymentConfirmations is the single source of truth for
-        // the front desk: server-driven Pending + Confirmed Payments
-        // sections that reflect what the front desk has actually
-        // confirmed. The older PaymentsGrouped view (read from local
-        // PaymentRecord) was showing stale "still pending" rows because
-        // the local cache didn't have visibility into other devices'
-        // PayMongo / front-desk confirmations.
-        //
-        // canDelete enables the per-row Delete action so the front desk
-        // can clear test rows and obvious duplicates from their own
-        // branch. The server-side DELETE endpoint enforces branch
-        // scoping on the FRONTDESK role separately.
-        <FrontDeskPaymentConfirmations canDelete />
+        // Full payments experience for the front desk:
+        //   1. FrontDeskPaymentConfirmations — Pending queue + Confirmed
+        //      list, both server-driven so cross-device edits show up.
+        //   2. PaymentsGrouped — "Pending payments — by deadline"
+        //      (includes late enrollees with back-balance) and the
+        //      consolidated "Paying students" table with the
+        //      Annual/Bi-annual/Monthly filter.
+        // canDelete on both — server-side endpoints enforce branch
+        // scoping on the FRONTDESK role, so the frontdesk can only
+        // ever delete rows for their own branch even though the
+        // client-side flag says yes.
+        <div className="space-y-6">
+          <FrontDeskPaymentConfirmations canDelete />
+          <PaymentsGrouped
+            canSendReminders
+            canDelete
+            senderEmail={email}
+            senderName="Front desk"
+          />
+        </div>
       )}
 
       {tab === 'SPREADSHEET' && (
