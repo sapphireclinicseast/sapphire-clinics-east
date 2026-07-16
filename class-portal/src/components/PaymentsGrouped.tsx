@@ -205,7 +205,8 @@ export default function PaymentsGrouped({
     const q = search.trim().toLowerCase()
     if (!q) return rows
     return rows.filter(r => {
-      const hay = `${r.student.firstName ?? ''} ${r.student.lastName ?? ''} ${r.student.email} ${r.payment?.plan ?? ''}`.toLowerCase()
+      const branchText = r.student.branch === 'EAST' ? 'east' : r.student.branch === 'GREENHILLS' ? 'greenhills' : ''
+      const hay = `${r.student.firstName ?? ''} ${r.student.lastName ?? ''} ${r.student.email} ${r.payment?.plan ?? ''} ${branchText}`.toLowerCase()
       return hay.includes(q)
     })
   }, [rows, search])
@@ -257,7 +258,7 @@ export default function PaymentsGrouped({
             className="input"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, email, or plan"
+            placeholder="Search by name, email, plan, or branch"
             style={{ width: 280 }}
           />
         </div>
@@ -269,6 +270,7 @@ export default function PaymentsGrouped({
               <thead style={{ background: 'var(--paper-2)' }}>
                 <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
                   <th className="py-2 px-3">Student</th>
+                  <th className="py-2 px-3">Branch</th>
                   <th className="py-2 px-3">Plan</th>
                   <th className="py-2 px-3">Period</th>
                   <th className="py-2 px-3">Deadline</th>
@@ -288,6 +290,19 @@ export default function PaymentsGrouped({
                       <td className="py-2.5 px-3">
                         <div className="font-semibold text-[color:var(--narra)]">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
                         <div className="text-[11px] text-[color:var(--mid-gray)]">{r.student.email} · {r.student.level ? levelLabel(r.student.level as EnrollmentLevel) : '—'}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-[12.5px]">
+                        {r.student.branch ? (
+                          <span
+                            className="badge"
+                            style={{
+                              background: r.student.branch === 'EAST' ? '#dbeafe' : '#fef3c7',
+                              color:      r.student.branch === 'EAST' ? '#1e40af' : '#92400e',
+                            }}
+                          >
+                            {r.student.branch === 'EAST' ? 'East' : 'Greenhills'}
+                          </span>
+                        ) : <span className="text-[color:var(--mid-gray)]">—</span>}
                       </td>
                       <td className="py-2.5 px-3 text-[12.5px]">{r.plan ? planLabel(r.plan) : '—'}</td>
                       <td className="py-2.5 px-3 text-[12.5px]">{r.payment?.period ?? '—'}</td>
