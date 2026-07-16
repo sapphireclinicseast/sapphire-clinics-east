@@ -335,7 +335,7 @@ body.with-auth-sidebar > header { display: none; }
      With the sidebar consuming 240px on the left, "viewport width" and
      "sidebar-neighbour width" diverge — clamp both to the latter so
      content never spills under the sidebar. */
-  body.with-auth-sidebar main > div[style*="100vw"],
+  body.with-auth-sidebar main [style*="100vw"],
   body.with-auth-sidebar main .w-screen,
   body.with-auth-sidebar main [class*="-mx-[50vw]"] {
     width: calc(100vw - 240px) !important;
