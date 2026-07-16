@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     orderBy: { transactionDate: 'desc' },
     select: {
       id: true, orderNumber: true, transactionDate: true, netAmount: true, branch: true, paymentStatus: true,
-      items: { select: { name: true, quantity: true, lineTotal: true } },
+      items: { select: { name: true, quantity: true, lineTotal: true, service: { select: { department: true } } } },
     },
   })
 
@@ -36,6 +36,7 @@ export async function GET(req: Request) {
     branch: o.branch,
     paymentStatus: o.paymentStatus,
     services: o.items.map(it => it.name).join(', ') || '—',
+    departments: Array.from(new Set(o.items.map(it => it.service?.department).filter(Boolean))) as string[],
     netAmount: Number(o.netAmount),
   }))
   const total = sessions.reduce((s, x) => s + x.netAmount, 0)

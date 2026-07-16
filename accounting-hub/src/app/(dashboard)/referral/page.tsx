@@ -6,18 +6,20 @@ import { redirect } from 'next/navigation'
 import { Users, UserPlus, Loader2, X, Trash2, Search } from 'lucide-react'
 import ReferrerSettingsPanel, { REFERRER_TYPE_LABEL } from '@/components/ReferrerSettingsPanel'
 import { branchLabel } from '@/lib/branch'
+import { departmentLabel } from '@/lib/department'
 
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface RefOpt { id: string; name: string; type?: string | null }
 interface PatientHit { id: string; name: string; email?: string | null }
 interface RP { id: string; patientId: string | null; patientName: string; referrerId: string; referrerName: string; referrerType: string | null; note: string | null; createdAt: string }
-interface Sess { id: string; orderNumber: number; date: string; branch: string; paymentStatus: string; services: string; netAmount: number }
+interface Sess { id: string; orderNumber: number; date: string; branch: string; paymentStatus: string; services: string; departments: string[]; netAmount: number }
+interface DashRow { referrerId: string; name: string; type: string | null; referrals: number; net: number }
 
 export default function ReferralPage() {
   const { data: session, status } = useSession()
   const role = session?.user?.role
-  const [tab, setTab] = useState<'referrers' | 'patients'>('referrers')
+  const [tab, setTab] = useState<'referrers' | 'patients' | 'dashboard'>('referrers')
 
   if (status === 'unauthenticated') redirect('/login')
   if (status === 'authenticated' && role === 'HMO_OFFICER') {
@@ -32,7 +34,7 @@ export default function ReferralPage() {
       </div>
 
       <div className="flex gap-2 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['referrers', 'Referrers'], ['patients', 'Referred patients']] as const).map(([k, label]) => (
+        {([['referrers', 'Referrers'], ['patients', 'Referred patients'], ['dashboard', 'Referral Dashboard']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className="px-4 py-2 text-sm font-semibold -mb-px border-b-2"
             style={tab === k ? { borderColor: 'var(--teal)', color: 'var(--deep-teal)' } : { borderColor: 'transparent', color: 'var(--mid-gray)' }}>
@@ -41,7 +43,7 @@ export default function ReferralPage() {
         ))}
       </div>
 
-      {tab === 'referrers' ? <ReferrerSettingsPanel /> : <ReferredPatientsPanel />}
+      {tab === 'referrers' ? <ReferrerSettingsPanel /> : tab === 'patients' ? <ReferredPatientsPanel /> : <ReferralDashboardPanel />}
     </div>
   )
 }
@@ -255,6 +257,115 @@ function AddReferredPatientModal({ onClose, onSaved }: { onClose: () => void; on
   )
 }
 
+function ReferralDashboardPanel() {
+  const TYPES: [string, string][] = [['DOCTOR', 'Doctors'], ['PARTNER_SCHOOL', 'Partner Schools'], ['LAW_FIRM', 'Law Firms']]
+  const [types, setTypes] = useState<string[]>(['DOCTOR', 'PARTNER_SCHOOL', 'LAW_FIRM'])
+  const [rows, setRows] = useState<DashRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sortField, setSortField] = useState<'name' | 'type' | 'referrals' | 'net'>('net')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  useEffect(() => {
+    (async () => { setLoading(true); try { const r = await fetch('/api/referred-patients/dashboard'); const j = r.ok ? await r.json() : { rows: [] }; setRows(j.rows || []) } catch { setRows([]) } finally { setLoading(false) } })()
+  }, [])
+
+  const toggleType = (t: string) => setTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
+  const toggleSort = (f: typeof sortField) => { if (sortField === f) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField(f); setSortDir(f === 'name' || f === 'type' ? 'asc' : 'desc') } }
+
+  const filtered = rows.filter(r => types.includes(r.type || 'DOCTOR'))
+  const sorted = [...filtered].sort((a, b) => {
+    let c = 0
+    if (sortField === 'name') c = a.name.localeCompare(b.name)
+    else if (sortField === 'type') c = String(a.type).localeCompare(String(b.type))
+    else if (sortField === 'referrals') c = a.referrals - b.referrals
+    else c = a.net - b.net
+    return sortDir === 'asc' ? c : -c
+  })
+  const top5 = [...filtered].sort((a, b) => (b.referrals - a.referrals) || (b.net - a.net)).slice(0, 5).filter(r => r.referrals > 0)
+  const totalReferrals = filtered.reduce((s, r) => s + r.referrals, 0)
+  const totalNet = filtered.reduce((s, r) => s + r.net, 0)
+  const arrow = (f: typeof sortField) => sortField === f ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Referral Dashboard</h2>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Referral counts and net sales per referrer, from their referred patients&apos; POS orders.</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {TYPES.map(([val, label]) => (
+          <label key={val} className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm"
+            style={types.includes(val) ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            <input type="checkbox" checked={types.includes(val)} onChange={() => toggleType(val)} />
+            {label}
+          </label>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Referrers (shown)</div>
+              <div className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{filtered.length}</div>
+            </div>
+            <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total referrals</div>
+              <div className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{totalReferrals}</div>
+            </div>
+            <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total net sales</div>
+              <div className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(totalNet)}</div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <p className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Top 5 referrers</p>
+            {top5.length === 0 ? <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No referrals yet for the selected type(s).</p> : (
+              <div className="space-y-1.5">
+                {top5.map((r, i) => (
+                  <div key={r.referrerId} className="flex items-center gap-3 text-sm">
+                    <span className="w-5 text-center font-bold" style={{ color: 'var(--teal)' }}>{i + 1}</span>
+                    <span className="flex-1 truncate font-medium">{r.name} <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>· {REFERRER_TYPE_LABEL[r.type || 'DOCTOR']}</span></span>
+                    <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.referrals} referral{r.referrals === 1 ? '' : 's'}</span>
+                    <span className="font-mono font-semibold w-28 text-right" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--pale-teal)' }}>
+                  {([['name', 'Referrer'], ['type', 'Type'], ['referrals', 'Count of Referrals'], ['net', 'Total Net Sales']] as [typeof sortField, string][]).map(([key, label]) => (
+                    <th key={key} onClick={() => toggleSort(key)} className={`px-4 py-2.5 text-xs font-semibold cursor-pointer select-none ${key === 'referrals' || key === 'net' ? 'text-right' : 'text-left'}`} style={{ color: 'var(--deep-teal)' }}>{label}{arrow(key)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.length === 0 ? <tr><td colSpan={4} className="text-center py-10 text-gray-400">No referrers for the selected type(s).</td></tr>
+                  : sorted.map(r => (
+                    <tr key={r.referrerId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{REFERRER_TYPE_LABEL[r.type || 'DOCTOR']}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{r.referrals}</td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function SessionsModal({ rp, onClose }: { rp: RP; onClose: () => void }) {
   const [sessions, setSessions] = useState<Sess[]>([])
   const [total, setTotal] = useState(0)
@@ -285,7 +396,7 @@ function SessionsModal({ rp, onClose }: { rp: RP; onClose: () => void }) {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--pale-teal)' }}>
-                  {['Date', 'Service', 'Branch', 'Net amount'].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{h}</th>)}
+                  {['Date', 'Service', 'Department', 'Branch', 'Net amount'].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -293,6 +404,7 @@ function SessionsModal({ rp, onClose }: { rp: RP; onClose: () => void }) {
                   <tr key={s.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(s.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.services}{s.paymentStatus === 'UNPAID' ? <span className="ml-1 text-[10px] font-semibold" style={{ color: '#b45309' }}>(unpaid)</span> : null}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{s.departments && s.departments.length ? s.departments.map(departmentLabel).join(', ') : '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{branchLabel(s.branch)}</td>
                     <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(s.netAmount)}</td>
                   </tr>
