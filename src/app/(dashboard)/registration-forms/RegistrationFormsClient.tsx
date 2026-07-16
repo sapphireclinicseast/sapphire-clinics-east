@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   FileText, QrCode, BarChart3, ExternalLink, Copy, Check,
   RefreshCw, Download, ChevronRight, Trash2, Pencil, X,
@@ -57,6 +58,24 @@ export default function RegistrationFormsClient({ role }: Props) {
     if (isAdmin || isSBEA) return true
     return !!f.sbgh  // SBGH front desk only sees forms with SBGH version
   })
+
+  // Deep-link support: /registration-forms?form=<key>&tab=results&branch=SBEA
+  // Used by the notification bell to jump straight to a form's Responses tab.
+  const searchParams   = useSearchParams()
+  const deepLinked     = useRef(false)
+  useEffect(() => {
+    if (deepLinked.current) return
+    const formKey  = searchParams.get('form')
+    const tabParam = searchParams.get('tab')
+    const branch   = searchParams.get('branch') as 'SBEA' | 'SBGH' | null
+    if (!formKey) return
+    const form = visibleForms.find((f) => f.key === formKey)
+    if (!form) return
+    deepLinked.current = true
+    setSelectedForm(form)
+    if (tabParam === 'results') setTab('results')
+    if (branch === 'SBEA' || branch === 'SBGH') setQrBranch(branch)
+  }, [searchParams, visibleForms])
 
   // Reset qrBranch when form changes
   useEffect(() => {

@@ -7,10 +7,11 @@ import type { Session } from 'next-auth'
 
 interface NotifItem {
   id: string
-  type: 'REGISTRATION' | 'BOOKING'
+  type: 'REGISTRATION' | 'BOOKING' | 'FORM_RESPONSE'
   name: string
   branch: string
   status?: string
+  formKey?: string
   createdAt: string
   href: string
 }
@@ -162,7 +163,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
               <div className="overflow-y-auto divide-y divide-gray-100" style={{ maxHeight: '340px' }}>
                 {items.length === 0 ? (
                   <div className="px-4 py-8 text-sm text-center" style={{ color: 'var(--mid-gray)' }}>
-                    No activity in the last 48 hours
+                    All caught up!
                   </div>
                 ) : (
                   items.map((item) => {
@@ -202,6 +203,8 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
                           <div className="text-[11px] mt-0.5" style={{ color: '#6b7280' }}>
                             {item.type === 'REGISTRATION'
                               ? 'New patient registration'
+                              : item.type === 'FORM_RESPONSE'
+                              ? 'New form submission'
                               : item.status === 'PAID'
                               ? 'Appointment booking · Paid downpayment'
                               : 'Appointment booking · Awaiting payment'}
