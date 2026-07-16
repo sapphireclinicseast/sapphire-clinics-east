@@ -101,24 +101,45 @@ interface Props {
   senderRole?: 'ADMIN' | 'TEACHER'
   /** When true, each row shows a Delete button (main admin only). */
   canDelete?: boolean
+  /** Client-side branch filter. Front desk + branch admin pass their
+   *  scoped branch so the panel narrows the list even if the local
+   *  user cache still has cross-branch rows (e.g. from a prior
+   *  main-admin session on the same device). Server-side /users
+   *  scoping already applies for the FRONTDESK role, but this belt-
+   *  and-suspenders check prevents the panels from ever leaking
+   *  cross-branch students. */
+  viewerBranch?: 'EAST' | 'GREENHILLS'
 }
 
 export default function PaymentsGrouped({
   canSendReminders, senderEmail = 'main@sapphireclinicseast.org', senderName = 'Main admin', senderRole = 'ADMIN',
-  canDelete = false,
+  canDelete = false, viewerBranch,
 }: Props) {
-  const [students, setStudents] = useState<StoredUser[]>([])
-  const [payments, setPayments] = useState<PaymentRecord[]>([])
+  // Filter students by role/disabled AND — for branch-scoped viewers —
+  // the viewer's branch. Same filter used both for the initial
+  // localStorage seed and the post-hydrate result so the two agree.
+  function activeStudentsOnly(us: StoredUser[]): StoredUser[] {
+    return us.filter(u =>
+      u.role === 'STUDENT'
+      && !u.disabledAt
+      && (!viewerBranch || u.branch === viewerBranch)
+    )
+  }
+
+  // Seed from localStorage on mount so the panels render immediately
+  // with the last-known list — a fresh session that hits Payments
+  // before Students would otherwise flash a blank state until the
+  // hydrateUsers fetch resolves. Empty when the cache is empty.
+  const [students, setStudents] = useState<StoredUser[]>(() =>
+    typeof window === 'undefined' ? [] : activeStudentsOnly(getUsers())
+  )
+  const [payments, setPayments] = useState<PaymentRecord[]>(() =>
+    typeof window === 'undefined' ? [] : getPayments()
+  )
   const [search, setSearch] = useState('')
   const [busyReminder, setBusyReminder] = useState<string | null>(null)
   const [busyDelete, setBusyDelete] = useState<string | null>(null)
   const [reminderSent, setReminderSent] = useState<Record<string, boolean>>({})
-
-  // Disabled accounts are hidden here on top of any other filtering.
-  // The Users tab still surfaces them so admin can re-enable.
-  function activeStudentsOnly(us: StoredUser[]): StoredUser[] {
-    return us.filter(u => u.role === 'STUDENT' && !u.disabledAt)
-  }
 
   useEffect(() => {
     hydrateUsers().then(us => setStudents(activeStudentsOnly(us))).catch(() => setStudents(activeStudentsOnly(getUsers())))
@@ -127,7 +148,8 @@ export default function PaymentsGrouped({
     // server truth (matches the badge on the student profile). Without
     // this the pending list computes against stale localStorage.
     void hydrateFrontDeskPayments().then(() => setPayments(getPayments())).catch(() => { /* ignore */ })
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewerBranch])
 
   /**
    * Main-admin hard-delete of a student row. Used when the admin wants

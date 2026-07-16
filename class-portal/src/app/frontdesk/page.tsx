@@ -106,6 +106,7 @@ export default function FrontdeskPage() {
             canDelete
             senderEmail={email}
             senderName="Front desk"
+            viewerBranch={viewerBranch}
           />
         </div>
       )}
