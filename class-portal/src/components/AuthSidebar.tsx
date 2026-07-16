@@ -8,7 +8,7 @@ import { getAuth, clearAuth, type AuthSession } from '@/lib/session'
 type NavItem = {
   href: string
   label: string
-  icon: 'home' | 'classes' | 'calendar' | 'documents' | 'pay'
+  icon: 'home' | 'classes' | 'calendar' | 'pay'
   roles?: Array<'ADMIN' | 'BRANCH_ADMIN' | 'FRONTDESK' | 'TEACHER' | 'STUDENT'>
 }
 
@@ -44,14 +44,6 @@ function NavIcon({ name }: { name: NavItem['icon'] }) {
           <rect x="3" y="5" width="18" height="16" rx="2" />
           <path d="M3 10h18" />
           <path d="M8 3v4M16 3v4" />
-        </svg>
-      )
-    case 'documents':
-      return (
-        <svg {...common}>
-          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-          <path d="M14 3v5h5" />
-          <path d="M9 13h6M9 17h6" />
         </svg>
       )
     case 'pay':
@@ -129,7 +121,6 @@ export default function AuthSidebar() {
       icon: 'home' },
     { href: '/classes',   label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
     { href: '/calendar',  label: 'Calendar',     icon: 'calendar' },
-    { href: '/documents', label: 'Documents',    icon: 'documents', roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
     { href: '/pay',       label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
   ]
 
