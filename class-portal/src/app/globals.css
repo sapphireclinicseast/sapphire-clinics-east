@@ -310,6 +310,9 @@ body {
  *   - hides the original top <header> — the sidebar carries the brand
  *     and all navigation for authenticated views
  *   - shifts <main> + <footer> right of the 240px fixed sidebar on md+
+ *   - clamps any `width: 100vw` / negative-margin full-bleed hack used
+ *     by pages like /classes so their content doesn't spill under the
+ *     sidebar (which is position: fixed and sits at viewport x=0..240)
  * Public pages (marketing home, sign-in, enroll) never mount the
  * sidebar and therefore render with the original top-header layout.
  * On mobile the sidebar becomes a slide-in drawer, so main/footer
@@ -317,8 +320,17 @@ body {
  */
 body.with-auth-sidebar > header { display: none; }
 @media (min-width: 768px) {
-  body.with-auth-sidebar > main   { margin-left: 240px; }
+  body.with-auth-sidebar > main   { margin-left: 240px; max-width: none; }
   body.with-auth-sidebar > footer { margin-left: 240px; }
+  /* Neutralise the "100vw + negative-margin" full-bleed hack used by
+     /classes, /admission, PaidStudentsSpreadsheet, etc. — those pages
+     use inline styles so we need !important to win. */
+  body.with-auth-sidebar main > div[style*="100vw"] {
+    width: calc(100vw - 240px) !important;
+    max-width: calc(100vw - 240px) !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
 }
 .badge-rejected    { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(168, 92, 61, 0.28); }
 

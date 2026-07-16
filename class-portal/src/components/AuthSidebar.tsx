@@ -8,8 +8,62 @@ import { getAuth, clearAuth, type AuthSession } from '@/lib/session'
 type NavItem = {
   href: string
   label: string
-  icon: string  // emoji, kept text-only so we don't pull in an icon package
+  icon: 'home' | 'classes' | 'calendar' | 'documents' | 'pay'
   roles?: Array<'ADMIN' | 'BRANCH_ADMIN' | 'FRONTDESK' | 'TEACHER' | 'STUDENT'>
+}
+
+// Monochrome 20×20 line icons rendered inline as SVG so they inherit
+// currentColor from the surrounding text (deep-teal when active, narra
+// when not). Stroke-based Feather-style icons — clean and understated,
+// matches the HR-hub design vocabulary.
+function NavIcon({ name }: { name: NavItem['icon'] }) {
+  const common = {
+    width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none',
+    stroke: 'currentColor', strokeWidth: 1.75,
+    strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }
+  switch (name) {
+    case 'home':
+      return (
+        <svg {...common}>
+          <path d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-6h-6v6H5a2 2 0 0 1-2-2z" />
+        </svg>
+      )
+    case 'classes':
+      // Open book — two facing pages with a spine.
+      return (
+        <svg {...common}>
+          <path d="M4 6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4z" />
+          <path d="M20 6a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z" />
+        </svg>
+      )
+    case 'calendar':
+      return (
+        <svg {...common}>
+          <rect x="3" y="5" width="18" height="16" rx="2" />
+          <path d="M3 10h18" />
+          <path d="M8 3v4M16 3v4" />
+        </svg>
+      )
+    case 'documents':
+      return (
+        <svg {...common}>
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5" />
+          <path d="M9 13h6M9 17h6" />
+        </svg>
+      )
+    case 'pay':
+      // Wallet.
+      return (
+        <svg {...common}>
+          <rect x="3" y="6" width="18" height="13" rx="2" />
+          <path d="M3 10h18" />
+          <path d="M16 15h2" />
+        </svg>
+      )
+  }
 }
 
 // The HR-hub-style persistent left sidebar for signed-in users.
@@ -72,11 +126,11 @@ export default function AuthSidebar() {
         : role === 'FRONTDESK' ? 'Front desk'
         : role === 'TEACHER' ? 'Teacher hub'
         : 'My profile',
-      icon: '🏠' },
-    { href: '/classes',   label: 'Classes',      icon: '📚', roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
-    { href: '/calendar',  label: 'Calendar',     icon: '📅' },
-    { href: '/documents', label: 'Documents',    icon: '📄', roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
-    { href: '/pay',       label: 'Pay tuition',  icon: '💳', roles: ['STUDENT'] },
+      icon: 'home' },
+    { href: '/classes',   label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
+    { href: '/calendar',  label: 'Calendar',     icon: 'calendar' },
+    { href: '/documents', label: 'Documents',    icon: 'documents', roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
+    { href: '/pay',       label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
   ]
 
   const visible = items.filter(i => !i.roles || i.roles.includes(role))
@@ -122,7 +176,11 @@ export default function AuthSidebar() {
             className={linkCls(isActive(item.href))}
             onClick={() => setMobileOpen(false)}
           >
-            <span aria-hidden className="text-[15px] w-5 text-center">{item.icon}</span>
+            {/* Icon inherits currentColor from the parent link — mid-gray
+                when inactive, deep-teal when active, keeps it monochrome. */}
+            <span className="flex items-center justify-center w-5 h-5 shrink-0 opacity-80">
+              <NavIcon name={item.icon} />
+            </span>
             <span>{item.label}</span>
           </a>
         ))}
