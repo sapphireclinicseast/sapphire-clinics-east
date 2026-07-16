@@ -563,10 +563,27 @@ model Referrer {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  orders Order[]
+  orders           Order[]
+  referredPatients ReferredPatient[]
 
   @@index([isActive])
   @@index([createdById])
+}
+
+// A patient a referrer sent to us. patientId links to the Operations Hub CRM
+// patient; patientName is stored for display + matching orders that predate any id.
+model ReferredPatient {
+  id          String   @id @default(cuid())
+  referrerId  String
+  referrer    Referrer @relation(fields: [referrerId], references: [id], onDelete: Cascade)
+  patientId   String?  // Operations Hub CRM patient id
+  patientName String
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([referrerId])
+  @@index([patientId])
 }
 
 model DigitalWallet {

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
-const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM']
+const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM', 'PARTNER_SCHOOL']
 const normType = (t: unknown) => (REFERRER_TYPES.includes(String(t)) ? String(t) : 'DOCTOR')
 
 export async function GET(req: Request) {
