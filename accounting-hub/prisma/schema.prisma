@@ -554,9 +554,10 @@ enum WalletType {
 model Referrer {
   id             String   @id @default(cuid())
   name           String
-  type           String   @default("DOCTOR") // DOCTOR | LAW_FIRM
+  type           String   @default("DOCTOR") // DOCTOR | LAW_FIRM | PARTNER_SCHOOL
   affiliation    String?
   specialization String?
+  branches       String[] @default([]) // visibility scope: SANDBOX_EAST / SANDBOX_GREENHILLS; empty = all branches
   isActive       Boolean  @default(true)
   createdById    String
   createdBy      User     @relation("ReferrerCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

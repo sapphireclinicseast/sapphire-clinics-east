@@ -14,11 +14,11 @@ const typeBadgeStyle = (t?: string | null): React.CSSProperties => {
 }
 
 export default function ReferrerSettingsPanel() {
-  const [referrers, setReferrers] = useState<{ id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; referralCount?: number }[]>([])
+  const [referrers, setReferrers] = useState<{ id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; branches?: string[]; referralCount?: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', type: 'DOCTOR', affiliation: '', specialization: '' })
+  const [form, setForm] = useState<{ name: string; type: string; affiliation: string; specialization: string; branches: string[] }>({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [] })
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -52,8 +52,10 @@ export default function ReferrerSettingsPanel() {
     r.specialization?.toLowerCase().includes(search.toLowerCase())
   )
 
-  const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '' }); setError(''); setShowForm(true) }
-  const openEdit = (r: typeof referrers[0]) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '' }); setError(''); setShowForm(true) }
+  const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [] }); setError(''); setShowForm(true) }
+  const openEdit = (r: typeof referrers[0]) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [] }); setError(''); setShowForm(true) }
+  const toggleBranch = (b: string) => setForm(f => ({ ...f, branches: f.branches.includes(b) ? f.branches.filter(x => x !== b) : [...f.branches, b] }))
+  const BRANCH_OPTS: [string, string][] = [['SANDBOX_EAST', 'East'], ['SANDBOX_GREENHILLS', 'Greenhills']]
 
   const save = async () => {
     if (!form.name.trim()) { setError('Name is required'); return }
@@ -61,7 +63,7 @@ export default function ReferrerSettingsPanel() {
     setError('')
     setSaving(true)
     try {
-      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: form.affiliation.trim() || null, specialization: form.specialization.trim() || null }
+      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: form.affiliation.trim() || null, specialization: form.specialization.trim() || null, branches: form.branches }
       const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (res.ok) { setShowForm(false); fetchReferrers() }
       else { const d = await res.json(); setError(d.error || 'Failed to save') }
@@ -169,7 +171,7 @@ export default function ReferrerSettingsPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--pale-teal)' }}>
-                {['Name', 'Type', 'Affiliation', 'Specialization', 'Count of Referrals', ''].map(h => (
+                {['Name', 'Type', 'Affiliation', 'Specialization', 'Branch', 'Count of Referrals', ''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>
                 ))}
               </tr>
@@ -185,6 +187,17 @@ export default function ReferrerSettingsPanel() {
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.affiliation || '—'}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.specialization || '—'}</td>
+                  <td className="px-4 py-3">
+                    {(r.branches && r.branches.length > 0) ? (
+                      <div className="flex flex-wrap gap-1">
+                        {r.branches.map(b => (
+                          <span key={b} className="px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                            {b === 'SANDBOX_EAST' ? 'East' : b === 'SANDBOX_GREENHILLS' ? 'Greenhills' : b}
+                          </span>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>All</span>}
+                  </td>
                   <td className="px-4 py-3">
                     {(r.referralCount ?? 0) > 0 ? (
                       <button onClick={() => openOrders(r)} className="px-2.5 py-1 rounded-full text-xs font-semibold hover:underline" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }} title="View referred orders">
@@ -239,6 +252,19 @@ export default function ReferrerSettingsPanel() {
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Specialization</label>
               <input value={form.specialization} onChange={e => setForm({ ...form, specialization: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Visible to branch</label>
+              <div className="flex gap-2">
+                {BRANCH_OPTS.map(([val, label]) => (
+                  <label key={val} className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm flex-1"
+                    style={form.branches.includes(val) ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    <input type="checkbox" checked={form.branches.includes(val)} onChange={() => toggleBranch(val)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Leave both unticked = visible at all branches. Tick a branch so only that branch&apos;s front desk sees this referrer.</p>
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={save} disabled={saving} className="px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
