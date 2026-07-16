@@ -1614,6 +1614,141 @@ export function currentPeriodPaymentStatusFor(studentId: string): 'PAID' | 'DUE'
 }
 
 /**
+ * SY label for a given date. School year runs Jun 5 (year Y) through Jun 4
+ * (year Y+1). So Jul 2026 → "SY 2026–2027"; Mar 2027 → "SY 2026–2027".
+ */
+export function schoolYearLabelFor(d: Date = new Date()): string {
+  const y = d.getFullYear()
+  const m = d.getMonth()
+  const dd = d.getDate()
+  const inNextSy = (m > 5) || (m === 5 && dd >= 5)
+  const startYear = inNextSy ? y : y - 1
+  return `SY ${startYear}–${startYear + 1}`
+}
+
+/**
+ * Which biannual half a given date falls in, and the SY label for it.
+ * First half: Jun 5 (start of SY) through Dec 4.
+ * Second half: Dec 5 through Jun 4 (next calendar year).
+ */
+export function biannualHalfFor(d: Date = new Date()): { half: 'FIRST' | 'SECOND'; syLabel: string } {
+  const y = d.getFullYear()
+  const m = d.getMonth()
+  const dd = d.getDate()
+  const inSecondHalf = (m === 11 && dd >= 5) || (m >= 0 && m <= 4)
+  return { half: inSecondHalf ? 'SECOND' : 'FIRST', syLabel: schoolYearLabelFor(d) }
+}
+
+/**
+ * Did a student pay for a specific biannual half of a specific SY?
+ * Matches on literal "first-half"/"second-half" period text first, then
+ * falls back to a timestamp window (Jun 5–Dec 4 or Dec 5–Jun 4) so
+ * front-desk free-text records still count.
+ */
+export function didPayForBiannualHalf(studentId: string, half: 'FIRST' | 'SECOND', syStartYear: number): boolean {
+  const list = getPaymentsForStudent(studentId).filter(p => p.status === 'PAID' && p.plan === 'BIANNUAL')
+  if (list.length === 0) return false
+  const halfRegex = half === 'FIRST' ? /first[- ]?half/i : /second[- ]?half/i
+  // Literal match takes precedence — a "Second half SY 2026–2027" record
+  // covers the second half of SY 2026–2027, whenever it was paid.
+  if (list.some(p => halfRegex.test(p.period) && p.period.includes(String(syStartYear)))) return true
+  // Timestamp fallback.
+  const start = half === 'FIRST'
+    ? Date.UTC(syStartYear, 5, 5, 0, 0, 0)
+    : Date.UTC(syStartYear, 11, 5, 0, 0, 0)
+  const end = half === 'FIRST'
+    ? Date.UTC(syStartYear, 11, 4, 23, 59, 59)
+    : Date.UTC(syStartYear + 1, 5, 4, 23, 59, 59)
+  return list.some(p => {
+    const stamp = new Date(p.paidAt ?? p.createdAt).getTime()
+    return Number.isFinite(stamp) && stamp >= start && stamp <= end
+  })
+}
+
+/**
+ * Did a student pay for a specific (year, monthIdx) month? Matches on
+ * period text ("July 2026" or a "June–September 2026" range) — the
+ * monthly period column is well-structured in practice.
+ */
+export function didPayForMonth(studentId: string, year: number, monthIdx: number): boolean {
+  const list = getPaymentsForStudent(studentId).filter(p => p.status === 'PAID' && p.plan === 'MONTHLY')
+  if (list.length === 0) return false
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const targetName = monthNames[monthIdx]
+  const targetYear = String(year)
+  return list.some(p => {
+    // Direct match: "July 2026"
+    if (p.period.includes(targetName) && p.period.includes(targetYear)) return true
+    // Range: "Back balance · June–September 2026" — must include the year
+    if (!p.period.includes(targetYear)) return false
+    return periodCoversMonth(p.period, targetName)
+  })
+}
+
+/**
+ * Human-readable badge info for the profile / list. Returns a
+ * primary "current period" label plus an optional "last paid" label
+ * so MONTHLY students who paid an earlier month but owe the current
+ * one can render both — matching the front-desk mental model.
+ */
+export interface PaymentBadgeInfo {
+  status: 'PAID' | 'DUE' | 'NONE'
+  currentLabel: string
+  // Populated when status=DUE for MONTHLY and there IS a paid past
+  // month — e.g. "Paid for June 2026" alongside "Due for July 2026".
+  lastPaidLabel?: string
+}
+export function paymentBadgeInfoFor(studentId: string): PaymentBadgeInfo {
+  const list = getPaymentsForStudent(studentId)
+  if (list.length === 0) return { status: 'NONE', currentLabel: 'Payment pending' }
+  const plan = inferPaymentPlanFor(studentId)
+  const status = currentPeriodPaymentStatusFor(studentId)
+  const today = new Date()
+  const syLabel = schoolYearLabelFor(today)
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const monthLabel = `${monthNames[today.getMonth()]} ${today.getFullYear()}`
+
+  if (!plan) {
+    return { status, currentLabel: status === 'PAID' ? 'Tuition paid' : status === 'DUE' ? 'Payment due' : 'Payment pending' }
+  }
+
+  if (plan === 'ANNUAL') {
+    return { status, currentLabel: status === 'PAID' ? `Paid for ${syLabel}` : `Due for ${syLabel}` }
+  }
+
+  if (plan === 'BIANNUAL') {
+    const { half } = biannualHalfFor(today)
+    const halfLabel = half === 'FIRST' ? '1st Biannual' : '2nd Biannual'
+    return { status, currentLabel: status === 'PAID' ? `Paid for ${halfLabel} ${syLabel}` : `Due for ${halfLabel} ${syLabel}` }
+  }
+
+  // MONTHLY
+  if (status === 'PAID') {
+    return { status, currentLabel: `Paid for ${monthLabel}` }
+  }
+  // DUE — find the most recent PAID monthly period to show alongside.
+  const paidMonthly = list.filter(p => p.status === 'PAID' && p.plan === 'MONTHLY')
+    .sort((a, b) => new Date(b.paidAt ?? b.createdAt).getTime() - new Date(a.paidAt ?? a.createdAt).getTime())
+  let lastPaidLabel: string | undefined
+  // Search back through the last 12 months to find one that this student paid for.
+  const now = today
+  for (let back = 1; back <= 12; back += 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - back, 1)
+    if (didPayForMonth(studentId, d.getFullYear(), d.getMonth())) {
+      lastPaidLabel = `Paid for ${monthNames[d.getMonth()]} ${d.getFullYear()}`
+      break
+    }
+  }
+  // Fallback: if the walk-back didn't find anything but there IS a paid
+  // monthly record, surface it by its period string so the frontdesk
+  // still sees what was paid.
+  if (!lastPaidLabel && paidMonthly.length > 0 && paidMonthly[0].period) {
+    lastPaidLabel = `Paid for ${paidMonthly[0].period}`
+  }
+  return { status, currentLabel: `Due for ${monthLabel}`, lastPaidLabel }
+}
+
+/**
  * Does a PaymentRecord's `period` string cover the given calendar
  * month? Handles two shapes:
  *   • Direct match:  "July 2026" covers "July"

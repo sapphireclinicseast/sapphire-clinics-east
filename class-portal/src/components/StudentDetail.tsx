@@ -23,7 +23,7 @@ import { downloadFeeSchedulePdf, openFeeSchedulePdf } from '@/lib/fee-schedule-p
 import {
   fetchFeeSummary, issueRegistrationLetter,
   listPersonalVouchersFor, mintPersonalVoucher,
-  currentPeriodPaymentStatusFor,
+  paymentBadgeInfoFor,
   type FeeSummary, type IssuedRegistrationLetter, type PersonalVoucher,
 } from '@/lib/session'
 // Removed `generateAffidavitPdf` / `AffidavitInput` imports — the
@@ -116,13 +116,10 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
   const hasEverPaid = payments.some(p => p.status === 'PAID')
   // Re-run when paymentsRev bumps (i.e., after we hydrate from server).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const currentPeriodStatus = useMemo(() => currentPeriodPaymentStatusFor(student.id), [student.id, paymentsRev, payments])
-  const badgeClass = currentPeriodStatus === 'PAID' ? 'badge-paid'
-    : currentPeriodStatus === 'DUE' ? 'badge-due'
+  const badgeInfo = useMemo(() => paymentBadgeInfoFor(student.id), [student.id, paymentsRev, payments])
+  const primaryBadgeClass = badgeInfo.status === 'PAID' ? 'badge-paid'
+    : badgeInfo.status === 'DUE' ? 'badge-due'
     : 'badge-pending'
-  const badgeLabel = currentPeriodStatus === 'PAID' ? 'Tuition paid'
-    : currentPeriodStatus === 'DUE' ? `Due for ${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}`
-    : 'Payment pending'
 
   return (
     <div className="space-y-6">
@@ -147,9 +144,18 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <span className={`badge ${badgeClass}`}>
-              {badgeLabel}
-            </span>
+            <div className="flex flex-col items-end gap-1.5">
+              {/* Show "Paid for <past month>" alongside the "Due for
+                  <current month>" badge for MONTHLY students who've
+                  fallen a month behind, so the front desk sees both the
+                  last-paid state AND the current-period ask. */}
+              {badgeInfo.lastPaidLabel && (
+                <span className="badge badge-paid">{badgeInfo.lastPaidLabel}</span>
+              )}
+              <span className={`badge ${primaryBadgeClass}`}>
+                {badgeInfo.currentLabel}
+              </span>
+            </div>
             {viewerRole === 'STUDENT' && (
               <a href="/pay" className="btn-cta text-xs whitespace-nowrap">Pay tuition fee →</a>
             )}

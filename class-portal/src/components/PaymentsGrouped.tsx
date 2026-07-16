@@ -6,6 +6,7 @@ import {
   saveNotification, deleteUser,
   levelLabel,
   currentPeriodPaymentStatusFor, inferPaymentPlanFor,
+  didPayForBiannualHalf, didPayForMonth, schoolYearLabelFor, biannualHalfFor,
   type PaymentRecord, type PaymentMethod, type PaymentPlan,
   type StoredUser, type EnrollmentLevel,
 } from '@/lib/session'
@@ -331,74 +332,28 @@ export default function PaymentsGrouped({
         )}
       </div>
 
-      {/* Grouped by Plan → Grade level */}
+      {/* Grouped by Plan → Grade level. Each plan card has its own
+          sub-filter widget: Bi-annual → 1st/2nd half tabs; Monthly →
+          per-month dropdown. Both re-derive per-row PAID/PENDING against
+          the picked slice (not the current-period status) so the front
+          desk can see, e.g., "who paid for August 2026" or "who paid
+          for 1st half SY 2026–2027".  */}
       {ALL_PLANS.map(plan => {
         const rowsForPlan = filteredRows.filter(r => r.plan === plan)
         if (rowsForPlan.length === 0) return null
         return (
-          <div key={plan} className="card-static">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div>
-                <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Plan</div>
-                <h2 className="text-[20px] leading-tight">{planLabel(plan)}</h2>
-              </div>
-              <div className="text-[12.5px] text-[color:var(--mid-gray)]">
-                {rowsForPlan.filter(r => r.status === 'PAID').length} paid · {rowsForPlan.filter(r => r.status === 'PENDING').length} pending
-              </div>
-            </div>
-            <div className="space-y-2.5">
-              {ALL_LEVELS.map(lvl => {
-                const list = rowsForPlan.filter(r => r.student.level === lvl)
-                if (list.length === 0) return null
-                return (
-                  <details key={lvl} open className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-                    <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer select-none rounded-xl" style={{ background: 'var(--paper-2)' }}>
-                      <span className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>{levelLabel(lvl)}</span>
-                      <span className="text-[11.5px] text-[color:var(--mid-gray)]">
-                        {list.filter(r => r.status === 'PAID').length} paid · {list.filter(r => r.status === 'PENDING').length} pending
-                      </span>
-                    </summary>
-                    <ul className="divide-y" style={{ borderColor: 'var(--paper-3)' }}>
-                      {list.map(r => (
-                        <li key={r.student.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-[color:var(--narra)] truncate">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
-                            <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">
-                              {r.student.email} · {r.payment ? `${methodLabel(r.payment.method)} · ${fmt(r.payment.tuitionAmount + r.payment.miscAmount)}` : 'No payment yet'}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className={`badge ${r.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{r.status}</span>
-                            {canSendReminders && r.status === 'PENDING' && (
-                              <button
-                                type="button"
-                                className="btn-secondary text-xs"
-                                onClick={() => sendReminder(r)}
-                                disabled={busyReminder === r.student.id || !r.student.level}
-                              >
-                                {reminderSent[r.student.id] ? '✓ Sent' : '🔔'}
-                              </button>
-                            )}
-                            {canDelete && (
-                              <button
-                                type="button"
-                                className="text-[11px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
-                                onClick={() => void handleDelete(r.student)}
-                                disabled={busyDelete === r.student.id}
-                                title="Delete this student account (main admin only)."
-                              >
-                                {busyDelete === r.student.id ? '…' : 'Delete'}
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )
-              })}
-            </div>
-          </div>
+          <PlanCard
+            key={plan}
+            plan={plan}
+            rowsForPlan={rowsForPlan}
+            canSendReminders={canSendReminders}
+            canDelete={canDelete}
+            busyReminder={busyReminder}
+            busyDelete={busyDelete}
+            reminderSent={reminderSent}
+            onSendReminder={sendReminder}
+            onDelete={handleDelete}
+          />
         )
       })}
 
@@ -437,6 +392,164 @@ export default function PaymentsGrouped({
           </ul>
         </div>
       )}
+    </div>
+  )
+}
+
+/** One-plan card with an optional sub-filter (biannual half tabs or
+ *  monthly month dropdown) sitting above the grade-level accordions. */
+function PlanCard({
+  plan, rowsForPlan,
+  canSendReminders, canDelete,
+  busyReminder, busyDelete, reminderSent,
+  onSendReminder, onDelete,
+}: {
+  plan: PaymentPlan
+  rowsForPlan: Row[]
+  canSendReminders: boolean | undefined
+  canDelete: boolean
+  busyReminder: string | null
+  busyDelete: string | null
+  reminderSent: Record<string, boolean>
+  onSendReminder: (r: Row) => void
+  onDelete: (s: StoredUser) => void
+}) {
+  const today = new Date()
+  const syLabel = schoolYearLabelFor(today)
+  // SY-start year — Jun 5 2026 → 2026; Mar 2027 → 2026 (still SY 2026–2027).
+  const syStartYear = today.getMonth() > 5 || (today.getMonth() === 5 && today.getDate() >= 5)
+    ? today.getFullYear()
+    : today.getFullYear() - 1
+
+  // ---------- BIANNUAL: two half-tabs ----------
+  const [half, setHalf] = useState<'FIRST' | 'SECOND'>(() => biannualHalfFor(today).half)
+
+  // ---------- MONTHLY: month dropdown ----------
+  // SY runs Jun (start year) through May (start year + 1) — 12 months.
+  const syMonths = useMemo(() => Array.from({ length: 12 }, (_, i) => {
+    const monthIdx = (5 + i) % 12          // 5 = June
+    const year = i <= 6 ? syStartYear : syStartYear + 1
+    return { key: `${year}-${monthIdx}`, year, monthIdx, label: `${['January','February','March','April','May','June','July','August','September','October','November','December'][monthIdx]} ${year}` }
+  }), [syStartYear])
+  const currentMonthKey = `${today.getFullYear()}-${today.getMonth()}`
+  const [monthKey, setMonthKey] = useState<string>(
+    syMonths.find(m => m.key === currentMonthKey)?.key ?? syMonths[0].key
+  )
+  const monthChoice = syMonths.find(m => m.key === monthKey) ?? syMonths[0]
+
+  // Recompute per-row PAID/PENDING for the picked slice — this differs
+  // from Row.status (which is current-period-aware). For the sub-filters
+  // we want "did they pay for THIS slice", regardless of which slice is
+  // currently active.
+  const sliceRows: Row[] = useMemo(() => rowsForPlan.map(r => {
+    if (plan === 'BIANNUAL') {
+      const paid = didPayForBiannualHalf(r.student.id, half, syStartYear)
+      return { ...r, status: paid ? 'PAID' : 'PENDING' }
+    }
+    if (plan === 'MONTHLY') {
+      const paid = didPayForMonth(r.student.id, monthChoice.year, monthChoice.monthIdx)
+      return { ...r, status: paid ? 'PAID' : 'PENDING' }
+    }
+    // ANNUAL: pass through as-is.
+    return r
+  }), [rowsForPlan, plan, half, syStartYear, monthChoice])
+
+  const sliceLabel = plan === 'BIANNUAL'
+    ? `${half === 'FIRST' ? '1st Biannual' : '2nd Biannual'} · ${syLabel}`
+    : plan === 'MONTHLY'
+      ? monthChoice.label
+      : syLabel
+
+  return (
+    <div className="card-static">
+      <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+        <div>
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Plan</div>
+          <h2 className="text-[20px] leading-tight">{planLabel(plan)}</h2>
+          <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">Showing: <span className="font-semibold">{sliceLabel}</span></div>
+        </div>
+        <div className="text-[12.5px] text-[color:var(--mid-gray)]">
+          {sliceRows.filter(r => r.status === 'PAID').length} paid · {sliceRows.filter(r => r.status === 'PENDING').length} pending
+        </div>
+      </div>
+
+      {/* Sub-filter widget */}
+      {plan === 'BIANNUAL' && (
+        <div className="mb-3 inline-flex rounded-lg p-0.5 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+          {(['FIRST', 'SECOND'] as const).map(h => (
+            <button
+              key={h}
+              type="button"
+              onClick={() => setHalf(h)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${half === h ? 'bg-white shadow-sm text-[color:var(--deep-teal)]' : 'text-[color:var(--mid-gray)]'}`}
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              {h === 'FIRST' ? '1st Biannual' : '2nd Biannual'}
+            </button>
+          ))}
+        </div>
+      )}
+      {plan === 'MONTHLY' && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          <label className="text-[11.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>Month</label>
+          <select className="input" value={monthKey} onChange={e => setMonthKey(e.target.value)} style={{ maxWidth: 220 }}>
+            {syMonths.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div className="space-y-2.5">
+        {ALL_LEVELS.map(lvl => {
+          const list = sliceRows.filter(r => r.student.level === lvl)
+          if (list.length === 0) return null
+          return (
+            <details key={lvl} open className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+              <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer select-none rounded-xl" style={{ background: 'var(--paper-2)' }}>
+                <span className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>{levelLabel(lvl)}</span>
+                <span className="text-[11.5px] text-[color:var(--mid-gray)]">
+                  {list.filter(r => r.status === 'PAID').length} paid · {list.filter(r => r.status === 'PENDING').length} pending
+                </span>
+              </summary>
+              <ul className="divide-y" style={{ borderColor: 'var(--paper-3)' }}>
+                {list.map(r => (
+                  <li key={r.student.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-[color:var(--narra)] truncate">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
+                      <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">
+                        {r.student.email} · {r.payment ? `${methodLabel(r.payment.method)} · ${fmt(r.payment.tuitionAmount + r.payment.miscAmount)}` : 'No payment yet'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`badge ${r.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{r.status}</span>
+                      {canSendReminders && r.status === 'PENDING' && (
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs"
+                          onClick={() => onSendReminder(r)}
+                          disabled={busyReminder === r.student.id || !r.student.level}
+                        >
+                          {reminderSent[r.student.id] ? '✓ Sent' : '🔔'}
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          type="button"
+                          className="text-[11px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                          onClick={() => onDelete(r.student)}
+                          disabled={busyDelete === r.student.id}
+                          title="Delete this student account (main admin only)."
+                        >
+                          {busyDelete === r.student.id ? '…' : 'Delete'}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )
+        })}
+      </div>
     </div>
   )
 }
