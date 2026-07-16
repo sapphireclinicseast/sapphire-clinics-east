@@ -206,7 +206,7 @@ export default function UgatFellowClient() {
               {/* Program info for mobile (left panel is hidden < 900px). */}
               <div className={s.mobileProgram}>
                 <p className={s.mobileProgramDesc}>
-                  The UGAT Fellowship Program is a fully forgivable educational fellowship — not a loan — for Allied Health
+                  The UGAT Fellowship Program is an educational fellowship you never have to pay back — not a loan — for Allied Health
                   Professionals in their final year of university — helping fellows stay
                   grounded in their values (<i>ugat</i>) as they pursue excellence
                   (<i>galing</i>), integrity (<i>tindig</i>), and service (<i>paglilingkod</i>).
@@ -247,7 +247,7 @@ function LeftPanel() {
         <h1 className={s.leftTitle}>Rooted in values.<br />Growing in service.</h1>
         <p className={s.leftTagline}>A fellowship for the next generation of Allied Health Professionals.</p>
         <p className={s.leftDesc}>
-          The UGAT Fellowship Program is a fully forgivable educational fellowship — not a loan — for Allied Health
+          The UGAT Fellowship Program is an educational fellowship you never have to pay back — not a loan — for Allied Health
           Professionals in their final year of university. Much like strong roots
           (<i>ugat</i>), we hope our fellows stay firmly grounded in their values even
           as they grow — pursuing excellence (<i>galing</i>) in their craft, upholding
