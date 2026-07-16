@@ -1450,7 +1450,9 @@ model ChatSetting {
 
 /// Which signup dropdown a UgatOption row belongs to.
 enum UgatOptionKind {
-  SCHOOL
+  SCHOOL // legacy single school list (superseded by the per-track lists below)
+  SCHOOL_ARAL // schools we accept for the Aral Track
+  SCHOOL_TINDIG // schools we accept for the Tindig Track
   PROGRAM
   FIELD // preferred field of practice
 }

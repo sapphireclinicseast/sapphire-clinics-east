@@ -1375,10 +1375,10 @@ function SchoolsData() {
 // ══ Settings — dropdown options editor (batched, explicit Save) ════
 // Edits are local until "Save changes" flushes creates / updates / deletes to
 // the shared UgatOption table (so changes persist for every user).
-type Kind = 'SCHOOL' | 'PROGRAM' | 'FIELD'
+type Kind = 'SCHOOL_ARAL' | 'SCHOOL_TINDIG' | 'PROGRAM' | 'FIELD'
 interface OptRow { id?: string; label: string; disabled: boolean }
-const KIND_TITLES: Record<Kind, string> = { SCHOOL: 'Schools', PROGRAM: 'Programs', FIELD: 'Preferred Field of Practice' }
-const OPT_KINDS: Kind[] = ['SCHOOL', 'PROGRAM', 'FIELD']
+const KIND_TITLES: Record<Kind, string> = { SCHOOL_ARAL: 'Schools — Aral Track', SCHOOL_TINDIG: 'Schools — Tindig Track', PROGRAM: 'Programs', FIELD: 'Preferred Field of Practice' }
+const OPT_KINDS: Kind[] = ['SCHOOL_ARAL', 'SCHOOL_TINDIG', 'PROGRAM', 'FIELD']
 
 // ══ Announcements (admin) ══════════════════════════════════════════
 interface AdminAnnouncement { id: string; title: string; details: string; published: boolean; createdAt: string }
@@ -1479,7 +1479,7 @@ function SettingsSection({ authHeaders }: { authHeaders: Record<string, string> 
     const r = await fetch(`${API}/admin/options`, { headers: authHeaders })
     if (!r.ok) return
     const d = await r.json()
-    const norm = { SCHOOL: [], PROGRAM: [], FIELD: [] } as Record<Kind, OptRow[]>
+    const norm = { SCHOOL_ARAL: [], SCHOOL_TINDIG: [], PROGRAM: [], FIELD: [] } as Record<Kind, OptRow[]>
     for (const k of OPT_KINDS) norm[k] = (d[k] || []).map((o: { id: string; label: string; disabled: boolean }) => ({ id: o.id, label: o.label, disabled: o.disabled }))
     setOrig(norm); setG(JSON.parse(JSON.stringify(norm)))
   }, [authHeaders])
@@ -1522,7 +1522,7 @@ function SettingsSection({ authHeaders }: { authHeaders: Record<string, string> 
   return (
     <div className={s.sec}>
       <div className={s.uaHead}>
-        <p className={s.muted} style={{ margin: 0 }}>Set the schools we accept, programs, and preferred fields of practice — these populate the sign-up dropdowns. <b>Changes apply to everyone once you Save.</b> Disabled options are hidden from new applicants but preserved in existing records.</p>
+        <p className={s.muted} style={{ margin: 0 }}>Set the schools we accept <b>for each track</b> (Aral / Tindig), plus programs and preferred fields of practice — these populate the sign-up dropdowns. <b>Changes apply to everyone once you Save.</b> Disabled options are hidden from new applicants but preserved in existing records.</p>
         <div className={s.uaHeadBtns}>
           {dirty && <button className={s.btnGhost3} disabled={saving} onClick={() => orig && setG(JSON.parse(JSON.stringify(orig)))}>Discard</button>}
           <button className={s.btn2} disabled={saving || !dirty} onClick={save}>{saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}</button>

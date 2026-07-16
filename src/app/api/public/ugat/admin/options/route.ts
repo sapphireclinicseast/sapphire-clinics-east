@@ -13,7 +13,9 @@ import { tokenFromRequest, isAdminRole } from '@/lib/ugat-auth'
 
 export const dynamic = 'force-dynamic'
 
-const KINDS = ['SCHOOL', 'PROGRAM', 'FIELD'] as const
+// SCHOOL is legacy (kept valid for old data); the sign-up dropdowns now use the
+// per-track lists SCHOOL_ARAL / SCHOOL_TINDIG.
+const KINDS = ['SCHOOL', 'SCHOOL_ARAL', 'SCHOOL_TINDIG', 'PROGRAM', 'FIELD'] as const
 type Kind = (typeof KINDS)[number]
 
 async function requireAdmin(req: Request): Promise<NextResponse | null> {
@@ -34,7 +36,13 @@ export async function GET(req: Request) {
     rows
       .filter((r) => r.kind === k)
       .map((r) => ({ id: r.id, label: r.label, sortOrder: r.sortOrder, disabled: !!r.disabledAt }))
-  return NextResponse.json({ SCHOOL: group('SCHOOL'), PROGRAM: group('PROGRAM'), FIELD: group('FIELD') })
+  return NextResponse.json({
+    SCHOOL: group('SCHOOL'),
+    SCHOOL_ARAL: group('SCHOOL_ARAL'),
+    SCHOOL_TINDIG: group('SCHOOL_TINDIG'),
+    PROGRAM: group('PROGRAM'),
+    FIELD: group('FIELD'),
+  })
 }
 
 export async function POST(req: Request) {
