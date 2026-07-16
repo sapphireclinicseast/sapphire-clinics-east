@@ -214,8 +214,8 @@ export default function UgatFellowClient() {
                 <ProgramTimeline />
                 <p className={s.mobilePartner}>
                   Interested to have your school partner with us for accepting fellows for
-                  Speech-Language Pathology or Occupational Therapy? Contact us at{' '}
-                  <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>.
+                  Allied Health? Contact us at{' '}
+                  <a href="mailto:fellowship@sapphireclinicseast.org">fellowship@sapphireclinicseast.org</a>.
                 </p>
               </div>
             </div>
@@ -257,8 +257,8 @@ function LeftPanel() {
         <ProgramTimeline />
         <p className={s.leftPartner}>
           Interested to have your school partner with us for accepting fellows for
-          Speech-Language Pathology or Occupational Therapy? Contact us at{' '}
-          <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>.
+          Allied Health? Contact us at{' '}
+          <a href="mailto:fellowship@sapphireclinicseast.org">fellowship@sapphireclinicseast.org</a>.
         </p>
       </div>
     </div>
