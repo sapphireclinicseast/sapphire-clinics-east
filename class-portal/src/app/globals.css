@@ -110,9 +110,9 @@ body {
 
 .card {
   background: #fff;
-  border-radius: 18px;
+  border-radius: 14px;
   border: 1px solid var(--paper-3);
-  padding: 28px;
+  padding: 18px;
   box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
   transition: transform 0.25s ease-out, box-shadow 0.25s ease-out, border-color 0.25s ease-out;
 }
@@ -123,11 +123,17 @@ body {
 }
 .card-static {
   background: #fff;
-  border-radius: 18px;
+  border-radius: 14px;
   border: 1px solid var(--paper-3);
-  padding: 28px;
+  padding: 18px;
   box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
 }
+/* On authenticated views the sidebar already provides a lot of chrome,
+   so shave main's own vertical padding + inter-section gap to keep
+   more content above the fold. Public marketing pages keep the roomier
+   spacing that the design was originally tuned for. */
+body.with-auth-sidebar > main { padding-top: 12px; padding-bottom: 16px; }
+body.with-auth-sidebar > main > .space-y-6 > * + * { margin-top: 12px; }
 
 .btn-primary {
   display: inline-flex;

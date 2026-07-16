@@ -11,8 +11,6 @@ import {
   type StoredUser, type EnrollmentLevel,
 } from '@/lib/session'
 
-const ALL_PLANS: PaymentPlan[] = ['ANNUAL', 'BIANNUAL', 'MONTHLY']
-const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1','GRADE_2','GRADE_3','GRADE_4','GRADE_5','GRADE_6','GRADE_7','GRADE_8','GRADE_9','GRADE_10','GRADE_11','GRADE_12']
 
 function fmt(cents: number) {
   return '₱' + (cents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -347,30 +345,17 @@ export default function PaymentsGrouped({
         )}
       </div>
 
-      {/* Grouped by Plan → Grade level. Each plan card has its own
-          sub-filter widget: Bi-annual → 1st/2nd half tabs; Monthly →
-          per-month dropdown. Both re-derive per-row PAID/PENDING against
-          the picked slice (not the current-period status) so the front
-          desk can see, e.g., "who paid for August 2026" or "who paid
-          for 1st half SY 2026–2027".  */}
-      {ALL_PLANS.map(plan => {
-        const rowsForPlan = filteredRows.filter(r => r.plan === plan)
-        if (rowsForPlan.length === 0) return null
-        return (
-          <PlanCard
-            key={plan}
-            plan={plan}
-            rowsForPlan={rowsForPlan}
-            canSendReminders={canSendReminders}
-            canDelete={canDelete}
-            busyReminder={busyReminder}
-            busyDelete={busyDelete}
-            reminderSent={reminderSent}
-            onSendReminder={sendReminder}
-            onDelete={handleDelete}
-          />
-        )
-      })}
+      {/* Consolidated single-table view: one plan-type filter drives
+          the whole table (Annual / Biannual / Monthly), plus a sub-slice
+          picker for Biannual (1st/2nd half) and Monthly (month). PAID /
+          PENDING recomputed against the picked slice so admin can ask
+          "who paid for August 2026" in one place instead of three cards.  */}
+      <PaymentsTable
+        rows={filteredRows.filter(r => r.plan)}
+        canDelete={canDelete}
+        busyDelete={busyDelete}
+        onDelete={handleDelete}
+      />
 
       {/* Students with no plan / no payment yet — surface so admin can chase them. */}
       {filteredRows.some(r => !r.plan) && (
@@ -411,38 +396,33 @@ export default function PaymentsGrouped({
   )
 }
 
-/** One-plan card with an optional sub-filter (biannual half tabs or
- *  monthly month dropdown) sitting above the grade-level accordions. */
-function PlanCard({
-  plan, rowsForPlan,
-  canSendReminders, canDelete,
-  busyReminder, busyDelete, reminderSent,
-  onSendReminder, onDelete,
+
+/** Consolidated single-table view of all paying students. Filters:
+ *   - Type of payment: All | Annual | Biannual | Monthly (default All)
+ *   - When Biannual: 1st / 2nd half toggle (defaults to current half)
+ *   - When Monthly:  per-month dropdown for the SY (defaults to current)
+ *  Columns: Name | Plan | Branch | Status (Paid / Pending), where
+ *  Status is recomputed against the currently-picked slice so
+ *  admin can ask "who's paid for August 2026?" and get an answer
+ *  without walking three cards + N accordions. */
+function PaymentsTable({
+  rows, canDelete, busyDelete, onDelete,
 }: {
-  plan: PaymentPlan
-  rowsForPlan: Row[]
-  canSendReminders: boolean | undefined
+  rows: Row[]
   canDelete: boolean
-  busyReminder: string | null
   busyDelete: string | null
-  reminderSent: Record<string, boolean>
-  onSendReminder: (r: Row) => void
   onDelete: (s: StoredUser) => void
 }) {
   const today = new Date()
   const syLabel = schoolYearLabelFor(today)
-  // SY-start year — Jun 5 2026 → 2026; Mar 2027 → 2026 (still SY 2026–2027).
   const syStartYear = today.getMonth() > 5 || (today.getMonth() === 5 && today.getDate() >= 5)
     ? today.getFullYear()
     : today.getFullYear() - 1
 
-  // ---------- BIANNUAL: two half-tabs ----------
+  const [typeFilter, setTypeFilter] = useState<'ALL' | PaymentPlan>('ALL')
   const [half, setHalf] = useState<'FIRST' | 'SECOND'>(() => biannualHalfFor(today).half)
-
-  // ---------- MONTHLY: month dropdown ----------
-  // SY runs Jun (start year) through May (start year + 1) — 12 months.
   const syMonths = useMemo(() => Array.from({ length: 12 }, (_, i) => {
-    const monthIdx = (5 + i) % 12          // 5 = June
+    const monthIdx = (5 + i) % 12
     const year = i <= 6 ? syStartYear : syStartYear + 1
     return { key: `${year}-${monthIdx}`, year, monthIdx, label: `${['January','February','March','April','May','June','July','August','September','October','November','December'][monthIdx]} ${year}` }
   }), [syStartYear])
@@ -452,119 +432,167 @@ function PlanCard({
   )
   const monthChoice = syMonths.find(m => m.key === monthKey) ?? syMonths[0]
 
-  // Recompute per-row PAID/PENDING for the picked slice — this differs
-  // from Row.status (which is current-period-aware). For the sub-filters
-  // we want "did they pay for THIS slice", regardless of which slice is
-  // currently active.
-  const sliceRows: Row[] = useMemo(() => rowsForPlan.map(r => {
-    if (plan === 'BIANNUAL') {
-      const paid = didPayForBiannualHalf(r.student.id, half, syStartYear)
-      return { ...r, status: paid ? 'PAID' : 'PENDING' }
-    }
-    if (plan === 'MONTHLY') {
-      const paid = didPayForMonth(r.student.id, monthChoice.year, monthChoice.monthIdx)
-      return { ...r, status: paid ? 'PAID' : 'PENDING' }
-    }
-    // ANNUAL: pass through as-is.
-    return r
-  }), [rowsForPlan, plan, half, syStartYear, monthChoice])
+  // 1. Filter by plan type.
+  const byType = useMemo(() => (
+    typeFilter === 'ALL' ? rows : rows.filter(r => r.plan === typeFilter)
+  ), [rows, typeFilter])
 
-  const sliceLabel = plan === 'BIANNUAL'
+  // 2. Recompute per-row PAID/PENDING against the picked slice. For
+  //    ALL, we keep the row's current-period status (matches the badge).
+  //    For a specific plan, use the plan-appropriate slice helper.
+  const sliced: Row[] = useMemo(() => byType.map(r => {
+    if (r.plan === 'BIANNUAL' && (typeFilter === 'BIANNUAL' || typeFilter === 'ALL')) {
+      if (typeFilter === 'BIANNUAL') {
+        return { ...r, status: didPayForBiannualHalf(r.student.id, half, syStartYear) ? 'PAID' : 'PENDING' }
+      }
+      return r
+    }
+    if (r.plan === 'MONTHLY' && (typeFilter === 'MONTHLY' || typeFilter === 'ALL')) {
+      if (typeFilter === 'MONTHLY') {
+        return { ...r, status: didPayForMonth(r.student.id, monthChoice.year, monthChoice.monthIdx) ? 'PAID' : 'PENDING' }
+      }
+      return r
+    }
+    return r
+  }), [byType, typeFilter, half, syStartYear, monthChoice])
+
+  const sortedRows = useMemo(() => sliced.slice().sort((a, b) => {
+    const an = `${a.student.lastName ?? ''} ${a.student.firstName ?? ''}`.trim() || a.student.email
+    const bn = `${b.student.lastName ?? ''} ${b.student.firstName ?? ''}`.trim() || b.student.email
+    return an.localeCompare(bn)
+  }), [sliced])
+
+  const sliceLabel = typeFilter === 'BIANNUAL'
     ? `${half === 'FIRST' ? '1st Biannual' : '2nd Biannual'} · ${syLabel}`
-    : plan === 'MONTHLY'
+    : typeFilter === 'MONTHLY'
       ? monthChoice.label
-      : syLabel
+      : typeFilter === 'ANNUAL'
+        ? syLabel
+        : 'All plans · current period'
+
+  const paidCount = sortedRows.filter(r => r.status === 'PAID').length
+  const pendingCount = sortedRows.filter(r => r.status === 'PENDING').length
+
+  const typeTabs: Array<{ key: 'ALL' | PaymentPlan; label: string }> = [
+    { key: 'ALL',      label: 'All' },
+    { key: 'ANNUAL',   label: 'Annual' },
+    { key: 'BIANNUAL', label: 'Bi-annual' },
+    { key: 'MONTHLY',  label: 'Monthly' },
+  ]
 
   return (
     <div className="card-static">
-      <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Plan</div>
-          <h2 className="text-[20px] leading-tight">{planLabel(plan)}</h2>
-          <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">Showing: <span className="font-semibold">{sliceLabel}</span></div>
-        </div>
-        <div className="text-[12.5px] text-[color:var(--mid-gray)]">
-          {sliceRows.filter(r => r.status === 'PAID').length} paid · {sliceRows.filter(r => r.status === 'PENDING').length} pending
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Payments</div>
+          <h2 className="text-[18px] leading-tight">Paying students</h2>
+          <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">
+            Showing: <span className="font-semibold">{sliceLabel}</span> · {paidCount} paid · {pendingCount} pending
+          </div>
         </div>
       </div>
 
-      {/* Sub-filter widget */}
-      {plan === 'BIANNUAL' && (
-        <div className="mb-3 inline-flex rounded-lg p-0.5 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-          {(['FIRST', 'SECOND'] as const).map(h => (
+      {/* Type-of-payment filter */}
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <div className="inline-flex rounded-lg p-0.5 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+          {typeTabs.map(t => (
             <button
-              key={h}
+              key={t.key}
               type="button"
-              onClick={() => setHalf(h)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${half === h ? 'bg-white shadow-sm text-[color:var(--deep-teal)]' : 'text-[color:var(--mid-gray)]'}`}
+              onClick={() => setTypeFilter(t.key)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${typeFilter === t.key ? 'bg-white shadow-sm text-[color:var(--deep-teal)]' : 'text-[color:var(--mid-gray)]'}`}
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              {h === 'FIRST' ? '1st Biannual' : '2nd Biannual'}
+              {t.label}
             </button>
           ))}
         </div>
-      )}
-      {plan === 'MONTHLY' && (
-        <div className="mb-3 flex items-center gap-2 flex-wrap">
-          <label className="text-[11.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>Month</label>
-          <select className="input" value={monthKey} onChange={e => setMonthKey(e.target.value)} style={{ maxWidth: 220 }}>
-            {syMonths.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
-          </select>
+
+        {typeFilter === 'BIANNUAL' && (
+          <div className="inline-flex rounded-lg p-0.5 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+            {(['FIRST', 'SECOND'] as const).map(h => (
+              <button
+                key={h}
+                type="button"
+                onClick={() => setHalf(h)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${half === h ? 'bg-white shadow-sm text-[color:var(--deep-teal)]' : 'text-[color:var(--mid-gray)]'}`}
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                {h === 'FIRST' ? '1st Biannual' : '2nd Biannual'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {typeFilter === 'MONTHLY' && (
+          <div className="flex items-center gap-2">
+            <label className="text-[11.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>Month</label>
+            <select className="input" value={monthKey} onChange={e => setMonthKey(e.target.value)} style={{ maxWidth: 200 }}>
+              {syMonths.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {sortedRows.length === 0 ? (
+        <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No students match this filter.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--paper-3)' }}>
+          <table className="w-full text-sm">
+            <thead style={{ background: 'var(--paper-2)' }}>
+              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+                <th className="py-2 px-3">Name</th>
+                <th className="py-2 px-3">Plan</th>
+                <th className="py-2 px-3">Branch</th>
+                <th className="py-2 px-3">Status</th>
+                {canDelete && <th className="py-2 px-3 text-right">Action</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRows.map(r => (
+                <tr key={r.student.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                  <td className="py-2 px-3">
+                    <div className="font-semibold text-[color:var(--narra)]">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
+                    <div className="text-[11px] text-[color:var(--mid-gray)]">{r.student.email}{r.student.level ? ` · ${levelLabel(r.student.level as EnrollmentLevel)}` : ''}</div>
+                  </td>
+                  <td className="py-2 px-3 text-[12.5px]">{r.plan ? planLabel(r.plan) : '—'}</td>
+                  <td className="py-2 px-3 text-[12.5px]">
+                    {r.student.branch ? (
+                      <span
+                        className="badge"
+                        style={{
+                          background: r.student.branch === 'EAST' ? '#dbeafe' : '#fef3c7',
+                          color:      r.student.branch === 'EAST' ? '#1e40af' : '#92400e',
+                        }}
+                      >
+                        {r.student.branch === 'EAST' ? 'East' : 'Greenhills'}
+                      </span>
+                    ) : <span className="text-[color:var(--mid-gray)]">—</span>}
+                  </td>
+                  <td className="py-2 px-3">
+                    <span className={`badge ${r.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>
+                      {r.status === 'PAID' ? 'Paid' : 'Pending'}
+                    </span>
+                  </td>
+                  {canDelete && (
+                    <td className="py-2 px-3 text-right">
+                      <button
+                        type="button"
+                        className="text-[11px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                        onClick={() => onDelete(r.student)}
+                        disabled={busyDelete === r.student.id}
+                        title="Delete this student account (main admin only)."
+                      >
+                        {busyDelete === r.student.id ? '…' : 'Delete'}
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
-
-      <div className="space-y-2.5">
-        {ALL_LEVELS.map(lvl => {
-          const list = sliceRows.filter(r => r.student.level === lvl)
-          if (list.length === 0) return null
-          return (
-            <details key={lvl} open className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-              <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer select-none rounded-xl" style={{ background: 'var(--paper-2)' }}>
-                <span className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>{levelLabel(lvl)}</span>
-                <span className="text-[11.5px] text-[color:var(--mid-gray)]">
-                  {list.filter(r => r.status === 'PAID').length} paid · {list.filter(r => r.status === 'PENDING').length} pending
-                </span>
-              </summary>
-              <ul className="divide-y" style={{ borderColor: 'var(--paper-3)' }}>
-                {list.map(r => (
-                  <li key={r.student.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-[color:var(--narra)] truncate">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
-                      <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">
-                        {r.student.email} · {r.payment ? `${methodLabel(r.payment.method)} · ${fmt(r.payment.tuitionAmount + r.payment.miscAmount)}` : 'No payment yet'}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`badge ${r.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{r.status}</span>
-                      {canSendReminders && r.status === 'PENDING' && (
-                        <button
-                          type="button"
-                          className="btn-secondary text-xs"
-                          onClick={() => onSendReminder(r)}
-                          disabled={busyReminder === r.student.id || !r.student.level}
-                        >
-                          {reminderSent[r.student.id] ? '✓ Sent' : '🔔'}
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          type="button"
-                          className="text-[11px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
-                          onClick={() => onDelete(r.student)}
-                          disabled={busyDelete === r.student.id}
-                          title="Delete this student account (main admin only)."
-                        >
-                          {busyDelete === r.student.id ? '…' : 'Delete'}
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )
-        })}
-      </div>
     </div>
   )
 }
