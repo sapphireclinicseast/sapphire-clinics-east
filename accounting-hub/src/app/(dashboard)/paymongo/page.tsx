@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { CreditCard, Loader2, ExternalLink, RefreshCw, Landmark } from 'lucide-react'
+import { CreditCard, Loader2, ExternalLink, RefreshCw, Landmark, CheckCircle2 } from 'lucide-react'
 
 const ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER']
 const RECON_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -31,6 +31,8 @@ export default function PaymongoPage() {
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
   const [lastUrl, setLastUrl] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const didSync = useRef(false)
 
   // Phase 2: record the paid link as a POS sale
   const [recordAsOrder, setRecordAsOrder] = useState(true)
@@ -77,7 +79,25 @@ export default function PaymongoPage() {
     } catch { /* ignore */ }
   }, [canReconcile])
 
+  // Ask PayMongo whether any PENDING links were paid and settle them. Safety net for
+  // a missed/unregistered webhook. Runs once on load, plus a manual button.
+  const syncPayments = useCallback(async (silent: boolean) => {
+    setSyncing(true)
+    try {
+      const r = await fetch('/api/pos/paymongo/sync', { method: 'POST' })
+      const j = await r.json().catch(() => ({}))
+      if (r.ok && (j.settled || 0) > 0) { load(); loadPayouts(); if (!silent) alert(`${j.settled} payment(s) confirmed and marked paid.`) }
+      else if (!silent && r.ok) alert('No newly-paid links found.')
+      else if (!silent) alert(j.error || 'Sync failed')
+    } finally { setSyncing(false) }
+  }, [load, loadPayouts])
+
   useEffect(() => { load(); loadPayouts() }, [load, loadPayouts])
+
+  // One automatic sync once config confirms PayMongo is set up.
+  useEffect(() => {
+    if (cfg?.configured && !didSync.current) { didSync.current = true; syncPayments(true) }
+  }, [cfg, syncPayments])
 
   // Load services for the chosen branch when recording as a POS order.
   useEffect(() => {
@@ -234,7 +254,8 @@ export default function PaymongoPage() {
       <div className="flex items-center gap-3">
         <CreditCard size={24} className="text-teal-600" />
         <h1 className="text-2xl font-semibold text-gray-900">PayMongo</h1>
-        <button onClick={() => { load(); loadPayouts() }} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><RefreshCw size={13} /> Refresh</button>
+        <button onClick={() => syncPayments(false)} disabled={syncing} className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }} title="Ask PayMongo whether pending links were paid and mark them paid">{syncing ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Check for payments</button>
+        <button onClick={() => { load(); loadPayouts() }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><RefreshCw size={13} /> Refresh</button>
       </div>
 
       {cfg && !cfg.configured && (
