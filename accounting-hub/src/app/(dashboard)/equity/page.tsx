@@ -93,11 +93,12 @@ export default function EquityPage() {
   const exportCommon = (format: 'xlsx' | 'pdf') => {
     const rows = data?.rows || []
     const num = (n: number) => n.toLocaleString('en-PH')
-    const headers = ['SH #', 'Investor', 'Class', 'Date Acquired', 'Stock Cert.', 'Net Shares', 'Bought Back', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake (Current)', '% Stake (Total)', 'Bank Debited']
+    const headers = ['SH #', 'Investor', 'Class', 'Source', 'Date Acquired', 'Stock Cert.', 'Net Shares', 'Bought Back', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake (Current)', '% Stake (Total)', 'Bank Debited']
     const body = rows.map(r => {
       const netShares = r.numberOfShares - (r.buybackShares || 0)
       return [
-        r.shNumber, r.name, r.shareClass || '', String(r.dateAcquired).slice(0, 10), r.stockCertNumber || '',
+        r.shNumber, r.name, r.shareClass || '', r.soldFromTreasury ? 'Purchase from Treasury' : 'Original Issuance',
+        String(r.dateAcquired).slice(0, 10), r.stockCertNumber || '',
         num(netShares), r.buybackShares ? num(r.buybackShares) : '',
         r.truePar, r.apic, r.pricePerShare,
         (netShares * r.pricePerShare), r.equityStakeCurrent.toFixed(3) + '%', r.equityStakeTotal.toFixed(3) + '%', bankLabel(r.bankAccountId),
