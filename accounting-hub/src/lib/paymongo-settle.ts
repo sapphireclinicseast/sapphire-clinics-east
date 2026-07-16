@@ -21,6 +21,8 @@ export async function systemUserId(checkout: PaymongoCheckout): Promise<string |
  */
 export async function settleLinkedOrder(checkout: PaymongoCheckout, feePhp: number) {
   if (!checkout.orderId) return
+  // Never book test-mode (sandbox) payments as real orders/GL — the money is fake.
+  if (!checkout.livemode) return
   const order = await prisma.order.findUnique({
     where: { id: checkout.orderId },
     select: { id: true, paymentStatus: true, branch: true },
@@ -83,7 +85,8 @@ export async function settleLinkedOrder(checkout: PaymongoCheckout, feePhp: numb
  */
 export async function syncPendingCheckouts(limit = 40): Promise<{ settled: number; checked: number }> {
   const pending = await prisma.paymongoCheckout.findMany({
-    where: { status: 'PENDING', checkoutId: { not: '' } },
+    // Live-mode only — test/sandbox checkouts are never settled into real books.
+    where: { status: 'PENDING', livemode: true, checkoutId: { not: '' } },
     orderBy: { createdAt: 'desc' },
     take: limit,
   })
