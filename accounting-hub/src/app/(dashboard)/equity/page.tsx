@@ -129,6 +129,10 @@ export default function EquityPage() {
   }
 
   const fig = data?.figures
+  // Outstanding (net-of-buyback) shares split by class group for the summary cards.
+  const netOf = (r: CommonRow) => r.numberOfShares - (r.buybackShares || 0)
+  const foundersShares = (data?.rows || []).filter(r => (r.shareClass || '').toLowerCase().startsWith('founders')).reduce((s, r) => s + netOf(r), 0)
+  const commonClassShares = (data?.rows || []).filter(r => (r.shareClass || '').toLowerCase().startsWith('common')).reduce((s, r) => s + netOf(r), 0)
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
@@ -138,7 +142,7 @@ export default function EquityPage() {
 
       {/* Top figures — org-wide equity totals (admin only) */}
       {isAdmin && (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Total Capitalization</p>
           <p className="text-2xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(fig?.totalCapitalization || 0)}</p>
@@ -160,6 +164,14 @@ export default function EquityPage() {
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Number of Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
           <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.totalShares || 0).toLocaleString('en-PH')}</p>
+        </div>
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Common Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{commonClassShares.toLocaleString('en-PH')}</p>
+        </div>
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Founders Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{foundersShares.toLocaleString('en-PH')}</p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: '#fef2f2' }}>
           <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Total Treasury Shares <span className="font-normal" style={{ color: '#d4a0a0' }}>(available for sale)</span></p>
