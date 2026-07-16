@@ -271,7 +271,7 @@ export async function sendUgatInterviewEmail(params: {
   await send({ to, subject, html })
 }
 
-/** Accepted! Your Fellowship Loan Agreement is ready to review + e-sign. */
+/** Accepted! Your UGAT Fellowship Agreement is ready to review + e-sign. */
 export async function sendUgatContractEmail(params: { to: string | string[]; firstName: string; signUrl: string }): Promise<void> {
   const { to, firstName, signUrl } = params
   const subject = 'Congratulations! Your UGAT Fellowship agreement is ready'
@@ -284,7 +284,7 @@ export async function sendUgatContractEmail(params: { to: string | string[]; fir
           <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:24px;font-weight:800;margin-top:6px">Congratulations, ${escapeHtml(firstName)}!</div>
         </div>
         <div style="padding:28px 30px;color:${DEEP}">
-          <p style="margin:0 0 14px;line-height:1.6;font-size:15px">We&rsquo;re delighted to welcome you to the UGAT Fellowship Program. Your <strong>Fellowship Loan Agreement</strong> is now ready for you to review and sign online.</p>
+          <p style="margin:0 0 14px;line-height:1.6;font-size:15px">We&rsquo;re delighted to welcome you to the UGAT Fellowship Program. Your <strong>UGAT Fellowship Agreement</strong> is now ready for you to review and sign online.</p>
           <p style="margin:0 0 18px;line-height:1.6;font-size:15px">Sign in to your account to complete it — you&rsquo;ll fill in your co-maker&rsquo;s details, upload two valid IDs for each of you, and sign electronically. A hard copy will be signed in person when you visit an Aura Health Rehab branch.</p>
           <div style="text-align:center;margin:22px 0">
             <a href="${signUrl}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:15px;padding:13px 28px;border-radius:999px">Review &amp; sign my agreement</a>
@@ -301,7 +301,7 @@ export async function sendUgatContractEmail(params: { to: string | string[]; fir
 export async function sendUgatSignedRsaEmail(params: { to: string | string[]; firstName: string; track?: string | null; pdf: Buffer }): Promise<void> {
   const { to, firstName, track, pdf } = params
   const trackLabel = track === 'TINDIG' ? 'Tindig Track' : 'Aral Track'
-  const subject = 'Your signed UGAT Fellowship Loan Agreement'
+  const subject = 'Your signed UGAT Fellowship Agreement'
   const html = `
   <div style="margin:0;padding:0;background:${CREAM};font-family:Arial,Helvetica,sans-serif">
     <div style="max-width:560px;margin:0 auto;padding:32px 20px">
@@ -311,7 +311,7 @@ export async function sendUgatSignedRsaEmail(params: { to: string | string[]; fi
           <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:22px;font-weight:800;margin-top:6px">Thank you, ${escapeHtml(firstName)}!</div>
         </div>
         <div style="padding:28px 30px;color:${DEEP}">
-          <p style="margin:0 0 14px;line-height:1.6;font-size:15px">We&rsquo;ve received your electronically signed <strong>Fellowship Loan Agreement</strong> (UGAT Fellowship &mdash; ${trackLabel}). A PDF copy is attached to this email for your records.</p>
+          <p style="margin:0 0 14px;line-height:1.6;font-size:15px">We&rsquo;ve received your electronically signed <strong>UGAT Fellowship Agreement</strong> (${trackLabel}). A PDF copy is attached to this email for your records.</p>
           <p style="margin:0 0 14px;line-height:1.6;font-size:15px"><strong>One step remains:</strong> to finalize, please sign the <strong>hard copy in person</strong>, together with your co-maker, at <strong>Aura Health Rehab &ndash; East</strong> (Robinsons Metro East, Pasig) or <strong>Greenhills</strong> (GH Tower, San Juan). Kindly bring the valid IDs you uploaded.</p>
           <p style="margin:0;line-height:1.6;font-size:14px;color:${GREEN}">Welcome aboard &mdash; we&rsquo;re glad to have you with us.</p>
         </div>
@@ -319,7 +319,7 @@ export async function sendUgatSignedRsaEmail(params: { to: string | string[]; fi
       </div>
     </div>
   </div>`
-  await sendWithPdf({ to, subject, html, filename: 'UGAT-Fellowship-Loan-Agreement-Signed.pdf', pdf })
+  await sendWithPdf({ to, subject, html, filename: 'UGAT-Fellowship-Agreement-Signed.pdf', pdf })
 }
 
 /** Empathic "not considered for the next step" notice. */

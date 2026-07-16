@@ -143,8 +143,9 @@ export default function Portal({
 }
 
 // ══ About Us ═══════════════════════════════════════════════════════
-// The two-track journey as an on-brand SVG (Apply → loan → licensure →
-// Option A condonation / Option B cash repayment at a flat 10%).
+// The two-track journey as an on-brand SVG (Apply → fellowship assistance →
+// licensure → Option A condonation / Option B reimburse only what you received,
+// with no interest).
 function TrackFlowchart() {
   const ARAL = { fill: '#e9f2ef', stroke: '#4a8073' }
   const TIN = { fill: '#f8f0da', stroke: '#c69849' }
@@ -161,7 +162,7 @@ function TrackFlowchart() {
   )
   const arr = { stroke: '#9aa8a0', strokeWidth: 1.4, fill: 'none', markerEnd: 'url(#ugatArrow)' }
   return (
-    <svg className={s.flowSvg} viewBox="0 0 720 692" role="img" aria-label="The two UGAT track paths: apply, receive a forgivable loan, complete internship or review, pass the licensure exam, then either render 1,500 patient-session hours to have the loan forgiven (Option A) or repay the principal plus a flat 10% interest (Option B).">
+    <svg className={s.flowSvg} viewBox="0 0 720 692" role="img" aria-label="The two UGAT track paths: apply, receive forgivable fellowship assistance, complete internship or review, pass the licensure exam, then either render 1,500 patient-session hours to have the assistance forgiven (Option A) or reimburse only what you actually received, with no interest (Option B).">
       <defs>
         <marker id="ugatArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M2 1L8 5L2 9" fill="none" stroke="#9aa8a0" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
@@ -175,8 +176,8 @@ function TrackFlowchart() {
       <Node x={390} y={96} w={300} h={56} c={TIN} title="Submit application" sub="directly to SCEI" />
       <line x1={180} y1={152} x2={180} y2={180} {...arr} />
       <line x1={540} y1={152} x2={540} y2={180} {...arr} />
-      <Node x={30} y={180} w={300} h={56} c={ARAL} title="Approved — loan awarded" sub="₱5k or ₱10k / mo · 5–10 mo" />
-      <Node x={390} y={180} w={300} h={56} c={TIN} title="Approved — loan awarded" sub="₱30k: fees, or ₱5k × 6 mo" />
+      <Node x={30} y={180} w={300} h={56} c={ARAL} title="Approved — assistance awarded" sub="₱5k or ₱10k / mo · 5–10 mo" />
+      <Node x={390} y={180} w={300} h={56} c={TIN} title="Approved — assistance awarded" sub="₱30k: fees, or ₱5k × 6 mo" />
       <line x1={180} y1={236} x2={180} y2={264} {...arr} />
       <line x1={540} y1={236} x2={540} y2={264} {...arr} />
       <Node x={30} y={264} w={300} h={56} c={ARAL} title="Internship" sub="allowance paid monthly" />
@@ -185,15 +186,15 @@ function TrackFlowchart() {
       <path d="M540 320 L540 342 L360 342 L360 360" {...arr} />
       <Node x={210} y={360} w={300} h={56} c={SH} title="Licensure exam" sub="pass the PRC board" />
       <line x1={360} y1={416} x2={360} y2={452} {...arr} />
-      <Node x={180} y={452} w={360} h={56} c={SH} title="Discharge the loan — pick one" sub="the loan can be forgiven" />
+      <Node x={180} y={452} w={360} h={56} c={SH} title="Discharge it — pick one" sub="it can be fully forgiven" />
       <path d="M360 508 L360 534 L180 534 L180 556" {...arr} />
       <path d="M360 508 L360 534 L540 534 L540 556" {...arr} />
       <text x={262} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>work it off</text>
-      <text x={452} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>or repay it</text>
-      <Node x={30} y={556} w={300} h={60} c={GREEN} title="Option A — render service" sub="1,500 patient-session hrs → loan forgiven" />
-      <Node x={390} y={556} w={300} h={60} c={GOLD} title="Option B — repay in cash" sub="principal + flat 10%" />
+      <text x={452} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>or pay it back</text>
+      <Node x={30} y={556} w={300} h={60} c={GREEN} title="Option A — render service" sub="1,500 patient-session hrs → forgiven" />
+      <Node x={390} y={556} w={300} h={60} c={GOLD} title="Option B — reimburse in cash" sub="only what you received · no interest" />
       <text x={180} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ fully paid at market rate; pay nothing</text>
-      <text x={540} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ 6 mos (Aral) / 3 mos (Tindig)</text>
+      <text x={540} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ 3–6 mos (Aral) / 3 mos (Tindig)</text>
     </svg>
   )
 }
@@ -209,27 +210,27 @@ function AboutUs() {
             The <b>UGAT Fellowship Program</b> is a fellowship for aspiring
             Allied Health Professionals — Speech-Language Pathology and Occupational Therapy — offered
             in two tracks: the <b>Aral Track</b> for final-year interns and the <b>Tindig Track</b> for
-            graduates preparing for the licensure exam. It is structured as a <b>fully forgivable fellowship loan</b> —
-            one you never have to repay in cash if you begin your career with us — walking with you from
-            training and review all the way into your first years as a licensed professional.
+            graduates preparing for the licensure exam. It is <b>educational fellowship assistance</b> — <b>not a loan</b>, and
+            never earning interest — that is <b>fully forgivable</b>: you pay nothing at all if you begin your career with us,
+            walking with you from training and review all the way into your first years as a licensed professional.
           </p>
         </div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className={s.aboutHeroMark} src="/ugat/ugat-mark.svg" alt="" aria-hidden="true" />
       </div>
       <div className={s.aboutGrid}>
-        <div className={s.aboutCard}><h3>A fully forgivable loan</h3><p><b>Aral Track</b> (final-year interns): a fellowship loan released as a monthly allowance of <b>₱5,000 or ₱10,000</b> for 5–10 months. <b>Tindig Track</b> (graduates): a <b>₱30,000</b> review-support loan toward your licensure — review fees, or ₱5,000/month for six months. In both tracks the loan is <b>fully forgivable</b>: render <b>1,500 patient-session hours</b> of service with us after licensure and it is written off in full — you pay nothing.</p></div>
+        <div className={s.aboutCard}><h3>Fully-forgivable assistance — not a loan</h3><p><b>Aral Track</b> (final-year interns): fellowship assistance released as a monthly allowance of <b>₱5,000 or ₱10,000</b> for 5–10 months. <b>Tindig Track</b> (graduates): <b>₱30,000</b> of review support toward your licensure — review fees, or ₱5,000/month for six months. It is <b>educational assistance, never a loan and never charged interest</b>: render <b>1,500 patient-session hours</b> of service with us after licensure and it is written off in full — you pay nothing.</p></div>
         <div className={s.aboutCard}><h3>Mentorship at Aura Health Rehab</h3><p>Upon receiving your license, you will receive additional mentorship training alongside our senior therapists across Aura Health Rehab&rsquo;s <b>East</b> and <b>Greenhills</b> branches — real caseloads, real supervision, and a team invested in your craft (<i>galing</i>).</p></div>
-        <div className={s.aboutCard}><h3>Two ways to settle — one costs nothing</h3><p>After licensure you choose: <b>Option A</b> — render 1,500 patient-session hours as a fully-compensated clinician at Aura, and the entire loan (principal and interest) is <b>forgiven</b>, so you pay nothing; or <b>Option B</b> — repay the principal in equal monthly installments with a flat 10% interest. Rendering service is never compelled — it&rsquo;s simply the path designed to cost you nothing.</p></div>
+        <div className={s.aboutCard}><h3>Two ways to settle — one costs nothing</h3><p>After licensure you choose: <b>Option A</b> — render 1,500 patient-session hours as a fully-compensated clinician at Aura, and the entire assistance is <b>forgiven</b>, so you pay nothing; or <b>Option B</b> — simply reimburse <b>only what you actually received</b>, in equal monthly installments, with <b>no interest and no charges of any kind</b>. Rendering service is never compelled — it&rsquo;s simply the path designed to cost you nothing.</p></div>
         <div className={s.aboutCard}><h3>Values that stay grounded</h3><p>Much like strong roots (<i>ugat</i>), we hope our fellows stay grounded in their values as they grow — pursuing excellence (<i>galing</i>), upholding integrity (<i>tindig</i>), and giving back through service (<i>paglilingkod</i>).</p></div>
       </div>
       <div className={s.aboutNote}>
         <h3>How the fellowship works</h3>
         <ol className={s.aboutSteps}>
-          <li><b>Aral Track</b> — for qualified final-year SLP and OT interns, coursed through your University; a fellowship loan, released as a monthly allowance, supports you through your internship.</li>
-          <li><b>Tindig Track</b> — for graduates who&rsquo;ve completed their internship and are preparing for the licensure exam. Your school does <b>not</b> need to be a partner — you only need to be a <b>graduate of an SLP or OT program we accept fellows in</b>, and you apply <b>directly to SCEI</b>. A review-support loan covers review fees or a monthly review stipend.</li>
-          <li>Upon licensure you settle the loan one of two ways: <b>Option A</b> — render 1,500 clinical hours at Aura as a fully-paid professional and the loan is <b>forgiven in full</b> (you pay nothing, and receive a certificate that it&rsquo;s fully written off); or <b>Option B</b> — repay the principal in monthly installments with a flat 10% interest.</li>
-          <li><b>Tindig Track — if you don&rsquo;t pass on the first take:</b> you may still sit the licensure exam a second time (the fellowship doesn&rsquo;t add a new stipend for the retake). <b>Once you pass</b> — on either take — you settle the loan the usual way: render service and it is <b>forgiven</b> (Option A), or repay it (Option B). If you do <b>not</b> pass within two exam cycles, the loan becomes repayable in cash <b>with interest</b> — without prejudice to still choosing to work it off through service, should you become licensed later.</li>
+          <li><b>Aral Track</b> — for qualified final-year SLP and OT interns, coursed through your University; fellowship assistance, released as a monthly allowance, supports you through your internship.</li>
+          <li><b>Tindig Track</b> — for graduates who&rsquo;ve completed their internship and are preparing for the licensure exam. Your school does <b>not</b> need to be a partner — you only need to be a <b>graduate of an SLP or OT program we accept fellows in</b>, and you apply <b>directly to SCEI</b>. Review support covers review fees or a monthly review stipend.</li>
+          <li>Upon licensure you settle it one of two ways: <b>Option A</b> — render 1,500 clinical hours at Aura as a fully-paid professional and the assistance is <b>forgiven in full</b> (you pay nothing, and receive a certificate that it&rsquo;s fully written off); or <b>Option B</b> — reimburse <b>only what you actually received</b>, in monthly installments, with <b>no interest and no charges</b>.</li>
+          <li><b>Tindig Track — if you don&rsquo;t pass on the first take:</b> you may still sit the licensure exam a second time (the fellowship doesn&rsquo;t add a new stipend for the retake). <b>Once you pass</b> — on either take — you settle it the usual way: render service and it is <b>forgiven</b> (Option A), or reimburse what you received (Option B). If you do <b>not</b> pass within two exam cycles, you simply reimburse what you received — <b>still with no interest</b> — without prejudice to working it off through service should you become licensed later.</li>
           <li>Fellows are also expected to <b>actively participate in &ldquo;Araw ng Kalinga&rdquo;</b> — a one-day annual event by Sapphire Clinics East, Inc. that provides free therapy screening and medical services in partnership with a local government unit (LGU) or NGO, as our shared opportunity to give back to the community (<i>paglilingkod</i>).</li>
           <li>Handled with fairness and compassion, consistent with the <b>Data Privacy Act of 2012</b>.</li>
         </ol>
@@ -400,7 +401,7 @@ type Track = 'ARAL' | 'TINDIG'
 const TRACK_LABEL: Record<string, string> = { ARAL: 'Aral Track', TINDIG: 'Tindig Track' }
 
 // Aral Track award tiers: monthly stipend × duration in months. An admin picks
-// one at acceptance; it is woven into the Fellowship Loan Agreement the fellow
+// one at acceptance; it is woven into the UGAT Fellowship Agreement the fellow
 // reads and signs. Order matches the four options the program offers.
 const AWARD_TIERS: { monthly: number; months: number }[] = [
   { monthly: 5000, months: 10 },
@@ -723,7 +724,7 @@ function ScholarInterview({ app, authHeaders }: { app: AppData | null; authHeade
   )
 }
 
-// ══ Acceptance (scholar) — Fellowship Loan Agreement e-signing ══════
+// ══ Acceptance (scholar) — UGAT Fellowship Agreement e-signing ══════
 type CmField = keyof AcceptanceData
 const CM_ADDR = [
   { key: 'Perm', label: 'Permanent address' },
@@ -739,12 +740,12 @@ function RSAText({ track, name, program, school, monthly, months }: { track?: st
   const blocks = loanAgreementBlocks({ track, fellowName: name, program, school, monthly, months, comakerName: '' })
   return (
     <div className={s.rsaDoc}>
-      <h4>Fellowship Loan Agreement</h4>
-      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · fully forgivable through service</p>
+      <h4>UGAT Fellowship Agreement</h4>
+      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · educational assistance, fully forgivable through service</p>
       <div className={s.rsaAward}>
         {isTindig
-          ? <>Your award is a <b>review-support loan of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months). It is <b>fully forgivable — you pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you repay the principal in <b>3 monthly installments</b> with a <b>flat 10% interest</b> (Option B).</>
-          : <>Your award is a fellowship <b>loan</b> released as <b>{m && n ? `₱${m.toLocaleString()} / month for ${n} months` : 'a monthly allowance'}</b>{total ? <> (principal ≈ <b>₱{total.toLocaleString()}</b>)</> : ''}. It is <b>fully forgivable — you pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you repay the principal in <b>6 monthly installments</b> with a <b>flat 10% interest</b> (Option B).</>}
+          ? <>Your award is <b>review-support fellowship assistance of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months) — <b>not a loan, and never charged interest</b>. It is <b>fully forgivable — you pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you simply reimburse <b>only what you received</b>, in <b>3 monthly installments with no interest</b> (Option B).</>
+          : <>Your award is <b>fellowship assistance</b> released as <b>{m && n ? `₱${m.toLocaleString()} / month for ${n} months` : 'a monthly allowance'}</b>{total ? <> (assistance amount ≈ <b>₱{total.toLocaleString()}</b>)</> : ''} — <b>not a loan, and never charged interest</b>. It is <b>fully forgivable — you pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you simply reimburse <b>only what you received</b>, in <b>{total ? (total <= 50000 ? '3' : '6') : '3–6'} monthly installments with no interest</b> (Option B).</>}
       </div>
       <div className={s.rsaScroll}>
         {blocks.map((b, i) =>
@@ -752,7 +753,7 @@ function RSAText({ track, name, program, school, monthly, months }: { track?: st
           : 'li' in b ? <p key={i} style={{ margin: '0 0 6px', paddingLeft: 12 }}>• {b.li}</p>
           : <p key={i}>{b.lead ? <><b>{b.lead}</b> </> : null}{b.text}</p>
         )}
-        <h5 style={{ marginTop: 18 }}>ANNEX &ldquo;A&rdquo; — Sample loan computation (Cash Repayment, Option B)</h5>
+        <h5 style={{ marginTop: 18 }}>ANNEX &ldquo;A&rdquo; — Sample reimbursement computation (Reimbursement Option, Option B)</h5>
         <p className={s.muted}>{annexIntro(isTindig)}</p>
         {annexTables(isTindig).map((t, i) => (
           <div key={i} style={{ marginBottom: 14 }}>
@@ -767,7 +768,7 @@ function RSAText({ track, name, program, school, monthly, months }: { track?: st
         ))}
         <p className={s.muted} style={{ margin: 0 }}>Note: {annexNote}</p>
       </div>
-      <p className={s.muted} style={{ margin: '12px 0 0' }}>By signing below you confirm you have read and understood this full loan agreement. A hard copy will also be signed in person at an Aura Health Rehab branch.</p>
+      <p className={s.muted} style={{ margin: '12px 0 0' }}>By signing below you confirm you have read and understood this full fellowship agreement. A hard copy will also be signed in person at an Aura Health Rehab branch.</p>
     </div>
   )
 }
@@ -836,7 +837,7 @@ function ScholarAcceptance({ scholar, token, authHeaders }: { scholar: PortalSch
   if (!contractSent) return (
     <div className={s.card2}><div className={s.acceptedBox}><CheckCircle2 size={26} /><div>
       <h3 className={s.card2H} style={{ margin: '0 0 4px' }}>Congratulations — you&rsquo;ve been accepted! 🌱</h3>
-      <p className={s.muted} style={{ margin: 0 }}>Welcome to the UGAT Fellowship. We&rsquo;re preparing your Fellowship Loan Agreement — it will appear here for you to review and sign shortly, and we&rsquo;ll email you when it&rsquo;s ready.</p>
+      <p className={s.muted} style={{ margin: 0 }}>Welcome to the UGAT Fellowship. We&rsquo;re preparing your UGAT Fellowship Agreement — it will appear here for you to review and sign shortly, and we&rsquo;ll email you when it&rsquo;s ready.</p>
     </div></div></div>
   )
 
@@ -904,7 +905,7 @@ function ScholarAcceptance({ scholar, token, authHeaders }: { scholar: PortalSch
 
       <div className={s.card2}>
         <h3 className={s.card2H}>Sign the agreement</h3>
-        <label className={s.check}><input type="checkbox" checked={truth} onChange={(e) => setTruth(e.target.checked)} /><span>I have read and understood the Fellowship Loan Agreement, my co-maker details are true and correct, and I agree to be bound by its terms.</span></label>
+        <label className={s.check}><input type="checkbox" checked={truth} onChange={(e) => setTruth(e.target.checked)} /><span>I have read and understood the UGAT Fellowship Agreement, my co-maker details are true and correct, and I agree to be bound by its terms.</span></label>
         <p className={s.muted} style={{ marginTop: 14 }}>Sign below (or upload an e-signature image).</p>
         <SignaturePad ref={sigRef} />
         <FileField label="Or upload e-signature (PNG/JPG)" kind="RSA_SIGNATURE" accept="image/png,image/jpeg" uploads={uploads} token={token} onFile={upload} />
@@ -1126,7 +1127,7 @@ function AcceptanceStage({ fellows, token, authHeaders, readOnly, reloadScholars
   const [busy, setBusy] = useState<string>('')
 
   async function sendContract(id: string) {
-    if (!window.confirm('Send the Fellowship Loan Agreement to this fellow so they can sign online? They will be emailed a link.')) return
+    if (!window.confirm('Send the UGAT Fellowship Agreement to this fellow so they can sign online? They will be emailed a link.')) return
     setBusy(id); await fetch(`${API}/acceptance/admin`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ scholarId: id }) }); setBusy(''); reloadScholars()
   }
   async function setAward(id: string, monthly: number | null, months: number | null) {
