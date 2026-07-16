@@ -66,8 +66,8 @@ export default function UgatFellowClient() {
   const [banner, setBanner] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [booted, setBooted] = useState(false)
 
-  const [options, setOptions] = useState<{ schools: string[]; programs: string[]; fields: string[] }>({
-    schools: [], programs: [], fields: [],
+  const [options, setOptions] = useState<{ schoolsAral: string[]; schoolsTindig: string[]; schools: string[]; programs: string[]; fields: string[] }>({
+    schoolsAral: [], schoolsTindig: [], schools: [], programs: [], fields: [],
   })
 
   // ── Boot: intro timing, verify banner, restore session ───────────
@@ -415,7 +415,7 @@ function SignUp({
   openPrivacy,
   onRegistered,
 }: {
-  options: { schools: string[]; programs: string[]; fields: string[] }
+  options: { schoolsAral: string[]; schoolsTindig: string[]; schools: string[]; programs: string[]; fields: string[] }
   openPrivacy: () => void
   onRegistered: () => void
 }) {
@@ -552,7 +552,7 @@ function SignUp({
         <input className={s.input} type="date" required value={f.birthdate} onChange={(e) => set('birthdate', e.target.value)} />
       </div>
 
-      {dropdown('School', 'school', options.schools)}
+      {dropdown('School', 'school', track === 'TINDIG' ? options.schoolsTindig : options.schoolsAral)}
       {dropdown('Program', 'program', options.programs)}
 
       <div className={s.sectionLabel}>Permanent Address</div>
