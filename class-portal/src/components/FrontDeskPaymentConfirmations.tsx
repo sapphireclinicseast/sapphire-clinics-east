@@ -179,9 +179,18 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
 
   const pending = rows.filter(r => r.status === 'PENDING')
   // CONVERTED only — voided rows are noise here. Sort newest-first.
-  const confirmed = rows
+  const confirmedAll = rows
     .filter(r => r.status === 'CONVERTED')
     .sort((a, b) => new Date(b.convertedAt ?? b.createdAt).getTime() - new Date(a.convertedAt ?? a.createdAt).getTime())
+  const [confirmedSearch, setConfirmedSearch] = useState('')
+  const confirmed = useMemo(() => {
+    const q = confirmedSearch.trim().toLowerCase()
+    if (!q) return confirmedAll
+    return confirmedAll.filter(r => {
+      const hay = `${r.studentName ?? ''} ${r.studentEmail ?? ''} ${r.plan ?? ''} ${r.period ?? ''} ${r.method ?? ''} ${r.branch ?? ''}`.toLowerCase()
+      return hay.includes(q)
+    })
+  }, [confirmedAll, confirmedSearch])
 
   return (
     <div className="space-y-4">
@@ -319,18 +328,32 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
               Cash + bank-deposit payments the front desk has already confirmed. Newest first.
             </p>
           </div>
-          <div className="text-[12.5px] text-[color:var(--mid-gray)] font-semibold">
-            {confirmed.length} total
+          <div className="flex items-center gap-3">
+            <input
+              className="input text-[13px]"
+              placeholder="Search name, email, plan, period, method, branch"
+              value={confirmedSearch}
+              onChange={e => setConfirmedSearch(e.target.value)}
+              style={{ width: 280 }}
+            />
+            <div className="text-[12.5px] text-[color:var(--mid-gray)] font-semibold whitespace-nowrap">
+              {confirmed.length}{confirmedSearch ? ` / ${confirmedAll.length}` : ''} total
+            </div>
           </div>
         </div>
         {loading ? (
           <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p>
-        ) : confirmed.length === 0 ? (
+        ) : confirmedAll.length === 0 ? (
           <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No confirmed payments yet.</p>
+        ) : confirmed.length === 0 ? (
+          <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No confirmed payments match &ldquo;{confirmedSearch}&rdquo;.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+          // Bounded internal-scroll shell so a long confirmed list doesn't
+          // push the "Paying students" panel below the fold. Table body
+          // scrolls; the header stays put via sticky positioning.
+          <div className="overflow-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)', maxHeight: 420 }}>
             <table className="w-full text-sm">
-              <thead style={{ background: 'var(--paper-2)' }}>
+              <thead style={{ background: 'var(--paper-2)', position: 'sticky', top: 0, zIndex: 1 }}>
                 <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
                   <th className="py-2 px-3">Student</th>
                   <th className="py-2 px-3">Plan</th>
