@@ -240,7 +240,7 @@ function AboutUs() {
         <h3>The two paths at a glance</h3>
         <TrackFlowchart />
       </div>
-      <div className={s.aboutPartner}>Interested to have your school partner with us for accepting fellows for Speech-Language Pathology or Occupational Therapy? Contact us at <a href="mailto:scholarship@sapphireclinicseast.org">scholarship@sapphireclinicseast.org</a>.</div>
+      <div className={s.aboutPartner}>Interested to have your school partner with us for accepting fellows for Allied Health? Contact us at <a href="mailto:fellowship@sapphireclinicseast.org">fellowship@sapphireclinicseast.org</a>.</div>
     </div>
   )
 }
