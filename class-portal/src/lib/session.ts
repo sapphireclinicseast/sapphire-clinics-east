@@ -1704,6 +1704,39 @@ export function didPayForMonth(studentId: string, year: number, monthIdx: number
 }
 
 /**
+ * All SY months (Jun → May-next-year) between the student's SY start
+ * (June 5 of the SY-start year) and today that they have NOT paid for.
+ * Only meaningful for MONTHLY plans. For a late enrollee who paid the
+ * current month but skipped earlier months (e.g. Ragnar enrolled in
+ * July, paid July, never paid June) this returns [{year, month:5}]
+ * so the badge + Pending list can surface the missing June installment.
+ */
+export function unpaidBackMonthsFor(studentId: string): Array<{ year: number; monthIdx: number }> {
+  const plan = inferPaymentPlanFor(studentId)
+  if (plan !== 'MONTHLY') return []
+  const today = new Date()
+  // SY-start year — Jun 5 (year Y) opens SY Y-(Y+1). If today is on/
+  // after Jun 5, SY started this year; otherwise last year.
+  const syStartYear = today.getMonth() > 5 || (today.getMonth() === 5 && today.getDate() >= 5)
+    ? today.getFullYear()
+    : today.getFullYear() - 1
+  // Walk June → current month (inclusive). Cap at 12 iterations so the
+  // loop always terminates even if today somehow lands before Jun 5
+  // (edge case around the SY boundary).
+  const missing: Array<{ year: number; monthIdx: number }> = []
+  const cursor = new Date(syStartYear, 5, 1) // Jun 1 of the SY start year
+  for (let i = 0; i < 12; i += 1) {
+    if (cursor.getFullYear() > today.getFullYear()
+      || (cursor.getFullYear() === today.getFullYear() && cursor.getMonth() > today.getMonth())) break
+    if (!didPayForMonth(studentId, cursor.getFullYear(), cursor.getMonth())) {
+      missing.push({ year: cursor.getFullYear(), monthIdx: cursor.getMonth() })
+    }
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+  return missing
+}
+
+/**
  * Human-readable badge info for the profile / list. Returns a
  * primary "current period" label plus an optional "last paid" label
  * so MONTHLY students who paid an earlier month but owe the current
@@ -1715,6 +1748,10 @@ export interface PaymentBadgeInfo {
   // Populated when status=DUE for MONTHLY and there IS a paid past
   // month — e.g. "Paid for June 2026" alongside "Due for July 2026".
   lastPaidLabel?: string
+  // Populated for MONTHLY late enrollees who paid the current month
+  // but skipped one or more earlier SY months. Rendered as one badge
+  // per missing month, e.g. "Owes for June 2026".
+  owedMonthLabels?: string[]
 }
 export function paymentBadgeInfoFor(studentId: string): PaymentBadgeInfo {
   const list = getPaymentsForStudent(studentId)
@@ -1740,30 +1777,41 @@ export function paymentBadgeInfoFor(studentId: string): PaymentBadgeInfo {
     return { status, currentLabel: status === 'PAID' ? `Paid for ${halfLabel} ${syLabel}` : `Due for ${halfLabel} ${syLabel}` }
   }
 
-  // MONTHLY
+  // MONTHLY — surface both the current-period status AND any earlier
+  // SY months the student still owes (late-enrollee back balance).
+  // Current-month is intentionally excluded from owedMonthLabels — it's
+  // covered by currentLabel below.
+  const backMissing = unpaidBackMonthsFor(studentId).filter(
+    m => !(m.year === today.getFullYear() && m.monthIdx === today.getMonth())
+  )
+  const owedMonthLabels = backMissing.length
+    ? backMissing.map(m => `Owes for ${monthNames[m.monthIdx]} ${m.year}`)
+    : undefined
+
   if (status === 'PAID') {
-    return { status, currentLabel: `Paid for ${monthLabel}` }
+    return { status, currentLabel: `Paid for ${monthLabel}`, owedMonthLabels }
   }
-  // DUE — find the most recent PAID monthly period to show alongside.
-  const paidMonthly = list.filter(p => p.status === 'PAID' && p.plan === 'MONTHLY')
-    .sort((a, b) => new Date(b.paidAt ?? b.createdAt).getTime() - new Date(a.paidAt ?? a.createdAt).getTime())
+  // DUE — find the most recent PAID monthly period to show alongside
+  // ("Paid for June" beside "Due for July" is more readable than just
+  // "Due" for a student who's been mostly on-time). Skipped when there
+  // are already back-balance badges to render (that supersedes the
+  // "last paid" callout).
   let lastPaidLabel: string | undefined
-  // Search back through the last 12 months to find one that this student paid for.
-  const now = today
-  for (let back = 1; back <= 12; back += 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - back, 1)
-    if (didPayForMonth(studentId, d.getFullYear(), d.getMonth())) {
-      lastPaidLabel = `Paid for ${monthNames[d.getMonth()]} ${d.getFullYear()}`
-      break
+  if (!owedMonthLabels) {
+    const paidMonthly = list.filter(p => p.status === 'PAID' && p.plan === 'MONTHLY')
+      .sort((a, b) => new Date(b.paidAt ?? b.createdAt).getTime() - new Date(a.paidAt ?? a.createdAt).getTime())
+    for (let back = 1; back <= 12; back += 1) {
+      const d = new Date(today.getFullYear(), today.getMonth() - back, 1)
+      if (didPayForMonth(studentId, d.getFullYear(), d.getMonth())) {
+        lastPaidLabel = `Paid for ${monthNames[d.getMonth()]} ${d.getFullYear()}`
+        break
+      }
+    }
+    if (!lastPaidLabel && paidMonthly.length > 0 && paidMonthly[0].period) {
+      lastPaidLabel = `Paid for ${paidMonthly[0].period}`
     }
   }
-  // Fallback: if the walk-back didn't find anything but there IS a paid
-  // monthly record, surface it by its period string so the frontdesk
-  // still sees what was paid.
-  if (!lastPaidLabel && paidMonthly.length > 0 && paidMonthly[0].period) {
-    lastPaidLabel = `Paid for ${paidMonthly[0].period}`
-  }
-  return { status, currentLabel: `Due for ${monthLabel}`, lastPaidLabel }
+  return { status, currentLabel: `Due for ${monthLabel}`, lastPaidLabel, owedMonthLabels }
 }
 
 /**

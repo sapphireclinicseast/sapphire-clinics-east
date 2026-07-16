@@ -6,6 +6,7 @@ import {
   getAuth, getUsers, getPaymentsForStudent, savePayment, putFile,
   levelLabel, getFeeFor, hydrateFees, hydrateFrontDeskPayments, validateVoucher,
   listPersonalVouchersFor,
+  unpaidBackMonthsFor,
   type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser, type FeeSchedule,
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
@@ -205,6 +206,22 @@ export default function PayPage() {
       new Date(),
     )
   }, [plan, history])
+
+  // Late-enrollee catch-up: any earlier SY month the parent hasn't paid
+  // for. Distinct from lateBackBalance (which only fires on the FIRST
+  // /pay visit and swaps the whole checkout to a lump). This surfaces
+  // gap-months even after some months have already been settled — e.g.
+  // Ragnar paid July but skipped June; we still want him to see "You
+  // still owe June 2026" so he can flag it to the front desk.
+  const monthNamesLong = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const owedPastMonths = useMemo(() => {
+    if (!user || !plan || plan.plan !== 'MONTHLY') return [] as string[]
+    const today = new Date()
+    return unpaidBackMonthsFor(user.id)
+      .filter(m => !(m.year === today.getFullYear() && m.monthIdx === today.getMonth()))
+      .map(m => `${monthNamesLong[m.monthIdx]} ${m.year}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, plan, history])
 
   // "Effective" amounts that flow through the rest of the page. When a
   // back balance applies, tuition + misc swap out for the lump version;
@@ -538,6 +555,29 @@ export default function PayPage() {
             <div className="mt-2 text-[12.5px] text-rose-700">{voucherErr}</div>
           )}
         </div>
+
+        {/* Owed-past-months callout for MONTHLY late enrollees who've
+            already paid some months but skipped earlier SY months.
+            Distinct from the lateBackBalance callout below (which only
+            fires when NOTHING has been paid yet). Surfaces the specific
+            missing months so the parent knows to coordinate with the
+            front desk to settle each. Suppressed when lateBackBalance
+            is already showing — that callout already lists the range. */}
+        {!lateBackBalance && owedPastMonths.length > 0 && (
+          <div className="mt-5 rounded-xl p-4 border-2" style={{ borderColor: '#c69849', background: '#fef3c7' }}>
+            <div className="flex items-start gap-3">
+              <span aria-hidden className="text-[20px] leading-none mt-0.5">⚠️</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-[14px] mb-1" style={{ color: '#92400e', fontFamily: 'var(--font-display)' }}>
+                  Past-due month{owedPastMonths.length > 1 ? 's' : ''} still owed
+                </div>
+                <p className="text-[13px] text-[color:var(--ink)] leading-relaxed">
+                  Our records show the following month{owedPastMonths.length > 1 ? 's have' : ' has'} not yet been settled: <span className="font-semibold">{owedPastMonths.join(', ')}</span>. Please coordinate with the front desk to catch up on {owedPastMonths.length > 1 ? 'these' : 'this'} before your next installment.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Late-enrollment back-balance callout. Surfaces ABOVE the
             checkout summary so the parent reads it before scrolling

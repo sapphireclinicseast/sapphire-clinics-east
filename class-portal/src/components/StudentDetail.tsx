@@ -145,6 +145,14 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="flex flex-col items-end gap-1.5">
+              {/* Late-enrollee back-balance: one amber "Owes for <month>"
+                  badge per missing SY month. Rendered above the current-
+                  period badge so a Ragnar-type student who paid July but
+                  skipped June shows an amber "Owes for June 2026" +
+                  green "Paid for July 2026". */}
+              {badgeInfo.owedMonthLabels?.map(label => (
+                <span key={label} className="badge badge-due">{label}</span>
+              ))}
               {/* Show "Paid for <past month>" alongside the "Due for
                   <current month>" badge for MONTHLY students who've
                   fallen a month behind, so the front desk sees both the

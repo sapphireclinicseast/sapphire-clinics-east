@@ -7,6 +7,7 @@ import {
   levelLabel,
   currentPeriodPaymentStatusFor, inferPaymentPlanFor,
   didPayForBiannualHalf, didPayForMonth, schoolYearLabelFor, biannualHalfFor,
+  unpaidBackMonthsFor,
   type PaymentRecord, type PaymentMethod, type PaymentPlan,
   type StoredUser, type EnrollmentLevel,
 } from '@/lib/session'
@@ -174,9 +175,17 @@ export default function PaymentsGrouped({
       const latestPendingWithProof = pendingByRecency.find(p => p.proofFileId)
       const latestPending = latestPendingWithProof ?? pendingByRecency[0] ?? null
       // Current-period status trumps ever-paid: a MONTHLY student who
-      // paid June is PENDING for July until they pay again.
+      // paid June is PENDING for July until they pay again. AND a late
+      // enrollee who paid THIS month but skipped an earlier SY month
+      // (Ragnar enrolled in July, paid July, never paid June) is also
+      // PENDING — surfacing them here means the front desk can chase
+      // the missing back-balance.
       const periodStatus = currentPeriodPaymentStatusFor(s.id)
-      const status: 'PAID' | 'PENDING' = periodStatus === 'PAID' ? 'PAID' : 'PENDING'
+      const backMonths = unpaidBackMonthsFor(s.id).filter(
+        m => !(m.year === today.getFullYear() && m.monthIdx === today.getMonth())
+      )
+      const status: 'PAID' | 'PENDING' = (periodStatus === 'PAID' && backMonths.length === 0)
+        ? 'PAID' : 'PENDING'
       // For PAID rows, show the latest paid record. For PENDING rows,
       // prefer a real PENDING record (has proof/amount/method to show)
       // over a stale PAID one — leaving representative null when the
@@ -186,14 +195,18 @@ export default function PaymentsGrouped({
       const plan = representative?.plan ?? latestPaid?.plan ?? inferPaymentPlanFor(s.id) ?? null
       // Deadline picks the current-period one (July 5 for monthly, next
       // tranche's 5th for biannual) when the student is DUE without an
-      // explicit PENDING record on file.
+      // explicit PENDING record on file. Late enrollees with back-balance
+      // deadline back to the earliest unpaid month's 5th (Jun 5 for
+      // Ragnar) so they sort to the top as most-overdue.
       const deadline: Date | null = status === 'PAID'
         ? null
-        : latestPending
-          ? deadlineFor(latestPending)
-          : plan
-            ? currentPeriodDeadline(plan, today, monthLabel)
-            : null
+        : backMonths.length > 0
+          ? new Date(backMonths[0].year, backMonths[0].monthIdx, 5)
+          : latestPending
+            ? deadlineFor(latestPending)
+            : plan
+              ? currentPeriodDeadline(plan, today, monthLabel)
+              : null
       return { student: s, payment: representative, status, plan, deadline }
     })
     return out
