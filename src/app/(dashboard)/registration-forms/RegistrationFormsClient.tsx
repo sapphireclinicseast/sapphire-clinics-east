@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   FileText, QrCode, BarChart3, ExternalLink, Copy, Check,
   RefreshCw, Download, ChevronRight, Trash2, Pencil, X,
@@ -92,6 +92,21 @@ export default function RegistrationFormsClient({ role }: Props) {
     if (isAdmin || isSBEA) return true
     return !!f.sbgh  // SBGH front desk only sees forms with SBGH version
   })
+
+  // Deep-link: ?form=<key>&tab=results → auto-select form + Responses tab
+  const deepLinked = useRef(false)
+  useEffect(() => {
+    if (deepLinked.current) return
+    const params = new URLSearchParams(window.location.search)
+    const formKey = params.get('form')
+    const tabParam = params.get('tab')
+    if (!formKey) return
+    const form = visibleForms.find((f) => f.key === formKey)
+    if (!form) return
+    deepLinked.current = true
+    setSelectedForm(form)
+    if (tabParam === 'results') setTab('results')
+  }, [visibleForms])
 
   // Reset qrBranch when form changes
   useEffect(() => {

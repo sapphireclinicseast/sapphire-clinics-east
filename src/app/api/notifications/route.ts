@@ -1,63 +1,140 @@
+// GET /api/notifications — recent activity feed for the hub notification bell.
+// Returns patient registrations, appointment bookings, and HR form responses
+// from the last 48 hours (form responses fetched live from HR Platform).
+// Branch-filtered: admin sees all, branch-scoped roles see only their branch.
+
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-export const dynamic = 'force-dynamic'
+function bookingBranchesForRole(role: string): string[] | null {
+  if (role.startsWith('SBEA_') || role.startsWith('AHEA_')) return ['SBEA']
+  if (role.startsWith('SBGH_') || role.startsWith('AHGH_')) return ['SBGH']
+  return null // null = all branches
+}
 
-const HR_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
-const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
+const BRANCH_ENUM_TO_SHORT: Record<string, string> = {
+  SANDBOX_EAST: 'SBEA',
+  SANDBOX_GREENHILLS: 'SBGH',
+}
 
-// All registration form IDs (both SBEA and SBGH variants for each form type)
-const ALL_FORM_IDS = [
-  'GULaVBpI', 'VaCB1bkE',  // Registration Form
-  'ChrSrsBF', 'tT8QASYo',  // Group Therapy Registration
-  'SGWVxqcW', 'i8rFr7P6',  // ALAGA Program Registration
-  'X2YDKTaH',              // Psych Registration Form (SBEA only)
-]
+// Mirror of FORM_TYPES in RegistrationFormsClient — keep in sync if forms change.
+const FORM_TYPES = [
+  { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE' },
+  { key: 'group-therapy', title: 'Group Therapy Registration', sbea: 'ChrSrsBF', sbgh: 'tT8QASYo' },
+  { key: 'sip',           title: 'ALAGA Program Registration', sbea: 'SGWVxqcW', sbgh: 'i8rFr7P6' },
+  { key: 'psych',         title: 'Psych Registration Form',    sbea: 'X2YDKTaH', sbgh: null },
+] as const
+
+interface FormNotif {
+  id: string
+  type: 'FORM_RESPONSE'
+  name: string
+  branch: string
+  formKey: string
+  createdAt: string
+  href: string
+}
+
+async function fetchFormResponseNotifs(since: Date, branches: string[] | null): Promise<FormNotif[]> {
+  const HR_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
+  const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
+  if (!HR_KEY) return []
+
+  // Build the list of (formKey, formTitle, formId, branch) tuples to fetch
+  const targets: { key: string; title: string; formId: string; branch: string }[] = []
+  for (const f of FORM_TYPES) {
+    if (!branches || branches.includes('SBEA')) {
+      targets.push({ key: f.key, title: f.title, formId: f.sbea, branch: 'SBEA' })
+    }
+    if (f.sbgh && (!branches || branches.includes('SBGH'))) {
+      targets.push({ key: f.key, title: f.title, formId: f.sbgh, branch: 'SBGH' })
+    }
+  }
+
+  const results = await Promise.allSettled(
+    targets.map(async ({ key, title, formId, branch }) => {
+      const res = await fetch(`${HR_URL}/forms/external/${formId}/responses`, {
+        headers: { Authorization: `Bearer ${HR_KEY}` },
+        signal: AbortSignal.timeout(4000),
+        cache: 'no-store',
+      })
+      if (!res.ok) return [] as FormNotif[]
+      const data = await res.json()
+      const items = (data.items ?? []) as { landing_id: string; submitted_at: string }[]
+      return items
+        .filter((item) => item.submitted_at && new Date(item.submitted_at) >= since)
+        .map((item): FormNotif => ({
+          id: `form_${formId}_${item.landing_id}`,
+          type: 'FORM_RESPONSE',
+          name: title,
+          branch,
+          formKey: key,
+          createdAt: item.submitted_at,
+          href: `/registration-forms?form=${key}&branch=${branch}&tab=results`,
+        }))
+    })
+  )
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<FormNotif[]> => r.status === 'fulfilled')
+    .flatMap((r) => r.value)
+}
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Look up when THIS user last dismissed notifications
-  const state = await prisma.userNotificationState.findUnique({
-    where: { userId: session.user.id },
-  })
-  // New users default to 24 h ago so they see today's activity on first login
-  const since = state?.dismissedAt ?? new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const role = (session.user as { role?: string })?.role ?? ''
+  const bookingBranches = bookingBranchesForRole(role)
 
-  // ── New patient booking requests since this user's last dismiss ─────────────
-  const bookings = await prisma.patientBooking.count({
-    where: {
-      createdAt: { gt: since },
-      status: { in: ['PENDING', 'PAID'] },
-    },
-  })
+  const since = new Date(Date.now() - 48 * 60 * 60 * 1000)
 
-  // ── New registration form responses since this user's last dismiss ───────────
-  // Parallel fetch from HR Platform; gracefully returns 0 per form if unreachable.
-  let forms = 0
-  try {
-    const counts = await Promise.all(
-      ALL_FORM_IDS.map((id) =>
-        fetch(`${HR_URL}/forms/external/${id}/responses`, {
-          headers: { Authorization: `Bearer ${HR_KEY}` },
-          cache: 'no-store',
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            if (!d.ok || !Array.isArray(d.items)) return 0
-            return (d.items as { submitted_at: string }[]).filter(
-              (item) => new Date(item.submitted_at) > since
-            ).length
-          })
-          .catch(() => 0)
-      )
-    )
-    forms = counts.reduce((a, b) => a + b, 0)
-  } catch {
-    forms = 0
-  }
+  const [patients, bookings, formResponses] = await Promise.all([
+    // Patient registrations (hub DB)
+    prisma.patient.findMany({
+      where: { createdAt: { gte: since } },
+      select: { id: true, firstName: true, lastName: true, branches: true, branch: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    }),
+    // Appointment bookings (hub DB)
+    prisma.patientBooking.findMany({
+      where: {
+        createdAt: { gte: since },
+        status: { in: ['PENDING', 'PAID'] },
+        ...(bookingBranches ? { branch: { in: bookingBranches } } : {}),
+      },
+      include: {
+        patient: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    }),
+    // Form responses (HR Platform — gracefully skipped if HR is down)
+    fetchFormResponseNotifs(since, bookingBranches).catch(() => []),
+  ])
 
-  return NextResponse.json({ bookings, forms, dismissedAt: since.toISOString() })
+  const items = [
+    ...patients.map((p) => ({
+      id: `reg_${p.id}`,
+      type: 'REGISTRATION' as const,
+      name: `${p.firstName} ${p.lastName}`.trim(),
+      branch: BRANCH_ENUM_TO_SHORT[p.branches[0] ?? ''] ?? (p.branch ? String(p.branch) : ''),
+      createdAt: p.createdAt.toISOString(),
+      href: '/patients',
+    })),
+    ...bookings.map((b) => ({
+      id: `bkg_${b.id}`,
+      type: 'BOOKING' as const,
+      name: `${b.patient.firstName} ${b.patient.lastName}`.trim(),
+      branch: b.branch,
+      status: b.status,
+      createdAt: b.createdAt.toISOString(),
+      href: '/decking',
+    })),
+    ...formResponses,
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+  return NextResponse.json({ items })
 }

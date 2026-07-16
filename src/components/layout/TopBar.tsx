@@ -2,71 +2,99 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { signOut } from 'next-auth/react'
-import { LogOut, Bell, User, Menu, CalendarCheck, FileText } from 'lucide-react'
-import Link from 'next/link'
+import { LogOut, Bell, User, Menu } from 'lucide-react'
 import type { Session } from 'next-auth'
+
+interface NotifItem {
+  id: string
+  type: 'REGISTRATION' | 'BOOKING' | 'FORM_RESPONSE'
+  name: string
+  branch: string
+  status?: string
+  formKey?: string
+  createdAt: string
+  href: string
+}
+
+const BRANCH_LABEL: Record<string, string> = { SBEA: 'East', SBGH: 'GH' }
+
+function todayKey() {
+  return `SCEI_NOTIF_SEEN_${new Date().toISOString().slice(0, 10)}`
+}
+
+function getSeenIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(todayKey())
+    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function persistSeen(ids: Set<string>) {
+  try {
+    localStorage.setItem(todayKey(), JSON.stringify([...ids]))
+  } catch {}
+}
 
 interface TopBarProps {
   user: Session['user']
   onMenuClick?: () => void
 }
 
-interface NotifCounts {
-  bookings: number
-  forms: number
-}
-
-const POLL_MS = 5 * 60 * 1000 // poll every 5 minutes
-
 export default function TopBar({ user, onMenuClick }: TopBarProps) {
-  const [counts, setCounts]       = useState<NotifCounts>({ bookings: 0, forms: 0 })
-  const [open, setOpen]           = useState(false)
-  const [dismissedAt, setDismissedAt] = useState<string | null>(null)
-  const dropdownRef               = useRef<HTMLDivElement>(null)
+  const [items, setItems] = useState<NotifItem[]>([])
+  const [seenIds, setSeenIds] = useState<Set<string>>(new Set())
+  const [open, setOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const fetchCounts = useCallback(async () => {
+  const unseenCount = items.filter((i) => !seenIds.has(i.id)).length
+
+  const fetchNotifs = useCallback(async () => {
     try {
-      const res = await fetch('/api/notifications', { cache: 'no-store' })
+      const res = await fetch('/api/notifications')
       if (!res.ok) return
       const data = await res.json()
-      setCounts({ bookings: data.bookings ?? 0, forms: data.forms ?? 0 })
-      setDismissedAt(data.dismissedAt ?? null)
-    } catch {
-      // silently ignore network errors — bell stays at current value
-    }
+      setItems(data.items ?? [])
+      setSeenIds(getSeenIds())
+    } catch {}
   }, [])
 
-  // Initial fetch + 5-minute poll + re-fetch on window focus
   useEffect(() => {
-    fetchCounts()
-    const interval = setInterval(fetchCounts, POLL_MS)
-    window.addEventListener('focus', fetchCounts)
-    return () => {
-      clearInterval(interval)
-      window.removeEventListener('focus', fetchCounts)
-    }
-  }, [fetchCounts])
+    fetchNotifs()
+    const id = setInterval(fetchNotifs, 60_000)
+    return () => clearInterval(id)
+  }, [fetchNotifs])
 
-  // Close dropdown on outside click
+  // Close on outside click
   useEffect(() => {
-    if (!open) return
-    function onOutside(e: MouseEvent) {
+    function onDown(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setOpen(false)
       }
     }
-    document.addEventListener('mousedown', onOutside)
-    return () => document.removeEventListener('mousedown', onOutside)
+    if (open) document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
   }, [open])
 
-  function dismiss() {
-    // Optimistic: clear the badge immediately, fire-and-forget the server update
-    setCounts({ bookings: 0, forms: 0 })
-    setOpen(false)
-    fetch('/api/notifications/dismiss', { method: 'POST' }).catch(() => {})
+  function markOneSeen(id: string) {
+    const next = new Set(seenIds)
+    next.add(id)
+    persistSeen(next)
+    setSeenIds(next)
   }
 
-  const total = counts.bookings + counts.forms
+  function markAllSeen() {
+    const next = new Set(items.map((i) => i.id))
+    persistSeen(next)
+    setSeenIds(next)
+  }
+
+  function handleItemClick(item: NotifItem) {
+    markOneSeen(item.id)
+    setOpen(false)
+    window.location.href = item.href
+  }
 
   return (
     <header
@@ -88,130 +116,118 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
       <div className="hidden md:block" />
 
       <div className="flex items-center gap-3">
-
-        {/* ── Notification bell ─────────────────────────────────────────────── */}
-        <div ref={dropdownRef} style={{ position: 'relative' }}>
+        {/* Notification bell */}
+        <div ref={dropdownRef} className="relative">
           <button
-            onClick={() => setOpen((v) => !v)}
-            className="p-2 rounded-lg transition-colors hover:bg-gray-100"
-            style={{ color: total > 0 ? 'var(--teal)' : 'var(--mid-gray)', position: 'relative' }}
+            onClick={() => setOpen((o) => !o)}
+            className="relative p-2 rounded-lg transition-colors hover:bg-gray-100"
+            style={{ color: open ? 'var(--teal)' : 'var(--mid-gray)' }}
             title="Notifications"
           >
             <Bell size={18} />
-            {total > 0 && (
+            {unseenCount > 0 && (
               <span
-                style={{
-                  position:       'absolute',
-                  top:            2,
-                  right:          2,
-                  minWidth:       16,
-                  height:         16,
-                  borderRadius:   9999,
-                  background:     '#DC2626',
-                  color:          '#fff',
-                  fontSize:       10,
-                  fontWeight:     700,
-                  display:        'flex',
-                  alignItems:     'center',
-                  justifyContent: 'center',
-                  padding:        '0 3px',
-                  lineHeight:     1,
-                }}
+                className="absolute top-0.5 right-0.5 min-w-[16px] h-4 rounded-full text-white flex items-center justify-center font-bold px-0.5"
+                style={{ fontSize: '10px', background: '#ef4444', lineHeight: 1 }}
               >
-                {total > 99 ? '99+' : total}
+                {unseenCount > 9 ? '9+' : unseenCount}
               </span>
             )}
           </button>
 
           {open && (
             <div
-              style={{
-                position:     'absolute',
-                right:        0,
-                top:          '100%',
-                marginTop:    8,
-                width:        288,
-                background:   '#fff',
-                border:       '1px solid var(--light-gray)',
-                borderRadius: 12,
-                boxShadow:    '0 8px 24px rgba(0,0,0,0.10)',
-                zIndex:       50,
-                overflow:     'hidden',
-              }}
+              className="absolute right-0 top-11 bg-white rounded-xl shadow-lg border z-50 overflow-hidden"
+              style={{ width: '320px', borderColor: 'var(--light-gray)' }}
             >
               {/* Header */}
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--light-gray)' }}>
-                <p style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, color: 'var(--charcoal)', margin: 0 }}>
+              <div
+                className="flex items-center justify-between px-4 py-2.5"
+                style={{ borderBottom: '1px solid var(--light-gray)' }}
+              >
+                <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
                   Notifications
-                </p>
-              </div>
-
-              {total === 0 ? (
-                <div style={{ padding: '24px 16px', textAlign: 'center' }}>
-                  <p style={{ fontSize: 13, color: 'var(--mid-gray)', margin: 0 }}>All caught up!</p>
-                </div>
-              ) : (
-                <>
-                  {counts.bookings > 0 && (
-                    <Link
-                      href="/decking"
-                      onClick={dismiss}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: counts.forms > 0 ? '1px solid var(--light-gray)' : 'none', textDecoration: 'none' }}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <CalendarCheck size={16} style={{ color: '#2563EB' }} />
-                      </div>
-                      <div>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', margin: 0 }}>
-                          {counts.bookings} new booking{counts.bookings !== 1 ? 's' : ''}
-                        </p>
-                        <p style={{ fontSize: 11, color: 'var(--mid-gray)', margin: '2px 0 0' }}>
-                          New patient appointment requests
-                        </p>
-                      </div>
-                    </Link>
-                  )}
-
-                  {counts.forms > 0 && (
-                    <Link
-                      href={dismissedAt ? `/registration-forms?newSince=${encodeURIComponent(dismissedAt)}` : '/registration-forms'}
-                      onClick={dismiss}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', textDecoration: 'none' }}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <FileText size={16} style={{ color: '#16A34A' }} />
-                      </div>
-                      <div>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', margin: 0 }}>
-                          {counts.forms} new form entr{counts.forms !== 1 ? 'ies' : 'y'}
-                        </p>
-                        <p style={{ fontSize: 11, color: 'var(--mid-gray)', margin: '2px 0 0' }}>
-                          New registration form submissions
-                        </p>
-                      </div>
-                    </Link>
-                  )}
-                </>
-              )}
-
-              {total > 0 && (
-                <div style={{ padding: '8px 16px', borderTop: '1px solid var(--light-gray)' }}>
+                </span>
+                {unseenCount > 0 && (
                   <button
-                    onClick={dismiss}
-                    style={{ width: '100%', textAlign: 'center', fontSize: 12, fontWeight: 500, color: 'var(--mid-gray)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', borderRadius: 8 }}
-                    className="hover:bg-gray-50 transition-colors"
+                    className="text-xs font-medium hover:underline"
+                    style={{ color: 'var(--teal)' }}
+                    onClick={markAllSeen}
                   >
                     Mark all as read
                   </button>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* List */}
+              <div className="overflow-y-auto divide-y divide-gray-100" style={{ maxHeight: '340px' }}>
+                {items.length === 0 ? (
+                  <div className="px-4 py-8 text-sm text-center" style={{ color: 'var(--mid-gray)' }}>
+                    All caught up!
+                  </div>
+                ) : (
+                  items.map((item) => {
+                    const isNew = !seenIds.has(item.id)
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleItemClick(item)}
+                        className="w-full text-left px-4 py-3 transition-colors hover:bg-gray-50 flex items-start gap-2.5"
+                        style={{ background: isNew ? '#f0fdfa' : '#fff' }}
+                      >
+                        {/* New dot */}
+                        <div className="flex-shrink-0 mt-1.5">
+                          <span
+                            className="block w-2 h-2 rounded-full"
+                            style={{ background: isNew ? 'var(--teal)' : 'transparent', border: isNew ? 'none' : '1.5px solid #d1d5db' }}
+                          />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className="text-xs font-semibold truncate"
+                              style={{ color: isNew ? 'var(--charcoal)' : '#6b7280' }}
+                            >
+                              {item.name}
+                            </span>
+                            {item.branch && (
+                              <span
+                                className="text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0"
+                                style={{ background: '#e5f6f8', color: 'var(--teal)' }}
+                              >
+                                {BRANCH_LABEL[item.branch] ?? item.branch}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] mt-0.5" style={{ color: '#6b7280' }}>
+                            {item.type === 'REGISTRATION'
+                              ? 'New patient registration'
+                              : item.type === 'FORM_RESPONSE'
+                              ? 'New form submission'
+                              : item.status === 'PAID'
+                              ? 'Appointment booking · Paid downpayment'
+                              : 'Appointment booking · Awaiting payment'}
+                          </div>
+                          <div className="text-[10px] mt-0.5" style={{ color: '#9ca3af' }}>
+                            {new Date(item.createdAt).toLocaleString('en-PH', {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* ── User info ─────────────────────────────────────────────────────── */}
+        {/* User menu */}
         <div className="flex items-center gap-2.5">
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"

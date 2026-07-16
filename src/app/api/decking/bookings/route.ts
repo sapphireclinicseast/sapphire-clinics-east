@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const statusParam = searchParams.get('status') ?? undefined
 
   const where: Record<string, unknown> = {}
-  if (branch) where.branch = branch
+  if (branch && branch !== 'ALL') where.branch = branch
   if (statusParam) {
     where.status = statusParam
   } else {

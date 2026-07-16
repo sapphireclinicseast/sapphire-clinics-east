@@ -867,7 +867,8 @@ export default function DeckingClient({ role }: { role: string }) {
       {activeMainTab === 'decking' && (
         <div>
           {/* Patient appointment requests from client portal */}
-          <PatientRequestsPanel branch={activeBranch as 'SBEA' | 'SBGH'} />
+          {/* Admin sees all branches merged; branch admins see only their own */}
+          <PatientRequestsPanel branch={branches.length > 1 ? 'ALL' : activeBranch as 'SBEA' | 'SBGH'} />
           {/* Controls row */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
             {/* Branch toggle */}
