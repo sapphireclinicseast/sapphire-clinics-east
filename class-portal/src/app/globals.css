@@ -303,6 +303,23 @@ body {
 .badge-paid        { background: rgba(34, 197, 94, 0.10); color: #166534; border: 1px solid rgba(34, 197, 94, 0.28); }
 .badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(198, 152, 73, 0.4); }
 .badge-due         { background: #fed7aa; color: #9a3412; border: 1px solid rgba(234, 88, 12, 0.35); }
+
+/* ── Auth sidebar layout ────────────────────────────────────────
+ * When AuthSidebar is mounted (signed-in views), it adds the
+ * .with-auth-sidebar class to <body>. That:
+ *   - hides the original top <header> — the sidebar carries the brand
+ *     and all navigation for authenticated views
+ *   - shifts <main> + <footer> right of the 240px fixed sidebar on md+
+ * Public pages (marketing home, sign-in, enroll) never mount the
+ * sidebar and therefore render with the original top-header layout.
+ * On mobile the sidebar becomes a slide-in drawer, so main/footer
+ * do NOT get shifted below md.
+ */
+body.with-auth-sidebar > header { display: none; }
+@media (min-width: 768px) {
+  body.with-auth-sidebar > main   { margin-left: 240px; }
+  body.with-auth-sidebar > footer { margin-left: 240px; }
+}
 .badge-rejected    { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(168, 92, 61, 0.28); }
 
 .level-tile {

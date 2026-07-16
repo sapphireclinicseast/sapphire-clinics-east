@@ -3,6 +3,7 @@ import { Montserrat, Manrope } from 'next/font/google'
 import './globals.css'
 import HeaderNav from '@/components/HeaderNav'
 import ImpersonationBanner from '@/components/ImpersonationBanner'
+import AuthSidebar from '@/components/AuthSidebar'
 
 const montserrat = Montserrat({
   subsets: ['latin'],
@@ -150,6 +151,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{ __html: JSON.stringify(ORG_JSON_LD) }}
         />
         <ImpersonationBanner />
+        {/* Persistent left sidebar for authenticated views. Renders
+            null (and does nothing to <body>) when the visitor isn't
+            signed in, so marketing pages keep their original layout. */}
+        <AuthSidebar />
         <header className="bg-[color:var(--paper)]/85 backdrop-blur-md border-b border-[color:var(--paper-3)] sticky top-0 z-40">
           <div className="max-w-5xl mx-auto px-3 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2 flex-wrap">
             <a href="/" className="flex items-center gap-2 sm:gap-2.5 leading-tight group min-w-0">
