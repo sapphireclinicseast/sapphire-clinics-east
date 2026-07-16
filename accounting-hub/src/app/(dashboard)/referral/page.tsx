@@ -52,6 +52,9 @@ function ReferredPatientsPanel() {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [sessionsFor, setSessionsFor] = useState<RP | null>(null)
+  const [sortField, setSortField] = useState<'patientName' | 'referrerName' | 'referrerType' | 'createdAt'>('createdAt')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const toggleSort = (f: typeof sortField) => { if (sortField === f) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField(f); setSortDir('asc') } }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -93,11 +96,20 @@ function ReferredPatientsPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--pale-teal)' }}>
-                {['Patient', 'Referrer', 'Type', 'Added', ''].map(h => <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>)}
+                {([['patientName', 'Patient'], ['referrerName', 'Referrer'], ['referrerType', 'Type'], ['createdAt', 'Added']] as [typeof sortField, string][]).map(([key, label]) => (
+                  <th key={key} onClick={() => toggleSort(key)} className="px-4 py-2.5 text-left text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--deep-teal)' }}>
+                    {label}{sortField === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                  </th>
+                ))}
+                <th className="px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
+              {[...rows].sort((a, b) => {
+                const av = String(a[sortField] ?? ''); const bv = String(b[sortField] ?? '')
+                const c = av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true })
+                return sortDir === 'asc' ? c : -c
+              }).map(r => (
                 <tr key={r.id} className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }} onClick={() => setSessionsFor(r)}>
                   <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.patientName}</td>
                   <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{r.referrerName}</td>

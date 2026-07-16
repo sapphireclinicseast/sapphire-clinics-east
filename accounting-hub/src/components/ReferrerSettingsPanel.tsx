@@ -1,11 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Search, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, X, ArrowDownAZ, ArrowUpAZ } from 'lucide-react'
 import { branchLabel } from '@/lib/branch'
 
 export const REFERRER_TYPE_LABEL: Record<string, string> = { DOCTOR: 'Doctor', LAW_FIRM: 'Law Firm', PARTNER_SCHOOL: 'Partner School' }
 const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM', 'PARTNER_SCHOOL'] as const
+const BRANCH_VALUES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
+
+interface Ref { id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; branches?: string[]; referralCount?: number }
 
 const typeBadgeStyle = (t?: string | null): React.CSSProperties => {
   if (t === 'LAW_FIRM') return { background: '#fef3c7', color: '#92400e' }
@@ -13,13 +16,74 @@ const typeBadgeStyle = (t?: string | null): React.CSSProperties => {
   return { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }
 }
 
+// One type bucket — its own search box, A→Z / Z→A sort, and scrollable list.
+function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders }: {
+  title: string; type: string; referrers: Ref[]
+  onEdit: (r: Ref) => void; onDelete: (id: string) => void; onOpenOrders: (r: { id: string; name: string }) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [asc, setAsc] = useState(true)
+  const rows = referrers
+    .filter(r => r.type === type)
+    .filter(r => !search || r.name.toLowerCase().includes(search.toLowerCase()) || r.affiliation?.toLowerCase().includes(search.toLowerCase()) || r.specialization?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => asc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
+
+  return (
+    <div className="rounded-2xl border bg-white flex flex-col" style={{ borderColor: 'var(--light-gray)', maxHeight: '68vh' }}>
+      <div className="p-3 border-b space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+            {title}
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={typeBadgeStyle(type)}>{rows.length}</span>
+          </h3>
+          <button onClick={() => setAsc(a => !a)} title={asc ? 'Sorted A→Z' : 'Sorted Z→A'} className="p-1.5 rounded-lg border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+            {asc ? <ArrowDownAZ size={14} /> : <ArrowUpAZ size={14} />}
+          </button>
+        </div>
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-2.5" style={{ color: 'var(--mid-gray)' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${title.toLowerCase()}...`}
+            className="pl-8 pr-2 py-2 rounded-xl border text-sm outline-none w-full" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+      </div>
+      <div className="p-2 space-y-1.5 overflow-y-auto flex-1">
+        {rows.length === 0 ? (
+          <div className="py-8 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>None found.</div>
+        ) : rows.map(r => (
+          <div key={r.id} className="rounded-xl border p-2.5 flex items-start justify-between gap-2" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="min-w-0">
+              <div className="font-semibold text-sm truncate" style={{ color: 'var(--charcoal)' }}>{r.name}</div>
+              {(r.affiliation || r.specialization) && (
+                <div className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>{[r.affiliation, r.specialization].filter(Boolean).join(' · ')}</div>
+              )}
+              <div className="flex flex-wrap items-center gap-1 mt-1">
+                {(r.branches && r.branches.length > 0)
+                  ? r.branches.map(b => <span key={b} className="px-1.5 py-0.5 rounded-full text-[9px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{branchLabel(b)}</span>)
+                  : <span className="text-[9px]" style={{ color: 'var(--mid-gray)' }}>All branches</span>}
+                {(r.referralCount ?? 0) > 0 && (
+                  <button onClick={() => onOpenOrders(r)} className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold hover:underline" style={{ background: '#f1f5f9', color: 'var(--deep-teal)' }} title="View referred orders">
+                    {r.referralCount} referral{r.referralCount === 1 ? '' : 's'}
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <button onClick={() => onEdit(r)} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil size={12} style={{ color: 'var(--teal)' }} /></button>
+              <button onClick={() => onDelete(r.id)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={12} className="text-red-400" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function ReferrerSettingsPanel() {
-  const [referrers, setReferrers] = useState<{ id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; branches?: string[]; referralCount?: number }[]>([])
+  const [referrers, setReferrers] = useState<Ref[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<{ name: string; type: string; affiliation: string; specialization: string; branches: string[] }>({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [] })
-  const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -46,16 +110,9 @@ export default function ReferrerSettingsPanel() {
 
   useEffect(() => { fetchReferrers() }, [fetchReferrers])
 
-  const filtered = referrers.filter(r =>
-    !search || r.name.toLowerCase().includes(search.toLowerCase()) ||
-    r.affiliation?.toLowerCase().includes(search.toLowerCase()) ||
-    r.specialization?.toLowerCase().includes(search.toLowerCase())
-  )
-
   const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [] }); setError(''); setShowForm(true) }
-  const openEdit = (r: typeof referrers[0]) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [] }); setError(''); setShowForm(true) }
+  const openEdit = (r: Ref) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [] }); setError(''); setShowForm(true) }
   const toggleBranch = (b: string) => setForm(f => ({ ...f, branches: f.branches.includes(b) ? f.branches.filter(x => x !== b) : [...f.branches, b] }))
-  const BRANCH_VALUES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
 
   const save = async () => {
     if (!form.name.trim()) { setError('Name is required'); return }
@@ -129,12 +186,12 @@ export default function ReferrerSettingsPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Referrers</h2>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Manage referrers (doctors, law firms, and partner schools). Upload CSV (Name, Affiliation, Specialization, Type) or add individually.</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Doctors, law firms, and partner schools — each list has its own search and A→Z / Z→A sort.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={downloadCsv} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>CSV</button>
           <button onClick={downloadPdf} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>PDF</button>
           <button onClick={() => {
@@ -154,69 +211,15 @@ export default function ReferrerSettingsPanel() {
         </div>
       </div>
 
-      <div className="relative w-60">
-        <Search size={14} className="absolute left-3 top-2.5" style={{ color: 'var(--mid-gray)' }} />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search referrers..."
-          className="pl-9 pr-3 py-2 rounded-xl border text-sm outline-none w-full" style={{ borderColor: 'var(--light-gray)' }} />
-      </div>
-
       {error && <p className="text-xs text-red-600">{error}</p>}
 
       {loading ? (
         <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</div>
-      ) : filtered.length === 0 ? (
-        <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No referrers found.</div>
       ) : (
-        <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'var(--pale-teal)' }}>
-                {['Name', 'Type', 'Affiliation', 'Specialization', 'Branch', 'Count of Referrals', ''].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(r => (
-                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={typeBadgeStyle(r.type)}>
-                      {REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.affiliation || '—'}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.specialization || '—'}</td>
-                  <td className="px-4 py-3">
-                    {(r.branches && r.branches.length > 0) ? (
-                      <div className="flex flex-wrap gap-1">
-                        {r.branches.map(b => (
-                          <span key={b} className="px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                            {branchLabel(b)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>All</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {(r.referralCount ?? 0) > 0 ? (
-                      <button onClick={() => openOrders(r)} className="px-2.5 py-1 rounded-full text-xs font-semibold hover:underline" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }} title="View referred orders">
-                        {r.referralCount}
-                      </button>
-                    ) : (
-                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>0</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => openEdit(r)} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
-                      <button onClick={() => deleteReferrer(r.id)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <ReferrerCard title="Doctors" type="DOCTOR" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
+          <ReferrerCard title="Law Firms" type="LAW_FIRM" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
+          <ReferrerCard title="Partner Schools" type="PARTNER_SCHOOL" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
         </div>
       )}
 
