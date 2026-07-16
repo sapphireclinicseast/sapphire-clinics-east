@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 import { useBrand } from '@/contexts/BrandContext'
 
 // ─── Role helpers ────────────────────────────────────────────────────────────
-const FRONT_DESK_ROLES = ['SBEA_FRONT_DESK', 'SBGH_FRONT_DESK']
+const FRONT_DESK_ROLES = ['AHEA_FRONT_DESK', 'AHGH_FRONT_DESK']
 
 // ─── Nav item definitions ────────────────────────────────────────────────────
 
@@ -238,7 +238,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
       {/* Bottom */}
       <div className="px-4 py-3 text-xs" style={{ borderTop: '1px solid rgba(237,104,35,0.15)', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-body)' }}>
         <span style={{ color: brand.color, fontWeight: 600 }}>{brand.shortName}</span>
-        {' · '}Marketing Hub
+        {' · '}Operations Hub
         <br />
         Internal Use Only
       </div>

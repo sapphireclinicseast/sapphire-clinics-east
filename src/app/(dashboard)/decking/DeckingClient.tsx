@@ -14,6 +14,10 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
   SBEA: { startTime: '10:00', endTime: '20:00' },
   SBGH: { startTime: '09:00', endTime: '19:00' },
 }
+const BRANCH_LABEL: Record<string, string> = {
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string }
@@ -672,7 +676,7 @@ function SettingsTab({ initialData, onSave }: {
       {['SBEA', 'SBGH'].map(branch => (
         <div key={branch} style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', overflow: 'hidden' }}>
           <div style={{ padding: '0.875rem 1rem', background: '#FFF3E8', borderBottom: '1px solid #FDE4CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: '#ED6823' }}>{branch} — Default Clinic Hours</h3>
+            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: '#ED6823' }}>{BRANCH_LABEL[branch] ?? branch} — Default Clinic Hours</h3>
             <button
               onClick={() => handleSave(branch)}
               disabled={saving === branch}
@@ -863,7 +867,8 @@ export default function DeckingClient({ role }: { role: string }) {
       {activeMainTab === 'decking' && (
         <div>
           {/* Patient appointment requests from client portal */}
-          <PatientRequestsPanel branch={activeBranch as 'SBEA' | 'SBGH'} />
+          {/* Admin sees all branches merged; branch admins see only their own */}
+          <PatientRequestsPanel branch={branches.length > 1 ? 'ALL' : activeBranch as 'SBEA' | 'SBGH'} />
           {/* Controls row */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
             {/* Branch toggle */}
@@ -872,7 +877,7 @@ export default function DeckingClient({ role }: { role: string }) {
                 {branches.map(b => (
                   <button key={b} onClick={() => { setActiveBranch(b); setNameFilter('') }}
                     style={{ padding: '0.4rem 1rem', fontSize: '0.82rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: activeBranch === b ? 'var(--teal)' : '#fff', color: activeBranch === b ? '#fff' : 'var(--mid-gray)' }}>
-                    {b}
+                    {BRANCH_LABEL[b] ?? b}
                   </button>
                 ))}
               </div>

@@ -116,7 +116,7 @@ export default async function DashboardPage() {
   // continue to see their assigned branch as before.
   const role = session?.user?.role
   const branch =
-    role === 'SBGH_FRONT_DESK' || role === 'SBGH_ADMIN' ? 'SBGH' :
+    role === 'AHGH_FRONT_DESK' || role === 'SBGH_ADMIN' ? 'SBGH' :
     'SBEA'
   const userName = session?.user?.name ?? undefined
   const birthdayPatients = await getBirthdayPatients(branch)
@@ -171,7 +171,7 @@ export default async function DashboardPage() {
           Good {getGreeting()}, {session?.user?.name?.split(' ')[0]}
         </h1>
         <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-          {formatDate(new Date())} · Sapphire Clinics East Marketing Hub
+          {formatDate(new Date())} · Sapphire Clinics East Operations Hub
         </p>
       </div>
 
