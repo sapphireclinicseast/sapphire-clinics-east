@@ -14,6 +14,86 @@ const DEPT_COLORS: Record<Dept, string> = {
   SPED: '#8B5CF6',
 }
 
+// ── Chi-square test helpers (no external deps) ───────────────────────────────
+// erfc approximation — Abramowitz & Stegun 7.1.26, max error 1.5×10⁻⁷
+function erfc(x: number): number {
+  if (x < 0) return 2 - erfc(-x)
+  const t = 1 / (1 + 0.3275911 * x)
+  const poly =
+    t * (0.254829592 +
+    t * (-0.284496736 +
+    t * (1.421413741 +
+    t * (-1.453152027 +
+    t * 1.061405429))))
+  return poly * Math.exp(-x * x)
+}
+
+// p-value for chi-square with 1 degree of freedom
+// P(χ²(1) > x) = erfc(√(x/2))
+function chi2pValue(chiSq: number): number {
+  if (chiSq <= 0) return 1
+  return erfc(Math.sqrt(chiSq / 2))
+}
+
+interface ChiResult {
+  chiSq:    number   // χ² statistic (with Yates' correction when small cells)
+  phi:      number   // φ coefficient (effect size, −1 to +1)
+  pValue:   number   // two-tailed p-value
+  pLabel:   string   // e.g. "p < 0.001"
+  pSig:     boolean  // significant at α = 0.05 / 6 (Bonferroni for 6 pairs)
+  smallCell: boolean // true when any expected cell < 5 (chi-sq less reliable)
+}
+
+// 2×2 chi-square test of independence + φ coefficient
+// Cells: a = has both, b = has d1 only, c = has d2 only, d = neither
+function chiSquareTest(a: number, b: number, c: number, d: number): ChiResult {
+  const N = a + b + c + d
+  const rowA = a + b  // count(d1)
+  const rowB = c + d  // count(not d1)
+  const colA = a + c  // count(d2)
+  const colB = b + d  // count(not d2)
+
+  // Expected cell frequencies
+  const eA = (rowA * colA) / N
+  const eB = (rowA * colB) / N
+  const eC = (rowB * colA) / N
+  const eD = (rowB * colB) / N
+  const smallCell = Math.min(eA, eB, eC, eD) < 5
+
+  // Yates' continuity correction when any expected cell < 5
+  const ad = a * d
+  const bc = b * c
+  const denom = rowA * rowB * colA * colB
+
+  let chiSq: number
+  if (denom === 0) {
+    chiSq = 0
+  } else if (smallCell) {
+    // Yates: |ad − bc| − N/2
+    const corrected = Math.max(0, Math.abs(ad - bc) - N / 2)
+    chiSq = (N * corrected * corrected) / denom
+  } else {
+    chiSq = (N * (ad - bc) * (ad - bc)) / denom
+  }
+
+  // φ = (ad − bc) / √(rowA·rowB·colA·colB)
+  const phi = denom > 0 ? (ad - bc) / Math.sqrt(denom) : 0
+
+  const pValue = chi2pValue(chiSq)
+
+  // Bonferroni-corrected α for 6 independent pairs = 0.05/6 ≈ 0.0083
+  const ALPHA = 0.05 / 6
+  const pSig = pValue < ALPHA
+
+  let pLabel: string
+  if      (pValue < 0.001) pLabel = 'p < 0.001'
+  else if (pValue < 0.01)  pLabel = `p = ${pValue.toFixed(3)}`
+  else if (pValue < 0.05)  pLabel = `p = ${pValue.toFixed(3)}`
+  else                     pLabel = `p = ${pValue.toFixed(2)} (n.s.)`
+
+  return { chiSq, phi, pValue, pLabel, pSig, smallCell }
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -48,7 +128,6 @@ export async function GET(req: NextRequest) {
       })
     : schedules
 
-  // Keep only OT / PT / SLP / SPED
   const relevant = branchFiltered.filter((s) =>
     FOCUS_DEPTS.includes(s.staff.department as Dept)
   )
@@ -60,7 +139,6 @@ export async function GET(req: NextRequest) {
   for (const s of relevant) {
     if (!s.patientId) continue
     const dept = s.staff.department as Dept
-
     if (!patientDepts.has(s.patientId)) patientDepts.set(s.patientId, new Set())
     patientDepts.get(s.patientId)!.add(dept)
 
@@ -70,13 +148,12 @@ export async function GET(req: NextRequest) {
     monthDept[mKey][dept]++
   }
 
-  const totalPatients = patientDepts.size
+  const N = patientDepts.size
 
-  // ── Single-dept patient counts ───────────────────────────────────────────────
+  // ── Single-dept counts ───────────────────────────────────────────────────────
   const deptCounts: Record<string, number> = { OT: 0, PT: 0, SLP: 0, SPED: 0 }
-  for (const depts of patientDepts.values()) {
+  for (const depts of patientDepts.values())
     for (const d of depts) deptCounts[d]++
-  }
 
   // ── Co-occurrence helpers ────────────────────────────────────────────────────
   function countAtLeast(required: Dept[]): number {
@@ -86,26 +163,21 @@ export async function GET(req: NextRequest) {
     return n
   }
 
-  // Pairwise counts
   const pair: Record<string, number> = {}
   for (const d1 of FOCUS_DEPTS)
     for (const d2 of FOCUS_DEPTS)
       if (d1 !== d2) pair[`${d1}_${d2}`] = countAtLeast([d1, d2])
 
-  // Lift(A→B) = count(A∩B)·N / (count(A)·count(B))
-  function lift(d1: Dept, d2: Dept): number {
+  function liftVal(d1: Dept, d2: Dept): number {
     const co = pair[`${d1}_${d2}`]
-    const cA = deptCounts[d1]
-    const cB = deptCounts[d2]
-    return cA && cB ? (co * totalPatients) / (cA * cB) : 0
+    const cA = deptCounts[d1], cB = deptCounts[d2]
+    return cA && cB ? (co * N) / (cA * cB) : 0
   }
-
-  // Confidence(A→B) = count(A∩B) / count(A)
-  function confidence(d1: Dept, d2: Dept): number {
+  function confVal(d1: Dept, d2: Dept): number {
     return deptCounts[d1] ? pair[`${d1}_${d2}`] / deptCounts[d1] : 0
   }
 
-  // ── Combination stats (the user's requested combos) ──────────────────────────
+  // ── Combination stats ────────────────────────────────────────────────────────
   const COMBOS: { label: string; depts: Dept[] }[] = [
     { label: 'OT + PT + SLP + SPED', depts: ['OT', 'PT', 'SLP', 'SPED'] },
     { label: 'OT + PT + SLP',        depts: ['OT', 'PT', 'SLP'] },
@@ -122,30 +194,36 @@ export async function GET(req: NextRequest) {
 
   const comboStats = COMBOS.map(({ label, depts }) => {
     const count = countAtLeast(depts)
-    return {
-      label,
-      depts,
-      count,
-      supportPct: totalPatients > 0 ? (count / totalPatients) * 100 : 0,
-    }
+    return { label, depts, count, supportPct: N > 0 ? (count / N) * 100 : 0 }
   })
 
-  // ── Affinity matrix (4×4, skipping diagonal) ─────────────────────────────────
+  // ── Affinity matrix with chi-square + phi ────────────────────────────────────
   const affinityMatrix = FOCUS_DEPTS.map((d1) => ({
-    dept:      d1,
-    color:     DEPT_COLORS[d1],
-    count:     deptCounts[d1],
-    affinities: FOCUS_DEPTS.filter((d2) => d2 !== d1).map((d2) => ({
-      target:        d2,
-      color:         DEPT_COLORS[d2],
-      confidencePct: Math.round(confidence(d1, d2) * 100),
-      lift:          Number(lift(d1, d2).toFixed(2)),
-      coCount:       pair[`${d1}_${d2}`],
-    })),
+    dept:  d1,
+    color: DEPT_COLORS[d1],
+    count: deptCounts[d1],
+    affinities: FOCUS_DEPTS.filter((d2) => d2 !== d1).map((d2) => {
+      const co  = pair[`${d1}_${d2}`]
+      const cA  = deptCounts[d1]
+      const cB  = deptCounts[d2]
+      // 2×2 table: a=co, b=cA-co, c=cB-co, d=N-cA-cB+co
+      const chi = chiSquareTest(co, cA - co, cB - co, N - cA - cB + co)
+      return {
+        target:        d2,
+        color:         DEPT_COLORS[d2],
+        confidencePct: Math.round(confVal(d1, d2) * 100),
+        lift:          Number(liftVal(d1, d2).toFixed(2)),
+        coCount:       co,
+        phi:           Number(chi.phi.toFixed(3)),
+        pValue:        Number(chi.pValue.toFixed(4)),
+        pLabel:        chi.pLabel,
+        pSig:          chi.pSig,
+        smallCell:     chi.smallCell,
+      }
+    }),
   }))
 
   // ── Avg sessions per patient per month ───────────────────────────────────────
-  // avg_per_patient_per_month = avg(monthly_sessions_in_dept) / patients_in_dept
   const months = Object.values(monthDept)
   const avgSessionsPerMonth: Record<string, number> = {}
   for (const dept of FOCUS_DEPTS) {
@@ -160,7 +238,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    totalPatients,
+    totalPatients: N,
     deptCounts,
     comboStats,
     affinityMatrix,

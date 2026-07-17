@@ -30,6 +30,11 @@ interface AffinityEntry {
   confidencePct: number
   lift: number
   coCount: number
+  phi: number
+  pValue: number
+  pLabel: string
+  pSig: boolean
+  smallCell: boolean
 }
 
 interface InterdeptStats {
@@ -457,9 +462,10 @@ export default function PatientDashboardPage() {
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
               Based on {interdeptStats.totalPatients.toLocaleString()} patients with confirmed sessions ·
-              Association strength measured by <strong>Lift</strong> (market-basket analysis) —
-              Lift &gt; 1 = positively associated, Lift = 1 = independent, Lift &lt; 1 = negatively associated ·
-              Confidence = P(B | A) = conditional probability
+              <strong>Confidence</strong> = if patient has Row, % chance they also have Column ·
+              <strong>Lift</strong> = how many times more likely than pure chance (Lift 1 = independent) ·
+              <strong>φ</strong> = effect size −1 to +1 (like a correlation coefficient) ·
+              <strong>χ² p-value</strong> with Bonferroni correction for 6 pairs (α = 0.0083)
             </p>
           </div>
 
@@ -501,16 +507,16 @@ export default function PatientDashboardPage() {
                 Pairwise Affinity Matrix
               </p>
               <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
-                Row = base service · Column = co-occurring service · Cell shows Confidence % (P(col | row)) and Lift
+                Row = base service · Each cell = chance that row patient also uses that column service · ✓ = statistically significant after Bonferroni correction
               </p>
               {/* Legend */}
-              <div className="flex flex-wrap gap-2 mb-3">
+              <div className="flex flex-wrap gap-2 mb-4">
                 {[
-                  { label: '↑↑ Strong (Lift ≥ 2.0)', bg: '#dcfce7', fg: '#15803d' },
-                  { label: '↑ Moderate (1.5–2.0)',   bg: '#d1fae5', fg: '#059669' },
-                  { label: '↗ Slight (1.2–1.5)',     bg: '#e0f2fe', fg: '#0284c7' },
-                  { label: '→ Neutral (0.8–1.2)',    bg: '#f3f4f6', fg: '#6b7280' },
-                  { label: '↓ Weak (< 0.8)',         bg: '#fef3c7', fg: '#d97706' },
+                  { label: '↑↑ Strong — over 2× more likely than chance',    bg: '#dcfce7', fg: '#15803d' },
+                  { label: '↑ Moderate — 1.5–2× more likely than chance',    bg: '#d1fae5', fg: '#059669' },
+                  { label: '↗ Slight — 1.2–1.5× more likely than chance',    bg: '#e0f2fe', fg: '#0284c7' },
+                  { label: '→ Neutral — about as expected by chance',         bg: '#f3f4f6', fg: '#6b7280' },
+                  { label: '↓ Weak — less likely together than by chance',    bg: '#fef3c7', fg: '#d97706' },
                 ].map((leg) => (
                   <span key={leg.label} className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                     style={{ background: leg.bg, color: leg.fg }}>
@@ -519,62 +525,115 @@ export default function PatientDashboardPage() {
                 ))}
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
+                <table className="text-xs border-collapse" style={{ width: '100%', tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: 80 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 220 }} />
+                  </colgroup>
                   <thead>
-                    <tr>
-                      <th className="py-2 pr-3 text-left font-semibold" style={{ color: 'var(--mid-gray)', width: 90 }}>
-                        If patient has →
+                    <tr style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                      <th className="py-2 pr-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                        If has…
                       </th>
                       {(['OT', 'PT', 'SLP', 'SPED'] as const).map((d) => {
                         const colors: Record<string, string> = { OT: '#1A7B8A', PT: '#2AAABB', SLP: '#F59E0B', SPED: '#8B5CF6' }
                         return (
                           <th key={d} className="py-2 px-2 text-center font-bold"
-                            style={{ color: colors[d] }}>{d}</th>
+                            style={{ color: colors[d] }}>…also uses {d}?</th>
                         )
                       })}
+                      <th className="py-2 pl-3 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                        Plain Reading
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {interdeptStats.affinityMatrix.map((row) => (
-                      <tr key={row.dept} style={{ borderTop: '1px solid var(--light-gray)' }}>
-                        <td className="py-2 pr-3 font-bold" style={{ color: row.color }}>
-                          {row.dept}
-                          <span className="ml-1 font-normal text-[10px]" style={{ color: 'var(--mid-gray)' }}>
-                            (n={row.count})
-                          </span>
-                        </td>
-                        {(['OT', 'PT', 'SLP', 'SPED'] as const).map((target) => {
-                          if (target === row.dept) {
+                    {interdeptStats.affinityMatrix.map((row) => {
+                      // Build plain reading for this row
+                      const sigAffs = row.affinities.filter((a) => a.pSig).sort((a, b) => b.lift - a.lift)
+                      const topAff  = sigAffs[0] ?? [...row.affinities].sort((a, b) => b.confidencePct - a.confidencePct)[0]
+                      let plain = ''
+                      if (!topAff) {
+                        plain = 'Not enough data to draw conclusions.'
+                      } else if (sigAffs.length === 0) {
+                        plain = `No statistically significant overlap found. ${row.dept} patients use other departments at roughly random rates — coincidence cannot be ruled out.`
+                      } else if (topAff.lift >= 2.0) {
+                        plain = `Strong pairing: ${topAff.confidencePct}% of ${row.dept} patients also use ${topAff.target} — ${topAff.lift.toFixed(1)}× more than pure chance would predict. This is a reliable, clinically meaningful co-occurrence. (${topAff.pLabel})`
+                      } else if (topAff.lift >= 1.5) {
+                        plain = `Notable tendency: ${row.dept} patients are ${topAff.lift.toFixed(1)}× more likely to also use ${topAff.target} than chance alone. Worth considering as a cross-referral opportunity. (${topAff.pLabel})`
+                      } else if (topAff.lift >= 1.2) {
+                        plain = `Mild tendency toward ${topAff.target} (${topAff.confidencePct}%, Lift ${topAff.lift.toFixed(2)}). The overlap is above chance but modest — not a strong predictor on its own. (${topAff.pLabel})`
+                      } else {
+                        plain = `${row.dept} patients use other departments at near-random rates. No meaningful cross-service trend detected.`
+                      }
+
+                      return (
+                        <tr key={row.dept} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                          {/* Row label */}
+                          <td className="py-3 pr-2 font-bold align-top" style={{ color: row.color }}>
+                            {row.dept}
+                            <div className="font-normal text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                              n={row.count.toLocaleString()}
+                            </div>
+                          </td>
+
+                          {/* Matrix cells */}
+                          {(['OT', 'PT', 'SLP', 'SPED'] as const).map((target) => {
+                            if (target === row.dept) {
+                              return (
+                                <td key={target} className="py-3 px-2 text-center align-top"
+                                  style={{ background: '#f9fafb', color: '#d1d5db' }}>—</td>
+                              )
+                            }
+                            const aff = row.affinities.find((a) => a.target === target)
+                            if (!aff) return <td key={target} className="py-3 px-2 text-center align-top">—</td>
                             return (
-                              <td key={target} className="py-2 px-2 text-center"
-                                style={{ background: '#f9fafb', color: '#d1d5db' }}>—</td>
+                              <td key={target} className="py-2 px-2 text-center align-top"
+                                style={{ background: liftBg(aff.lift) }}>
+                                {/* Confidence — the headline number */}
+                                <div className="font-bold" style={{ color: 'var(--charcoal)', fontSize: 13 }}>
+                                  {aff.confidencePct}%
+                                </div>
+                                {/* Lift */}
+                                <div className="text-[10px] font-semibold mt-0.5" style={{ color: liftFg(aff.lift) }}>
+                                  Lift {aff.lift.toFixed(2)} {liftLabel(aff.lift)}
+                                </div>
+                                {/* φ coefficient */}
+                                <div className="text-[10px] mt-0.5" style={{ color: liftFg(aff.lift) }}>
+                                  φ = {aff.phi >= 0 ? '+' : ''}{aff.phi.toFixed(2)}
+                                </div>
+                                {/* p-value */}
+                                <div className="text-[10px] mt-0.5 font-medium"
+                                  style={{ color: aff.pSig ? '#15803d' : '#9ca3af' }}>
+                                  {aff.pSig ? '✓ ' : ''}{aff.pLabel}
+                                </div>
+                                {/* co-count */}
+                                <div className="text-[9px] mt-0.5" style={{ color: '#9ca3af' }}>
+                                  {aff.coCount.toLocaleString()} shared patients
+                                  {aff.smallCell ? ' ⚠' : ''}
+                                </div>
+                              </td>
                             )
-                          }
-                          const aff = row.affinities.find((a) => a.target === target)
-                          if (!aff) return <td key={target} className="py-2 px-2 text-center">—</td>
-                          return (
-                            <td key={target} className="py-2 px-2 text-center rounded"
-                              style={{ background: liftBg(aff.lift) }}>
-                              <div className="font-bold" style={{ color: 'var(--charcoal)', fontSize: 12 }}>
-                                {aff.confidencePct}%
-                              </div>
-                              <div className="text-[10px] font-semibold" style={{ color: liftFg(aff.lift) }}>
-                                Lift {aff.lift.toFixed(2)}
-                              </div>
-                              <div className="text-[9px]" style={{ color: liftFg(aff.lift) }}>
-                                {liftLabel(aff.lift)}
-                              </div>
-                              <div className="text-[9px]" style={{ color: '#9ca3af' }}>
-                                n={aff.coCount}
-                              </div>
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    ))}
+                          })}
+
+                          {/* Plain Reading */}
+                          <td className="py-3 pl-3 align-top text-[11px] leading-relaxed"
+                            style={{ color: 'var(--charcoal)', borderLeft: '1px solid var(--light-gray)' }}>
+                            {plain}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
+              <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>
+                ⚠ = expected cell count &lt; 5; chi-square less reliable for those cells · φ (phi) is the effect size: |φ| &lt; 0.1 = negligible, 0.1–0.3 = small, 0.3–0.5 = medium, &gt; 0.5 = large
+              </p>
             </div>
 
             {/* ── Combination counts ── */}
