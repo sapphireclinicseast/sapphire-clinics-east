@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -175,8 +175,15 @@ export default function PatientDashboardPage() {
       .catch(() => setLoading(false))
   }, [])
 
+  // Keep a ref so the polling interval always uses the current branch selection
+  // without needing to be re-registered every time branches change.
+  const branchesRef = useRef(selectedBranches)
+  useEffect(() => { branchesRef.current = selectedBranches })
+
   useEffect(() => {
     fetchStats(selectedBranches)
+    const id = setInterval(() => fetchStats(branchesRef.current), 90_000)
+    return () => clearInterval(id)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clicking a specific branch pill selects ONLY that branch (exclusive/radio behavior).
