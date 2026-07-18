@@ -249,12 +249,10 @@ function LeftPanel() {
         <h1 className={s.leftTitle}>Rooted in values.<br />Growing in service.</h1>
         <p className={s.leftTagline}>A fellowship for the next generation of Allied Health Professionals.</p>
         <p className={s.leftDesc}>
-          The UGAT Fellowship Program is an educational fellowship you never have to pay back — not a loan — for Allied Health
-          Professionals in their final year of university. Much like strong roots
-          (<i>ugat</i>), we hope our fellows stay firmly grounded in their values even
-          as they grow — pursuing excellence (<i>galing</i>) in their craft, upholding
-          honor and integrity (<i>tindig</i>) in their practice, and ultimately giving
-          back through meaningful service (<i>paglilingkod</i>) to the community.
+          An educational fellowship — not a loan — for Allied Health Professionals in
+          their final year. Like strong roots (<i>ugat</i>), our fellows stay grounded
+          in their values as they grow: excellence (<i>galing</i>), integrity
+          (<i>tindig</i>), and service (<i>paglilingkod</i>).
         </p>
         <ProgramTimeline />
         <p className={s.leftPartner}>
