@@ -66,8 +66,8 @@ export default function UgatFellowClient() {
   const [banner, setBanner] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
   const [booted, setBooted] = useState(false)
 
-  const [options, setOptions] = useState<{ schoolsAral: string[]; schoolsTindig: string[]; schools: string[]; programs: string[]; fields: string[] }>({
-    schoolsAral: [], schoolsTindig: [], schools: [], programs: [], fields: [],
+  const [options, setOptions] = useState<{ schoolsAral: string[]; schoolsTindig: string[]; schools: string[]; programs: string[]; fields: string[]; branches: string[] }>({
+    schoolsAral: [], schoolsTindig: [], schools: [], programs: [], fields: [], branches: [],
   })
 
   // ── Boot: intro timing, verify banner, restore session ───────────
@@ -172,6 +172,7 @@ export default function UgatFellowClient() {
               )}
 
               <AnnouncementBoard />
+              <BrochureCard />
 
               {view === 'checkEmail' ? (
                 <CheckEmail onBack={() => { setView('auth'); setTab('signin') }} />
@@ -236,7 +237,8 @@ function LeftPanel() {
       <div className={s.leftPhoto} />
       <div className={s.leftFade} />
       <div className={s.leftTop}>
-        <LeafMark className={s.leftMark} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className={s.leftLogo} src="/ugat/ugat-wordmark.png" alt="UGAT" />
         <div className={s.leftBrand}>
           <b>UGAT Fellowship</b>
           <span>Fellowship Program</span>
@@ -360,6 +362,35 @@ function AnnouncementModal({ a, onClose }: { a: AnnFull; onClose: () => void }) 
   )
 }
 
+// ── Brochure download (public; shown only when an admin has uploaded one) ──
+function BrochureCard() {
+  const [info, setInfo] = useState<{ exists: boolean; filename: string | null } | null>(null)
+  useEffect(() => {
+    fetch(`${API}/brochure?meta=1`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setInfo({ exists: !!d.exists, filename: d.filename || null }))
+      .catch(() => setInfo({ exists: false, filename: null }))
+  }, [])
+  if (!info || !info.exists) return null
+  return (
+    <div className={s.brochureCard}>
+      <div className={s.brochureCardHead}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+        </svg>
+        Our brochure
+      </div>
+      <p className={s.brochureCardText}>Get the full details on the UGAT Fellowship Program — the tracks, the assistance, and how it works.</p>
+      <a className={s.brochureBtn} href={`${API}/brochure`} target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" />
+        </svg>
+        Download our brochure (PDF)
+      </a>
+    </div>
+  )
+}
+
 // ── Sign In ────────────────────────────────────────────────────────
 function SignIn({ onAuthed, booted }: { onAuthed: (t: string) => void | Promise<void>; booted: boolean }) {
   const [username, setUsername] = useState('')
@@ -452,7 +483,7 @@ function SignUp({
   openPrivacy,
   onRegistered,
 }: {
-  options: { schoolsAral: string[]; schoolsTindig: string[]; schools: string[]; programs: string[]; fields: string[] }
+  options: { schoolsAral: string[]; schoolsTindig: string[]; schools: string[]; programs: string[]; fields: string[]; branches: string[] }
   openPrivacy: () => void
   onRegistered: () => void
 }) {
@@ -471,6 +502,9 @@ function SignUp({
   const [otherOn, setOtherOn] = useState(false)
   const [otherText, setOtherText] = useState('')
   const togglePref = (v: string) => setPrefFields((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]))
+  // Clinic branch(es) the applicant is interested to work in afterwards (optional, multi-select).
+  const [prefBranches, setPrefBranches] = useState<string[]>([])
+  const toggleBranch = (v: string) => setPrefBranches((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]))
 
   const set = (k: keyof typeof emptyForm, v: string) => setF((p) => ({ ...p, [k]: v }))
 
@@ -490,6 +524,7 @@ function SignUp({
           ...f,
           track,
           preferredField: chosenFields.join(', '),
+          preferredBranches: prefBranches.join(', '),
           expectedGraduationYear: Number(f.expectedGraduationYear),
           presSameAsPerm: sameAddr,
           privacyConsent: consent,
@@ -621,6 +656,19 @@ function SignUp({
           <input className={s.input} style={{ marginTop: 8 }} placeholder="Please specify your other specialization(s)" value={otherText} onChange={(e) => setOtherText(e.target.value)} />
         )}
       </div>
+      {options.branches.length > 0 && (
+        <div className={s.field}>
+          <label className={s.label}>Which clinic branch would you like to work in after licensure? <span className={s.opt}>(choose one or more)</span></label>
+          <div className={s.checkGrid}>
+            {options.branches.map((o) => (
+              <label key={o} className={`${s.checkPill} ${prefBranches.includes(o) ? s.checkPillOn : ''}`}>
+                <input type="checkbox" checked={prefBranches.includes(o)} onChange={() => toggleBranch(o)} />
+                <span>{o}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <div className={s.field}>
         <label className={s.label}>Professional Email <span className={s.opt}>(school / work)</span></label>
         <input className={s.input} type="email" autoComplete="email" required value={f.professionalEmail} onChange={(e) => set('professionalEmail', e.target.value)} placeholder="you@school.edu.ph" />

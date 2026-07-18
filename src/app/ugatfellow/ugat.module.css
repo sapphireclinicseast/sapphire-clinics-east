@@ -133,6 +133,7 @@
   flex-shrink: 0;
 }
 .leftMark { width: 40px; height: 40px; }
+.leftLogo { height: 34px; width: auto; flex: none; }
 .leftBrand { font-family: var(--display); }
 .leftBrand b { display: block; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; }
 .leftBrand span { display: block; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream); opacity: 0.85; }
@@ -647,9 +648,9 @@
 }
 .aboutHeroBody { flex: 1; min-width: 0; position: relative; z-index: 1; }
 .aboutHeroMark {
-  flex: none; width: 180px; height: auto; align-self: center;
-  filter: brightness(0) invert(1); opacity: 0.9;
-  /* Nudge slightly so it reads as a decorative brand mark, not an icon. */
+  flex: none; width: 200px; height: auto; align-self: center;
+  opacity: 0.96;
+  /* Colored transparent wordmark — no white-silhouette filter. */
   margin-right: 6px;
 }
 @media (max-width: 760px) { .aboutHeroMark { display: none; } }
@@ -967,3 +968,26 @@
 .trackHeader { font-size: 13px; color: var(--deep-70); }
 .trackHeader b { color: var(--deep); }
 @media (max-width: 640px) { .trackGrid { grid-template-columns: 1fr; } }
+
+/* Brochure download card (public landing, under Announcements) */
+.brochureCard {
+  margin: 0 0 18px; padding: 14px 16px; border-radius: 14px;
+  background: rgba(74,128,115,0.08); border: 1px solid var(--line); border-left: 3px solid var(--green);
+}
+.brochureCardHead {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--display); font-weight: 700; font-size: 12.5px;
+  letter-spacing: 0.02em; color: var(--deep); margin: 0 0 6px;
+}
+.brochureCardText { font-size: 12.5px; line-height: 1.5; color: var(--ink); margin: 0 0 10px; }
+.brochureBtn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--green); color: #fff; text-decoration: none;
+  font-family: var(--display); font-weight: 700; font-size: 13px;
+  padding: 9px 16px; border-radius: 999px;
+}
+.brochureBtn:hover { filter: brightness(1.06); }
+
+/* Brochure row (portal Marketing admin) */
+.brochureRow { display: flex; align-items: center; gap: 12px; color: var(--deep); }
+.brochureName { font-weight: 600; font-size: 14px; color: var(--deep); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

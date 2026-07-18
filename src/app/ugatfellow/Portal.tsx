@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImper
 import {
   Info, User, FileText, LayoutDashboard, GraduationCap, Settings as SettingsIcon,
   ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff, Calendar, Mail, Megaphone,
-  ImagePlus, Bold, Italic, Underline, List, ListOrdered,
+  ImagePlus, Bold, Italic, Underline, List, ListOrdered, Download, FileText as FileIcon,
 } from 'lucide-react'
 import s from './ugat.module.css'
 import { loanAgreementBlocks, annexTables, annexIntro, annexNote } from '@/lib/ugat-loan-agreement'
@@ -48,7 +48,7 @@ export interface PortalSession {
   admin?: PortalAdmin
 }
 
-type SectionKey = 'about' | 'profile' | 'application' | 'dashboard' | 'schools' | 'announce' | 'settings' | 'access'
+type SectionKey = 'about' | 'profile' | 'application' | 'dashboard' | 'schools' | 'announce' | 'marketing' | 'settings' | 'access'
 
 const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; roles: Role[] }[] = [
   { key: 'about', label: 'About Us', icon: Info, roles: ['SCHOLAR', 'STAFF_ADMIN', 'MAIN_ADMIN', 'UNIVERSITY_ADMIN'] },
@@ -57,6 +57,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: React.ElementType; roles
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'schools', label: 'Schools Data', icon: GraduationCap, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'announce', label: 'Announcements', icon: Megaphone, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
+  { key: 'marketing', label: 'Marketing', icon: Download, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'settings', label: 'Settings', icon: SettingsIcon, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
   { key: 'access', label: 'User Access', icon: ShieldCheck, roles: ['STAFF_ADMIN', 'MAIN_ADMIN'] },
 ]
@@ -135,6 +136,7 @@ export default function Portal({
           {active === 'dashboard' && <Dashboard authHeaders={authHeaders} />}
           {active === 'schools' && <SchoolsData />}
           {active === 'announce' && <AnnouncementsAdmin authHeaders={authHeaders} />}
+          {active === 'marketing' && <MarketingSection authHeaders={authHeaders} />}
           {active === 'settings' && <SettingsSection authHeaders={authHeaders} />}
           {active === 'access' && <UserAccess role={role} authHeaders={authHeaders} />}
         </div>
@@ -217,7 +219,7 @@ function AboutUs() {
           </p>
         </div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className={s.aboutHeroMark} src="/ugat/ugat-mark.svg" alt="" aria-hidden="true" />
+        <img className={s.aboutHeroMark} src="/ugat/ugat-wordmark.png" alt="UGAT" aria-hidden="true" />
       </div>
       <div className={s.aboutGrid}>
         <div className={s.aboutCard}><h3>Fully-forgivable assistance — not a loan</h3><p><b>Aral Track</b> (final-year interns): fellowship assistance released as a monthly allowance of <b>₱5,000 or ₱10,000</b> for 5–10 months. <b>Tindig Track</b> (graduates): <b>₱30,000</b> of review support toward your licensure — review fees, or ₱5,000/month for six months. It is <b>educational assistance, never a loan and never charged interest</b>: render <b>1,500 patient-session hours</b> of service with us after licensure and it is written off in full — you pay nothing.</p></div>
@@ -1377,10 +1379,10 @@ function SchoolsData() {
 // ══ Settings — dropdown options editor (batched, explicit Save) ════
 // Edits are local until "Save changes" flushes creates / updates / deletes to
 // the shared UgatOption table (so changes persist for every user).
-type Kind = 'SCHOOL_ARAL' | 'SCHOOL_TINDIG' | 'PROGRAM' | 'FIELD'
+type Kind = 'SCHOOL_ARAL' | 'SCHOOL_TINDIG' | 'PROGRAM' | 'FIELD' | 'BRANCH'
 interface OptRow { id?: string; label: string; disabled: boolean }
-const KIND_TITLES: Record<Kind, string> = { SCHOOL_ARAL: 'Schools — Aral Track', SCHOOL_TINDIG: 'Schools — Tindig Track', PROGRAM: 'Programs', FIELD: 'Preferred Field of Practice' }
-const OPT_KINDS: Kind[] = ['SCHOOL_ARAL', 'SCHOOL_TINDIG', 'PROGRAM', 'FIELD']
+const KIND_TITLES: Record<Kind, string> = { SCHOOL_ARAL: 'Schools — Aral Track', SCHOOL_TINDIG: 'Schools — Tindig Track', PROGRAM: 'Programs', FIELD: 'Preferred Field of Practice', BRANCH: 'Preferred Clinic Branch' }
+const OPT_KINDS: Kind[] = ['SCHOOL_ARAL', 'SCHOOL_TINDIG', 'PROGRAM', 'FIELD', 'BRANCH']
 
 // ══ Announcements (admin) ══════════════════════════════════════════
 interface AdminAnnouncement { id: string; title: string; details: string; published: boolean; createdAt: string }
@@ -1535,6 +1537,68 @@ function AnnouncementRow({ a, onSave, onDelete }: { a: AdminAnnouncement; onSave
   )
 }
 
+// ══ Marketing — downloadable brochure ══════════════════════════════
+function MarketingSection({ authHeaders }: { authHeaders: Record<string, string> }) {
+  const [brochure, setBrochure] = useState<{ filename: string; size: number; updatedAt: string } | null | undefined>(undefined)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`${API}/marketing`, { headers: authHeaders })
+    if (!r.ok) { setBrochure(null); return }
+    const d = await r.json(); setBrochure(d.brochure)
+  }, [authHeaders])
+  useEffect(() => { load() }, [load])
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; e.target.value = ''
+    if (!f) return
+    if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { setMsg({ ok: false, t: 'Please choose a PDF file.' }); return }
+    if (f.size > 12 * 1024 * 1024) { setMsg({ ok: false, t: 'File is too large (max 12 MB).' }); return }
+    setBusy(true); setMsg(null)
+    try {
+      const dataBase64 = await new Promise<string>((res, rej) => { const rd = new FileReader(); rd.onload = () => res(String(rd.result).split(',')[1] || ''); rd.onerror = rej; rd.readAsDataURL(f) })
+      const rr = await fetch(`${API}/marketing`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ filename: f.name, mimeType: 'application/pdf', dataBase64 }) })
+      if (!rr.ok) { const d = await rr.json().catch(() => ({})); setMsg({ ok: false, t: d.error || 'Upload failed.' }); return }
+      setMsg({ ok: true, t: 'Brochure uploaded — it is now downloadable on the landing page.' })
+      await load()
+    } catch { setMsg({ ok: false, t: 'Upload failed.' }) } finally { setBusy(false) }
+  }
+
+  async function remove() {
+    if (!window.confirm('Remove the brochure from the landing page?')) return
+    await fetch(`${API}/marketing`, { method: 'DELETE', headers: authHeaders })
+    setMsg({ ok: true, t: 'Brochure removed.' }); await load()
+  }
+
+  return (
+    <div className={s.sec}>
+      <p className={s.muted} style={{ margin: 0 }}>Upload the <b>UGAT brochure</b> (PDF). Once uploaded, a <b>Download our brochure</b> section appears on the public landing page. Uploading again replaces it.</p>
+      {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
+      <div className={s.card2}>
+        <h3 className={s.card2H}>Brochure</h3>
+        {brochure === undefined ? <p className={s.muted}>Loading…</p>
+          : brochure ? (
+            <div className={s.brochureRow}>
+              <FileIcon size={22} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className={s.brochureName}>{brochure.filename}</div>
+                <div className={s.muted} style={{ fontSize: 12 }}>{(brochure.size / 1024 / 1024).toFixed(2)} MB · updated {new Date(brochure.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+              </div>
+              <a className={s.btnGhost3} href={`${API}/brochure`} target="_blank" rel="noreferrer">Download</a>
+              <button className={`${s.iconBtn} ${s.iconDanger}`} title="Remove" onClick={remove}><Trash2 size={15} /></button>
+            </div>
+          ) : <p className={s.muted}>No brochure uploaded yet.</p>}
+        <div style={{ marginTop: 12 }}>
+          <button className={s.btn2} disabled={busy} onClick={() => fileRef.current?.click()}><Upload size={15} /> {busy ? 'Uploading…' : brochure ? 'Replace brochure' : 'Upload brochure (PDF)'}</button>
+          <input ref={fileRef} type="file" accept="application/pdf" hidden onChange={onPick} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SettingsSection({ authHeaders }: { authHeaders: Record<string, string> }) {
   const [orig, setOrig] = useState<Record<Kind, OptRow[]> | null>(null)
   const [g, setG] = useState<Record<Kind, OptRow[]> | null>(null)
@@ -1545,7 +1609,7 @@ function SettingsSection({ authHeaders }: { authHeaders: Record<string, string> 
     const r = await fetch(`${API}/admin/options`, { headers: authHeaders })
     if (!r.ok) return
     const d = await r.json()
-    const norm = { SCHOOL_ARAL: [], SCHOOL_TINDIG: [], PROGRAM: [], FIELD: [] } as Record<Kind, OptRow[]>
+    const norm = { SCHOOL_ARAL: [], SCHOOL_TINDIG: [], PROGRAM: [], FIELD: [], BRANCH: [] } as Record<Kind, OptRow[]>
     for (const k of OPT_KINDS) norm[k] = (d[k] || []).map((o: { id: string; label: string; disabled: boolean }) => ({ id: o.id, label: o.label, disabled: o.disabled }))
     setOrig(norm); setG(JSON.parse(JSON.stringify(norm)))
   }, [authHeaders])
@@ -1588,7 +1652,7 @@ function SettingsSection({ authHeaders }: { authHeaders: Record<string, string> 
   return (
     <div className={s.sec}>
       <div className={s.uaHead}>
-        <p className={s.muted} style={{ margin: 0 }}>Set the schools we accept <b>for each track</b> (Aral / Tindig), plus programs and preferred fields of practice — these populate the sign-up dropdowns. <b>Changes apply to everyone once you Save.</b> Disabled options are hidden from new applicants but preserved in existing records.</p>
+        <p className={s.muted} style={{ margin: 0 }}>Set the schools we accept <b>for each track</b> (Aral / Tindig), programs, preferred fields of practice, and the <b>clinic branches</b> a fellow can pick to work in afterwards — these populate the sign-up form. <b>Changes apply to everyone once you Save.</b> Disabled options are hidden from new applicants but preserved in existing records.</p>
         <div className={s.uaHeadBtns}>
           {dirty && <button className={s.btnGhost3} disabled={saving} onClick={() => orig && setG(JSON.parse(JSON.stringify(orig)))}>Discard</button>}
           <button className={s.btn2} disabled={saving || !dirty} onClick={save}>{saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}</button>

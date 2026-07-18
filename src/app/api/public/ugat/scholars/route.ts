@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     select: {
       id: true, username: true, track: true, professionalEmail: true, personalEmail: true,
       firstName: true, middleName: true, lastName: true, studentNumber: true, birthdate: true,
-      school: true, program: true, preferredField: true, expectedGraduationYear: true,
+      school: true, program: true, preferredField: true, preferredBranches: true, expectedGraduationYear: true,
       awardMonthly: true, awardMonths: true,
       permCity: true, status: true, emailVerifiedAt: true, disabledAt: true, createdAt: true,
       application: true,

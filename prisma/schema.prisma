@@ -1455,6 +1455,7 @@ enum UgatOptionKind {
   SCHOOL_TINDIG // schools we accept for the Tindig Track
   PROGRAM
   FIELD // preferred field of practice
+  BRANCH // clinic branch the applicant is interested to work in afterwards
 }
 
 /// Editable dropdown option for the signup form. Admin CRUDs these in the
@@ -1508,6 +1509,9 @@ model UgatScholar {
   school         String
   program        String
   preferredField String
+  /// Clinic branch(es) the applicant is interested to work in after licensure,
+  /// comma-joined (chosen from the admin-managed BRANCH options). "" = none.
+  preferredBranches String @default("")
 
   // Permanent address
   permAddress1 String
@@ -1767,6 +1771,19 @@ model UgatAnnouncement {
   updatedAt DateTime @updatedAt
 
   @@index([published, createdAt])
+}
+
+/// Downloadable marketing assets managed by admins (Marketing section) —
+/// currently the public UGAT brochure. One row per `kind` (e.g. "BROCHURE").
+model UgatMarketingAsset {
+  id         String   @id @default(cuid())
+  kind       String   @unique
+  filename   String
+  mimeType   String
+  data       Bytes
+  uploadedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 /// Tracks per-user notification dismiss timestamp so the bell badge persists

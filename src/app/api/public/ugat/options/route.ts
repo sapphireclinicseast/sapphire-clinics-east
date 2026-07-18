@@ -26,8 +26,9 @@ export async function GET() {
       schools: legacy, // legacy field, kept for backward compatibility
       programs: pick('PROGRAM'),
       fields: pick('FIELD'),
+      branches: pick('BRANCH'),
     })
   } catch {
-    return NextResponse.json({ schoolsAral: [], schoolsTindig: [], schools: [], programs: [], fields: [] })
+    return NextResponse.json({ schoolsAral: [], schoolsTindig: [], schools: [], programs: [], fields: [], branches: [] })
   }
 }
