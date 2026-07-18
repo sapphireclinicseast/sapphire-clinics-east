@@ -133,7 +133,7 @@
   flex-shrink: 0;
 }
 .leftMark { width: 40px; height: 40px; }
-.leftLogo { height: 58px; width: auto; flex: none; }
+.leftLogo { height: 96px; width: auto; flex: none; margin: -8px 0; }
 .leftBrand { font-family: var(--display); }
 .leftBrand b { display: block; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; }
 .leftBrand span { display: block; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream); opacity: 0.85; }
