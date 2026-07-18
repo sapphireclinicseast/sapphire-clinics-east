@@ -33,6 +33,7 @@ import {
 // row under Submitted documents.
 import HeadshotEditor from './HeadshotEditor'
 import EnrollmentEditor from './EnrollmentEditor'
+import PlanSwitchCalculator from './PlanSwitchCalculator'
 
 interface Props {
   student: StoredUser
@@ -426,6 +427,15 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               can mint a new one (e.g. the AURA30 early-bird
               continuity code after the public code expired). */}
           <PersonalVouchersCard student={student} viewerRole={viewerRole} />
+          {/* Plan-switch balance calculator — staff only. Shows the
+              balance to collect when moving a student from monthly to
+              bi-annual (or any other plan change), net of an active
+              personal voucher discount and cash already collected. */}
+          {viewerRole === 'ADMIN' && (
+            <div className="sm:col-span-2">
+              <PlanSwitchCalculator student={student} />
+            </div>
+          )}
           <StaffUploadedDocCard
             docKey="form_137_sf10"
             title="Form 137 / SF10"
