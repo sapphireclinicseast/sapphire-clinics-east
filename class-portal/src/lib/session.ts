@@ -1447,6 +1447,45 @@ export async function changeFrontDeskPaymentMethod(
  *     on a different device — because their local cache was empty even
  *     though the server clearly has a CONVERTED record.
  */
+/** Row from the automated payment-reminder log — one per email sent by
+ *  the daily cron. Powers the "Notifications" card in the Payments tab. */
+export interface PaymentReminderLogRow {
+  id: string
+  studentId: string
+  studentName: string
+  studentEmail: string
+  branch: 'EAST' | 'GREENHILLS' | null
+  plan: 'MONTHLY' | 'BIANNUAL' | 'ANNUAL'
+  period: string
+  dueOn: string      // ISO
+  reason: 'WINDOW_OPEN' | 'DUE_SOON' | 'PAST_DUE'
+  severity: 'INFO' | 'WARNING'
+  sentAt: string     // ISO
+}
+
+/** Admin/branch-admin/frontdesk: list the reminders the cron has sent
+ *  in the last N days. Branch-scoped server-side for frontdesk /
+ *  branch-admin — they only see reminders for their own branch. */
+export async function listPaymentReminderLog(
+  args: { sinceDays?: number; limit?: number } = {},
+): Promise<PaymentReminderLogRow[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  const params = new URLSearchParams()
+  if (args.sinceDays) params.set('sinceDays', String(args.sinceDays))
+  if (args.limit) params.set('limit', String(args.limit))
+  const qs = params.toString() ? `?${params.toString()}` : ''
+  try {
+    const { reminders } = await backendJson<{ reminders: PaymentReminderLogRow[] }>(
+      `/api/public/class-portal/payment-reminders/log${qs}`,
+    )
+    return reminders
+  } catch (e) {
+    console.warn('[listPaymentReminderLog] failed:', e)
+    return []
+  }
+}
+
 export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
   if (typeof window === 'undefined') return getPayments()
   if (!getToken()) return getPayments()

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   getPayments, getUsers, hydrateUsers, hydrateFrontDeskPayments, getFile,
-  saveNotification, deleteUser,
+  deleteUser,
   levelLabel,
   currentPeriodPaymentStatusFor, inferPaymentPlanFor,
   didPayForBiannualHalf, didPayForMonth, schoolYearLabelFor, biannualHalfFor,
@@ -11,6 +11,7 @@ import {
   type PaymentRecord, type PaymentMethod, type PaymentPlan,
   type StoredUser, type EnrollmentLevel,
 } from '@/lib/session'
+import PaymentReminderNotifications from './PaymentReminderNotifications'
 
 
 function fmt(cents: number) {
@@ -137,9 +138,7 @@ export default function PaymentsGrouped({
     typeof window === 'undefined' ? [] : getPayments()
   )
   const [search, setSearch] = useState('')
-  const [busyReminder, setBusyReminder] = useState<string | null>(null)
   const [busyDelete, setBusyDelete] = useState<string | null>(null)
-  const [reminderSent, setReminderSent] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     hydrateUsers().then(us => setStudents(activeStudentsOnly(us))).catch(() => setStudents(activeStudentsOnly(getUsers())))
@@ -254,28 +253,11 @@ export default function PaymentsGrouped({
     })
   }, [filteredRows])
 
-  async function sendReminder(r: Row) {
-    if (!r.student.level) return
-    setBusyReminder(r.student.id)
-    try {
-      const studentName = [r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email
-      saveNotification({
-        id: 'ntf_' + Math.random().toString(36).slice(2, 10),
-        title: 'Payment reminder',
-        body: `Hello ${studentName.split(' ')[0] || 'parent'} — this is a friendly reminder to complete your tuition payment via the /pay page in your portal. If you've already paid, please ignore this notice.`,
-        authorRole: senderRole === 'TEACHER' ? 'TEACHER' : 'ADMIN',
-        authorName: senderName,
-        levels: [r.student.level as EnrollmentLevel],
-        includeTeachers: false,
-        createdAt: new Date().toISOString(),
-      })
-      setReminderSent(prev => ({ ...prev, [r.student.id]: true }))
-      window.setTimeout(() => setReminderSent(prev => ({ ...prev, [r.student.id]: false })), 3500)
-    } finally {
-      setBusyReminder(null)
-    }
-  }
-  void senderEmail
+  // Manual "🔔 Remind" flow was retired — the automated cron
+  // (/api/public/class-portal/cron/payment-reminders) now emails the
+  // right students at the right time (5 days before, day-before,
+  // day-after) and every send is logged for the Notifications panel.
+  void senderEmail; void senderName; void senderRole; void canSendReminders
 
   return (
     <div className="space-y-4">
@@ -284,7 +266,7 @@ export default function PaymentsGrouped({
           <div>
             <h2 className="text-[18px] leading-tight">Pending payments — by deadline</h2>
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              Closest deadline first. {canSendReminders ? 'Click 🔔 Remind to push a notification to the student’s portal.' : ''}
+              Closest deadline first. Reminders go out automatically 5 days before, the day before, and the day after each deadline — see the Notifications panel below for a full log of who&rsquo;s been emailed.
             </p>
           </div>
           <input
@@ -310,7 +292,6 @@ export default function PaymentsGrouped({
                   <th className="py-2 px-3 text-right">Amount</th>
                   <th className="py-2 px-3">Method</th>
                   <th className="py-2 px-3">Proof</th>
-                  {canSendReminders && <th className="py-2 px-3"></th>}
                   {canDelete && <th className="py-2 px-3 text-right">Action</th>}
                 </tr>
               </thead>
@@ -346,18 +327,6 @@ export default function PaymentsGrouped({
                       <td className="py-2.5 px-3 text-right tabular-nums">{r.payment ? fmt(r.payment.tuitionAmount + r.payment.miscAmount) : '—'}</td>
                       <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.payment?.method)}</td>
                       <td className="py-2.5 px-3"><ProofBtn payment={r.payment} /></td>
-                      {canSendReminders && (
-                        <td className="py-2.5 px-3 text-right">
-                          <button
-                            type="button"
-                            className="btn-cta text-xs"
-                            onClick={() => sendReminder(r)}
-                            disabled={busyReminder === r.student.id || !r.student.level}
-                          >
-                            {reminderSent[r.student.id] ? '✓ Sent' : busyReminder === r.student.id ? 'Sending…' : '🔔 Remind'}
-                          </button>
-                        </td>
-                      )}
                       {canDelete && (
                         <td className="py-2.5 px-3 text-right">
                           <button
@@ -405,11 +374,6 @@ export default function PaymentsGrouped({
                   <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">{r.student.email} · {r.student.level ? levelLabel(r.student.level as EnrollmentLevel) : '—'}</div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {canSendReminders && (
-                    <button type="button" className="btn-cta text-xs" onClick={() => sendReminder(r)} disabled={!r.student.level}>
-                      {reminderSent[r.student.id] ? '✓ Sent' : '🔔 Remind'}
-                    </button>
-                  )}
                   {canDelete && (
                     <button
                       type="button"
@@ -427,6 +391,12 @@ export default function PaymentsGrouped({
           </ul>
         </div>
       )}
+
+      {/* Automated payment-reminder log — reads from the daily cron's
+          audit log. Renders below the deadline / paying-students cards
+          so the front desk can quickly see who's already been contacted
+          about a given period. */}
+      <PaymentReminderNotifications />
     </div>
   )
 }
