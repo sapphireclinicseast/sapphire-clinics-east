@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImper
 import {
   Info, User, FileText, LayoutDashboard, GraduationCap, Settings as SettingsIcon,
   ShieldCheck, LogOut, Menu, X, CheckCircle2, Ban, Trash2, Plus, ChevronDown, Upload, Eye, EyeOff, Calendar, Mail, Megaphone,
+  ImagePlus, Bold, Italic, Underline, List, ListOrdered,
 } from 'lucide-react'
 import s from './ugat.module.css'
 import { loanAgreementBlocks, annexTables, annexIntro, annexNote } from '@/lib/ugat-loan-agreement'
@@ -1384,11 +1385,75 @@ const OPT_KINDS: Kind[] = ['SCHOOL_ARAL', 'SCHOOL_TINDIG', 'PROGRAM', 'FIELD']
 // ══ Announcements (admin) ══════════════════════════════════════════
 interface AdminAnnouncement { id: string; title: string; details: string; published: boolean; createdAt: string }
 
+// Downscale a picked image to a data URL small enough to embed inline in an
+// announcement body (keeps the stored HTML — and the popup fetch — reasonable).
+function fileToDownscaledDataUrl(file: File, maxDim = 1200, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+      const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale))
+      const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { URL.revokeObjectURL(url); reject(new Error('no canvas context')); return }
+      ctx.drawImage(img, 0, 0, w, h)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL(/png/i.test(file.type) ? 'image/png' : 'image/jpeg', quality))
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('could not read image')) }
+    img.src = url
+  })
+}
+
+// Strip tags to test whether a rich-text body has any real content.
+const richIsEmpty = (html: string) => html.replace(/<img\b[^>]*>/gi, 'x').replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim() === ''
+
+// Minimal contentEditable rich-text editor: bold / italic / underline,
+// bulleted + numbered lists, and inline photos. Uncontrolled (initialized once)
+// so the caret never jumps; emits sanitizable HTML via onChange.
+function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (html: string) => void; placeholder?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { if (ref.current && ref.current.innerHTML !== (value || '')) ref.current.innerHTML = value || '' }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const sync = () => onChange(ref.current?.innerHTML || '')
+  const exec = (cmd: string) => { ref.current?.focus(); document.execCommand(cmd, false); sync() }
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; e.target.value = ''
+    if (!f) return
+    setBusy(true)
+    try {
+      const dataUrl = await fileToDownscaledDataUrl(f)
+      ref.current?.focus()
+      document.execCommand('insertHTML', false, `<img src="${dataUrl}" alt="" /><br/>`)
+      sync()
+    } catch { /* ignore */ } finally { setBusy(false) }
+  }
+  return (
+    <div className={s.rte}>
+      <div className={s.rteBar}>
+        <button type="button" className={s.rteBtn} title="Bold" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('bold')}><Bold size={14} /></button>
+        <button type="button" className={s.rteBtn} title="Italic" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('italic')}><Italic size={14} /></button>
+        <button type="button" className={s.rteBtn} title="Underline" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('underline')}><Underline size={14} /></button>
+        <span className={s.rteSep} />
+        <button type="button" className={s.rteBtn} title="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('insertUnorderedList')}><List size={15} /></button>
+        <button type="button" className={s.rteBtn} title="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => exec('insertOrderedList')}><ListOrdered size={15} /></button>
+        <span className={s.rteSep} />
+        <button type="button" className={s.rteBtn} title="Insert photo" disabled={busy} onMouseDown={(e) => e.preventDefault()} onClick={() => fileRef.current?.click()}>{busy ? '…' : <ImagePlus size={15} />}</button>
+      </div>
+      <div ref={ref} className={s.rteArea} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" data-placeholder={placeholder || 'Details…'} onInput={sync} onBlur={sync} />
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickImage} />
+    </div>
+  )
+}
+
 function AnnouncementsAdmin({ authHeaders }: { authHeaders: Record<string, string> }) {
   const [rows, setRows] = useState<AdminAnnouncement[] | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   const [nTitle, setNTitle] = useState('')
   const [nDetails, setNDetails] = useState('')
+  const [formKey, setFormKey] = useState(0)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -1400,13 +1465,13 @@ function AnnouncementsAdmin({ authHeaders }: { authHeaders: Record<string, strin
   useEffect(() => { load() }, [load])
 
   async function create() {
-    const title = nTitle.trim(), details = nDetails.trim()
-    if (!title || !details) { setMsg({ ok: false, t: 'Please enter a title and details.' }); return }
+    const title = nTitle.trim()
+    if (!title || richIsEmpty(nDetails)) { setMsg({ ok: false, t: 'Please enter a title and details.' }); return }
     setBusy(true); setMsg(null)
-    const r = await fetch(`${API}/announcements/admin`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ title, details }) })
+    const r = await fetch(`${API}/announcements/admin`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ title, details: nDetails }) })
     setBusy(false)
     if (!r.ok) { const d = await r.json().catch(() => ({})); setMsg({ ok: false, t: d.error || 'Could not post the announcement.' }); return }
-    setNTitle(''); setNDetails(''); setMsg({ ok: true, t: 'Posted — it is now live on the landing page.' })
+    setNTitle(''); setNDetails(''); setFormKey((k) => k + 1); setMsg({ ok: true, t: 'Posted — it is now live on the landing page.' })
     await load()
   }
 
@@ -1423,13 +1488,13 @@ function AnnouncementsAdmin({ authHeaders }: { authHeaders: Record<string, strin
 
   return (
     <div className={s.sec}>
-      <p className={s.muted} style={{ margin: 0 }}>Post announcements that appear on the public <b>UGAT Fellowship</b> landing page. Each has a <b>title</b> and <b>details</b>. Unpublish to hide one without deleting it — newest shows first.</p>
+      <p className={s.muted} style={{ margin: 0 }}>Post announcements that appear on the public <b>UGAT Fellowship</b> landing page. The board shows only the <b>title</b> — visitors click it to read the full details in a pop-up. You can format the details with <b>bold</b>, <i>italic</i>, underline, bullet or numbered lists, and photos. Unpublish to hide one without deleting it — newest shows first.</p>
       {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
 
       <div className={s.card2}>
         <h3 className={s.card2H}>New announcement</h3>
         <div className={s.field}><input className={s.input} placeholder="Title (e.g. Cycle 2 applications now open!)" value={nTitle} maxLength={160} onChange={(e) => setNTitle(e.target.value)} /></div>
-        <div className={s.field}><textarea className={s.textarea} rows={4} placeholder="Details…" value={nDetails} maxLength={4000} onChange={(e) => setNDetails(e.target.value)} /></div>
+        <div className={s.field}><RichTextEditor key={formKey} value="" onChange={setNDetails} placeholder="Write the announcement… use the toolbar for bold, lists, and photos." /></div>
         <button className={s.btn2} disabled={busy} onClick={create}><Plus size={15} /> {busy ? 'Posting…' : 'Post announcement'}</button>
       </div>
 
@@ -1444,12 +1509,12 @@ function AnnouncementRow({ a, onSave, onDelete }: { a: AdminAnnouncement; onSave
   const [title, setTitle] = useState(a.title)
   const [details, setDetails] = useState(a.details)
   const [saving, setSaving] = useState(false)
-  const dirty = title.trim() !== a.title || details.trim() !== a.details
+  const dirty = title.trim() !== a.title || details !== a.details
 
   async function save() {
-    if (!dirty) return
+    if (!dirty || richIsEmpty(details)) return
     setSaving(true)
-    await onSave(a.id, { title: title.trim(), details: details.trim() })
+    await onSave(a.id, { title: title.trim(), details })
     setSaving(false)
   }
 
@@ -1464,7 +1529,7 @@ function AnnouncementRow({ a, onSave, onDelete }: { a: AdminAnnouncement; onSave
         </div>
       </div>
       <div className={s.field}><input className={s.input} value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} /></div>
-      <div className={s.field}><textarea className={s.textarea} rows={3} value={details} maxLength={4000} onChange={(e) => setDetails(e.target.value)} /></div>
+      <div className={s.field}><RichTextEditor value={a.details} onChange={setDetails} /></div>
       {dirty && <button className={s.btn2} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</button>}
     </div>
   )

@@ -287,17 +287,31 @@ function ProgramTimeline() {
 }
 
 // ── Announcement board (public; managed by admins in the portal) ────
-interface Announcement { id: string; title: string; details: string; createdAt: string }
+// The board lists announcement HEADERS only; clicking one opens a popup that
+// fetches and renders its full (rich HTML) body.
+interface AnnHeader { id: string; title: string; createdAt: string }
+interface AnnFull extends AnnHeader { details: string }
+const fmtAnnDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
 
 function AnnouncementBoard() {
-  const [items, setItems] = useState<Announcement[] | null>(null)
+  const [items, setItems] = useState<AnnHeader[] | null>(null)
+  const [open, setOpen] = useState<AnnFull | null>(null)
+  const [loadingId, setLoadingId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`${API}/announcements`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d: { announcements?: Announcement[] }) => setItems(d.announcements || []))
+      .then((d: { announcements?: AnnHeader[] }) => setItems(d.announcements || []))
       .catch(() => setItems([]))
   }, [])
+
+  async function openItem(a: AnnHeader) {
+    setLoadingId(a.id)
+    try {
+      const r = await fetch(`${API}/announcements/${a.id}`)
+      if (r.ok) { const d = await r.json(); if (d.announcement) setOpen(d.announcement) }
+    } catch { /* ignore */ } finally { setLoadingId(null) }
+  }
 
   if (!items || items.length === 0) return null
 
@@ -311,14 +325,37 @@ function AnnouncementBoard() {
         Announcements
       </div>
       {items.map((a) => (
-        <div key={a.id} className={s.annItem}>
-          <div className={s.annItemTitle}>{a.title}</div>
-          <div className={s.annItemDetails}>{a.details}</div>
-          <div className={s.annItemDate}>
-            {new Date(a.createdAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
-          </div>
-        </div>
+        <button key={a.id} type="button" className={s.annItem} onClick={() => openItem(a)}>
+          <span className={s.annItemMain}>
+            <span className={s.annItemTitle}>{a.title}</span>
+            <span className={s.annItemDate}>{fmtAnnDate(a.createdAt)}</span>
+          </span>
+          <span className={s.annItemChevron} aria-hidden="true">{loadingId === a.id ? '…' : '›'}</span>
+        </button>
       ))}
+      {open && <AnnouncementModal a={open} onClose={() => setOpen(null)} />}
+    </div>
+  )
+}
+
+function AnnouncementModal({ a, onClose }: { a: AnnFull; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
+  }, [onClose])
+  const isHtml = /<[a-z][\s\S]*>/i.test(a.details)
+  return (
+    <div className={s.annModalOverlay} onClick={onClose} role="dialog" aria-modal="true" aria-label={a.title}>
+      <div className={s.annModal} onClick={(e) => e.stopPropagation()}>
+        <button type="button" className={s.annModalClose} onClick={onClose} aria-label="Close">×</button>
+        <h3 className={s.annModalTitle}>{a.title}</h3>
+        <div className={s.annModalDate}>{fmtAnnDate(a.createdAt)}</div>
+        {isHtml
+          ? <div className={s.annRich} dangerouslySetInnerHTML={{ __html: a.details }} />
+          : <div className={s.annRich} style={{ whiteSpace: 'pre-wrap' }}>{a.details}</div>}
+      </div>
     </div>
   )
 }

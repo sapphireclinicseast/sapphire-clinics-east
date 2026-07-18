@@ -137,10 +137,10 @@
 .leftBrand b { display: block; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; }
 .leftBrand span { display: block; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream); opacity: 0.85; }
 
-.leftBody { position: relative; z-index: 2; max-width: 520px; text-shadow: 0 1px 8px rgba(18,37,42,0.55); }
+.leftBody { position: relative; z-index: 2; max-width: 470px; text-shadow: 0 1px 8px rgba(18,37,42,0.55); }
 .leftKicker {
   font-family: var(--display);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.24em;
   text-transform: uppercase;
@@ -149,19 +149,19 @@
 }
 .leftTitle {
   font-family: var(--display);
-  font-size: clamp(26px, 3vw, 38px);
+  font-size: clamp(21px, 2.3vw, 29px);
   font-weight: 800;
   line-height: 1.12;
-  margin: 0 0 8px;
+  margin: 0 0 7px;
 }
 .leftTagline {
   font-family: var(--display);
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--cream);
-  margin: 0 0 16px;
+  margin: 0 0 13px;
 }
-.leftDesc { font-size: 14.5px; line-height: 1.62; color: rgba(255,255,255,0.9); margin: 0 0 18px; }
+.leftDesc { font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,0.9); margin: 0 0 15px; }
 .leftPills { display: flex; flex-wrap: wrap; gap: 8px; }
 .pill {
   font-family: var(--display);
@@ -430,29 +430,29 @@
 @media (max-width: 800px) { .adminGrid { grid-template-columns: 1fr; } }
 
 /* ── Application timeline + partner CTA (left panel) ───────────── */
-.timeline { margin: 4px 0 16px; }
+.timeline { margin: 4px 0 14px; }
 .timelineTitle {
-  margin: 0 0 8px; font-family: var(--display); font-weight: 700;
-  font-size: 12.5px; letter-spacing: 0.02em; color: rgba(255,255,255,0.92);
+  margin: 0 0 7px; font-family: var(--display); font-weight: 700;
+  font-size: 11.5px; letter-spacing: 0.02em; color: rgba(255,255,255,0.92);
 }
 .timelineCycle {
-  margin: 12px 0 2px; font-family: var(--display); font-weight: 700;
-  font-size: 12.5px; letter-spacing: 0.02em; color: var(--gold);
+  margin: 10px 0 2px; font-family: var(--display); font-weight: 700;
+  font-size: 11.5px; letter-spacing: 0.02em; color: var(--gold);
 }
 .timelineCycle span { font-weight: 600; color: rgba(237,243,217,0.72); }
 .timelineRow {
   display: flex; align-items: baseline; gap: 12px;
-  padding: 5px 0; font-size: 13.5px; color: rgba(255,255,255,0.92);
+  padding: 4px 0; font-size: 12px; color: rgba(255,255,255,0.92);
   border-top: 1px solid rgba(237,243,217,0.18);
 }
 .timelineRow:first-child,
 .timelineCycle + .timelineRow { border-top: 0; }
 .timelineWhen {
-  font-family: var(--display); font-weight: 700; font-size: 12px;
+  font-family: var(--display); font-weight: 700; font-size: 11px;
   letter-spacing: 0.04em; color: var(--gold);
-  min-width: 78px; flex: none;
+  min-width: 72px; flex: none;
 }
-.timelineNote { margin: 8px 0 0; font-size: 12px; font-style: italic; color: rgba(237,243,217,0.75); }
+.timelineNote { margin: 7px 0 0; font-size: 11px; font-style: italic; color: rgba(237,243,217,0.75); }
 .leftPartner {
   margin: 16px 0 0; padding-top: 14px;
   border-top: 1px solid rgba(237,243,217,0.22);
@@ -495,11 +495,70 @@
   letter-spacing: 0.02em; color: var(--deep); margin: 0 0 8px;
 }
 .annBoardIcon { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.8; }
-.annItem { padding: 8px 0; border-top: 1px solid var(--line); }
-.annItem:first-of-type { border-top: 0; padding-top: 0; }
-.annItemTitle { font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--deep); }
-.annItemDetails { font-size: 13px; line-height: 1.55; color: var(--ink); margin-top: 3px; white-space: pre-wrap; }
-.annItemDate { font-size: 11.5px; color: var(--deep-70); margin-top: 5px; }
+/* Each announcement is a header-only button; the body opens in a pop-up. */
+.annItem {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 0; border: 0; border-top: 1px solid var(--line);
+  background: none; text-align: left; color: inherit; font: inherit; cursor: pointer;
+}
+.annItem:first-of-type { border-top: 0; padding-top: 2px; }
+.annItem:hover .annItemTitle { color: var(--green); }
+.annItem:hover .annItemChevron { color: var(--green); transform: translateX(2px); }
+.annItemMain { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.annItemTitle { font-family: var(--display); font-weight: 700; font-size: 13.5px; color: var(--deep); line-height: 1.3; }
+.annItemDate { font-size: 11px; color: var(--deep-70); }
+.annItemChevron { flex: none; font-size: 18px; line-height: 1; color: var(--deep-70); transition: transform 0.12s ease, color 0.12s ease; }
+
+/* Announcement pop-up (public landing) */
+.annModalOverlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(18,37,42,0.55); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.annModal {
+  position: relative; background: #fff; border-radius: 16px;
+  max-width: 560px; width: 100%; max-height: 85vh; overflow-y: auto;
+  padding: 26px 26px 28px; box-shadow: 0 20px 60px rgba(18,37,42,0.35);
+}
+.annModalClose {
+  position: absolute; top: 10px; right: 14px;
+  border: 0; background: none; font-size: 26px; line-height: 1;
+  color: var(--deep-70); cursor: pointer;
+}
+.annModalClose:hover { color: var(--deep); }
+.annModalTitle { font-family: var(--display); font-weight: 800; font-size: 19px; color: var(--deep); margin: 0 28px 4px 0; line-height: 1.25; }
+.annModalDate { font-size: 12px; color: var(--deep-70); margin-bottom: 14px; }
+.annRich { font-size: 14.5px; line-height: 1.6; color: var(--ink); }
+.annRich > :first-child { margin-top: 0; }
+.annRich p { margin: 0 0 10px; }
+.annRich ul, .annRich ol { margin: 0 0 10px; padding-left: 22px; }
+.annRich li { margin: 3px 0; }
+.annRich img { max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0; display: block; }
+.annRich a { color: var(--green); font-weight: 600; }
+.annRich b, .annRich strong { font-weight: 700; }
+
+/* Rich-text editor (portal Announcements admin) */
+.rte { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; }
+.rteBar {
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  padding: 6px 8px; border-bottom: 1px solid var(--line); background: rgba(36,73,82,0.04);
+}
+.rteBtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 30px; height: 28px; padding: 0 7px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: none; color: var(--deep); cursor: pointer; font-size: 13px; font-weight: 700;
+}
+.rteBtn:hover { background: rgba(36,73,82,0.08); }
+.rteBtn:disabled { opacity: 0.5; cursor: default; }
+.rteSep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+.rteArea {
+  min-height: 120px; max-height: 340px; overflow-y: auto;
+  padding: 11px 13px; font-size: 14px; line-height: 1.55; color: var(--ink); outline: none;
+}
+.rteArea:empty:before { content: attr(data-placeholder); color: var(--deep-70); opacity: 0.7; }
+.rteArea img { max-width: 100%; height: auto; border-radius: 8px; margin: 6px 0; }
+.rteArea ul, .rteArea ol { padding-left: 22px; margin: 6px 0; }
 
 /* Announcements admin (portal Announcements section) */
 .annAdminHead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
