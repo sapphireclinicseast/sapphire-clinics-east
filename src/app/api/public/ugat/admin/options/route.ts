@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
 
 // SCHOOL is legacy (kept valid for old data); the sign-up dropdowns now use the
 // per-track lists SCHOOL_ARAL / SCHOOL_TINDIG.
-const KINDS = ['SCHOOL', 'SCHOOL_ARAL', 'SCHOOL_TINDIG', 'PROGRAM', 'FIELD'] as const
+const KINDS = ['SCHOOL', 'SCHOOL_ARAL', 'SCHOOL_TINDIG', 'PROGRAM', 'FIELD', 'BRANCH'] as const
 type Kind = (typeof KINDS)[number]
 
 async function requireAdmin(req: Request): Promise<NextResponse | null> {
@@ -42,6 +42,7 @@ export async function GET(req: Request) {
     SCHOOL_TINDIG: group('SCHOOL_TINDIG'),
     PROGRAM: group('PROGRAM'),
     FIELD: group('FIELD'),
+    BRANCH: group('BRANCH'),
   })
 }
 

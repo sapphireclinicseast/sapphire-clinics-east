@@ -30,6 +30,7 @@ interface Body {
   school?: string
   program?: string
   preferredField?: string
+  preferredBranches?: string
   permAddress1?: string
   permAddress2?: string
   permCity?: string
@@ -145,6 +146,7 @@ export async function POST(req: Request) {
         school: str(body.school),
         program: str(body.program),
         preferredField: str(body.preferredField),
+        preferredBranches: str(body.preferredBranches),
         permAddress1: str(body.permAddress1),
         permAddress2: str(body.permAddress2) || null,
         permCity: str(body.permCity),
