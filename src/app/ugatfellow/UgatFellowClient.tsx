@@ -95,8 +95,8 @@ export default function UgatFellowClient() {
     if (verified || verifyError || reduce) {
       setShowIntro(false); setIntroGone(true)
     } else {
-      const t1 = setTimeout(() => setShowIntro(false), 3400)
-      const t2 = setTimeout(() => setIntroGone(true), 4300)
+      const t1 = setTimeout(() => setShowIntro(false), 2600)
+      const t2 = setTimeout(() => setIntroGone(true), 3500)
       return () => { clearTimeout(t1); clearTimeout(t2) }
     }
   }, [])
@@ -142,13 +142,8 @@ export default function UgatFellowClient() {
     <div className={s.root}>
       {!introGone && (
         <div className={`${s.intro} ${showIntro ? '' : s.introHidden}`} aria-hidden={!showIntro}>
-          <div>
-            <LeafMark animated className={s.introMark} />
-            <div className={s.introWord}>
-              <b>UGAT</b>
-              <span>Fellowship Program</span>
-            </div>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className={s.introLogo} src="/ugat/ugat-wordmark.png" alt="UGAT Fellowship" />
         </div>
       )}
 
