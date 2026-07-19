@@ -7,7 +7,7 @@
 // Same cause as the /documents SSG cache bug fixed in PR #137.
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, hydrateUsers, addUser, updateUser, deleteUser,
@@ -36,8 +36,9 @@ import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirma
 import AssignmentsPanel from '@/components/AssignmentsPanel'
 import ClassesPanel from '@/components/ClassesPanel'
 import TemplatesPanel from '@/components/TemplatesPanel'
+import { HANDBOOK_HTML } from '@/lib/handbook-html'
 
-type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'TEMPLATES' | 'NOTIFICATIONS' | 'PAYMENTS' | 'FEES' | 'ASSIGNMENTS'
+type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'TEMPLATES' | 'NOTIFICATIONS' | 'PAYMENTS' | 'FEES' | 'ASSIGNMENTS' | 'HANDBOOK'
 
 export default function AdminPage() {
   const router = useRouter()
@@ -82,6 +83,8 @@ export default function AdminPage() {
           ['PAYMENTS', 'Payments'],
           ['FEES', 'Fees'],
           ['ASSIGNMENTS', 'Assignments'],
+          // Handbook is a main-admin-only reference; branch admins never see it.
+          ...(isMainAdmin ? [['HANDBOOK', 'Handbook'] as [AdminTab, string]] : []),
         ] as Array<[AdminTab, string]>).map(([k, label]) => (
           <button
             key={k}
@@ -113,6 +116,39 @@ export default function AdminPage() {
         </div>
       )}
       {tab === 'ASSIGNMENTS'   && <AssignmentsPanel viewerBranch={isMainAdmin ? undefined : adminBranch} />}
+      {tab === 'HANDBOOK' && isMainAdmin && <HandbookPanel />}
+    </div>
+  )
+}
+
+/* ─────────────────────── HANDBOOK PANEL ───────────────────────
+   Main-admin-only reference: the HR Portal Handbook, rendered inside an
+   isolated iframe (srcDoc) so its document-level styles never leak into the
+   class portal. The tab is only offered to role === 'ADMIN'. */
+function HandbookPanel() {
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  return (
+    <div className="card-static space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Main admin reference</div>
+          <h2 className="text-[19px] leading-tight text-[color:var(--deep-teal)]">HR Portal Handbook</h2>
+          <p className="text-sm text-[color:var(--mid-gray)]">How the HR portal works, module by module, for managers, HR officers, and staff.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => frameRef.current?.contentWindow?.print()}
+          className="btn-secondary whitespace-nowrap"
+          style={{ padding: '0 16px', height: '38px' }}
+        >Print / Save PDF</button>
+      </div>
+      <iframe
+        ref={frameRef}
+        title="HR Portal Handbook"
+        srcDoc={HANDBOOK_HTML}
+        className="w-full rounded-xl border"
+        style={{ height: '78vh', borderColor: 'var(--paper-3)', background: '#F3F6F4' }}
+      />
     </div>
   )
 }
