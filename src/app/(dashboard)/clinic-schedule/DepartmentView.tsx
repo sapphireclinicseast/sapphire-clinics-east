@@ -286,7 +286,7 @@ function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submi
 }
 
 // ─── Staff card with schedules ─────────────────────────────────────────────────
-function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: string }) {
+function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMember; selectedDate: string; schedulingBranch: string }) {
   const [open, setOpen] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loadingSchedules, setLoadingSchedules] = useState(false)
@@ -495,7 +495,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     setSendingClinicianSms(true)
     const res = await fetch('/api/clinic-schedule/send-clinician-sms', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingClinicianSms(false)
     if (res.ok) {
@@ -546,7 +546,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     setSendingClinicianEmail(true)
     const res = await fetch('/api/clinic-schedule/send-clinician-email', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingClinicianEmail(false)
     if (res.ok) {
@@ -1030,7 +1030,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                       </div>
                       <div className="space-y-2">
                         {g.list.map(({ staff: s }) => (
-                          <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} />
+                          <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                         ))}
                       </div>
                     </div>
@@ -1059,7 +1059,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                           Remove
                         </button>
                       </div>
-                      <StaffCard staff={s} selectedDate={tomorrowDate} />
+                      <StaffCard staff={s} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                     </div>
                   ))}
                 </div>
@@ -1133,7 +1133,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       ) : (
         <div className="space-y-2">
           {filtered.map(s => (
-            <StaffCard key={s.id} staff={s} selectedDate={selectedDate} />
+            <StaffCard key={s.id} staff={s} selectedDate={selectedDate} schedulingBranch={activeBranch} />
           ))}
         </div>
       )}

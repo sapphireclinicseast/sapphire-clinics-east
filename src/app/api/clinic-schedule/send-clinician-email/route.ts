@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, date } = await req.json()
+  const { staffId, date, branch: callerBranch } = await req.json()
   if (!staffId || !date) {
     return NextResponse.json({ error: 'staffId and date are required' }, { status: 400 })
   }
@@ -239,7 +239,7 @@ export async function POST(req: NextRequest) {
   }))
 
   const firstName = staffMember.firstName.charAt(0) + staffMember.firstName.slice(1).toLowerCase()
-  const branch    = staffMember.branch
+  const branch    = callerBranch ?? staffMember.branch
   const cfg       = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
   const emailOpts = { firstName, date, branch, schedules: scheduleRows }
 

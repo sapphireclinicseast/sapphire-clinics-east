@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, date } = await req.json()
+  const { staffId, date, branch: callerBranch } = await req.json()
   if (!staffId || !date)
     return NextResponse.json({ error: 'staffId and date are required' }, { status: 400 })
 
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   if (schedules.length === 0)
     return NextResponse.json({ error: 'No confirmed schedules found for this day' }, { status: 400 })
 
-  const branch    = BRANCH_SHORT[staff.branch] ?? staff.branch
+  const branch    = BRANCH_SHORT[callerBranch ?? staff.branch] ?? (callerBranch ?? staff.branch)
   const shortDate = new Date(date + 'T12:00:00').toLocaleDateString('en-PH', {
     weekday: 'short', month: 'short', day: 'numeric',
   })
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
   }
   if (current) chunks.push(current)
 
-  const cfg = BRANCH_CONFIG[staff.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = BRANCH_CONFIG[callerBranch ?? staff.branch] ?? BRANCH_CONFIG['SBEA']
   if (!cfg.httpSmsKey)
     return NextResponse.json(
       { error: 'SMS gateway not configured for this branch' },
