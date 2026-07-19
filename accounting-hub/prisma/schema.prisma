@@ -921,7 +921,8 @@ model Consultant {
   bioId           Int?                // Bio/Employee ID from HR Hub (for payreg)
   name            String    // "LASTNAME, FIRSTNAME"
   department      String    // OT, PT, SLP, SPED, MD, PSYCHOLOGY, etc.
-  branch          String    // SBEA, SBGH
+  branch          String    // SBEA, SBGH — primary branch
+  extraBranches   String[]  @default([]) // additional scheduling branches (never overwritten by sync)
   email           String?
   phone           String?
   tinNumber       String?

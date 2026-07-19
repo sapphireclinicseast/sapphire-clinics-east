@@ -84,9 +84,16 @@ export async function GET(req: Request) {
       if (allowed && !allowed.includes(branch)) {
         return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
       }
-      consultantWhere.branch = branch
+      // Include consultants whose primary branch OR extraBranches covers the scheduling branch
+      consultantWhere.OR = [
+        { branch },
+        { extraBranches: { hasSome: [branch] } },
+      ]
     } else if (allowed) {
-      consultantWhere.branch = { in: allowed }
+      consultantWhere.OR = [
+        { branch: { in: allowed } },
+        { extraBranches: { hasSome: allowed } },
+      ]
     }
     if (department) consultantWhere.department = department
     if (consultantId) consultantWhere.id = consultantId
@@ -344,8 +351,12 @@ export async function GET(req: Request) {
         // Department filter — empty array means all departments
         const depts = Array.isArray(rule.departments) ? rule.departments as string[] : []
         if (depts.length > 0 && !depts.includes(c.department)) continue
-        // Branch filter — null means all branches
-        if (rule.branch && rule.branch !== c.branch) continue
+        // Branch filter — null means all branches.
+        // Use the scheduling branch (request param) for interbranch consultants so
+        // that a SBGH-specific rule applies when the consultant is scheduled at SBGH,
+        // even if their primary branch is SBEA.
+        const schedulingBranch = branch || c.branch
+        if (rule.branch && rule.branch !== schedulingBranch) continue
 
         for (const [dayKey, count] of sessionsByDay) {
           if (count >= rule.threshold) {
