@@ -50,7 +50,7 @@ function visibleBranches(role: string): string[] {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; phone: string | null }
+interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches: string[]; phone: string | null }
 interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
 interface Schedule {
   id: string; staffId: string; patientId: string | null; patient: Patient | null
@@ -558,6 +558,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     }
   }
 
+  const isMultiBranch = (staff.extraBranches ?? []).length > 0
   const isSBEA = staff.branch === 'SBEA'
 
   return (
@@ -580,10 +581,12 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{staff.department}</p>
         </div>
         <span className="px-2 py-0.5 rounded-full text-xs font-semibold mr-2"
-          style={isSBEA
-            ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
-            : { background: '#FFF3CD', color: '#92400E' }}>
-          {BRANCH_LABEL[staff.branch] ?? staff.branch}
+          style={isMultiBranch
+            ? { background: '#EDE9FE', color: '#5B21B6' }
+            : isSBEA
+              ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
+              : { background: '#FFF3CD', color: '#92400E' }}>
+          {isMultiBranch ? 'Both Branches' : (BRANCH_LABEL[staff.branch] ?? staff.branch)}
         </span>
         {open ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
       </button>
@@ -892,7 +895,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   // Reset dept filter + make-up picks when branch changes
   useEffect(() => { setActiveDept('Tomorrow'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
 
-  const branchStaff = staff.filter(s => s.branch === activeBranch)
+  const branchStaff = staff.filter(s => s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch))
   const presentDepts = ALL_DEPARTMENTS.filter(d => branchStaff.some(s => s.department === d))
   const filtered = activeDept === 'All' ? branchStaff : branchStaff.filter(s => s.department === activeDept)
 
@@ -904,7 +907,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const tomorrowClinicians = configs
     .filter(c => Array.isArray(c.workDays) && c.workDays.includes(tomorrowCode))
     .map(c => ({ cfg: c, staff: staffById.get(c.staffId) }))
-    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && x.staff.branch === activeBranch)
+    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && (x.staff.branch === activeBranch || (x.staff.extraBranches ?? []).includes(activeBranch)))
     .sort((a, b) =>
       (a.staff.lastName || '').localeCompare(b.staff.lastName || '') ||
       (a.staff.firstName || '').localeCompare(b.staff.firstName || ''))
@@ -920,7 +923,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
   const makeupClinicians = makeupIds
     .map(id => staffById.get(id))
-    .filter((s): s is StaffMember => !!s && s.branch === activeBranch && !autoIds.has(s.id))
+    .filter((s): s is StaffMember => !!s && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && !autoIds.has(s.id))
   // Type-ahead matches for the make-up search (exclude already-listed staff).
   const makeupMatches = makeupQuery.trim().length > 0
     ? branchStaff
