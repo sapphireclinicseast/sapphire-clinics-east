@@ -23,11 +23,8 @@ const SERVICES_SBGH = [
 // SBEA's old generic "MD" is replaced by its concrete sub-specialties;
 // Developmental Pediatrician is still tile-visible but offline-only for
 // now (the clinic handles those requests by phone).
-const ONLINE_ENABLED_SBEA = new Set<string>([
-  'PT', 'PSYCHOLOGY',
-  'PSYCHIATRY', 'REHABILITATION_MEDICINE',
-])
-const ONLINE_ENABLED_SBGH = new Set<string>(['PT', 'PSYCHOLOGY', 'PSYCHIATRY'])
+const ONLINE_ENABLED_SBEA = new Set<string>(['PT', 'REHABILITATION_MEDICINE'])
+const ONLINE_ENABLED_SBGH = new Set<string>(['PT'])
 
 // Departments that are sub-specialties of the Medical Doctor service.
 // Used to surface the "Medical Doctor" tag on the upper-right of each tile.
