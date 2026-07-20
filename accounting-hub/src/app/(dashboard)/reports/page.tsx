@@ -118,6 +118,7 @@ const BRANCHES = [
   { value: 'SBEA', label: 'East Branch' },
   { value: 'SBGH', label: 'Greenhills Branch' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 
 const TABS: { key: ReportTab; label: string; icon: typeof FileText }[] = [

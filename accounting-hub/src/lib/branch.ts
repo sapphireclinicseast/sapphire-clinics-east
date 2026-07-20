@@ -5,6 +5,7 @@ const BRANCH_LABELS: Record<string, string> = {
   SANDBOX_EAST: 'Aura Health East',
   SANDBOX_GREENHILLS: 'Aura Health Greenhills',
   VERDANA_STORE: 'Verdana',
+  AURA_INSTITUTE: 'Aura Health Institute',
   ALL: 'All Branches',
 }
 

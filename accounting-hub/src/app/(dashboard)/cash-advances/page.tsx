@@ -11,6 +11,7 @@ const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East', short: 'SBEA' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills', short: 'SBGH' },
   { value: 'VERDANA_STORE', label: 'Verdana', short: 'VERDANA' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute', short: 'AHI' },
 ]
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)

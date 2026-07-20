@@ -8,6 +8,7 @@ export const BRANCH_ENUM_TO_SHORT: Record<string, string> = {
   SANDBOX_EAST: 'SBEA',
   SANDBOX_GREENHILLS: 'SBGH',
   VERDANA_STORE: 'VERDANA',
+  AURA_INSTITUTE: 'AHI',
 }
 
 export interface BranchScope {

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { branchAllowed } from '@/lib/branch-scope'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
-const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'CEO']
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE', 'CEO']
 const STR_FIELDS = ['requestor', 'department', 'pcfStatus', 'description', 'vatable',
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'accountTitle', 'referenceNumber', 'validity'] as const
 

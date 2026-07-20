@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { branchAllowed } from '@/lib/branch-scope'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
-const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'CEO']
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE', 'CEO']
 const BRANCH_CODE: Record<string, string> = {
   SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO',
 }
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
 
     // CEO petty cash: a branch RFP includes only each entry's allocation to that
     // branch, so a shared entry can be reimbursed once per branch.
-    const ALLOC_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+    const ALLOC_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
     const ceoBranch: string | null = branch === 'CEO' && typeof filterBranch === 'string' && ALLOC_BRANCHES.includes(filterBranch) ? filterBranch : null
     if (branch === 'CEO' && !ceoBranch) {
       return NextResponse.json({ error: 'Select a branch for this CEO RFP' }, { status: 400 })

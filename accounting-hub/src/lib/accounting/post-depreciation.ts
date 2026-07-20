@@ -157,7 +157,7 @@ export async function runDepreciationCatchUp(
   if (process.env.ENABLE_GL_POSTING !== 'true') return summary
 
   const where = branch && branch !== 'ALL'
-    ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' }
+    ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' | 'AURA_INSTITUTE' }
     : {}
   const assets = await prisma.asset.findMany({
     where,

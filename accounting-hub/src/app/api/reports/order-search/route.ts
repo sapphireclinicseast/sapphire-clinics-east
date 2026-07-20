@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
 
-const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
 
 // GET ?branch=&q= — unlabeled orders (no Sales Invoice) matching a free-text query
 // across patient name, date (YYYY-MM-DD), service name, amount, or payment mode.

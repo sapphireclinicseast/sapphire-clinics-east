@@ -320,6 +320,7 @@ const BRANCH_OPTIONS = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 
 const BRANCH_LABELS: Record<string, string> = Object.fromEntries(BRANCH_OPTIONS.map((b) => [b.value, b.label]))

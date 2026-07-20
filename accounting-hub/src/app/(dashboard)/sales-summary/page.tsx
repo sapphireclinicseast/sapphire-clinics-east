@@ -32,6 +32,7 @@ const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 
 /* ─────────────────────────────────────────────
@@ -585,6 +586,7 @@ const WITHSI_BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 

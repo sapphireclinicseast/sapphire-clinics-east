@@ -80,7 +80,7 @@ export async function POST(req: Request) {
         : {
             status: 'COMPLETED',
             ...(Object.keys(dateFilter).length ? { transactionDate: dateFilter } : {}),
-            ...(branch !== 'ALL' ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {}),
+            ...(branch !== 'ALL' ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' | 'AURA_INSTITUTE' } : {}),
           },
       select: { id: true },
       orderBy: { transactionDate: 'asc' },
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
     const adjustments = await prisma.inventoryAdjustment.findMany({
       where: {
         ...(Object.keys(dateFilter).length ? { adjustmentDate: dateFilter } : {}),
-        ...(branch !== 'ALL' ? { item: { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } } : {}),
+        ...(branch !== 'ALL' ? { item: { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' | 'AURA_INSTITUTE' } } : {}),
       },
       select: { id: true },
       orderBy: { adjustmentDate: 'asc' },
@@ -161,7 +161,7 @@ export async function POST(req: Request) {
     const assets = await prisma.asset.findMany({
       where: {
         ...(Object.keys(dateFilter).length ? { dateBought: dateFilter } : {}),
-        ...(branch !== 'ALL' ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {}),
+        ...(branch !== 'ALL' ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' | 'AURA_INSTITUTE' } : {}),
       },
       select: { id: true },
       orderBy: { dateBought: 'asc' },

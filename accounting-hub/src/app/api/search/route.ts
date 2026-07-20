@@ -13,6 +13,7 @@ const BRANCH_LABEL: Record<string, string> = {
   SANDBOX_EAST: 'AHEA', SBEA: 'AHEA', AHEA: 'AHEA',
   SANDBOX_GREENHILLS: 'AHGH', SBGH: 'AHGH', AHGH: 'AHGH',
   VERDANA_STORE: 'VERDANA', VER: 'VERDANA', VERDANA: 'VERDANA',
+  AURA_INSTITUTE: 'AHI', AHI: 'AHI',
   CEO: 'CEO', ALL: 'All Branches',
 }
 const bl = (b: string | null | undefined) => (b ? (BRANCH_LABEL[b] || b) : '')
