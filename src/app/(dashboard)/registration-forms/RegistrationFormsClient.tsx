@@ -7,8 +7,8 @@ import {
 } from 'lucide-react'
 
 // ── Form definitions ─────────────────────────────────────────────────────────
-const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string | null; subtitle?: string; intro?: string }> = [
-  { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE' },
+const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string | null; subtitle?: string; intro?: string; sbeaSlug?: string; sbghSlug?: string }> = [
+  { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE', sbeaSlug: 'RegistrationEast', sbghSlug: 'RegistrationGH' },
   { key: 'group-therapy', title: 'Group Therapy Registration', sbea: 'ChrSrsBF', sbgh: 'tT8QASYo' },
   {
     key:      'sip',
@@ -113,8 +113,14 @@ export default function RegistrationFormsClient({ role }: Props) {
     if (selectedForm) setQrBranch(isSBGH ? 'SBGH' : 'SBEA')
   }, [selectedForm, isSBGH])
 
-  const getFormUrl = (form: FormType, branch: 'SBEA' | 'SBGH') =>
-    HR_FORM_BASE + (branch === 'SBGH' && form.sbgh ? form.sbgh : form.sbea)
+  // Public link prefers a clean slug when the form defines one, falling back to
+  // the raw id. Response-fetching still uses the ids (form.sbea / form.sbgh).
+  const getFormUrl = (form: FormType, branch: 'SBEA' | 'SBGH') => {
+    const useSbgh = branch === 'SBGH' && !!form.sbgh
+    const slug = useSbgh ? form.sbghSlug : form.sbeaSlug
+    const id   = useSbgh ? form.sbgh : form.sbea
+    return HR_FORM_BASE + (slug || id)
+  }
 
   const copyLink = useCallback((url: string) => {
     navigator.clipboard.writeText(url)
