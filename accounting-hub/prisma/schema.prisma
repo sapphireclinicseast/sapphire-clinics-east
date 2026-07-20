@@ -312,6 +312,7 @@ model InventoryItem {
   sellingPrice         Decimal?
   rewardPointsPrice    Int?      // Price in reward points (e.g., 1000 pts)
   quantity             Int       @default(0)
+  branchStock          Json?     // Display-only per-branch split of `quantity` for consigned stock, e.g. { "SANDBOX_GREENHILLS": 2 }. `quantity` remains the authoritative TOTAL for FIFO/COGS/BS; this only records where the units physically sit (folded-in from the retired '-SAND' consignment rows).
   reorderLevel         Int?
   supplierId           String?
   supplier             Supplier? @relation(fields: [supplierId], references: [id])

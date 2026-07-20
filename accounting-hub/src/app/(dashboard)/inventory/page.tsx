@@ -383,6 +383,7 @@ interface InventoryItem {
   skuSubcategory: string
   accountSubType: string | null
   quantity: number
+  branchStock?: Record<string, number> | null
   unitCost: number
   sellingPrice: number | null
   rewardPointsPrice: number | null
@@ -784,17 +785,43 @@ export default function InventoryPage() {
   }, [consignments])
 
   // Sorted inventory items
-  // Consignment "-SAND" rows are folded into their base item's row; this maps a
-  // base SKU → the branch/qty held at each consigned branch (display only, no
-  // stock change). Combined with the base row, it yields the per-branch breakdown.
-  const consignmentBreakdown = useMemo(() => {
-    const m = new Map<string, { branch: string; quantity: number }[]>()
+  // A base item's stock can be split across branches (consigned to a Sandbox
+  // branch). Two representations coexist during the '-SAND' → base merge:
+  //  • Unmerged: a separate '<sku>-SAND' row still holds the consigned qty and
+  //    this item.quantity is the base-branch-only qty.
+  //  • Merged: the '-SAND' row is gone, item.quantity is the TOTAL across
+  //    branches, and item.branchStock ({ branch: qty }) records the consigned
+  //    portion. `quantity` stays authoritative for FIFO/COGS/BS.
+  // Either way we surface a per-branch breakdown + a combined total (display only).
+  const branchBreakdown = useMemo(() => {
+    const m = new Map<string, { parts: { branch: string; quantity: number }[]; total: number }>()
+    const sibsBy = new Map<string, { branch: string; quantity: number }[]>()
     for (const it of items) {
       if (it.sku.endsWith('-SAND')) {
         const base = it.sku.slice(0, -5)
-        const arr = m.get(base) || []
+        const arr = sibsBy.get(base) || []
         arr.push({ branch: it.branch, quantity: it.quantity })
-        m.set(base, arr)
+        sibsBy.set(base, arr)
+      }
+    }
+    for (const it of items) {
+      if (it.sku.endsWith('-SAND')) continue
+      const bs = it.branchStock && typeof it.branchStock === 'object' ? it.branchStock : null
+      const bsEntries = bs ? Object.entries(bs).map(([branch, quantity]) => ({ branch, quantity: Number(quantity) })).filter(e => e.quantity !== 0) : []
+      if (bsEntries.length > 0) {
+        const consignedSum = bsEntries.reduce((s, x) => s + x.quantity, 0)
+        m.set(it.sku, {
+          parts: [{ branch: it.branch, quantity: it.quantity - consignedSum }, ...bsEntries],
+          total: it.quantity,
+        })
+      } else {
+        const sibs = sibsBy.get(it.sku)
+        if (sibs && sibs.length > 0) {
+          m.set(it.sku, {
+            parts: [{ branch: it.branch, quantity: it.quantity }, ...sibs],
+            total: it.quantity + sibs.reduce((s, x) => s + x.quantity, 0),
+          })
+        }
       }
     }
     return m
@@ -2034,12 +2061,11 @@ setTimeout(()=>window.print(),500);
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                         {(() => {
-                          const sibs = consignmentBreakdown.get(item.sku) || []
-                          if (sibs.length === 0) return BRANCH_LABELS[item.branch] || item.branch
-                          const parts = [{ branch: item.branch, quantity: item.quantity }, ...sibs]
+                          const bd = branchBreakdown.get(item.sku)
+                          if (!bd) return BRANCH_LABELS[item.branch] || item.branch
                           return (
                             <span className="flex flex-col gap-0.5">
-                              {parts.map((p, i) => (
+                              {bd.parts.map((p, i) => (
                                 <span key={i} className="whitespace-nowrap">
                                   <span style={{ color: 'var(--charcoal)' }}>{BRANCH_LABELS[p.branch] || p.branch}</span>
                                   <span className="ml-1 font-semibold" style={{ color: 'var(--deep-teal)' }}>{p.quantity}</span>
@@ -2066,7 +2092,7 @@ setTimeout(()=>window.print(),500);
                           style={{ color: item.reorderLevel && item.quantity <= item.reorderLevel ? '#dc2626' : 'var(--teal)' }}
                           title="Combined stock across branches — click for the base item's movement history"
                         >
-                          {(() => { const sibs = consignmentBreakdown.get(item.sku) || []; return item.quantity + sibs.reduce((s, x) => s + x.quantity, 0) })()}
+                          {(() => { const bd = branchBreakdown.get(item.sku); return bd ? bd.total : item.quantity })()}
                           <History size={11} className="opacity-50" />
                         </button>
                       </td>
