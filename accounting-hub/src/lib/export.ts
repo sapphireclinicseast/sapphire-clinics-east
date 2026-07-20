@@ -45,25 +45,31 @@ interface PdfTableConfig {
   rows: (string | number | null | undefined)[][]
   landscape?: boolean
   columnWidths?: string[] // e.g. ['60px', 'auto', '100px']
+  images?: (string | null | undefined)[] // optional photo per row (aligned to rows); prepends a photo column
+  imageHeader?: string    // header label for the photo column (default 'Photo')
 }
 
 export function downloadPdf(config: PdfTableConfig) {
-  const { title, subtitle, headers, rows, landscape = false, columnWidths } = config
+  const { title, subtitle, headers, rows, landscape = false, columnWidths, images, imageHeader = 'Photo' } = config
+  const withPhotos = Array.isArray(images)
 
   const colgroup = columnWidths
-    ? `<colgroup>${columnWidths.map(w => `<col style="width:${w}">`).join('')}</colgroup>`
+    ? `<colgroup>${withPhotos ? '<col style="width:54px">' : ''}${columnWidths.map(w => `<col style="width:${w}">`).join('')}</colgroup>`
     : ''
 
-  const headerRow = headers.map(h => `<th>${h}</th>`).join('')
-  const bodyRows = rows.map(row =>
-    `<tr>${row.map((cell, i) => {
+  const headerRow = `${withPhotos ? `<th>${imageHeader}</th>` : ''}${headers.map(h => `<th>${h}</th>`).join('')}`
+  const bodyRows = rows.map((row, ri) => {
+    const photoCell = withPhotos
+      ? `<td style="text-align:center;">${images![ri] ? `<img src="${images![ri]}" crossOrigin="anonymous" onerror="this.style.display='none'" style="height:34px;max-width:46px;object-fit:cover;border-radius:4px;" />` : ''}</td>`
+      : ''
+    return `<tr>${photoCell}${row.map((cell, i) => {
       const val = cell ?? ''
       // Right-align numeric columns (check if header contains amount/price/cost/qty/balance/rate)
       const hdr = headers[i]?.toLowerCase() || ''
       const isNumeric = /amount|price|cost|qty|quantity|balance|rate|total|fee|debit|credit|sessions|level|points/.test(hdr)
       return `<td style="${isNumeric ? 'text-align:right;' : ''}">${val}</td>`
     }).join('')}</tr>`
-  ).join('')
+  }).join('')
 
   const html = `<!DOCTYPE html>
 <html>

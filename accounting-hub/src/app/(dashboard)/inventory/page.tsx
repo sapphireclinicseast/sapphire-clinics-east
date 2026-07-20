@@ -517,6 +517,7 @@ export default function InventoryPage() {
   const [itemBranchFilter, setItemBranchFilter] = useState('')
   const [itemDeptFilter, setItemDeptFilter] = useState('')
   const [showDisabledItems, setShowDisabledItems] = useState(false)
+  const [downloadWithPhotos, setDownloadWithPhotos] = useState(false)
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null)
@@ -1726,7 +1727,7 @@ setTimeout(()=>window.print(),500);
   }
 
   /* ── Download Handlers ──────────────────────────────────── */
-  const handleDownloadInventory = (format: 'xlsx' | 'pdf') => {
+  const handleDownloadInventory = (format: 'xlsx' | 'pdf', includePhotos = false) => {
     const headers = ['SKU', 'Name', 'Branch', 'Department', 'Category', 'Subcategory', 'Qty', 'Unit Cost', 'Selling Price', 'Reward Pts Price', 'Reorder Level', 'Supplier']
     const rows = items.map(i => [
       i.sku, i.name, BRANCH_LABELS[i.branch] || i.branch, i.skuDepartment, i.skuCategory, i.skuSubcategory,
@@ -1734,8 +1735,17 @@ setTimeout(()=>window.print(),500);
       i.rewardPointsPrice != null ? i.rewardPointsPrice : '', i.reorderLevel ?? '',
       i.supplier?.supplierName || ''
     ])
-    if (format === 'xlsx') downloadXlsx('Inventory_Items', [{ name: 'Inventory', headers, rows }])
-    else downloadPdf({ title: 'Inventory Items', subtitle: `${rows.length} items — ${itemBranchFilter ? BRANCH_LABELS[itemBranchFilter] || itemBranchFilter : 'All Branches'}`, headers, rows, landscape: true })
+    const subtitle = `${rows.length} items — ${itemBranchFilter ? BRANCH_LABELS[itemBranchFilter] || itemBranchFilter : 'All Branches'}`
+    if (format === 'xlsx') {
+      // Excel can't embed images — include the photo URL column instead when requested.
+      if (includePhotos) {
+        downloadXlsx('Inventory_Items', [{ name: 'Inventory', headers: [...headers, 'Photo URL'], rows: rows.map((r, idx) => [...r, items[idx].imageUrl || '']) }])
+      } else {
+        downloadXlsx('Inventory_Items', [{ name: 'Inventory', headers, rows }])
+      }
+    } else {
+      downloadPdf({ title: 'Inventory Items', subtitle, headers, rows, landscape: true, images: includePhotos ? items.map(i => i.imageUrl || null) : undefined, imageHeader: 'Photo' })
+    }
   }
 
   const handleDownloadSuppliers = (format: 'xlsx' | 'pdf') => {
@@ -1820,7 +1830,11 @@ setTimeout(()=>window.print(),500);
               Manage stock levels and item details
             </p>
             <div className="flex items-center gap-2">
-              <DownloadMenu onDownload={handleDownloadInventory} label="Download" />
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none whitespace-nowrap" style={{ color: 'var(--mid-gray)' }} title="Include the item photo in the download (embedded in PDF; photo URL column in Excel)">
+                <input type="checkbox" checked={downloadWithPhotos} onChange={(e) => setDownloadWithPhotos(e.target.checked)} className="w-4 h-4 accent-teal-600" />
+                Include photos
+              </label>
+              <DownloadMenu onDownload={(fmt) => handleDownloadInventory(fmt, downloadWithPhotos)} label="Download" />
               {canWrite && (<>
                 <button onClick={() => {
                   const csv = 'name,department,category,subcategory,branch,unit_cost,selling_price,reward_points_price,quantity,reorder_level\nPRODUCT NAME,OT,Equipment,Fine Motor,VERDANA_STORE,300,1200,,10,3'
