@@ -35,6 +35,7 @@ import {
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
+import SkuGuidePanel from './SkuGuidePanel'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
@@ -341,7 +342,7 @@ const CURRENCIES = [
   { value: 'INR', label: 'INR — Indian Rupee' },
 ]
 
-const TABS = ['Inventory', 'Suppliers', 'Adjustments', 'Consignments', 'Forms'] as const
+const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Adjustments', 'Consignments', 'Forms'] as const
 type Tab = (typeof TABS)[number]
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -1822,6 +1823,8 @@ setTimeout(()=>window.print(),500);
       {/* ════════════════════════════════════════════════════
          TAB 1: INVENTORY ITEMS
          ════════════════════════════════════════════════════ */}
+      {activeTab === 'SKU Guide' && <SkuGuidePanel canWrite={canWrite} />}
+
       {activeTab === 'Inventory' && (
         <>
           {/* Header */}

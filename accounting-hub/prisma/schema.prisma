@@ -2540,3 +2540,20 @@ model BankTransaction {
   @@index([bankAccountId, status])
   @@index([date])
 }
+
+// SKU Guide: a manually-maintained dictionary of SKU classification codes
+// (DEPT-CAT-SUBCAT prefix → human meaning). Product count is derived live from
+// InventoryItem.sku (startsWith "<skuCode>-").
+model SkuDefinition {
+  id           String   @id @default(cuid())
+  skuCode      String   @unique
+  department   String
+  mainCategory String
+  subcategory  String
+  details      String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([skuCode])
+}
