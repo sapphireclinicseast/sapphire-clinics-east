@@ -35,6 +35,7 @@ const SITE_CONFIG = {
     { name: 'Aura Health Clinic',      imgSrc: 'BRANDS/AURA HEALTH REHAB.png', link: 'branches' },
     { name: 'Verdana Rehab Solutions', imgSrc: 'BRANDS/VERDANA STORE.png',     link: 'verdana' },
     { name: 'Aura Health Institute',   imgSrc: 'BRANDS/AURA INSTITUTE.png',    link: 'institute' },
+    { name: 'UGAT Fellowship',         imgSrc: 'BRANDS/UGAT FELLOWSHIP.png',   link: 'ugat' },
   ],
 
   /* ── Key Statistics (shown in hero) ──
