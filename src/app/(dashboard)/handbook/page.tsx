@@ -1,7 +1,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 // Full handbook HTML — rendered in an isolated iframe so its CSS
@@ -124,6 +124,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 .flow-arrow.in{background:#EDE9FE;color:#4C1D95}
 .flow-row div{font-size:0.78rem;color:var(--text2);line-height:1.65}
 .flow-row div strong{color:var(--text);font-weight:700}
+/* ── UI mockup screenshots ──────────────────────────────────────────── */
+.mockup{margin:18px 0 4px;border-radius:10px;overflow:hidden;border:1px solid var(--border);box-shadow:0 3px 14px rgba(0,0,0,0.08)}
+.mockup-bar{background:#E3E6EB;padding:8px 12px;display:flex;align-items:center;gap:10px}
+.mockup-dots{display:flex;gap:5px}
+.mockup-dot{width:11px;height:11px;border-radius:50%}
+.mockup-url{background:#fff;border-radius:5px;font-size:0.63rem;font-family:'SF Mono','Consolas',monospace;color:var(--text3);padding:3px 10px;flex:1;max-width:300px;margin:0 auto;border:1px solid #d1d5db;text-align:center}
+.mockup-body{background:#F2F5F9;position:relative}
+.mockup-label{font-size:0.7rem;color:var(--text3);text-align:center;font-style:italic;margin:6px 0 10px}
+.cn{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#ED6823;color:#fff;font-size:0.62rem;font-weight:800;flex-shrink:0;line-height:1}
+.clist{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px}
+.ci{display:flex;align-items:flex-start;gap:8px;font-size:0.76rem;color:var(--text2);line-height:1.55}
+/* ── Print styles ───────────────────────────────────────────────────── */
+@media print{
+  body{overflow:visible!important;font-size:11pt}
+  .layout{display:block!important;height:auto!important;overflow:visible!important}
+  .sidebar{display:none!important}
+  .content{display:block!important;overflow:visible!important;height:auto!important}
+  .content-inner{max-width:100%!important;padding:16px 20px 40px!important}
+  .section,.plain-section{break-inside:avoid;page-break-inside:avoid;margin-bottom:24px}
+  .hub-card{break-inside:avoid}
+  .cover{background:#1C2535!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-after:page}
+  .mockup,.mockup-wrap{break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .matrix-wrap{overflow:visible}
+}
 </style>
 </head>
 <body>
@@ -223,6 +247,50 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
     <div class="step"><div class="step-num">3</div><div class="step-body"><h4>Set your active brand (non-front-desk only)</h4><p>Just below the logo in the sidebar, a brand selector shows your currently active brand. Click it to switch between <strong>Aura Health East</strong>, <strong>Aura Health Greenhills</strong>, or <strong>Verdana</strong>. Social media posts, email campaigns, and templates will be scoped to the selected brand.</p></div></div>
     <div class="step"><div class="step-num">4</div><div class="step-body"><h4>Front Desk: check the automatic reminders</h4><p>At <strong>11:00 AM and 4:00 PM</strong> each day, the portal will display a reminder to review the Waitlist and Patient Relationship log. A survey prompt also appears after confirmed sessions to collect patient feedback.</p></div></div>
   </div>
+  <div class="mockup" style="margin-top:20px">
+    <div class="mockup-bar">
+      <div class="mockup-dots"><div class="mockup-dot" style="background:#FF5F57"></div><div class="mockup-dot" style="background:#FFBD2E"></div><div class="mockup-dot" style="background:#28C840"></div></div>
+      <div class="mockup-url">operations.sapphireclinicseast.org/dashboard</div>
+    </div>
+    <div class="mockup-body" style="display:flex;height:210px">
+      <div style="width:168px;background:#141B2D;flex-shrink:0;padding:10px 9px;display:flex;flex-direction:column;gap:3px;position:relative">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(26,123,138,0.2)">
+          <div style="width:22px;height:22px;border-radius:5px;background:#1A7B8A;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 18 18" fill="white"><polygon points="9,1 17,14 1,14"/></svg></div>
+          <div><div style="font-size:0.58rem;font-weight:800;color:#fff;letter-spacing:0.1em">SAPPHIRE</div><div style="font-size:0.43rem;color:#4CC9D9;letter-spacing:0.18em">OPERATIONS HUB</div></div>
+        </div>
+        <div style="font-size:0.5rem;color:rgba(255,255,255,0.22);letter-spacing:0.18em;text-transform:uppercase;padding:2px 2px 4px">Active Brand</div>
+        <div style="background:rgba(255,255,255,0.07);border-radius:5px;padding:4px 8px;font-size:0.62rem;color:#fff;margin-bottom:8px;display:flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:#1A7B8A;flex-shrink:0"></span>Aura Health East ▾</div>
+        <div style="font-size:0.5rem;color:rgba(255,255,255,0.22);letter-spacing:0.18em;text-transform:uppercase;padding:2px 2px 3px">Clinic Tools</div>
+        <div style="padding:5px 8px;border-radius:5px;background:rgba(26,123,138,0.2);font-size:0.63rem;color:#4CC9D9;font-weight:600">📅 Clinic Schedule</div>
+        <div style="padding:5px 8px;font-size:0.63rem;color:rgba(255,255,255,0.45)">🧑‍⚕️ Staff Module</div>
+        <div style="padding:5px 8px;font-size:0.63rem;color:rgba(255,255,255,0.45)">🃏 Decking Module</div>
+        <div style="padding:5px 8px;font-size:0.63rem;color:rgba(255,255,255,0.45)">👥 Patient CRM</div>
+        <div style="position:absolute;top:50%;right:-10px;transform:translateY(-50%)" class="cn">1</div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column">
+        <div style="background:#fff;border-bottom:1px solid #DDE4EF;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+          <div style="font-size:0.72rem;font-weight:700;color:#1C2535">Dashboard</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="font-size:0.65rem;color:#8A96A8;background:#F2F5F9;border-radius:5px;padding:3px 8px;position:relative">🔔 <span style="position:absolute;top:-3px;right:-3px;width:12px;height:12px;background:#ef4444;border-radius:50%;font-size:0.5rem;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">3</span></div>
+            <div style="width:22px;height:22px;border-radius:50%;background:#1A7B8A;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#fff;font-weight:700">C</div>
+            <div class="cn">2</div>
+          </div>
+        </div>
+        <div style="flex:1;padding:12px 16px;display:flex;flex-direction:column;gap:8px;overflow:hidden">
+          <div style="font-size:0.68rem;font-weight:700;color:#1C2535;margin-bottom:2px">Upcoming Birthdays this week</div>
+          <div style="background:#fff;border:1px solid #DDE4EF;border-radius:7px;padding:8px 12px;font-size:0.63rem;color:#5A6880">🎂 SANTOS, Maria — OT — July 22</div>
+          <div style="background:#fff;border:1px solid #DDE4EF;border-radius:7px;padding:8px 12px;font-size:0.63rem;color:#5A6880">🎂 REYES, Juancho — SLP — July 24</div>
+          <div style="background:#E5F4F6;border:1px solid #B8E3E8;border-radius:7px;padding:7px 12px;font-size:0.62rem;color:#1A7B8A;font-weight:600">🔔 Reminder: Check Waitlist (4 PM prompt)</div>
+          <div class="cn" style="align-self:flex-end;margin-top:2px">3</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="clist">
+    <div class="ci"><span class="cn">1</span><span>The <strong>left sidebar</strong> shows every module your role can access. The teal-highlighted item is your current page. Use the brand switcher above the nav to switch between Aura East, Aura Greenhills, and Verdana.</span></div>
+    <div class="ci"><span class="cn">2</span><span>The <strong>top bar</strong> has the notification bell (orange dot = unread alerts) and your user avatar. Click Sign Out to log out securely.</span></div>
+    <div class="ci"><span class="cn">3</span><span>The <strong>Dashboard</strong> shows this week's patient birthdays and any pending reminders. Front Desk accounts see the 4 PM waitlist prompt here automatically.</span></div>
+  </div>
 </div>
 
 <div class="section" id="dashboard">
@@ -302,6 +370,65 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
       <div class="note admin"><span class="note-label">Admin</span>Can merge duplicate staff records. Merge is irreversible &mdash; confirm the correct primary record before proceeding.</div>
       <div class="note desk"><span class="note-label">Front Desk</span>Read-only view of the staff list for their branch only. Cannot view HR details or merge records.</div>
     </div>
+    <div class="mockup" style="margin-top:16px">
+      <div class="mockup-bar">
+        <div class="mockup-dots"><div class="mockup-dot" style="background:#FF5F57"></div><div class="mockup-dot" style="background:#FFBD2E"></div><div class="mockup-dot" style="background:#28C840"></div></div>
+        <div class="mockup-url">operations.sapphireclinicseast.org/staff</div>
+      </div>
+      <div class="mockup-body" style="padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <div style="font-size:0.75rem;font-weight:700;color:#1C2535">Staff Module</div>
+            <div style="font-size:0.62rem;color:#8A96A8">105 staff &middot; synced from HR Platform</div>
+          </div>
+          <div style="background:#1A7B8A;color:#fff;border-radius:7px;padding:5px 12px;font-size:0.65rem;font-weight:600;cursor:pointer">&#10227; Sync from HR</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.63rem">
+          <thead>
+            <tr>
+              <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:left;font-size:0.58rem;letter-spacing:0.06em;text-transform:uppercase">Name</th>
+              <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:left;font-size:0.58rem;letter-spacing:0.06em;text-transform:uppercase">Department</th>
+              <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:left;font-size:0.58rem;letter-spacing:0.06em;text-transform:uppercase">Branch</th>
+              <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:left;font-size:0.58rem;letter-spacing:0.06em;text-transform:uppercase">Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:#fff;cursor:pointer">
+              <td style="padding:7px 10px;font-weight:700;color:#1A7B8A;text-decoration:underline;border-bottom:1px solid #DDE4EF;position:relative">
+                ASISTIO, Frednick
+                <span class="cn" style="position:absolute;top:5px;right:6px">1</span>
+              </td>
+              <td style="padding:7px 10px;border-bottom:1px solid #DDE4EF"><span style="background:#EDE9FE;color:#5B21B6;font-size:0.6rem;padding:2px 7px;border-radius:4px;font-weight:700">PSYCHOLOGY</span></td>
+              <td style="padding:7px 10px;border-bottom:1px solid #DDE4EF;position:relative">
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  <span style="background:#E5F4F6;color:#1A7B8A;font-size:0.6rem;padding:2px 7px;border-radius:20px;font-weight:700">East Branch</span>
+                  <span style="background:#FFF3CD;color:#92400E;font-size:0.6rem;padding:2px 7px;border-radius:20px;font-weight:700">Greenhills Branch</span>
+                </div>
+                <span class="cn" style="position:absolute;top:5px;right:6px">2</span>
+              </td>
+              <td style="padding:7px 10px;border-bottom:1px solid #DDE4EF"><span style="background:#FEF3C7;color:#92400E;font-size:0.6rem;padding:2px 7px;border-radius:20px;font-weight:700">Consultant</span></td>
+            </tr>
+            <tr style="background:#F8FAFD;cursor:pointer">
+              <td style="padding:7px 10px;font-weight:700;color:#1A7B8A;text-decoration:underline;border-bottom:1px solid #DDE4EF">DE QUINTO, Julianne</td>
+              <td style="padding:7px 10px;border-bottom:1px solid #DDE4EF"><span style="background:#E5F4F6;color:#1A7B8A;font-size:0.6rem;padding:2px 7px;border-radius:4px;font-weight:700">OT</span></td>
+              <td style="padding:7px 10px;border-bottom:1px solid #DDE4EF"><span style="background:#E5F4F6;color:#1A7B8A;font-size:0.6rem;padding:2px 7px;border-radius:20px;font-weight:700">East Branch</span></td>
+              <td style="padding:7px 10px;border-bottom:1px solid #DDE4EF"><span style="background:#DBEAFE;color:#1E40AF;font-size:0.6rem;padding:2px 7px;border-radius:20px;font-weight:700">Employee</span></td>
+            </tr>
+            <tr style="background:#fff;cursor:pointer">
+              <td style="padding:7px 10px;font-weight:700;color:#1A7B8A;text-decoration:underline">SANTOS, Maria</td>
+              <td style="padding:7px 10px"><span style="background:#FEE2E2;color:#991B1B;font-size:0.6rem;padding:2px 7px;border-radius:4px;font-weight:700">SLP</span></td>
+              <td style="padding:7px 10px"><span style="background:#FFF0F9;color:#86198F;font-size:0.6rem;padding:2px 7px;border-radius:20px;font-weight:700">Greenhills Branch</span></td>
+              <td style="padding:7px 10px"><span style="background:#DBEAFE;color:#1E40AF;font-size:0.6rem;padding:2px 7px;border-radius:20px;font-weight:700">Employee</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="margin-top:8px;font-size:0.6rem;color:#8A96A8;text-align:right">Showing 3 of 105 staff &middot; All fields except Sex and Extra Branches flow one-way from HR Hub</div>
+      </div>
+    </div>
+    <div class="clist">
+      <div class="ci"><span class="cn">1</span><span>Click any staff name to open the <strong>Staff Profile modal</strong>. HR Officers and Admins see sensitive details like government IDs, bank account, and 201-file documents. Front Desk users see only name, branch, and department.</span></div>
+      <div class="ci"><span class="cn">2</span><span>Interbranch consultants show <strong>two branch chips</strong> side by side. This means they serve patients in both branches &mdash; their schedules and service invoices will appear in either branch view accordingly.</span></div>
+    </div>
   </div></div>
 </div>
 
@@ -337,6 +464,59 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
       <div class="notes">
         <div class="note admin"><span class="note-label">Tip</span>The "Tomorrow" panel at the bottom gives a heads-up on next-day schedules so you can contact clinicians the evening before.</div>
         <div class="note desk"><span class="note-label">Makeup Sessions</span>A separate "Makeup" panel lists patients whose sessions were missed and need rescheduling.</div>
+      </div>
+      <div class="mockup" style="margin-top:16px">
+        <div class="mockup-bar">
+          <div class="mockup-dots"><div class="mockup-dot" style="background:#FF5F57"></div><div class="mockup-dot" style="background:#FFBD2E"></div><div class="mockup-dot" style="background:#28C840"></div></div>
+          <div class="mockup-url">operations.sapphireclinicseast.org/clinic-schedule</div>
+        </div>
+        <div class="mockup-body" style="padding:14px 16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:0.62rem;font-weight:700;color:#5A6880;text-transform:uppercase;letter-spacing:0.1em">Branch</span>
+              <div style="display:flex;border:1px solid #DDE4EF;border-radius:6px;overflow:hidden;font-size:0.68rem;font-weight:600">
+                <div style="padding:4px 12px;background:#1A7B8A;color:#fff">All</div>
+                <div style="padding:4px 12px;color:#8A96A8">East Branch</div>
+                <div style="padding:4px 12px;color:#8A96A8">Greenhills Branch</div>
+              </div>
+              <span class="cn">1</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:0.62rem;font-weight:700;color:#5A6880;text-transform:uppercase;letter-spacing:0.1em">View</span>
+              <div style="display:flex;border:1px solid #DDE4EF;border-radius:6px;overflow:hidden;font-size:0.68rem">
+                <div style="padding:4px 11px;background:#1A7B8A;color:#fff;font-weight:600">Department</div>
+                <div style="padding:4px 11px;color:#8A96A8">Calendar</div>
+                <div style="padding:4px 11px;color:#8A96A8">Daily</div>
+                <div style="padding:4px 11px;color:#8A96A8">Status</div>
+              </div>
+              <span class="cn">2</span>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            <div style="background:#fff;border:1px solid #DDE4EF;border-radius:8px;padding:10px 12px">
+              <div style="font-size:0.68rem;font-weight:700;color:#1C2535;margin-bottom:6px">DE QUINTO, Julianne <span style="background:#E5F4F6;color:#1A7B8A;font-size:0.58rem;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px">OT</span></div>
+              <div style="font-size:0.62rem;color:#5A6880;margin-bottom:4px">Mon · 4 sessions confirmed</div>
+              <div style="display:flex;gap:4px"><div style="height:4px;flex:1;background:#1A7B8A;border-radius:2px"></div><div style="height:4px;flex:1;background:#1A7B8A;border-radius:2px"></div><div style="height:4px;flex:1;background:#DDE4EF;border-radius:2px"></div></div>
+              <div style="margin-top:8px;display:flex;gap:4px"><div style="font-size:0.58rem;background:#E5F4F6;color:#1A7B8A;border-radius:4px;padding:2px 6px;font-weight:600">📧 Email</div><div style="font-size:0.58rem;background:#E5F4F6;color:#1A7B8A;border-radius:4px;padding:2px 6px;font-weight:600">💬 SMS</div></div>
+            </div>
+            <div style="background:#fff;border:1px solid #DDE4EF;border-radius:8px;padding:10px 12px;position:relative">
+              <div style="font-size:0.68rem;font-weight:700;color:#1C2535;margin-bottom:4px">ASISTIO, Frednick <span style="background:#EDE9FE;color:#5B21B6;font-size:0.56rem;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px">Both Branches</span></div>
+              <div style="font-size:0.62rem;color:#5A6880;margin-bottom:4px">Mon · 3 sessions</div>
+              <div style="display:flex;gap:4px"><div style="height:4px;flex:1;background:#1A7B8A;border-radius:2px"></div><div style="height:4px;flex:1;background:#1A7B8A;border-radius:2px"></div><div style="height:4px;flex:1;background:#DDE4EF;border-radius:2px"></div></div>
+              <span class="cn" style="position:absolute;top:6px;right:6px">3</span>
+            </div>
+            <div style="background:#fff;border:1px solid #DDE4EF;border-radius:8px;padding:10px 12px">
+              <div style="font-size:0.68rem;font-weight:700;color:#1C2535;margin-bottom:4px">GO, Jenina <span style="background:#D1FAE5;color:#047857;font-size:0.58rem;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:4px">SLP</span></div>
+              <div style="font-size:0.62rem;color:#5A6880;margin-bottom:4px">Mon · 5 sessions confirmed</div>
+              <div style="display:flex;gap:4px"><div style="height:4px;flex:1;background:#1A7B8A;border-radius:2px"></div><div style="height:4px;flex:1;background:#1A7B8A;border-radius:2px"></div><div style="height:4px;flex:1;background:#1A7B8A;border-radius:2px"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="clist">
+        <div class="ci"><span class="cn">1</span><span>The <strong>Branch toggle</strong> lets Admin accounts switch between All, East Branch, and Greenhills Branch. Branch-scoped accounts only see their own branch.</span></div>
+        <div class="ci"><span class="cn">2</span><span>Four <strong>view modes</strong>: Department (clinician cards), Calendar (week grid), Daily (session list by time), and Status (confirm/cancel inline).</span></div>
+        <div class="ci"><span class="cn">3</span><span>Clinicians serving both branches carry a <strong>purple "Both Branches" badge</strong>. Their card appears in both East and Greenhills views.</span></div>
       </div>
     </div>
   </div>
@@ -387,6 +567,56 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
       <div class="module-name">Clinic Hours Settings <span class="module-path">/decking &rarr; Settings tab</span></div>
       <p>Configure the default clinic operating hours for each branch &mdash; which days are open and the opening/closing times. These defaults pre-fill new therapist schedule configurations.</p>
       <div class="access-row"><span class="role-pill admin">Admin</span><span class="role-pill hr">HR Officer</span><span class="role-pill desk">Front Desk</span></div>
+      <div class="mockup" style="margin-top:16px">
+        <div class="mockup-bar">
+          <div class="mockup-dots"><div class="mockup-dot" style="background:#FF5F57"></div><div class="mockup-dot" style="background:#FFBD2E"></div><div class="mockup-dot" style="background:#28C840"></div></div>
+          <div class="mockup-url">operations.sapphireclinicseast.org/decking</div>
+        </div>
+        <div class="mockup-body" style="padding:12px 14px;overflow-x:auto">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;gap:6px">
+              <div style="padding:4px 12px;background:#1A7B8A;color:#fff;border-radius:6px;font-size:0.65rem;font-weight:700">Deck</div>
+              <div style="padding:4px 12px;background:#fff;border:1px solid #DDE4EF;border-radius:6px;font-size:0.65rem;color:#8A96A8">Waitlist</div>
+              <div style="padding:4px 12px;background:#fff;border:1px solid #DDE4EF;border-radius:6px;font-size:0.65rem;color:#8A96A8">Settings</div>
+            </div>
+            <span class="cn">1</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:0.63rem;min-width:420px">
+            <thead>
+              <tr>
+                <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:left;font-weight:600;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase">Therapist</th>
+                <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:center;font-weight:600;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase">Mon</th>
+                <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:center;font-weight:600;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase">Tue</th>
+                <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:center;font-weight:600;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase">Wed</th>
+                <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:center;font-weight:600;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase">Thu</th>
+                <th style="background:#1C2535;color:rgba(255,255,255,0.7);padding:6px 10px;text-align:center;font-weight:600;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase">Fri</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background:#fff">
+                <td style="padding:6px 10px;font-weight:700;color:#1C2535;border-bottom:1px solid #DDE4EF">DE QUINTO, J. <span style="background:#E5F4F6;color:#1A7B8A;font-size:0.55rem;padding:1px 4px;border-radius:3px">OT</span></td>
+                <td style="padding:6px 10px;text-align:center;border-bottom:1px solid #DDE4EF"><div style="background:#E5F4F6;color:#1A7B8A;border-radius:5px;padding:2px 6px;font-size:0.6rem;font-weight:600">SANTOS, M.</div></td>
+                <td style="padding:6px 10px;text-align:center;border-bottom:1px solid #DDE4EF"><div style="background:#E5F4F6;color:#1A7B8A;border-radius:5px;padding:2px 6px;font-size:0.6rem;font-weight:600">REYES, J.</div></td>
+                <td style="padding:6px 10px;text-align:center;border-bottom:1px solid #DDE4EF"><div style="background:#E5F4F6;color:#1A7B8A;border-radius:5px;padding:2px 6px;font-size:0.6rem;font-weight:600">SANTOS, M.</div></td>
+                <td style="padding:6px 10px;text-align:center;border-bottom:1px solid #DDE4EF;position:relative"><div style="background:#FEF9C3;color:#92400E;border-radius:5px;padding:2px 6px;font-size:0.6rem;font-weight:600">BANICO, A.</div><span class="cn" style="position:absolute;top:-6px;right:-6px">2</span></td>
+                <td style="padding:6px 10px;text-align:center;border-bottom:1px solid #DDE4EF"><div style="background:#F3F4F6;color:#9CA3AF;border-radius:5px;padding:2px 6px;font-size:0.6rem">— empty —</div></td>
+              </tr>
+              <tr style="background:#F8FAFD">
+                <td style="padding:6px 10px;font-weight:700;color:#1C2535">GO, J. <span style="background:#D1FAE5;color:#047857;font-size:0.55rem;padding:1px 4px;border-radius:3px">SLP</span></td>
+                <td style="padding:6px 10px;text-align:center"><div style="background:#D1FAE5;color:#047857;border-radius:5px;padding:2px 6px;font-size:0.6rem;font-weight:600">PAREJA, A.</div></td>
+                <td style="padding:6px 10px;text-align:center"><div style="background:#D1FAE5;color:#047857;border-radius:5px;padding:2px 6px;font-size:0.6rem;font-weight:600">TAN, C.</div></td>
+                <td style="padding:6px 10px;text-align:center"><div style="background:#F3F4F6;color:#9CA3AF;border-radius:5px;padding:2px 6px;font-size:0.6rem">— empty —</div></td>
+                <td style="padding:6px 10px;text-align:center"><div style="background:#D1FAE5;color:#047857;border-radius:5px;padding:2px 6px;font-size:0.6rem;font-weight:600">PAREJA, A.</div></td>
+                <td style="padding:6px 10px;text-align:center"><div style="background:#D1FAE5;color:#047857;border-radius:5px;padding:2px 6px;font-size:0.6rem;font-weight:600">TAN, C.</div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="clist">
+        <div class="ci"><span class="cn">1</span><span>Three tabs: <strong>Deck</strong> (the recurring weekly table), <strong>Waitlist</strong> (patients awaiting a slot), and <strong>Settings</strong> (clinic hours configuration).</span></div>
+        <div class="ci"><span class="cn">2</span><span>Click any <strong>slot cell</strong> to assign, change, or remove a patient from that therapist's recurring schedule. Yellow slots indicate recently changed assignments.</span></div>
+      </div>
     </div>
   </div>
 </div>
@@ -658,6 +888,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 export default function HandbookPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -668,6 +899,26 @@ export default function HandbookPage() {
     }
     setReady(true)
   }, [session, status, router])
+
+  function handlePrint() {
+    iframeRef.current?.contentWindow?.print()
+  }
+
+  function handleWordDownload() {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    const html = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+<head><meta charset="UTF-8"><title>Operations Hub Handbook</title>
+<style>body{font-family:Calibri,sans-serif;font-size:11pt;color:#1C2535}.sidebar{display:none!important}.mockup{display:none!important}</style>
+</head><body>${doc.body.innerHTML}</body></html>`
+    const blob = new Blob([html], { type: 'application/msword' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'Operations-Hub-Handbook.doc'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   if (!ready) return null
 
@@ -682,13 +933,25 @@ export default function HandbookPage() {
             Operations Hub — User Handbook
           </h1>
         </div>
-        <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.25)', textAlign: 'right', lineHeight: 1.5 }}>
-          Admin only
-        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            onClick={handlePrint}
+            style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--light-gray)', background: '#fff', color: 'var(--charcoal)', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            🖨 Print / PDF
+          </button>
+          <button
+            onClick={handleWordDownload}
+            style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--teal)', color: '#fff', border: 'none', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            ⬇ Download Word
+          </button>
+        </div>
       </div>
 
       <div style={{ flex: 1, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(237,104,35,0.2)', minHeight: 0 }}>
         <iframe
+          ref={iframeRef}
           srcDoc={HANDBOOK_HTML}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           title="Operations Hub User Handbook"
