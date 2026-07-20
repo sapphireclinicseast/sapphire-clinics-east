@@ -6623,6 +6623,8 @@ function ProductsSection({
   session: { user?: Record<string, unknown> } | null
 }) {
   const [products, setProducts] = useState<InventoryProduct[]>([])
+  // Only Verdana and Aura Health Institute carry products for sale.
+  const [prodBranch, setProdBranch] = useState('VERDANA_STORE')
   const [productSearch, setProductSearch] = useState('')
   const [showTiktokImport, setShowTiktokImport] = useState(false)
   const [cart, setCart] = useState<OrderLineItem[]>([])
@@ -6665,11 +6667,12 @@ function ProductsSection({
   const hasRewardPointsPayment = payments.some(p => p.method === 'REWARD_POINTS')
 
   useEffect(() => {
-    fetch('/api/pos/payment-modes?branch=VERDANA_STORE').then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
-  }, [])
+    fetch(`/api/pos/payment-modes?branch=${prodBranch}`).then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
+  }, [prodBranch])
 
   useEffect(() => {
-    fetch('/api/inventory?all=true&branch=VERDANA_STORE')
+    setLoading(true)
+    fetch(`/api/inventory?all=true&branch=${prodBranch}`)
       .then(r => r.json())
       .then(d => setProducts(normalize(d) as InventoryProduct[]))
       .catch(() => {})
@@ -6678,7 +6681,7 @@ function ProductsSection({
       .then(r => r.json())
       .then(d => setDiscountSettings(normalize(d) as DiscountSetting[]))
       .catch(() => {})
-  }, [])
+  }, [prodBranch])
 
   const filteredProducts = products.filter(p =>
     p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
@@ -6865,7 +6868,7 @@ function ProductsSection({
           }))
       const body = {
         orderType: 'PRODUCT',
-        branch: 'VERDANA_STORE',
+        branch: prodBranch,
         platform,
         transactionDate: txDate,
         items: cart.map(c => ({
@@ -7029,6 +7032,16 @@ function ProductsSection({
           {scanSuccess && (
             <p className="text-xs font-medium px-2 py-1 rounded-lg" style={{ background: '#dcfce7', color: '#166534' }}>{scanSuccess}</p>
           )}
+        </div>
+
+        {/* Branch (only Verdana & Aura Health Institute carry products) */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+          <select value={prodBranch} onChange={e => { setProdBranch(e.target.value); setCart([]) }}
+            className="px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <option value="VERDANA_STORE">Verdana</option>
+            <option value="AURA_INSTITUTE">Aura Health Institute</option>
+          </select>
         </div>
 
         {/* Search */}
@@ -7448,7 +7461,7 @@ function ProductsSection({
       </div>
     </div>
 
-    {showTiktokImport && <TiktokImportModal onClose={() => setShowTiktokImport(false)} onDone={() => { fetch('/api/inventory?all=true&branch=VERDANA_STORE').then(r => r.json()).then(d => setProducts(normalize(d) as InventoryProduct[])).catch(() => {}) }} />}
+    {showTiktokImport && <TiktokImportModal onClose={() => setShowTiktokImport(false)} onDone={() => { fetch(`/api/inventory?all=true&branch=${prodBranch}`).then(r => r.json()).then(d => setProducts(normalize(d) as InventoryProduct[])).catch(() => {}) }} />}
 
     {/* ── Variant Picker Modal ─────────────────────────────────── */}
     {variantPickerProduct && (
