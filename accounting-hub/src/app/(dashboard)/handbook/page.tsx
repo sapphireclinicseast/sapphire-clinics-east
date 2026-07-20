@@ -56,7 +56,7 @@ export default function HandbookPage() {
     ['Scholars', y, y, y, n, n, n],
     ['Referral', y, y, y, y, y, y],
     ['Reports', y, y, y, n, n, y],
-    ['Sales Summary', y, y, y, n, n, n],
+    ['Sales Summary', y, y, y, n, y, n],
     ['Products / Sales Analysis', y, n, n, n, n, n],
     ['Chart of Accounts / Ledger', y, y, y, n, n, n],
     ['Users & Settings', y, n, n, n, n, n],
@@ -64,14 +64,14 @@ export default function HandbookPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <style>{`@media print { body * { visibility: hidden } #handbook, #handbook * { visibility: visible } #handbook { position: absolute; left: 0; top: 0; width: 100% } .no-print { display: none } }`}</style>
+      <style>{`@media print { body * { visibility: hidden } #handbook, #handbook * { visibility: visible } #handbook { position: absolute; left: 0; top: 0; width: 100% } .no-print { display: none } #handbook img { max-width: 100% !important; page-break-inside: avoid } #handbook figure { page-break-inside: avoid } #handbook h2, #handbook h3 { page-break-after: avoid } }`}</style>
 
       <div className="flex items-center gap-3 mb-1">
         <BookOpen size={24} className="text-teal-600" />
         <h1 className="text-2xl font-semibold text-gray-900">Accounting Hub — User Handbook</h1>
         <div className="ml-auto flex items-center gap-2 no-print">
-          <a href="/Accounting-Hub-User-Handbook.docx" download className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}><Download size={14} /> Download (Word)</a>
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Printer size={14} /> Print / Save as PDF</button>
+          <a href="/Accounting-Hub-User-Handbook.docx" download className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}><Download size={14} /> Download Word</a>
+          <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--deep-teal)' }}><Printer size={14} /> Download PDF</button>
         </div>
       </div>
       <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>Visible to the Clinic Manager (main admin) only. Internal use — handle in confidence.</p>
@@ -167,7 +167,7 @@ export default function HandbookPage() {
         <Note label="Good to know:">Administration employees are excluded from consultant payslips automatically.</Note>
 
         <H3>2.5 Front Desk</H3>
-        <P>Cashier and first point of contact. You can open <strong>Point of Sale, Services, Asset Management, PayMongo, Dashboard, and Referral</strong> — for your branch.</P>
+        <P>Cashier and first point of contact. You can open <strong>Point of Sale, Services, Asset Management, PayMongo, Dashboard, Sales Summary, and Referral</strong> — for your branch.</P>
         <UL>
           <li><strong>POS</strong> — ring up sessions/products, take payments (cash, card, GCash/Maya, HMO, Guarantee Letter, packages, wallet), apply discounts, record &ldquo;unpaid&rdquo; sessions, print receipts/invoices.</li>
           <li><strong>PayMongo</strong> — create online payment links for tuition/downpayments; they mark Paid and appear in POS Orders once paid.</li>
