@@ -21,7 +21,7 @@ export async function GET(
 
   const { itemId } = await params
 
-  const [item, adjustments, orderItems] = await Promise.all([
+  const [item, adjustments, orderItems, consignments] = await Promise.all([
     prisma.inventoryItem.findUnique({
       where: { id: itemId },
       select: { id: true, name: true, quantity: true, unitCost: true },
@@ -74,20 +74,27 @@ export async function GET(
         },
       },
     }),
+
+    prisma.consignmentTransfer.findMany({
+      where: { itemId, status: { in: ['APPROVED', 'SHIPPED', 'RECEIVED', 'RETURNED'] } },
+      select: { id: true, fromBranch: true, toBranch: true, quantity: true, status: true, createdAt: true, receivedAt: true, remarks: true },
+      orderBy: { createdAt: 'asc' },
+    }),
   ])
 
   if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 })
 
   type RawEntry = {
     date: Date
-    type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE' | 'ORDER_VOID'
+    type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE' | 'ORDER_VOID' | 'CONSIGNMENT'
     qty: number
-    direction: 1 | -1
+    direction: 1 | -1 | 0
     costPerUnit: number | null
     reference: string
     remarks: string
     adjustedBy?: string
   }
+  const BR: Record<string, string> = { SANDBOX_EAST: 'Aura Health East', SANDBOX_GREENHILLS: 'Aura Health Greenhills', VERDANA_STORE: 'Verdana', AURA_INSTITUTE: 'Aura Health Institute' }
 
   const entries: RawEntry[] = []
 
@@ -148,6 +155,21 @@ export async function GET(
         remarks: 'Order voided — stock returned',
       })
     }
+  }
+
+  // ── Consignment transfers (informational — direction 0, does not move the
+  //    running balance, since the transfer's own stock effect is already
+  //    reflected in adjustments/current qty) ──────────────────────────
+  for (const c of consignments) {
+    entries.push({
+      date: c.receivedAt || c.createdAt,
+      type: 'CONSIGNMENT',
+      qty: c.quantity,
+      direction: 0,
+      costPerUnit: null,
+      reference: `${BR[c.fromBranch] || c.fromBranch} → ${BR[c.toBranch] || c.toBranch}`,
+      remarks: `Consigned to ${BR[c.toBranch] || c.toBranch} · ${c.status}${c.remarks ? ` — ${c.remarks}` : ''}`,
+    })
   }
 
   // ── Sort chronologically ─────────────────────────────────────────

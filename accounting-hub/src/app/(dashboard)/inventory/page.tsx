@@ -580,7 +580,7 @@ export default function InventoryPage() {
     startingQty: number
     movements: {
       date: string
-      type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE' | 'ORDER_VOID'
+      type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE' | 'ORDER_VOID' | 'CONSIGNMENT'
       qty: number
       direction: number
       balance: number
@@ -784,9 +784,26 @@ export default function InventoryPage() {
   }, [consignments])
 
   // Sorted inventory items
+  // Consignment "-SAND" rows are folded into their base item's row; this maps a
+  // base SKU → the branch/qty held at each consigned branch (display only, no
+  // stock change). Combined with the base row, it yields the per-branch breakdown.
+  const consignmentBreakdown = useMemo(() => {
+    const m = new Map<string, { branch: string; quantity: number }[]>()
+    for (const it of items) {
+      if (it.sku.endsWith('-SAND')) {
+        const base = it.sku.slice(0, -5)
+        const arr = m.get(base) || []
+        arr.push({ branch: it.branch, quantity: it.quantity })
+        m.set(base, arr)
+      }
+    }
+    return m
+  }, [items])
+
   const sortedItems = useMemo(() => {
-    if (!invSortField) return items
-    const sorted = [...items].sort((a, b) => {
+    const visible = items.filter(i => !i.sku.endsWith('-SAND'))
+    if (!invSortField) return visible
+    const sorted = [...visible].sort((a, b) => {
       let cmp = 0
       switch (invSortField) {
         case 'sku': cmp = a.sku.localeCompare(b.sku); break
@@ -2015,7 +2032,23 @@ setTimeout(()=>window.print(),500);
                           <p className="text-xs mt-0.5" style={{ color: 'var(--coral)' }}>Exp: {item.expenseAccount.accountNumber} {item.expenseAccount.accountTitle}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[item.branch] || item.branch}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        {(() => {
+                          const sibs = consignmentBreakdown.get(item.sku) || []
+                          if (sibs.length === 0) return BRANCH_LABELS[item.branch] || item.branch
+                          const parts = [{ branch: item.branch, quantity: item.quantity }, ...sibs]
+                          return (
+                            <span className="flex flex-col gap-0.5">
+                              {parts.map((p, i) => (
+                                <span key={i} className="whitespace-nowrap">
+                                  <span style={{ color: 'var(--charcoal)' }}>{BRANCH_LABELS[p.branch] || p.branch}</span>
+                                  <span className="ml-1 font-semibold" style={{ color: 'var(--deep-teal)' }}>{p.quantity}</span>
+                                </span>
+                              ))}
+                            </span>
+                          )
+                        })()}
+                      </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                         {item.skuDepartment ? (SKU_HIERARCHY[item.skuDepartment]?.label || item.skuDepartment) : '—'}
                       </td>
@@ -2031,9 +2064,9 @@ setTimeout(()=>window.print(),500);
                           }}
                           className="underline decoration-dotted cursor-pointer hover:opacity-70 flex items-center gap-1 ml-auto"
                           style={{ color: item.reorderLevel && item.quantity <= item.reorderLevel ? '#dc2626' : 'var(--teal)' }}
-                          title="Click to view quantity movement history"
+                          title="Combined stock across branches — click for the base item's movement history"
                         >
-                          {item.quantity}
+                          {(() => { const sibs = consignmentBreakdown.get(item.sku) || []; return item.quantity + sibs.reduce((s, x) => s + x.quantity, 0) })()}
                           <History size={11} className="opacity-50" />
                         </button>
                       </td>
@@ -2167,12 +2200,14 @@ setTimeout(()=>window.print(),500);
 
                           {movementData.movements.map((m, idx) => {
                             const isIn = m.direction === 1
+                            const isInfo = m.direction === 0
                             const typeConfig = {
                               STOCK_IN:    { label: 'Stock In',    bg: '#dcfce7', color: '#166534', icon: <TrendingUp size={10} /> },
                               SHRINKAGE:   { label: 'Write-off',   bg: '#fff7ed', color: '#c2410c', icon: <TrendingDown size={10} /> },
                               SALE:        { label: 'Sale',        bg: '#fee2e2', color: '#991b1b', icon: <TrendingDown size={10} /> },
                               FREE_SAMPLE: { label: 'Free Sample', bg: '#fef3c7', color: '#92400e', icon: <Gift size={10} /> },
                               ORDER_VOID:  { label: 'Order Voided', bg: '#dbeafe', color: '#1e40af', icon: <TrendingUp size={10} /> },
+                              CONSIGNMENT: { label: 'Consignment', bg: '#ede9fe', color: '#6d28d9', icon: <ArrowRightLeft size={10} /> },
                             }[m.type]
 
                             return (
@@ -2188,11 +2223,11 @@ setTimeout(()=>window.print(),500);
                                   </span>
                                 </td>
                                 <td className="py-2.5 px-2 text-right font-semibold text-sm"
-                                  style={{ color: isIn ? '#16a34a' : '#dc2626' }}>
-                                  {isIn ? '+' : '−'}{m.qty}
+                                  style={{ color: isInfo ? '#6d28d9' : isIn ? '#16a34a' : '#dc2626' }}>
+                                  {isInfo ? '' : isIn ? '+' : '−'}{m.qty}
                                 </td>
                                 <td className="py-2.5 px-2 text-right font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>
-                                  {m.balance}
+                                  {isInfo ? '—' : m.balance}
                                 </td>
                                 <td className="py-2.5 px-2 text-right text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>
                                   {m.costPerUnit != null ? formatCurrency(m.costPerUnit) : '—'}
