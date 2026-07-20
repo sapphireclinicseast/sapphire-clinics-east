@@ -652,6 +652,33 @@ a.hero-brand-chip:hover {
 .value-name { font-weight: 700; font-size: 15px; }
 .value-desc { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 
+/* Brand tagline under mission & vision */
+.mv-tagline {
+  text-align: center; font-style: italic;
+  font-size: 16px; font-weight: 500; letter-spacing: .3px;
+  color: var(--primary); margin: 6px 0 40px;
+}
+
+/* Core values — three arches (Quality / Empathy / Teamwork) */
+.values-arches { display: flex; flex-direction: column; gap: 14px; }
+.arch-value {
+  padding: 14px 20px;
+  background: var(--bg-alt);
+  border-radius: var(--radius-sm);
+  border-left: 6px solid var(--primary);
+  transition: all var(--transition);
+}
+.arch-value:hover { transform: translateX(4px); box-shadow: var(--shadow-sm); }
+.arch-value.narra { border-left-color: #3f6f63; }  /* outer arch — deep sage */
+.arch-value.sage  { border-left-color: #bcdcab; }  /* middle arch — light sage */
+.arch-value.clay  { border-left-color: #d9be83; }  /* inner arch — warm clay/gold */
+.arch-tag {
+  font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--primary); margin-bottom: 4px;
+}
+.arch-name { font-size: 19px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+.arch-desc { font-size: 13.5px; color: var(--text-muted); line-height: 1.6; }
+
 /* ── LEADERSHIP ────────────────────────────────────────────────── */
 .leadership-section { padding: var(--section-padding); background: var(--bg-alt); }
 /* Leadership — all five members in one compact row */
