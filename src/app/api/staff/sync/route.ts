@@ -120,12 +120,15 @@ export async function POST() {
     }
     const sex = sexFromHr ?? match?.sex ?? null
 
-    // Derive extra branches from the HR merged profile's branches[] array.
-    // If HR returns branches: ['SBEA', 'SBGH'] for an interbranch consultant,
-    // extraBranches becomes ['SBGH'] (all valid branches except the primary).
+    // extraBranches is a locally-managed field: only update it from the HR
+    // sync when HR explicitly returns a merged-profile branches[] with more
+    // than one entry. If HR does not send branches[] (or sends only the
+    // primary branch), preserve whatever is already stored locally so that
+    // admin-set values are never silently wiped by a sync.
     const VALID_BRANCHES = ['SBEA', 'SBGH', 'VDNA']
-    const extraBranches = (hr.branches ?? [hr.branch])
-      .filter(b => VALID_BRANCHES.includes(b) && b !== hr.branch)
+    const hrExtraBranches = Array.isArray(hr.branches) && hr.branches.length > 1
+      ? hr.branches.filter((b: string) => VALID_BRANCHES.includes(b) && b !== hr.branch)
+      : null // null = "HR didn't tell us — leave local value alone"
 
     const payload = {
       firstName:      hr.firstName,
@@ -136,7 +139,7 @@ export async function POST() {
       sex,
       department:     hr.department as StaffDepartment,
       branch:         hr.branch,
-      extraBranches,
+      ...(hrExtraBranches !== null ? { extraBranches: hrExtraBranches } : {}),
       jobTitle:       hr.jobTitle,
       employmentType: hr.employmentType,
       employeeId:     hr.employeeId,
