@@ -376,6 +376,7 @@ interface InventoryItem {
   barcode?: string | null
   imageUrl?: string | null
   branch: string
+  isActive?: boolean
   skuDepartment: string
   skuCategory: string
   skuSubcategory: string
@@ -515,6 +516,7 @@ export default function InventoryPage() {
   const [itemSearch, setItemSearch] = useState('')
   const [itemBranchFilter, setItemBranchFilter] = useState('')
   const [itemDeptFilter, setItemDeptFilter] = useState('')
+  const [showDisabledItems, setShowDisabledItems] = useState(false)
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null)
@@ -848,11 +850,12 @@ export default function InventoryPage() {
       if (itemSearch) params.set('search', itemSearch)
       if (itemBranchFilter) params.set('branch', itemBranchFilter)
       if (itemDeptFilter) params.set('department', itemDeptFilter)
+      if (showDisabledItems) params.set('includeDisabled', 'true')
       const res = await fetch(`/api/inventory?${params}`)
       const data = await res.json()
       setItems(data.data || [])
     } catch { /* ignore */ }
-  }, [itemSearch, itemBranchFilter, itemDeptFilter])
+  }, [itemSearch, itemBranchFilter, itemDeptFilter, showDisabledItems])
 
   const fetchAllItems = useCallback(async () => {
     try {
@@ -1884,6 +1887,10 @@ setTimeout(()=>window.print(),500);
                 <option key={d} value={d}>{SKU_HIERARCHY[d].label}</option>
               ))}
             </select>
+            <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }} title="Show items that have been disabled / retired">
+              <input type="checkbox" checked={showDisabledItems} onChange={(e) => setShowDisabledItems(e.target.checked)} className="w-4 h-4 accent-teal-600" />
+              Show disabled items
+            </label>
           </div>
 
           {/* Bulk Edit Toolbar */}
@@ -1952,7 +1959,7 @@ setTimeout(()=>window.print(),500);
                       </td>
                     </tr>
                   ) : sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize).map((item) => (
-                    <tr key={item.id} className={`border-t hover:bg-gray-50/50 transition-colors ${selectedItems.has(item.id) ? 'bg-teal-50/40' : ''}`} style={{ borderColor: 'var(--light-gray)' }}>
+                    <tr key={item.id} className={`border-t hover:bg-gray-50/50 transition-colors ${selectedItems.has(item.id) ? 'bg-teal-50/40' : ''} ${item.isActive === false ? 'opacity-50 bg-gray-50' : ''}`} style={{ borderColor: 'var(--light-gray)' }} title={item.isActive === false ? 'Disabled / retired item' : undefined}>
                       {canWrite && (
                         <td className="px-3 py-3 w-10">
                           <input type="checkbox"
@@ -2042,9 +2049,15 @@ setTimeout(()=>window.print(),500);
                             <button onClick={() => openItemEdit(item)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
                               <Pencil size={15} style={{ color: 'var(--teal)' }} />
                             </button>
-                            <button onClick={() => setDeleteItemConfirm(item.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete">
-                              <Trash2 size={15} className="text-red-500" />
-                            </button>
+                            {item.isActive === false ? (
+                              <button onClick={async () => { await fetch('/api/inventory', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, isActive: true }) }); fetchItems() }} className="p-2 rounded-lg hover:bg-emerald-50 transition-colors" title="Restore (re-enable) item">
+                                <RotateCcw size={15} className="text-emerald-600" />
+                              </button>
+                            ) : (
+                              <button onClick={() => setDeleteItemConfirm(item.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Disable / retire item">
+                                <Trash2 size={15} className="text-red-500" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       )}
@@ -2253,11 +2266,11 @@ setTimeout(()=>window.print(),500);
           {deleteItemConfirm && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Delete Item</h3>
-                <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>Are you sure you want to deactivate this inventory item?</p>
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Disable / retire item</h3>
+                <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>This retires the item and hides it from the list. Its history is kept — tick <strong>&ldquo;Show disabled items&rdquo;</strong> to see it again and <strong>Restore</strong> anytime.</p>
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setDeleteItemConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-                  <button onClick={() => handleItemDelete(deleteItemConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Delete</button>
+                  <button onClick={() => handleItemDelete(deleteItemConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Disable</button>
                 </div>
               </div>
             </div>

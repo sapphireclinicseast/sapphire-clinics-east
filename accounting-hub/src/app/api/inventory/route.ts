@@ -17,9 +17,12 @@ export async function GET(req: Request) {
   const branch = searchParams.get('branch') || ''
   const department = searchParams.get('department') || ''
   const all = searchParams.get('all') === 'true'
+  // Disabled (retired) items are hidden by default; the Inventory list opts in
+  // with ?includeDisabled=true to show them alongside active items.
+  const includeDisabled = searchParams.get('includeDisabled') === 'true'
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { isActive: true }
+  const where: any = {}
 
   if (search) {
     where.OR = [
@@ -33,7 +36,7 @@ export async function GET(req: Request) {
 
   if (all) {
     const items = await prisma.inventoryItem.findMany({
-      where,
+      where: { ...where, isActive: true },
       select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, quantity: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
@@ -45,6 +48,9 @@ export async function GET(req: Request) {
     }))
     return NextResponse.json(serialized)
   }
+
+  // Main paginated list: hide disabled (retired) items unless explicitly requested.
+  if (!includeDisabled) where.isActive = true
 
   const [items, total] = await Promise.all([
     prisma.inventoryItem.findMany({
@@ -157,7 +163,7 @@ export async function PUT(req: Request) {
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
             reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
-            issuedOfficialInvoice, imageUrl,
+            issuedOfficialInvoice, imageUrl, isActive,
             dimensionLength, dimensionWidth, dimensionHeight } = await req.json()
 
     if (!id) {
@@ -180,6 +186,7 @@ export async function PUT(req: Request) {
     if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
     if (expenseAccountId !== undefined) data.expenseAccountId = expenseAccountId || null
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
+    if (isActive !== undefined) data.isActive = !!isActive  // disable (retire) / restore
     if (imageUrl !== undefined) data.imageUrl = imageUrl || null
     if (dimensionLength !== undefined) data.dimensionLength = dimensionLength !== '' && dimensionLength !== null ? parseFloat(dimensionLength) : null
     if (dimensionWidth !== undefined) data.dimensionWidth = dimensionWidth !== '' && dimensionWidth !== null ? parseFloat(dimensionWidth) : null
