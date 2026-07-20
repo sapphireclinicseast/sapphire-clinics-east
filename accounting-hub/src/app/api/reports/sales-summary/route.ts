@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { enforceBranch } from '@/lib/branch-scope'
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -9,7 +10,10 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url)
-  const branch = searchParams.get('branch') || ''
+  // Branch-scoped users (e.g. front desk) may only ever see their own branch,
+  // regardless of the requested branch param.
+  const forcedBranch = enforceBranch((session.user as { branch?: string }).branch)
+  const branch = forcedBranch ?? (searchParams.get('branch') || '')
   const dateFrom = searchParams.get('dateFrom') || ''
   const dateTo = searchParams.get('dateTo') || ''
   const invoicedOnly = searchParams.get('invoicedOnly') === 'true'
