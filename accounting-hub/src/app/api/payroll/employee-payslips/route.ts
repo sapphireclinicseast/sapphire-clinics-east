@@ -197,7 +197,7 @@ export async function POST(req: Request) {
   endDate.setDate(endDate.getDate() + 1) // inclusive
 
   // Get active employees for this branch
-  const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch
+  const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch === 'AURA_INSTITUTE' ? 'AHI' : branch
   const employees = await prisma.employee.findMany({
     where: { isActive: true, branch: qBranch },
     include: { benefits: { where: { isActive: true } } },
@@ -729,7 +729,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch
+    const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch === 'AURA_INSTITUTE' ? 'AHI' : branch
 
     // Don't allow regenerating LOCKED payslips
     const existing = await prisma.employeePayslip.findUnique({

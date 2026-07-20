@@ -102,7 +102,7 @@ export async function GET(req: Request) {
     // ── Depreciation expense detail (per-asset, per-month rows) ──
     if (category === 'DEPRECIATION_EXPENSE') {
       const assets = await prisma.asset.findMany({
-        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {},
+        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' | 'AURA_INSTITUTE' } : {},
         select: { name: true, classification: true, branch: true, totalAmount: true, monthlyDepreciation: true, dateBought: true, depreciationEndDate: true },
         orderBy: { dateBought: 'asc' },
       })
@@ -137,7 +137,7 @@ export async function GET(req: Request) {
     // ── Accumulated depreciation detail (per-asset total through period end) ──
     if (category === 'ACCUMULATED_DEPRECIATION') {
       const assets = await prisma.asset.findMany({
-        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {},
+        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' | 'AURA_INSTITUTE' } : {},
         select: { name: true, classification: true, branch: true, totalAmount: true, monthlyDepreciation: true, dateBought: true, depreciationEndDate: true },
         orderBy: { dateBought: 'asc' },
       })

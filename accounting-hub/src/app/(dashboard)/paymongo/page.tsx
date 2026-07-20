@@ -11,6 +11,7 @@ const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'AHEA' },
   { value: 'SANDBOX_GREENHILLS', label: 'AHGH' },
   { value: 'VERDANA_STORE', label: 'Verdana' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 

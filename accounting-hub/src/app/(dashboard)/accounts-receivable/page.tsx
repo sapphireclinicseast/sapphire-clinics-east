@@ -709,6 +709,7 @@ export default function AccountsReceivablePage() {
           { value: 'SANDBOX_EAST', label: 'East Branch' },
           { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
           { value: 'VERDANA_STORE', label: 'Verdana' },
+          { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
         ] as const).filter(b => !scope.enum || b.value === scope.enum).map(b => (
           <button
             key={b.value}

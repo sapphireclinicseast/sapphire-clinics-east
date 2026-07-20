@@ -69,6 +69,7 @@ const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
   { value: 'ALL', label: 'All Branches' },
 ]
 
@@ -755,7 +756,7 @@ export default function ServicesPage() {
                 <div className="p-3 rounded-xl border" style={{ borderColor: '#e0e7ff', background: '#f8faff' }}>
                   <p className="text-xs font-semibold mb-2" style={{ color: '#3730a3' }}>Per-Branch Price Overrides</p>
                   <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Leave blank to use the default price above for that branch.</p>
-                  {['SANDBOX_EAST', 'SANDBOX_GREENHILLS'].map(br => {
+                  {['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'AURA_INSTITUTE'].map(br => {
                     const bp = fBranchPrices.find(b => b.branch === br) || { branch: br, price: '', newPrice: '', newPriceDate: '' }
                     const update = (field: string, val: string) => {
                       setFBranchPrices(prev => {

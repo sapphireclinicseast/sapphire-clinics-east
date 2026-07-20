@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // Payroll branch codes → petty-cash branch keys (so tax RFP numbers stay
 // continuous with petty cash / expense RFPs, which key the counter by these).
-const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE' }
+const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE' }
 const BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
 // taxType → ReimbursementReport.module + refNumber suffix
 const TAX_MODULE: Record<string, string> = { WC: 'TAX_WC', EWT: 'TAX_EWT', VAT: 'TAX_VAT', IT: 'TAX_IT' }

@@ -355,6 +355,7 @@ const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'AHEA' },
   { value: 'SANDBOX_GREENHILLS', label: 'AHGH' },
   { value: 'VERDANA_STORE', label: 'Verdana' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 
 const GL_SERVICE_TYPES = ['PT', 'OT', 'SLP', 'SPED', 'Psychology', 'MD', 'Orthosis']
@@ -693,7 +694,7 @@ function CashierPanel({
   // An admin's resolved branch can be 'ALL' (or unset). The cashier must ring up under a
   // CONCRETE branch so that branch's configured payment modes load (modes are branch-specific,
   // none are tagged 'ALL') — otherwise it falls back to the plain hardcoded methods.
-  const CASHIER_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+  const CASHIER_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
   const [selectedBranch, setSelectedBranch] = useState(CASHIER_BRANCHES.includes(branch) ? branch : 'SANDBOX_EAST')
   const [date, setDate] = useState(today())
   const [queue, setQueue] = useState<QueueItem[]>([])

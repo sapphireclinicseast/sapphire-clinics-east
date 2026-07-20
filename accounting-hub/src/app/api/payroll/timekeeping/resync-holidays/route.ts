@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const { branch, startDate, endDate } = await req.json()
-  const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch
+  const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch === 'AURA_INSTITUTE' ? 'AHI' : branch
   if (!qBranch) return NextResponse.json({ error: 'branch is required' }, { status: 400 })
 
   const allowed = allowedBranches(session.user.role as string)

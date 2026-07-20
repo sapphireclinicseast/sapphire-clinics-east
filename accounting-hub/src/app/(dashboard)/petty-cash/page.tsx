@@ -18,6 +18,7 @@ const BRANCHES = [
   { code: 'AHEA', value: 'SANDBOX_EAST', label: 'AHEA' },
   { code: 'AHGH', value: 'SANDBOX_GREENHILLS', label: 'AHGH' },
   { code: 'VER', value: 'VERDANA_STORE', label: 'VERDANA' },
+  { code: 'AHI', value: 'AURA_INSTITUTE', label: 'AHI' },
   { code: 'CEO', value: 'CEO', label: 'CEO' },
 ]
 const ALLOC_BRANCHES = BRANCHES.filter(b => b.value !== 'CEO')
@@ -256,7 +257,7 @@ export default function PettyCashPage() {
     setSelected(new Set())
     loadEntries(branch); loadSettings(branch); loadReimbursements(branch)
     // Suppliers list is only defined for the expense branches (not CEO).
-    if (['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'].includes(branch)) {
+    if (['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE'].includes(branch)) {
       fetch(`/api/expenses/suppliers?branch=${branch}&all=1`)
         .then(r => (r.ok ? r.json() : { suppliers: [] }))
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -594,7 +595,7 @@ export default function PettyCashPage() {
     const name = (e.registeredName || '').trim()
     // On save (finalize), offer to add a new supplier to the Suppliers list.
     // Invalid-classified expenses are not real suppliers — never add them to the list.
-    if (name && e.validity !== 'Invalid' && ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'].includes(branch) && !supplierNames.has(name.toLowerCase())) {
+    if (name && e.validity !== 'Invalid' && ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE'].includes(branch) && !supplierNames.has(name.toLowerCase())) {
       setNewSupplierPrompt({ registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '' })
     }
     // Asset-classification entries are added to Asset Management via the dedicated

@@ -17,6 +17,7 @@ const BRANCHES = [
   { code: 'AHEA', value: 'SANDBOX_EAST', label: 'AHEA' },
   { code: 'AHGH', value: 'SANDBOX_GREENHILLS', label: 'AHGH' },
   { code: 'VER', value: 'VERDANA_STORE', label: 'VERDANA' },
+  { code: 'AHI', value: 'AURA_INSTITUTE', label: 'AHI' },
 ]
 const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSIS']
 const VATABLE = ['VAT', 'Non-VAT']

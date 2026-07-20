@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'dateFrom and dateTo are required' }, { status: 400 })
   }
 
-  const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch
+  const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch === 'AURA_INSTITUTE' ? 'AHI' : branch
 
   const allowed = allowedBranches(session.user.role as string)
   if (qBranch && allowed && !allowed.includes(qBranch)) {

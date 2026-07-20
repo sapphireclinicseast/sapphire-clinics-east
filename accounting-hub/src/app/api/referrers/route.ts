@@ -6,7 +6,7 @@ import { parsePagination, paginatedResult } from '@/lib/pagination'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
 const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM', 'PARTNER_SCHOOL']
 const normType = (t: unknown) => (REFERRER_TYPES.includes(String(t)) ? String(t) : 'DOCTOR')
-const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'AURA_INSTITUTE']
 const normBranches = (b: unknown): string[] => Array.isArray(b) ? Array.from(new Set(b.map(String).filter(x => VALID_BRANCHES.includes(x)))) : []
 // A branch-scoped user (East/Greenhills admin or front desk) only sees referrers
 // tagged for their branch (or untagged = all branches). Everyone else sees all.

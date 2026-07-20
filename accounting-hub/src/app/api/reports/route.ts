@@ -25,6 +25,8 @@ export async function GET(req: Request) {
     VERDANA_STORE: 'VERDANA_STORE',
     SANDBOX_EAST: 'SANDBOX_EAST',
     SANDBOX_GREENHILLS: 'SANDBOX_GREENHILLS',
+    AHI: 'AURA_INSTITUTE',
+    AURA_INSTITUTE: 'AURA_INSTITUTE',
   }
   const orderBranch = BRANCH_MAP[branch] || branch
 
@@ -122,7 +124,7 @@ export async function GET(req: Request) {
       prisma.inventoryItem.findMany({
         where: {
           isActive: true,
-          ...(branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {}),
+          ...(branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' | 'AURA_INSTITUTE' } : {}),
         },
         select: { quantity: true, unitCost: true, skuDepartment: true, branch: true, fromPettyCash: true, sourceAccountId: true, sourceAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } },
       }),
@@ -237,7 +239,7 @@ export async function GET(req: Request) {
 
       // Assets — for depreciation on Income Statement and Balance Sheet
       prisma.asset.findMany({
-        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {},
+        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' | 'AURA_INSTITUTE' } : {},
         select: {
           name: true,
           classification: true,
