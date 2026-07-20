@@ -195,6 +195,7 @@ interface DiscountSetting {
   type: 'PERCENTAGE' | 'FIXED'
   value: string | number
   branch?: string | null
+  departments?: string[]
   [key: string]: unknown
 }
 
@@ -1102,7 +1103,12 @@ function OrderFormModal({
     if (ds) {
       discountType = 'CUSTOM'
       discountLabel = ds.name
-      discountAmount = ds.type === 'PERCENTAGE' ? subtotal * (toNum(ds.value) / 100) : toNum(ds.value)
+      // If the discount is limited to specific departments, only its eligible items count.
+      const depts = ds.departments || []
+      const base = depts.length
+        ? items.filter(it => { const dp = (it as { department?: string }).department; return !!dp && depts.includes(dp) }).reduce((s, it) => s + toNum(it.lineTotal), 0)
+        : subtotal
+      discountAmount = ds.type === 'PERCENTAGE' ? base * (toNum(ds.value) / 100) : Math.min(toNum(ds.value), base)
     }
   }
 
@@ -5993,6 +5999,7 @@ interface DiscountSettingFull {
   accountId?: string | null
   account?: { id: string; accountNumber: string; accountTitle: string } | null
   isActive?: boolean
+  departments?: string[]
   rules?: WalletDiscountRuleItem[]
   [key: string]: unknown
 }
@@ -6006,6 +6013,8 @@ function DiscountSettingsPanel() {
   const [form, setForm] = useState({
     name: '', type: 'PERCENTAGE' as string, value: 0, branch: '', walletType: '', accountId: '',
   })
+  const [deptScope, setDeptScope] = useState<string[]>([])
+  const toggleDept = (d: string) => setDeptScope(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
   const [accountSearch, setAccountSearch] = useState('')
   const [discountAccounts, setDiscountAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; normalBalance: string }[]>([])
   const [rules, setRules] = useState<{ serviceId: string; department: string; discountPercent: number }[]>([])
@@ -6045,13 +6054,15 @@ function DiscountSettingsPanel() {
       .catch(() => {})
   }, [])
 
-  const DEPARTMENTS = ['OT', 'SLP', 'PT', 'SPED', 'PSYCHOLOGY', 'MD']
+  const DEPARTMENTS = ['OT', 'SLP', 'PT', 'SPED', 'PSYCHOLOGY', 'MD', 'ORTHOSIS_PROSTHESIS']
+  const DEPT_LABEL: Record<string, string> = { PT: 'Physical Therapy', OT: 'Occupational Therapy', SLP: 'Speech-Language', SPED: 'Special Ed', PSYCHOLOGY: 'Psychology', MD: 'Medical', ORTHOSIS_PROSTHESIS: 'Orthosis/Prosthesis' }
 
   const openCreate = () => {
     setEditingId(null)
     setForm({ name: '', type: 'PERCENTAGE', value: 0, branch: '', walletType: '', accountId: '' })
     setAccountSearch('')
     setRules([])
+    setDeptScope([])
     setShowForm(true)
     setError('')
   }
@@ -6072,6 +6083,7 @@ function DiscountSettingsPanel() {
       department: r.department || '',
       discountPercent: toNum(r.discountPercent),
     })))
+    setDeptScope(ds.departments || [])
     setShowForm(true)
     setError('')
   }
@@ -6085,6 +6097,7 @@ function DiscountSettingsPanel() {
         walletType: form.walletType || null,
         branch: form.branch || null,
         accountId: form.accountId || null,
+        departments: deptScope,
         rules: rules.filter(r => r.discountPercent > 0 && (r.serviceId || r.department)),
       }
 
@@ -6301,6 +6314,20 @@ function DiscountSettingsPanel() {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Department scope — which departments this discount can be applied to */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--mid-gray)' }}>Applies to departments <span className="font-normal">(leave all unticked = every department)</span></label>
+                <div className="flex flex-wrap gap-2">
+                  {DEPARTMENTS.map(d => (
+                    <label key={d} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs"
+                      style={deptScope.includes(d) ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      <input type="checkbox" checked={deptScope.includes(d)} onChange={() => toggleDept(d)} />
+                      {DEPT_LABEL[d] || d}
+                    </label>
+                  ))}
+                </div>
               </div>
 
               {/* Per-Service / Per-Department Discount Rules */}

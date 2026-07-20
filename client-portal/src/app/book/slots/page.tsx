@@ -64,11 +64,8 @@ function BookSlotsPage() {
     // Phase-1 enabled depts — must mirror the SAME set in /book page.tsx.
     // SBEA's Developmental Pediatrician is intentionally offline-only for
     // now; the tile still shows, but tapping it routes to the contact panel.
-    const ENABLED_SBEA = new Set([
-      'PT', 'PSYCHOLOGY',
-      'PSYCHIATRY', 'REHABILITATION_MEDICINE',
-    ])
-    const ENABLED_SBGH = new Set(['PT', 'PSYCHOLOGY', 'PSYCHIATRY'])
+    const ENABLED_SBEA = new Set(['PT', 'REHABILITATION_MEDICINE'])
+    const ENABLED_SBGH = new Set(['PT'])
     const ok =
       (branch === 'SBEA' && ENABLED_SBEA.has(department)) ||
       (branch === 'SBGH' && ENABLED_SBGH.has(department))

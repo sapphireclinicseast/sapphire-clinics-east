@@ -2,14 +2,19 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { getAuth, clearAuth, type AuthSession } from '@/lib/session'
+import { getAuth, clearAuth, ADMIN_EMAIL, type AuthSession } from '@/lib/session'
 
-// A single nav item — icon + label + href, optionally gated by role.
+// A single nav item — icon + label + href, optionally gated by role
+// or by main-admin-only visibility. The `mainAdminOnly` flag is a
+// tighter gate than `roles: ['ADMIN']` — role=ADMIN includes branch
+// admin, but only the single main-admin email should ever see the
+// Handbook link.
 type NavItem = {
   href: string
   label: string
-  icon: 'home' | 'classes' | 'calendar' | 'pay'
+  icon: 'home' | 'classes' | 'calendar' | 'pay' | 'handbook'
   roles?: Array<'ADMIN' | 'BRANCH_ADMIN' | 'FRONTDESK' | 'TEACHER' | 'STUDENT'>
+  mainAdminOnly?: boolean
 }
 
 // Monochrome 20×20 line icons rendered inline as SVG so they inherit
@@ -53,6 +58,14 @@ function NavIcon({ name }: { name: NavItem['icon'] }) {
           <rect x="3" y="6" width="18" height="13" rx="2" />
           <path d="M3 10h18" />
           <path d="M16 15h2" />
+        </svg>
+      )
+    case 'handbook':
+      // Open book with a ribbon bookmark — matches Feather's "book-open".
+      return (
+        <svg {...common}>
+          <path d="M2 5h6a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2z" />
+          <path d="M22 5h-6a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h7z" />
         </svg>
       )
   }
@@ -119,12 +132,18 @@ export default function AuthSidebar() {
         : role === 'TEACHER' ? 'Teacher hub'
         : 'My profile',
       icon: 'home' },
-    { href: '/classes',   label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
-    { href: '/calendar',  label: 'Calendar',     icon: 'calendar' },
-    { href: '/pay',       label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
+    { href: '/classes',        label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
+    { href: '/calendar',       label: 'Calendar',     icon: 'calendar' },
+    { href: '/pay',            label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
+    { href: '/admin/handbook',               label: 'Class Portal Handbook', icon: 'handbook', mainAdminOnly: true },
+    { href: '/admin/staff-portal-handbook',  label: 'Staff Portal Handbook', icon: 'handbook', mainAdminOnly: true },
   ]
 
-  const visible = items.filter(i => !i.roles || i.roles.includes(role))
+  const isMainAdmin = role === 'ADMIN' && auth.email === ADMIN_EMAIL
+  const visible = items.filter(i => {
+    if (i.mainAdminOnly) return isMainAdmin
+    return !i.roles || i.roles.includes(role)
+  })
 
   const displayName = auth.email?.split('@')[0] ?? 'account'
   const roleLabel =

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { enforceBranch } from '@/lib/branch-scope'
 
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
 const TARGET_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER'] // only these may set the target
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
-  const branch = sp.get('branch') || ''
+  const branch = enforceBranch((session.user as { branch?: string }).branch) ?? (sp.get('branch') || '')
   const month = parseInt(sp.get('month') || '0', 10)
   const year = parseInt(sp.get('year') || '0', 10)
   if (!VALID_BRANCHES.includes(branch) || month < 1 || month > 12 || year < 2000) {

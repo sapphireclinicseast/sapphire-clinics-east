@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { enforceBranch } from '@/lib/branch-scope'
 
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
 
@@ -11,7 +12,7 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
-  const branch = sp.get('branch') || ''
+  const branch = enforceBranch((session.user as { branch?: string }).branch) ?? (sp.get('branch') || '')
   const q = (sp.get('q') || '').trim()
   if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Select a branch' }, { status: 400 })
 
