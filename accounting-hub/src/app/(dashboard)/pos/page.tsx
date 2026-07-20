@@ -432,7 +432,7 @@ function printThermalReceipt(order: {
   const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0)
   const change = totalPaid - Number(order.netAmount)
   const isVerdana = order.branch === 'VERDANA_STORE'
-  const branchName = order.branch === 'SANDBOX_EAST' ? 'Aura Health Rehab Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Aura Health Rehab Clinic \u2013 Greenhills' : isVerdana ? 'VERDANA STORE' : order.branch || ''
+  const branchName = order.branch === 'SANDBOX_EAST' ? 'Aura Health Rehab Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Aura Health Rehab Clinic \u2013 Greenhills' : isVerdana ? 'VERDANA STORE' : order.branch === 'AURA_INSTITUTE' ? 'Aura Health Rehab Clinic \u2013 Institute' : order.branch || ''
   const address = isVerdana ? 'Room 210B, Henry\'s Building, 80 Ortigas Extension, San Juan City' : order.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills Shopping Center, San Juan City' : 'Level 4 Robinsons MetroEast, Brgy. Dela Paz, Pasig City'
   const phone = isVerdana ? '+63 917 173 1368' : '+63 917 118 9289 | (02) 5310 4991'
   const email = isVerdana ? 'verdanatrading@gmail.com' : 'east.sandboxclinic@gmail.com'
@@ -751,6 +751,7 @@ function CashierPanel({
             <option value="SANDBOX_EAST">Aura Health Rehab - East</option>
             <option value="SANDBOX_GREENHILLS">Aura Health Rehab - Greenhills</option>
             <option value="VERDANA_STORE">Verdana</option>
+            <option value="AURA_INSTITUTE">Aura Health Institute</option>
           </select>
         )}
         <input
@@ -2833,7 +2834,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                     <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{o.orderNumber}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {o.branch === 'SANDBOX_EAST' ? 'AHEA' : o.branch === 'SANDBOX_GREENHILLS' ? 'AHGH' : o.branch === 'VERDANA_STORE' ? 'Verdana' : o.branch}
+                      {o.branch === 'SANDBOX_EAST' ? 'AHEA' : o.branch === 'SANDBOX_GREENHILLS' ? 'AHGH' : o.branch === 'VERDANA_STORE' ? 'Verdana' : o.branch === 'AURA_INSTITUTE' ? 'AHI' : o.branch}
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs px-1.5 py-0.5 rounded" style={o.orderType === 'SERVICE' ? { background: '#dbeafe', color: '#1e40af' } : { background: '#fef3c7', color: '#92400e' }}>
@@ -2945,7 +2946,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
               {/* Details grid */}
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                 <div><span style={{ color: 'var(--mid-gray)' }}>Date:</span> <span style={{ color: 'var(--charcoal)' }}>{formatDate(viewOrder.transactionDate)}</span></div>
-                <div><span style={{ color: 'var(--mid-gray)' }}>Branch:</span> <span style={{ color: 'var(--charcoal)' }}>{viewOrder.branch === 'SANDBOX_EAST' ? 'AHEA' : viewOrder.branch === 'SANDBOX_GREENHILLS' ? 'AHGH' : viewOrder.branch === 'VERDANA_STORE' ? 'Verdana' : viewOrder.branch}</span></div>
+                <div><span style={{ color: 'var(--mid-gray)' }}>Branch:</span> <span style={{ color: 'var(--charcoal)' }}>{viewOrder.branch === 'SANDBOX_EAST' ? 'AHEA' : viewOrder.branch === 'SANDBOX_GREENHILLS' ? 'AHGH' : viewOrder.branch === 'VERDANA_STORE' ? 'Verdana' : viewOrder.branch === 'AURA_INSTITUTE' ? 'AHI' : viewOrder.branch}</span></div>
                 <div><span style={{ color: 'var(--mid-gray)' }}>Patient:</span> <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{viewOrder.patientName || '—'}</span></div>
                 <div><span style={{ color: 'var(--mid-gray)' }}>Clinician:</span> <span style={{ color: 'var(--charcoal)' }}>{formatClinicianName(viewOrder.clinicianName)}</span></div>
                 <div className="col-span-2"><span style={{ color: 'var(--mid-gray)' }}>Reference #:</span> <span className="font-mono" style={{ color: 'var(--charcoal)' }}>{viewOrder.referenceNumber || <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></div>
@@ -4356,7 +4357,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     if (!showSOA) return
     const providerName = showSOA.patientName
     const isHMO = showSOA.walletType === 'HMO'
-    const branchLabel = soaBranch === 'SANDBOX_EAST' ? 'Aura Health Rehab Clinic — East' : soaBranch === 'SANDBOX_GREENHILLS' ? 'Aura Health Rehab Clinic — Greenhills' : soaBranch === 'VERDANA_STORE' ? 'Verdana Store' : 'All Branches'
+    const branchLabel = soaBranch === 'SANDBOX_EAST' ? 'Aura Health Rehab Clinic — East' : soaBranch === 'SANDBOX_GREENHILLS' ? 'Aura Health Rehab Clinic — Greenhills' : soaBranch === 'VERDANA_STORE' ? 'Verdana Store' : soaBranch === 'AURA_INSTITUTE' ? 'Aura Health Institute' : 'All Branches'
     const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
     const totalAmount = soaOrders.reduce((s, o) => {
       const hmoPayment = o.payments.find(p => p.method === showSOA.walletType && p.reference?.trim().toLowerCase() === providerName.toLowerCase())
@@ -4515,6 +4516,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             <option value="SANDBOX_EAST">East Branch</option>
             <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
             <option value="VERDANA_STORE">Verdana Store</option>
+            <option value="AURA_INSTITUTE">Aura Health Institute</option>
           </select>
         )}
       </div>
@@ -5229,6 +5231,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   <option value="ALL">All Branches</option>
                   <option value="SANDBOX_EAST">East Branch</option>
                   <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
+                  <option value="AURA_INSTITUTE">Aura Health Institute</option>
                 </select>
               </div>
               {createError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{createError}</p>}
@@ -5465,6 +5468,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       <option value="ALL">All Branches</option>
                       <option value="SANDBOX_EAST">East Branch</option>
                       <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
+                      <option value="AURA_INSTITUTE">Aura Health Institute</option>
                     </select>
                   </div>
                 </div>
@@ -7813,6 +7817,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
             className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
             <option value="SANDBOX_EAST">East Branch</option>
             <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
+            <option value="AURA_INSTITUTE">Aura Health Institute</option>
           </select>
         )}
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
@@ -8576,6 +8581,7 @@ function PaymentModeSettingsPanel() {
                   <option value="SANDBOX_EAST">East Branch</option>
                   <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
                   <option value="VERDANA_STORE">Verdana Store</option>
+                  <option value="AURA_INSTITUTE">Aura Health Institute</option>
                 </select>
               </div>
 
