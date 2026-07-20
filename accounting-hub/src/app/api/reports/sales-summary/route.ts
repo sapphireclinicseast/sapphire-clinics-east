@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   // Branch-scoped users (e.g. front desk) may only ever see their own branch,
   // regardless of the requested branch param.
-  const forcedBranch = enforceBranch((session.user as { branch?: string }).branch)
+  const forcedBranch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, searchParams.get('branch'))
   const branch = forcedBranch ?? (searchParams.get('branch') || '')
   const dateFrom = searchParams.get('dateFrom') || ''
   const dateTo = searchParams.get('dateTo') || ''

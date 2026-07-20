@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
   // Branch-scoped users (e.g. front desk) are forced to their own branch.
-  const branch = enforceBranch((session.user as { branch?: string }).branch) ?? (sp.get('branch') || '')
+  const branch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, sp.get('branch')) ?? (sp.get('branch') || '')
   if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Select a branch' }, { status: 400 })
   const dateFrom = sp.get('dateFrom') || ''
   const dateTo = sp.get('dateTo') || ''
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { siNumber, status, remarks, orderId } = body
     // Branch-scoped users can only flag invoices in their own branch.
-    const branch = enforceBranch((session.user as { branch?: string }).branch) ?? body.branch
+    const branch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, body.branch) ?? body.branch
     if (!VALID_BRANCHES.includes(branch) || !siNumber || !['CANCELLED', 'REMARKS', 'TAGGED'].includes(status)) {
       return NextResponse.json({ error: 'branch, siNumber and a valid status are required' }, { status: 400 })
     }
@@ -147,7 +147,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   const sp = new URL(req.url).searchParams
-  const branch = enforceBranch((session.user as { branch?: string }).branch) ?? (sp.get('branch') || '')
+  const branch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, sp.get('branch')) ?? (sp.get('branch') || '')
   const siNumber = sp.get('siNumber') || ''
   if (!branch || !siNumber) return NextResponse.json({ error: 'branch and siNumber required' }, { status: 400 })
   // If this was a tag-to-order, un-label the order so the SI reverts to a gap.

@@ -1179,6 +1179,8 @@ a.hero-brand-chip:hover {
 #academy .verdana-icon { width: 150px; height: 84px; border-radius: 14px; padding: 12px 16px; }
 /* Aura Health Institute logo is a wide ~3:1 horizontal lockup — wider plate. */
 #institute .verdana-icon { width: 184px; height: 72px; border-radius: 14px; padding: 12px 18px; }
+/* UGAT Fellowship logo is a ~1.5:1 horizontal mark — slightly wider plate. */
+#ugat .verdana-icon { width: 108px; height: 74px; border-radius: 14px; padding: 10px 14px; }
 .verdana-banner h3 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
 .verdana-banner p { opacity: .8; font-size: 15px; line-height: 1.6; }
 .verdana-banner .btn { margin-top: 16px; }

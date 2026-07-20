@@ -28,6 +28,7 @@ export async function GET(req: Request) {
         email: true,
         role: true,
         branch: true,
+        branches: true,
         disabled: true,
         lastLoginAt: true,
         createdAt: true,
@@ -50,7 +51,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, email, password, role, branch } = await req.json()
+    const { name, email, password, role, branch, branches } = await req.json()
+    // Multi-branch: `branches` (tickboxes) is authoritative; keep single `branch`
+    // in sync (= the sole branch, or null when the user spans 0 or many).
+    const normBranches: string[] = Array.isArray(branches)
+      ? branches.filter((b: string) => VALID_BRANCHES.includes(b))
+      : (branch && VALID_BRANCHES.includes(branch) ? [branch] : [])
+    const primaryBranch = normBranches.length === 1 ? normBranches[0] : null
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 })
@@ -81,7 +88,8 @@ export async function POST(req: Request) {
         email,
         passwordHash,
         role: role || 'VIEWER',
-        branch: branch || null,
+        branch: primaryBranch as never,
+        branches: normBranches as never,
       },
       select: {
         id: true,
@@ -89,6 +97,7 @@ export async function POST(req: Request) {
         email: true,
         role: true,
         branch: true,
+        branches: true,
         createdAt: true,
       },
     })
@@ -119,7 +128,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, email, password, role, branch, disabled } = await req.json()
+    const { id, name, email, password, role, branch, branches, disabled } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
@@ -137,7 +146,14 @@ export async function PUT(req: Request) {
     if (name) updateData.name = name
     if (email) updateData.email = email
     if (role) updateData.role = role
-    if (branch !== undefined) updateData.branch = branch || null
+    if (branches !== undefined) {
+      const norm: string[] = Array.isArray(branches) ? branches.filter((b: string) => VALID_BRANCHES.includes(b)) : []
+      updateData.branches = norm
+      updateData.branch = norm.length === 1 ? norm[0] : null   // keep single-branch scoping in sync
+    } else if (branch !== undefined) {
+      updateData.branch = branch || null
+      updateData.branches = branch && VALID_BRANCHES.includes(branch) ? [branch] : []
+    }
     if (typeof disabled === 'boolean') updateData.disabled = disabled
     if (password) {
       if (password.length < 8) {
@@ -155,6 +171,7 @@ export async function PUT(req: Request) {
         email: true,
         role: true,
         branch: true,
+        branches: true,
         createdAt: true,
       },
     })

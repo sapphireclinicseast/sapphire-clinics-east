@@ -20,6 +20,7 @@ interface User {
   email: string
   role: string
   branch: string | null
+  branches?: string[]
   disabled?: boolean
   lastLoginAt: string | null
   createdAt: string
@@ -87,7 +88,7 @@ export default function UsersPage() {
   const [formEmail, setFormEmail] = useState('')
   const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState('VIEWER')
-  const [formBranch, setFormBranch] = useState('ALL')
+  const [formBranches, setFormBranches] = useState<string[]>([])
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -116,7 +117,7 @@ export default function UsersPage() {
     setFormEmail('')
     setFormPassword('')
     setFormRole('VIEWER')
-    setFormBranch('ALL')
+    setFormBranches([])
     setError('')
     setModalOpen(true)
   }
@@ -127,7 +128,7 @@ export default function UsersPage() {
     setFormEmail(user.email)
     setFormPassword('')
     setFormRole(user.role)
-    setFormBranch(user.branch || 'ALL')
+    setFormBranches(user.branches?.length ? user.branches : (user.branch && user.branch !== 'ALL' ? [user.branch] : []))
     setError('')
     setModalOpen(true)
   }
@@ -137,11 +138,11 @@ export default function UsersPage() {
     setSaving(true)
     setError('')
 
-    const body: Record<string, string> = {
+    const body: Record<string, unknown> = {
       name: formName,
       email: formEmail,
       role: formRole,
-      branch: formBranch,
+      branches: formBranches,
     }
 
     if (editingUser) {
@@ -305,7 +306,15 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
-                      {user.branch ? BRANCH_LABELS[user.branch] || user.branch : '—'}
+                      {(() => {
+                        const bs = user.branches?.length ? user.branches : (user.branch && user.branch !== 'ALL' ? [user.branch] : [])
+                        if (bs.length === 0) return 'All branches'
+                        return (
+                          <span className="flex flex-wrap gap-1">
+                            {bs.map(b => <span key={b} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{BRANCH_LABELS[b] || b}</span>)}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}
@@ -465,18 +474,22 @@ export default function UsersPage() {
 
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                  Branch
+                  Branch access <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(tick one or more; none = all branches)</span>
                 </label>
-                <select
-                  value={formBranch}
-                  onChange={(e) => setFormBranch(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
-                  style={{ borderColor: 'var(--light-gray)' }}
-                >
-                  {BRANCH_OPTIONS.map((b) => (
-                    <option key={b.value} value={b.value}>{b.label}</option>
-                  ))}
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  {BRANCH_OPTIONS.filter(b => b.value !== 'ALL').map((b) => {
+                    const on = formBranches.includes(b.value)
+                    return (
+                      <label key={b.value} className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer select-none" style={{ borderColor: on ? 'var(--teal)' : 'var(--light-gray)', background: on ? 'var(--pale-teal)' : 'white' }}>
+                        <input type="checkbox" checked={on} onChange={() => setFormBranches(prev => prev.includes(b.value) ? prev.filter(x => x !== b.value) : [...prev, b.value])} className="w-4 h-4 accent-teal-600" />
+                        {b.label}
+                      </label>
+                    )
+                  })}
+                </div>
+                <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+                  {formBranches.length === 0 ? 'All branches' : formBranches.length === 1 ? 'Locked to this one branch' : `${formBranches.length} branches`}
+                </p>
               </div>
 
               <div className="flex gap-3 pt-2">
