@@ -223,6 +223,7 @@ export default function PayPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, plan, history])
 
+
   // "Effective" amounts that flow through the rest of the page. When a
   // back balance applies, tuition + misc swap out for the lump version;
   // when not, they pass through unchanged.
@@ -578,6 +579,7 @@ export default function PayPage() {
             </div>
           </div>
         )}
+
 
         {/* Late-enrollment back-balance callout. Surfaces ABOVE the
             checkout summary so the parent reads it before scrolling

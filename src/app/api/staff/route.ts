@@ -33,9 +33,9 @@ export async function POST() {
   )
 }
 
-// Narrow PATCH endpoint: admin/front-desk may set sex on a Staff record,
-// since the HR Platform does not track this field. Everything else still
-// flows one-way from HR.
+// Narrow PATCH endpoint: locally-managed fields only (never overwritten by HR sync).
+// - sex: any staff-facing role may set it
+// - extraBranches: ADMIN only (controls which branches this consultant appears under)
 export async function PATCH(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -44,12 +44,33 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
-  const body = (await req.json().catch(() => ({}))) as { id?: string; sex?: string | null }
+  const body = (await req.json().catch(() => ({}))) as {
+    id?: string
+    sex?: string | null
+    extraBranches?: string[]
+  }
   if (!body.id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
+  // extraBranches — ADMIN only; controls multi-branch visibility for interbranch consultants
+  if ('extraBranches' in body) {
+    if (role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Only the Clinic Manager can assign extra branches' }, { status: 403 })
+    }
+    const VALID = ['SBEA', 'SBGH', 'VDNA']
+    const branches = Array.isArray(body.extraBranches)
+      ? body.extraBranches.filter((b): b is string => typeof b === 'string' && VALID.includes(b))
+      : []
+    const updated = await prisma.staff.update({
+      where: { id: body.id },
+      data: { extraBranches: branches },
+      select: { id: true, extraBranches: true },
+    })
+    return NextResponse.json(updated)
+  }
+
+  // sex — any allowed role
   const sexIn = (body.sex ?? '').toString().trim().toUpperCase()
   const sex = sexIn === 'M' || sexIn === 'MALE' ? 'M' : sexIn === 'F' || sexIn === 'FEMALE' ? 'F' : null
-
   const updated = await prisma.staff.update({
     where: { id: body.id },
     data: { sex },

@@ -206,8 +206,10 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
                               : item.type === 'FORM_RESPONSE'
                               ? 'New form submission'
                               : item.status === 'PAID'
-                              ? 'Appointment booking · Paid downpayment'
-                              : 'Appointment booking · Awaiting payment'}
+                              ? 'Online booking · Paid — add to deck'
+                              : item.status === 'APPROVED'
+                              ? 'Online booking · Approved, awaiting payment'
+                              : 'Online booking · Needs confirmation'}
                           </div>
                           <div className="text-[10px] mt-0.5" style={{ color: '#9ca3af' }}>
                             {new Date(item.createdAt).toLocaleString('en-PH', {

@@ -30,6 +30,8 @@ function formatTime(t: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
+const BRANCH_LABEL: Record<string, string> = { SBEA: 'East Branch', SBGH: 'Greenhills Branch' }
+
 function visibleBranches(role: string): string[] {
   if (role.startsWith('SBEA_')) return ['SBEA']
   if (role.startsWith('SBGH_')) return ['SBGH']
@@ -189,7 +191,7 @@ export default function CalendarView({ role }: { role: string }) {
                     style={activeBranch === b
                       ? { background: 'var(--teal)', color: '#fff' }
                       : { background: '#fff', color: 'var(--mid-gray)' }}>
-                    {b}
+                    {BRANCH_LABEL[b] ?? b}
                   </button>
                 ))}
               </div>
