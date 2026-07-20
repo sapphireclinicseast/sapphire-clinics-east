@@ -3,15 +3,21 @@
 export interface SortCol { key: string; label: string }
 
 // Filter (case-insensitive contains) + sort an array using a value accessor.
+// `get` drives sorting (return a number for numeric/date columns so they order
+// correctly). Pass `filterGet` when the text a user should filter on differs
+// from the sort value (e.g. a date that sorts by timestamp but filters by its
+// displayed "MM/DD/YYYY" string). Defaults to `get` for backward compatibility.
 export function applySortFilter<T>(
   rows: T[],
   get: (r: T, key: string) => string | number,
   sortKey: string,
   sortDir: 'asc' | 'desc',
   filters: Record<string, string>,
+  filterGet?: (r: T, key: string) => string | number,
 ): T[] {
+  const fget = filterGet || get
   let out = rows.filter(r =>
-    Object.entries(filters).every(([k, v]) => !v || String(get(r, k) ?? '').toLowerCase().includes(v.toLowerCase())),
+    Object.entries(filters).every(([k, v]) => !v || String(fget(r, k) ?? '').toLowerCase().includes(v.toLowerCase())),
   )
   if (sortKey) {
     out = [...out].sort((a, b) => {

@@ -8,6 +8,7 @@ import {
   CheckCircle2, XCircle, X, Search,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { applySortFilter, SortFilterHead, type SortCol } from '@/components/SortFilterHead'
 
 /* ─────────────────────────────────────────────
    TYPES
@@ -80,6 +81,41 @@ function downloadCsv(rows: SalesSummaryRow[], filename: string) {
 /* ─────────────────────────────────────────────
    SUB-COMPONENT: Report Table
 ───────────────────────────────────────────── */
+const REPORT_COLS: SortCol[] = [
+  { key: 'date', label: 'Date' },
+  { key: 'orderNumber', label: 'Order #' },
+  { key: 'patientName', label: 'Patient Name' },
+  { key: 'serviceAvailed', label: 'Service Availed' },
+  { key: 'quantity', label: 'Qty' },
+  { key: 'salesInvoiceNumber', label: 'Sales Invoice No.' },
+  { key: 'grossAmount', label: 'Gross Amount' },
+  { key: 'netAmount', label: 'Net Amount' },
+]
+const siDigitsOf = (s: string) => parseInt(String(s).replace(/\D/g, '') || '0', 10)
+// Sort accessor — numbers for numeric/date columns so they order correctly.
+const reportSortVal = (r: SalesSummaryRow, k: string): string | number => {
+  switch (k) {
+    case 'date': return new Date(r.date).getTime() || 0
+    case 'orderNumber': return r.orderNumber
+    case 'quantity': return r.quantity
+    case 'salesInvoiceNumber': return siDigitsOf(r.salesInvoiceNumber || '')
+    case 'grossAmount': return r.grossAmount
+    case 'netAmount': return r.netAmount
+    default: return String((r as unknown as Record<string, unknown>)[k] ?? '').toLowerCase()
+  }
+}
+// Filter accessor — the displayed text a user types against.
+const reportFilterVal = (r: SalesSummaryRow, k: string): string => {
+  switch (k) {
+    case 'orderNumber': return `#${r.orderNumber}`
+    case 'grossAmount': return formatCurrency(r.grossAmount)
+    case 'netAmount': return formatCurrency(r.netAmount)
+    case 'quantity': return String(r.quantity)
+    default: return String((r as unknown as Record<string, unknown>)[k] ?? '')
+  }
+}
+const escHtml = (s: string) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+
 function ReportTable({
   rows,
   title,
@@ -97,16 +133,34 @@ function ReportTable({
   accentClass: string
   badgeClass: string
 }) {
-  const totalGross = rows.reduce((s, r) => s + r.grossAmount, 0)
-  const totalNet = rows.reduce((s, r) => s + r.netAmount, 0)
+  const [sortKey, setSortKey] = useState('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filters, setFilters] = useState<Record<string, string>>({})
+  const toggleSort = (k: string) => {
+    if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir('asc') }
+  }
+  const displayRows = applySortFilter(rows, reportSortVal, sortKey, sortDir, filters, reportFilterVal)
+  const totalGross = displayRows.reduce((s, r) => s + r.grossAmount, 0)
+  const totalNet = displayRows.reduce((s, r) => s + r.netAmount, 0)
+  const filtering = Object.values(filters).some(Boolean)
 
   const handlePrint = () => {
-    const el = document.getElementById(printId)
-    if (!el) return
     const w = window.open('', '_blank', 'width=1100,height=800')
     if (!w) return
+    const head = REPORT_COLS.map((c, i) => `<th class="${i === 4 ? 'center' : i >= 6 ? 'right' : ''}">${c.label}</th>`).join('')
+    const body = displayRows.map(r => `<tr>
+      <td>${escHtml(r.date)}</td>
+      <td class="mono">#${r.orderNumber}</td>
+      <td>${escHtml(r.patientName)}</td>
+      <td>${escHtml(r.serviceAvailed)}</td>
+      <td class="center">${r.quantity}</td>
+      <td>${r.salesInvoiceNumber ? `<span class="badge">${escHtml(r.salesInvoiceNumber)}</span>` : '—'}</td>
+      <td class="right">${formatCurrency(r.grossAmount)}</td>
+      <td class="right">${formatCurrency(r.netAmount)}</td>
+    </tr>`).join('')
     w.document.write(`
-      <html><head><title>${title}</title>
+      <html><head><title>${escHtml(title)}</title>
       <style>
         body { font-family: sans-serif; font-size: 12px; padding: 20px; }
         h2 { font-size: 18px; margin-bottom: 4px; }
@@ -121,9 +175,13 @@ function ReportTable({
         .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; background: #d1fae5; color: #065f46; }
         @page { size: landscape; margin: 15mm; }
       </style></head><body>
-      <h2>${title}</h2>
-      <p>${subtitle}</p>
-      ${el.innerHTML}
+      <h2>${escHtml(title)}</h2>
+      <p>${escHtml(subtitle)}</p>
+      <table>
+        <thead><tr>${head}</tr></thead>
+        <tbody>${body}</tbody>
+        <tfoot><tr><td colspan="6">SUBTOTAL (${displayRows.length} line${displayRows.length !== 1 ? 's' : ''})</td><td class="right">${formatCurrency(totalGross)}</td><td class="right">${formatCurrency(totalNet)}</td></tr></tfoot>
+      </table>
       </body></html>
     `)
     w.document.close()
@@ -138,12 +196,12 @@ function ReportTable({
         <div className="flex items-center gap-2">
           <span className={`text-sm font-bold ${accentClass}`}>{title}</span>
           <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-            {rows.length} line{rows.length !== 1 ? 's' : ''}
+            {filtering ? `${displayRows.length} of ${rows.length}` : rows.length} line{(filtering ? displayRows.length : rows.length) !== 1 ? 's' : ''}
           </span>
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <button
-            onClick={() => downloadCsv(rows, csvFilename)}
+            onClick={() => downloadCsv(displayRows, csvFilename)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
             style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -168,20 +226,19 @@ function ReportTable({
           <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <div id={printId}>
               <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ background: 'var(--off-white)', borderBottom: '1px solid var(--light-gray)' }}>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Order #</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Patient Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Service Availed</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Qty</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Sales Invoice No.</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Gross Amount</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Net Amount</th>
-                  </tr>
-                </thead>
+                <SortFilterHead
+                  cols={REPORT_COLS}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  filters={filters}
+                  onToggleSort={toggleSort}
+                  onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))}
+                />
                 <tbody>
-                  {rows.map((row, i) => (
+                  {displayRows.length === 0 && (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No rows match the current filters.</td></tr>
+                  )}
+                  {displayRows.map((row, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid var(--light-gray)' }} className="hover:bg-gray-50">
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{row.date}</td>
                       <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>#{row.orderNumber}</td>
@@ -218,7 +275,7 @@ function ReportTable({
                 <tfoot>
                   <tr style={{ background: 'var(--off-white)', borderTop: '2px solid var(--light-gray)' }}>
                     <td colSpan={6} className="px-4 py-3 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
-                      SUBTOTAL ({rows.length} line{rows.length !== 1 ? 's' : ''})
+                      SUBTOTAL ({displayRows.length} line{displayRows.length !== 1 ? 's' : ''})
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
                       {formatCurrency(totalGross)}
@@ -236,7 +293,7 @@ function ReportTable({
           <div className="mt-3 grid grid-cols-3 gap-3 print:hidden">
             <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
               <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Lines</p>
-              <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{rows.length}</p>
+              <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{displayRows.length}</p>
             </div>
             <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
               <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Gross Amount</p>
@@ -537,11 +594,44 @@ interface Flag { siNumber: string; count?: number; flag: { status: string; remar
 interface OrderHit { id: string; orderNumber: number; date: string; patientName: string; services: string; amount: number; payment: string }
 const siDigits = (s: string) => parseInt(String(s).replace(/\D/g, '') || '0', 10)
 
+type LeftItem = { kind: string; si: string; siN: number; order: SiRow | null; amount: number; remarks: string }
+const LEFT_COLS: SortCol[] = [
+  { key: 'si', label: 'SI No.' },
+  { key: 'date', label: 'Date' },
+  { key: 'patient', label: 'Patient / Customer' },
+  { key: 'amount', label: 'Amount' },
+]
+const leftSortVal = (it: LeftItem, k: string): string | number => {
+  switch (k) {
+    case 'si': return it.siN
+    case 'date': return it.order?.date ? (new Date(it.order.date).getTime() || 0) : 0
+    case 'patient': return (it.order?.patientName || it.remarks || '').toLowerCase()
+    case 'amount': return it.amount
+    default: return ''
+  }
+}
+const leftFilterVal = (it: LeftItem, k: string): string => {
+  switch (k) {
+    case 'si': return it.si
+    case 'date': return it.order?.date || ''
+    case 'patient': return it.order?.patientName || it.remarks || ''
+    case 'amount': return it.amount ? peso(it.amount) : ''
+    default: return ''
+  }
+}
+
 function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scopeEnum: string | null }) {
   const [branch, setBranch] = useState(initialBranch)
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
   const [data, setData] = useState<{ rows: SiRow[]; totals: { vat: number; nonVat: number; count: number }; gaps: Flag[]; duplicates: Flag[]; flags: FlagInfo[] } | null>(null)
   const [loading, setLoading] = useState(false)
+  const [sortKey, setSortKey] = useState('si')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filters, setFilters] = useState<Record<string, string>>({})
+  const toggleSort = (k: string) => {
+    if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir('asc') }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -565,11 +655,13 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
   const tagged = (si: string) => flagBySi.get(si)?.status === 'TAGGED'
 
   // LEFT — valid SIs (orders) plus items resolved from the right (tagged / cancelled / remarks).
-  const leftItems = data ? [
-    ...data.rows.map(r => ({ kind: tagged(r.siNumber) ? 'tagged' : 'si', si: r.siNumber, siN: siDigits(r.siNumber), order: r, amount: r.amount, remarks: '' })),
+  const leftItems: LeftItem[] = data ? [
+    ...data.rows.map(r => ({ kind: tagged(r.siNumber) ? 'tagged' : 'si', si: r.siNumber, siN: siDigits(r.siNumber), order: r as SiRow | null, amount: r.amount, remarks: '' })),
     ...data.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').map(f => ({ kind: f.status.toLowerCase(), si: f.siNumber, siN: siDigits(f.siNumber), order: null as SiRow | null, amount: 0, remarks: f.remarks || '' })),
-  ].sort((a, b) => a.siN - b.siN) : []
-  const leftTotal = data ? data.rows.reduce((s, r) => s + r.amount, 0) : 0
+  ] : []
+  const displayLeft = applySortFilter(leftItems, leftSortVal, sortKey, sortDir, filters, leftFilterVal)
+  const leftTotal = displayLeft.reduce((s, it) => s + it.amount, 0)
+  const leftFiltering = Object.values(filters).some(Boolean)
 
   // RIGHT — still-unresolved flags (missing / duplicate numbers) needing action.
   const rightItems = data ? [
@@ -607,17 +699,21 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
           {/* LEFT — Sales Invoices */}
           <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
             <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-              <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Sales Invoices <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {leftItems.length}</span></p>
+              <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Sales Invoices <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {leftFiltering ? `${displayLeft.length} of ${leftItems.length}` : leftItems.length}</span></p>
               <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(leftTotal)}</p>
             </div>
             <div className="overflow-auto" style={{ maxHeight: '68vh' }}>
               <table className="w-full text-sm">
-                <thead><tr className="text-left sticky top-0" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                  <th className="px-3 py-2 font-semibold">SI No.</th><th className="px-3 py-2 font-semibold">Date</th>
-                  <th className="px-3 py-2 font-semibold">Patient / Customer</th><th className="px-3 py-2 font-semibold text-right">Amount</th>
-                </tr></thead>
+                <SortFilterHead
+                  cols={LEFT_COLS}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  filters={filters}
+                  onToggleSort={toggleSort}
+                  onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))}
+                />
                 <tbody>
-                  {leftItems.map(it => {
+                  {displayLeft.map(it => {
                     const isResolved = it.kind !== 'si'
                     const b = isResolved ? badge(it.kind) : null
                     return (
@@ -633,7 +729,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
                       </tr>
                     )
                   })}
-                  {leftItems.length === 0 && <tr><td colSpan={4} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No orders with a Sales Invoice in this branch/range.</td></tr>}
+                  {displayLeft.length === 0 && <tr><td colSpan={4} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{leftItems.length === 0 ? 'No orders with a Sales Invoice in this branch/range.' : 'No rows match the current filters.'}</td></tr>}
                 </tbody>
               </table>
             </div>

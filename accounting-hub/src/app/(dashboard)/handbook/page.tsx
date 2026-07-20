@@ -178,97 +178,190 @@ export default function HandbookPage() {
         <H3>2.6 Medical Representative</H3>
         <P>Manage the <strong>Referral</strong> directory and view <strong>Reports</strong>. Keep the Doctors / Law Firms / Partner Schools lists current, link <strong>referred patients</strong>, and use the <strong>Referral Dashboard</strong> for counts, net sales, and Top-5 referrers.</P>
 
-        {/* 3. MODULE REFERENCE */}
-        <H2>3. Module Reference</H2>
-        <P>Step-by-step for each screen. Open only the ones in your sidebar.</P>
+        {/* 3. DETAILED SECTION-BY-SECTION GUIDE */}
+        <H2>3. Detailed Section-by-Section Guide</H2>
+        <P>Every screen in the sidebar, explained — including each screen&apos;s <strong>tabs</strong>. Open only the ones your role shows. Sections are grouped the same way as the sidebar: <em>Overview</em>, <em>General Ledger</em>, <em>Transactions</em>, and <em>Planning &amp; Analysis</em>.</P>
 
-        <H3>Point of Sale (POS)</H3>
-        <OL>
-          <li>In <strong>Cashier</strong>, pick the branch, add services/products, set patient/clinician.</li>
-          <li>Apply a discount (PWD/Senior 20% or a custom discount).</li>
-          <li>Choose payment method(s) — split allowed; for HMO/GL pick the patient&apos;s wallet.</li>
-          <li>Pay later? Save as <strong>Unpaid</strong> — the session is dated today; record cash on the collection day.</li>
-          <li>Save and print the receipt / official invoice.</li>
-        </OL>
-        <P>Every sale becomes an <strong>Order</strong>: view, reprint, record payment, refund, void, or reopen (with reason). Voiding restores stock and reverses wallet/points and keeps the trail.</P>
+        <H3>3.1 Dashboard <span style={{ fontWeight: 400, color: 'var(--mid-gray)' }}>(Overview)</span></H3>
+        <P>The landing page. Shows today&apos;s and this month&apos;s sales, cash position, and quick counts. Use it as your morning check together with the <strong>🔔 notification bell</strong> (new concerns, submitted forms, and deadline reminders such as the 5th-of-month service invoice).</P>
 
-        <H3>PayMongo (online payments)</H3>
-        <OL>
-          <li>Keep <strong>Record as a POS sale</strong> ticked; choose <strong>Payment type</strong> (Tuition = earned; Downpayment = unearned deposit) and branch.</li>
-          <li><strong>+ Add a service</strong> — the branch price fills in; add a voucher/discount if needed.</li>
-          <li><strong>Create payment link</strong> and send it (or show the QR).</li>
-          <li>On payment it flips to <strong>Paid</strong>, records a POS Order net of the PayMongo fee (7140 Merchant Discount Rate), and holds the money in <strong>PayMongo Clearing</strong>.</li>
-          <li>Set <strong>&ldquo;PayMongo deposits to&rdquo;</strong> to your bank once; payouts auto-reconcile to it.</li>
-        </OL>
-        <Note label="Test vs live:">In TEST MODE no real money moves and test links never post to the real books — delete them after testing. Real collection begins only in LIVE MODE.</Note>
+        <H3>3.2 Chart of Accounts <span style={{ fontWeight: 400, color: 'var(--mid-gray)' }}>(General Ledger)</span></H3>
+        <P>The master list of accounts — every peso lands in one of these. Each account has a <strong>number</strong> (e.g. 7010 Physical Therapy Revenue, 2070 PPE &amp; Lease Improvements), a <strong>type</strong> (Asset / Liability / Equity / Revenue / Expense), and flags such as <strong>&ldquo;is a bank account.&rdquo;</strong> This is the backbone every other screen posts to. Add or edit accounts here; the ⌘K global search can jump straight to one.</P>
 
-        <H3>Services</H3>
+        <H3>3.3 Beginning Balances &amp; Bank Reconciliation</H3>
         <UL>
-          <li>Maintain name, department, branch, price, VAT, revenue account, HMO/GL tagging.</li>
-          <li>Set a <strong>New Price</strong> + <strong>Effective Date</strong> to schedule a change automatically.</li>
+          <li><strong>Beginning Balances</strong> — the opening figure per account for a year (e.g. each bank&apos;s starting balance). Bank reconciliation only counts Hub entries on/after the balance&apos;s start date.</li>
+          <li><strong>Bank Reconciliation</strong> — match the Hub&apos;s recorded bank movements against the actual bank statement, and tick off what has cleared. Fund transfers, PayMongo payouts, and payments all surface here for matching.</li>
+        </UL>
+
+        <H3>3.4 Petty Cash <span style={{ fontWeight: 400, color: 'var(--mid-gray)' }}>(Transactions)</span></H3>
+        <P>The small-cash log. Each entry gets a <strong>PCV number</strong>, an account, a supplier, an amount (with VAT split), and a <strong>proof upload</strong>. Entries are reviewed and <strong>audited</strong> before they flow into reports and can be reimbursed. Locked once used in a reimbursement.</P>
+
+        <H3>3.5 Expenses</H3>
+        <P>The main payables workspace. Its tabs:</P>
+        <UL>
+          <li><strong>Recurring</strong> — repeating bills (rent, utilities, subscriptions); the system schedules them and reminds you before they are due. Supports prepaid amortization.</li>
+          <li><strong>One-time</strong> — ad-hoc purchases.</li>
+          <li><strong>Credit Card Report</strong> — expenses charged to a company card, grouped for the statement.</li>
+          <li><strong>Expense Report</strong> — the consolidated paid-expenses view, with a <strong>Source</strong> column (One-time, Recurring, Petty Cash, Salaries, Benefits, Cash Advance).</li>
+          <li><strong>Suppliers</strong> — the vendor directory. <strong>Add / edit</strong> details, import via Excel, filter by <strong>Valid / Invalid</strong> (a supplier with both is treated as Valid), and <strong>click a supplier</strong> to see all its transactions — date, description, valid/invalid, gross, VAT, and net of VAT.</li>
+        </UL>
+        <P>Audited entries are grouped into a <strong>Request for Payment (RFP)</strong> that prints as a <strong>Billing Voucher</strong>; then record the payment (cash / check / bank / credit card).</P>
+        <Note label="Voucher order &amp; accounts:">Billing-Voucher lines print in the exact order they were entered. Always set the <strong>Account Title</strong> on every entry — a blank account prints blank on the voucher.</Note>
+
+        <H3>3.6 Cash Advances</H3>
+        <P>For event floats and staff advances. <strong>Release</strong> cash (recorded as a receivable — money owed back to the company), <strong>liquidate</strong> it against receipts (the spent portion becomes an expense), and <strong>return</strong> the unused balance. Proof is attached at each step, and liquidations also appear in the Expense Report tagged &ldquo;Cash Advance.&rdquo;</P>
+
+        <H3>3.7 Inventory &amp; Procurement</H3>
+        <UL>
+          <li><strong>Inventory</strong> — stock on hand, opening batches, consumption, and freight capitalization; product stock can auto-sync with the store by SKU.</li>
+          <li><strong>Forms</strong> subtab — attach and track operational forms. The list of available forms is pulled live from the <strong>HR Hub Templates</strong> catalogue (see Section 4).</li>
+        </UL>
+
+        <H3>3.8 Asset Management</H3>
+        <P>The <strong>fixed-asset register</strong> (the audit&apos;s official asset list). Each asset carries a control number (e.g. AHEA-2024-0007), cost, purchase date, <strong>classification</strong> (which PPE account it belongs to, e.g. 2050 Furniture, 2070 PPE &amp; Lease Improvements), useful life, monthly depreciation, custodian, supplier, and photos. Front desk can add/rename; only Admin/Accountant/Bookkeeper/branch-admin can delete.</P>
+
+        <H3>3.9 Services</H3>
+        <UL>
+          <li>Maintain each service&apos;s name, department, branch, price, VAT, revenue account, and HMO/GL tagging.</li>
+          <li>Schedule a change with a <strong>New Price</strong> + <strong>Effective Date</strong> (e.g. SPED PT +10% from Aug 1).</li>
           <li>Use <strong>Per-Branch Price Overrides</strong> when East and Greenhills charge differently.</li>
         </UL>
 
-        <H3>Petty Cash &amp; Expenses</H3>
+        <H3>3.10 Point of Sale (POS)</H3>
+        <P>The cashier and order book. Its areas:</P>
         <UL>
-          <li><strong>Petty Cash</strong> — replenishment entries with PCV numbering and proof uploads.</li>
-          <li><strong>Expenses</strong> — one-time and recurring; group audited entries into a <strong>Request for Payment (RFP)</strong> that prints as a <strong>Billing Voucher</strong>; record payment (cash/check/bank/credit card).</li>
-          <li><strong>Suppliers</strong> — add/edit details, import via Excel, filter by <strong>Valid/Invalid</strong>, and click a supplier to see its transactions (date, description, valid/invalid, gross, VAT, net of VAT).</li>
+          <li><strong>Cashier</strong> — pick branch, add services/products, set patient/clinician, apply a discount (PWD/Senior 20% or a custom discount), take payment (cash, card, GCash/Maya, HMO, Guarantee Letter, package/wallet), or save as <strong>Unpaid</strong> to collect later. Print receipt / official invoice.</li>
+          <li><strong>Orders</strong> — every sale becomes an order you can view, reprint, record payment on, refund, void, or reopen (with a reason). Voiding restores stock, reverses wallet/points, and keeps the audit trail.</li>
+          <li><strong>Discount Settings</strong> — define reusable discounts. Each can be limited to specific <strong>departments</strong> (tick/untick), tied to a wallet type, and mapped to a discount account.</li>
+          <li><strong>Referrers</strong> were moved out of POS into their own <strong>Referral</strong> section.</li>
         </UL>
-        <Note label="Voucher order:">Billing-Voucher lines print in the order entered. Always set the <strong>Account Title</strong> on each entry.</Note>
 
-        <H3>Cash Advances</H3>
-        <P>Event floats: <strong>release</strong> cash (a receivable), <strong>liquidate</strong> against receipts (becomes expense), and <strong>return</strong> the unused balance — with proof at each step.</P>
+        <H3>3.11 PayMongo (online payments)</H3>
+        <OL>
+          <li>Keep <strong>Record as a POS sale</strong> ticked; choose <strong>Payment type</strong> (Tuition = earned; Downpayment = unearned deposit) and branch.</li>
+          <li><strong>+ Add a service</strong> — the branch price fills in; add a voucher/discount if needed.</li>
+          <li><strong>Create payment link</strong> and send it (or show the QR); delete a link while it is still unpaid if it was a mistake.</li>
+          <li>On payment it flips to <strong>Paid</strong>, records a POS Order net of the PayMongo fee (<strong>7140 Merchant Discount Rate</strong>), and parks the money in <strong>PayMongo Clearing</strong>.</li>
+          <li>Set <strong>&ldquo;PayMongo deposits to&rdquo;</strong> to your bank once; payouts then auto-reconcile to it. Use <strong>Sync</strong> if a paid link did not update.</li>
+        </OL>
+        <Note label="Test vs live:">In TEST MODE no real money moves and test links never post to the real books — delete them after testing. Real collection begins only in LIVE MODE.</Note>
 
-        <H3>Payroll</H3>
+        <H3>3.12 Referral</H3>
+        <UL>
+          <li><strong>Referrers</strong> — three searchable, sortable cards: <strong>Doctors</strong>, <strong>Law Firms</strong>, <strong>Partner Schools</strong>. Each referrer can be limited to a branch (untagged = all branches). Add / edit / CSV import; Affiliation &amp; Specialization show only for Doctors.</li>
+          <li><strong>Referred Patients</strong> — link a patient (searched from the <strong>Operations Hub</strong> patient CRM) to a referrer; click a row to see that patient&apos;s sessions with service, <strong>department</strong>, date, and net amount.</li>
+          <li><strong>Referral Dashboard</strong> — tick which types to include; see the count of referrals and total net sales per referrer, plus the Top 5.</li>
+        </UL>
+
+        <H3>3.13 Accounts Receivable</H3>
+        <P>Tracks <strong>HMO</strong> and <strong>Guarantee-Letter (GL)</strong> billings that come from POS on a consumption basis. Click an HMO/GL total for the per-patient breakdown, then record collections against it.</P>
+
+        <H3>3.14 Payroll</H3>
         <OL>
           <li>Upload <strong>timekeeping</strong>.</li>
           <li>Generate the <strong>payroll register</strong>; use <strong>Pre-fill from Previous</strong> to carry items forward.</li>
-          <li>Generate <strong>employee</strong> and <strong>consultant</strong> payslips (Administration excluded from consultant payslips).</li>
-          <li>Record contributions, produce the <strong>IEPR</strong>, and download the bank file for release.</li>
+          <li>Generate <strong>employee</strong> and <strong>consultant</strong> payslips (Administration staff are auto-excluded from consultant payslips).</li>
+          <li>Record government contributions, produce the <strong>IEPR</strong>, and download the bank file for release.</li>
         </OL>
+        <P>Staff records feed in automatically — Aura Health East/Greenhills from the Operations Hub, Verdana from the HR Hub (see Section 4).</P>
 
-        <H3>Accounts Receivable</H3>
-        <P>Track <strong>HMO</strong> and <strong>Guarantee-Letter (GL)</strong> billings from POS (consumption-based). Click an HMO/GL total for the per-patient breakdown; record collections against it.</P>
+        <H3>3.15 Taxes</H3>
+        <P>Six tabs, one per obligation: <strong>Withholding on Compensation</strong>, <strong>Expanded Withholding (EWT)</strong>, <strong>VAT</strong>, <strong>Business Tax</strong>, <strong>Corporate Income Tax</strong>, and an <strong>RFP</strong> tab. Each computes the figure and can produce a Request for Payment / Billing Voucher with continuous numbering.</P>
 
-        <H3>Taxes &amp; Fund Transfer</H3>
+        <H3>3.16 Fund Transfer</H3>
+        <P>Move money between the company&apos;s own bank accounts. The transfer posts a proper journal entry (out of one bank, into another) and both sides show up in Bank Reconciliation.</P>
+
+        <H3>3.17 Equity</H3>
         <UL>
-          <li><strong>Taxes</strong> — Withholding on Compensation, EWT, VAT, Business Tax, Corporate Income Tax; each can produce an RFP/Billing Voucher.</li>
-          <li><strong>Fund Transfer</strong> — move funds between company bank accounts with a proper journal entry.</li>
+          <li><strong>Cards</strong> — Total Capitalization, <strong>Authorized Shares</strong> (with editable <strong>Common</strong> and <strong>Founders</strong> sub-limits), Outstanding, <strong>Treasury</strong>, and <strong>Total Common / Total Founders</strong> counts.</li>
+          <li><strong>Tabs</strong> — <strong>Common Shares</strong>, <strong>Preferred Shares</strong>, and <strong>Dividend Release History</strong>. Record issuances, buybacks (which move shares into Treasury), and dividend releases.</li>
+          <li>An <strong>⚠ over-authorized alarm</strong> warns when a class would exceed its authorized limit — including at the moment you add a shareholder that would breach the cap.</li>
+          <li><strong>Download</strong> exports the shareholder list with <strong>Source</strong> (Original vs Purchase-from-Treasury) and <strong>Buyback date(s)</strong>.</li>
+          <li>Accountant/Bookkeeper see this view-only (Preferred tab); only the Clinic Manager edits equity. The same equity figures are shown in the HR Hub Shareholders module (Section 4).</li>
         </UL>
 
-        <H3>Equity</H3>
+        <H3>3.18 Loans &amp; Advances</H3>
+        <P>Records cash loans, advances, and corporate bonds. Set the schedule (monthly / quarterly / bi-annual / annual), the principal-vs-interest split, and the paying bank; a <strong>tick-to-pay matrix</strong> marks each period paid. Loan charges post as expenses.</P>
+
+        <H3>3.19 Scholars</H3>
+        <P>A <strong>live feed of approved scholars</strong> coming from the Staff Portal (Section 4). Record award terms and <strong>monthly stipend releases</strong> (posted against the Scholarship Fund), and <strong>top-up appropriations</strong> that refill the fund. A near-due popup flags releases coming up in 3 days.</P>
+
+        <H3>3.20 Budgets</H3>
+        <P>Set expected figures per account/period and compare them against actuals so you can see where spending is over or under plan.</P>
+
+        <H3>3.21 Reports <span style={{ fontWeight: 400, color: 'var(--mid-gray)' }}>(Planning &amp; Analysis)</span></H3>
+        <P>The financial statements: <strong>Income Statement</strong>, <strong>Balance Sheet</strong>, and cash flow, with drill-downs into revenue and receivables. Revenue is built from POS orders plus the general-ledger journal, with payroll and POS entries excluded from the journal fold so nothing double-counts.</P>
+
+        <H3>3.22 Sales Summary</H3>
+        <P>Transaction-level sales with invoice tracking. Choose a branch and date range, then work in its three tabs:</P>
         <UL>
-          <li>Cards: Total Capitalization, <strong>Authorized Shares</strong> (with editable <strong>Common</strong>/<strong>Founders</strong> sub-limits), Outstanding, <strong>Treasury</strong>, and <strong>Total Common / Total Founders</strong>.</li>
-          <li>Tabs: Common Shares, Preferred Shares, Dividend Release History. Record issuances, buybacks (→ Treasury), dividends.</li>
-          <li>An <strong>⚠ over-authorized alarm</strong> warns when a class exceeds its authorized limit — including when adding a shareholder that would breach the cap.</li>
-          <li><strong>Download</strong> exports the shareholder list with Source (Original vs Purchase-from-Treasury) and Buyback dates.</li>
+          <li><strong>Summary</strong> — every sales line for the period, split into <strong>Report 1 — With Official Sales Invoice</strong> and <strong>Report 2 — Without Sales Invoice</strong>, each with its own subtotal and a combined Gross/Net bar. Columns: Date, Order #, Patient, Service, Qty, SI No., Gross, Net. <strong>Click any column heading to sort ascending/descending, and type in the box under a heading to filter that column.</strong> Export CSV / Print reflect exactly what you have filtered.</li>
+          <li><strong>With SI</strong> — reconciles your official Sales Invoice booklet. The left <strong>Sales Invoices</strong> list shows every used SI number (also <strong>sortable and filterable</strong> by SI No., Date, Patient, or Amount); the right <strong>Flagged Sales Invoices</strong> panel lists missing (gap) and duplicate numbers so you can declare them Cancelled, add Remarks, or Tag them to the correct order.</li>
+          <li><strong>Sales Target</strong> — pick a month/year and branch to compare <strong>Sales with SI</strong> against the <strong>Target</strong> you set, showing the difference (below target / target met). Only Admin/Accountant/Bookkeeper can edit the target.</li>
         </UL>
 
-        <H3>Loans &amp; Advances</H3>
-        <P>Record cash loans, advances and corporate bonds with a monthly/quarterly/bi-annual/annual schedule, principal-vs-interest split, the paying bank, and a tick-to-pay payment matrix.</P>
+        <H3>3.23 Products Analysis &amp; Sales Analysis</H3>
+        <P>Trend views for the Clinic Manager, branch admins, and Viewer (not Accountant/Bookkeeper). <strong>Products Analysis</strong> looks at what sells; <strong>Sales Analysis</strong> looks at sales trends over time.</P>
 
-        <H3>Scholars</H3>
-        <P>Live feed of approved scholars; record award terms, monthly stipend releases, and top-up appropriations against the Scholarship Fund.</P>
-
-        <H3>Referral</H3>
+        <H3>3.24 Users &amp; Handbook <span style={{ fontWeight: 400, color: 'var(--mid-gray)' }}>(Administration)</span></H3>
         <UL>
-          <li><strong>Referrers</strong> — three searchable, sortable cards: Doctors, Law Firms, Partner Schools. Each can be limited to a branch (untagged = all). Add/edit/CSV import.</li>
-          <li><strong>Referred patients</strong> — link a patient (from the Operations Hub CRM) to a referrer; click a row for that patient&apos;s sessions (service, department, date, net amount).</li>
-          <li><strong>Referral Dashboard</strong> — filter by Doctor/School/Law Firm; see count of referrals and total net sales per referrer, plus Top 5.</li>
+          <li><strong>Users</strong> (Admin only) — create staff accounts and assign roles; roles control exactly what each person sees.</li>
+          <li><strong>Handbook</strong> (Admin only) — this document, readable in-app and downloadable as Word/PDF.</li>
         </UL>
 
-        <H3>Reports, Sales Summary &amp; the rest</H3>
+        {/* 4. HOW THE SYSTEMS CONNECT */}
+        <H2>4. How the Accounting Hub Connects to the Other Systems</H2>
+        <P>The clinics run on four connected systems. The Accounting Hub does not re-type data that already lives elsewhere — instead, specific pieces of information are shared automatically between them over a secure key. Here is what each system is and what flows in or out of Accounting.</P>
         <UL>
-          <li><strong>Reports</strong> — Income Statement, Balance Sheet, cash flow; drill into revenue and receivables.</li>
-          <li><strong>Sales Summary</strong> — daily cash-drawer reconciliation.</li>
-          <li><strong>Products / Sales Analysis</strong> — Admin/Viewer only.</li>
-          <li><strong>Chart of Accounts / Beginning Balances / Bank Reconciliation / Budgets</strong> — the ledger foundation.</li>
-          <li><strong>Users &amp; Settings</strong> (Admin only) — create accounts and assign roles.</li>
+          <li><strong>Operations Hub</strong> (operations.sapphireclinicseast.org) — bookings, schedules, and the <strong>patient CRM</strong> for the Aura Health branches.</li>
+          <li><strong>HR Hub</strong> — staff records, HR forms/templates, and a shareholders view.</li>
+          <li><strong>Staff Portal</strong> (staff.sapphireclinicseast.org) — the staff-facing portal, including the scholarship/scholars programme.</li>
+          <li><strong>Accounting Hub</strong> — this system (money, sales, payroll, reports).</li>
         </UL>
 
-        {/* 4. GOOD PRACTICE */}
-        <H2>4. Good Practice &amp; Cautions</H2>
+        <H3>4.1 What flows in and out</H3>
+        <div className="overflow-auto rounded-xl border mb-4" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ background: 'var(--deep-teal)', color: 'white' }}>
+                {['Information', 'Direction', 'Used in Accounting for'].map((h, i) => (
+                  <th key={h} className={`px-3 py-2 font-semibold ${i === 1 ? 'text-center' : 'text-left'}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {([
+                ['Patients (CRM)', 'Operations Hub → Accounting', 'Referral → Referred Patients search; the per-patient session drill-down; patient lookup in POS'],
+                ['Staff & consultants — Aura Health East / Greenhills', 'Operations Hub → Accounting', 'Payroll register & payslips for the two Aura Health branches'],
+                ['Staff — Verdana', 'HR Hub → Accounting', 'Payroll register & payslips for Verdana'],
+                ['HR form templates', 'HR Hub → Accounting', 'The Forms dropdown inside Inventory & Procurement'],
+                ['Approved scholars', 'Staff Portal → Accounting', 'The live feed on the Scholars screen; stipend releases'],
+                ['Equity / shareholder figures', 'Accounting → HR Hub', 'The Shareholders module in the HR Hub reads Common/Preferred equity from here'],
+                ['Sales & session data', 'Within Accounting', 'Feeds Reports, Sales Summary, Accounts Receivable, and the Referral dashboard'],
+              ] as [string, string, string][]).map((r, ri) => (
+                <tr key={ri} style={{ background: ri % 2 ? '#f5f8f8' : 'white' }}>
+                  <td className="px-3 py-1.5 text-left font-semibold" style={{ color: '#2b2f33' }}>{r[0]}</td>
+                  <td className="px-3 py-1.5 text-center" style={{ color: TEAL }}>{r[1]}</td>
+                  <td className="px-3 py-1.5 text-left" style={{ color: '#2b2f33' }}>{r[2]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Note label="In plain terms:">Accounting mostly <strong>receives</strong> people and patients (so you never re-type staff or patient lists) and <strong>supplies</strong> the equity figures the HR Hub displays. Sales, receivables, and reports are all built from the orders created here.</Note>
+
+        <H3>4.2 Why it matters</H3>
+        <UL>
+          <li>If a <strong>patient</strong> is missing in Referral or POS search, they are usually added first in the <strong>Operations Hub</strong> CRM — the Accounting Hub reads that list.</li>
+          <li>If a <strong>staff member</strong> is missing from Payroll, fix it at the source — Operations Hub for Aura Health, HR Hub for Verdana — and it syncs across.</li>
+          <li>If a <strong>form</strong> is missing from the Inventory Forms dropdown, it is added in the <strong>HR Hub</strong> Templates catalogue.</li>
+          <li>If the <strong>Shareholders</strong> figures look wrong in the HR Hub, correct them in <strong>Equity</strong> here — the HR Hub only displays what Accounting supplies.</li>
+          <li>A one-time exception around a system rename can leave a login holding an old role — a full <strong>sign out and back in</strong> refreshes it.</li>
+        </UL>
+
+        {/* 5. GOOD PRACTICE */}
+        <H2>5. Good Practice &amp; Cautions</H2>
         <UL>
           <li><strong>One login per person</strong> — the system logs who did what.</li>
           <li><strong>Sign out</strong> on shared computers.</li>
