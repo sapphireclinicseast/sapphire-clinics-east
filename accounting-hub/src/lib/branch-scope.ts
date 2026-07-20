@@ -12,37 +12,69 @@ export const BRANCH_ENUM_TO_SHORT: Record<string, string> = {
 }
 
 export interface BranchScope {
-  locked: boolean
-  enum: string | null   // e.g. 'SANDBOX_EAST' (petty cash / expenses / inventory form)
-  short: string | null  // e.g. 'SBEA' (payroll / short-code modules)
+  locked: boolean       // true only when the user is confined to exactly ONE branch
+  enum: string | null   // e.g. 'SANDBOX_EAST' (petty cash / expenses / inventory form) — set only when locked
+  short: string | null  // e.g. 'SBEA' (payroll / short-code modules) — set only when locked
+  allowed: string[]     // the full set of enum branches the user may access ([] = all branches)
 }
 
-/** Client-side: derive the branch a user is locked to from their session branch. */
-export function userBranchScope(userBranch: string | null | undefined): BranchScope {
-  const locked = !!userBranch && userBranch !== 'ALL'
+/**
+ * The set of branches a user may access. Multi-branch `branches[]` takes precedence;
+ * otherwise fall back to the legacy single `branch`. Empty result = unrestricted (all).
+ */
+export function effectiveBranches(
+  userBranch: string | null | undefined,
+  userBranches?: string[] | null,
+): string[] {
+  const multi = (userBranches || []).filter(b => b && b !== 'ALL')
+  if (multi.length) return multi
+  if (userBranch && userBranch !== 'ALL') return [userBranch]
+  return []
+}
+
+/** Client-side: derive the branch scope from the user's session branch(es). */
+export function userBranchScope(
+  userBranch: string | null | undefined,
+  userBranches?: string[] | null,
+): BranchScope {
+  const allowed = effectiveBranches(userBranch, userBranches)
+  const locked = allowed.length === 1
   return {
     locked,
-    enum: locked ? userBranch! : null,
-    short: locked ? (BRANCH_ENUM_TO_SHORT[userBranch!] || userBranch!) : null,
+    enum: locked ? allowed[0] : null,
+    short: locked ? (BRANCH_ENUM_TO_SHORT[allowed[0]] || allowed[0]) : null,
+    allowed,
   }
 }
 
 /**
- * Server-side guard: given the session user's branch and a requested branch, return the
- * branch the request is allowed to act on. If the user is scoped to one branch, any
- * request is forced to that branch (both enum and short-code forms accepted).
- * Returns null when unrestricted (branch=ALL or unset).
+ * Server-side guard: return the branch a request is allowed to act on.
+ * - Unrestricted (no branch set) → null (caller uses the requested branch as-is).
+ * - Single branch → that branch is forced, ignoring `requested`.
+ * - Multiple branches → the `requested` branch if it is one of the user's, else their first.
+ * Legacy callers that pass only `userBranch` keep the original single-branch behaviour.
  */
-export function enforceBranch(userBranch: string | null | undefined): string | null {
-  if (!userBranch || userBranch === 'ALL') return null
-  return userBranch
+export function enforceBranch(
+  userBranch: string | null | undefined,
+  userBranches?: string[] | null,
+  requested?: string | null,
+): string | null {
+  const allowed = effectiveBranches(userBranch, userBranches)
+  if (allowed.length === 0) return null
+  if (allowed.length === 1) return allowed[0]
+  if (requested && allowed.includes(requested)) return requested
+  return allowed[0]
 }
 
 /** True if a requested branch value (enum or short) is within the user's scope. */
-export function branchAllowed(userBranch: string | null | undefined, requested: string): boolean {
-  if (!userBranch || userBranch === 'ALL') return true
-  const short = BRANCH_ENUM_TO_SHORT[userBranch] || userBranch
-  return requested === userBranch || requested === short
+export function branchAllowed(
+  userBranch: string | null | undefined,
+  requested: string,
+  userBranches?: string[] | null,
+): boolean {
+  const allowed = effectiveBranches(userBranch, userBranches)
+  if (allowed.length === 0) return true
+  return allowed.some(b => requested === b || requested === (BRANCH_ENUM_TO_SHORT[b] || b))
 }
 
 // Branches that East/Greenhills accountants & bookkeepers may VIEW (read-only)

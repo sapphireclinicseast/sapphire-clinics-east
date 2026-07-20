@@ -12,11 +12,13 @@ declare module 'next-auth' {
       image?: string | null
       role?: string
       branch?: string | null
+      branches?: string[]
     }
   }
   interface User {
     role?: string
     branch?: string | null
+    branches?: string[]
   }
 }
 
@@ -85,6 +87,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: user.email,
             role: user.role as string,
             branch: user.branch as string | null,
+            branches: (user.branches as string[]) ?? [],
           }
         } catch (e: unknown) {
           console.error('[auth] authorize threw:', e)
@@ -99,6 +102,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id
         token.role = user.role
         token.branch = user.branch
+        token.branches = user.branches ?? []
       }
       // Migrate any legacy branch role stored in an existing token.
       if (token.role) token.role = normalizeRole(token.role as string)
@@ -109,6 +113,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string
         session.user.role = normalizeRole(token.role as string) as string
         session.user.branch = (token.branch as string) ?? null
+        session.user.branches = (token.branches as string[]) ?? []
       }
       return session
     },
