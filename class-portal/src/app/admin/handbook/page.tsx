@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAuth, ADMIN_EMAIL } from '@/lib/session'
+import { getAuth } from '@/lib/session'
 
 /** Compact caption below every illustration — keeps the mockup honest
  *  ("this is a stylised recreation, not a live capture") and gives the
@@ -37,12 +37,13 @@ export default function HandbookPage() {
 
   useEffect(() => {
     const auth = getAuth()
-    // Only the main admin (single email, not just role=ADMIN) can view
-    // the handbook — branch admins and everyone else get bounced. If
-    // there's no session at all, send to sign-in.
+    // Only the main admin can view the handbook. 'ADMIN' is the single
+    // main-admin auth role (branch admins are BRANCH_ADMIN; ADMIN can't be
+    // assigned to created users), so a role check identifies them and stays
+    // correct across the staff-email transition. No session → sign-in.
     if (!auth) { router.replace('/sign-in'); return }
-    if (auth.role !== 'ADMIN' || auth.email !== ADMIN_EMAIL) {
-      router.replace(auth.role === 'ADMIN' || auth.role === 'BRANCH_ADMIN' ? '/admin'
+    if (auth.role !== 'ADMIN') {
+      router.replace(auth.role === 'BRANCH_ADMIN' ? '/admin'
         : auth.role === 'FRONTDESK' ? '/frontdesk'
         : '/profile')
       return

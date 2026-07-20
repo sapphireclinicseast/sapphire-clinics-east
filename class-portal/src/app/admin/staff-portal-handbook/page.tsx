@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAuth, ADMIN_EMAIL } from '@/lib/session'
+import { getAuth } from '@/lib/session'
 
 /**
  * Concrete hex values for the portal's CSS custom properties. Word (and
@@ -130,10 +130,13 @@ export default function StaffPortalHandbookPage() {
 
   useEffect(() => {
     const auth = getAuth()
-    // Only the main admin (single email, not just role=ADMIN) can view.
+    // Only the main admin can view. 'ADMIN' is the single main-admin auth
+    // role (branch admins are BRANCH_ADMIN; ADMIN can't be assigned to
+    // created users), so a role check identifies them and stays correct
+    // across the staff-email transition.
     if (!auth) { router.replace('/sign-in'); return }
-    if (auth.role !== 'ADMIN' || auth.email !== ADMIN_EMAIL) {
-      router.replace(auth.role === 'ADMIN' || auth.role === 'BRANCH_ADMIN' ? '/admin'
+    if (auth.role !== 'ADMIN') {
+      router.replace(auth.role === 'BRANCH_ADMIN' ? '/admin'
         : auth.role === 'FRONTDESK' ? '/frontdesk'
         : '/profile')
       return

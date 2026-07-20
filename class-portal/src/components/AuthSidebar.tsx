@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { getAuth, clearAuth, ADMIN_EMAIL, type AuthSession } from '@/lib/session'
+import { getAuth, clearAuth, type AuthSession } from '@/lib/session'
 
 // A single nav item — icon + label + href, optionally gated by role
 // or by main-admin-only visibility. The `mainAdminOnly` flag is a
@@ -139,7 +139,12 @@ export default function AuthSidebar() {
     { href: '/admin/staff-portal-handbook',  label: 'Staff Portal Handbook', icon: 'handbook', mainAdminOnly: true },
   ]
 
-  const isMainAdmin = role === 'ADMIN' && auth.email === ADMIN_EMAIL
+  // 'ADMIN' is the single main-admin auth role — branch admins are
+  // BRANCH_ADMIN, and ADMIN can't be assigned to created users — so a
+  // role check alone identifies the main admin. This stays correct across
+  // the staff-email transition, unlike an exact-email pin (which silently
+  // hid these links once the admin's synced email drifted from the hardcode).
+  const isMainAdmin = role === 'ADMIN'
   const visible = items.filter(i => {
     if (i.mainAdminOnly) return isMainAdmin
     return !i.roles || i.roles.includes(role)
