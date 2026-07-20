@@ -342,6 +342,7 @@ export default function HandbookPage() {
           <li><a href="#teacher">SPED teacher</a><span className="toc-role">Teacher</span></li>
           <li><a href="#student">Student / parent</a><span className="toc-role">Student</span></li>
           <li><a href="#common">Common workflows</a> — payments, vouchers, plan switches</li>
+          <li><a href="#hubs">Connections to the other hubs</a> — Operations, Accounting, HR</li>
           <li><a href="#troubleshooting">Troubleshooting</a></li>
         </ol>
       </div>
@@ -825,7 +826,122 @@ export default function HandbookPage() {
         <li className="task-step">Take the payment. Confirm the row. The student is now on the new plan; every future badge, reminder, and Pending-by-deadline entry uses the new logic.</li>
       </ol>
 
-      <h2 id="troubleshooting">8. Troubleshooting</h2>
+      <h2 id="hubs">8. Connections to the other hubs</h2>
+
+      <p>The class portal doesn&rsquo;t stand alone — three sister apps handle the moving parts around it. Sign in to each with the credentials the main admin issues (same person, three tabs).</p>
+
+      <table className="matrix">
+        <thead>
+          <tr>
+            <th>Hub</th>
+            <th>URL</th>
+            <th>What it owns</th>
+            <th>Where the class portal touches it</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Operations Hub</strong></td>
+            <td><code>operations.sapphireclinicseast.org</code></td>
+            <td>The class portal&rsquo;s actual database + server. Every user, student, payment, voucher, reminder, and uploaded file is stored here — the class portal is a browser client of this hub&rsquo;s <code>/api/public/class-portal/*</code> endpoints.</td>
+            <td>Every screen you see. Sign-in, payment confirmation, PayMongo webhooks, the reminder cron — they all round-trip through Operations Hub.</td>
+          </tr>
+          <tr>
+            <td><strong>Accounting Hub</strong></td>
+            <td><code>accounting.sapphireclinicseast.org</code></td>
+            <td>Books of account, POS, GL, inventory, payroll ledger. Runs on its own database and its own container (<code>accounting_app</code>) so a class-portal issue never touches the financials.</td>
+            <td>Confirmed tuition payments become POS Orders here — that&rsquo;s how the cash lands on the P&amp;L. PayMongo fees, MDR, and payouts also reconcile through the Accounting Hub&rsquo;s bank register.</td>
+          </tr>
+          <tr>
+            <td><strong>HR Hub</strong></td>
+            <td><code>hr.sapphireclinicseast.org</code></td>
+            <td>Staff directory, payroll cutoffs, uniforms, seminars, peer evaluations, forms library, shareholder registry. Vanilla HTML/JS app, separate from the Next.js hubs above.</td>
+            <td>Teachers and front-desk staff exist in HR Hub as employees; in the class portal they exist as users. Not auto-synced today — when you add a new teacher in the class portal, mirror the record in HR Hub for payroll.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <Illustration caption="Architecture at a glance — class portal is a client of Operations Hub, which hands off finalised payments to Accounting Hub. HR Hub is parallel.">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
+          {/* Row 1: the class portal + HR hub side by side */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ background: 'var(--sage-tint)', border: '1px solid var(--sage)', borderRadius: 10, padding: 10, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: 'var(--sage)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Frontend</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--deep-teal)' }}>Class Portal</div>
+              <div style={{ fontSize: 10, color: 'var(--mid-gray)' }}>class.sapphireclinicseast.org</div>
+            </div>
+            <div style={{ background: '#f3e8ff', border: '1px solid #9333ea', borderRadius: 10, padding: 10, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: '#6b21a8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Parallel app</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#6b21a8' }}>HR Hub</div>
+              <div style={{ fontSize: 10, color: 'var(--mid-gray)' }}>hr.sapphireclinicseast.org</div>
+            </div>
+          </div>
+          {/* Arrow down from class portal */}
+          <div style={{ textAlign: 'center', color: 'var(--mid-gray)', fontSize: 18, lineHeight: 1 }}>
+            ↓ <span style={{ fontSize: 11, verticalAlign: 'middle' }}>API calls &nbsp;/api/public/class-portal/*</span>
+          </div>
+          {/* Row 2: Operations Hub (spans wider) */}
+          <div style={{ background: '#dbeafe', border: '1px solid #1e40af', borderRadius: 10, padding: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 10, color: '#1e3a8a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Backend + database</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#1e3a8a' }}>Operations Hub</div>
+            <div style={{ fontSize: 10, color: 'var(--mid-gray)' }}>operations.sapphireclinicseast.org &nbsp;·&nbsp; owns ClassPortalUser, ClassPortalFrontDeskPayment, ClassPortalVoucher, ClassPortalPaymentReminderLog</div>
+          </div>
+          {/* Arrow down from ops hub */}
+          <div style={{ textAlign: 'center', color: 'var(--mid-gray)', fontSize: 18, lineHeight: 1 }}>
+            ↓ <span style={{ fontSize: 11, verticalAlign: 'middle' }}>Confirmed payment → POS Order</span>
+          </div>
+          {/* Row 3: Accounting Hub */}
+          <div style={{ background: '#dcfce7', border: '1px solid #166534', borderRadius: 10, padding: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 10, color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Books + POS</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }}>Accounting Hub</div>
+            <div style={{ fontSize: 10, color: 'var(--mid-gray)' }}>accounting.sapphireclinicseast.org &nbsp;·&nbsp; own DB &amp; container (accounting_app)</div>
+          </div>
+        </div>
+      </Illustration>
+
+      <h3>Data that flows between the class portal and each hub</h3>
+
+      <div className="role-card">
+        <h4>↔ Operations Hub</h4>
+        <p>Same app family, same database. Everything the class portal reads or writes goes through Operations Hub&rsquo;s API. The class portal container (<code>sapphire_class_portal</code>) is a UI shell; the Operations Hub container (<code>sapphire_app</code>) is the source of truth.</p>
+        <ul>
+          <li><strong>Sign-in tokens</strong> — issued by Operations Hub; carried by every request from the class portal.</li>
+          <li><strong>Payment records</strong> — created by the class portal (record, PayMongo, or self-serve) and stored in Operations Hub&rsquo;s <code>ClassPortalFrontDeskPayment</code> table. Confirmed payments trigger the accounting hand-off (see below).</li>
+          <li><strong>Reminder cron</strong> — runs on the Operations Hub container. Reads the same payment table, writes to <code>ClassPortalPaymentReminderLog</code>, and sends emails via Resend.</li>
+          <li><strong>File uploads</strong> — headshots, waiver PDFs, Form 137 / SF10, birth certificates — all stored in Operations Hub&rsquo;s file storage.</li>
+        </ul>
+      </div>
+
+      <div className="role-card">
+        <h4>→ Accounting Hub (one-way, on payment confirm)</h4>
+        <p>When the front desk clicks <strong>Confirm payment</strong> in the class portal, Operations Hub does two things:</p>
+        <ol className="task-steps">
+          <li className="task-step">Flips the class-portal payment status from PENDING → CONVERTED.</li>
+          <li className="task-step">Creates a corresponding <em>Order</em> in the Accounting Hub POS with the tuition amount, misc amount, and the payment method. That order lands on the accounting P&amp;L for the day.</li>
+        </ol>
+        <p>You never need to open the Accounting Hub for a routine class-portal payment — the hand-off is automatic. Two situations where you <em>do</em> touch Accounting Hub:</p>
+        <ul>
+          <li><strong>To reverse a payment</strong> — deleting a Confirmed Payment in the class portal does <em>not</em> void the accounting Order. If you&rsquo;re actually reversing (not just cleaning a test row), open Accounting Hub → POS → find the order → void it there too.</li>
+          <li><strong>To reconcile PayMongo payouts</strong> — PayMongo pays out net of fees to the school&rsquo;s BDO account. Accounting Hub&rsquo;s bank reconciliation matches each payout against the class-portal order + a Merchant Discount Rate expense.</li>
+        </ul>
+      </div>
+
+      <div className="role-card">
+        <h4>↔ HR Hub (manual sync today)</h4>
+        <p>HR Hub tracks the staff person &mdash; contract, payroll, uniform, seminars, peer evals. The class portal tracks the same person as a <em>user account</em> with a role and a branch. There is no auto-sync between the two right now, so whenever you change a staff member&rsquo;s status in one place, mirror it in the other:</p>
+        <ul>
+          <li><strong>Hiring a new SPED teacher</strong> — create the HR record first (contract, tax, SSS), then create the class-portal user (Users → + New user, role TEACHER). Assign them classes from <em>Assignments</em>.</li>
+          <li><strong>Teacher resigns</strong> — set their HR status to <em>Separated</em> in HR Hub, then <em>Disable</em> their class-portal user (Users tab → edit). Disabled accounts can&rsquo;t sign in and are hidden from active listings.</li>
+          <li><strong>Uniform / seminar admin</strong> — stays entirely in HR Hub. The class portal doesn&rsquo;t know about those.</li>
+        </ul>
+      </div>
+
+      <div className="callout callout-note">
+        <span className="label">Why three separate hubs?</span>
+        Each hub has its own database and its own deploy pipeline, so an outage in one doesn&rsquo;t take down the others. Class-portal downtime doesn&rsquo;t stop payroll; an Accounting Hub deploy doesn&rsquo;t block parents from paying tuition. The trade-off is that a person&rsquo;s data lives in multiple places — hence the manual sync notes above.
+      </div>
+
+      <h2 id="troubleshooting">9. Troubleshooting</h2>
 
       <h3>I don’t see a change I know was deployed</h3>
       <p>Your browser cached the old JS bundle. Hard-refresh: <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> on Mac, <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> on Windows / Linux. On iOS Safari, close the tab and re-open it. If it still doesn’t work after a hard-refresh, the deploy actually hasn’t landed yet — give it another 5 minutes.</p>
