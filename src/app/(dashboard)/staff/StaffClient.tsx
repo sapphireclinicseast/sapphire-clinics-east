@@ -30,6 +30,7 @@ interface StaffMember {
   bankName: string | null
   bankAccountNo: string | null
   hrPlatformId: string | null
+  extraBranches: string[]
   createdAt: string
   updatedAt?: string | null
 }
@@ -43,6 +44,11 @@ function branchFromRole(role: string): string | null {
   return null
 }
 
+const BRANCH_DISPLAY: Record<string, string> = {
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
+}
+
 function BranchChip({ branch }: { branch: string }) {
   const isSBEA = branch === 'SBEA'
   return (
@@ -51,7 +57,7 @@ function BranchChip({ branch }: { branch: string }) {
         ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
         : { background: '#FFF3CD', color: '#92400E' }
     }>
-      {branch}
+      {BRANCH_DISPLAY[branch] ?? branch}
     </span>
   )
 }
@@ -98,6 +104,67 @@ function SexSelect({ staffId, value, onChange }: { staffId: string; value: strin
       <option value="M">Male</option>
       <option value="F">Female</option>
     </select>
+  )
+}
+
+function ExtraBranchToggle({
+  staffId, primaryBranch, value, onChange,
+}: {
+  staffId: string
+  primaryBranch: string
+  value: string[]
+  onChange: (v: string[]) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const extra = ['SBEA', 'SBGH'].filter(b => b !== primaryBranch)
+
+  async function toggle(branch: string) {
+    if (busy) return
+    const next = value.includes(branch) ? value.filter(b => b !== branch) : [...value, branch]
+    setBusy(true)
+    try {
+      const res = await fetch('/api/staff', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: staffId, extraBranches: next }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || 'Save failed')
+      }
+      onChange(next)
+    } catch (err) {
+      alert('Failed to save: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5">
+      <span className="text-[11px] font-medium uppercase tracking-wider w-28 flex-shrink-0"
+            style={{ color: 'var(--mid-gray)' }}>Also at Branch</span>
+      <div className="flex gap-4">
+        {extra.map(b => {
+          const checked = value.includes(b)
+          return (
+            <label key={b} className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={busy}
+                onChange={() => toggle(b)}
+                style={{ accentColor: 'var(--teal)', cursor: busy ? 'wait' : 'pointer' }}
+              />
+              <span className="text-xs font-semibold"
+                    style={{ color: checked ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                {BRANCH_DISPLAY[b] ?? b}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -270,8 +337,8 @@ export default function StaffClient({ role }: { role: string }) {
       ]
     : [
         { label: 'Total Staff', value: staff.length,  icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
-        { label: 'SBEA',        value: totalSBEA,      icon: <span className="text-xs font-bold" style={{ color: 'var(--teal)' }}>SBEA</span> },
-        { label: 'SBGH',        value: totalSBGH,      icon: <span className="text-xs font-bold" style={{ color: '#92400E' }}>SBGH</span> },
+        { label: 'East Branch',        value: totalSBEA, icon: <span className="text-xs font-bold" style={{ color: 'var(--teal)' }}>AHEA</span> },
+        { label: 'Greenhills Branch',  value: totalSBGH, icon: <span className="text-xs font-bold" style={{ color: '#92400E' }}>AHGH</span> },
       ]
 
   const COLS: { col: SortCol; label: string }[] = [
@@ -532,7 +599,14 @@ export default function StaffClient({ role }: { role: string }) {
                           </span>
                         : <span style={{ color: 'var(--mid-gray)', fontSize: '13px' }}>—</span>}
                     </td>
-                    <td className="px-4 py-3"><BranchChip branch={s.branch} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        <BranchChip branch={s.branch} />
+                        {(s.extraBranches ?? []).filter(b => b !== s.branch).map(b => (
+                          <BranchChip key={b} branch={b} />
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <SexSelect staffId={s.id} value={s.sex} onChange={(v) => setStaff(prev => prev.map(x => x.id === s.id ? { ...x, sex: v } : x))} />
                     </td>
@@ -624,11 +698,25 @@ export default function StaffClient({ role }: { role: string }) {
             {/* Body — sections of fields */}
             <div className="px-6 py-5 space-y-6 text-sm">
               <DetailSection title="Role">
-                <DetailRow label="Employee ID" value={selectedStaff.employeeId} mono />
-                <DetailRow label="Job Title"   value={selectedStaff.jobTitle ? selectedStaff.jobTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null} />
-                <DetailRow label="Department"  value={selectedStaff.department.replace(/_/g, ' ')} />
-                <DetailRow label="Branch"      value={selectedStaff.branch} />
-                <DetailRow label="Employment"  value={selectedStaff.employmentType ? (selectedStaff.employmentType.charAt(0).toUpperCase() + selectedStaff.employmentType.slice(1)) : null} />
+                <DetailRow label="Employee ID"     value={selectedStaff.employeeId} mono />
+                <DetailRow label="Job Title"       value={selectedStaff.jobTitle ? selectedStaff.jobTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null} />
+                <DetailRow label="Department"      value={selectedStaff.department.replace(/_/g, ' ')} />
+                <DetailRow label="Primary Branch"  value={selectedStaff.branch} />
+                {role === 'ADMIN'
+                  ? <ExtraBranchToggle
+                      staffId={selectedStaff.id}
+                      primaryBranch={selectedStaff.branch}
+                      value={selectedStaff.extraBranches ?? []}
+                      onChange={(v) => {
+                        setSelectedStaff(s => s ? { ...s, extraBranches: v } : s)
+                        setStaff(prev => prev.map(x => x.id === selectedStaff.id ? { ...x, extraBranches: v } : x))
+                      }}
+                    />
+                  : (selectedStaff.extraBranches ?? []).filter(b => b !== selectedStaff.branch).length > 0
+                    ? <DetailRow label="Also at" value={(selectedStaff.extraBranches ?? []).filter(b => b !== selectedStaff.branch).join(', ')} />
+                    : null
+                }
+                <DetailRow label="Employment"      value={selectedStaff.employmentType ? (selectedStaff.employmentType.charAt(0).toUpperCase() + selectedStaff.employmentType.slice(1)) : null} />
               </DetailSection>
 
               <DetailSection title="Contact">
@@ -665,7 +753,7 @@ export default function StaffClient({ role }: { role: string }) {
             <div className="px-6 py-3 border-t flex items-center justify-between"
                  style={{ borderColor: 'var(--light-gray)', background: 'var(--paper)' }}>
               <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                All fields except Sex flow one-way from HR Hub. To edit, use the HR Platform Staff Profile.
+                All fields except Sex and Extra Branches flow one-way from HR Hub. To edit, use the HR Platform Staff Profile.
               </p>
               <button onClick={() => setSelectedStaff(null)}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold"

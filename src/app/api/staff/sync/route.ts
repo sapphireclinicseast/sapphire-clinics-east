@@ -18,7 +18,8 @@ interface HRStaff {
   employeeId: string | null
   firstName: string
   lastName: string
-  branch: string
+  branch: string          // primary branch
+  branches?: string[]     // all branches — present when profile is merged (interbranch consultant)
   department: string
   jobTitle: string | null
   employmentType: string | null
@@ -119,6 +120,13 @@ export async function POST() {
     }
     const sex = sexFromHr ?? match?.sex ?? null
 
+    // Derive extra branches from the HR merged profile's branches[] array.
+    // If HR returns branches: ['SBEA', 'SBGH'] for an interbranch consultant,
+    // extraBranches becomes ['SBGH'] (all valid branches except the primary).
+    const VALID_BRANCHES = ['SBEA', 'SBGH', 'VDNA']
+    const extraBranches = (hr.branches ?? [hr.branch])
+      .filter(b => VALID_BRANCHES.includes(b) && b !== hr.branch)
+
     const payload = {
       firstName:      hr.firstName,
       lastName:       hr.lastName,
@@ -128,6 +136,7 @@ export async function POST() {
       sex,
       department:     hr.department as StaffDepartment,
       branch:         hr.branch,
+      extraBranches,
       jobTitle:       hr.jobTitle,
       employmentType: hr.employmentType,
       employeeId:     hr.employeeId,

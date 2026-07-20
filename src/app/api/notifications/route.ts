@@ -1,6 +1,6 @@
 // GET /api/notifications — recent activity feed for the hub notification bell.
-// Returns patient registrations, appointment bookings, and HR form responses
-// from the last 48 hours (form responses fetched live from HR Platform).
+// Returns patient registrations, client-portal appointment bookings (unprocessed only),
+// and HR form responses from the last 48 hours.
 // Branch-filtered: admin sees all, branch-scoped roles see only their branch.
 
 import { NextResponse } from 'next/server'
@@ -98,11 +98,12 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
       take: 50,
     }),
-    // Appointment bookings (hub DB)
+    // Client-portal bookings (hub DB) — only unprocessed ones (addedToDeck=false)
     prisma.patientBooking.findMany({
       where: {
         createdAt: { gte: since },
-        status: { in: ['PENDING', 'PAID'] },
+        status: { in: ['PENDING', 'APPROVED', 'PAID'] },
+        addedToDeck: false,
         ...(bookingBranches ? { branch: { in: bookingBranches } } : {}),
       },
       include: {

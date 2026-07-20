@@ -81,8 +81,11 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
       label: 'Settings',
       items: [
         { href: '/settings/accounts', icon: Link2, label: 'Connected Accounts' },
-        // Team management is ADMIN only
-        ...(isAdmin ? [{ href: '/settings/users', icon: Users, label: 'Team' }] : []),
+        // Team management and handbook are ADMIN only
+        ...(isAdmin ? [
+          { href: '/settings/users', icon: Users, label: 'Team' },
+          { href: '/handbook', icon: BookOpen, label: 'User Handbook' },
+        ] : []),
         { href: '/brand', icon: BookOpen, label: 'Brand Guide' },
       ],
     },
