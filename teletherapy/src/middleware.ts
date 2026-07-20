@@ -16,7 +16,13 @@ export function middleware(request: NextRequest) {
 
   if (!sessionToken) {
     const loginUrl = new URL('/login', request.nextUrl.origin)
-    loginUrl.searchParams.set('callbackUrl', pathname)
+    // Only carry a callbackUrl when the visitor was heading somewhere
+    // deeper than the home page. Landing on the root would otherwise
+    // produce an ugly /login?callbackUrl=%2F — a bare /login is cleaner
+    // and the login page already defaults to '/' after sign-in.
+    if (pathname !== '/') {
+      loginUrl.searchParams.set('callbackUrl', pathname)
+    }
     return NextResponse.redirect(loginUrl)
   }
 

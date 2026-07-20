@@ -135,7 +135,8 @@ export default function AuthSidebar() {
     { href: '/classes',        label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
     { href: '/calendar',       label: 'Calendar',     icon: 'calendar' },
     { href: '/pay',            label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
-    { href: '/admin/handbook', label: 'Handbook',     icon: 'handbook',  mainAdminOnly: true },
+    { href: '/admin/handbook',               label: 'Class Portal Handbook', icon: 'handbook', mainAdminOnly: true },
+    { href: '/admin/staff-portal-handbook',  label: 'Staff Portal Handbook', icon: 'handbook', mainAdminOnly: true },
   ]
 
   const isMainAdmin = role === 'ADMIN' && auth.email === ADMIN_EMAIL
