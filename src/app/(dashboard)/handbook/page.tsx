@@ -889,7 +889,7 @@ export default function HandbookPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const [ready, setReady] = useState(false)
+  const [blobUrl, setBlobUrl] = useState<string>('')
 
   useEffect(() => {
     if (status === 'loading') return
@@ -897,7 +897,12 @@ export default function HandbookPage() {
       router.replace('/dashboard')
       return
     }
-    setReady(true)
+    // blob: URLs are served from memory — they carry no server headers so
+    // X-Frame-Options: DENY on the app's own responses doesn't block the iframe.
+    const blob = new Blob([HANDBOOK_HTML], { type: 'text/html; charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    setBlobUrl(url)
+    return () => URL.revokeObjectURL(url)
   }, [session, status, router])
 
   function handlePrint() {
@@ -920,7 +925,7 @@ export default function HandbookPage() {
     URL.revokeObjectURL(url)
   }
 
-  if (!ready) return null
+  if (!blobUrl) return null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
@@ -952,7 +957,7 @@ export default function HandbookPage() {
       <div style={{ flex: 1, borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(237,104,35,0.2)', minHeight: 0 }}>
         <iframe
           ref={iframeRef}
-          srcDoc={HANDBOOK_HTML}
+          src={blobUrl}
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
           title="Operations Hub User Handbook"
         />
