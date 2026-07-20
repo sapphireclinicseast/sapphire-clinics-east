@@ -768,6 +768,7 @@ model DiscountSetting {
   value       Decimal
   branch      String?
   walletType  String?  // If set, links this discount to a wallet type (VIP, PREPAID_CARD, etc.)
+  departments String[] @default([]) // if set, discount only applies to items in these departments; empty = all
   accountId   String?  // COA account for this discount (REVENUE accounts with DEBIT normal balance = contra-revenue)
   account     Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   isActive    Boolean  @default(true)

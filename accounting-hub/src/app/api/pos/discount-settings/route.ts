@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 const VALID_WALLET_TYPES = ['PACKAGE', 'VIP', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE']
+const VALID_DEPARTMENTS = ['PT', 'MD', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'ORTHOSIS_PROSTHESIS']
+const normDepts = (d: unknown): string[] => Array.isArray(d) ? Array.from(new Set(d.map(String).filter(x => VALID_DEPARTMENTS.includes(x)))) : []
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -49,7 +51,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, type, value, branch, walletType, accountId, rules } = await req.json()
+    const { name, type, value, branch, walletType, accountId, rules, departments } = await req.json()
 
     if (!name?.trim() || !type || value === undefined) {
       return NextResponse.json(
@@ -79,6 +81,7 @@ export async function POST(req: Request) {
       value: Number(value),
       branch: branch || null,
       walletType: walletType || null,
+      departments: normDepts(departments),
       accountId: accountId || null,
       createdById: session.user.id,
     }
@@ -128,7 +131,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, type, value, branch, walletType, accountId, rules } = await req.json()
+    const { id, name, type, value, branch, walletType, accountId, rules, departments } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -155,6 +158,7 @@ export async function PUT(req: Request) {
     if (value !== undefined) data.value = Number(value)
     if (branch !== undefined) data.branch = branch || null
     if (walletType !== undefined) data.walletType = walletType || null
+    if (departments !== undefined) data.departments = normDepts(departments)
     if (accountId !== undefined) data.accountId = accountId || null
 
     // If rules provided, delete existing and recreate
