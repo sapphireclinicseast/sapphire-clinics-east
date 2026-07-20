@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Contact, Plus, Trash2, Loader2, X, Mail, Lock, Pencil, Globe, Building2, Save, ExternalLink, Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 
@@ -150,6 +150,13 @@ export default function DirectoryPage() {
   const [savingEmail, setSavingEmail] = useState(false)
   const [emailQ, setEmailQ] = useState('')
   const [emailSort, setEmailSort] = useState<SortState>({ col: '', dir: 'asc' })
+  const emailFormRef = useRef<HTMLDivElement | null>(null)
+  // The edit form sits at the top of the tab, above the table. When a
+  // pencil on a lower row opens it, scroll it into view — otherwise the
+  // form opens off-screen above and it looks like nothing happened.
+  useEffect(() => {
+    if (showEmailForm && editEmailId) emailFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [showEmailForm, editEmailId])
   async function loadEmails() {
     const res = await fetch('/api/directory')
     if (res.ok) setEntries((await res.json()).entries ?? [])
@@ -198,6 +205,10 @@ export default function DirectoryPage() {
   const [savingWeb, setSavingWeb] = useState(false)
   const [webQ, setWebQ] = useState('')
   const [webSort, setWebSort] = useState<SortState>({ col: '', dir: 'asc' })
+  const webFormRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (showWebForm && editWebId) webFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [showWebForm, editWebId])
   async function loadWebsites() {
     const res = await fetch('/api/directory/websites')
     if (res.ok) setWebsites((await res.json()).websites ?? [])
@@ -372,7 +383,7 @@ export default function DirectoryPage() {
                       <Plus size={15} /> Add Email
                     </button>
                   ) : (
-                    <div className="card-static">
+                    <div ref={emailFormRef} className="card-static">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="font-bold text-[var(--charcoal)] text-[15px]" style={{ fontFamily: 'var(--font-display)' }}>{editEmailId ? 'Edit Email' : 'New Email'}</h2>
                         <button onClick={resetEmailForm} className="p-1 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"><X size={18} /></button>
@@ -487,7 +498,7 @@ export default function DirectoryPage() {
                       <Plus size={15} /> Add Website
                     </button>
                   ) : (
-                    <div className="card-static">
+                    <div ref={webFormRef} className="card-static">
                       <div className="flex items-center justify-between mb-4">
                         <h2 className="font-bold text-[var(--charcoal)] text-[15px]" style={{ fontFamily: 'var(--font-display)' }}>{editWebId ? 'Edit Website' : 'New Website'}</h2>
                         <button onClick={resetWebForm} className="p-1 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"><X size={18} /></button>
