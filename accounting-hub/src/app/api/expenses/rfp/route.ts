@@ -26,7 +26,7 @@ export async function GET(req: Request) {
         const vat = gross - netVat
         const ewt = e.hasEwt && e.ewtRate ? netVat * (e.ewtRate / 100) : 0
         // Amount payable = GROSS − EWT (full gross is reimbursed; only EWT withheld, not VAT).
-        return { account: e.accountTitle || '', description: e.description || e.requestor || '', gross, vat, netVat, ewt, netEwt: gross - ewt }
+        return { account: e.accountTitle || '', description: e.description || e.requestor || '', payee: e.requestor || '', memo: e.description || '', gross, vat, netVat, ewt, netEwt: gross - ewt }
       }) })
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

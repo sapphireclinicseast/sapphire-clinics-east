@@ -4,7 +4,7 @@
 // and BALANCE DUE. Used by Expenses + Taxes RFPs.
 import type { jsPDF as JsPDF } from 'jspdf'
 
-export interface BVLine { account: string; description: string; gross: number; vat: number; netVat: number; netEwt: number }
+export interface BVLine { account: string; description: string; gross: number; vat: number; netVat: number; netEwt: number; payee?: string; memo?: string }
 export interface BillingVoucherOpts {
   refNumber: string
   date: string          // display date (e.g. 02/12/2026)

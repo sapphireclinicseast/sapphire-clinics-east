@@ -236,7 +236,7 @@ export default function ExpensesPage() {
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
   const [payrollPayTarget, setPayrollPayTarget] = useState<Rfp | null>(null)
-  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string } | null>(null)
+  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string; defaultBilledTo?: string; defaultMemo?: string } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -556,7 +556,15 @@ export default function ExpensesPage() {
     try {
       const res = await fetch(`/api/expenses/rfp?id=${rfp.id}&items=1`)
       const d = res.ok ? await res.json() : { lines: [] }
-      setBvTarget({ refNumber: rfp.refNumber, date: new Date(rfp.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }), lines: d.lines || [], branch })
+      const first = (d.lines || [])[0] as (BVLine & { payee?: string; memo?: string }) | undefined
+      setBvTarget({
+        refNumber: rfp.refNumber,
+        date: new Date(rfp.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }),
+        lines: d.lines || [], branch,
+        // Autofill from the first journal entry: Billed To ← its Payee, Memo ← its Description.
+        defaultBilledTo: first?.payee || rfp.payableTo || '',
+        defaultMemo: first?.memo || '',
+      })
     } catch { alert('Could not load RFP line items.') }
   }
 
@@ -1578,7 +1586,7 @@ export default function ExpensesPage() {
           onDone={async () => { setPayrollPayTarget(null); await loadRfps(branch) }} />
       )}
 
-      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} defaultMemo={bvTarget.defaultMemo} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
 
       {newSupplierPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>
