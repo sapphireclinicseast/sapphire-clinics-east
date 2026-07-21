@@ -8,6 +8,7 @@ import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciatingClassification, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 import type { BVLine } from '@/lib/billing-voucher'
@@ -147,21 +148,6 @@ const monthlyAmt = (e: Entry) => {
 }
 
 // Upload via XHR so we can report upload progress (0–100%).
-function uploadWithProgress(file: File, onProgress: (pct: number) => void): Promise<{ ok: boolean; url?: string; error?: string }> {
-  return new Promise(resolve => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', '/api/upload')
-    xhr.upload.onprogress = ev => { if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100)) }
-    xhr.onload = () => {
-      try { const d = JSON.parse(xhr.responseText || '{}'); resolve({ ...d, ok: xhr.status >= 200 && xhr.status < 300 }) }
-      catch { resolve({ ok: false, error: 'Upload failed' }) }
-    }
-    xhr.onerror = () => resolve({ ok: false, error: 'Upload failed' })
-    const fd = new FormData(); fd.append('file', file)
-    xhr.send(fd)
-  })
-}
-
 export default function ExpensesPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
@@ -173,6 +159,8 @@ export default function ExpensesPage() {
   useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState<TabKey>('recurring')
   const [entries, setEntries] = useState<Entry[]>([])
+  const entriesRef = useRef<Entry[]>([])
+  useEffect(() => { entriesRef.current = entries }, [entries])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
@@ -251,8 +239,6 @@ export default function ExpensesPage() {
   const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
-  const [uploadingProof, setUploadingProof] = useState('')
-  const [uploadPct, setUploadPct] = useState<Record<string, number>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridTableRef = useRef<HTMLTableElement>(null)
   const gridRz = useResizableColumns(`expenses-entries-grid-${tab}`, gridTableRef)
@@ -428,17 +414,13 @@ export default function ExpensesPage() {
     if (arr.length) return arr
     return e.proofUrl ? [e.proofUrl] : []
   }
-  const uploadProof = async (id: string, file: File | null) => {
-    if (!file) return
-    const e0 = entries.find(x => x.id === id)
-    const cur = e0 ? proofsOf(e0) : []
-    setUploadingProof(id)
-    setUploadPct(p => ({ ...p, [id]: 0 }))
-    const res = await uploadWithProgress(file, pct => setUploadPct(p => ({ ...p, [id]: pct })))
-    if (res.ok && res.url) { const next = [...cur, res.url]; saveField(id, { proofUrls: next, proofUrl: next[0] }, false) }
-    else alert(res.error || 'Upload failed')
-    setUploadingProof('')
-    setUploadPct(p => { const n = { ...p }; delete n[id]; return n })
+  // Race-safe append — ScanUpload (QR) may deliver several photos in quick succession.
+  const appendProof = (id: string, url: string) => {
+    const e = entriesRef.current.find(x => x.id === id)
+    if (!e) return
+    const cur = proofsOf(e); const next = [...cur, url]
+    entriesRef.current = entriesRef.current.map(x => x.id === id ? { ...x, proofUrls: next, proofUrl: next[0] } : x)
+    saveField(id, { proofUrls: next, proofUrl: next[0] }, false)
   }
   const removeProof = (e: Entry, url: string) => {
     const next = proofsOf(e).filter(u => u !== url)
@@ -1273,12 +1255,11 @@ export default function ExpensesPage() {
                               </div>
                             ))}
                             {!lk && (
-                              <label className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
-                                {uploadingProof === e.id ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                                {uploadingProof === e.id ? `${uploadPct[e.id] ?? 0}%` : (proofsOf(e).length ? 'Add proof' : 'Upload')}
-                                <input type="file" className="hidden" disabled={uploadingProof === e.id} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
-                                  onChange={ev => { uploadProof(e.id, ev.target.files?.[0] || null); ev.target.value = '' }} />
-                              </label>
+                              <ScanUpload compact section="expense" prefix={e.pcvNumber || 'expense'}
+                                existingCount={proofsOf(e).length}
+                                label={proofsOf(e).length ? 'Add' : 'Upload'}
+                                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+                                onUploaded={url => appendProof(e.id, url)} />
                             )}
                           </div>
                         </td>
