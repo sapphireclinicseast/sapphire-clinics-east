@@ -7465,21 +7465,25 @@ function ProductsSection({
 
     {/* ── Variant Picker Modal ─────────────────────────────────── */}
     {variantPickerProduct && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold" style={{ color: 'var(--charcoal)' }}>Select Variant</h3>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+          {/* Header (fixed) */}
+          <div className="flex items-center justify-between px-5 pt-5 pb-3">
+            <div>
+              <h3 className="text-base font-semibold" style={{ color: 'var(--charcoal)' }}>Select Variant</h3>
+              <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>{variantPickerProduct.name} · {(variantPickerProduct.variants ?? []).length} option{(variantPickerProduct.variants ?? []).length !== 1 ? 's' : ''}</p>
+            </div>
             <button onClick={() => setVariantPickerProduct(null)} className="p-1 rounded hover:bg-gray-100">
               <X size={16} />
             </button>
           </div>
-          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>{variantPickerProduct.name}</p>
-          <div className="space-y-2">
-            {(variantPickerProduct.variants ?? []).map(v => (
-              <label key={v.id}
-                className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-colors ${selectedVariantId === v.id ? 'border-teal-500 bg-teal-50' : ''}`}
-                style={{ borderColor: selectedVariantId === v.id ? 'var(--teal)' : 'var(--light-gray)' }}>
-                <div className="flex items-center gap-3">
+          {/* Variant grid (scrolls independently so the footer stays reachable) */}
+          <div className="px-5 flex-1 overflow-y-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {(variantPickerProduct.variants ?? []).map(v => (
+                <label key={v.id}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${selectedVariantId === v.id ? 'border-teal-500 bg-teal-50' : ''} ${v.quantity <= 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  style={{ borderColor: selectedVariantId === v.id ? 'var(--teal)' : 'var(--light-gray)' }}>
                   <input
                     type="radio"
                     name="variant"
@@ -7487,21 +7491,22 @@ function ProductsSection({
                     checked={selectedVariantId === v.id}
                     onChange={() => setSelectedVariantId(v.id)}
                     disabled={v.quantity <= 0}
-                    className="accent-teal-600"
+                    className="accent-teal-600 shrink-0"
                   />
-                  <div>
-                    <p className={`text-sm font-medium ${v.quantity <= 0 ? 'text-gray-400' : ''}`} style={v.quantity > 0 ? { color: 'var(--charcoal)' } : {}}>
+                  <div className="min-w-0">
+                    <p className={`text-sm font-medium truncate ${v.quantity <= 0 ? 'text-gray-400' : ''}`} style={v.quantity > 0 ? { color: 'var(--charcoal)' } : {}} title={`${v.variantType}: ${v.variantLabel}`}>
                       {v.variantType}: {v.variantLabel}
                     </p>
                     <p className="text-xs" style={{ color: v.quantity > 0 ? 'var(--mid-gray)' : '#ef4444' }}>
                       {v.quantity > 0 ? `${v.quantity} in stock` : 'Out of stock'}
                     </p>
                   </div>
-                </div>
-              </label>
-            ))}
+                </label>
+              ))}
+            </div>
           </div>
-          <div className="flex gap-2 pt-2">
+          {/* Footer (fixed, always visible) */}
+          <div className="flex gap-2 px-5 py-4 border-t" style={{ borderColor: 'var(--light-gray)' }}>
             <button onClick={() => setVariantPickerProduct(null)}
               className="flex-1 py-2.5 rounded-xl border text-sm font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
               Cancel
