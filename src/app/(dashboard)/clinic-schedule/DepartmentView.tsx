@@ -316,10 +316,14 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true)
-    const res = await fetch(`/api/clinic-schedule?staffId=${staff.id}&date=${selectedDate}`)
+    // Multi-branch consultant in extra branch: only show patients registered at that branch
+    const isExtraBranch = staff.branch !== schedulingBranch
+    const params = new URLSearchParams({ staffId: staff.id, date: selectedDate })
+    if (isExtraBranch) params.set('patientBranch', schedulingBranch)
+    const res = await fetch(`/api/clinic-schedule?${params}`)
     if (res.ok) setSchedules(await res.json())
     setLoadingSchedules(false)
-  }, [staff.id, selectedDate])
+  }, [staff.id, selectedDate, staff.branch, schedulingBranch])
 
   useEffect(() => {
     if (open) loadSchedules()
@@ -344,7 +348,10 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     d.setDate(d.getDate() - 7)
     const lastWeekDate = d.toISOString().split('T')[0]
     try {
-      const res = await fetch(`/api/clinic-schedule?staffId=${staff.id}&date=${lastWeekDate}`)
+      const isExtraBranch = staff.branch !== schedulingBranch
+      const lwParams = new URLSearchParams({ staffId: staff.id, date: lastWeekDate })
+      if (isExtraBranch) lwParams.set('patientBranch', schedulingBranch)
+      const res = await fetch(`/api/clinic-schedule?${lwParams}`)
       if (res.ok) setLastWeekSuggestions(await res.json())
     } catch { /* silent */ }
     // Fetch decking suggestions for this day of week
