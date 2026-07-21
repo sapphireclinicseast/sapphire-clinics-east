@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { fetchHrStaffForSync } from '@/lib/external-staff'
 
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
@@ -59,6 +60,28 @@ export async function GET(req: Request) {
       branch: (s.branch || '') as string,
       jobTitle: s.jobTitle || '',
     }))
+
+    // Verdana staff are NOT in Operations (they do no therapy sessions) — they
+    // live in the HR Platform. Merge them in so they appear e.g. in the asset
+    // Accountability picker for a Verdana asset.
+    if (!branch || branch === 'VERDANA') {
+      try {
+        const q = search.trim().toLowerCase()
+        const hrVerdana = (await fetchHrStaffForSync())
+          .filter(s => String(s.branch || '').toUpperCase() === 'VERDANA')
+          .map(s => ({
+            id: s.id,
+            name: formatName(`${s.firstName} ${s.lastName}`),
+            department: s.department || '',
+            branch: 'VERDANA' as string,
+            jobTitle: s.jobTitle || '',
+          }))
+          .filter(s => !q || s.name.toLowerCase().includes(q))
+        staff = staff.concat(hrVerdana)
+      } catch (e) {
+        console.error('[pos/staff] HR Verdana merge failed:', e)
+      }
+    }
 
     // Filter to allowed branches if role-restricted and no specific branch was requested
     if (!branch && allowed) {
