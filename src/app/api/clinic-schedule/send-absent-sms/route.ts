@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, date } = await req.json()
+  const { staffId, date, branch: reqBranch } = await req.json()
   if (!staffId || !date) {
     return NextResponse.json({ error: 'Provide staffId and date' }, { status: 400 })
   }
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No patients scheduled for this day' }, { status: 400 })
   }
 
-  const branch = schedules[0].staff.branch
+  const branch = reqBranch || schedules[0].staff.branch
   let sent = 0, viber = 0, sms = 0, lastError = ''
 
   for (const s of schedules) {

@@ -443,7 +443,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     setSendingId(scheduleId)
     const res = await fetch('/api/clinic-schedule/send-reminder', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scheduleId }),
+      body: JSON.stringify({ scheduleId, branch: schedulingBranch }),
     })
     setSendingId(null)
     if (res.ok) showToast('Reminder sent!')
@@ -454,7 +454,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     setSendingAll(true)
     const res = await fetch('/api/clinic-schedule/send-reminder', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingAll(false)
     if (res.ok) { const d = await res.json(); showToast(`Sent ${d.sent} email reminder(s)`) }
@@ -465,7 +465,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     setSendingSmsId(scheduleId)
     const res = await fetch('/api/clinic-schedule/send-sms', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scheduleId }),
+      body: JSON.stringify({ scheduleId, branch: schedulingBranch }),
     })
     setSendingSmsId(null)
     if (res.ok) {
@@ -482,7 +482,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     setSendingSmsAll(true)
     const res = await fetch('/api/clinic-schedule/send-sms', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingSmsAll(false)
     if (res.ok) {
@@ -518,7 +518,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     setSendingAbsentSms(true)
     const res = await fetch('/api/clinic-schedule/send-absent-sms', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingAbsentSms(false)
     if (res.ok) {
@@ -537,7 +537,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     setSendingAbsentEmail(true)
     const res = await fetch('/api/clinic-schedule/send-absent-email', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingAbsentEmail(false)
     if (res.ok) {

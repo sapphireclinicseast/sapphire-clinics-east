@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { scheduleId, staffId, date } = await req.json()
+  const { scheduleId, staffId, date, branch: reqBranch } = await req.json()
 
   // ── Single schedule ──────────────────────────────────────────────────────────
   if (scheduleId) {
@@ -180,7 +180,8 @@ export async function POST(req: NextRequest) {
     if (!schedule)         return NextResponse.json({ error: 'Schedule not found' }, { status: 404 })
     if (!schedule.patient) return NextResponse.json({ error: 'No patient on this schedule' }, { status: 400 })
 
-    const branch  = schedule.staff.branch
+    // Use scheduling branch (for interbranch consultants) if provided, else staff home branch
+    const branch  = reqBranch || schedule.staff.branch
     const dateStr = schedule.date.toISOString().split('T')[0]
 
     const message = buildMessage({
@@ -233,7 +234,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const branch = schedules[0].staff.branch
+    const branch = reqBranch || schedules[0].staff.branch
     let sent      = 0
     let viber     = 0
     let sms       = 0
