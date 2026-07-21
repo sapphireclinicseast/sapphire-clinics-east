@@ -379,6 +379,7 @@ model Staff {
   peerEvalRespAssor   PeerEvalResponse[]   @relation("PeerEvalRespAssor")
   peerEvalRespAssee   PeerEvalResponse[]   @relation("PeerEvalRespAssee")
   peerEvalAdminConfig PeerEvalAdminConfig?
+  peerEvalEmailLogs   PeerEvalEmailLog[]
   patientBookings     PatientBooking[]
 }
 
@@ -589,6 +590,25 @@ model PeerEvalResponse {
 
   assessor Staff @relation("PeerEvalRespAssor", fields: [assessorId], references: [id], onDelete: Cascade)
   assessee Staff @relation("PeerEvalRespAssee", fields: [assesseeId], references: [id], onDelete: Cascade)
+}
+
+// ── Peer Eval Email Log ───────────────────────────────────────────────────────
+// Tracks when an admin sent the "you have pending peer evals" email to an
+// assessor. Unique per (assessor, branch, year, month) so the button persists
+// its "sent" state regardless of who views it or which formType filter is active.
+
+model PeerEvalEmailLog {
+  id          String   @id @default(cuid())
+  assessorId  String
+  branch      String
+  periodYear  Int
+  periodMonth Int
+  sentAt      DateTime @default(now())
+  sentBy      String?  // user email/name who triggered the send
+
+  assessor Staff @relation(fields: [assessorId], references: [id], onDelete: Cascade)
+
+  @@unique([assessorId, branch, periodYear, periodMonth])
 }
 
 // ── Patient Cancellation Logs ─────────────────────────────────────────────────

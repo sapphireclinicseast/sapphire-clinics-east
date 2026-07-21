@@ -645,6 +645,8 @@ function AssignmentsTab({ role }: { role: string }) {
   const [scoreModalAssignment, setScoreModal]   = useState<Assignment | null>(null)
   const [actionLoading, setActionLoading]       = useState<string | null>(null)
   const [showQr, setShowQr]                     = useState(false)
+  const [emailLogs, setEmailLogs]               = useState<Map<string, { sentAt: string; sentBy: string | null }>>(new Map())
+  const [emailSending, setEmailSending]         = useState<Set<string>>(new Set())
 
   const fetchAssignments = useCallback(async () => {
     setLoading(true); setError('')
@@ -658,6 +660,17 @@ function AssignmentsTab({ role }: { role: string }) {
       const res = await fetch(`/api/peer-eval/assignments?${params}`)
       if (!res.ok) throw new Error('Failed to load assignments')
       setAssignments(await res.json())
+
+      // Fetch email-sent logs for the same branch/year/month context
+      const logParams = new URLSearchParams()
+      if (filterBranch) logParams.set('branch', filterBranch)
+      if (filterYear) logParams.set('year', String(filterYear))
+      if (filterMonth) logParams.set('month', String(filterMonth))
+      const logsRes = await fetch(`/api/peer-eval/email-assessor?${logParams}`)
+      if (logsRes.ok) {
+        const logsData: { assessorId: string; sentAt: string; sentBy: string | null }[] = await logsRes.json()
+        setEmailLogs(new Map(logsData.map(l => [l.assessorId, l])))
+      }
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -690,6 +703,30 @@ function AssignmentsTab({ role }: { role: string }) {
     if (!res.ok) throw new Error('Failed to save response')
     setScoreModal(null)
     fetchAssignments()
+  }
+
+  async function handleEmailAssessor(assessorId: string, assessorName: string) {
+    const existing = emailLogs.get(assessorId)
+    if (existing) {
+      const d = new Date(existing.sentAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      const resend = confirm(`A reminder email was already sent to ${assessorName} on ${d}.\n\nSend another one?`)
+      if (!resend) return
+    }
+    setEmailSending(prev => new Set(prev).add(assessorId))
+    try {
+      const res = await fetch('/api/peer-eval/email-assessor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assessorId, branch: filterBranch, periodYear: filterYear, periodMonth: filterMonth }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to send email')
+      setEmailLogs(prev => new Map(prev).set(assessorId, { sentAt: data.sentAt, sentBy: null }))
+    } catch (e: any) {
+      alert('Could not send email: ' + e.message)
+    } finally {
+      setEmailSending(prev => { const s = new Set(prev); s.delete(assessorId); return s })
+    }
   }
 
   const total     = assignments.length
@@ -824,6 +861,30 @@ function AssignmentsTab({ role }: { role: string }) {
                           {completedCount} done
                         </span>
                       )}
+                      {canManage && (() => {
+                        const log = emailLogs.get(assessor.id)
+                        const sending = emailSending.has(assessor.id)
+                        return (
+                          <div onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleEmailAssessor(assessor.id, `${assessor.firstName} ${assessor.lastName}`)}
+                              disabled={sending}
+                              title={log ? `Sent ${new Date(log.sentAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} — click to resend` : `Email reminder to ${assessor.firstName}`}
+                              style={{
+                                padding: '3px 10px', borderRadius: 99, border: 'none',
+                                cursor: sending ? 'wait' : 'pointer', opacity: sending ? 0.6 : 1,
+                                fontSize: '0.68rem', fontWeight: 600,
+                                display: 'flex', alignItems: 'center', gap: 4,
+                                background: log ? '#d1fae5' : '#e0f2fe',
+                                color: log ? '#065f46' : '#0369a1',
+                              }}
+                            >
+                              <Mail size={11} />
+                              {sending ? 'Sending…' : log ? 'Email sent!' : 'Email Assessor'}
+                            </button>
+                          </div>
+                        )
+                      })()}
                     </div>
                     {isExpanded
                       ? <ChevronUp size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
