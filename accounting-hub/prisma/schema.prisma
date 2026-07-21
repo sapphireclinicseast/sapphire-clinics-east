@@ -2558,3 +2558,32 @@ model SkuDefinition {
 
   @@index([skuCode])
 }
+
+// Budgeting: per-month budgeted amount per Income-Statement line (COA account),
+// compared against the actual IS values to compute variance. Lockable per period.
+model BudgetEntry {
+  id          String   @id @default(cuid())
+  year        Int
+  month       Int      // 1-12
+  branch      String   // Branch enum value, or 'ALL'
+  accountKey  String   // "7010 Physical Therapy Services Revenue" (accountNumber + title)
+  accountType String   // REVENUE | EXPENSE | COGS
+  amount      Decimal  @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([year, month, branch, accountKey])
+  @@index([year, branch])
+}
+
+model BudgetLock {
+  id         String   @id @default(cuid())
+  year       Int
+  month      Int
+  branch     String
+  lockedById String?
+  lockedAt   DateTime @default(now())
+
+  @@unique([year, month, branch])
+}
