@@ -4,13 +4,13 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   UsersRound, ClipboardList, BarChart3, Zap, Trash2, CheckCircle2,
   ChevronDown, ChevronUp, RefreshCw, X, AlertCircle,
-  Clock, CheckCircle, Ban, QrCode, Bell, Settings, Save, Users, ExternalLink, Download,
+  Clock, CheckCircle, Ban, QrCode, Bell, Settings, Save, Users, ExternalLink, Download, Mail,
 } from 'lucide-react'
 import { generatePeerEvalResultPDF } from '@/lib/pdf-results'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PeerEvalType = 'HR08_ADMIN' | 'HR08_PEER' | 'HR09'
+type PeerEvalType = 'HR08_ADMIN' | 'HR08_PEER' | 'HR09' | 'HR09_CLINICAL' | 'HR09_ADMIN'
 type PeerEvalStatus = 'PENDING' | 'COMPLETED' | 'EXPIRED'
 
 interface StaffMini {
@@ -97,9 +97,11 @@ const DAYS_OF_WEEK = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 const FORM_PAGE_URL = '/peereval'
 
 const FORM_LABELS: Record<PeerEvalType, string> = {
-  HR08_ADMIN: 'HR08 — Admin evaluates clinical staff (annual)',
-  HR08_PEER:  'HR08 — Peer evaluation among clinical staff (annual)',
-  HR09:       'HR09 — Clinical staff evaluates admin staff (annual)',
+  HR08_ADMIN:    'HR08 — Admin evaluates clinical staff (annual)',
+  HR08_PEER:     'HR08 — Peer evaluation among clinical staff (annual)',
+  HR09:          'HR09 — Clinical staff evaluates admin staff (annual)',
+  HR09_CLINICAL: 'HR09 — Clinical staff evaluates admin staff',
+  HR09_ADMIN:    'HR09 — Admin peers evaluate admin staff',
 }
 
 const HR08_QUESTIONS: Record<string, string> = {
@@ -124,7 +126,9 @@ const HR09_QUESTIONS: Record<string, string> = {
 }
 
 function getQuestions(formType: PeerEvalType) {
-  return formType === 'HR09' ? HR09_QUESTIONS : HR08_QUESTIONS
+  return (formType === 'HR09' || formType === 'HR09_CLINICAL' || formType === 'HR09_ADMIN')
+    ? HR09_QUESTIONS
+    : HR08_QUESTIONS
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,11 +156,13 @@ function statusBadge(status: PeerEvalStatus) {
 
 function typeBadge(formType: PeerEvalType) {
   const map: Record<PeerEvalType, { bg: string; color: string; label: string }> = {
-    HR08_ADMIN: { bg: '#ede9fe', color: '#5b21b6', label: 'HR08 Admin' },
-    HR08_PEER:  { bg: '#dbeafe', color: '#1e40af', label: 'HR08 Peer' },
-    HR09:       { bg: '#fce7f3', color: '#9d174d', label: 'HR09' },
+    HR08_ADMIN:    { bg: '#ede9fe', color: '#5b21b6', label: 'HR08 Admin' },
+    HR08_PEER:     { bg: '#dbeafe', color: '#1e40af', label: 'HR08 Peer' },
+    HR09:          { bg: '#fce7f3', color: '#9d174d', label: 'HR09' },
+    HR09_CLINICAL: { bg: '#fce7f3', color: '#9d174d', label: 'HR09 Clinical' },
+    HR09_ADMIN:    { bg: '#fdf2f8', color: '#831843', label: 'HR09 Admin' },
   }
-  const t = map[formType]
+  const t = map[formType] ?? { bg: '#f3f4f6', color: '#6b7280', label: formType }
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: 99,
