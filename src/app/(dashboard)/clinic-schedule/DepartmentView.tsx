@@ -50,7 +50,7 @@ function visibleBranches(role: string): string[] {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; phone: string | null }
+interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches: string[]; phone: string | null }
 interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
 interface Schedule {
   id: string; staffId: string; patientId: string | null; patient: Patient | null
@@ -286,7 +286,7 @@ function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submi
 }
 
 // ─── Staff card with schedules ─────────────────────────────────────────────────
-function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: string }) {
+function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMember; selectedDate: string; schedulingBranch: string }) {
   const [open, setOpen] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loadingSchedules, setLoadingSchedules] = useState(false)
@@ -306,6 +306,8 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
   const [sendingSmsAll, setSendingSmsAll] = useState(false)
   const [sendingClinicianSms, setSendingClinicianSms] = useState(false)
   const [sendingClinicianEmail, setSendingClinicianEmail] = useState(false)
+  const [sendingAbsentSms, setSendingAbsentSms] = useState(false)
+  const [sendingAbsentEmail, setSendingAbsentEmail] = useState(false)
   const [toast, setToast] = useState('')
   // Last-week suggestions
   const [lastWeekSuggestions, setLastWeekSuggestions] = useState<Schedule[]>([])
@@ -314,10 +316,14 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true)
-    const res = await fetch(`/api/clinic-schedule?staffId=${staff.id}&date=${selectedDate}`)
+    // Multi-branch consultant in extra branch: only show patients registered at that branch
+    const isExtraBranch = staff.branch !== schedulingBranch
+    const params = new URLSearchParams({ staffId: staff.id, date: selectedDate })
+    if (isExtraBranch) params.set('patientBranch', schedulingBranch)
+    const res = await fetch(`/api/clinic-schedule?${params}`)
     if (res.ok) setSchedules(await res.json())
     setLoadingSchedules(false)
-  }, [staff.id, selectedDate])
+  }, [staff.id, selectedDate, staff.branch, schedulingBranch])
 
   useEffect(() => {
     if (open) loadSchedules()
@@ -342,7 +348,10 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     d.setDate(d.getDate() - 7)
     const lastWeekDate = d.toISOString().split('T')[0]
     try {
-      const res = await fetch(`/api/clinic-schedule?staffId=${staff.id}&date=${lastWeekDate}`)
+      const isExtraBranch = staff.branch !== schedulingBranch
+      const lwParams = new URLSearchParams({ staffId: staff.id, date: lastWeekDate })
+      if (isExtraBranch) lwParams.set('patientBranch', schedulingBranch)
+      const res = await fetch(`/api/clinic-schedule?${lwParams}`)
       if (res.ok) setLastWeekSuggestions(await res.json())
     } catch { /* silent */ }
     // Fetch decking suggestions for this day of week
@@ -434,7 +443,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     setSendingId(scheduleId)
     const res = await fetch('/api/clinic-schedule/send-reminder', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scheduleId }),
+      body: JSON.stringify({ scheduleId, branch: schedulingBranch }),
     })
     setSendingId(null)
     if (res.ok) showToast('Reminder sent!')
@@ -445,7 +454,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     setSendingAll(true)
     const res = await fetch('/api/clinic-schedule/send-reminder', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingAll(false)
     if (res.ok) { const d = await res.json(); showToast(`Sent ${d.sent} email reminder(s)`) }
@@ -456,7 +465,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     setSendingSmsId(scheduleId)
     const res = await fetch('/api/clinic-schedule/send-sms', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scheduleId }),
+      body: JSON.stringify({ scheduleId, branch: schedulingBranch }),
     })
     setSendingSmsId(null)
     if (res.ok) {
@@ -473,7 +482,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     setSendingSmsAll(true)
     const res = await fetch('/api/clinic-schedule/send-sms', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingSmsAll(false)
     if (res.ok) {
@@ -493,7 +502,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     setSendingClinicianSms(true)
     const res = await fetch('/api/clinic-schedule/send-clinician-sms', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingClinicianSms(false)
     if (res.ok) {
@@ -505,11 +514,46 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     }
   }
 
+  async function sendAbsentSms() {
+    setSendingAbsentSms(true)
+    const res = await fetch('/api/clinic-schedule/send-absent-sms', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
+    })
+    setSendingAbsentSms(false)
+    if (res.ok) {
+      const d = await res.json()
+      const parts = []
+      if (d.viber > 0) parts.push(`${d.viber} via Viber`)
+      if (d.sms   > 0) parts.push(`${d.sms} via SMS`)
+      showToast(`Absent notice sent to ${d.sent} patient${d.sent !== 1 ? 's' : ''} — ${parts.join(', ')}`)
+    } else {
+      const d = await res.json()
+      showToast(d.error ?? 'Failed to send absent notices')
+    }
+  }
+
+  async function sendAbsentEmail() {
+    setSendingAbsentEmail(true)
+    const res = await fetch('/api/clinic-schedule/send-absent-email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
+    })
+    setSendingAbsentEmail(false)
+    if (res.ok) {
+      const d = await res.json()
+      showToast(`Absent notice emailed to ${d.sent} patient${d.sent !== 1 ? 's' : ''}`)
+    } else {
+      const d = await res.json()
+      showToast(d.error ?? 'Failed to send absent notice emails')
+    }
+  }
+
   async function sendClinicianEmail() {
     setSendingClinicianEmail(true)
     const res = await fetch('/api/clinic-schedule/send-clinician-email', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate, branch: schedulingBranch }),
     })
     setSendingClinicianEmail(false)
     if (res.ok) {
@@ -521,6 +565,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     }
   }
 
+  const isMultiBranch = (staff.extraBranches ?? []).length > 0
   const isSBEA = staff.branch === 'SBEA'
 
   return (
@@ -543,10 +588,12 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{staff.department}</p>
         </div>
         <span className="px-2 py-0.5 rounded-full text-xs font-semibold mr-2"
-          style={isSBEA
-            ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
-            : { background: '#FFF3CD', color: '#92400E' }}>
-          {BRANCH_LABEL[staff.branch] ?? staff.branch}
+          style={isMultiBranch
+            ? { background: '#EDE9FE', color: '#5B21B6' }
+            : isSBEA
+              ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
+              : { background: '#FFF3CD', color: '#92400E' }}>
+          {isMultiBranch ? 'Both Branches' : (BRANCH_LABEL[staff.branch] ?? staff.branch)}
         </span>
         {open ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
       </button>
@@ -719,34 +766,59 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                   ))}
                 </tbody>
               </table>
-              {/* Send all buttons */}
-              <div className="px-3 py-2 flex flex-wrap gap-2 justify-end" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
-                <button onClick={sendAllReminders} disabled={sendingAll}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: '#2563EB', color: '#fff', opacity: sendingAll ? 0.6 : 1 }}>
-                  <MailCheck size={13} />
-                  {sendingAll ? 'Sending…' : 'Send Email to All Patients Today'}
-                </button>
-                <button onClick={sendAllSmsReminders} disabled={sendingSmsAll}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: '#16A34A', color: '#fff', opacity: sendingSmsAll ? 0.6 : 1 }}>
-                  <MessageSquare size={13} />
-                  {sendingSmsAll ? 'Sending…' : 'Send Mobile Text Reminder to All Patients Today'}
-                </button>
-                <button onClick={sendClinicianSms} disabled={sendingClinicianSms || !staff.phone}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  title={!staff.phone ? 'No mobile number on file for this clinician' : `Send schedule to ${staff.firstName}`}
-                  style={{ background: '#ED6823', color: '#fff', opacity: (sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
-                  <Smartphone size={13} />
-                  {sendingClinicianSms ? 'Sending…' : 'Send Mobile Text to Clinician on Schedule'}
-                </button>
-                <button onClick={sendClinicianEmail} disabled={sendingClinicianEmail}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  title={`Email schedule to ${staff.firstName}`}
-                  style={{ background: '#EA580C', color: '#fff', opacity: sendingClinicianEmail ? 0.5 : 1 }}>
-                  <Mail size={13} />
-                  {sendingClinicianEmail ? 'Sending…' : 'Send Email to Clinician on Schedule'}
-                </button>
+              {/* Send all buttons — grouped by recipient */}
+              <div className="px-3 py-3 space-y-2" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+                {/* Patients section */}
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Patients</p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={sendAllReminders} disabled={sendingAll}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    style={{ background: '#2563EB', color: '#fff', opacity: sendingAll ? 0.6 : 1 }}>
+                    <MailCheck size={13} />
+                    {sendingAll ? 'Sending…' : 'Email All Patients'}
+                  </button>
+                  <button onClick={sendAllSmsReminders} disabled={sendingSmsAll}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    style={{ background: '#2563EB', color: '#fff', opacity: sendingSmsAll ? 0.6 : 1 }}>
+                    <MessageSquare size={13} />
+                    {sendingSmsAll ? 'Sending…' : 'Text All Patients'}
+                  </button>
+                  <button onClick={sendAbsentSms} disabled={sendingAbsentSms}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    title={`Notify all of ${staff.firstName}'s patients today via SMS that they are absent`}
+                    style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentSms ? 0.5 : 1 }}>
+                    <Smartphone size={13} />
+                    {sendingAbsentSms ? 'Sending…' : 'Text: Clinician Absent Notice'}
+                  </button>
+                  <button onClick={sendAbsentEmail} disabled={sendingAbsentEmail}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    title={`Notify all of ${staff.firstName}'s patients today via email that they are absent`}
+                    style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentEmail ? 0.5 : 1 }}>
+                    <Mail size={13} />
+                    {sendingAbsentEmail ? 'Sending…' : 'Email: Clinician Absent Notice'}
+                  </button>
+                </div>
+                {/* Clinician section */}
+                <p className="text-[10px] font-bold uppercase tracking-wider pt-1" style={{ color: 'var(--mid-gray)' }}>Clinician</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={sendClinicianSms} disabled={sendingClinicianSms || !staff.phone}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    title={!staff.phone ? 'No mobile number on file for this clinician' : `Send schedule to ${staff.firstName}`}
+                    style={{ background: '#16A34A', color: '#fff', opacity: (sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
+                    <Smartphone size={13} />
+                    {sendingClinicianSms ? 'Sending…' : 'Text Clinician'}
+                  </button>
+                  <button onClick={sendClinicianEmail} disabled={sendingClinicianEmail}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    title={`Email schedule to ${staff.firstName}`}
+                    style={{ background: '#16A34A', color: '#fff', opacity: sendingClinicianEmail ? 0.5 : 1 }}>
+                    <Mail size={13} />
+                    {sendingClinicianEmail ? 'Sending…' : 'Email Clinician'}
+                  </button>
+                  <span className="text-[10px] italic" style={{ color: 'var(--mid-gray)' }}>
+                    *Patient status change will automatically send SMS to clinician
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -830,7 +902,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   // Reset dept filter + make-up picks when branch changes
   useEffect(() => { setActiveDept('Tomorrow'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
 
-  const branchStaff = staff.filter(s => s.branch === activeBranch)
+  const branchStaff = staff.filter(s => s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch))
   const presentDepts = ALL_DEPARTMENTS.filter(d => branchStaff.some(s => s.department === d))
   const filtered = activeDept === 'All' ? branchStaff : branchStaff.filter(s => s.department === activeDept)
 
@@ -842,7 +914,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const tomorrowClinicians = configs
     .filter(c => Array.isArray(c.workDays) && c.workDays.includes(tomorrowCode))
     .map(c => ({ cfg: c, staff: staffById.get(c.staffId) }))
-    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && x.staff.branch === activeBranch)
+    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && (x.staff.branch === activeBranch || (x.staff.extraBranches ?? []).includes(activeBranch)))
     .sort((a, b) =>
       (a.staff.lastName || '').localeCompare(b.staff.lastName || '') ||
       (a.staff.firstName || '').localeCompare(b.staff.firstName || ''))
@@ -858,7 +930,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
   const makeupClinicians = makeupIds
     .map(id => staffById.get(id))
-    .filter((s): s is StaffMember => !!s && s.branch === activeBranch && !autoIds.has(s.id))
+    .filter((s): s is StaffMember => !!s && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && !autoIds.has(s.id))
   // Type-ahead matches for the make-up search (exclude already-listed staff).
   const makeupMatches = makeupQuery.trim().length > 0
     ? branchStaff
@@ -932,7 +1004,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
 
       {/* "Tomorrow" view — clinicians working tomorrow + make-ups + Front Desk card */}
       {!loading && activeDept === 'Tomorrow' ? (
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(300px, 360px)' }}>
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           {/* Left — clinicians working tomorrow (+ make-up sessions) */}
           <div className="flex flex-col gap-4">
             <div>
@@ -965,7 +1037,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                       </div>
                       <div className="space-y-2">
                         {g.list.map(({ staff: s }) => (
-                          <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} />
+                          <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                         ))}
                       </div>
                     </div>
@@ -994,7 +1066,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                           Remove
                         </button>
                       </div>
-                      <StaffCard staff={s} selectedDate={tomorrowDate} />
+                      <StaffCard staff={s} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                     </div>
                   ))}
                 </div>
@@ -1068,7 +1140,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       ) : (
         <div className="space-y-2">
           {filtered.map(s => (
-            <StaffCard key={s.id} staff={s} selectedDate={selectedDate} />
+            <StaffCard key={s.id} staff={s} selectedDate={selectedDate} schedulingBranch={activeBranch} />
           ))}
         </div>
       )}

@@ -238,7 +238,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { scheduleId, staffId, date } = await req.json()
+  const { scheduleId, staffId, date, branch: reqBranch } = await req.json()
 
   // ── Single schedule reminder ──────────────────────────────────────────────
   if (scheduleId) {
@@ -253,7 +253,8 @@ export async function POST(req: NextRequest) {
     }
 
     const dateStr = schedule.date.toISOString().split('T')[0]
-    const branch = schedule.staff.branch
+    // Use scheduling branch (for interbranch consultants) if provided, else staff home branch
+    const branch = reqBranch || schedule.staff.branch
     const cfg = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
     const emailOpts = {
       patientName: `${schedule.patient.firstName} ${schedule.patient.lastName}`,
@@ -298,7 +299,8 @@ export async function POST(req: NextRequest) {
     let sent = 0
     for (const schedule of schedules) {
       if (!schedule.patient?.email) continue
-      const branch = schedule.staff.branch
+      // Use scheduling branch (for interbranch consultants) if provided, else staff home branch
+      const branch = reqBranch || schedule.staff.branch
       const cfg = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
       const emailOpts = {
         patientName: `${schedule.patient.firstName} ${schedule.patient.lastName}`,

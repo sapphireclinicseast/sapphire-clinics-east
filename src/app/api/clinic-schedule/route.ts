@@ -17,15 +17,24 @@ function generateMeetLink(
   return `https://meet.jit.si/${roomName}`
 }
 
+// Maps Staff.branch short codes to Patient.branch enum values
+const STAFF_BRANCH_TO_PATIENT_BRANCH: Record<string, string> = {
+  SBEA: 'SANDBOX_EAST',
+  SBGH: 'SANDBOX_GREENHILLS',
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const staffId   = searchParams.get('staffId')
-  const date      = searchParams.get('date')       // YYYY-MM-DD (single day)
-  const startDate = searchParams.get('startDate') // YYYY-MM-DD (range start)
-  const endDate   = searchParams.get('endDate')   // YYYY-MM-DD (range end)
+  const staffId     = searchParams.get('staffId')
+  const date        = searchParams.get('date')        // YYYY-MM-DD (single day)
+  const startDate   = searchParams.get('startDate')   // YYYY-MM-DD (range start)
+  const endDate     = searchParams.get('endDate')     // YYYY-MM-DD (range end)
+  // For multi-branch consultants: filter to only patients registered at this branch
+  const patientBranch = searchParams.get('patientBranch')
+  const patientBranchEnum = patientBranch ? STAFF_BRANCH_TO_PATIENT_BRANCH[patientBranch] : null
 
   let dayStart: Date, dayEnd: Date
   if (startDate && endDate) {
@@ -42,6 +51,9 @@ export async function GET(req: NextRequest) {
     where: {
       ...(staffId ? { staffId } : {}),
       date: { gte: dayStart, lte: dayEnd },
+      ...(patientBranchEnum ? {
+        patient: { branch: patientBranchEnum as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' },
+      } : {}),
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
