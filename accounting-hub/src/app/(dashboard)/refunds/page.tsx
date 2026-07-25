@@ -7,10 +7,12 @@ import { ScanUpload } from '@/components/ScanUpload'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import { formatCurrency } from '@/lib/utils'
 
+// Verdana Store is intentionally excluded: it sells merchandise, and its returns are already
+// captured by the POS/bulk-upload flow as sales returns (contra-revenue, 7160 Sales Returns).
+// This section is only for refunds of PREPAID therapy balances (unearned revenue).
 const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
-  { value: 'VERDANA_STORE', label: 'Verdana Store' },
   { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 const PAYMENT_METHODS = ['Cash', 'Check', 'Bank Transfer', 'Telegraphic Transfer', 'GCash']
@@ -196,6 +198,7 @@ export default function RefundsPage() {
         {tab === 'refunds' && <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> New Refund</button>}
       </div>
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Patient refunds of prepaid balances. On RFP payment we post <strong>DR 4055 Refunds of Unearned Revenue / CR Cash</strong> — 4055 is a contra account to 4050 Unearned Revenue, so refunds reduce the liability on the balance sheet and never hit the income statement or the Expense Report.</p>
+      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>East, Greenhills and Aura Health Institute only. <strong>Verdana Store is not handled here</strong> — its merchandise returns already come through POS / bulk upload and appear in the Income Statement under <strong>7160 Sales Returns</strong>.</p>
 
       {/* Branch */}
       <div className="flex rounded-xl overflow-hidden border w-fit" style={{ borderColor: 'var(--light-gray)' }}>

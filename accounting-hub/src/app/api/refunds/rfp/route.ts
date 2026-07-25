@@ -4,7 +4,9 @@ import { prisma } from '@/lib/prisma'
 import { postJournalEntry } from '@/lib/accounting/posting'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
-const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
+// Therapy prepayment refunds only — Verdana merchandise returns go through POS/bulk upload
+// and land in 7160 Sales Returns (contra-revenue), not here. See /api/refunds.
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'AURA_INSTITUTE']
 const BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD', AURA_INSTITUTE: 'AHI' }
 
 // GET ?branch= → list refund RFPs;  ?id=&items= → billing-voucher lines;  ?id=&entries= → summary rows;  ?id= → pdfData

@@ -3,7 +3,11 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
-const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
+// Therapy prepayment refunds only — East / Greenhills / Aura Health Institute.
+// Verdana Store is excluded on purpose: its merchandise returns are already recorded through
+// the POS/bulk-upload flow as sales returns (contra-revenue, 7160 Sales Returns), so routing
+// them here would double-count them and wrongly hit Unearned Revenue.
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'AURA_INSTITUTE']
 
 // GET ?branch=... — list refunds for a branch (with RFP status)
 export async function GET(req: Request) {

@@ -2576,7 +2576,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
 
   const handleAction = async (id: string, action: 'reopen' | 'void' | 'returnByBuyer' | 'refund') => {
     if (action === 'refund') {
-      if (!window.confirm('Mark this order as REFUNDED?\n\nThe product(s) are added back to inventory and the sale is recorded as fully refunded (shows under 7160 Refunds + the product refund rate). Net collected becomes 0.')) return
+      if (!window.confirm('Mark this order as REFUNDED?\n\nThe product(s) are added back to inventory and the sale is recorded as fully refunded (shows under 7160 Sales Returns + the product refund rate). Net collected becomes 0.')) return
       await fetch(`/api/pos/orders/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
