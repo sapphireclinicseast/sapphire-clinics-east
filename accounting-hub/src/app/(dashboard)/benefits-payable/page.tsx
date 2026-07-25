@@ -44,7 +44,9 @@ export default function BenefitsPayablePage() {
   const [fYear, setFYear] = useState('')
   const [fMonth, setFMonth] = useState('')
   const [fCutoff, setFCutoff] = useState('')
-  const [showRemitted, setShowRemitted] = useState(false)
+  // Show ALL locked-payroll benefits by default (spec: "all benefits from locked payroll
+  // are to be seen here"); remitted/in-RFP rows appear with a status and can't be re-ticked.
+  const [hideRemitted, setHideRemitted] = useState(false)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
@@ -60,14 +62,15 @@ export default function BenefitsPayablePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const p = new URLSearchParams({ branch })
-      if (showRemitted) p.set('showRemitted', 'true')
+      // Always fetch everything from locked payroll; remitted rows are shown with a
+      // status (hidden only if the user opts to). Consultant + employee both included.
+      const p = new URLSearchParams({ branch, showRemitted: 'true' })
       const res = await fetch(`/api/payroll/benefits-payable?${p}`)
       setRows(res.ok ? await res.json() : [])
     } catch { setRows([]) } finally { setLoading(false) }
-  }, [branch, showRemitted])
+  }, [branch])
   useEffect(() => { load() }, [load])
-  useEffect(() => { setSelected(new Set()) }, [branch, agencyKey, fType, fYear, fMonth, fCutoff, showRemitted])
+  useEffect(() => { setSelected(new Set()) }, [branch, agencyKey, fType, fYear, fMonth, fCutoff, hideRemitted])
   useEffect(() => {
     fetch('/api/chart-of-accounts?accountType=EXPENSE&pageSize=1000')
       .then(r => r.ok ? r.json() : { data: [] })
@@ -84,6 +87,7 @@ export default function BenefitsPayablePage() {
   // Rows relevant to the current agency subtab + filters
   const shown = useMemo(() => rows.filter(r => {
     if (ee(r) + er(r) <= 0) return false
+    if (hideRemitted && r.benefitsRemitted) return false
     if (fType && r.type !== fType) return false
     const [y, m, half] = r.cutoffPeriod.split('-')
     if (fYear && y !== fYear) return false
@@ -91,7 +95,7 @@ export default function BenefitsPayablePage() {
     if (fCutoff && half !== fCutoff) return false
     return true
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [rows, agencyKey, fType, fYear, fMonth, fCutoff])
+  }), [rows, agencyKey, fType, fYear, fMonth, fCutoff, hideRemitted])
 
   const selectable = shown.filter(r => !rfpOf(r) && !r.benefitsRemitted)
   const selRows = shown.filter(r => selected.has(r.id))
@@ -209,7 +213,7 @@ export default function BenefitsPayablePage() {
           </select>
         </div>
         <label className="flex items-center gap-1.5 text-xs ml-2" style={{ color: 'var(--mid-gray)' }}>
-          <input type="checkbox" checked={showRemitted} onChange={e => setShowRemitted(e.target.checked)} /> Show remitted
+          <input type="checkbox" checked={hideRemitted} onChange={e => setHideRemitted(e.target.checked)} /> Hide remitted
         </label>
         {selected.size > 0 && (
           <button onClick={openRfp} className="ml-auto flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
@@ -244,8 +248,8 @@ export default function BenefitsPayablePage() {
               <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}><Loader2 size={18} className="inline animate-spin" /></td></tr>
             ) : shown.length === 0 ? (
               <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
-                No unremitted {agency.label} contributions in locked payroll for this filter.
-                {!showRemitted && <div className="mt-1 text-[11px]">Already-remitted contributions are hidden — tick <strong>Show remitted</strong> to include them. Contributions only appear once payroll is <strong>locked</strong> and the benefit falls on the selected cutoff.</div>}
+                No {agency.label} contributions in locked payroll for this filter.
+                <div className="mt-1 text-[11px]">Contributions appear once payroll is <strong>locked</strong> and the {agency.label} deduction falls on the selected cutoff.</div>
               </td></tr>
             ) : shown.map(r => {
               const locked = !!rfpOf(r) || r.benefitsRemitted
