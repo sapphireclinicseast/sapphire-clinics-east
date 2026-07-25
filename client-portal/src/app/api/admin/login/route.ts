@@ -2,7 +2,13 @@
 // DELETE to log out, GET to check the current session.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { ADMIN_COOKIE, adminSessionValue, isAdmin, passwordMatches } from '@/lib/admin-auth'
+import {
+  ADMIN_COOKIE,
+  adminSessionValue,
+  isAdmin,
+  passwordMatches,
+  usernameMatches,
+} from '@/lib/admin-auth'
 
 const MAX_AGE = 60 * 60 * 8 // 8 hours
 
@@ -11,7 +17,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { password } = (await req.json().catch(() => ({}))) as { password?: string }
+  const { username, password } = (await req.json().catch(() => ({}))) as {
+    username?: string
+    password?: string
+  }
   const session = adminSessionValue()
 
   if (!session) {
@@ -20,8 +29,8 @@ export async function POST(req: NextRequest) {
       { status: 503 },
     )
   }
-  if (!password || !passwordMatches(password)) {
-    return NextResponse.json({ error: 'Incorrect password.' }, { status: 401 })
+  if (!username || !usernameMatches(username) || !password || !passwordMatches(password)) {
+    return NextResponse.json({ error: 'Incorrect username or password.' }, { status: 401 })
   }
 
   const res = NextResponse.json({ ok: true })

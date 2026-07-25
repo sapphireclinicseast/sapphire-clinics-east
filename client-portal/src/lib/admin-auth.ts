@@ -30,6 +30,12 @@ export function passwordMatches(password: string): boolean {
   return safeEqual(password, pw)
 }
 
+// Username is not a secret; a plain case-insensitive compare is fine.
+export function usernameMatches(username: string): boolean {
+  const expected = (process.env.AURORA_ADMIN_USERNAME ?? 'main').trim().toLowerCase()
+  return (username ?? '').trim().toLowerCase() === expected
+}
+
 export function isAdmin(req: NextRequest): boolean {
   const expected = adminSessionValue()
   if (!expected) return false
