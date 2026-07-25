@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       const d1 = await res1.json()
       if (d1.ok && d1.items) {
         for (const item of d1.items) {
-          responses.push({ ...item, _branch: 'SBEA', _formTitle: form.title, _formId: form.sbea })
+          responses.push({ ...item, fields: d1.fields || [], _branch: 'SBEA', _formTitle: form.title, _formId: form.sbea })
         }
       }
 
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
         const d2 = await res2.json()
         if (d2.ok && d2.items) {
           for (const item of d2.items) {
-            responses.push({ ...item, _branch: 'SBGH', _formTitle: form.title, _formId: form.sbgh })
+            responses.push({ ...item, fields: d2.fields || [], _branch: 'SBGH', _formTitle: form.title, _formId: form.sbgh })
           }
         }
       }
