@@ -7,7 +7,7 @@ import {
   BadgeDollarSign, Users, Settings, FileText, Plus, Pencil, Save,
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
-  PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, ShieldOff, Upload,
+  PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, Shield, ShieldOff, Upload,
   Lock, LockOpen, ClipboardList, Eye,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
@@ -45,6 +45,7 @@ interface Consultant {
   bankAccountNo?: string | null
   isActive: boolean
   unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
+  benefits?: { id: string; benefitType: string; employeeShare: number | string; employerShare: number | string; isActive: boolean }[]
 }
 
 interface UnitPayType {
@@ -69,6 +70,13 @@ interface PayrollPreview {
   incentiveTotal: number
   grossPay: number
   taxAmount: number
+  // Benefit contributions (SSS/PHIC/HDMF) for this cutoff — EE deducted from net.
+  sssDeduction?: number
+  philhealthDeduction?: number
+  pagibigDeduction?: number
+  sssEmployerShare?: number
+  philhealthEmployerShare?: number
+  pagibigEmployerShare?: number
   netPay: number
   orderCount: number
   existingStatus: string | null
@@ -355,8 +363,10 @@ function computeTotals(p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: Adju
   const taxableBase = totalUnitPay + retainer + taxedAdj
   const tax = p.taxDeduction === 'FIVE_PERCENT' ? Math.max(0, taxableBase) * 0.05 : 0
   const gross = taxableBase + nonTaxedAdj
-  const net = gross - tax
-  return { totalUnitPay, extraTotal, incentiveTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, net }
+  // Benefit EE contributions (SSS/PHIC/HDMF) are withheld from consultant net pay.
+  const benefitEE = (p.sssDeduction ?? 0) + (p.philhealthDeduction ?? 0) + (p.pagibigDeduction ?? 0)
+  const net = gross - tax - benefitEE
+  return { totalUnitPay, extraTotal, incentiveTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, benefitEE, net }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -764,7 +774,18 @@ export default function PayrollPage() {
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
   const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings'>('consultants')
-  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits'>('list')
+  // Consultant Benefits Setting (mirror Employees)
+  const [conBenefitSelIds, setConBenefitSelIds] = useState<Set<string>>(new Set())
+  const [showConBenefitForm, setShowConBenefitForm] = useState(false)
+  const [showConBulkBenefit, setShowConBulkBenefit] = useState(false)
+  const [conBenefitCId, setConBenefitCId] = useState('')
+  const [conBenefitType, setConBenefitType] = useState('SSS')
+  const [conBenefitEE, setConBenefitEE] = useState(0)
+  const [conBenefitER, setConBenefitER] = useState(0)
+  const [conBulkBenefitType, setConBulkBenefitType] = useState('SSS')
+  const [conBulkBenefitEE, setConBulkBenefitEE] = useState(0)
+  const [conBulkBenefitER, setConBulkBenefitER] = useState(0)
 
   /* ── IE / PR tracking ── */
   const [ieprDocs, setIeprDocs] = useState<IEPRDoc[]>([])
@@ -998,6 +1019,32 @@ export default function PayrollPage() {
       setConsultants(await res.json())
     } catch { setConsultants([]) }
   }, [branch])
+
+  /* ── Consultant Benefits Setting ── */
+  const toggleConBenefitSel = (id: string) => setConBenefitSelIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const saveConBenefit = async () => {
+    if (!conBenefitCId) return
+    try {
+      await fetch('/api/payroll/consultant-benefits', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consultantId: conBenefitCId, benefitType: conBenefitType, employeeShare: conBenefitEE, employerShare: conBenefitER }),
+      })
+      setShowConBenefitForm(false)
+      await fetchConsultants()
+    } catch { setError('Failed to save benefit') }
+  }
+  const saveConBulkBenefit = async () => {
+    if (conBenefitSelIds.size === 0) return
+    try {
+      await fetch('/api/payroll/consultant-benefits', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulk: Array.from(conBenefitSelIds).map(consultantId => ({ consultantId, benefitType: conBulkBenefitType, employeeShare: conBulkBenefitEE, employerShare: conBulkBenefitER })) }),
+      })
+      setShowConBulkBenefit(false)
+      setConBenefitSelIds(new Set())
+      await fetchConsultants()
+    } catch { setError('Failed to save benefits') }
+  }
 
   const fetchUnitPays = useCallback(async () => {
     try {
@@ -2048,7 +2095,14 @@ export default function PayrollPage() {
       adjustments: adjs,
       incentives: p.incentives || [],
       incentiveTotal: p.incentiveTotal ?? 0,
-      grossPay: t.gross, retainerAmount: p.retainerAmount, taxAmount: t.tax, netPay: t.net, status,
+      grossPay: t.gross, retainerAmount: p.retainerAmount, taxAmount: t.tax,
+      sssDeduction: p.sssDeduction ?? 0,
+      philhealthDeduction: p.philhealthDeduction ?? 0,
+      pagibigDeduction: p.pagibigDeduction ?? 0,
+      sssEmployerShare: p.sssEmployerShare ?? 0,
+      philhealthEmployerShare: p.philhealthEmployerShare ?? 0,
+      pagibigEmployerShare: p.pagibigEmployerShare ?? 0,
+      netPay: t.net, status,
     }
   }
 
@@ -2485,8 +2539,9 @@ export default function PayrollPage() {
             <Users size={16} /> {t}
           </button>
         ))}
-        {(['salaries-payable', 'benefits-payable', 'payroll-settings'] as const).map(t => {
-          const labels: Record<string, string> = { 'salaries-payable': 'Salaries Payable', 'benefits-payable': 'Benefits Payable', 'payroll-settings': 'Payroll Settings' }
+        {/* 'Benefits Payable' moved to its own left-nav section (/benefits-payable). */}
+        {(['salaries-payable', 'payroll-settings'] as const).map(t => {
+          const labels: Record<string, string> = { 'salaries-payable': 'Salaries Payable', 'payroll-settings': 'Payroll Settings' }
           return (
             <button key={t} onClick={() => setMainTab(t)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
@@ -2881,6 +2936,7 @@ export default function PayrollPage() {
               { key: 'list' as const, label: 'Clinician List', icon: Users },
               { key: 'unit-pay' as const, label: 'Unit Pay Settings', icon: Settings },
               { key: 'pay-rules' as const, label: 'Clinician Pay Rules', icon: BadgeDollarSign },
+              { key: 'benefits' as const, label: 'Benefits Setting', icon: Shield },
               { key: 'initial-eval' as const, label: 'Initial Evaluation', icon: ClipboardList },
               { key: 'progress-report' as const, label: 'Progress Report', icon: FileText },
               { key: 'payslips' as const, label: 'Payslip Generation', icon: FileText },
@@ -3812,6 +3868,160 @@ export default function PayrollPage() {
                     </div>
                   )}
                 </>
+              )}
+            </div>
+          )}
+
+          {/* ══ BENEFITS SETTING (SSS / PhilHealth / Pag-IBIG) ══ */}
+          {subTab === 'benefits' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant Benefits (SSS, PhilHealth, Pag-IBIG)</p>
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Monthly contribution amounts. The consultant (EE) share is deducted from net pay each cutoff; the employer (ER) share is accrued. Both flow to Benefits Payable.</p>
+                </div>
+                {canWrite && (
+                  <div className="flex items-center gap-2">
+                    {conBenefitSelIds.size > 0 && (
+                      <button onClick={() => { setConBulkBenefitType('SSS'); setConBulkBenefitEE(0); setConBulkBenefitER(0); setShowConBulkBenefit(true) }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: '#7c3aed' }}>
+                        <Shield size={13} /> Set Benefit for Selected ({conBenefitSelIds.size})
+                      </button>
+                    )}
+                    <button onClick={() => { setShowConBenefitForm(true); setConBenefitCId(''); setConBenefitType('SSS'); setConBenefitEE(0); setConBenefitER(0) }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                      <Plus size={13} /> Set Benefit
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      {canWrite && (
+                        <th className="text-center px-2 py-2.5">
+                          <input type="checkbox"
+                            checked={filteredConsultants.length > 0 && filteredConsultants.every(c => conBenefitSelIds.has(c.id))}
+                            onChange={e => setConBenefitSelIds(e.target.checked ? new Set(filteredConsultants.map(c => c.id)) : new Set())} />
+                        </th>
+                      )}
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Department</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>SSS (EE / ER)</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>PhilHealth (EE / ER)</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Pag-IBIG (EE / ER)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredConsultants.length === 0 ? (
+                      <tr><td colSpan={canWrite ? 6 : 5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No consultants</td></tr>
+                    ) : filteredConsultants.map(c => {
+                      const sss = c.benefits?.find(b => b.benefitType === 'SSS')
+                      const phil = c.benefits?.find(b => b.benefitType === 'PHILHEALTH')
+                      const pag = c.benefits?.find(b => b.benefitType === 'PAGIBIG')
+                      return (
+                        <tr key={c.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                          {canWrite && (
+                            <td className="text-center px-2 py-2.5">
+                              <input type="checkbox" checked={conBenefitSelIds.has(c.id)} onChange={() => toggleConBenefitSel(c.id)} />
+                            </td>
+                          )}
+                          <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
+                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{c.department}</td>
+                          <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>{sss ? `${formatCurrency(toNum(sss.employeeShare))} / ${formatCurrency(toNum(sss.employerShare))}` : '—'}</td>
+                          <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>{phil ? `${formatCurrency(toNum(phil.employeeShare))} / ${formatCurrency(toNum(phil.employerShare))}` : '—'}</td>
+                          <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>{pag ? `${formatCurrency(toNum(pag.employeeShare))} / ${formatCurrency(toNum(pag.employerShare))}` : '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Single Benefit Modal */}
+              {showConBenefitForm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                  <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Set Benefit</h3>
+                      <button onClick={() => setShowConBenefitForm(false)}><X size={16} /></button>
+                    </div>
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Consultant</label>
+                        <select value={conBenefitCId} onChange={e => setConBenefitCId(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                          <option value="">Select consultant...</option>
+                          {filteredConsultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Benefit Type</label>
+                        <select value={conBenefitType} onChange={e => setConBenefitType(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                          {['SSS', 'PHILHEALTH', 'PAGIBIG'].map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Consultant Share (Monthly)</label>
+                        <input type="number" value={conBenefitEE} onChange={e => setConBenefitEE(parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employer Share (Monthly)</label>
+                        <input type="number" value={conBenefitER} onChange={e => setConBenefitER(parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-5">
+                      <button onClick={() => setShowConBenefitForm(false)} className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+                      <button onClick={saveConBenefit} disabled={!conBenefitCId}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                        <Save size={13} /> Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bulk Benefit Modal */}
+              {showConBulkBenefit && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                  <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Set Benefit for {conBenefitSelIds.size} Consultants</h3>
+                      <button onClick={() => setShowConBulkBenefit(false)}><X size={16} /></button>
+                    </div>
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Benefit Type</label>
+                        <select value={conBulkBenefitType} onChange={e => setConBulkBenefitType(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                          {['SSS', 'PHILHEALTH', 'PAGIBIG'].map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Consultant Share (Monthly)</label>
+                        <input type="number" value={conBulkBenefitEE} onChange={e => setConBulkBenefitEE(parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employer Share (Monthly)</label>
+                        <input type="number" value={conBulkBenefitER} onChange={e => setConBulkBenefitER(parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-5">
+                      <button onClick={() => setShowConBulkBenefit(false)} className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+                      <button onClick={saveConBulkBenefit}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: '#7c3aed' }}>
+                        <Save size={13} /> Save for {conBenefitSelIds.size}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}

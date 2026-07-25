@@ -152,6 +152,7 @@ export async function GET(req: Request) {
       unitPayRates: {
         include: { unitPay: { select: { id: true, name: true } } },
       },
+      benefits: { where: { isActive: true } },
     },
   })
 

@@ -35,6 +35,16 @@ export async function GET(req: Request) {
     const acct = isSalary ? 'Salaries Payable' : 'Benefits Payable'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const lines = Array.isArray(meta.items) ? meta.items.map((i: any) => { const a = Number(i.amount || 0); return { account: acct, description: `${i.name}${meta.cutoffPeriod ? ` — ${meta.cutoffPeriod}` : ''}`, gross: a, vat: 0, netVat: a, netEwt: a } }) : []
+    // Benefit RFP "Other Fees" (e.g. online-transfer fees) append as their own lines.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (Array.isArray(meta.otherFees)) for (const f of meta.otherFees as any[]) {
+      const gross = Number(f.grossAmount || 0)
+      if (gross <= 0) continue
+      const netVat = f.vatable === 'VAT' ? gross / 1.12 : gross
+      const vat = gross - netVat
+      const ewt = f.hasEwt && f.ewtRate ? netVat * (Number(f.ewtRate) / 100) : 0
+      lines.push({ account: f.accountTitle || 'Other Fees', description: f.description || f.requestor || 'Other fee', payee: f.requestor || '', memo: f.description || '', gross, vat, netVat, ewt, netEwt: gross - ewt })
+    }
     return NextResponse.json({ lines })
   }
   // Full member entries for rebuilding the RFP Summary PDF (with current payableTo).
@@ -240,7 +250,9 @@ export async function DELETE(req: Request) {
     if (rep?.module === 'PAYROLL_SALARY' || rep?.module === 'PAYROLL_BENEFIT') {
       // Reactivate the locked payroll entries. (A paid payroll RFP must be unpaid first.)
       const ids: string[] = Array.isArray(meta.ids) ? meta.ids : []
-      const field = rep.module === 'PAYROLL_SALARY' ? 'salaryRfpId' : 'benefitRfpId'
+      // Benefit RFPs lock a per-agency field (sss/philhealth/pagibigRfpId); legacy combined ones use benefitRfpId.
+      const AGENCY_LOCK: Record<string, string> = { SSS: 'sssRfpId', PHILHEALTH: 'philhealthRfpId', PAGIBIG: 'pagibigRfpId' }
+      const field = rep.module === 'PAYROLL_SALARY' ? 'salaryRfpId' : (meta.benefitType && AGENCY_LOCK[meta.benefitType] ? AGENCY_LOCK[meta.benefitType] : 'benefitRfpId')
       if (ids.length) {
         if (meta.idKind === 'payrollEntry') await prisma.payrollEntry.updateMany({ where: { id: { in: ids } }, data: { [field]: null } })
         else await prisma.employeePayslip.updateMany({ where: { id: { in: ids } }, data: { [field]: null } })

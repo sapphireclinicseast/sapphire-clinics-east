@@ -104,9 +104,33 @@ export async function GET(req: Request) {
         unitPayRates: {
           include: { unitPay: { select: { id: true, name: true } } },
         },
+        benefits: { where: { isActive: true } },
       },
       orderBy: { name: 'asc' },
     })
+
+    // Benefit deduction cadence — reuse the same setting employees use so both
+    // payrolls split monthly SSS/PHIC/HDMF across cutoffs identically.
+    const benefitSettings = await prisma.employeeSettings.findFirst()
+    const benefitTiming = (benefitSettings as unknown as Record<string, unknown>)?.benefitDeductionTiming as string || 'HALF_HALF'
+    const cutoffHalf = cutoffPeriod.split('-')[2] // "1" or "2"
+    const benefitMultiplier = benefitTiming === 'HALF_HALF' ? 0.5
+      : benefitTiming === 'FIRST_CUTOFF' ? (cutoffHalf === '1' ? 1 : 0)
+      : benefitTiming === 'SECOND_CUTOFF' ? (cutoffHalf === '2' ? 1 : 0)
+      : 0.5
+    // Compute this cutoff's per-consultant EE/ER benefit contributions.
+    const consultantBenefit = (c: { benefits?: { benefitType: string; employeeShare: unknown; employerShare: unknown }[] }) => {
+      const find = (t: string) => (c.benefits || []).find(b => b.benefitType === t)
+      const sss = find('SSS'), phil = find('PHILHEALTH'), pag = find('PAGIBIG')
+      return {
+        sssDeduction: sss ? toFloat(sss.employeeShare) * benefitMultiplier : 0,
+        philhealthDeduction: phil ? toFloat(phil.employeeShare) * benefitMultiplier : 0,
+        pagibigDeduction: pag ? toFloat(pag.employeeShare) * benefitMultiplier : 0,
+        sssEmployerShare: sss ? toFloat(sss.employerShare) * benefitMultiplier : 0,
+        philhealthEmployerShare: phil ? toFloat(phil.employerShare) * benefitMultiplier : 0,
+        pagibigEmployerShare: pag ? toFloat(pag.employerShare) * benefitMultiplier : 0,
+      }
+    }
 
     // Exclude anyone who is on the EMPLOYEE payroll — admin/clinician staff get
     // synced into both tables, but employees are paid via employee payroll, not
@@ -226,6 +250,12 @@ export async function GET(req: Request) {
           incentiveTotal: Number(existingEntry.incentiveTotal ?? 0),
           grossPay: Number(existingEntry.grossPay),
           taxAmount: Number(existingEntry.taxAmount),
+          sssDeduction: Number(existingEntry.sssDeduction),
+          philhealthDeduction: Number(existingEntry.philhealthDeduction),
+          pagibigDeduction: Number(existingEntry.pagibigDeduction),
+          sssEmployerShare: Number(existingEntry.sssEmployerShare),
+          philhealthEmployerShare: Number(existingEntry.philhealthEmployerShare),
+          pagibigEmployerShare: Number(existingEntry.pagibigEmployerShare),
           netPay: Number(existingEntry.netPay),
           orderCount: storedItems.reduce((s, b) => s + (b.sessions?.length || 0), 0),
           existingStatus: 'LOCKED' as string,
@@ -380,7 +410,9 @@ export async function GET(req: Request) {
 
       const grossPay = unitPayTotal + retainerAmount + incentiveTotal
       const taxAmount = c.taxDeduction === 'FIVE_PERCENT' ? grossPay * 0.05 : 0
-      const netPay = grossPay - taxAmount
+      const ben = consultantBenefit(c)
+      const benefitEETotal = ben.sssDeduction + ben.philhealthDeduction + ben.pagibigDeduction
+      const netPay = grossPay - taxAmount - benefitEETotal
 
       return {
         consultantId: c.id,
@@ -395,6 +427,7 @@ export async function GET(req: Request) {
         incentiveTotal,
         grossPay,
         taxAmount,
+        ...ben,
         netPay,
         orderCount: consultantOrders.length,
         existingStatus: existingMap.get(c.id) || null,
@@ -502,6 +535,12 @@ export async function POST(req: Request) {
           grossPay: entry.grossPay,
           retainerAmount: entry.retainerAmount,
           taxAmount: entry.taxAmount,
+          sssDeduction: entry.sssDeduction ?? 0,
+          philhealthDeduction: entry.philhealthDeduction ?? 0,
+          pagibigDeduction: entry.pagibigDeduction ?? 0,
+          sssEmployerShare: entry.sssEmployerShare ?? 0,
+          philhealthEmployerShare: entry.philhealthEmployerShare ?? 0,
+          pagibigEmployerShare: entry.pagibigEmployerShare ?? 0,
           netPay: entry.netPay,
           status: entry.status || 'DRAFT',
         },
@@ -517,6 +556,12 @@ export async function POST(req: Request) {
           grossPay: entry.grossPay,
           retainerAmount: entry.retainerAmount,
           taxAmount: entry.taxAmount,
+          sssDeduction: entry.sssDeduction ?? 0,
+          philhealthDeduction: entry.philhealthDeduction ?? 0,
+          pagibigDeduction: entry.pagibigDeduction ?? 0,
+          sssEmployerShare: entry.sssEmployerShare ?? 0,
+          philhealthEmployerShare: entry.philhealthEmployerShare ?? 0,
+          pagibigEmployerShare: entry.pagibigEmployerShare ?? 0,
           netPay: entry.netPay,
           status: entry.status || 'DRAFT',
           createdById: session.user.id,

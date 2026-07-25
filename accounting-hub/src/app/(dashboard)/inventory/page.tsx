@@ -426,6 +426,16 @@ interface Adjustment {
   localCost?: number | string | null
 }
 
+// Reference number for a single adjustment. Older rows (opening batch, stock-in)
+// carry no stored ref, so derive a stable one from the date + id: ADJ-YYYYMMDD-XXXXX.
+function genAdjRef(adj: { id: string; adjustmentDate: string }): string {
+  const d = new Date(adj.adjustmentDate)
+  const ymd = isNaN(d.getTime())
+    ? '00000000'
+    : `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+  return `ADJ-${ymd}-${adj.id.slice(-5).toUpperCase()}`
+}
+
 interface FbRow {
   itemId: string
   itemName: string
@@ -3365,11 +3375,9 @@ setTimeout(()=>window.print(),500);
                     g.kind === 'single' ? (() => { const adj = g.adj; return (
                     <tr key={adj.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-3">
-                        {(adj.displayRef || adj.batch?.referenceNumber || adj.referenceNumber) ? (
-                          <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>
-                            {adj.displayRef || adj.batch?.referenceNumber || adj.referenceNumber}
-                          </span>
-                        ) : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>
+                          {adj.displayRef || adj.batch?.referenceNumber || adj.referenceNumber || genAdjRef(adj)}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(adj.adjustmentDate)}</td>
                       <td className="px-4 py-3">

@@ -949,6 +949,7 @@ model Consultant {
   payrollEntries     PayrollEntry[]
   requests           EmployeeRequest[]
   cutoffAdjustments  ConsultantCutoffAdjustment[]
+  benefits           ConsultantBenefit[]
 
   @@index([department])
   @@index([branch])
@@ -1023,6 +1024,14 @@ model PayrollEntry {
   grossPay        Decimal
   retainerAmount  Decimal    @default(0)
   taxAmount       Decimal    @default(0)
+  // Benefit contributions (SSS/PHIC/HDMF) — mirror EmployeePayslip. EE share is
+  // deducted from netPay; ER share is an employer accrual. Both feed Benefits Payable.
+  sssDeduction            Decimal @default(0)
+  philhealthDeduction     Decimal @default(0)
+  pagibigDeduction        Decimal @default(0)
+  sssEmployerShare        Decimal @default(0)
+  philhealthEmployerShare Decimal @default(0)
+  pagibigEmployerShare    Decimal @default(0)
   netPay          Decimal
   pdfUrl          String?    // Stored PDF file path on VPS
   status          String     @default("DRAFT") // DRAFT, FINAL
@@ -1030,6 +1039,13 @@ model PayrollEntry {
   salariesRemitted Boolean    @default(false)
   salaryPaymentId  String?    // set when salary is remitted
   salaryRfpId      String?    // set when included in a Salaries-Payable RFP (locked until paid/deleted)
+  benefitsRemitted Boolean    @default(false)
+  benefitPaymentId String?    // set when SSS/PHIC/HDMF is remitted
+  benefitRfpId     String?    // set when included in a (legacy combined) Benefits-Payable RFP
+  // Per-agency Benefits-Payable RFP locks — SSS/PHIC/HDMF are remitted separately.
+  sssRfpId         String?
+  philhealthRfpId  String?
+  pagibigRfpId     String?
   createdById     String
   createdBy       User       @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt       DateTime   @default(now())
@@ -1326,6 +1342,34 @@ model EmployeeBenefit {
   @@index([isActive])
 }
 
+// Per-consultant SSS/PHIC/HDMF contribution amounts — mirrors EmployeeBenefit.
+model ConsultantBenefit {
+  id              String     @id @default(cuid())
+  consultantId    String
+  consultant      Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  benefitType     String     // SSS, PHILHEALTH, PAGIBIG
+  employeeShare   Decimal    @default(0)  // consultant's monthly contribution (deducted from net)
+  employerShare   Decimal    @default(0)  // employer's monthly contribution
+  effectiveDate   DateTime   @default(now())
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([consultantId])
+  @@index([benefitType])
+  @@index([isActive])
+}
+
+// Reusable "Other Fees" lines pre-loaded when generating a Benefits-Payable RFP
+// (e.g. online-transfer fees). One template per branch; benefitType null = all types.
+model BenefitRfpFeeTemplate {
+  id          String   @id @default(cuid())
+  branch      String   @unique
+  fees        Json     @default("[]") // [{accountTitle, description, requestor, grossAmount, vatable, hasEwt, ewtRate}]
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
+
 model Holiday {
   id          String      @id @default(cuid())
   name        String
@@ -1386,7 +1430,11 @@ model EmployeePayslip {
   salaryRfpId      String?      // set when included in a Salaries-Payable RFP
   benefitsRemitted Boolean      @default(false)
   benefitPaymentId String?      // set when SSS/PHIC/HDMF is remitted
-  benefitRfpId     String?      // set when included in a Benefits-Payable RFP
+  benefitRfpId     String?      // set when included in a (legacy combined) Benefits-Payable RFP
+  // Per-agency Benefits-Payable RFP locks — SSS/PHIC/HDMF are remitted separately.
+  sssRfpId         String?
+  philhealthRfpId  String?
+  pagibigRfpId     String?
   computeTaxNow    Boolean      @default(false) // For cutoff 1 resignations: compute monthly tax now instead of waiting for cutoff 2
   createdById      String
   createdAt        DateTime     @default(now())
