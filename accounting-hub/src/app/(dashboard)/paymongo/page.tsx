@@ -15,7 +15,7 @@ const BRANCHES = [
 ]
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-interface Txn { id: string; referenceCode: string | null; description: string | null; branch: string | null; amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null; paidAt: string | null; livemode: boolean; createdAt: string }
+interface Txn { id: string; referenceCode: string | null; description: string | null; branch: string | null; amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null; paidAt: string | null; payoutId: string | null; livemode: boolean; createdAt: string }
 interface ServiceOpt { id: string; name: string; price: number | null; branchPrices: { branch: string; price: number | null }[] }
 interface BankOpt { id: string; accountNumber: string; accountTitle: string }
 interface Unsettled { id: string; referenceCode: string | null; description: string | null; branch: string | null; amount: number; fee: number | null; netAmount: number | null; paidAt: string | null; livemode: boolean }
@@ -242,10 +242,23 @@ export default function PaymongoPage() {
     } finally { setPayoutBusy(false) }
   }
 
+  // A PAID link either still sits in PayMongo's clearing balance or has already been
+  // remitted to our bank (payoutId gets tagged by the Payouts-API auto-reconcile).
+  const displayStatus = (t: Txn) => {
+    if (t.status !== 'PAID') return t.status
+    return t.payoutId ? 'Remitted to Bank' : 'For Clearing'
+  }
   const statusBadge = (s: string) => {
-    const map: Record<string, { bg: string; c: string }> = { PAID: { bg: '#dcfce7', c: '#166534' }, PENDING: { bg: '#fef9c3', c: '#854d0e' }, FAILED: { bg: '#fee2e2', c: '#b91c1c' }, EXPIRED: { bg: '#f1f5f9', c: '#64748b' } }
+    const map: Record<string, { bg: string; c: string }> = {
+      'Remitted to Bank': { bg: '#dcfce7', c: '#166534' },
+      'For Clearing': { bg: '#dbeafe', c: '#1e40af' },
+      PAID: { bg: '#dcfce7', c: '#166534' },
+      PENDING: { bg: '#fef9c3', c: '#854d0e' },
+      FAILED: { bg: '#fee2e2', c: '#b91c1c' },
+      EXPIRED: { bg: '#f1f5f9', c: '#64748b' },
+    }
     const st = map[s] || map.PENDING
-    return <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: st.bg, color: st.c }}>{s}</span>
+    return <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: st.bg, color: st.c }}>{s}</span>
   }
 
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }
@@ -463,6 +476,33 @@ export default function PaymongoPage() {
         </div>
       )}
 
+      {/* Totals — gross charged, PayMongo fees, net, and where the net sits */}
+      {(() => {
+        const paid = txns.filter(t => t.status === 'PAID')
+        const gross = paid.reduce((s, t) => s + Number(t.amount || 0), 0)
+        const fees = paid.reduce((s, t) => s + Number(t.fee || 0), 0)
+        const net = paid.reduce((s, t) => s + Number(t.netAmount ?? (Number(t.amount) - Number(t.fee || 0))), 0)
+        const clearing = paid.filter(t => !t.payoutId).reduce((s, t) => s + Number(t.netAmount ?? (Number(t.amount) - Number(t.fee || 0))), 0)
+        const remitted = paid.filter(t => t.payoutId).reduce((s, t) => s + Number(t.netAmount ?? (Number(t.amount) - Number(t.fee || 0))), 0)
+        const cards: { label: string; val: number; c: string }[] = [
+          { label: 'Total charged', val: gross, c: 'var(--deep-teal)' },
+          { label: 'PayMongo fees', val: fees, c: '#d97706' },
+          { label: 'Net received', val: net, c: 'var(--deep-teal)' },
+          { label: 'For Clearing', val: clearing, c: '#1e40af' },
+          { label: 'Remitted to Bank', val: remitted, c: '#166534' },
+        ]
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {cards.map(c => (
+              <div key={c.label} className="rounded-2xl border bg-white px-4 py-3" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>{c.label}</div>
+                <div className="text-lg font-semibold mt-0.5" style={{ color: c.c }}>{peso(c.val)}</div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
+
       {/* Transactions */}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
@@ -477,7 +517,7 @@ export default function PaymongoPage() {
                 <td className="px-3 py-2 text-right font-mono">{peso(t.amount)}</td>
                 <td className="px-3 py-2 text-right font-mono" style={{ color: '#d97706' }}>{t.fee != null ? peso(t.fee) : '—'}</td>
                 <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{t.netAmount != null ? peso(t.netAmount) : '—'}</td>
-                <td className="px-3 py-2">{statusBadge(t.status)}{t.livemode ? '' : <span className="ml-1 text-[9px]" style={{ color: 'var(--mid-gray)' }}>test</span>}</td>
+                <td className="px-3 py-2">{statusBadge(displayStatus(t))}{t.livemode ? '' : <span className="ml-1 text-[9px]" style={{ color: 'var(--mid-gray)' }}>test</span>}</td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   {t.status === 'PENDING' && t.checkoutUrl && <a href={t.checkoutUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold" style={{ color: 'var(--teal)' }}>Open →</a>}
                   {t.status !== 'PAID' && <button onClick={() => deleteLink(t)} className="ml-2 text-[11px] font-semibold" style={{ color: '#b91c1c' }}>Delete</button>}

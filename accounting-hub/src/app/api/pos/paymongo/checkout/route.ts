@@ -11,7 +11,7 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const recent = await prisma.paymongoCheckout.findMany({
     orderBy: { createdAt: 'desc' }, take: 100,
-    select: { id: true, referenceCode: true, description: true, branch: true, amount: true, status: true, checkoutUrl: true, fee: true, netAmount: true, paidAt: true, livemode: true, createdAt: true },
+    select: { id: true, referenceCode: true, description: true, branch: true, amount: true, status: true, checkoutUrl: true, fee: true, netAmount: true, paidAt: true, payoutId: true, livemode: true, createdAt: true },
   })
   return NextResponse.json({ configured: paymongoConfigured(), livemode: paymongoLivemode(), recent })
 }
