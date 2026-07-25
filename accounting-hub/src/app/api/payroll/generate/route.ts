@@ -26,6 +26,8 @@ function allowedBranches(role: string): string[] | null {
 const BRANCH_TO_ORDER: Record<string, string> = {
   SBEA: 'SANDBOX_EAST',
   SBGH: 'SANDBOX_GREENHILLS',
+  VERDANA: 'VERDANA_STORE',
+  AHI: 'AURA_INSTITUTE',
 }
 
 // Parse cutoff period "2026-03-1" → { year: 2026, month: 3, half: 1 }
@@ -84,11 +86,9 @@ export async function GET(req: Request) {
       if (allowed && !allowed.includes(branch)) {
         return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
       }
-      // Include consultants whose primary branch OR extraBranches covers the scheduling branch
-      consultantWhere.OR = [
-        { branch },
-        { extraBranches: { hasSome: [branch] } },
-      ]
+      // Branch membership (primary / extraBranches / has-sessions-here) is applied in
+      // JS below so interbranch consultants with sessions at this branch are included
+      // even when it isn't their primary/extra branch.
     } else if (allowed) {
       consultantWhere.OR = [
         { branch: { in: allowed } },
@@ -145,10 +145,26 @@ export async function GET(req: Request) {
     })
     const empExtIds = new Set(employees.map(e => e.externalStaffId).filter(Boolean) as string[])
     const empNameKeys = new Set(employees.map(e => `${e.lastName}, ${e.firstName}`.trim().toUpperCase() + '|' + e.branch))
-    const consultants = consultantsRaw.filter(c =>
+    const consultantsNoEmp = consultantsRaw.filter(c =>
       !(c.externalStaffId && empExtIds.has(c.externalStaffId)) &&
       !empNameKeys.has(`${c.name}`.trim().toUpperCase() + '|' + c.branch)
     )
+
+    // Branch membership for a specific branch: primary branch, an extraBranch, OR having
+    // sessions (completed orders) billed at this branch — so interbranch consultants get a
+    // separate payslip per branch even when it isn't their primary/extra branch.
+    let branchSessionNames = new Set<string>()
+    if (branch) {
+      const orderBranch = BRANCH_TO_ORDER[branch] || branch
+      const oc = await prisma.order.findMany({
+        where: { branch: orderBranch, status: 'COMPLETED', clinicianName: { not: null } },
+        select: { clinicianName: true }, distinct: ['clinicianName'],
+      })
+      branchSessionNames = new Set(oc.map(o => (o.clinicianName || '').trim().toUpperCase()).filter(Boolean))
+    }
+    const consultants = branch
+      ? consultantsNoEmp.filter(c => c.branch === branch || (c.extraBranches || []).includes(branch) || branchSessionNames.has(c.name.trim().toUpperCase()))
+      : consultantsNoEmp
 
     // Get all orders in the cutoff period
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -344,7 +360,11 @@ export async function GET(req: Request) {
       }
 
       const unitPayTotal = unitPayBreakdown.reduce((s, b) => s + b.lineTotal, 0)
-      const retainerAmount = Number(c.monthlyRetainer) / 2
+      // Retainer + benefits are monthly per-person amounts, NOT per-branch. For an
+      // interbranch consultant appearing on two branch payslips in the same cutoff,
+      // apply them only on their PRIMARY branch so they aren't counted twice.
+      const isPrimaryBranch = !branch || c.branch === branch
+      const retainerAmount = isPrimaryBranch ? Number(c.monthlyRetainer) / 2 : 0
 
       // ── Incentive calculation ────────────────────────────────
       // Count sessions per calendar day (Asia/Manila). A single order with
@@ -410,7 +430,7 @@ export async function GET(req: Request) {
 
       const grossPay = unitPayTotal + retainerAmount + incentiveTotal
       const taxAmount = c.taxDeduction === 'FIVE_PERCENT' ? grossPay * 0.05 : 0
-      const ben = consultantBenefit(c)
+      const ben = isPrimaryBranch ? consultantBenefit(c) : { sssDeduction: 0, philhealthDeduction: 0, pagibigDeduction: 0, sssEmployerShare: 0, philhealthEmployerShare: 0, pagibigEmployerShare: 0 }
       const benefitEETotal = ben.sssDeduction + ben.philhealthDeduction + ben.pagibigDeduction
       const netPay = grossPay - taxAmount - benefitEETotal
 

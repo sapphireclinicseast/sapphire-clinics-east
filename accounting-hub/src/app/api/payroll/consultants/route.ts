@@ -5,6 +5,11 @@ import { fetchExternalStaffForSync } from '@/lib/external-staff'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
+// Consultants store branch as SBEA/SBGH/VERDANA/AHI; orders store the long branch code.
+const BRANCH_TO_ORDER: Record<string, string> = {
+  SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE',
+}
+
 /** Branch-specific roles can only see their branch + VERDANA */
 function allowedBranches(role: string): string[] | null {
   if (role === 'AHEA_ADMIN') return ['SBEA', 'VERDANA']
@@ -134,18 +139,33 @@ export async function GET(req: Request) {
   const where: any = { isActive: true }
   if (department) where.department = department
 
-  // Enforce branch restriction based on role
   const allowed = allowedBranches((session.user as { role?: string }).role || '')
-  if (branch) {
-    if (allowed && !allowed.includes(branch)) {
-      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
-    }
-    where.branch = branch
-  } else if (allowed) {
-    where.branch = { in: allowed }
+  if (branch && allowed && !allowed.includes(branch)) {
+    return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+  }
+  if (!branch && allowed) {
+    where.OR = [{ branch: { in: allowed } }, { extraBranches: { hasSome: allowed } }]
   }
 
-  const consultants = await prisma.consultant.findMany({
+  // Interbranch consultants have a merged HR profile: one record with a primary
+  // `branch` + `extraBranches`, and they may take sessions at more than one branch.
+  // They must appear under EVERY branch they actually work in so a separate payslip
+  // can be produced per branch. Source of truth for "works here" = orders (sessions)
+  // billed at the branch, matched by clinician name — same match payroll generation uses.
+  let interbranchNames = new Set<string>()
+  if (branch) {
+    const orderBranch = BRANCH_TO_ORDER[branch] || branch
+    const orderClinicians = await prisma.order.findMany({
+      where: { branch: orderBranch, status: 'COMPLETED', clinicianName: { not: null } },
+      select: { clinicianName: true },
+      distinct: ['clinicianName'],
+    })
+    interbranchNames = new Set(orderClinicians.map(o => (o.clinicianName || '').trim().toUpperCase()).filter(Boolean))
+  }
+
+  // Fetch the full active roster (dept + role scope applied), then narrow to the
+  // requested branch by primary branch OR extraBranches OR having sessions there.
+  const roster = await prisma.consultant.findMany({
     where,
     orderBy: { name: 'asc' },
     include: {
@@ -155,6 +175,9 @@ export async function GET(req: Request) {
       benefits: { where: { isActive: true } },
     },
   })
+  const consultants = branch
+    ? roster.filter(c => c.branch === branch || (c.extraBranches || []).includes(branch) || interbranchNames.has(c.name.trim().toUpperCase()))
+    : roster
 
   return NextResponse.json(consultants)
 }
