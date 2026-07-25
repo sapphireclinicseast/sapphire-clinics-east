@@ -212,11 +212,15 @@ export async function GET(req: Request) {
         orderBy: [{ cutoffPeriod: 'asc' }, { branch: 'asc' }],
       })
 
+      // Salary expense per employee = taxable salary (matches the finalize JE debit to 8232):
+      //   netPay + EE govt contributions + withholding tax. Using grossPay overstates it
+      //   by non-taxable pass-through allowances (e.g. an ₱8,000 non-taxable Tx Adj that is
+      //   also deducted pre-tax nets to zero for the employee but must not inflate the expense).
       const items = payslips.map(p => ({
         date: formatCutoffLabel(p.cutoffPeriod),
         type: `${p.employee.firstName} ${p.employee.lastName}${p.employee.department ? ` · ${DEPT_LABELS[p.employee.department] || p.employee.department}` : ''}`,
         branch: BRANCH_LABELS[p.branch] || p.branch,
-        amount: Number(p.grossPay),
+        amount: Number(p.netPay) + Number(p.sssDeduction) + Number(p.philhealthDeduction) + Number(p.pagibigDeduction) + Number(p.taxDeduction),
       }))
       return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
     }

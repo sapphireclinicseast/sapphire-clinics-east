@@ -289,6 +289,11 @@ export async function GET(req: Request) {
         select: {
           cutoffPeriod: true,
           grossPay: true,
+          netPay: true,
+          sssDeduction: true,
+          philhealthDeduction: true,
+          pagibigDeduction: true,
+          taxDeduction: true,
           sssEmployerShare: true,
           philhealthEmployerShare: true,
           pagibigEmployerShare: true,
@@ -904,8 +909,13 @@ export async function GET(req: Request) {
       const m = parseInt(p.cutoffPeriod.split('-')[1] ?? '0', 10)
       if (m < 1 || m > 12 || !monthly[m]) continue
       if (empSalaryKey) {
+        // Salary expense = taxable salary, matching the finalize JE debit to 8232:
+        //   netPay + EE govt contributions + withholding tax
+        //   = grossPay − undertime − pre-tax/non-taxable adjustments.
+        // Using grossPay overstates the expense by non-taxable pass-through allowances.
+        const taxableSalary = Number(p.netPay) + Number(p.sssDeduction) + Number(p.philhealthDeduction) + Number(p.pagibigDeduction) + Number(p.taxDeduction)
         monthly[m].expenseByAccount[empSalaryKey] =
-          (monthly[m].expenseByAccount[empSalaryKey] || 0) + Number(p.grossPay)
+          (monthly[m].expenseByAccount[empSalaryKey] || 0) + taxableSalary
       }
       if (empSssERKey) {
         monthly[m].expenseByAccount[empSssERKey] =
