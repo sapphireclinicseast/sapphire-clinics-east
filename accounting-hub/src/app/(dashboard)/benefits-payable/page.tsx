@@ -28,6 +28,9 @@ interface Row {
 interface CoaAccount { id: string; accountNumber: string; accountTitle: string; accountType: string }
 interface Fee { accountTitle: string; description: string; requestor: string; grossAmount: string; vatable: string; hasEwt: boolean; ewtRate: string }
 
+// Branch column display codes (Aura Health branding): SBEA→AHEA, SBGH→AHGH, etc.
+const BRANCH_DISPLAY: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VERD', AHI: 'AHI' }
+
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
 const emptyFee = (): Fee => ({ accountTitle: '', description: '', requestor: '', grossAmount: '', vatable: 'NV', hasEwt: false, ewtRate: '' })
 
@@ -261,7 +264,7 @@ export default function BenefitsPayablePage() {
                   <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
                   <td className="px-3 py-2.5"><span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={r.type === 'consultant' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#ecfeff', color: '#0e7490' }}>{r.type === 'consultant' ? 'Consultant' : 'Employee'}</span></td>
                   <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{r.department}</td>
-                  <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{r.branch}</td>
+                  <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{BRANCH_DISPLAY[r.branch] || r.branch}</td>
                   <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.cutoffPeriod}</td>
                   <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{formatCurrency(ee(r))}</td>
                   <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{formatCurrency(er(r))}</td>
