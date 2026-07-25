@@ -114,12 +114,15 @@ export async function PATCH(req: Request) {
       if (!bankAccountId) return NextResponse.json({ error: 'A cash/bank account is required to post the refund' }, { status: 400 })
       const bank = await prisma.account.findUnique({ where: { id: bankAccountId }, select: { id: true, accountNumber: true, accountTitle: true } })
       if (!bank) return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
-      // Unearned Revenue liability account (4050) — debited when a prepaid balance is refunded.
-      // A prepayment was never recognised as revenue (it sits in this liability), so refunding
-      // it must NOT touch revenue/7160 Refunds — that account is contra-revenue for sales that
-      // WERE earned. Debiting it here would understate income by the refunded amount.
-      const unearned = await prisma.account.findFirst({ where: { OR: [{ accountNumber: '4050' }, { accountTitle: { contains: 'Unearned', mode: 'insensitive' } }] }, select: { id: true } })
-      if (!unearned) return NextResponse.json({ error: 'Unearned Revenue account (4050) not found in Chart of Accounts' }, { status: 400 })
+      // Therapy refunds return money that was PREPAID and never recognised as revenue, so they
+      // must not touch revenue — 7160 Sales Returns is contra-revenue for merchandise/sales that
+      // WERE earned (Verdana product returns). Debiting it here would understate income.
+      // Instead we debit 4055 Refunds of Unearned Revenue, a contra account to 4050 Unearned
+      // Revenue: it nets against the liability on the balance sheet while keeping refunds visible
+      // as their own line. Falls back to 4050 itself if 4055 hasn't been created.
+      const unearned = await prisma.account.findFirst({ where: { accountNumber: '4055' }, select: { id: true } })
+        ?? await prisma.account.findFirst({ where: { OR: [{ accountNumber: '4050' }, { accountTitle: { contains: 'Unearned', mode: 'insensitive' } }] }, select: { id: true } })
+      if (!unearned) return NextResponse.json({ error: 'Unearned Revenue account (4050/4055) not found in Chart of Accounts' }, { status: 400 })
 
       const paidAt = body.datePaid ? new Date(body.datePaid) : new Date()
       const refunds = await prisma.refund.findMany({ where: { refundRfpId: id } })
@@ -147,7 +150,7 @@ export async function PATCH(req: Request) {
           createdById: session.user!.id as string,
           // DR Unearned Revenue (gross released) / CR Cash (net to patient) + CR Income (charges kept)
           lines: [
-            { accountId: unearned.id, debit: grossTotal, credit: 0, description: 'Unearned Revenue — patient refund' },
+            { accountId: unearned.id, debit: grossTotal, credit: 0, description: 'Refund of unearned revenue — patient prepayment' },
             { accountId: bank.id, debit: 0, credit: total, description: `Cash refund via ${bank.accountTitle}` },
             ...(chargesAccountId && chargesTotal > 0
               ? [{ accountId: chargesAccountId, debit: 0, credit: chargesTotal, description: 'Refund charges retained' }]

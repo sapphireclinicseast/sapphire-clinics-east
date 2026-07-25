@@ -195,7 +195,7 @@ export default function RefundsPage() {
         </h1>
         {tab === 'refunds' && <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> New Refund</button>}
       </div>
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Patient refunds of prepaid balances. On RFP payment we post <strong>DR Unearned Revenue / CR Cash</strong> — these are deductions from unearned revenue, not expenses, so they never appear in the Expense Report.</p>
+      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Patient refunds of prepaid balances. On RFP payment we post <strong>DR 4055 Refunds of Unearned Revenue / CR Cash</strong> — 4055 is a contra account to 4050 Unearned Revenue, so refunds reduce the liability on the balance sheet and never hit the income statement or the Expense Report.</p>
 
       {/* Branch */}
       <div className="flex rounded-xl overflow-hidden border w-fit" style={{ borderColor: 'var(--light-gray)' }}>
@@ -349,7 +349,7 @@ export default function RefundsPage() {
               </div>
               {fChargesTooBig && <p className="text-[11px] text-red-600">Charges deducted cannot exceed the refund amount.</p>}
               {fChg > 0 && !fChargesTooBig && (
-                <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>On payment this posts <strong>DR Unearned Revenue {formatCurrency(fGross)}</strong> / CR Cash {formatCurrency(fNet)} / CR Other Comprehensive Income {formatCurrency(fChg)} (charges retained).</p>
+                <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>On payment this posts <strong>DR 4055 Refunds of Unearned Revenue {formatCurrency(fGross)}</strong> / CR Cash {formatCurrency(fNet)} / CR 7220 Other Comprehensive Income {formatCurrency(fChg)} (charges retained).</p>
               )}
               <div>
                 <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Proof (file or QR phone upload)</label>
@@ -391,10 +391,10 @@ export default function RefundsPage() {
               return (
                 <div className="text-xs mb-3 rounded-lg border p-2.5" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
                   <div className="font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Journal entry on payment</div>
-                  <div className="flex justify-between"><span>DR 4050 Unearned Revenue</span><span className="font-mono">{formatCurrency(gross || net)}</span></div>
+                  <div className="flex justify-between"><span>DR 4055 Refunds of Unearned Revenue <em>(contra to 4050)</em></span><span className="font-mono">{formatCurrency(gross || net)}</span></div>
                   <div className="flex justify-between"><span className="pl-3">CR {banks.find(b => b.id === payBankId)?.accountTitle || 'Cash / Bank'}</span><span className="font-mono">{formatCurrency(net)}</span></div>
                   {chg > 0 && <div className="flex justify-between"><span className="pl-3">CR 7220 Other Comprehensive Income <em>(charges retained)</em></span><span className="font-mono">{formatCurrency(chg)}</span></div>}
-                  <div className="mt-1 text-[11px]">No revenue is reversed — the prepayment was never recognised as income, so 7160 Refunds is not touched.</div>
+                  <div className="mt-1 text-[11px]">No revenue is reversed — the prepayment was never recognised as income, so 7160 Sales Returns (merchandise returns) is not touched.</div>
                 </div>
               )
             })()}
