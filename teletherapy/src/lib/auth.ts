@@ -102,25 +102,48 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           data: { lastLoginAt: new Date() },
         })
 
-        // Find all staff records with matching email (interbranch clinicians)
+        // Build the branch list that drives the top-bar switcher. Two
+        // interbranch models coexist and BOTH must yield >1 entry:
+        //   • NEW — one merged Staff row carrying extraBranches[] (all of the
+        //     consultant's schedules sit under this single staffId; a
+        //     session's branch is derived from its patient).
+        //   • LEGACY — the same email maps to >1 Staff row, one per branch,
+        //     each with its own staffId.
+        // Earlier this only handled the LEGACY case (email → many rows), so a
+        // merged consultant like an SBEA psychologist who also consults at
+        // SBGH via extraBranches got a single entry and no toggle.
         const staffEmail = account.staff.email
-        let branches: BranchInfo[] = [
-          { staffId: account.staffId, branch: account.staff.branch, department: account.staff.department },
+        const rawBranches: BranchInfo[] = [
+          { staffId: account.staff.id, branch: account.staff.branch, department: account.staff.department },
+          ...(account.staff.extraBranches ?? []).map((b) => ({
+            staffId: account.staff.id,
+            branch: b,
+            department: account.staff.department,
+          })),
         ]
 
         if (staffEmail) {
           const allStaffWithEmail = await prisma.staff.findMany({
             where: { email: staffEmail },
-            select: { id: true, branch: true, department: true },
+            select: { id: true, branch: true, department: true, extraBranches: true },
           })
-          if (allStaffWithEmail.length > 1) {
-            branches = allStaffWithEmail.map((s) => ({
-              staffId: s.id,
-              branch: s.branch,
-              department: s.department,
-            }))
+          for (const s of allStaffWithEmail) {
+            rawBranches.push({ staffId: s.id, branch: s.branch, department: s.department })
+            for (const extra of s.extraBranches ?? []) {
+              rawBranches.push({ staffId: s.id, branch: extra, department: s.department })
+            }
           }
         }
+
+        // Dedupe by branch code (a consultant works each branch once). When a
+        // branch appears more than once, prefer the entry tied to the signed-in
+        // account's own Staff row so single-account filtering stays stable.
+        const byBranch = new Map<string, BranchInfo>()
+        for (const b of rawBranches) {
+          const existing = byBranch.get(b.branch)
+          if (!existing || b.staffId === account.staff.id) byBranch.set(b.branch, b)
+        }
+        const branches: BranchInfo[] = Array.from(byBranch.values())
 
         return {
           id: account.id,

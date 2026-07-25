@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { scheduleBranchWhere } from '@/lib/branch-filter'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -32,6 +33,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Merged interbranch consultants share one staffId; when the switcher sends
+  // a patientBranch, scope by the patient's branch instead. (Legacy per-branch
+  // consultants never send it, so their behaviour is unchanged.)
+  const requestedBranch = (searchParams.get('patientBranch') ?? '').trim()
+  const branchWhere = requestedBranch
+    ? scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
+    : {}
+
   const schedules = await prisma.schedule.findMany({
     where: {
       date: {
@@ -41,6 +50,7 @@ export async function GET(req: NextRequest) {
       status: 'CONFIRMED',
       // Non-admin users only see their own sessions (for the selected branch)
       ...(isAdmin ? {} : { staffId: effectiveStaffId }),
+      ...branchWhere,
     },
     include: {
       patient: {

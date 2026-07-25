@@ -57,7 +57,7 @@ export default function DashboardPage() {
   const [date, setDate] = useState(toDateString(new Date()))
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [loading, setLoading] = useState(true)
-  const { isMultiBranch, activeStaffId } = useBranchSwitcher()
+  const { isMultiBranch, sharedStaffId, activeStaffId, activeBranch } = useBranchSwitcher()
 
   // Limited staff accounts (Front Desk / Admin Staff) don't have the clinical
   // dashboard in their preset — send them to their first allowed section.
@@ -69,13 +69,15 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (activeStaffId) fetchSessions()
-  }, [date, activeStaffId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, activeStaffId, activeBranch?.branch])
 
   async function fetchSessions() {
     setLoading(true)
     try {
       const staffParam = isMultiBranch && activeStaffId ? `&staffId=${activeStaffId}` : ''
-      const res = await fetch(`/api/sessions?date=${date}${staffParam}`)
+      const branchParam = sharedStaffId && activeBranch ? `&patientBranch=${activeBranch.branch}` : ''
+      const res = await fetch(`/api/sessions?date=${date}${staffParam}${branchParam}`)
       const data = await res.json()
       setSessions(data.sessions ?? [])
     } catch {

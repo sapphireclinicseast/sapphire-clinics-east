@@ -48,7 +48,8 @@ model Staff {
   email           String?
   phone           String?
   department      StaffDepartment
-  branch          String
+  branch          String          // primary branch — "SBEA" | "SBGH"
+  extraBranches   String[]        @default([]) // additional branches an interbranch consultant works in (column already exists in the shared DB, managed by the ops hub)
   dob             DateTime?
   jobTitle        String?
   employmentType  String?
