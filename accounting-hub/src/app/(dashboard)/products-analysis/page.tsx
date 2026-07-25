@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   PackageSearch, Filter, Loader2, BarChart3, TrendingUp, TrendingDown,
-  PackageX, Gift, Sparkles, CreditCard, Globe, RotateCcw,
+  PackageX, Gift, Sparkles, CreditCard, Globe, RotateCcw, CalendarDays, Layers,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -32,6 +32,11 @@ interface AnalysisData {
     topRefunded: { name: string; sku: string; units: number; amount: number }[]
     byPlatform: { platform: string; grossProductSales: number; refundedAmount: number; returnedUnits: number; refundRateAmount: number; refundRateUnits: number }[]
   }
+  monthlySales: {
+    months: string[]
+    totals: { month: string; units: number; gross: number; net: number }[]
+    byClassification: { label: string; unitsByMonth: Record<string, number>; units: number; gross: number; net: number }[]
+  }
   fastMoving: ProductRow[]
   slowMoving: ProductRow[]
   topByGross: ProductRow[]
@@ -51,9 +56,17 @@ const BRANCHES = [
   { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 function today() { return new Date().toISOString().slice(0, 10) }
 function firstOfMonth() {
   const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+/** First day of the month 11 months back — a rolling 12-month window including this month. */
+function last12MonthsStart() {
+  const d = new Date()
+  d.setMonth(d.getMonth() - 11)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
 
@@ -171,6 +184,24 @@ export default function ProductsAnalysisPage() {
             {loading ? 'Loading...' : 'Generate'}
           </button>
         </div>
+        {/* Quick ranges — the monthly breakdown needs a multi-month span to be useful. */}
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Quick range:</span>
+          {[
+            { label: 'This month', from: firstOfMonth(), to: today() },
+            { label: 'Year to date', from: `${new Date().getFullYear()}-01-01`, to: today() },
+            { label: 'Last 12 months', from: last12MonthsStart(), to: today() },
+            { label: `${new Date().getFullYear() - 1} (full year)`, from: `${new Date().getFullYear() - 1}-01-01`, to: `${new Date().getFullYear() - 1}-12-31` },
+          ].map(r => (
+            <button key={r.label} onClick={() => { setDateFrom(r.from); setDateTo(r.to) }}
+              className="px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors"
+              style={dateFrom === r.from && dateTo === r.to
+                ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)', borderColor: 'var(--teal)' }
+                : { background: 'white', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+              {r.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && <div className="mb-4 px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>}
@@ -252,6 +283,93 @@ export default function ProductsAnalysisPage() {
               </div>
             )}
           </div>
+
+          {/* ── Monthly products sold: overall + per SKU classification ── */}
+          {(() => {
+            const ms = data.monthlySales
+            if (!ms || ms.months.length === 0) {
+              return (
+                <div className="mb-4">
+                  <Section icon={<CalendarDays size={16} />} title="Products Sold per Month">
+                    <Empty text="No product sales in this period." />
+                  </Section>
+                </div>
+              )
+            }
+            const monthLabel = (m: string) => {
+              const [y, mo] = m.split('-')
+              return `${MONTH_NAMES[parseInt(mo, 10) - 1] || mo} ${y}`
+            }
+            const grand = ms.totals.reduce((a, t) => ({ units: a.units + t.units, gross: a.gross + t.gross, net: a.net + t.net }), { units: 0, gross: 0, net: 0 })
+            return (
+              <div className="mb-4 space-y-4">
+                {/* Overall per month */}
+                <Section icon={<CalendarDays size={16} />} title="Products Sold per Month (Overall)" count={ms.months.length}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr style={{ color: 'var(--mid-gray)' }}>
+                        <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Month</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Items Sold</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Gross ₱</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Net ₱</th>
+                      </tr></thead>
+                      <tbody>
+                        {ms.totals.map(t => (
+                          <tr key={t.month} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                            <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{monthLabel(t.month)}</td>
+                            <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>{t.units.toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{formatCurrency(t.gross)}</td>
+                            <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{formatCurrency(t.net)}</td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                          <td className="px-3 py-2 font-bold" style={{ color: 'var(--charcoal)' }}>Total</td>
+                          <td className="px-3 py-2 text-right font-bold" style={{ color: 'var(--deep-teal)' }}>{grand.units.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right font-mono text-xs font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(grand.gross)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-xs font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(grand.net)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </Section>
+
+                {/* Per SKU classification × month (units) */}
+                <Section icon={<Layers size={16} />} title="Items Sold per Month by SKU Classification" count={ms.byClassification.length}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr style={{ color: 'var(--mid-gray)' }}>
+                        <th className="px-3 py-2 text-left text-xs font-semibold uppercase sticky left-0" style={{ background: 'white' }}>SKU Classification</th>
+                        {ms.months.map(m => <th key={m} className="px-3 py-2 text-right text-xs font-semibold uppercase whitespace-nowrap">{monthLabel(m)}</th>)}
+                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Total</th>
+                      </tr></thead>
+                      <tbody>
+                        {ms.byClassification.map(c => (
+                          <tr key={c.label} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                            <td className="px-3 py-2 sticky left-0" style={{ color: 'var(--charcoal)', background: 'white' }}>{c.label}</td>
+                            {ms.months.map(m => (
+                              <td key={m} className="px-3 py-2 text-right" style={{ color: (c.unitsByMonth[m] || 0) > 0 ? 'var(--charcoal)' : 'var(--light-gray)' }}>
+                                {(c.unitsByMonth[m] || 0) > 0 ? (c.unitsByMonth[m] || 0).toLocaleString() : '—'}
+                              </td>
+                            ))}
+                            <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>{c.units.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                          <td className="px-3 py-2 font-bold sticky left-0" style={{ color: 'var(--charcoal)', background: 'var(--off-white)' }}>Total</td>
+                          {ms.months.map(m => {
+                            const col = ms.byClassification.reduce((a, c) => a + (c.unitsByMonth[m] || 0), 0)
+                            return <td key={m} className="px-3 py-2 text-right font-bold" style={{ color: 'var(--charcoal)' }}>{col.toLocaleString()}</td>
+                          })}
+                          <td className="px-3 py-2 text-right font-bold" style={{ color: 'var(--deep-teal)' }}>{grand.units.toLocaleString()}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>Units are paid sales (free samples excluded) and include returned units. Classification is the product&apos;s SKU Department · Category.</p>
+                </Section>
+              </div>
+            )
+          })()}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
             {/* Top 10 by ₱ Gross Sales */}

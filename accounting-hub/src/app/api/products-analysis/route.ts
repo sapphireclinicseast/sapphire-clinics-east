@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 
 const READ_ROLES = ['ADMIN', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -39,9 +40,15 @@ export async function GET(req: Request) {
         subtotal: true,
         discountAmount: true,
         platform: true,
+        transactionDate: true,
         items: {
           where: { inventoryItemId: { not: null } },
-          select: { inventoryItemId: true, name: true, quantity: true, lineTotal: true, isFreeSample: true, returnedQuantity: true, refundAmount: true },
+          select: {
+            inventoryItemId: true, name: true, quantity: true, lineTotal: true,
+            isFreeSample: true, returnedQuantity: true, refundAmount: true,
+            // SKU classification for the monthly per-category breakdown.
+            inventoryItem: { select: { skuDepartment: true, skuCategory: true } },
+          },
         },
         payments: { select: { method: true, amount: true } },
       },
@@ -55,6 +62,9 @@ export async function GET(req: Request) {
     const platformUnits = new Map<string, number>()   // product units purchased per sales channel
     const refunded = new Map<string, { name: string; units: number; amount: number }>()  // per-product refunds
     const platformRefund = new Map<string, { gross: number; grossUnits: number; refund: number; returnedUnits: number }>()  // refund rate per channel
+    // Monthly product sales: overall per month + per SKU classification (Dept · Category) per month.
+    const monthTotals = new Map<string, { units: number; gross: number; net: number }>()
+    const classByMonth = new Map<string, Map<string, { units: number; gross: number; net: number }>>()  // label → month → totals
 
     for (const order of orders) {
       const orderGross = Number(order.subtotal)
@@ -62,6 +72,8 @@ export async function GET(req: Request) {
       const hasProduct = order.items.length > 0
       const usesRewardPoints = order.payments.some(p => p.method === 'REWARD_POINTS')
       const platformKey = (order.platform && order.platform.trim()) || 'Unspecified'
+      // Month bucket in clinic time (Asia/Manila), matching how the rest of the app dates orders.
+      const monthKey = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7)
 
       for (const item of order.items) {
         const id = item.inventoryItemId as string
@@ -81,6 +93,18 @@ export async function GET(req: Request) {
         const s = sold.get(id) || { id, name: item.name, units: 0, gross: 0, net: 0 }
         s.units += qty; s.gross += itemGross; s.net += itemNet; s.name = item.name
         sold.set(id, s)
+
+        // ── Monthly rollups (paid sales only; free samples skipped above) ──
+        const mt = monthTotals.get(monthKey) || { units: 0, gross: 0, net: 0 }
+        mt.units += qty; mt.gross += itemGross; mt.net += itemNet
+        monthTotals.set(monthKey, mt)
+
+        const clsLabel = productSubtypeLabel(item.inventoryItem?.skuDepartment, item.inventoryItem?.skuCategory)
+        if (!classByMonth.has(clsLabel)) classByMonth.set(clsLabel, new Map())
+        const cm = classByMonth.get(clsLabel)!
+        const cv = cm.get(monthKey) || { units: 0, gross: 0, net: 0 }
+        cv.units += qty; cv.gross += itemGross; cv.net += itemNet
+        cm.set(monthKey, cv)
 
         if (ref > 0 || (item.returnedQuantity || 0) > 0) {
           const rf = refunded.get(id) || { name: item.name, units: 0, amount: 0 }
@@ -159,6 +183,26 @@ export async function GET(req: Request) {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5)
 
+    // ── Monthly products sold: overall per month + a classification × month matrix ──
+    const months = [...monthTotals.keys()].sort()
+    const monthlySales = {
+      months,
+      totals: months.map(m => {
+        const v = monthTotals.get(m)!
+        return { month: m, units: v.units, gross: round2(v.gross), net: round2(v.net) }
+      }),
+      byClassification: [...classByMonth.entries()].map(([label, byMonth]) => {
+        const perMonth: Record<string, number> = {}
+        let units = 0, gross = 0, net = 0
+        for (const m of months) {
+          const v = byMonth.get(m)
+          perMonth[m] = v?.units || 0
+          units += v?.units || 0; gross += v?.gross || 0; net += v?.net || 0
+        }
+        return { label, unitsByMonth: perMonth, units, gross: round2(gross), net: round2(net) }
+      }).sort((a, b) => b.units - a.units || a.label.localeCompare(b.label)),
+    }
+
     return NextResponse.json({
       summary: {
         unitsSold,
@@ -184,6 +228,7 @@ export async function GET(req: Request) {
           refundRateUnits: v.grossUnits > 0 ? round2((v.returnedUnits / v.grossUnits) * 100) : 0,
         })).sort((a, b) => b.grossProductSales - a.grossProductSales),
       },
+      monthlySales,
       fastMoving,
       slowMoving,
       topByGross,
