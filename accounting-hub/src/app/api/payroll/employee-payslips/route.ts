@@ -131,8 +131,11 @@ export async function GET(req: Request) {
     where.branch = { in: allowed }
   }
 
-  // Only include payslips for active employees
-  where.employee = { isActive: true }
+  // Historical payslips (FINAL / LOCKED) are permanent records and must stay visible
+  // even after an employee resigns (isActive=false). Only hide inactive employees from
+  // DRAFT previews. When no status filter is passed, show everything so resigned staff's
+  // locked payslips still appear.
+  if (status === 'DRAFT') where.employee = { isActive: true }
 
   const payslips = await prisma.employeePayslip.findMany({
     where,
