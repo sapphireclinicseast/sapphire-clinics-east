@@ -30,17 +30,19 @@ export default function PatientsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'DEACTIVATED' | 'ENDORSED' | 'DISCHARGED'>('ALL')
-  const { isMultiBranch, activeStaffId } = useBranchSwitcher()
+  const { isMultiBranch, sharedStaffId, activeStaffId, activeBranch } = useBranchSwitcher()
 
   useEffect(() => {
     if (activeStaffId) fetchPatients()
-  }, [search, activeStaffId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, activeStaffId, activeBranch?.branch])
 
   async function fetchPatients() {
     setLoading(true)
     try {
       const staffParam = isMultiBranch && activeStaffId ? `&staffId=${activeStaffId}` : ''
-      const res = await fetch(`/api/patients?search=${encodeURIComponent(search)}${staffParam}`)
+      const branchParam = sharedStaffId && activeBranch ? `&patientBranch=${activeBranch.branch}` : ''
+      const res = await fetch(`/api/patients?search=${encodeURIComponent(search)}${staffParam}${branchParam}`)
       if (res.ok) {
         const data = await res.json()
         setPatients(data.patients)

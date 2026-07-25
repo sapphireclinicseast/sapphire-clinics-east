@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { scheduleBranchWhere, patientBranchWhere } from '@/lib/branch-filter'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -21,12 +22,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Merged interbranch consultants share one staffId; when the switcher sends
+  // a patientBranch, scope by the patient's branch. Legacy per-branch
+  // consultants never send it, so their behaviour is unchanged.
+  const requestedBranch = (req.nextUrl.searchParams.get('patientBranch') ?? '').trim()
+  const primaryBranch = (session.user as { branch?: string }).branch ?? ''
+  const scheduleBranch = requestedBranch ? scheduleBranchWhere(requestedBranch, primaryBranch) : {}
+  const patientBranch = requestedBranch ? patientBranchWhere(requestedBranch, primaryBranch) : {}
+
   // 1. Get patients from direct sessions (staffId match)
   const staffFilter = isAdmin ? {} : { staffId: effectiveStaffId }
 
   const schedules = await prisma.schedule.findMany({
     where: {
       ...staffFilter,
+      ...scheduleBranch,
       patientId: { not: null },
       status: 'CONFIRMED',
     },
@@ -68,6 +78,7 @@ export async function GET(req: NextRequest) {
     const myAssignments = await prisma.patientAssignment.findMany({
       where: {
         therapistAccountId: session.user.id,
+        ...(requestedBranch ? { patient: patientBranch } : {}),
       },
       include: {
         patient: {

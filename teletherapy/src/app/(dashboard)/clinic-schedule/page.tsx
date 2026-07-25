@@ -117,7 +117,7 @@ export default function ClinicSchedulePage() {
   const [loading, setLoading] = useState(true)
   const [profilePatient, setProfilePatient] = useState<PatientInfo | null>(null)
   const [moreDay, setMoreDay] = useState<string | null>(null)
-  const { isMultiBranch, activeStaffId } = useBranchSwitcher()
+  const { isMultiBranch, sharedStaffId, activeStaffId, activeBranch } = useBranchSwitcher()
 
   const range = useMemo(() => {
     if (view === 'day') return { start: anchor, end: anchor }
@@ -130,11 +130,13 @@ export default function ClinicSchedulePage() {
     async function load() {
       setLoading(true)
       try {
-        // Pass the active staffId for interbranch clinicians so the API
-        // scopes to that branch only. Otherwise the API unions all of
-        // their branches.
+        // Interbranch clinicians: pass the active staffId (legacy per-branch
+        // records) and, for merged consultants who share one staffId across
+        // branches, the active branch code so the API can scope by the
+        // patient's branch. Otherwise the API unions all their branches.
         const staffParam = isMultiBranch && activeStaffId ? `&staffId=${activeStaffId}` : ''
-        const url = `/api/clinic-schedule?startDate=${isoDay(range.start)}&endDate=${isoDay(range.end)}${staffParam}`
+        const branchParam = sharedStaffId && activeBranch ? `&patientBranch=${activeBranch.branch}` : ''
+        const url = `/api/clinic-schedule?startDate=${isoDay(range.start)}&endDate=${isoDay(range.end)}${staffParam}${branchParam}`
         const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) {
           if (!cancelled) { setSchedules([]); setSummary({ confirmedSessions: 0, uniquePatients: 0, avgPatientsPerDay: 0, activeDays: 0 }) }
@@ -152,7 +154,7 @@ export default function ClinicSchedulePage() {
     }
     load()
     return () => { cancelled = true }
-  }, [range.start.getTime(), range.end.getTime(), activeStaffId, isMultiBranch])
+  }, [range.start.getTime(), range.end.getTime(), activeStaffId, isMultiBranch, sharedStaffId, activeBranch?.branch])
 
   function navigate(direction: -1 | 1) {
     if (view === 'day') setAnchor(addDays(anchor, direction))

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { scheduleBranchWhere } from '@/lib/branch-filter'
 
 // GET /api/clinic-schedule?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
 // Returns the logged-in clinician's confirmed/pending sessions in the
@@ -47,6 +48,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ schedules: [], summary: emptySummary() })
   }
 
+  // Merged interbranch consultants share one staffId across branches, so
+  // staffId alone can't tell their branches apart. When the switcher sends a
+  // patientBranch, scope by the PATIENT's branch instead (the consultant's
+  // primary branch also keeps sessions whose patient has no branch, so none
+  // silently disappear). Legacy per-branch-staffId consultants never send it.
+  const requestedBranch = (searchParams.get('patientBranch') ?? '').trim()
+  const branchWhere = requestedBranch
+    ? scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
+    : {}
+
   const dayStart = new Date(`${startDate}T00:00:00.000Z`)
   const dayEnd = new Date(`${endDate}T23:59:59.999Z`)
 
@@ -59,6 +70,7 @@ export async function GET(req: NextRequest) {
       where: {
         staffId: { in: effectiveStaffIds },
         date: { gte: dayStart, lte: dayEnd },
+        ...branchWhere,
       },
       include: {
         patient: {
@@ -75,6 +87,7 @@ export async function GET(req: NextRequest) {
       where: {
         staffId: { in: effectiveStaffIds },
         status: 'CONFIRMED',
+        ...branchWhere,
       },
       select: { date: true, patientId: true },
     }),
