@@ -109,7 +109,10 @@ export default function RefundsPage() {
     setFormOpen(true)
   }
 
-  const fNet = Math.max(0, (parseFloat(fAmount) || 0) - (parseFloat(fCharges) || 0))
+  const fGross = parseFloat(fAmount) || 0
+  const fChg = parseFloat(fCharges) || 0
+  const fNet = fGross - fChg
+  const fChargesTooBig = fChg > fGross
 
   const saveRefund = async () => {
     if (!fPatient.trim()) { setError('Patient name is required'); return }
@@ -342,8 +345,12 @@ export default function RefundsPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Refund Amount</label><input type="number" value={fAmount} onChange={e => setFAmount(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} placeholder="0.00" /></div>
                 <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Charges Deducted</label><input type="number" value={fCharges} onChange={e => setFCharges(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} placeholder="0.00" /></div>
-                <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Net to Patient</label><div className="w-full px-3 py-2.5 rounded-xl border font-mono font-semibold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', color: 'var(--deep-teal)' }}>{formatCurrency(fNet)}</div></div>
+                <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Net to Patient</label><div className="w-full px-3 py-2.5 rounded-xl border font-mono font-semibold" style={{ borderColor: fChargesTooBig ? '#dc2626' : 'var(--light-gray)', background: 'var(--off-white)', color: fChargesTooBig ? '#dc2626' : 'var(--deep-teal)' }}>{formatCurrency(Math.max(0, fNet))}</div></div>
               </div>
+              {fChargesTooBig && <p className="text-[11px] text-red-600">Charges deducted cannot exceed the refund amount.</p>}
+              {fChg > 0 && !fChargesTooBig && (
+                <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>On payment this posts <strong>DR Unearned Revenue {formatCurrency(fGross)}</strong> / CR Cash {formatCurrency(fNet)} / CR Other Comprehensive Income {formatCurrency(fChg)} (charges retained).</p>
+              )}
               <div>
                 <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Proof (file or QR phone upload)</label>
                 <ScanUpload section="refund" prefix="refund" existingCount={fProofs.length} onUploaded={(url) => setFProofs(prev => [...prev, url])} />
@@ -352,7 +359,7 @@ export default function RefundsPage() {
             </div>
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => setFormOpen(false)} className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-              <button onClick={saveRefund} disabled={saving || !fPatient.trim()} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{saving ? <Loader2 size={13} className="animate-spin" /> : 'Save Refund'}</button>
+              <button onClick={saveRefund} disabled={saving || !fPatient.trim() || fChargesTooBig} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{saving ? <Loader2 size={13} className="animate-spin" /> : 'Save Refund'}</button>
             </div>
           </div>
         </div>
@@ -376,7 +383,21 @@ export default function RefundsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
             <div className="flex items-center justify-between mb-3"><h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Record RFP as Paid — {payTarget.refNumber}</h2><button onClick={() => setPayTarget(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-            <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Posts <strong>DR Unearned Revenue / CR {banks.find(b => b.id === payBankId)?.accountTitle || 'Cash'}</strong> for {formatCurrency(payTarget.payableTotal)}.</p>
+            {(() => {
+              const rows = refunds.filter(r => r.refundRfpId === payTarget.id)
+              const gross = rows.reduce((s, r) => s + r.refundAmount, 0)
+              const chg = rows.reduce((s, r) => s + r.chargesDeducted, 0)
+              const net = rows.reduce((s, r) => s + r.netAmount, 0) || payTarget.payableTotal
+              return (
+                <div className="text-xs mb-3 rounded-lg border p-2.5" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  <div className="font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Journal entry on payment</div>
+                  <div className="flex justify-between"><span>DR 4050 Unearned Revenue</span><span className="font-mono">{formatCurrency(gross || net)}</span></div>
+                  <div className="flex justify-between"><span className="pl-3">CR {banks.find(b => b.id === payBankId)?.accountTitle || 'Cash / Bank'}</span><span className="font-mono">{formatCurrency(net)}</span></div>
+                  {chg > 0 && <div className="flex justify-between"><span className="pl-3">CR 7220 Other Comprehensive Income <em>(charges retained)</em></span><span className="font-mono">{formatCurrency(chg)}</span></div>}
+                  <div className="mt-1 text-[11px]">No revenue is reversed — the prepayment was never recognised as income, so 7160 Refunds is not touched.</div>
+                </div>
+              )
+            })()}
             <div className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Date Paid</label><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} /></div>

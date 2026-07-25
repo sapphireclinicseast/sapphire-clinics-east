@@ -42,7 +42,10 @@ export async function POST(req: Request) {
     if (!b.patientName?.trim()) return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
     const refundAmount = Number(b.refundAmount) || 0
     const chargesDeducted = Number(b.chargesDeducted) || 0
-    const netAmount = Math.max(0, refundAmount - chargesDeducted)
+    // Charges are withheld out of the refund, so they can never exceed it — otherwise the
+    // posted entry (DR gross = CR net + CR charges) would not balance.
+    if (chargesDeducted > refundAmount) return NextResponse.json({ error: 'Charges deducted cannot exceed the refund amount' }, { status: 400 })
+    const netAmount = refundAmount - chargesDeducted
     const proofs = Array.isArray(b.proofUrls) ? b.proofUrls.filter(Boolean) : []
     const refund = await prisma.refund.create({
       data: {
@@ -91,13 +94,14 @@ export async function PATCH(req: Request) {
     // Generic field update (only when not in RFP)
     const refundAmount = b.refundAmount !== undefined ? Number(b.refundAmount) || 0 : Number(existing.refundAmount)
     const chargesDeducted = b.chargesDeducted !== undefined ? Number(b.chargesDeducted) || 0 : Number(existing.chargesDeducted)
+    if (chargesDeducted > refundAmount) return NextResponse.json({ error: 'Charges deducted cannot exceed the refund amount' }, { status: 400 })
     const updated = await prisma.refund.update({
       where: { id: b.id },
       data: {
         ...(b.patientName !== undefined && { patientName: String(b.patientName).trim(), patientId: b.patientId || null }),
         ...(b.date !== undefined && { date: new Date(b.date) }),
         ...(b.reason !== undefined && { reason: b.reason?.trim() || null }),
-        refundAmount, chargesDeducted, netAmount: Math.max(0, refundAmount - chargesDeducted),
+        refundAmount, chargesDeducted, netAmount: refundAmount - chargesDeducted,
       },
     })
     return NextResponse.json(updated)

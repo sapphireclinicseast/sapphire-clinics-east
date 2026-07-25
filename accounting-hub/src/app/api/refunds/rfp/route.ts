@@ -115,13 +115,27 @@ export async function PATCH(req: Request) {
       const bank = await prisma.account.findUnique({ where: { id: bankAccountId }, select: { id: true, accountNumber: true, accountTitle: true } })
       if (!bank) return NextResponse.json({ error: 'Bank account not found' }, { status: 400 })
       // Unearned Revenue liability account (4050) — debited when a prepaid balance is refunded.
+      // A prepayment was never recognised as revenue (it sits in this liability), so refunding
+      // it must NOT touch revenue/7160 Refunds — that account is contra-revenue for sales that
+      // WERE earned. Debiting it here would understate income by the refunded amount.
       const unearned = await prisma.account.findFirst({ where: { OR: [{ accountNumber: '4050' }, { accountTitle: { contains: 'Unearned', mode: 'insensitive' } }] }, select: { id: true } })
       if (!unearned) return NextResponse.json({ error: 'Unearned Revenue account (4050) not found in Chart of Accounts' }, { status: 400 })
 
       const paidAt = body.datePaid ? new Date(body.datePaid) : new Date()
       const refunds = await prisma.refund.findMany({ where: { refundRfpId: id } })
-      const total = refunds.reduce((s, r) => s + Number(r.netAmount), 0)
+      const grossTotal = refunds.reduce((s, r) => s + Number(r.refundAmount), 0)
+      const chargesTotal = refunds.reduce((s, r) => s + Number(r.chargesDeducted), 0)
+      const total = refunds.reduce((s, r) => s + Number(r.netAmount), 0)   // cash actually returned
       if (total <= 0) return NextResponse.json({ error: 'Nothing to pay' }, { status: 400 })
+
+      // Charges withheld are retained by the clinic → earned income, credited to 7220.
+      // Without this the charge would stay stranded in Unearned Revenue forever.
+      let chargesAccountId: string | null = null
+      if (chargesTotal > 0) {
+        const chargesAcct = await prisma.account.findFirst({ where: { accountNumber: '7220' }, select: { id: true } })
+        if (!chargesAcct) return NextResponse.json({ error: 'Account 7220 (Other Comprehensive Income) not found — needed to book the charges deducted' }, { status: 400 })
+        chargesAccountId = chargesAcct.id
+      }
 
       await prisma.$transaction(async (tx) => {
         const je = await postJournalEntry(tx, {
@@ -131,9 +145,13 @@ export async function PATCH(req: Request) {
           referenceId: id,
           branch: rep.branch,
           createdById: session.user!.id as string,
+          // DR Unearned Revenue (gross released) / CR Cash (net to patient) + CR Income (charges kept)
           lines: [
-            { accountId: unearned.id, debit: total, credit: 0, description: 'Unearned Revenue — patient refund' },
+            { accountId: unearned.id, debit: grossTotal, credit: 0, description: 'Unearned Revenue — patient refund' },
             { accountId: bank.id, debit: 0, credit: total, description: `Cash refund via ${bank.accountTitle}` },
+            ...(chargesAccountId && chargesTotal > 0
+              ? [{ accountId: chargesAccountId, debit: 0, credit: chargesTotal, description: 'Refund charges retained' }]
+              : []),
           ],
         })
         await tx.reimbursementReport.update({
