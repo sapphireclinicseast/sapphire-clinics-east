@@ -46,6 +46,8 @@ interface Consultant {
   isActive: boolean
   unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
   benefits?: { id: string; benefitType: string; employeeShare: number | string; employerShare: number | string; isActive: boolean }[]
+  extraBranches?: string[]
+  affiliatedBranches?: string[]
 }
 
 interface UnitPayType {
@@ -3050,7 +3052,9 @@ export default function PayrollPage() {
                           </td>
                           <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[c.department] || c.department}</td>
-                          <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{branchLabel(c.branch)}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                            {(c.affiliatedBranches && c.affiliatedBranches.length ? c.affiliatedBranches : [c.branch]).map(b => branchLabel(b)).join(', ')}
+                          </td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.bioId ?? '—'}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.email || '—'}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.phone || '—'}</td>

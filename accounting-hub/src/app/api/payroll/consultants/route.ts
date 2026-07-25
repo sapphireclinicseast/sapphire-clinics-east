@@ -179,7 +179,30 @@ export async function GET(req: Request) {
     ? roster.filter(c => c.branch === branch || (c.extraBranches || []).includes(branch) || interbranchNames.has(c.name.trim().toUpperCase()))
     : roster
 
-  return NextResponse.json(consultants)
+  // Affiliated branches = primary + extraBranches + every branch they have sessions in.
+  // Shown in the Branch column so interbranch consultants list all their branches, not
+  // just the primary of their merged profile.
+  const ORDER_TO_BRANCH: Record<string, string> = Object.fromEntries(Object.entries(BRANCH_TO_ORDER).map(([k, v]) => [v, k]))
+  const sessionBranches = await prisma.order.groupBy({
+    by: ['clinicianName', 'branch'],
+    where: { status: 'COMPLETED', clinicianName: { not: null } },
+  })
+  const nameToBranches = new Map<string, Set<string>>()
+  for (const g of sessionBranches) {
+    const code = ORDER_TO_BRANCH[g.branch]
+    if (!code) continue
+    const key = (g.clinicianName || '').trim().toUpperCase()
+    if (!key) continue
+    if (!nameToBranches.has(key)) nameToBranches.set(key, new Set())
+    nameToBranches.get(key)!.add(code)
+  }
+  const withAffiliations = consultants.map(c => {
+    const set = new Set<string>([c.branch, ...(c.extraBranches || [])])
+    for (const b of nameToBranches.get(c.name.trim().toUpperCase()) || []) set.add(b)
+    return { ...c, affiliatedBranches: Array.from(set).filter(Boolean) }
+  })
+
+  return NextResponse.json(withAffiliations)
 }
 
 export async function POST(req: Request) {
