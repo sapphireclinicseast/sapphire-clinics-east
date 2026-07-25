@@ -7,13 +7,14 @@
  * same fields the /paymongo page shows, plus a derived remitted flag and
  * totals. The PayMongo secret key never leaves this app.
  *
- * Auth: Authorization: Bearer ${TELETHERAPY_INTERNAL_API_KEY}
+ * Auth: Authorization: Bearer ${EXTERNAL_API_KEY}
+ * (the same shared key the HR Platform holds as MARKETING_API_KEY).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 function verifyKey(req: NextRequest): boolean {
-  const key = process.env.TELETHERAPY_INTERNAL_API_KEY
+  const key = process.env.EXTERNAL_API_KEY
   if (!key) return false
   return req.headers.get('authorization') === `Bearer ${key}`
 }
