@@ -44,6 +44,7 @@ export default function AdminPage() {
 }
 
 function LoginGate({ onSuccess }: { onSuccess: () => void }) {
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -56,7 +57,7 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       })
       if (res.ok) onSuccess()
       else {
@@ -70,25 +71,36 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
+  const inputCls =
+    'w-full px-3 py-2.5 rounded-xl border border-[color:var(--light-gray)] text-sm focus:outline-none focus:border-[color:var(--teal)] focus:ring-2 focus:ring-[color:var(--teal)]/20'
+
   return (
     <div className="max-w-sm mx-auto mt-16 bg-white rounded-3xl shadow-[0_24px_60px_rgba(46,94,90,0.12)] border border-[color:var(--light-gray)] p-7">
       <h1 className="text-xl font-semibold text-[color:var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-        Aurora Admin
+        Admin Console
       </h1>
-      <p className="text-sm text-[color:var(--mid-gray)] mb-5">Sign in to edit the chatbot responses.</p>
+      <p className="text-sm text-[color:var(--mid-gray)] mb-5">Sign in to view sessions and manage Aurora.</p>
       <form onSubmit={submit} className="space-y-3">
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoFocus
+          className={inputCls}
+        />
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Admin password"
-          autoFocus
-          className="w-full px-3 py-2.5 rounded-xl border border-[color:var(--light-gray)] text-sm focus:outline-none focus:border-[color:var(--teal)] focus:ring-2 focus:ring-[color:var(--teal)]/20"
+          placeholder="Password"
+          className={inputCls}
         />
         {err && <div className="text-sm text-red-600">{err}</div>}
         <button
           type="submit"
-          disabled={busy || !password}
+          disabled={busy || !username || !password}
           className="w-full py-2.5 rounded-xl text-white font-medium disabled:opacity-40"
           style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}
         >
@@ -100,6 +112,7 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function Console({ onLogout }: { onLogout: () => void }) {
+  const [tab, setTab] = useState<'sessions' | 'aurora'>('sessions')
   const [faqs, setFaqs] = useState<Faq[]>([])
   const [settings, setSettings] = useState<Settings>({ intro_message: '', system_prompt: '', fallback_message: '' })
   const [loading, setLoading] = useState(true)
@@ -204,23 +217,41 @@ function Console({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-semibold text-[color:var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Aurora Assistant — Responses
+            Admin Console
           </h1>
-          <p className="text-sm text-[color:var(--mid-gray)]">Edit the answers Aurora gives patients in the chat widget.</p>
+          <p className="text-sm text-[color:var(--mid-gray)]">Consultant sessions and Aurora chatbot management.</p>
         </div>
         <button onClick={logout} className="text-sm px-3 py-2 rounded-lg border border-[color:var(--light-gray)] text-[color:var(--mid-gray)] hover:bg-[color:var(--off-white)]">
           Log out
         </button>
       </div>
 
-      {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
-      {loading ? (
-        <div className="py-20 text-center text-[color:var(--mid-gray)]">Loading templates…</div>
-      ) : (
-        <div className="space-y-8">
+      <div className="flex gap-1 mb-6 p-1 bg-[color:var(--off-white)] rounded-xl w-fit">
+        {([['sessions', 'Sessions'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              tab === k ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'sessions' && <SessionsView onUnauthorized={onLogout} />}
+
+      {tab === 'aurora' && (
+        <>
+          {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
+          {loading ? (
+            <div className="py-20 text-center text-[color:var(--mid-gray)]">Loading templates…</div>
+          ) : (
+            <div className="space-y-8">
           {/* Settings */}
           <section className="bg-white rounded-2xl border border-[color:var(--light-gray)] p-5">
             <h2 className="font-semibold text-[color:var(--charcoal)] mb-4" style={{ fontFamily: 'var(--font-display)' }}>
@@ -275,7 +306,9 @@ function Console({ onLogout }: { onLogout: () => void }) {
               ))}
             </div>
           </section>
-        </div>
+            </div>
+          )}
+        </>
       )}
 
       {toast && (
@@ -342,6 +375,151 @@ function FaqCard({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Sessions: all consultants' session history ───────────────────────────────
+
+interface AdminSession {
+  id: string
+  date: string
+  startTime: string
+  endTime: string
+  patientName: string
+  status: string
+  isTeletherapy: boolean
+}
+interface Consultant {
+  staffId: string
+  name: string
+  department: string
+  branch: string
+  sessions: AdminSession[]
+}
+
+function statusLabel(s: string): string {
+  return s.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function SessionsView({ onUnauthorized }: { onUnauthorized: () => void }) {
+  const [branch, setBranch] = useState('')
+  const [consultants, setConsultants] = useState<Consultant[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [q, setQ] = useState('')
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true); setError('')
+    fetch(`/api/admin/data/sessions${branch ? `?branch=${branch}` : ''}`)
+      .then(async (r) => {
+        if (r.status === 401) { onUnauthorized(); return null }
+        return r.json()
+      })
+      .then((d) => {
+        if (cancelled || !d) return
+        setConsultants(d.consultants ?? [])
+        setTotal(d.totalSessions ?? 0)
+      })
+      .catch(() => { if (!cancelled) setError('Could not load sessions.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [branch, onUnauthorized])
+
+  const filtered = consultants.filter((c) => c.name.toLowerCase().includes(q.trim().toLowerCase()))
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-3 items-center mb-4">
+        <div className="flex gap-1 p-1 bg-[color:var(--off-white)] rounded-lg">
+          {(
+            [
+              ['', 'All branches'],
+              ['SANDBOX_EAST', 'East'],
+              ['SANDBOX_GREENHILLS', 'Greenhills'],
+            ] as const
+          ).map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => setBranch(v)}
+              className={`px-3 py-1.5 rounded-md text-sm ${branch === v ? 'bg-white text-[color:var(--deep-teal)] shadow-sm font-medium' : 'text-[color:var(--mid-gray)]'}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search consultant…"
+          className="px-3 py-2 rounded-lg border border-[color:var(--light-gray)] text-sm flex-1 min-w-[180px] focus:outline-none focus:border-[color:var(--teal)]"
+        />
+        <span className="text-sm text-[color:var(--mid-gray)]">
+          {filtered.length} consultants · {total} sessions
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="py-16 text-center text-[color:var(--mid-gray)]">Loading sessions…</div>
+      ) : error ? (
+        <div className="text-sm text-red-600">{error}</div>
+      ) : filtered.length === 0 ? (
+        <div className="py-16 text-center text-[color:var(--mid-gray)]">No consultants found.</div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((c) => {
+            const open = openId === c.staffId
+            return (
+              <div key={c.staffId} className="bg-white rounded-2xl border border-[color:var(--light-gray)] overflow-hidden">
+                <button
+                  onClick={() => setOpenId(open ? null : c.staffId)}
+                  className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-[color:var(--off-white)]"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[color:var(--charcoal)] truncate">{c.name}</div>
+                    <div className="text-xs text-[color:var(--mid-gray)] truncate">
+                      {[c.department, c.branch].filter(Boolean).join(' · ') || '—'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-sm text-[color:var(--mid-gray)]">{c.sessions.length} sessions</span>
+                    <span className="text-[color:var(--mid-gray)] text-xs">{open ? '▲' : '▼'}</span>
+                  </div>
+                </button>
+                {open && (
+                  <div className="border-t border-[color:var(--light-gray)] overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-[11px] uppercase tracking-wide text-[color:var(--mid-gray)] bg-[color:var(--off-white)]">
+                          <th className="px-5 py-2 font-semibold">Date</th>
+                          <th className="px-3 py-2 font-semibold">Time</th>
+                          <th className="px-3 py-2 font-semibold">Patient</th>
+                          <th className="px-3 py-2 font-semibold">Type</th>
+                          <th className="px-5 py-2 font-semibold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {c.sessions.map((s) => (
+                          <tr key={s.id} className="border-t border-[color:var(--light-gray)]">
+                            <td className="px-5 py-2 whitespace-nowrap">{s.date}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-[color:var(--mid-gray)]">{s.startTime}–{s.endTime}</td>
+                            <td className="px-3 py-2">{s.patientName}</td>
+                            <td className="px-3 py-2 text-[color:var(--mid-gray)]">{s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}</td>
+                            <td className="px-5 py-2">{statusLabel(s.status)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
