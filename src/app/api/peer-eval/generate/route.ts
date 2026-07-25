@@ -25,6 +25,11 @@ function isExcluded(s: { id: string; firstName: string; lastName: string; jobTit
   return false
 }
 
+// Includes interbranch consultants who have the branch in their extraBranches
+function inBranch(branch: string) {
+  return { OR: [{ branch }, { extraBranches: { has: branch } }] }
+}
+
 function seededShuffle<T>(arr: T[], seed: number): T[] {
   const a = [...arr]
   let s = seed
@@ -52,10 +57,10 @@ export async function POST(req: NextRequest) {
   const errors: string[] = []
 
   if (formType === 'HR08_ADMIN') {
-    // FRONT_DESK staff assess ALL clinical staff in branch
+    // FRONT_DESK staff assess ALL clinical staff in branch (including interbranch consultants)
     const allAdminStaff = await prisma.staff.findMany({ where: { branch, department: { in: ADMIN_DEPTS as any } } })
     const adminStaff = allAdminStaff.filter(s => !isExcluded(s))
-    const allClinicalStaff = await prisma.staff.findMany({ where: { branch, department: { in: CLINICAL_DEPTS as any } } })
+    const allClinicalStaff = await prisma.staff.findMany({ where: { ...inBranch(branch), department: { in: CLINICAL_DEPTS as any } } })
     const clinicalStaff = allClinicalStaff.filter(s => !isExcluded(s))
 
     for (const assessor of adminStaff) {
@@ -71,16 +76,16 @@ export async function POST(req: NextRequest) {
   }
 
   else if (formType === 'HR08_PEER') {
-    // Clinical staff assess same-dept, same-day peers
+    // Clinical staff assess same-dept, same-day peers (including interbranch consultants)
     // Each assessee gets at least 2 assessors
     const configs = await prisma.deckingTherapistConfig.findMany({
-      where: { branch },
+      where: { OR: [{ branch }, { staff: { extraBranches: { has: branch } } }] },
       include: { staff: true },
     })
     const configMap = new Map(configs.map(c => [c.staffId, c.workDays as string[]]))
 
     const allClinicalStaff08p = await prisma.staff.findMany({
-      where: { branch, department: { in: CLINICAL_DEPTS as any } }
+      where: { ...inBranch(branch), department: { in: CLINICAL_DEPTS as any } }
     })
     const clinicalStaff = allClinicalStaff08p.filter(s => !isExcluded(s))
 
@@ -126,7 +131,7 @@ export async function POST(req: NextRequest) {
     // HR09 CLINICAL — annual; each admin staff member assessed by ≥10 randomly selected clinical staff
     const allAdminStaff09c = await prisma.staff.findMany({ where: { branch, department: { in: ADMIN_DEPTS as any } } })
     const adminStaff = allAdminStaff09c.filter(s => !isExcluded(s))
-    const allClinicalStaff09c = await prisma.staff.findMany({ where: { branch, department: { in: CLINICAL_DEPTS as any } } })
+    const allClinicalStaff09c = await prisma.staff.findMany({ where: { ...inBranch(branch), department: { in: CLINICAL_DEPTS as any } } })
     const clinicalStaff = allClinicalStaff09c.filter(s => !isExcluded(s))
 
     if (adminStaff.length === 0) return NextResponse.json({ error: 'No admin staff found for this branch' }, { status: 400 })

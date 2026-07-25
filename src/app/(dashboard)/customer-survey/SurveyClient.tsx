@@ -397,8 +397,11 @@ export default function SurveyClient({ role }: { role: string }) {
   const createAssignment = async (staffId: string) => {
     if (!selectedPatient) return alert('Please select a patient from the search results')
     try {
-      const selectedStaff = staff.find(s => s.id === staffId)
       const patientAge = selectedPatient.dob ? getAge(selectedPatient.dob) : (assignPatientType === 'PEDIATRIC' ? 5 : 25)
+      // Use the logged-in user's branch, not the staff's home branch.
+      // Interbranch consultants have branch=SBEA but may be surveyed at SBGH.
+      const userBranch = role.startsWith('SBGH_') ? 'SBGH' : role.startsWith('SBEA_') ? 'SBEA' : null
+      const selectedStaff = staff.find(s => s.id === staffId)
       const res = await fetch('/api/customer-survey', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -407,7 +410,7 @@ export default function SurveyClient({ role }: { role: string }) {
           patientId: selectedPatient.id,
           patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
           patientAge,
-          branch: selectedStaff?.branch ?? 'SBEA',
+          branch: userBranch ?? selectedStaff?.branch ?? 'SBEA',
           sessionType: assignSession,
         }),
       })
