@@ -243,7 +243,10 @@ export default function BenefitsPayablePage() {
             {loading ? (
               <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}><Loader2 size={18} className="inline animate-spin" /></td></tr>
             ) : shown.length === 0 ? (
-              <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No {agency.label} contributions in locked payroll for this filter.</td></tr>
+              <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                No unremitted {agency.label} contributions in locked payroll for this filter.
+                {!showRemitted && <div className="mt-1 text-[11px]">Already-remitted contributions are hidden — tick <strong>Show remitted</strong> to include them. Contributions only appear once payroll is <strong>locked</strong> and the benefit falls on the selected cutoff.</div>}
+              </td></tr>
             ) : shown.map(r => {
               const locked = !!rfpOf(r) || r.benefitsRemitted
               return (
