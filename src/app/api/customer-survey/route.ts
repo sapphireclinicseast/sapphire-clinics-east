@@ -102,6 +102,10 @@ export async function GET(req: NextRequest) {
     const effectiveBranch = resultsBranch ?? filterBranch
 
     const branchWhere = effectiveBranch ? { branch: effectiveBranch } : {}
+    // For session counts: include interbranch consultants (extraBranches contains this branch)
+    const staffBranchWhere = effectiveBranch
+      ? { OR: [{ branch: effectiveBranch }, { extraBranches: { has: effectiveBranch } }] }
+      : {}
 
     // Get all completed responses for the year
     const responses = await prisma.surveyResponse.findMany({
@@ -130,7 +134,7 @@ export async function GET(req: NextRequest) {
       where: {
         date: { gte: yearStart, lt: yearEnd },
         status: 'CONFIRMED',
-        staff: branchWhere,
+        staff: staffBranchWhere,
         ...(filterStaff ? { staffId: filterStaff } : {}),
       },
       _count: { _all: true },
@@ -142,7 +146,7 @@ export async function GET(req: NextRequest) {
       where: {
         date: { gte: yearStart, lt: yearEnd },
         status: 'RESCHEDULED',
-        staff: branchWhere,
+        staff: staffBranchWhere,
         ...(filterStaff ? { staffId: filterStaff } : {}),
       },
       _count: { _all: true },
@@ -154,7 +158,7 @@ export async function GET(req: NextRequest) {
       where: {
         date: { gte: yearStart, lt: yearEnd },
         status: 'CANCELLED',
-        staff: branchWhere,
+        staff: staffBranchWhere,
         ...(filterStaff ? { staffId: filterStaff } : {}),
       },
       _count: { _all: true },
@@ -170,7 +174,7 @@ export async function GET(req: NextRequest) {
           lt: new Date(filterMonth === 12 ? `${year + 1}-01-01` : `${year}-${String(filterMonth + 1).padStart(2, '0')}-01`),
         },
         status: 'CONFIRMED',
-        staff: branchWhere,
+        staff: staffBranchWhere,
         ...(filterStaff ? { staffId: filterStaff } : {}),
       },
       _count: { _all: true },
@@ -430,7 +434,9 @@ export async function GET(req: NextRequest) {
     // Front desk users only see FRONT_DESK department staff
     const isFrontDesk = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
     const whereClause = {
-      ...(userBranch ? { branch: userBranch } : {}),
+      ...(userBranch
+        ? { OR: [{ branch: userBranch }, { extraBranches: { has: userBranch } }] }
+        : {}),
       ...(isFrontDesk ? { department: 'FRONT_DESK' as const } : {}),
     }
     const staff = await prisma.staff.findMany({
