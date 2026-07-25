@@ -112,7 +112,7 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function Console({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<'sessions' | 'aurora'>('sessions')
+  const [tab, setTab] = useState<'sessions' | 'payments' | 'aurora'>('sessions')
   const [faqs, setFaqs] = useState<Faq[]>([])
   const [settings, setSettings] = useState<Settings>({ intro_message: '', system_prompt: '', fallback_message: '' })
   const [loading, setLoading] = useState(true)
@@ -230,7 +230,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="flex gap-1 mb-6 p-1 bg-[color:var(--off-white)] rounded-xl w-fit">
-        {([['sessions', 'Sessions'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
+        {([['sessions', 'Sessions'], ['payments', 'Payment History'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -244,6 +244,8 @@ function Console({ onLogout }: { onLogout: () => void }) {
       </div>
 
       {tab === 'sessions' && <SessionsView onUnauthorized={onLogout} />}
+
+      {tab === 'payments' && <PaymentsView onUnauthorized={onLogout} />}
 
       {tab === 'aurora' && (
         <>
@@ -400,6 +402,155 @@ interface Consultant {
 
 function statusLabel(s: string): string {
   return s.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// ── Payment History: PayMongo booking-downpayment payments ───────────────────
+
+interface AdminPayment {
+  id: string
+  date: string
+  patientName: string
+  branch: string
+  department: string
+  gross: number
+  fee: number | null
+  net: number | null
+  status: string
+  remittance: string | null
+  ref: string | null
+}
+
+function peso(n: number | null): string {
+  return n == null
+    ? '—'
+    : `₱${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function PaymentsView({ onUnauthorized }: { onUnauthorized: () => void }) {
+  const [branch, setBranch] = useState('')
+  const [payments, setPayments] = useState<AdminPayment[]>([])
+  const [totals, setTotals] = useState({ paidCount: 0, gross: 0, fee: 0, net: 0 })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true); setError('')
+    fetch(`/api/admin/data/payments${branch ? `?branch=${branch}` : ''}`)
+      .then(async (r) => {
+        if (r.status === 401) { onUnauthorized(); return null }
+        return r.json()
+      })
+      .then((d) => {
+        if (cancelled || !d) return
+        setPayments(d.payments ?? [])
+        setTotals(d.totals ?? { paidCount: 0, gross: 0, fee: 0, net: 0 })
+      })
+      .catch(() => { if (!cancelled) setError('Could not load payments.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [branch, onUnauthorized])
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-3 items-center mb-4">
+        <div className="flex gap-1 p-1 bg-[color:var(--off-white)] rounded-lg">
+          {(
+            [
+              ['', 'All branches'],
+              ['SBEA', 'East'],
+              ['SBGH', 'Greenhills'],
+            ] as const
+          ).map(([v, l]) => (
+            <button
+              key={v}
+              onClick={() => setBranch(v)}
+              className={`px-3 py-1.5 rounded-md text-sm ${branch === v ? 'bg-white text-[color:var(--deep-teal)] shadow-sm font-medium' : 'text-[color:var(--mid-gray)]'}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <span className="text-sm text-[color:var(--mid-gray)]">
+          {payments.length} payments · {totals.paidCount} paid
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        {(
+          [
+            ['Gross charged', totals.gross, 'var(--deep-teal)'],
+            ['PayMongo fees', totals.fee, 'var(--clay)'],
+            ['Net', totals.net, 'var(--moss)'],
+          ] as const
+        ).map(([label, val, color]) => (
+          <div key={label} className="bg-white rounded-2xl border border-[color:var(--light-gray)] p-4">
+            <div className="text-[11px] uppercase tracking-wide text-[color:var(--mid-gray)]">{label}</div>
+            <div className="text-[20px] font-semibold mt-1" style={{ color }}>{peso(val)}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="py-16 text-center text-[color:var(--mid-gray)]">Loading payments…</div>
+      ) : error ? (
+        <div className="text-sm text-red-600">{error}</div>
+      ) : payments.length === 0 ? (
+        <div className="py-16 text-center text-[color:var(--mid-gray)]">No payments yet.</div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-[color:var(--light-gray)] overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wide text-[color:var(--mid-gray)] bg-[color:var(--off-white)]">
+                <th className="px-4 py-2 font-semibold">Date</th>
+                <th className="px-3 py-2 font-semibold">Patient</th>
+                <th className="px-3 py-2 font-semibold">Branch</th>
+                <th className="px-3 py-2 font-semibold text-right">Amount</th>
+                <th className="px-3 py-2 font-semibold text-right">Fee</th>
+                <th className="px-3 py-2 font-semibold text-right">Net</th>
+                <th className="px-4 py-2 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((p) => (
+                <tr key={p.id} className="border-t border-[color:var(--light-gray)]">
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    {new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </td>
+                  <td className="px-3 py-2">
+                    {p.patientName}
+                    {p.department && <div className="text-[11px] text-[color:var(--mid-gray)]">{p.department}</div>}
+                  </td>
+                  <td className="px-3 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{p.branch || '—'}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">{peso(p.gross)}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap text-[color:var(--clay)]">
+                    {p.fee == null ? '—' : `−${peso(p.fee)}`}
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap font-medium">{peso(p.net)}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    {p.status === 'Paid' ? (
+                      <>
+                        <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700">Paid</span>
+                        {p.remittance && (
+                          <span className="ml-1 inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700">{p.remittance}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-[color:var(--off-white)] text-[color:var(--mid-gray)]">Pending</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-[11px] text-[color:var(--mid-gray)] mt-3 leading-relaxed">
+        &ldquo;For Clearing&rdquo; = the payment cleared on PayMongo but isn&rsquo;t yet reconciled to a bank payout. Live
+        &ldquo;Remitted to Bank&rdquo; tracking (PayMongo Payouts API) is the next phase.
+      </p>
+    </div>
+  )
 }
 
 function SessionsView({ onUnauthorized }: { onUnauthorized: () => void }) {
