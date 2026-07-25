@@ -1926,6 +1926,37 @@ model ReimbursementReport {
   @@index([branch])
 }
 
+// Patient refunds — a deduction against Unearned Revenue (prepaid balances), NOT an
+// expense. On refund-RFP payment we post DR Unearned Revenue / CR Cash. Refunds are
+// grouped into an RFP (ReimbursementReport module='REFUND') exactly like expense RFPs,
+// but never surface in the Expense Report.
+model Refund {
+  id                 String    @id @default(cuid())
+  branch             String
+  date               DateTime  @default(now())
+  patientId          String?   // Marketing Hub CRM patient id (optional)
+  patientName        String
+  refundAmount       Decimal   @default(0)  // gross amount to refund
+  chargesDeducted    Decimal   @default(0)  // cancellation / processing charges withheld
+  netAmount          Decimal   @default(0)  // cash actually returned = refundAmount − chargesDeducted
+  reason             String?
+  proofUrls          Json?                  // string[] of uploaded proofs (file or QR)
+  audited            Boolean   @default(false) // the "OK" check — required before RFP
+  refundRfpId        String?   // set when included in a Refund RFP (locked until paid/deleted)
+  paidAt             DateTime?
+  paymentMethod      String?
+  checkNumber        String?
+  paymentBankAccount String?   // bank account credited (cash out)
+  journalEntryId     String?   // DR Unearned Revenue / CR Cash entry posted on payment
+  createdById        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([branch])
+  @@index([refundRfpId])
+  @@index([audited])
+}
+
 model PettyCashSettings {
   branch     String   @id  // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
   nextPcvSeq Int      @default(1)
