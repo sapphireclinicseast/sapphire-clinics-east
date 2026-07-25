@@ -28,6 +28,7 @@ import {
   ChevronUp,
   ChevronDown,
   History,
+  ClipboardCheck,
   TrendingUp,
   TrendingDown,
   Gift,
@@ -35,6 +36,7 @@ import {
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
+import { ScanUpload } from '@/components/ScanUpload'
 import SkuGuidePanel from './SkuGuidePanel'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
@@ -3319,12 +3321,12 @@ setTimeout(()=>window.print(),500);
                 <button onClick={openAdjCreate}
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
                   style={{ borderColor: 'var(--light-gray)', color: '#dc2626' }}>
-                  <TrendingDown size={14} /> Shrinkage
+                  <TrendingDown size={14} /> Adjust Stock
                 </button>
                 <button onClick={() => setBulkShrinkOpen(true)}
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
-                  style={{ borderColor: '#dc2626', color: '#dc2626', background: '#fef2f2' }}>
-                  <TrendingDown size={14} /> Bulk Count
+                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                  <ClipboardCheck size={14} /> Inventory Audit
                 </button>
                 <button onClick={openFbModal}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
@@ -5092,8 +5094,10 @@ function BulkShrinkageCountModal({ items, onClose, onDone }: {
   onClose: () => void
   onDone: () => void
 }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [auditFrom, setAuditFrom] = useState('')
+  const [auditTo, setAuditTo] = useState(new Date().toISOString().slice(0, 10))
   const [auditor, setAuditor] = useState('')
+  const [proofUrls, setProofUrls] = useState<string[]>([])
   const [rows, setRows] = useState<{ itemId: string; search: string; counted: string; open: boolean }[]>([{ itemId: '', search: '', counted: '', open: false }])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -5125,18 +5129,19 @@ function BulkShrinkageCountModal({ items, onClose, onDone }: {
 
   const submit = async () => {
     setError('')
-    if (!auditor.trim()) { setError('Enter the name of the auditor.'); return }
+    if (!auditor.trim()) { setError('Enter who conducted the audit.'); return }
+    if (!auditTo) { setError('Enter the audit "to" date.'); return }
     const payloadRows = rows.filter(r => r.itemId && r.counted !== '').map(r => ({ itemId: r.itemId, countedQuantity: Number(r.counted) }))
-    if (!payloadRows.length) { setError('Add at least one item with a counted quantity.'); return }
+    if (!payloadRows.length) { setError('Add at least one item with an actual count.'); return }
     const signature = hasSig && canvasRef.current ? canvasRef.current.toDataURL('image/png') : null
     setBusy(true)
     try {
       const res = await fetch('/api/inventory/adjustments/shrinkage-count', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adjustmentDate: date, auditorName: auditor.trim(), auditorSignature: signature, rows: payloadRows }),
+        body: JSON.stringify({ auditFrom: auditFrom || null, auditTo, auditorName: auditor.trim(), auditorSignature: signature, proofUrls, rows: payloadRows }),
       })
       const d = await res.json()
-      if (!res.ok) { setError(d.error || 'Failed to record shrinkage.'); setBusy(false); return }
+      if (!res.ok) { setError(d.error || 'Failed to record the audit.'); setBusy(false); return }
       onDone()
     } catch { setError('Network error. Please try again.'); setBusy(false) }
   }
@@ -5145,23 +5150,29 @@ function BulkShrinkageCountModal({ items, onClose, onDone }: {
     <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 max-w-3xl w-full shadow-xl mb-8 relative" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
-        <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Physical Count — Bulk Shrinkage</h2>
-        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>Enter the counted stock per item; shrinkage is computed automatically and deducted (overages are added back).</p>
+        <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Inventory Audit</h2>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>Add each product and its actual counted stock; the difference vs. the current system count is computed automatically and applied (shortages deducted, overages added back).</p>
 
         {error && <div className="mb-3 p-2.5 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
 
-        <div className="mb-3">
-          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Date of Adjustment</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+        <div className="flex flex-wrap items-end gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Audit period — From</label>
+            <input type="date" value={auditFrom} onChange={e => setAuditFrom(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>To <span className="text-red-500">*</span></label>
+            <input type="date" value={auditTo} onChange={e => setAuditTo(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
         </div>
 
         <div className="rounded-xl border overflow-visible mb-2" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
             <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              <th className="px-3 py-2 text-left text-xs font-semibold">Item</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">In System</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">Counted</th>
-              <th className="px-3 py-2 text-right text-xs font-semibold">Shrinkage</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold">Product</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold">Current Count</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold">Actual Count</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold">Difference</th>
               <th className="px-2 py-2"></th>
             </tr></thead>
             <tbody>
@@ -5206,8 +5217,22 @@ function BulkShrinkageCountModal({ items, onClose, onDone }: {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Name of Auditor</label>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Conducted by</label>
             <input value={auditor} onChange={e => setAuditor(e.target.value)} placeholder="Full name" className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+            <div className="mt-3">
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Proof</label>
+              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                {proofUrls.map((u, i) => (
+                  <span key={u} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[11px]" style={{ borderColor: 'var(--light-gray)' }}>
+                    <a href={u} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--teal)' }}>Proof {i + 1}</a>
+                    <button onClick={() => setProofUrls(p => p.filter(x => x !== u))}><X size={11} style={{ color: '#dc2626' }} /></button>
+                  </span>
+                ))}
+              </div>
+              <ScanUpload compact section="inventory-audit" prefix="inventory-audit" existingCount={proofUrls.length}
+                accept="image/*,.pdf" label={proofUrls.length ? 'Add' : 'Upload'}
+                onUploaded={u => setProofUrls(p => p.includes(u) ? p : [...p, u])} />
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Auditor Signature</label>
@@ -5228,8 +5253,8 @@ function BulkShrinkageCountModal({ items, onClose, onDone }: {
 
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
-          <button onClick={submit} disabled={busy} className="px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#dc2626' }}>
-            {busy ? 'Recording…' : 'Record Shrinkage'}
+          <button onClick={submit} disabled={busy} className="px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+            {busy ? 'Saving…' : 'Save Audit'}
           </button>
         </div>
       </div>

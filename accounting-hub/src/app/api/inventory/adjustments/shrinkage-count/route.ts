@@ -19,13 +19,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { adjustmentDate, auditorName, auditorSignature, rows } = await req.json()
-    if (!auditorName?.trim()) return NextResponse.json({ error: 'Auditor name is required' }, { status: 400 })
+    const { adjustmentDate, auditFrom, auditTo, auditorName, auditorSignature, proofUrls, rows } = await req.json()
+    if (!auditorName?.trim()) return NextResponse.json({ error: 'The name of who conducted the audit is required' }, { status: 400 })
     if (!Array.isArray(rows) || rows.length === 0) return NextResponse.json({ error: 'At least one item row is required' }, { status: 400 })
 
-    const when = adjustmentDate ? new Date(adjustmentDate) : new Date()
-    const batchId = `SHRCOUNT-${crypto.randomUUID()}`
-    const remarks = `Physical count shrinkage (Auditor: ${auditorName.trim()})`
+    const fromD = auditFrom ? new Date(auditFrom) : null
+    const toD = auditTo ? new Date(auditTo) : null
+    const when = toD || (adjustmentDate ? new Date(adjustmentDate) : new Date())  // effective date = audit "to"
+    const proofs = Array.isArray(proofUrls) ? proofUrls.filter(Boolean) : []
+    const batchId = `AUDIT-${crypto.randomUUID()}`
+    const period = fromD && toD ? ` ${auditFrom} → ${auditTo}` : ''
+    const remarks = `Inventory audit${period} (Conducted by: ${auditorName.trim()})`
     let created = 0
     const results: { itemId: string; shrinkage: number }[] = []
 
@@ -49,6 +53,7 @@ export async function POST(req: Request) {
             previousQuantity, newQuantity: counted,
             adjustmentDate: when, remarks, batchId,
             countedQuantity: counted, auditorName: auditorName.trim(), auditorSignature: auditorSignature || null,
+            auditPeriodFrom: fromD, auditPeriodTo: toD, proofUrls: proofs.length ? proofs : undefined,
             adjustedById: session.user!.id as string,
           },
         })
