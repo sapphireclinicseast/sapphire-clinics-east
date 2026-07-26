@@ -100,7 +100,7 @@ export async function POST(req: Request) {
       const created = await tx.paymongoCheckout.create({
         data: {
           checkoutId: cs.id, referenceCode, account, branch: branchOf(account),
-          serviceId, inventoryItemId, itemName,
+          serviceId, inventoryItemId, itemName, quantity,
           customerFirstName: firstName, customerLastName: lastName, customerPhone: phone, customerEmail: email,
           voucherId, voucherCode,
           grossAmount, discountAmount,

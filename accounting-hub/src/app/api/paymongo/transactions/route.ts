@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { listPayments, parsePayment, retrieveCheckout, paymongoConfigured, isPaymongoAccount, configuredAccounts } from '@/lib/paymongo'
+import { postPaymongoSale } from '@/lib/accounting/post-paymongo-sale'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -25,6 +26,7 @@ export async function GET(req: Request) {
 
   const configured = paymongoConfigured(account)
   let syncError: string | null = null
+  const postWarnings: string[] = []
   let livePayments: { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string }[] = []
 
   if (sp.get('sync') === '1' && configured) {
@@ -46,6 +48,13 @@ export async function GET(req: Request) {
             where: { id: rec.id },
             data: { status: 'PAID', paymentId: p.paymentId, fee: p.feePhp, netAmount: p.netPhp, paidAt: p.paidAt, raw: payment as object },
           })
+          // Book the sale (and any voucher discount) so it reaches the Income Statement.
+          try {
+            const posted = await postPaymongoSale(prisma, { checkoutId: rec.checkoutId, userId: session.user!.id as string })
+            if (!posted.posted && posted.reason && !['already posted', 'GL posting off', 'test mode', 'posted via POS order'].includes(posted.reason)) {
+              postWarnings.push(`${rec.referenceCode || rec.checkoutId}: ${posted.reason}`)
+            }
+          } catch (e) { console.error('[PayMongo] posting sale failed:', e) }
         } catch (e) { console.warn('[PayMongo] refresh checkout failed:', e) }
       }
     } catch (e) { syncError = e instanceof Error ? e.message : 'Sync failed' }
@@ -82,6 +91,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     account, configured, syncError,
+    postWarnings,
     transactions: rows.map(r => ({
       ...r,
       customerName: [r.customerFirstName, r.customerLastName].filter(Boolean).join(' '),

@@ -856,6 +856,7 @@ model PaymongoCheckout {
   serviceId         String?
   inventoryItemId   String?
   itemName          String?
+  quantity          Int       @default(1)
   // Payer details collected when the link is generated.
   customerFirstName String?
   customerLastName  String?

@@ -82,6 +82,10 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
       ])
       setTxns(t.transactions || []); setConfigured(t.configured !== false)
       if (t.syncError) setError(t.syncError)
+      // Sales that couldn't be booked to the GL (e.g. an item with no revenue account).
+      if (Array.isArray(t.postWarnings) && t.postWarnings.length) {
+        setError(prev => prev || `Paid, but not booked to the ledger: ${t.postWarnings.join('; ')}`)
+      }
       setPayouts(p.payouts || [])
       if (p.error) setError(prev => prev || p.error)
     } catch { setError('Failed to load') } finally { setLoading(false) }
