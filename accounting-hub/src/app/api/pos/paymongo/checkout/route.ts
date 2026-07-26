@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { createCheckoutSession, expireCheckout, paymongoConfigured, paymongoLivemode } from '@/lib/paymongo'
+import { createCheckoutSession, expireCheckout, paymongoConfigured, paymongoLivemode, accountForBranch } from '@/lib/paymongo'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -13,7 +13,8 @@ export async function GET() {
     orderBy: { createdAt: 'desc' }, take: 100,
     select: { id: true, referenceCode: true, description: true, branch: true, amount: true, status: true, checkoutUrl: true, fee: true, netAmount: true, paidAt: true, payoutId: true, livemode: true, createdAt: true },
   })
-  return NextResponse.json({ configured: paymongoConfigured(), livemode: paymongoLivemode(), recent })
+  // POS historically used the single (Verdana) account; keep reporting that here.
+  return NextResponse.json({ configured: paymongoConfigured('VERDANA'), livemode: paymongoLivemode('VERDANA'), recent })
 }
 
 // POST { amountPhp, description?, referenceCode?, branch?, orderId?, paymentMethodTypes? }
@@ -22,15 +23,17 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  if (!paymongoConfigured()) return NextResponse.json({ error: 'PayMongo is not configured on the server (PAYMONGO_SECRET_KEY missing).' }, { status: 400 })
   try {
     const b = await req.json()
+    const account = accountForBranch(b.branch)
+    if (!paymongoConfigured(account)) return NextResponse.json({ error: `PayMongo is not configured for ${account} (missing PAYMONGO_SECRET_KEY_${account}).` }, { status: 400 })
     const amountPhp = Number(b.amountPhp)
     if (!(amountPhp > 0)) return NextResponse.json({ error: 'A positive amount is required' }, { status: 400 })
     const referenceCode = (b.referenceCode || `POS-${Date.now()}`).toString().slice(0, 60)
 
     const origin = new URL(req.url).origin
     const cs = await createCheckoutSession({
+      account,
       amountPhp,
       description: b.description || 'POS payment',
       referenceCode,
@@ -43,9 +46,9 @@ export async function POST(req: Request) {
 
     const rec = await prisma.paymongoCheckout.create({
       data: {
-        checkoutId: cs.id, referenceCode, orderId: b.orderId || null, branch: b.branch || null,
+        checkoutId: cs.id, referenceCode, orderId: b.orderId || null, branch: b.branch || null, account,
         description: b.description || null, amount: amountPhp, status: 'PENDING', checkoutUrl: cs.checkoutUrl,
-        livemode: paymongoLivemode(), raw: cs.raw as object, createdById: session.user.id ?? null,
+        livemode: paymongoLivemode(account), raw: cs.raw as object, createdById: session.user.id ?? null,
       },
     })
     return NextResponse.json({ id: rec.id, checkoutId: cs.id, checkoutUrl: cs.checkoutUrl, referenceCode })
@@ -72,7 +75,7 @@ export async function DELETE(req: Request) {
 
   // Best-effort: expire the session on PayMongo so the link is dead.
   if (rec.status === 'PENDING' && rec.checkoutId) {
-    try { await expireCheckout(rec.checkoutId) } catch (e) { console.warn('[PayMongo] expire on delete failed (non-fatal):', e) }
+    try { await expireCheckout(rec.account || accountForBranch(rec.branch), rec.checkoutId) } catch (e) { console.warn('[PayMongo] expire on delete failed (non-fatal):', e) }
   }
   // Void the linked, never-paid POS order so it doesn't linger as UNPAID.
   if (rec.orderId) {

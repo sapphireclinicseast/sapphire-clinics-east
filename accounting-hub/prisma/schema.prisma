@@ -130,6 +130,7 @@ model Account {
   inventorySourceItems  InventoryItem[] @relation("InventorySourceAccount")
   inventoryExpenseItems InventoryItem[] @relation("InventoryExpenseAccount")
   discountSettings      DiscountSetting[]
+  voucherDiscounts      Voucher[]       @relation("VoucherDiscountAccount")
   wallets               DigitalWallet[] @relation("WalletAccount")
   arPaymentDiscounts    ARPayment[]     @relation("ARPaymentDiscountAccount")
   arPaymentCashAccounts ARPayment[]     @relation("ARPaymentCashAccount")
@@ -848,6 +849,23 @@ model PaymongoCheckout {
   referenceCode String?             // our reference (also sent as PayMongo metadata)
   orderId       String?             // linked POS order (set when the sale is recorded)
   branch        String?
+  // Which PayMongo merchant account issued this link: AHEA | AHGH | VERDANA | AHI.
+  // Each account has its own secret key, so payments/payouts are polled per account.
+  account       String?
+  // What is being paid for — either a Service or an Inventory product (never both).
+  serviceId         String?
+  inventoryItemId   String?
+  itemName          String?
+  // Payer details collected when the link is generated.
+  customerFirstName String?
+  customerLastName  String?
+  customerPhone     String?
+  customerEmail     String?
+  // Voucher applied (if any). grossAmount = list price before discount; amount = charged.
+  voucherId         String?
+  voucherCode       String?
+  grossAmount       Decimal?
+  discountAmount    Decimal?
   description   String?
   amount        Decimal             // gross (PHP)
   status        String    @default("PENDING") // PENDING | PAID | FAILED | EXPIRED
@@ -866,6 +884,56 @@ model PaymongoCheckout {
   @@index([status])
   @@index([orderId])
   @@index([payoutId])
+  @@index([account])
+  @@index([voucherId])
+}
+
+// Promo voucher codes applied to PayMongo checkout links (and reusable elsewhere).
+// Effectivity is either a date window or "lifetime" (never expires). A voucher can be
+// valid at several branches at once.
+model Voucher {
+  id            String   @id @default(cuid())
+  name          String
+  code          String   @unique          // what the customer types; matched case-insensitively
+  discountType  String   @default("PERCENTAGE") // PERCENTAGE | FIXED
+  discountValue Decimal  @default(0)      // 10 = 10% when PERCENTAGE; 200 = PHP 200 when FIXED
+  // Effectivity — isLifetime ignores the dates entirely.
+  isLifetime    Boolean  @default(false)
+  startDate     DateTime?
+  endDate       DateTime?
+  // Branch scope (PayMongo account codes: AHEA | AHGH | VERDANA | AHI). Empty = all.
+  branches      String[] @default([])
+  // Usage cap: UNLIMITED | ONCE_PER_CUSTOMER (by email) | MAX_USES (see maxUses).
+  usageLimitType String  @default("UNLIMITED")
+  maxUses        Int?
+  // Contra-revenue account this discount is booked to (chosen from the COA).
+  accountId     String?
+  account       Account? @relation("VoucherDiscountAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  isActive      Boolean  @default(true)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  redemptions   VoucherRedemption[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+// One row per successful use of a voucher — drives ONCE_PER_CUSTOMER and MAX_USES checks.
+model VoucherRedemption {
+  id             String   @id @default(cuid())
+  voucherId      String
+  voucher        Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  checkoutId     String?  // PaymongoCheckout.checkoutId that consumed it
+  customerEmail  String?
+  account        String?  // PayMongo account the redemption happened on
+  discountAmount Decimal  @default(0)
+  redeemedAt     DateTime @default(now())
+
+  @@index([voucherId])
+  @@index([customerEmail])
+  @@index([checkoutId])
 }
 
 // Singleton config for PayMongo payout auto-reconciliation. When autoReconcile is

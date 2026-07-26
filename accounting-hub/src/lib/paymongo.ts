@@ -3,35 +3,88 @@ import crypto from 'crypto'
 /**
  * Minimal PayMongo (api.paymongo.com/v1) client.
  * Amounts are handled in PHP here and converted to centavos for PayMongo.
- * Auth is HTTP Basic with the secret key. Configure via env:
- *   PAYMONGO_SECRET_KEY   (sk_test_… then sk_live_…)
- *   PAYMONGO_WEBHOOK_SECRET (whsk_… from the dashboard webhook)
+ * Auth is HTTP Basic with the secret key.
+ *
+ * MULTI-ACCOUNT: each branch is a separate PayMongo merchant account with its own
+ * secret key, so every call takes an account code and resolves the key from env.
+ * Secrets live ONLY in the environment — never in the repo:
+ *   PAYMONGO_SECRET_KEY_AHEA     (East)
+ *   PAYMONGO_SECRET_KEY_AHGH     (Greenhills)
+ *   PAYMONGO_SECRET_KEY_VERDANA  (Verdana Store — falls back to PAYMONGO_SECRET_KEY)
+ *   PAYMONGO_SECRET_KEY_AHI      (Aura Health Institute)
+ *   PAYMONGO_WEBHOOK_SECRET      (whsk_… ; may be a comma/space-separated list — one per account)
  */
 
 const BASE = 'https://api.paymongo.com/v1'
-const SECRET = process.env.PAYMONGO_SECRET_KEY || ''
 const WEBHOOK_SECRET = process.env.PAYMONGO_WEBHOOK_SECRET || ''
 
-export function paymongoConfigured(): boolean {
-  return !!SECRET
+/** PayMongo merchant accounts ↔ the accounting Branch enum. */
+export const PAYMONGO_ACCOUNTS = [
+  { code: 'AHEA', label: 'East Branch', branch: 'SANDBOX_EAST' },
+  { code: 'AHGH', label: 'Greenhills Branch', branch: 'SANDBOX_GREENHILLS' },
+  { code: 'VERDANA', label: 'Verdana Store', branch: 'VERDANA_STORE' },
+  { code: 'AHI', label: 'Aura Health Institute', branch: 'AURA_INSTITUTE' },
+] as const
+
+export type PaymongoAccount = typeof PAYMONGO_ACCOUNTS[number]['code']
+
+export function isPaymongoAccount(v: string): v is PaymongoAccount {
+  return PAYMONGO_ACCOUNTS.some(a => a.code === v)
 }
-export function paymongoLivemode(): boolean {
-  return SECRET.startsWith('sk_live')
+
+/**
+ * Map an accounting Branch (or a short code) to its PayMongo account.
+ * Defaults to VERDANA, which was the single account before multi-account support —
+ * so existing POS/Verdana call sites keep working unchanged.
+ */
+export function accountForBranch(branch?: string | null): PaymongoAccount {
+  const b = (branch || '').toUpperCase()
+  const hit = PAYMONGO_ACCOUNTS.find(a => a.branch === b || a.code === b)
+  if (hit) return hit.code
+  if (b === 'SBEA') return 'AHEA'
+  if (b === 'SBGH') return 'AHGH'
+  return 'VERDANA'
+}
+
+/** Resolve the secret key for an account. Verdana falls back to the original single-account var. */
+function secretFor(account: string): string {
+  const code = (account || '').toUpperCase()
+  const direct = process.env[`PAYMONGO_SECRET_KEY_${code}`] || ''
+  if (direct) return direct
+  if (code === 'VERDANA') return process.env.PAYMONGO_SECRET_KEY || ''
+  return ''
+}
+
+export function paymongoConfigured(account: string): boolean {
+  return !!secretFor(account)
+}
+export function paymongoLivemode(account: string): boolean {
+  return secretFor(account).startsWith('sk_live')
+}
+/** Which accounts currently have a key configured — drives the UI's per-branch state. */
+export function configuredAccounts(): { code: string; label: string; branch: string; configured: boolean; livemode: boolean }[] {
+  return PAYMONGO_ACCOUNTS.map(a => ({
+    code: a.code, label: a.label, branch: a.branch,
+    configured: paymongoConfigured(a.code),
+    livemode: paymongoLivemode(a.code),
+  }))
 }
 
 const toCentavos = (php: number) => Math.round(php * 100)
 const toPhp = (centavos: number | null | undefined) => (Number(centavos) || 0) / 100
 
-function authHeader(): string {
-  return 'Basic ' + Buffer.from(`${SECRET}:`).toString('base64')
+function authHeader(account: string): string {
+  return 'Basic ' + Buffer.from(`${secretFor(account)}:`).toString('base64')
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function pmFetch(path: string, init?: RequestInit): Promise<any> {
-  if (!SECRET) throw new Error('PayMongo is not configured (PAYMONGO_SECRET_KEY missing)')
+async function pmFetch(account: string, path: string, init?: RequestInit): Promise<any> {
+  if (!secretFor(account)) {
+    throw new Error(`PayMongo is not configured for ${account} (set PAYMONGO_SECRET_KEY_${(account || '').toUpperCase()})`)
+  }
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { Authorization: authHeader(), 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    headers: { Authorization: authHeader(account), 'Content-Type': 'application/json', ...(init?.headers || {}) },
     cache: 'no-store',
   })
   const json = await res.json().catch(() => ({}))
@@ -43,6 +96,7 @@ async function pmFetch(path: string, init?: RequestInit): Promise<any> {
 }
 
 export interface CheckoutInput {
+  account: string          // which merchant account issues the link
   amountPhp: number
   description?: string
   referenceCode?: string
@@ -51,15 +105,24 @@ export interface CheckoutInput {
   cancelUrl?: string
   paymentMethodTypes?: string[]
   metadata?: Record<string, string>
+  // Payer details — prefills the hosted page and appears on the payment record.
+  customerName?: string
+  customerEmail?: string
+  customerPhone?: string
 }
 
 // Create a hosted PayMongo checkout session. Returns the checkout id + URL to open/QR.
 export async function createCheckoutSession(input: CheckoutInput): Promise<{ id: string; checkoutUrl: string; raw: unknown }> {
+  const billing = {
+    ...(input.customerName ? { name: input.customerName } : {}),
+    ...(input.customerEmail ? { email: input.customerEmail } : {}),
+    ...(input.customerPhone ? { phone: input.customerPhone } : {}),
+  }
   const body = {
     data: {
       attributes: {
         line_items: [{
-          name: input.lineItemName || input.description || 'POS payment',
+          name: input.lineItemName || input.description || 'Payment',
           amount: toCentavos(input.amountPhp),
           currency: 'PHP',
           quantity: 1,
@@ -70,24 +133,25 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<{ id:
         ...(input.successUrl ? { success_url: input.successUrl } : {}),
         ...(input.cancelUrl ? { cancel_url: input.cancelUrl } : {}),
         ...(input.metadata ? { metadata: input.metadata } : {}),
+        ...(Object.keys(billing).length ? { billing } : {}),
         send_email_receipt: false,
         show_line_items: true,
       },
     },
   }
-  const json = await pmFetch('/checkout_sessions', { method: 'POST', body: JSON.stringify(body) })
+  const json = await pmFetch(input.account, '/checkout_sessions', { method: 'POST', body: JSON.stringify(body) })
   return { id: json.data.id, checkoutUrl: json.data.attributes.checkout_url, raw: json.data }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function retrieveCheckout(id: string): Promise<any> {
-  return (await pmFetch(`/checkout_sessions/${id}`)).data
+export async function retrieveCheckout(account: string, id: string): Promise<any> {
+  return (await pmFetch(account, `/checkout_sessions/${id}`)).data
 }
 
 // Expire a checkout session so its link can no longer be paid. Best-effort:
 // PayMongo rejects expiring an already-paid/expired session — callers ignore that.
-export async function expireCheckout(id: string): Promise<void> {
-  await pmFetch(`/checkout_sessions/${id}/expire`, { method: 'POST' })
+export async function expireCheckout(account: string, id: string): Promise<void> {
+  await pmFetch(account, `/checkout_sessions/${id}/expire`, { method: 'POST' })
 }
 
 // Normalise a PayMongo payment resource → PHP amount / fee / net.
@@ -106,12 +170,12 @@ export function parsePayment(p: any): { paymentId: string; amountPhp: number; fe
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function listPayments(params: { limit?: number; before?: string; after?: string } = {}): Promise<any[]> {
+export async function listPayments(account: string, params: { limit?: number; before?: string; after?: string } = {}): Promise<any[]> {
   const q = new URLSearchParams()
   if (params.limit) q.set('limit', String(params.limit))
   if (params.before) q.set('before', params.before)
   if (params.after) q.set('after', params.after)
-  const json = await pmFetch(`/payments?${q.toString()}`)
+  const json = await pmFetch(account, `/payments?${q.toString()}`)
   return json.data || []
 }
 
@@ -119,10 +183,10 @@ export async function listPayments(params: { limit?: number; before?: string; af
 // PayMongo deposits collected money to your bank as periodic payouts. There is no
 // payout webhook, so reconciliation polls this endpoint.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function listPayouts(params: { limit?: number } = {}): Promise<any[]> {
+export async function listPayouts(account: string, params: { limit?: number } = {}): Promise<any[]> {
   const q = new URLSearchParams()
   q.set('limit', String(params.limit || 20))
-  const json = await pmFetch(`/payouts?${q.toString()}`)
+  const json = await pmFetch(account, `/payouts?${q.toString()}`)
   return json.data || []
 }
 

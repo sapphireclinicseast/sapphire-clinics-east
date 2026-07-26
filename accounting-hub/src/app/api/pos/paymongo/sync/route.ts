@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { paymongoConfigured } from '@/lib/paymongo'
+import { PAYMONGO_ACCOUNTS, paymongoConfigured } from '@/lib/paymongo'
 import { syncPendingCheckouts } from '@/lib/paymongo-settle'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
@@ -10,7 +10,8 @@ const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AH
 export async function POST() {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  if (!paymongoConfigured()) return NextResponse.json({ error: 'PayMongo is not configured' }, { status: 400 })
+  // Any configured account is enough — syncPendingCheckouts walks each checkout's own account.
+  if (!PAYMONGO_ACCOUNTS.some(a => paymongoConfigured(a.code))) return NextResponse.json({ error: 'PayMongo is not configured' }, { status: 400 })
   try {
     const res = await syncPendingCheckouts()
     return NextResponse.json({ ok: true, ...res })

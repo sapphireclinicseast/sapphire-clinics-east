@@ -1,6 +1,6 @@
 import type { PaymongoCheckout } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { retrieveCheckout, parsePayment } from '@/lib/paymongo'
+import { retrieveCheckout, parsePayment, accountForBranch } from '@/lib/paymongo'
 import { postOrderJournal } from '@/lib/accounting/post-order'
 import { postJournalEntry } from '@/lib/accounting/posting'
 import { resolvePaymongoAccounts } from '@/lib/accounting/paymongo-accounts'
@@ -93,7 +93,8 @@ export async function syncPendingCheckouts(limit = 40): Promise<{ settled: numbe
   let settled = 0
   for (const rec of pending) {
     try {
-      const cs = await retrieveCheckout(rec.checkoutId)
+      // Each checkout belongs to a specific merchant account — query it with that key.
+      const cs = await retrieveCheckout(rec.account || accountForBranch(rec.branch), rec.checkoutId)
       const payment = cs?.attributes?.payments?.[0]
       const parsed = payment ? parsePayment(payment) : null
       const isPaid = parsed?.status === 'paid' || !!payment

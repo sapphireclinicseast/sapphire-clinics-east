@@ -38,7 +38,10 @@ export async function syncPayouts(prisma: PrismaClient, userId: string): Promise
   await prisma.paymongoSettings.update({ where: { id: 'singleton' }, data: { lastSyncAt: new Date() } })
 
   let payouts: unknown[]
-  try { payouts = await listPayouts({ limit: 20 }) }
+  // Auto-reconcile posts to the ONE bank configured in PaymongoSettings, so it stays scoped
+  // to the original (Verdana) merchant account. Per-account GL auto-posting is a follow-up;
+  // the PayMongo page shows each branch's payouts read-only in the meantime.
+  try { payouts = await listPayouts('VERDANA', { limit: 20 }) }
   catch (e) { console.error('[PayMongo] listPayouts failed:', e); return { recorded: 0, net: 0, skipped: 'api error' } }
 
   let accounts: { clearingAccountId: string; feeAccountId: string } | null = null
