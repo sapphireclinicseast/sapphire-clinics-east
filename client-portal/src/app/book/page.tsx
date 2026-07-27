@@ -83,10 +83,15 @@ export default function BookStep1Page() {
   // disabled in that case.
   const selectedIsEnabled = service ? isEnabled(service) : false
 
+  // OT & SLP are online as teletherapy only: instead of the in-clinic slot
+  // picker they go to a service-type catalog (single session / evaluation /
+  // packages) and pay via a per-service PayMongo checkout.
+  const selectedIsTele = service ? TELETHERAPY_ONLY.has(service) : false
+
   function next() {
     if (!service || !selectedIsEnabled) return
     const qs = new URLSearchParams({ branch, department: service }).toString()
-    router.push(`/book/slots?${qs}`)
+    router.push(selectedIsTele ? `/book/teletherapy?${qs}` : `/book/slots?${qs}`)
   }
 
   return (
@@ -188,7 +193,7 @@ export default function BookStep1Page() {
             onClick={next}
             className="btn-cta"
           >
-            Continue → Pick a slot
+            {selectedIsTele ? 'Continue → Choose a package' : 'Continue → Pick a slot'}
           </button>
         </div>
       </div>
