@@ -73,7 +73,6 @@ const SAMPLES = [
     program: 'Occupational Therapy', preferredField: 'Pediatric Occupational Therapy',
     city: 'Cebu City', region: 'Region VII', zip: '6000', addr1: '55 Osmeña Blvd.', addr2: 'Barangay Capitol Site',
     professionalEmail: 'hpjara@sapphireclinicseast.org', personalEmail: 'hpjara@sapphireclinicseast.org',
-    initialDecision: 'FOR_INTERVIEW',
     answers: {
       q1WhyApply: 'I am applying because the UGAT Fellowship would let me give my full attention to my internship instead of juggling part-time work. I want to learn deeply in a clinic that treats excellence and service as the same thing, and to start my career somewhere I can grow for years.',
       q2Initiatives: 'I organized a "Laro at Galaw" motor-skills play day for children at a nearby daycare, and I volunteer weekends building simple assistive tools for families who cannot afford them. For me, galing only matters if it reaches the people who need it.',
@@ -91,7 +90,6 @@ const SAMPLES = [
     program: 'Speech-Language Pathology', preferredField: 'Pediatric Speech Therapy',
     city: 'Pasig City', region: 'NCR', zip: '1600', addr1: '9 Ortigas Ave.', addr2: 'Barangay San Antonio',
     professionalEmail: 'hpjara@sapphireclinicseast.org', personalEmail: 'hpjara@sapphireclinicseast.org',
-    initialDecision: 'FOR_INTERVIEW',
     answers: {
       q1WhyApply: 'I am applying because I have finished my internship and want to focus completely on passing the licensure exam. The review support would take a real weight off my family, and I would be honored to begin my career at Aura, a clinic whose values match my own.',
       q2Initiatives: 'During my internship I ran free parent-coaching sessions for children with language delays and tutored classmates in phonetics for free, because I believe learning is meant to be shared.',
@@ -137,6 +135,10 @@ export async function POST(req: Request) {
 
   // Wipe any prior samples (cascade removes their apps + uploads).
   await prisma.ugatScholar.deleteMany({ where: { username: { startsWith: 'sample.' } } })
+  // Also clear any prior sample assessor account + its assignments.
+  const priorAdmins = await prisma.ugatAdmin.findMany({ where: { username: { startsWith: 'sample.' } }, select: { id: true } })
+  if (priorAdmins.length) await prisma.ugatAssessor.deleteMany({ where: { adminId: { in: priorAdmins.map((a) => a.id) } } })
+  await prisma.ugatAdmin.deleteMany({ where: { username: { startsWith: 'sample.' } } })
 
   // Tag the sample applications to the currently-open cycle so they show under
   // that academic year and can be graded by assigned assessors.
@@ -177,8 +179,11 @@ export async function POST(req: Request) {
     const sig = await makeSignature(fullName)
     if (sig) await prisma.ugatUpload.create({ data: { scholarId: scholar.id, kind: 'SIGNATURE', filename: 'signature.png', mimeType: 'image/png', data: sig } })
 
+    // Build a distinct motivational letter from this applicant's own answers so
+    // each sample reads differently when assessed (Step 2).
+    const who = p.track === 'TINDIG' ? `a ${p.program} graduate of ${p.school}, preparing for the licensure examination` : `a final-year ${p.program} intern at ${p.school}`
     const letter = await makePdf('Motivational Letter — ' + fullName,
-      `Dear UGAT Fellowship Team,\n\nMy name is ${fullName}, a final-year ${p.program} intern at ${p.school}. It is with great hope and sincerity that I submit my application to the UGAT Fellowship Program.\n\nThroughout my training I have tried to live out galing, aral, and tindig — striving to do my work well, to keep learning humbly, and to act with integrity even when no one is watching. This fellowship would not only ease the financial weight of my internship; it would place me in a community that shares those same values.\n\nI am ready to give back through meaningful service, and I would be honored to grow into a licensed clinician at Aura Health Rehab.\n\nWith respect and gratitude,\n${fullName}`)
+      `Dear UGAT Fellowship Team,\n\nMy name is ${fullName}, ${who}. It is with great hope and sincerity that I submit my application to the UGAT Fellowship Program.\n\n${p.answers.q1WhyApply}\n\n${p.answers.q3WhyProgram}\n\nBeyond my studies, I have tried to live out service in practice: ${p.answers.q2Initiatives}\n\nI am ready to give back through meaningful service, and I would be honored to grow into a licensed clinician at Aura Health Rehab.\n\nWith respect and gratitude,\n${fullName}`)
     if (letter) await prisma.ugatUpload.create({ data: { scholarId: scholar.id, kind: 'LETTER', filename: 'motivational-letter.pdf', mimeType: 'application/pdf', data: letter } })
 
     if (p.track === 'TINDIG') {
@@ -204,12 +209,25 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, created, password: PASSWORD })
+  // A ready sample assessor (Staff Admin) assigned to the open year at full
+  // weight, so the grading flow can be tried immediately: sign in as
+  // "sample.assessor" and grade the applicants in Application → Initial.
+  let assessor: string | null = null
+  if (academicYear) {
+    const a = await prisma.ugatAdmin.create({ data: { username: 'sample.assessor', name: 'Sample Assessor', kind: 'STAFF', passwordHash, passwordPlain: PASSWORD } })
+    await prisma.ugatAssessor.create({ data: { adminId: a.id, academicYear, weightPercent: 100 } })
+    assessor = `sample.assessor (assigned to A.Y. ${academicYear})`
+  }
+
+  return NextResponse.json({ ok: true, created, assessor, password: PASSWORD })
 }
 
 export async function DELETE(req: Request) {
   const tok = await tokenFromRequest(req)
   if (!tok || tok.role !== 'MAIN_ADMIN') return NextResponse.json({ error: 'Main administrator only.' }, { status: 403 })
   const r = await prisma.ugatScholar.deleteMany({ where: { username: { startsWith: 'sample.' } } })
+  const admins = await prisma.ugatAdmin.findMany({ where: { username: { startsWith: 'sample.' } }, select: { id: true } })
+  if (admins.length) await prisma.ugatAssessor.deleteMany({ where: { adminId: { in: admins.map((a) => a.id) } } })
+  await prisma.ugatAdmin.deleteMany({ where: { username: { startsWith: 'sample.' } } })
   return NextResponse.json({ ok: true, deleted: r.count })
 }
