@@ -347,6 +347,11 @@ function ServiceTile({
             DEVELOPMENTAL PEDIATRICIAN). */}
         {s.replace(/_/g, ' ')}
       </div>
+      {showTeleTag && (
+        <div className={`text-[10.5px] mt-1.5 leading-snug ${active && online ? 'text-white/75' : 'text-[color:var(--clay)]'}`}>
+          Online sessions are teletherapy. For face-to-face sessions, please contact the clinic branch.
+        </div>
+      )}
     </button>
   )
 }
