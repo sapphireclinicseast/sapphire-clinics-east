@@ -30,6 +30,29 @@ function BookTeletherapyInner() {
 
   useEffect(() => { if (!getSession()) router.push('/') }, [router])
 
+  function handleBookAndPay(item: { id: string; name: string }, dept: 'OT' | 'SLP') {
+    const url = checkoutUrlFor(branch, dept, item.id)
+    if (!url) return
+    // Open payment window immediately (must be synchronous in the click handler)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    // Fire-and-forget: create a tracking record in the ops hub so this booking
+    // appears in the Decking Module for the front desk to confirm and schedule.
+    const session = getSession()
+    if (session?.token) {
+      fetch('/api/booking-proxy/bookings-tele', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: session.token,
+          branch,
+          department: dept,
+          serviceId: item.id,
+          serviceName: item.name,
+        }),
+      }).catch(() => {}) // non-fatal — front desk can handle manually if this fails
+    }
+  }
+
   const dept = (department === 'OT' || department === 'SLP') ? (department as TeleDept) : null
   const branchName = branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
 
@@ -110,9 +133,12 @@ function BookTeletherapyInner() {
                         </div>
 
                         {url ? (
-                          <a href={url} target="_blank" rel="noreferrer" className="btn-cta shrink-0 !px-4 !py-2 !text-[13px]">
+                          <button
+                            onClick={() => handleBookAndPay(item, dept)}
+                            className="btn-cta shrink-0 !px-4 !py-2 !text-[13px]"
+                          >
                             Book &amp; Pay
-                          </a>
+                          </button>
                         ) : (
                           <button
                             disabled

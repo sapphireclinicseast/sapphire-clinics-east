@@ -15,8 +15,8 @@ import { prisma } from '@/lib/prisma'
 
 const ALLOWED_ROLES = new Set([
   'ADMIN', 'MARKETING_ADMIN',
-  'AHEA_ADMIN', 'AHGH_ADMIN',
-  'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK',
+  'SBEA_ADMIN', 'SBGH_ADMIN',
+  'SBEA_FRONT_DESK', 'SBGH_FRONT_DESK',
 ])
 
 const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const
@@ -55,13 +55,28 @@ export async function POST(
     )
   }
 
-  // Apply overrides from modal (staff/date/time can be reassigned by front desk)
+  // Apply overrides from modal (staff/date/time can be reassigned by front desk).
+  // For teletherapy bookings, staffId and date are null until the front desk
+  // assigns them here — the modal body must supply both.
   const effectiveStaffId  = overrides.staffId   || booking.staffId
   const effectiveDate     = overrides.date
     ? new Date(overrides.date + 'T00:00:00Z')
     : booking.date
   const effectiveStart    = overrides.startTime || booking.startTime
   const effectiveEnd      = overrides.endTime   || booking.endTime
+
+  if (!effectiveStaffId) {
+    return NextResponse.json(
+      { error: 'No therapist assigned — please select one in the modal.' },
+      { status: 400 },
+    )
+  }
+  if (!effectiveDate) {
+    return NextResponse.json(
+      { error: 'No date set — please select a date in the modal.' },
+      { status: 400 },
+    )
+  }
 
   // Compute the dayOfWeek the slot maps to in the recurring grid.
   const dow = DAY_NAMES[effectiveDate.getUTCDay()]

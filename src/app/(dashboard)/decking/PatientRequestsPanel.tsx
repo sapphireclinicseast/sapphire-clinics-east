@@ -22,7 +22,7 @@ interface BookingRow {
   status: 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED' | 'CANCELLED' | 'COMPLETED'
   branch: string
   department: string
-  date: string
+  date: string | null
   startTime: string
   endTime: string
   isTeletherapy: boolean
@@ -35,7 +35,7 @@ interface BookingRow {
   paidAt: string | null
   createdAt: string
   patient: { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
-  staff: { id: string; firstName: string; lastName: string; department: string; branch: string }
+  staff: { id: string; firstName: string; lastName: string; department: string; branch: string } | null
   payment: { status: string; amount: number | string; paidAt: string | null } | null
 }
 
@@ -147,16 +147,27 @@ export default function PatientRequestsPanel({ branch }: Props) {
     setSeenIds(getSeenBookings())
   }
 
-  // Open the "Add to Staff Deck" modal, pre-filling from the booking
+  async function confirmPayment(b: BookingRow) {
+    setBusy(b.id)
+    doMarkSeen(b.id)
+    try {
+      const r = await fetch(`/api/decking/bookings/${b.id}/confirm-payment`, { method: 'POST' })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error || 'Confirm payment failed')
+      await load()
+    } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
+  }
+
+  // Open the "Add to Staff Deck" modal, pre-filling from the booking.
+  // For teletherapy bookings, date and staff are null — front desk fills them.
   async function openDeckModal(b: BookingRow) {
-    // start with loading spinner in modal
-    const dateStr = b.date.slice(0, 10) // "2026-07-16"
+    const dateStr = b.date ? b.date.slice(0, 10) : new Date().toISOString().slice(0, 10)
     setDeckModal({
       booking: b,
-      staffId: b.staff.id,
+      staffId: b.staff?.id ?? '',
       date: dateStr,
-      startTime: b.startTime,
-      endTime: b.endTime,
+      startTime: b.startTime || '',
+      endTime: b.endTime || '',
       staffList: [],
       loadingStaff: true,
     })
@@ -216,8 +227,10 @@ export default function PatientRequestsPanel({ branch }: Props) {
 
   function renderRow(b: BookingRow, isDoneRow = false) {
     const who = `${b.patient.firstName ?? ''} ${b.patient.lastName ?? ''}`.trim()
-    const staffName = staffFullName(b.staff)
+    const staffName = b.staff ? staffFullName(b.staff) : 'TBD'
     const amount = b.payment?.amount ? `₱${Number(b.payment.amount).toLocaleString()}` : null
+    // Teletherapy PENDING = waiting for front-desk to confirm payment received
+    const isTelePending = b.isTeletherapy && b.status === 'PENDING'
     const isNew = !seenIds.has(b.id)
     return (
       <div
@@ -254,9 +267,14 @@ export default function PatientRequestsPanel({ branch }: Props) {
               {b.isTeletherapy && (
                 <span className="text-xs bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">tele</span>
               )}
-              {b.status === 'PENDING' && (
+              {b.status === 'PENDING' && !isTelePending && (
                 <span className="text-xs text-amber-800 bg-amber-100 px-2 py-0.5 rounded" title="Patient has not completed payment yet.">
                   ⏳ Awaiting Payment
+                </span>
+              )}
+              {isTelePending && (
+                <span className="text-xs text-violet-800 bg-violet-100 px-2 py-0.5 rounded" title="Verify in Accounting Hub that payment was received, then click Confirm.">
+                  ⏳ Awaiting Confirmation
                 </span>
               )}
               {b.status === 'PAID' && (
@@ -271,7 +289,9 @@ export default function PatientRequestsPanel({ branch }: Props) {
               )}
             </div>
             <div className="text-xs text-gray-600 mt-0.5 flex flex-wrap gap-x-3">
-              <span className="font-mono">{niceDate(b.date)} · {b.startTime}–{b.endTime} · with {staffName}</span>
+              <span className="font-mono">
+                {b.date ? niceDate(b.date) : 'Date TBD'} · {b.startTime || 'TBD'}–{b.endTime || 'TBD'} · with {staffName}
+              </span>
               {b.patient.email && <span>✉ {b.patient.email}</span>}
               {b.patient.phone && <span>☎ {b.patient.phone}</span>}
             </div>
@@ -279,42 +299,56 @@ export default function PatientRequestsPanel({ branch }: Props) {
           </div>
           {!isDoneRow && (
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                className={`px-3 py-1 rounded text-xs font-medium disabled:opacity-50 ${
-                  b.addedToDeck
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-                disabled={busy === b.id || b.addedToDeck || b.status === 'PENDING'}
-                onClick={(e) => { e.stopPropagation(); openDeckModal(b) }}
-                title={
-                  b.status === 'PENDING'
-                    ? 'Patient has not paid yet — wait for payment confirmation.'
-                    : b.addedToDeck
-                    ? 'Already added to this therapist\'s deck'
-                    : 'Add patient to the Decking grid'
-                }
-              >
-                {b.addedToDeck ? '✓ Added to Staff Deck' : 'Add to Staff Deck'}
-              </button>
-              <button
-                className={`px-3 py-1 rounded text-xs font-medium disabled:opacity-50 ${
-                  b.accountingRecorded
-                    ? 'bg-sky-50 text-sky-700 border border-sky-200 cursor-default'
-                    : 'bg-sky-600 text-white hover:bg-sky-700'
-                }`}
-                disabled={busy === b.id || b.accountingRecorded || b.status === 'PENDING'}
-                onClick={(e) => { e.stopPropagation(); markRecorded(b) }}
-                title={
-                  b.status === 'PENDING'
-                    ? 'Patient has not paid yet.'
-                    : b.accountingRecorded
-                    ? 'Already marked as recorded in accounting-hub'
-                    : 'Mark that the downpayment was logged in accounting-hub'
-                }
-              >
-                {b.accountingRecorded ? '✓ Recorded in Accounting Hub' : 'Recorded DP in Accounting Hub'}
-              </button>
+              {/* Teletherapy PENDING: front desk confirms payment received */}
+              {isTelePending ? (
+                <button
+                  className="px-3 py-1 rounded bg-violet-600 text-white hover:bg-violet-700 text-xs font-medium disabled:opacity-50"
+                  disabled={busy === b.id}
+                  onClick={(e) => { e.stopPropagation(); confirmPayment(b) }}
+                  title="Verify payment in Accounting Hub first, then click to confirm"
+                >
+                  Confirm Payment Received
+                </button>
+              ) : (
+                <>
+                  <button
+                    className={`px-3 py-1 rounded text-xs font-medium disabled:opacity-50 ${
+                      b.addedToDeck
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                    disabled={busy === b.id || b.addedToDeck || b.status === 'PENDING'}
+                    onClick={(e) => { e.stopPropagation(); openDeckModal(b) }}
+                    title={
+                      b.status === 'PENDING'
+                        ? 'Patient has not paid yet — wait for payment confirmation.'
+                        : b.addedToDeck
+                        ? 'Already added to this therapist\'s deck'
+                        : 'Add patient to the Decking grid'
+                    }
+                  >
+                    {b.addedToDeck ? '✓ Added to Staff Deck' : 'Add to Staff Deck'}
+                  </button>
+                  <button
+                    className={`px-3 py-1 rounded text-xs font-medium disabled:opacity-50 ${
+                      b.accountingRecorded
+                        ? 'bg-sky-50 text-sky-700 border border-sky-200 cursor-default'
+                        : 'bg-sky-600 text-white hover:bg-sky-700'
+                    }`}
+                    disabled={busy === b.id || b.accountingRecorded || b.status === 'PENDING'}
+                    onClick={(e) => { e.stopPropagation(); markRecorded(b) }}
+                    title={
+                      b.status === 'PENDING'
+                        ? 'Patient has not paid yet.'
+                        : b.accountingRecorded
+                        ? 'Already marked as recorded in accounting-hub'
+                        : 'Mark that the downpayment was logged in accounting-hub'
+                    }
+                  >
+                    {b.accountingRecorded ? '✓ Recorded in Accounting Hub' : 'Recorded DP in Accounting Hub'}
+                  </button>
+                </>
+              )}
               <button
                 className="px-3 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-medium disabled:opacity-50"
                 disabled={busy === b.id}
@@ -385,11 +419,15 @@ export default function PatientRequestsPanel({ branch }: Props) {
                       {s.firstName} {s.lastName} ({s.department.replace(/_/g, ' ')})
                     </option>
                   ))}
-                  {/* Fallback if current staff not in list */}
-                  {!deckModal.staffList.find((s) => s.id === deckModal.staffId) && (
+                  {/* Fallback if current staff not in list (only when a staff was preset) */}
+                  {deckModal.booking.staff && !deckModal.staffList.find((s) => s.id === deckModal.staffId) && (
                     <option value={deckModal.booking.staff.id}>
                       {staffFullName(deckModal.booking.staff)} (original)
                     </option>
+                  )}
+                  {/* Placeholder for teletherapy bookings with no pre-assigned therapist */}
+                  {!deckModal.booking.staff && !deckModal.staffId && (
+                    <option value="" disabled>— select therapist —</option>
                   )}
                 </select>
               )}

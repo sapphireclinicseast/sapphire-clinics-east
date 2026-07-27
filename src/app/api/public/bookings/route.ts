@@ -51,12 +51,16 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  const result = bookings.map((b) => ({
+  const result = bookings
+    // Exclude PENDING teletherapy bookings from the patient's session view —
+    // they have no date/staff yet and aren't actionable by the patient.
+    .filter((b) => !(b.isTeletherapy && b.status === 'PENDING' && !b.date))
+    .map((b) => ({
     id: b.id,
     status: b.status,
     branch: b.branch,
     department: b.department,
-    date: b.date.toISOString().slice(0, 10),
+    date: b.date ? b.date.toISOString().slice(0, 10) : '',
     startTime: b.startTime,
     endTime: b.endTime,
     alternateChoices: (b.alternateChoices as unknown) ?? null,
@@ -65,7 +69,9 @@ export async function GET(req: NextRequest) {
     notes: b.notes,
     downpayment: b.downpayment ? Number(b.downpayment) : null,
     rejectionReason: b.rejectionReason,
-    therapistInitials: `${b.staff.firstName?.[0] ?? '?'}${b.staff.lastName?.[0] ?? '?'}`.toUpperCase(),
+    therapistInitials: b.staff
+      ? `${b.staff.firstName?.[0] ?? '?'}${b.staff.lastName?.[0] ?? '?'}`.toUpperCase()
+      : '--',
     payment: b.payment
       ? {
           status: b.payment.status,
