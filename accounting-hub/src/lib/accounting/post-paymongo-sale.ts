@@ -1,30 +1,32 @@
 /**
- * Post a paid PayMongo payment link (the per-branch links generated on the PayMongo page)
- * to the general ledger, so the sale — and any voucher discount — shows in the reports.
+ * Post a paid PayMongo payment link to the general ledger as a COLLECTION, not a sale.
  *
- *   DR PayMongo Clearing (asset)        net (charged − processor fee)
- *   DR PayMongo Fees                    fee
- *   DR Voucher Discount (contra-rev)    discount        ← makes the promo visible in the P&L
- *     CR Service/Product Revenue        gross (list price before the voucher)
+ *   DR PayMongo Clearing (asset)      net (charged − processor fee)
+ *   DR PayMongo Fees (expense)        fee
+ *     CR Unearned Revenue (liability) charged
  *
- *   and for a product, the usual FIFO pair:
- *   DR COGS  /  CR Inventory            cost of the units sold
+ * Balances because net + fee = charged.
  *
- * Balance holds because charged = gross − discount and net = charged − fee, so
- * net + fee + discount = gross.
+ * Why not revenue: paying online is not the same event as receiving the service. The
+ * cashier's order — generated from the clinic schedule when the session actually happens —
+ * is what recognises revenue. Booking revenue here as well would count it twice. So the
+ * money sits in 4050 Unearned Revenue (a liability: we owe the patient a session) until
+ * that order draws it down.
  *
- * If the voucher has no COA account set we credit revenue NET of the discount instead of
- * inventing a discount line — the books stay balanced, the promo just isn't broken out.
+ * Consequences that follow from that, deliberately:
+ *   · A voucher discount is NOT broken out here. The patient's price IS the discounted
+ *     amount, and the promo belongs with the revenue when it is recognised.
+ *   · A product sale takes nothing out of stock and books no COGS. Inventory leaves when
+ *     the goods are handed over and the order records it, not when the money arrives.
+ *   · The processor fee IS expensed now — PayMongo has already done its collecting.
  *
- * referenceType is PAYMONGO_SALE (never POS_ORDER), so the Income Statement's journal fold
- * picks it up: credit-normal revenue adds to revenue, and a DEBIT-normal discount account
- * lands in "Discounts and Refunds" as a deduction.
+ * referenceType is PAYMONGO_SALE (never POS_ORDER). Nothing lands in the Income Statement
+ * from this entry; it moves the balance sheet only.
  */
 
 import type { PrismaClient } from '@prisma/client'
 import { postJournalEntry } from './posting'
 import { resolvePaymongoAccounts } from './paymongo-accounts'
-import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 
 export interface PaymongoSaleResult { posted: boolean; reason?: string; journalEntryId?: string }
 
@@ -50,49 +52,18 @@ export async function postPaymongoSale(
   if (existing) return { posted: false, reason: 'already posted', journalEntryId: existing.id }
 
   const charged = Number(co.amount)
-  const gross = co.grossAmount != null ? Number(co.grossAmount) : charged
-  const discount = co.discountAmount != null ? Number(co.discountAmount) : 0
   const fee = co.fee != null ? Number(co.fee) : 0
   const net = co.netAmount != null ? Number(co.netAmount) : charged - fee
   if (!(charged > 0)) return { posted: false, reason: 'zero amount' }
 
-  // ── Revenue account: from the Service or the Inventory product ──
-  let revenueAccountId: string | null = null
-  let label = co.itemName || co.description || 'PayMongo sale'
-  let product: {
-    id: string; name: string; quantity: number
-    expenseAccountId: string | null
-    sourceAccountId: string | null
-  } | null = null
+  const label = co.itemName || co.description || 'PayMongo payment'
 
-  if (co.serviceId) {
-    const svc = await prisma.service.findUnique({ where: { id: co.serviceId }, select: { name: true, revenueAccountId: true } })
-    if (!svc) return { posted: false, reason: 'service not found' }
-    revenueAccountId = svc.revenueAccountId
-    label = svc.name
-    if (!revenueAccountId) return { posted: false, reason: `service "${svc.name}" has no revenue account` }
-  } else if (co.inventoryItemId) {
-    const inv = await prisma.inventoryItem.findUnique({
-      where: { id: co.inventoryItemId },
-      select: { id: true, name: true, quantity: true, revenueAccountId: true, expenseAccountId: true, sourceAccountId: true },
-    })
-    if (!inv) return { posted: false, reason: 'product not found' }
-    revenueAccountId = inv.revenueAccountId
-    label = inv.name
-    product = { id: inv.id, name: inv.name, quantity: inv.quantity, expenseAccountId: inv.expenseAccountId, sourceAccountId: inv.sourceAccountId }
-    if (!revenueAccountId) return { posted: false, reason: `product "${inv.name}" has no revenue account` }
-  } else {
-    return { posted: false, reason: 'no service or product linked' }
-  }
-
-  // ── Voucher discount account (optional) ──
-  let discountAccountId: string | null = null
-  if (discount > 0 && co.voucherId) {
-    const v = await prisma.voucher.findUnique({ where: { id: co.voucherId }, select: { accountId: true } })
-    discountAccountId = v?.accountId || null
-  }
-  // Without a discount account we recognise revenue net of the discount instead.
-  const revenueCredit = discountAccountId && discount > 0 ? gross : charged
+  // 4050 Unearned Revenue — the liability the collection creates.
+  const unearned = await prisma.account.findFirst({
+    where: { accountNumber: '4050' },
+    select: { id: true },
+  })
+  if (!unearned) return { posted: false, reason: 'no 4050 Unearned Revenue account in the chart of accounts' }
 
   const pmAccts = await resolvePaymongoAccounts(prisma, opts.userId)
 
@@ -100,46 +71,19 @@ export async function postPaymongoSale(
     { accountId: pmAccts.clearingAccountId, debit: net, credit: 0, description: `PayMongo clearing — ${label}` },
   ]
   if (fee > 0) lines.push({ accountId: pmAccts.feeAccountId, debit: fee, credit: 0, description: 'PayMongo fee' })
-  if (discountAccountId && discount > 0) {
-    lines.push({ accountId: discountAccountId, debit: discount, credit: 0, description: `Voucher ${co.voucherCode || ''} — ${label}`.trim() })
-  }
-  lines.push({ accountId: revenueAccountId, debit: 0, credit: revenueCredit, description: label })
+  lines.push({
+    accountId: unearned.id, debit: 0, credit: charged,
+    description: `Collected online — ${label}${co.voucherCode ? ` (voucher ${co.voucherCode})` : ''}`,
+  })
 
-  const qty = Math.max(1, co.quantity || 1)
-
-  const je = await prisma.$transaction(async (tx) => {
-    // Product: take the units out of stock at FIFO cost and book the COGS pair.
-    if (product) {
-      const cogsAccountId = product.expenseAccountId
-      let invAccountId: string | null = null
-      if (product.sourceAccountId) {
-        const src = await tx.account.findUnique({ where: { id: product.sourceAccountId }, select: { id: true, accountType: true } })
-        if (src?.accountType === 'ASSET') invAccountId = src.id
-      }
-      if (cogsAccountId && invAccountId) {
-        const fifo = await consumeFifoLots(tx, product.id, qty)
-        const cost = Number(fifo?.totalCost || 0)
-        if (cost > 0) {
-          lines.push({ accountId: cogsAccountId, debit: cost, credit: 0, description: `COGS — ${product.name}` })
-          lines.push({ accountId: invAccountId, debit: 0, credit: cost, description: `Inventory out — ${product.name}` })
-        }
-        await tx.inventoryItem.update({ where: { id: product.id }, data: { quantity: { decrement: qty } } })
-        const nc = await recalcWeightedUnitCost(tx, product.id)
-        if (nc > 0) await tx.inventoryItem.update({ where: { id: product.id }, data: { unitCost: nc } })
-      }
-      // No COGS/inventory account configured → revenue is still posted; stock is untouched
-      // rather than silently going negative. Surfaced via the returned reason upstream.
-    }
-
-    return postJournalEntry(tx, {
-      entryDate: co.paidAt || new Date(),
-      description: `PayMongo sale — ${label}${co.voucherCode ? ` (voucher ${co.voucherCode})` : ''}`,
-      referenceType: 'PAYMONGO_SALE',
-      referenceId: co.checkoutId,
-      branch: co.branch || 'ALL',
-      createdById: opts.userId,
-      lines,
-    })
+  const je = await postJournalEntry(prisma, {
+    entryDate: co.paidAt || new Date(),
+    description: `PayMongo collection — ${label}${co.voucherCode ? ` (voucher ${co.voucherCode})` : ''}`,
+    referenceType: 'PAYMONGO_SALE',
+    referenceId: co.checkoutId,
+    branch: co.branch || 'ALL',
+    createdById: opts.userId,
+    lines,
   })
 
   return { posted: true, journalEntryId: je.id }

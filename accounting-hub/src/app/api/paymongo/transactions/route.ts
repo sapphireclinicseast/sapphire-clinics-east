@@ -95,7 +95,8 @@ export async function GET(req: Request) {
             }
             await prisma.voucherRedemption.updateMany({ where: { checkoutId: rec.checkoutId }, data: { customerEmail: em } })
           }
-          // Book the sale (and any voucher discount) so it reaches the Income Statement.
+          // Book the collection: cash into clearing, the obligation into unearned revenue.
+          // Revenue is recognised later, by the order raised from the clinic schedule.
           try {
             const posted = await postPaymongoSale(prisma, { checkoutId: rec.checkoutId, userId: session.user!.id as string })
             if (!posted.posted && posted.reason && !['already posted', 'GL posting off', 'test mode', 'posted via POS order'].includes(posted.reason)) {

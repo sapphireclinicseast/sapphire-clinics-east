@@ -52,6 +52,27 @@ function DeptBadge({ dept }: { dept: string }) {
   )
 }
 
+// How the payer actually paid, as reported by PayMongo on the settled payment.
+const METHOD_STYLE: Record<string, { label: string; bg: string; fg: string }> = {
+  QRPH:    { label: 'QRPh',        bg: '#e0f2fe', fg: '#075985' },
+  GCASH:   { label: 'GCash',       bg: '#dbeafe', fg: '#1e40af' },
+  PAYMAYA: { label: 'Maya',        bg: '#dcfce7', fg: '#166534' },
+  CARD:    { label: 'Credit Card', bg: '#ede9fe', fg: '#6d28d9' },
+}
+
+function MethodBadge({ method, status }: { method: string | null; status: string }) {
+  if (!method) {
+    // PayMongo only reports the instrument once the payment settles.
+    return <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{status === 'PAID' ? 'not reported' : '—'}</span>
+  }
+  const m = METHOD_STYLE[method.toUpperCase()] || { label: method, bg: '#f1f5f9', fg: '#475569' }
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: m.bg, color: m.fg }}>
+      {m.label}
+    </span>
+  )
+}
+
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
@@ -61,6 +82,7 @@ interface Txn {
   department: string | null; departmentLabel: string | null; kind: string | null
   voucherCode: string | null; grossAmount: number | null; discountAmount: number | null
   amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null
+  paymentMethodUsed: string | null
   paidAt: string | null; payoutId: string | null; livemode: boolean; createdAt: string
 }
 interface PayLink {
@@ -378,14 +400,15 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
               <th className="px-3 py-2 text-right font-semibold uppercase">Charged</th>
               <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
               <th className="px-3 py-2 text-right font-semibold uppercase">Net</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Paid via</th>
               <th className="px-3 py-2 text-left font-semibold uppercase">Status</th>
               <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>
             </tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
+                <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
               ) : txns.length === 0 ? (
-                <tr><td colSpan={11} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No transactions yet for this account.</td></tr>
+                <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No transactions yet for this account.</td></tr>
               ) : txns.map(t => (
                 <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(t.createdAt).toLocaleDateString('en-PH')}</td>
@@ -415,6 +438,7 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
                   <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(t.amount)}</td>
                   <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.fee != null ? peso(t.fee) : '—'}</td>
                   <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{t.netAmount != null ? peso(t.netAmount) : '—'}</td>
+                  <td className="px-3 py-2"><MethodBadge method={t.paymentMethodUsed} status={t.status} /></td>
                   <td className="px-3 py-2"><Badge s={t.status} />{t.payoutId && <span className="block text-[10px] mt-0.5" style={{ color: '#166534' }}>settled</span>}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {t.checkoutUrl && t.status === 'PENDING' && <a href={t.checkoutUrl} target="_blank" rel="noreferrer" className="mr-2" title="Open link"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>}
