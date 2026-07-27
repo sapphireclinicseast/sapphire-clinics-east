@@ -228,6 +228,7 @@ export async function POST(req: NextRequest) {
         amountPhp: downpaymentPhp,
         description: `Sapphire Clinics ${body.branch} — ${body.department} downpayment (${primary.date} ${primary.startTime})`,
         remarks: `Booking ${created.id} — ${patient.firstName} ${patient.lastName}`,
+        branch: body.branch,
       })
       await prisma.patientPayment.create({
         data: {
