@@ -112,7 +112,7 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function Console({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<'sessions' | 'payments' | 'aurora'>('sessions')
+  const [tab, setTab] = useState<'sessions' | 'payments' | 'users' | 'aurora'>('sessions')
   const [faqs, setFaqs] = useState<Faq[]>([])
   const [settings, setSettings] = useState<Settings>({ intro_message: '', system_prompt: '', fallback_message: '' })
   const [loading, setLoading] = useState(true)
@@ -230,7 +230,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="flex gap-1 mb-6 p-1 bg-[color:var(--off-white)] rounded-xl w-fit">
-        {([['sessions', 'Sessions'], ['payments', 'Payment History'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
+        {([['sessions', 'Sessions'], ['payments', 'Payment History'], ['users', 'Users'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -246,6 +246,8 @@ function Console({ onLogout }: { onLogout: () => void }) {
       {tab === 'sessions' && <SessionsView onUnauthorized={onLogout} />}
 
       {tab === 'payments' && <PaymentsView onUnauthorized={onLogout} />}
+
+      {tab === 'users' && <UsersView onUnauthorized={onLogout} />}
 
       {tab === 'aurora' && (
         <>
@@ -549,6 +551,127 @@ function PaymentsView({ onUnauthorized }: { onUnauthorized: () => void }) {
         &ldquo;For Clearing&rdquo; = the payment cleared on PayMongo but isn&rsquo;t yet reconciled to a bank payout. Live
         &ldquo;Remitted to Bank&rdquo; tracking (PayMongo Payouts API) is the next phase.
       </p>
+    </div>
+  )
+}
+
+// ── Users: patients who have a portal account, grouped by branch ─────────────
+
+interface AccountUser {
+  id: string
+  name: string
+  email: string | null
+  username: string | null
+  createdAt: string
+  lastSession: string | null
+  sessionCount: number
+}
+interface UserBranchGroup {
+  branch: string
+  branchLabel: string
+  users: AccountUser[]
+}
+
+function UsersView({ onUnauthorized }: { onUnauthorized: () => void }) {
+  const [groups, setGroups] = useState<UserBranchGroup[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [q, setQ] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true); setError('')
+    fetch('/api/admin/data/users')
+      .then(async (r) => {
+        if (r.status === 401) { onUnauthorized(); return null }
+        return r.json()
+      })
+      .then((d) => {
+        if (cancelled || !d) return
+        setGroups(d.branches ?? [])
+        setTotal(d.totalUsers ?? 0)
+      })
+      .catch(() => { if (!cancelled) setError('Could not load users.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [onUnauthorized])
+
+  const needle = q.trim().toLowerCase()
+  const filteredGroups = groups
+    .map((g) => ({
+      ...g,
+      users: needle
+        ? g.users.filter((u) =>
+            [u.name, u.email ?? '', u.username ?? ''].some((v) => v.toLowerCase().includes(needle)),
+          )
+        : g.users,
+    }))
+    .filter((g) => g.users.length > 0)
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-3 items-center mb-4">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search name, email, or username…"
+          className="px-3 py-2 rounded-lg border border-[color:var(--light-gray)] text-sm flex-1 min-w-[200px] focus:outline-none focus:border-[color:var(--teal)]"
+        />
+        <span className="text-sm text-[color:var(--mid-gray)]">{total} accounts</span>
+      </div>
+
+      <div className="mb-4 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900 leading-relaxed">
+        Passwords are stored encrypted (one-way hashed) and cannot be displayed — not even here. To give a
+        patient a known password, reset it from their record. Contact the developer to enable a reset button here.
+      </div>
+
+      {loading ? (
+        <div className="py-16 text-center text-[color:var(--mid-gray)]">Loading users…</div>
+      ) : error ? (
+        <div className="text-sm text-red-600">{error}</div>
+      ) : filteredGroups.length === 0 ? (
+        <div className="py-16 text-center text-[color:var(--mid-gray)]">No accounts found.</div>
+      ) : (
+        <div className="space-y-6">
+          {filteredGroups.map((g) => (
+            <section key={g.branch}>
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="text-sm font-semibold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+                  {g.branchLabel}
+                </h3>
+                <span className="text-xs text-[color:var(--mid-gray)]">({g.users.length})</span>
+              </div>
+              <div className="bg-white rounded-2xl border border-[color:var(--light-gray)] overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-[color:var(--mid-gray)] bg-[color:var(--off-white)]">
+                      <th className="px-4 py-2 font-semibold">Patient</th>
+                      <th className="px-3 py-2 font-semibold">Username</th>
+                      <th className="px-3 py-2 font-semibold">Email</th>
+                      <th className="px-3 py-2 font-semibold text-right">Sessions</th>
+                      <th className="px-3 py-2 font-semibold">Last session</th>
+                      <th className="px-4 py-2 font-semibold">Registered</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.users.map((u) => (
+                      <tr key={u.id} className="border-t border-[color:var(--light-gray)]">
+                        <td className="px-4 py-2 font-medium text-[color:var(--charcoal)] whitespace-nowrap">{u.name}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{u.username || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                        <td className="px-3 py-2 text-[color:var(--mid-gray)]">{u.email || '—'}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">{u.sessionCount}</td>
+                        <td className="px-3 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{u.lastSession || '—'}</td>
+                        <td className="px-4 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{u.createdAt}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
