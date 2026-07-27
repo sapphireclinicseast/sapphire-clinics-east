@@ -1,5 +1,5 @@
 // POST /api/public/ugat/admin/seed-samples   (MAIN_ADMIN only)
-// Creates 3 sample students with fully filled-out, SUBMITTED Part-I
+// Creates sample students with fully filled-out, SUBMITTED Part-I
 // applications (answers + a drawn signature + letter/grades PDFs) so the
 // admin can exercise the review + approve/disapprove flow. Idempotent:
 // re-running wipes the previous "sample.*" accounts and recreates them.
@@ -66,6 +66,42 @@ const SAMPLES = [
       q7FiveYearPlan: 'Within five years I hope to be a licensed SLP with focused adult neuro-rehab experience at Aura, taking continuing education in dysphagia and aphasia therapy, and helping mentor interns who are drawn to this specialty.',
     },
   },
+  {
+    username: 'sample.paolo', track: 'ARAL', firstName: 'Paolo Enrique', middleName: 'Garcia', lastName: 'Villanueva',
+    studentNumber: 'CDU-2021-2210', expectedGraduationYear: 2027, birthdate: '2003-01-30',
+    school: "Cebu Doctors' University",
+    program: 'Occupational Therapy', preferredField: 'Pediatric Occupational Therapy',
+    city: 'Cebu City', region: 'Region VII', zip: '6000', addr1: '55 Osmeña Blvd.', addr2: 'Barangay Capitol Site',
+    professionalEmail: 'hpjara@sapphireclinicseast.org', personalEmail: 'hpjara@sapphireclinicseast.org',
+    initialDecision: 'FOR_INTERVIEW',
+    answers: {
+      q1WhyApply: 'I am applying because the UGAT Fellowship would let me give my full attention to my internship instead of juggling part-time work. I want to learn deeply in a clinic that treats excellence and service as the same thing, and to start my career somewhere I can grow for years.',
+      q2Initiatives: 'I organized a "Laro at Galaw" motor-skills play day for children at a nearby daycare, and I volunteer weekends building simple assistive tools for families who cannot afford them. For me, galing only matters if it reaches the people who need it.',
+      q3WhyProgram: 'I chose Occupational Therapy because I love helping people regain the small, everyday abilities that give them independence and dignity — holding a spoon, writing their name, dressing themselves.',
+      q4StipendUse: 'The stipend would cover my transportation to clinical sites, materials for my pediatric cases, and part of my licensure review, with a little set aside to help at home.',
+      q5ReturnService: 'I am fully willing to render the complete return service and would be glad to stay on well beyond it — I see Aura as where I want to build my career.',
+      q6ArawNgKalinga: 'Yes, gladly. Community outreach is close to my heart, and I would happily take an active, hands-on role in Araw ng Kalinga each year.',
+      q7FiveYearPlan: 'In five years I hope to be a licensed OT with strong pediatric experience at Aura, pursuing further training in sensory integration and eventually mentoring interns.',
+    },
+  },
+  {
+    username: 'sample.bea', track: 'TINDIG', firstName: 'Beatriz Anne', middleName: 'Cruz', lastName: 'Mendoza',
+    studentNumber: 'UPM-2019-0774', expectedGraduationYear: 2026, birthdate: '2001-09-12',
+    school: 'University of the Philippines Manila (College of Allied Medical Professions)',
+    program: 'Speech-Language Pathology', preferredField: 'Pediatric Speech Therapy',
+    city: 'Pasig City', region: 'NCR', zip: '1600', addr1: '9 Ortigas Ave.', addr2: 'Barangay San Antonio',
+    professionalEmail: 'hpjara@sapphireclinicseast.org', personalEmail: 'hpjara@sapphireclinicseast.org',
+    initialDecision: 'FOR_INTERVIEW',
+    answers: {
+      q1WhyApply: 'I am applying because I have finished my internship and want to focus completely on passing the licensure exam. The review support would take a real weight off my family, and I would be honored to begin my career at Aura, a clinic whose values match my own.',
+      q2Initiatives: 'During my internship I ran free parent-coaching sessions for children with language delays and tutored classmates in phonetics for free, because I believe learning is meant to be shared.',
+      q3WhyProgram: 'I chose Speech-Language Pathology after helping a neighbor’s child say his first clear words with a simple picture board — I saw how communication gives a person their place in the world.',
+      q4StipendUse: 'The review support would go entirely to my licensure review program, materials, and the commute to review sessions.',
+      q5ReturnService: 'I am committed to the full return service and would love to keep practicing at Aura afterward — I am open to a long-term commitment.',
+      q6ArawNgKalinga: 'Yes, absolutely. Free screening and treatment is exactly the kind of work that drew me to this field, and I would be an active participant in Araw ng Kalinga.',
+      q7FiveYearPlan: 'Within five years I hope to be a licensed SLP with solid pediatric experience at Aura, taking continuing education in early intervention and helping grow our community programs.',
+    },
+  },
 ]
 
 async function makeSignature(name: string): Promise<Buffer | null> {
@@ -102,6 +138,12 @@ export async function POST(req: Request) {
   // Wipe any prior samples (cascade removes their apps + uploads).
   await prisma.ugatScholar.deleteMany({ where: { username: { startsWith: 'sample.' } } })
 
+  // Tag the sample applications to the currently-open cycle so they show under
+  // that academic year and can be graded by assigned assessors.
+  const now = new Date()
+  const openCycle = await prisma.ugatApplicationCycle.findFirst({ where: { opensAt: { lte: now }, closesAt: { gte: now } }, orderBy: { opensAt: 'desc' } })
+  const academicYear = openCycle?.academicYear ?? null
+
   const passwordHash = await hashPassword(PASSWORD)
   const created: string[] = []
 
@@ -124,9 +166,10 @@ export async function POST(req: Request) {
 
     await prisma.ugatApplication.create({
       data: {
-        scholarId: scholar.id, track: p.track,
+        scholarId: scholar.id, track: p.track, academicYear,
         ...p.answers,
-        truthAffirmed: true, signedAt: new Date(), submittedAt: new Date(), initialDecision: 'PENDING',
+        truthAffirmed: true, signedAt: new Date(), submittedAt: new Date(),
+        initialDecision: (p as { initialDecision?: string }).initialDecision || 'PENDING',
       },
     })
 
@@ -151,6 +194,14 @@ export async function POST(req: Request) {
     }
 
     created.push(p.username)
+  }
+
+  // Seed a few upcoming interview slots (only if none exist yet) so the
+  // interview-booking flow can be tried right away.
+  if ((await prisma.ugatInterviewSlot.count()) === 0) {
+    for (let i = 2; i <= 4; i++) {
+      await prisma.ugatInterviewSlot.create({ data: { startsAt: new Date(now.getTime() + i * 86400000), durationMins: 30, capacity: 3 } })
+    }
   }
 
   return NextResponse.json({ ok: true, created, password: PASSWORD })
