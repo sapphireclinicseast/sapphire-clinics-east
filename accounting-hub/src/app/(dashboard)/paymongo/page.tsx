@@ -533,7 +533,11 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Promo codes customers can enter on a generated payment link. A voucher only works at the branches you tick.</p>
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+          {canWrite
+            ? 'Promo codes customers can enter on a generated payment link. A voucher only works at the branches you tick.'
+            : 'View-only: the promo codes a patient can enter on a payment link, and where each one is valid.'}
+        </p>
         {canWrite && <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> New Voucher</button>}
       </div>
       {error && !open && <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>}
@@ -550,13 +554,13 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
             <th className="px-3 py-2 text-right font-semibold uppercase">Used</th>
             <th className="px-3 py-2 text-left font-semibold uppercase">Account</th>
             <th className="px-3 py-2 text-left font-semibold uppercase">Active</th>
-            <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>
+            {canWrite && <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>}
           </tr></thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
+              <tr><td colSpan={canWrite ? 10 : 9} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={10} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No vouchers yet.</td></tr>
+              <tr><td colSpan={canWrite ? 10 : 9} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No vouchers yet.</td></tr>
             ) : rows.map(v => (
               <tr key={v.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                 <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{v.name}</td>
@@ -577,10 +581,12 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
                 <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{v.uses}</td>
                 <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{v.accountLabel || '—'}</td>
                 <td className="px-3 py-2">{v.isActive ? <span style={{ color: '#166534' }}>Active</span> : <span style={{ color: 'var(--mid-gray)' }}>Inactive</span>}</td>
-                <td className="px-3 py-2 text-right whitespace-nowrap">
-                  {canWrite && <button onClick={() => openEdit(v)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--teal)' }}>Edit</button>}
-                  {canWrite && <button onClick={() => del(v)} title="Delete"><Trash2 size={13} className="text-red-500 inline" /></button>}
-                </td>
+                {canWrite && (
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <button onClick={() => openEdit(v)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--teal)' }}>Edit</button>
+                    <button onClick={() => del(v)} title="Delete"><Trash2 size={13} className="text-red-500 inline" /></button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -706,7 +712,10 @@ export default function PaymongoPage() {
 
   const TABS: { key: Tab; label: string }[] = [
     ...visibleAccounts.map(a => ({ key: a.code as Tab, label: a.label })),
-    ...(canWrite ? [{ key: 'VOUCHERS' as Tab, label: 'Voucher Discounts' }, { key: 'POS' as Tab, label: 'POS Links' }] : []),
+    // Vouchers are readable by everyone — front desk needs to look a code up for a patient —
+    // but only VOUCHER_WRITE roles get the New/Edit/Delete controls inside the panel.
+    { key: 'VOUCHERS', label: 'Voucher Discounts' },
+    ...(canWrite ? [{ key: 'POS' as Tab, label: 'POS Links' }] : []),
   ]
 
   // Land on a tab this role can actually open, whatever the default was.
