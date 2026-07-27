@@ -74,10 +74,8 @@ function BookTeletherapyInner() {
         <div className="mt-5 flex items-start gap-2.5 text-[12px] text-[color:var(--mid-gray)] px-3.5 py-3 rounded-xl bg-[color:var(--paper-2)] border border-[color:var(--paper-3)]" style={{ fontFamily: 'var(--font-display)' }}>
           <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[color:var(--moss)] shrink-0"></span>
           <span>
-            <strong className="text-[color:var(--narra)]">PWD / Senior Citizen discount (20% off).</strong>{' '}
-            The prices below show the regular rate and the discounted rate. To claim the discount,
-            ask our front desk for a <strong>PWD / Senior voucher code</strong> and enter it on the
-            payment page at checkout. Please have a valid PWD / Senior ID ready.
+            Prices show the regular rate and the net rate with a 20% PWD / Senior Citizen discount.
+            A voucher is available with frontdesk for the PWD discount after validation of ID.
           </span>
         </div>
 
