@@ -47,6 +47,15 @@ services:
       PAYMONGO_SECRET_KEY: ${PAYMONGO_SECRET_KEY:-}
       PAYMONGO_WEBHOOK_SECRET: ${PAYMONGO_WEBHOOK_SECRET:-}
       PAYMONGO_PUBLIC_KEY: ${PAYMONGO_PUBLIC_KEY:-}
+      # Per-branch PayMongo merchant accounts — each branch has its own secret key.
+      # Only the variable NAMES appear here; the secret values live in
+      # DEPLOY_DIR/docker/.env and are never committed. Without these passthroughs the
+      # app cannot see the per-account keys even when they are set in .env.
+      # VERDANA falls back to PAYMONGO_SECRET_KEY above (the original single account).
+      PAYMONGO_SECRET_KEY_AHEA: ${PAYMONGO_SECRET_KEY_AHEA:-}
+      PAYMONGO_SECRET_KEY_AHGH: ${PAYMONGO_SECRET_KEY_AHGH:-}
+      PAYMONGO_SECRET_KEY_VERDANA: ${PAYMONGO_SECRET_KEY_VERDANA:-}
+      PAYMONGO_SECRET_KEY_AHI: ${PAYMONGO_SECRET_KEY_AHI:-}
       # Tier 3: Enable General Ledger auto-posting (POS Order, AR Payment,
       # Inventory Adjustment, Asset, Depreciation, Closing Entry). Defaults
       # to false so a fresh install stays inert until the operator opts in.
