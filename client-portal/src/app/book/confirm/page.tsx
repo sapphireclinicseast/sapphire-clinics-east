@@ -22,8 +22,10 @@ function BookConfirmInner() {
   const therapistSex = sp.get('therapistSex') ?? ''
   const picksRaw = sp.get('picks') ?? '[]'
 
+  // OT & SLP are offered online as teletherapy only.
+  const teleOnly = department === 'OT' || department === 'SLP'
   const [picks, setPicks] = useState<SlotChoice[]>([])
-  const [isTele, setIsTele] = useState(false)
+  const [isTele, setIsTele] = useState(teleOnly)
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -42,7 +44,7 @@ function BookConfirmInner() {
       const res = await createBooking({
         token: session.token,
         branch, department,
-        isTeletherapy: isTele,
+        isTeletherapy: teleOnly || isTele,
         notes: notes.trim() || undefined,
         choices: picks,
       })
@@ -113,11 +115,23 @@ function BookConfirmInner() {
           </ul>
         </div>
 
-        <label className="flex items-start gap-3 p-4 rounded-2xl border border-[color:var(--light-gray)] hover:border-[color:var(--bright-teal)] cursor-pointer transition-colors mb-4">
-          <input type="checkbox" checked={isTele} onChange={(e) => setIsTele(e.target.checked)} className="mt-1 w-4 h-4 accent-[color:var(--teal)]" />
+        <label className={`flex items-start gap-3 p-4 rounded-2xl border mb-4 transition-colors ${teleOnly ? 'border-[color:var(--bright-teal)] bg-[color:var(--pale-teal)]/40 cursor-default' : 'border-[color:var(--light-gray)] hover:border-[color:var(--bright-teal)] cursor-pointer'}`}>
+          <input
+            type="checkbox"
+            checked={teleOnly ? true : isTele}
+            disabled={teleOnly}
+            onChange={(e) => setIsTele(e.target.checked)}
+            className="mt-1 w-4 h-4 accent-[color:var(--teal)]"
+          />
           <span className="flex-1">
-            <span className="block text-sm font-semibold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Request teletherapy</span>
-            <span className="block text-xs text-[color:var(--mid-gray)] mt-0.5">You&apos;ll receive a secure meeting link once the front desk approves and downpayment is received.</span>
+            <span className="block text-sm font-semibold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+              {teleOnly ? 'Teletherapy session' : 'Request teletherapy'}
+            </span>
+            <span className="block text-xs text-[color:var(--mid-gray)] mt-0.5">
+              {teleOnly
+                ? 'This service is offered online as teletherapy. You’ll receive a secure meeting link once the front desk approves and the downpayment is received.'
+                : 'You’ll receive a secure meeting link once the front desk approves and downpayment is received.'}
+            </span>
           </span>
         </label>
 
