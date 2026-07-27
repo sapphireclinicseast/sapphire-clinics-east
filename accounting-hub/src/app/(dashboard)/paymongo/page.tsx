@@ -197,9 +197,21 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
   }
 
   const del = async (t: Txn) => {
-    if (!confirm(`Delete this unpaid payment link${t.referenceCode ? ` (${t.referenceCode})` : ''}?`)) return
+    if (t.status === 'PAID') return                     // never removable; guarded server-side too
+    const what = t.itemName || t.description || 'this payment link'
+    if (!confirm(
+      `Delete the ${t.status.toLowerCase()} payment for ${what}?\n\n`
+      + 'The link is expired at PayMongo so it can no longer be paid, and the row is removed. '
+      + 'This cannot be undone.',
+    )) return
     const r = await fetch(`/api/paymongo/checkout?id=${encodeURIComponent(t.id)}`, { method: 'DELETE' })
-    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Failed'); return }
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}))
+      alert(j.error || 'Failed to delete')
+      // Most likely cause: it was paid since this table was loaded. Re-sync to show the truth.
+      load(true)
+      return
+    }
     load(false)
   }
 
@@ -442,7 +454,18 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
                   <td className="px-3 py-2"><Badge s={t.status} />{t.payoutId && <span className="block text-[10px] mt-0.5" style={{ color: '#166534' }}>settled</span>}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {t.checkoutUrl && t.status === 'PENDING' && <a href={t.checkoutUrl} target="_blank" rel="noreferrer" className="mr-2" title="Open link"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>}
-                    {canWrite && t.status !== 'PAID' && <button onClick={() => del(t)} title="Delete link"><Trash2 size={13} className="text-red-500 inline" /></button>}
+                    {/* A link the payer abandoned can sit PENDING forever, so it must be
+                        removable. A settled payment never is — the money is real. */}
+                    {canWrite && t.status !== 'PAID' && (
+                      <button onClick={() => del(t)} title="Expire this link at PayMongo and remove the row"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border"
+                        style={{ borderColor: '#fecaca', color: '#b91c1c', background: '#fef2f2' }}>
+                        <Trash2 size={11} /> Delete
+                      </button>
+                    )}
+                    {t.status === 'PAID' && (
+                      <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }} title="A settled payment cannot be deleted">paid — locked</span>
+                    )}
                   </td>
                 </tr>
               ))}
