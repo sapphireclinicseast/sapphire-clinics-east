@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
   // Use the first admin user as the system creator for this programmatic order.
   const systemUser = await prisma.user.findFirst({
-    where: { role: { in: ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN'] } },
+    where: { role: { in: ['ADMIN', 'ACCOUNTANT', 'AHEA_ADMIN', 'AHGH_ADMIN'] } },
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   })
