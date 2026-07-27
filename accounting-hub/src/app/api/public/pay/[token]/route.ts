@@ -44,9 +44,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const found = await loadLink(token)
   if (!found) return NextResponse.json({ error: 'This payment link is not available.' }, { status: 404 })
   const { link, itemName, gross } = found
+  // A promo baked into the link applies to everyone — reflect it in the shown price and
+  // don't ask the payer for a code in that case.
+  let linkDiscount = 0
+  if (link.voucherCode) {
+    const chk = await checkVoucher(prisma, { code: link.voucherCode, account: link.account, amountPhp: gross, atCreation: true })
+    if (chk.ok) linkDiscount = chk.discount || 0
+  }
   return NextResponse.json({
     itemName, quantity: link.quantity, amount: gross,
-    allowVoucher: link.allowVoucher,
+    linkVoucherCode: link.voucherCode, linkDiscount,
+    charged: Math.round((gross - linkDiscount) * 100) / 100,
+    allowVoucher: link.allowVoucher && !link.voucherCode,
     account: link.account, branchLabel: BRANCH_LABEL[link.account] || link.account,
     configured: paymongoConfigured(link.account),
   })
@@ -74,9 +83,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     // Voucher (optional) — full checks now apply because we know the payer's email.
     let voucherId: string | null = null, voucherCode: string | null = null
     let discountAmount = 0, amountPhp = gross
-    const rawCode = String(b.voucherCode || '').trim()
+    // The link's own promo wins; otherwise use whatever the payer typed.
+    const rawCode = link.voucherCode || String(b.voucherCode || '').trim()
     if (rawCode) {
-      if (!link.allowVoucher) return NextResponse.json({ error: 'Vouchers are not accepted on this link.' }, { status: 400 })
+      if (!link.voucherCode && !link.allowVoucher) return NextResponse.json({ error: 'Vouchers are not accepted on this link.' }, { status: 400 })
       const chk = await checkVoucher(prisma, { code: rawCode, account: link.account, amountPhp: gross, customerEmail: email })
       if (!chk.ok) return NextResponse.json({ error: chk.reason || 'That voucher code is not valid.' }, { status: 400 })
       voucherId = chk.voucher!.id; voucherCode = chk.voucher!.code

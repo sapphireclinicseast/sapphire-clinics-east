@@ -26,3 +26,7 @@ CREATE INDEX IF NOT EXISTS "PaymentLink_isActive_idx" ON "PaymentLink"("isActive
 
 ALTER TABLE "PaymongoCheckout" ADD COLUMN IF NOT EXISTS "paymentLinkId" TEXT;
 CREATE INDEX IF NOT EXISTS "PaymongoCheckout_paymentLinkId_idx" ON "PaymongoCheckout"("paymentLinkId");
+
+-- Optional promo pre-applied to a reusable link (every payer gets it automatically).
+ALTER TABLE "PaymentLink" ADD COLUMN IF NOT EXISTS "voucherId" TEXT;
+ALTER TABLE "PaymentLink" ADD COLUMN IF NOT EXISTS "voucherCode" TEXT;

@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPaymongoAccount, PAYMONGO_ACCOUNTS } from '@/lib/paymongo'
+import { checkVoucher } from '@/lib/vouchers'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
@@ -26,14 +27,23 @@ export async function GET(req: Request) {
     : []
   const paidMap = new Map(paid.map(p => [p.paymentLinkId, p._count._all]))
 
-  return NextResponse.json(links.map(l => ({
-    id: l.id, token: l.token, itemName: l.itemName, department: l.department,
-    quantity: l.quantity, unitPrice: Number(l.unitPrice),
-    amount: Number(l.unitPrice) * l.quantity,
-    allowVoucher: l.allowVoucher, isActive: l.isActive,
-    kind: l.serviceId ? 'SERVICE' : 'PRODUCT',
-    paidCount: paidMap.get(l.id) || 0,
-    createdAt: l.createdAt,
+  // Recompute the pre-applied discount live, so an edited voucher is reflected here.
+  return NextResponse.json(await Promise.all(links.map(async l => {
+    const gross = Math.round(Number(l.unitPrice) * l.quantity * 100) / 100
+    let discount = 0
+    if (l.voucherCode) {
+      const chk = await checkVoucher(prisma, { code: l.voucherCode, account: l.account, amountPhp: gross, atCreation: true })
+      discount = chk.ok ? (chk.discount || 0) : 0
+    }
+    return {
+      id: l.id, token: l.token, itemName: l.itemName, department: l.department,
+      quantity: l.quantity, unitPrice: Number(l.unitPrice),
+      gross, discount, charged: Math.round((gross - discount) * 100) / 100,
+      voucherCode: l.voucherCode, allowVoucher: l.allowVoucher, isActive: l.isActive,
+      kind: l.serviceId ? 'SERVICE' : 'PRODUCT',
+      paidCount: paidMap.get(l.id) || 0,
+      createdAt: l.createdAt,
+    }
   })))
 }
 
@@ -67,11 +77,24 @@ export async function POST(req: Request) {
     }
     if (!(unitPrice > 0)) return NextResponse.json({ error: 'The selected item has no price' }, { status: 400 })
 
+    // Optional promo baked into the link. Validated now (minus the per-payer email test,
+    // which runs when each payer checks out).
+    let voucherId: string | null = null, voucherCode: string | null = null
+    const rawCode = String(b.voucherCode || '').trim()
+    if (rawCode) {
+      const gross = Math.round(unitPrice * quantity * 100) / 100
+      const chk = await checkVoucher(prisma, { code: rawCode, account, amountPhp: gross, atCreation: true })
+      if (!chk.ok) return NextResponse.json({ error: chk.reason || 'Invalid voucher' }, { status: 400 })
+      if ((chk.netAmount ?? gross) <= 0) return NextResponse.json({ error: 'That voucher covers the full amount — nothing would be charged.' }, { status: 400 })
+      voucherId = chk.voucher!.id; voucherCode = chk.voucher!.code
+    }
+
     const link = await prisma.paymentLink.create({
       data: {
         token: crypto.randomBytes(9).toString('base64url'),   // ~12 chars, unguessable
         account, branch: branchOf(account),
         serviceId, inventoryItemId, itemName, department, quantity, unitPrice,
+        voucherId, voucherCode,
         allowVoucher: b.allowVoucher !== false,
         createdById: session.user.id ?? null,
       },

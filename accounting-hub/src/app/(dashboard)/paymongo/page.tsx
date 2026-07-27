@@ -37,7 +37,8 @@ interface Txn {
 }
 interface PayLink {
   id: string; token: string; itemName: string; department: string | null; quantity: number
-  unitPrice: number; amount: number; allowVoucher: boolean; isActive: boolean; kind: string; paidCount: number; createdAt: string
+  unitPrice: number; gross: number; discount: number; charged: number; voucherCode: string | null
+  allowVoucher: boolean; isActive: boolean; kind: string; paidCount: number; createdAt: string
 }
 interface Payout { payoutId: string; net: number; fee: number; status: string; settled: boolean; paidAt: string | null }
 interface Item { id: string; name: string; price: number; sku?: string; stock?: number; department?: string }
@@ -78,6 +79,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
   const [links, setLinks] = useState<PayLink[]>([])
   const [copiedToken, setCopiedToken] = useState('')
   const [allowVoucher, setAllowVoucher] = useState(true)
+  const [linkCode, setLinkCode] = useState('')
 
   const list = kind === 'SERVICE' ? items.services : items.products
   const chosen = list.find(i => i.id === itemId)
@@ -134,11 +136,11 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
     try {
       const r = await fetch('/api/paymongo/links', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account, kind, itemId, quantity: parseInt(qty, 10) || 1, allowVoucher }),
+        body: JSON.stringify({ account, kind, itemId, quantity: parseInt(qty, 10) || 1, allowVoucher, voucherCode: linkCode.trim() || undefined }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Failed to create link')
-      setItemId(''); setItemQuery('')
+      setItemId(''); setItemQuery(''); setLinkCode('')
       await load(false)
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
@@ -246,10 +248,13 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
               <div className="font-mono font-bold text-base" style={{ color: 'var(--deep-teal)' }}>{peso(gross)}</div>
             </div>
           </div>
-          <div className="md:col-span-2 flex items-end">
-            <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--charcoal)' }}>
-              <input type="checkbox" checked={allowVoucher} onChange={e => setAllowVoucher(e.target.checked)} />
-              Let the payer enter a voucher code
+          <div className="md:col-span-2">
+            <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Apply a voucher to this link (optional)</label>
+            <input value={linkCode} onChange={e => setLinkCode(e.target.value.toUpperCase())}
+              className="w-full px-3 py-2 rounded-xl border font-mono" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. SUMMER10" />
+            <label className="flex items-center gap-2 text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+              <input type="checkbox" checked={allowVoucher} onChange={e => setAllowVoucher(e.target.checked)} disabled={!!linkCode.trim()} />
+              {linkCode.trim() ? 'A voucher is applied to the link, so payers won\u2019t be asked for a code' : 'Otherwise, let each payer enter their own code'}
             </label>
           </div>
         </div>
@@ -264,43 +269,45 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
       <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
         <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
           <LinkIcon size={15} style={{ color: 'var(--teal)' }} />
-          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Payment Links — {label}</span>
-          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>· share these; each one works for any number of patients</span>
+          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Created Payment Links — {label}</span>
+          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>· reuse each link for any number of patients</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Date Created</th>
               <th className="px-3 py-2 text-left font-semibold uppercase">Item</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Amount</th>
               <th className="px-3 py-2 text-left font-semibold uppercase">Voucher</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Paid</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Status</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Link</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Gross</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Disc.</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Charged</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>
             </tr></thead>
             <tbody>
               {links.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No payment links yet — create one above.</td></tr>
+                <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No payment links yet — create one above.</td></tr>
               ) : links.map(l => {
                 const url = `${origin}/pay/${l.token}`
                 return (
                   <tr key={l.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(l.createdAt).toLocaleDateString('en-PH')}</td>
                     <td className="px-3 py-2">
-                      <span style={{ color: 'var(--charcoal)' }}>{l.itemName}{l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>
-                      {(l.department || l.kind === 'PRODUCT') && (
+                      <span style={{ color: 'var(--charcoal)' }}>{l.itemName}{l.quantity > 1 ? ` \u00d7${l.quantity}` : ''}</span>
+                      {(l.department || l.kind === 'PRODUCT' || !l.isActive) && (
                         <span className="block mt-0.5">
                           {l.department && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#eff6ff', color: '#1e40af' }}>{DEPT_LABELS[l.department] || l.department}</span>}
                           {l.kind === 'PRODUCT' && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>}
+                          {!l.isActive && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#f1f5f9', color: '#64748b' }}>Disabled</span>}
+                          {l.paidCount > 0 && <span className="ml-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{l.paidCount} paid</span>}
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(l.amount)}</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{l.allowVoucher ? 'Allowed' : '—'}</td>
-                    <td className="px-3 py-2 text-right font-semibold" style={{ color: l.paidCount > 0 ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>{l.paidCount}</td>
-                    <td className="px-3 py-2">
-                      {l.isActive
-                        ? <span style={{ color: '#166534' }}>Active</span>
-                        : <span style={{ color: 'var(--mid-gray)' }}>Disabled</span>}
+                    <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                      {l.voucherCode || (l.allowVoucher ? <span className="font-sans">payer may enter</span> : '\u2014')}
                     </td>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(l.gross)}</td>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: l.discount > 0 ? '#c44b00' : 'var(--light-gray)' }}>{l.discount > 0 ? peso(l.discount) : '\u2014'}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(l.charged)}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <button onClick={() => { navigator.clipboard?.writeText(url); setCopiedToken(l.token) }}
                         className="text-[11px] font-medium mr-2" style={{ color: copiedToken === l.token ? '#166534' : 'var(--teal)' }}>

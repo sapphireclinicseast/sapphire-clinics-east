@@ -858,6 +858,11 @@ model PaymentLink {
   department      String?
   quantity        Int      @default(1)
   unitPrice       Decimal             // snapshot; re-read from the catalogue on each visit
+  // Optional promo baked into the link: every payer gets this discount automatically.
+  // When set, the payer isn't asked for a code. When null, allowVoucher decides whether
+  // they may type their own.
+  voucherId       String?
+  voucherCode     String?
   allowVoucher    Boolean  @default(true)
   isActive        Boolean  @default(true)
   createdById     String?
