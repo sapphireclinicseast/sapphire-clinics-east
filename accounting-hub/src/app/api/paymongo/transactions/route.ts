@@ -44,10 +44,43 @@ export async function GET(req: Request) {
           if (!payment) continue
           const p = parsePayment(payment)
           if (p.status !== 'paid') continue
+
+          // The payer typed their details on PayMongo's hosted page — capture them from the
+          // payment's billing object. `name` is one field there, so split it on the last
+          // space into first/last for the table (single-word names go to first name).
+          const billing = (payment.attributes?.billing || {}) as { name?: string; email?: string; phone?: string }
+          const fullName = String(billing.name || '').trim()
+          const cut = fullName.lastIndexOf(' ')
+          const firstName = cut > 0 ? fullName.slice(0, cut).trim() : fullName
+          const lastName = cut > 0 ? fullName.slice(cut + 1).trim() : ''
+          const payerEmail = String(billing.email || '').trim() || null
+
           await prisma.paymongoCheckout.update({
             where: { id: rec.id },
-            data: { status: 'PAID', paymentId: p.paymentId, fee: p.feePhp, netAmount: p.netPhp, paidAt: p.paidAt, raw: payment as object },
+            data: {
+              status: 'PAID', paymentId: p.paymentId, fee: p.feePhp, netAmount: p.netPhp, paidAt: p.paidAt, raw: payment as object,
+              // Don't blank anything already recorded if PayMongo returns an empty billing object.
+              ...(firstName ? { customerFirstName: firstName } : {}),
+              ...(lastName ? { customerLastName: lastName } : {}),
+              ...(payerEmail ? { customerEmail: payerEmail } : {}),
+              ...(billing.phone ? { customerPhone: String(billing.phone).trim() } : {}),
+            },
           })
+
+          // Attach the payer's email to the voucher redemption reserved at link creation, so
+          // ONCE_PER_CUSTOMER is enforceable from here on. Flag a repeat rather than silently
+          // allowing it — the money is already collected, so this is a report, not a block.
+          if (rec.voucherId && payerEmail) {
+            const em = payerEmail.toLowerCase()
+            const v = await prisma.voucher.findUnique({ where: { id: rec.voucherId }, select: { usageLimitType: true, code: true } })
+            if (v?.usageLimitType === 'ONCE_PER_CUSTOMER') {
+              const prior = await prisma.voucherRedemption.count({
+                where: { voucherId: rec.voucherId, customerEmail: em, checkoutId: { not: rec.checkoutId } },
+              })
+              if (prior > 0) postWarnings.push(`${rec.referenceCode || rec.checkoutId}: voucher ${v.code} is once-per-customer but ${em} had already used it`)
+            }
+            await prisma.voucherRedemption.updateMany({ where: { checkoutId: rec.checkoutId }, data: { customerEmail: em } })
+          }
           // Book the sale (and any voucher discount) so it reaches the Income Statement.
           try {
             const posted = await postPaymongoSale(prisma, { checkoutId: rec.checkoutId, userId: session.user!.id as string })

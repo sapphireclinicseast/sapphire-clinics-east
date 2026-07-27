@@ -22,7 +22,15 @@ const r2 = (n: number) => Math.round(n * 100) / 100
  */
 export async function checkVoucher(
   tx: Tx,
-  opts: { code: string; account: string; amountPhp: number; customerEmail?: string | null },
+  opts: {
+    code: string; account: string; amountPhp: number; customerEmail?: string | null
+    /**
+     * True when validating while CREATING a payment link. The payer types their email on
+     * PayMongo's hosted page, so it isn't known yet — ONCE_PER_CUSTOMER therefore can't be
+     * checked here and is verified when the payment lands instead.
+     */
+    atCreation?: boolean
+  },
 ): Promise<VoucherCheck> {
   const code = (opts.code || '').trim().toUpperCase()
   if (!code) return { ok: false, reason: 'No voucher code given' }
@@ -58,9 +66,13 @@ export async function checkVoucher(
     }
   } else if (v.usageLimitType === 'ONCE_PER_CUSTOMER') {
     const email = (opts.customerEmail || '').trim().toLowerCase()
-    if (!email) return { ok: false, reason: 'An email address is required to use this voucher' }
-    const already = await tx.voucherRedemption.count({ where: { voucherId: v.id, customerEmail: email } })
-    if (already > 0) return { ok: false, reason: 'This voucher has already been used with that email address' }
+    if (!email) {
+      // At link creation the payer is unknown — allow it and re-check once they pay.
+      if (!opts.atCreation) return { ok: false, reason: 'An email address is required to use this voucher' }
+    } else {
+      const already = await tx.voucherRedemption.count({ where: { voucherId: v.id, customerEmail: email } })
+      if (already > 0) return { ok: false, reason: 'This voucher has already been used with that email address' }
+    }
   }
 
   const gross = Number(opts.amountPhp) || 0

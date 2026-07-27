@@ -62,10 +62,6 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
   const [itemQuery, setItemQuery] = useState('')
   const [itemOpen, setItemOpen] = useState(false)
   const [qty, setQty] = useState('1')
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [preview, setPreview] = useState<{ ok: boolean; reason?: string; discount?: number; netAmount?: number } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -119,7 +115,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
     if (!code.trim() || gross <= 0) { setPreview(null); return }
     const r = await fetch('/api/paymongo/vouchers/validate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, account, amountPhp: gross, email }),
+      body: JSON.stringify({ code, account, amountPhp: gross }),
     })
     setPreview(await r.json())
   }
@@ -129,12 +125,12 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
     try {
       const r = await fetch('/api/paymongo/checkout', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account, kind, itemId, quantity: parseInt(qty, 10) || 1, firstName, lastName, phone, email, voucherCode: code.trim() || undefined }),
+        body: JSON.stringify({ account, kind, itemId, quantity: parseInt(qty, 10) || 1, voucherCode: code.trim() || undefined }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Failed to create link')
       setLastUrl(j.checkoutUrl); setCopied(false)
-      setFirstName(''); setLastName(''); setPhone(''); setEmail(''); setCode(''); setPreview(null); setItemId(''); setItemQuery('')
+      setCode(''); setPreview(null); setItemId(''); setItemQuery('')
       await load(false)
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
@@ -146,7 +142,8 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
     load(false)
   }
 
-  const canSubmit = !!itemId && !!firstName.trim() && !!lastName.trim() && !!phone.trim() && !!email.trim() && gross > 0 && !(preview && !preview.ok)
+  // Only the item matters now — the payer fills in their own details on PayMongo's page.
+  const canSubmit = !!itemId && gross > 0 && !(preview && !preview.ok)
 
   return (
     <div className="space-y-4">
@@ -160,7 +157,8 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
 
       {/* ── Generate a payment link ── */}
       <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
-        <p className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Generate Payment Link — {label}</p>
+        <p className="text-sm font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Generate Payment Link — {label}</p>
+        <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>The payer enters their own name, contact number and email on the PayMongo checkout page — those details then appear in Transactions Received below. Each link is valid for a single payment, so generate one per patient.</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
           <div>
             <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Pay for</label>
@@ -222,10 +220,6 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
             <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Qty</label>
             <input type="number" min={1} value={qty} onChange={e => { setQty(e.target.value); setPreview(null) }} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
           </div>
-          <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>First name</label><input value={firstName} onChange={e => setFirstName(e.target.value)} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} /></div>
-          <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Last name</label><input value={lastName} onChange={e => setLastName(e.target.value)} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} /></div>
-          <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Contact number</label><input value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} placeholder="09xx xxx xxxx" /></div>
-          <div><label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div className="md:col-span-2">
             <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Voucher code (optional)</label>
             <div className="flex gap-2">
@@ -293,7 +287,15 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
               ) : txns.map(t => (
                 <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(t.createdAt).toLocaleDateString('en-PH')}</td>
-                  <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{t.customerName || '—'}{t.customerEmail && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>{t.customerEmail}</span>}</td>
+                  <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                    {/* Populated from the payer's own entries on the PayMongo page once paid. */}
+                    {t.customerName || <span style={{ color: 'var(--mid-gray)' }}>{t.status === 'PENDING' ? 'awaiting payer' : '—'}</span>}
+                    {(t.customerEmail || t.customerPhone) && (
+                      <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                        {[t.customerEmail, t.customerPhone].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{t.itemName || t.description || '—'}</td>
                   <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>{t.voucherCode || '—'}</td>
                   <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.grossAmount != null ? peso(t.grossAmount) : '—'}</td>

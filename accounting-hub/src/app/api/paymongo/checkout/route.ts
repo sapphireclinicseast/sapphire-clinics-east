@@ -27,13 +27,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `PayMongo is not configured for ${account}. Set PAYMONGO_SECRET_KEY_${account} on the server.` }, { status: 400 })
     }
 
-    const firstName = String(b.firstName || '').trim()
-    const lastName = String(b.lastName || '').trim()
-    const phone = String(b.phone || '').trim()
-    const email = String(b.email || '').trim()
-    if (!firstName || !lastName) return NextResponse.json({ error: 'First name and last name are required' }, { status: 400 })
-    if (!email) return NextResponse.json({ error: 'Email is required' }, { status: 400 })
-    if (!phone) return NextResponse.json({ error: 'Contact number is required' }, { status: 400 })
+    // Payer details are NOT collected here — the customer types their name, email and phone
+    // on PayMongo's hosted checkout page, and we capture them from the payment's billing
+    // object when the link is paid (see /api/paymongo/transactions sync).
 
     const kind = b.kind === 'PRODUCT' ? 'PRODUCT' : 'SERVICE'
     const itemId = String(b.itemId || '')
@@ -58,13 +54,14 @@ export async function POST(req: Request) {
     const grossAmount = Math.round(unitPrice * quantity * 100) / 100
     if (!(grossAmount > 0)) return NextResponse.json({ error: 'The selected item has no price' }, { status: 400 })
 
-    // Voucher (optional) — validated against this account, amount and email.
+    // Voucher (optional). ONCE_PER_CUSTOMER can't be checked yet (payer unknown) — it is
+    // re-verified when the payment lands, so pass atCreation.
     let voucherId: string | null = null
     let voucherCode: string | null = null
     let discountAmount = 0
     let amountPhp = grossAmount
     if (b.voucherCode && String(b.voucherCode).trim()) {
-      const chk = await checkVoucher(prisma, { code: String(b.voucherCode), account, amountPhp: grossAmount, customerEmail: email })
+      const chk = await checkVoucher(prisma, { code: String(b.voucherCode), account, amountPhp: grossAmount, atCreation: true })
       if (!chk.ok) return NextResponse.json({ error: chk.reason || 'Invalid voucher' }, { status: 400 })
       voucherId = chk.voucher!.id
       voucherCode = chk.voucher!.code
@@ -77,7 +74,6 @@ export async function POST(req: Request) {
 
     const referenceCode = `${account}-${Date.now()}`.slice(0, 60)
     const origin = new URL(req.url).origin
-    const customerName = `${firstName} ${lastName}`.trim()
     const description = `${itemName}${quantity > 1 ? ` x${quantity}` : ''}`
 
     const cs = await createCheckoutSession({
@@ -88,10 +84,9 @@ export async function POST(req: Request) {
       referenceCode,
       successUrl: `${origin}/paymongo?status=success&ref=${encodeURIComponent(referenceCode)}`,
       cancelUrl: `${origin}/paymongo?status=cancelled&ref=${encodeURIComponent(referenceCode)}`,
-      customerName, customerEmail: email, customerPhone: phone,
+      // No billing passed on purpose: PayMongo's page asks the payer for their details.
       metadata: {
         referenceCode, account, kind, itemId,
-        customer: customerName, email,
         ...(voucherCode ? { voucherCode } : {}),
       },
     })
@@ -101,17 +96,16 @@ export async function POST(req: Request) {
         data: {
           checkoutId: cs.id, referenceCode, account, branch: branchOf(account),
           serviceId, inventoryItemId, itemName, quantity,
-          customerFirstName: firstName, customerLastName: lastName, customerPhone: phone, customerEmail: email,
           voucherId, voucherCode,
           grossAmount, discountAmount,
           description, amount: amountPhp, status: 'PENDING', checkoutUrl: cs.checkoutUrl,
           livemode: paymongoLivemode(account), raw: cs.raw as object, createdById: session.user!.id ?? null,
         },
       })
-      // Reserve the voucher at link creation so MAX_USES / ONCE_PER_CUSTOMER hold even
-      // before payment. Deleting an unpaid link releases it again (see DELETE).
+      // Reserve the voucher now so MAX_USES holds even before payment; the payer's email is
+      // filled in on this redemption when the payment lands. Deleting an unpaid link releases it.
       if (voucherId) {
-        await recordRedemption(tx, { voucherId, checkoutId: cs.id, customerEmail: email, account, discountAmount })
+        await recordRedemption(tx, { voucherId, checkoutId: cs.id, account, discountAmount })
       }
       return created
     })
