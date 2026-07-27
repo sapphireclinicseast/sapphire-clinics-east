@@ -27,6 +27,7 @@ interface Patient {
   diagnosis?: string
   notes?: string
   referralUrl?: string | null
+  pwdIdUrl?: string | null
   firstDayOfConsult?: string | null
   pwdSeniorId?: string | null
   unsubscribed?: boolean
@@ -247,13 +248,25 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   // Doctor's Referral state
   const [referralUrls, setReferralUrls] = useState<Record<string, string | null>>({})
   const [referralUploading, setReferralUploading] = useState<Record<string, boolean>>({})
+  // PWD ID / Senior ID state
+  const [pwdIdUrls, setPwdIdUrls] = useState<Record<string, string | null>>({})
+  const [pwdIdUploading, setPwdIdUploading] = useState<Record<string, boolean>>({})
+  const [pwdIdInputFor, setPwdIdInputFor] = useState<string | null>(null)
+  const pwdIdInputRef = useRef<HTMLInputElement>(null)
+  // QR modal (shared between referral and PWD ID)
   const [qrModal, setQrModal] = useState<{
     patientId: string; patientName: string;
-    qrDataUrl: string; uploadUrl: string; expiresAt: string
+    qrDataUrl: string; uploadUrl: string; expiresAt: string;
+    docType: 'referral' | 'pwd-id'
   } | null>(null)
   const [qrLoading, setQrLoading] = useState(false)
   const referralInputRef = useRef<HTMLInputElement>(null)
   const [referralInputFor, setReferralInputFor] = useState<string | null>(null)
+  // Staged files for the Add Patient form (uploaded after patient creation)
+  const [addReferralFile, setAddReferralFile] = useState<File | null>(null)
+  const [addPwdIdFile, setAddPwdIdFile] = useState<File | null>(null)
+  const addReferralInputRef = useRef<HTMLInputElement>(null)
+  const addPwdIdInputRef = useRef<HTMLInputElement>(null)
 
   // Pagination
   const [page,     setPage]     = useState(1)
@@ -389,17 +402,31 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   // ── Add / Edit / Delete ───────────────────────────────────────────────────
   async function handleAddPatient(e: React.FormEvent) {
     e.preventDefault()
-    // For front desk users, always enforce their branch regardless of form state
-    const payload = forcedBranch
-      ? { ...form, branches: [forcedBranch] }
-      : form
-    await fetch('/api/patients', {
+    const payload = forcedBranch ? { ...form, branches: [forcedBranch] } : form
+    const res = await fetch('/api/patients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
+    if (res.ok) {
+      const { patient: created } = await res.json()
+      if (created?.id) {
+        // Upload staged referral if attached
+        if (addReferralFile) {
+          const fd = new FormData(); fd.append('file', addReferralFile)
+          await fetch(`/api/patients/${created.id}/referral`, { method: 'POST', body: fd }).catch(() => {})
+        }
+        // Upload staged PWD ID / Senior ID if attached
+        if (addPwdIdFile) {
+          const fd = new FormData(); fd.append('file', addPwdIdFile)
+          await fetch(`/api/patients/${created.id}/pwd-id`, { method: 'POST', body: fd }).catch(() => {})
+        }
+      }
+    }
     setShowAddForm(false)
     setForm({ ...EMPTY_FORM, branches: forcedBranch ? [forcedBranch] : [] })
+    setAddReferralFile(null)
+    setAddPwdIdFile(null)
     fetchPatients()
   }
 
@@ -426,14 +453,41 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
     const res = await fetch(`/api/patients/${patientId}/referral/token`, { method: 'POST' })
     const d = await res.json()
     setQrLoading(false)
-    if (res.ok) setQrModal(d)
+    if (res.ok) setQrModal({ ...d, docType: 'referral' })
+    else alert(d.error ?? 'Could not generate QR code')
+  }, [])
+
+  // ── PWD ID / Senior ID helpers ────────────────────────────────────────────
+  const uploadPwdId = useCallback(async (patientId: string, file: File) => {
+    setPwdIdUploading(s => ({ ...s, [patientId]: true }))
+    const fd = new FormData(); fd.append('file', file)
+    const res = await fetch(`/api/patients/${patientId}/pwd-id`, { method: 'POST', body: fd })
+    const d = await res.json()
+    if (res.ok) setPwdIdUrls(s => ({ ...s, [patientId]: d.pwdIdUrl }))
+    else alert(d.error ?? 'Upload failed')
+    setPwdIdUploading(s => ({ ...s, [patientId]: false }))
+  }, [])
+
+  const removePwdId = useCallback(async (patientId: string) => {
+    if (!confirm('Remove this PWD ID / Senior ID photo? This cannot be undone.')) return
+    const res = await fetch(`/api/patients/${patientId}/pwd-id`, { method: 'DELETE' })
+    if (res.ok) setPwdIdUrls(s => ({ ...s, [patientId]: null }))
+  }, [])
+
+  const openPwdIdQr = useCallback(async (patientId: string) => {
+    setQrLoading(true)
+    const res = await fetch(`/api/patients/${patientId}/pwd-id/token`, { method: 'POST' })
+    const d = await res.json()
+    setQrLoading(false)
+    if (res.ok) setQrModal({ ...d, docType: 'pwd-id' })
     else alert(d.error ?? 'Could not generate QR code')
   }, [])
 
   function openEdit(p: Patient) {
     setEditingId(p.id)
-    // Sync referral URL from patient record
+    // Sync referral and PWD ID URLs from patient record
     setReferralUrls(s => ({ ...s, [p.id]: p.referralUrl ?? null }))
+    setPwdIdUrls(s => ({ ...s, [p.id]: p.pwdIdUrl ?? null }))
     setEditForm({
       firstName:   p.firstName   ?? '',
       lastName:    p.lastName    ?? '',
@@ -919,8 +973,57 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                 lockedTo={forcedBranch || undefined}
               />
             </div>
+
+            {/* ── Doctor's Referral (add form) ── */}
+            <div className="p-3 rounded-xl" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--teal)' }}>
+                Doctor&apos;s Referral <span style={{ color: '#94A3B8', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+              </p>
+              {addReferralFile ? (
+                <div className="flex items-center gap-2">
+                  <FileText size={14} style={{ color: 'var(--teal)', flexShrink: 0 }} />
+                  <span className="text-xs truncate flex-1" style={{ color: 'var(--charcoal)' }}>{addReferralFile.name}</span>
+                  <button type="button" onClick={() => setAddReferralFile(null)}
+                    className="text-xs px-2 py-1 rounded-lg"
+                    style={{ background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => addReferralInputRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+                  style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                  <Upload size={13} /> Upload from Device
+                </button>
+              )}
+            </div>
+
+            {/* ── PWD ID / Senior ID (add form) ── */}
+            <div className="p-3 rounded-xl" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--teal)' }}>
+                PWD ID / Senior ID Photo <span style={{ color: '#94A3B8', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+              </p>
+              {addPwdIdFile ? (
+                <div className="flex items-center gap-2">
+                  <FileText size={14} style={{ color: 'var(--teal)', flexShrink: 0 }} />
+                  <span className="text-xs truncate flex-1" style={{ color: 'var(--charcoal)' }}>{addPwdIdFile.name}</span>
+                  <button type="button" onClick={() => setAddPwdIdFile(null)}
+                    className="text-xs px-2 py-1 rounded-lg"
+                    style={{ background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer', fontWeight: 600, flexShrink: 0 }}>
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => addPwdIdInputRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+                  style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                  <Upload size={13} /> Upload from Device
+                </button>
+              )}
+            </div>
+
             <div className="flex justify-end gap-3 pt-1">
-              <button type="button" onClick={() => setShowAddForm(false)}
+              <button type="button" onClick={() => { setShowAddForm(false); setAddReferralFile(null); setAddPwdIdFile(null) }}
                 className="px-4 py-2 rounded-lg text-sm"
                 style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                 Cancel
@@ -1187,6 +1290,73 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                         )}
                       </div>
 
+                      {/* ── PWD ID / Senior ID ──────────────────────────── */}
+                      <div className="mt-4 p-3 rounded-xl" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                        <p className="text-xs font-bold uppercase tracking-widest mb-2.5" style={{ color: 'var(--teal)' }}>
+                          PWD ID / Senior ID Photo <span style={{ color: '#94A3B8', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                        </p>
+
+                        {pwdIdUrls[p.id] ? (
+                          <div className="flex items-center gap-3">
+                            <a href={pwdIdUrls[p.id]!} target="_blank" rel="noreferrer"
+                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, background: '#EFF6FF', borderRadius: '0.5rem', border: '1px solid #BFDBFE', flexShrink: 0 }}>
+                              <FileText size={22} style={{ color: '#3B82F6' }} />
+                            </a>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold truncate" style={{ color: 'var(--charcoal)' }}>ID on file</p>
+                              <a href={pwdIdUrls[p.id]!} target="_blank" rel="noreferrer"
+                                className="text-xs" style={{ color: 'var(--teal)' }}>View document ↗</a>
+                            </div>
+                            <button onClick={() => removePwdId(p.id)}
+                              className="text-xs px-2.5 py-1.5 rounded-lg"
+                              style={{ background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setPwdIdInputFor(p.id); pwdIdInputRef.current?.click() }}
+                              disabled={pwdIdUploading[p.id]}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+                              style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer', opacity: pwdIdUploading[p.id] ? 0.7 : 1 }}>
+                              {pwdIdUploading[p.id]
+                                ? <><Loader2 size={13} className="animate-spin" /> Uploading…</>
+                                : <><Upload size={13} /> Upload from Device</>}
+                            </button>
+                            <button
+                              onClick={() => openPwdIdQr(p.id)}
+                              disabled={qrLoading}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+                              style={{ background: '#fff', color: 'var(--charcoal)', border: '1px solid #CBD5E1', cursor: 'pointer' }}>
+                              {qrLoading ? <Loader2 size={13} className="animate-spin" /> : <QrCode size={13} />}
+                              Scan QR with Phone
+                            </button>
+                          </div>
+                        )}
+                        {pwdIdUrls[p.id] && (
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => { setPwdIdInputFor(p.id); pwdIdInputRef.current?.click() }}
+                              disabled={pwdIdUploading[p.id]}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+                              style={{ background: '#fff', color: 'var(--teal)', border: '1px solid var(--teal)', cursor: 'pointer' }}>
+                              {pwdIdUploading[p.id]
+                                ? <><Loader2 size={13} className="animate-spin" /> Uploading…</>
+                                : <><Upload size={13} /> Replace Document</>}
+                            </button>
+                            <button
+                              onClick={() => openPwdIdQr(p.id)}
+                              disabled={qrLoading}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+                              style={{ background: '#fff', color: 'var(--charcoal)', border: '1px solid #CBD5E1', cursor: 'pointer' }}>
+                              {qrLoading ? <Loader2 size={13} className="animate-spin" /> : <QrCode size={13} />}
+                              Scan QR with Phone
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
                       {editError && (
                         <p className="text-xs mt-3 px-3 py-2 rounded-lg"
                           style={{ background: '#FEE2E2', color: '#DC2626' }}>
@@ -1247,7 +1417,8 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
         </div>
       )}
 
-      {/* ── Hidden referral file input ─────────────────────────────────────── */}
+      {/* ── Hidden file inputs ──────────────────────────────────────────────── */}
+      {/* Edit-view referral */}
       <input
         ref={referralInputRef}
         type="file"
@@ -1255,9 +1426,43 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
         style={{ display: 'none' }}
         onChange={e => {
           const file = e.target.files?.[0]
-          if (file && referralInputFor) {
-            uploadReferral(referralInputFor, file)
-          }
+          if (file && referralInputFor) uploadReferral(referralInputFor, file)
+          e.target.value = ''
+        }}
+      />
+      {/* Add-form referral */}
+      <input
+        ref={addReferralInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        style={{ display: 'none' }}
+        onChange={e => {
+          const file = e.target.files?.[0]
+          if (file) setAddReferralFile(file)
+          e.target.value = ''
+        }}
+      />
+      {/* Edit-view PWD ID / Senior ID */}
+      <input
+        ref={pwdIdInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        style={{ display: 'none' }}
+        onChange={e => {
+          const file = e.target.files?.[0]
+          if (file && pwdIdInputFor) uploadPwdId(pwdIdInputFor, file)
+          e.target.value = ''
+        }}
+      />
+      {/* Add-form PWD ID / Senior ID */}
+      <input
+        ref={addPwdIdInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        style={{ display: 'none' }}
+        onChange={e => {
+          const file = e.target.files?.[0]
+          if (file) setAddPwdIdFile(file)
           e.target.value = ''
         }}
       />
@@ -1283,13 +1488,15 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
             boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
           }}>
             <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
-              Doctor&apos;s Referral
+              {qrModal.docType === 'pwd-id' ? 'PWD ID / Senior ID' : 'Doctor\'s Referral'}
             </p>
             <h3 className="font-bold mb-1" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)', fontSize: '1.1rem' }}>
               {qrModal.patientName}
             </h3>
             <p className="text-xs mb-4" style={{ color: '#888' }}>
-              Scan this QR code with a phone or tablet to upload the referral document.
+              {qrModal.docType === 'pwd-id'
+                ? 'Scan this QR code with a phone or tablet to upload the PWD ID / Senior ID photo.'
+                : 'Scan this QR code with a phone or tablet to upload the referral document.'}
             </p>
             <img
               src={qrModal.qrDataUrl}

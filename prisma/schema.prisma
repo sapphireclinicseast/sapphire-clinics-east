@@ -220,6 +220,7 @@ model Patient {
   diagnosis          String?
   notes              String?
   referralUrl        String?    // optional doctor's referral document URL
+  pwdIdUrl           String?    // optional PWD ID photo URL
   firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
   pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
   unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
@@ -231,6 +232,7 @@ model Patient {
   surveyAssignments   SurveyAssignment[]
   deckingSlots        DeckingSlot[]
   referralTokens      ReferralUploadToken[]
+  pwdIdTokens         PwdIdUploadToken[]
   cancellationLogs    CancellationLog[]
   noShowLogs          NoShowLog[]
   patientBookings     PatientBooking[]
@@ -239,6 +241,16 @@ model Patient {
 }
 
 model ReferralUploadToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model PwdIdUploadToken {
   id        String   @id @default(cuid())
   token     String   @unique
   patientId String
@@ -349,7 +361,8 @@ model Staff {
   phone           String?
   sex             String?         // "M" | "F" — shown in patient portal (icon only)
   department      StaffDepartment
-  branch          String          // "SBEA" | "SBGH"
+  branch          String          // "SBEA" | "SBGH" — primary branch (from HR)
+  extraBranches   String[]        @default([]) // additional branches; never overwritten by sync
   dob             DateTime?       // Birthday — synced from HR Platform
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
   employmentType  String?         // "employee" | "consultant"
