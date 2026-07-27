@@ -9,10 +9,22 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 
+// Same per-department palette as the hub, so staff and payers see matching colours.
+const DEPT_COLORS: Record<string, { bg: string; fg: string }> = {
+  PT: { bg: '#dbeafe', fg: '#1e40af' }, OT: { bg: '#ede9fe', fg: '#6d28d9' },
+  ST: { bg: '#ccfbf1', fg: '#0f766e' }, SLP: { bg: '#ccfbf1', fg: '#0f766e' },
+  SPED: { bg: '#fef3c7', fg: '#92400e' }, PSY: { bg: '#fce7f3', fg: '#9d174d' },
+  PSYCHOLOGY: { bg: '#fce7f3', fg: '#9d174d' }, MD: { bg: '#fee2e2', fg: '#b91c1c' },
+  CLI: { bg: '#e0f2fe', fg: '#075985' }, DIG: { bg: '#e0e7ff', fg: '#3730a3' },
+  EDU: { bg: '#dcfce7', fg: '#166534' }, MER: { bg: '#ffedd5', fg: '#9a3412' },
+  OTHER: { bg: '#f1f5f9', fg: '#475569' },
+}
+
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface LinkInfo {
   itemName: string; quantity: number; amount: number
+  department: string | null; departmentLabel: string | null
   allowVoucher: boolean; branchLabel: string; configured: boolean
 }
 
@@ -100,7 +112,15 @@ export default function PayPage() {
   return shell(
     <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
       <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>{info.branchLabel}</p>
-      <h1 style={{ fontSize: 17, fontWeight: 700, color: '#1f2937', marginBottom: 2 }}>{info.itemName}</h1>
+      <h1 style={{ fontSize: 17, fontWeight: 700, color: '#1f2937', marginBottom: 4 }}>{info.itemName}</h1>
+      {info.departmentLabel && (() => {
+        const c = DEPT_COLORS[(info.department || '').toUpperCase()] || DEPT_COLORS.OTHER
+        return (
+          <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: c.bg, color: c.fg }}>
+            {info.departmentLabel}
+          </span>
+        )
+      })()}
       <p style={{ fontSize: 26, fontWeight: 700, color: '#0f766e', margin: '6px 0 4px' }}>
         {peso(charge)}
         {preview?.ok && (preview.discount || 0) > 0 && (

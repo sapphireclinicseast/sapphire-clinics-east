@@ -32,6 +32,13 @@ async function loadLink(token: string) {
   return { link, unitPrice, itemName, gross: Math.round(unitPrice * link.quantity * 100) / 100 }
 }
 
+const DEPT_LABELS: Record<string, string> = {
+  PT: 'Physical Therapy', OT: 'Occupational Therapy', ST: 'Speech Therapy',
+  SLP: 'Speech-Language Pathology', SPED: 'Special Education', PSY: 'Psychology',
+  PSYCHOLOGY: 'Psychology', MD: 'Medical Consultation', CLI: 'Clinic',
+  DIG: 'Digital & Tech', EDU: 'Training & Education', MER: 'Merchandise', OTHER: 'Other',
+}
+
 const BRANCH_LABEL: Record<string, string> = {
   AHEA: 'Aura Health Rehab — East Branch',
   AHGH: 'Aura Health Rehab — Greenhills Branch',
@@ -53,6 +60,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   }
   return NextResponse.json({
     itemName, quantity: link.quantity, amount: gross,
+    // Shown to the payer so "TELETHERAPY" alone isn't ambiguous.
+    department: link.department,
+    departmentLabel: link.department ? (DEPT_LABELS[link.department.toUpperCase()] || link.department) : null,
     linkVoucherCode: link.voucherCode, linkDiscount,
     charged: Math.round((gross - linkDiscount) * 100) / 100,
     allowVoucher: link.allowVoucher && !link.voucherCode,

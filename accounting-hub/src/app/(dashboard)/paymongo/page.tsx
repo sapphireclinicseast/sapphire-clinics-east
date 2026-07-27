@@ -24,6 +24,33 @@ const DEPT_LABELS: Record<string, string> = {
   EDU: 'Training & Education', MER: 'Merchandise', OTHER: 'Other',
 }
 
+// Distinct colour per department so a long list is scannable at a glance.
+const DEPT_COLORS: Record<string, { bg: string; fg: string }> = {
+  PT:         { bg: '#dbeafe', fg: '#1e40af' },  // blue
+  OT:         { bg: '#ede9fe', fg: '#6d28d9' },  // violet
+  ST:         { bg: '#ccfbf1', fg: '#0f766e' },  // teal
+  SLP:        { bg: '#ccfbf1', fg: '#0f766e' },  // teal (same discipline as ST)
+  SPED:       { bg: '#fef3c7', fg: '#92400e' },  // amber
+  PSY:        { bg: '#fce7f3', fg: '#9d174d' },  // pink
+  PSYCHOLOGY: { bg: '#fce7f3', fg: '#9d174d' },
+  MD:         { bg: '#fee2e2', fg: '#b91c1c' },  // red
+  CLI:        { bg: '#e0f2fe', fg: '#075985' },  // sky
+  DIG:        { bg: '#e0e7ff', fg: '#3730a3' },  // indigo
+  EDU:        { bg: '#dcfce7', fg: '#166534' },  // green
+  MER:        { bg: '#ffedd5', fg: '#9a3412' },  // orange
+  OTHER:      { bg: '#f1f5f9', fg: '#475569' },  // slate
+}
+
+function DeptBadge({ dept }: { dept: string }) {
+  const key = dept.toUpperCase()
+  const c = DEPT_COLORS[key] || DEPT_COLORS.OTHER
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap" style={{ background: c.bg, color: c.fg }}>
+      {DEPT_LABELS[key] || dept}
+    </span>
+  )
+}
+
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
@@ -295,7 +322,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
                       <span style={{ color: 'var(--charcoal)' }}>{l.itemName}{l.quantity > 1 ? ` \u00d7${l.quantity}` : ''}</span>
                       {(l.department || l.kind === 'PRODUCT' || !l.isActive) && (
                         <span className="block mt-0.5">
-                          {l.department && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#eff6ff', color: '#1e40af' }}>{DEPT_LABELS[l.department] || l.department}</span>}
+                          {l.department && <DeptBadge dept={l.department} />}
                           {l.kind === 'PRODUCT' && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>}
                           {!l.isActive && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#f1f5f9', color: '#64748b' }}>Disabled</span>}
                           {l.paidCount > 0 && <span className="ml-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{l.paidCount} paid</span>}
@@ -370,9 +397,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
                     <span style={{ color: 'var(--charcoal)' }}>{t.itemName || t.description || '—'}</span>
                     {(t.departmentLabel || t.kind === 'PRODUCT') && (
                       <span className="block mt-0.5">
-                        {t.departmentLabel && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#eff6ff', color: '#1e40af' }}>{t.departmentLabel}</span>
-                        )}
+                        {t.department && <DeptBadge dept={t.department} />}
                         {t.kind === 'PRODUCT' && (
                           <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>
                         )}
