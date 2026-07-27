@@ -135,7 +135,7 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
         {/* Header */}
         <div style={{ background: 'linear-gradient(135deg, #1a7b8a 0%, #0f5f6b 100%)', padding: '28px 24px', color: '#fff', textAlign: 'center' }}>
           <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.1em', opacity: 0.8, marginBottom: 4, textTransform: 'uppercase' }}>
-            SAPPHIRE Clinics
+            Sapphire Clinics East Inc.
           </div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>Patient Registration</h1>
           <p style={{ fontSize: '0.82rem', marginTop: 6, opacity: 0.85 }}>
