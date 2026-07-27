@@ -281,6 +281,35 @@ body {
 }
 .input::placeholder { color: var(--mid-gray); }
 
+/* File upload input — matches .input frame with a pill "Choose file" button */
+.input-file {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1.5px solid var(--paper-3);
+  font-size: 13px;
+  font-family: var(--font-body);
+  color: var(--mid-gray);
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-file:focus { outline: none; border-color: var(--sage); box-shadow: 0 0 0 3px rgba(123, 152, 138, 0.18); }
+.input-file::file-selector-button {
+  margin-right: 12px;
+  padding: 7px 14px;
+  border-radius: 9px;
+  border: 0;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--deep-teal);
+  background: var(--pale-teal);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.input-file:hover::file-selector-button { background: var(--teal); color: #fff; }
+
 .label {
   display: block;
   font-family: var(--font-display);

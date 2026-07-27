@@ -129,6 +129,7 @@ export async function GET(
       branches: patient.branches,
       branch: patient.branch,
       referralUrl: patient.referralUrl,
+      pwdIdUrl: patient.pwdIdUrl,
     },
     stats: {
       total: totalSessions,

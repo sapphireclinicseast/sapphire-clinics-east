@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
       patientType: true, diagnosis: true, city: true, branch: true,
       email: true, phone: true, address: true, civilStatus: true,
       pwdSeniorId: true, username: true, profilePhoto: true,
+      referralUrl: true, pwdIdUrl: true,
     },
   })
   if (!patient) {
@@ -193,6 +194,8 @@ export async function GET(req: NextRequest) {
     pwdSeniorId: patient.pwdSeniorId ? patient.pwdSeniorId.trim() : null,
     username: patient.username ?? null,
     profilePhoto: patient.profilePhoto ?? null,
+    referralUrl: patient.referralUrl ?? null,
+    pwdIdUrl: patient.pwdIdUrl ?? null,
   }
 
   return withCors(NextResponse.json({ profile, servicesAvailed, sessions, surveys }), origin)
