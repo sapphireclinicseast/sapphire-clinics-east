@@ -24,6 +24,19 @@ const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string
 
 const HR_FORM_BASE = 'https://hr.sapphireclinicseast.org/forms/fill/'
 
+// Partner institutions get priority — the front desk should schedule them first.
+const PARTNER_INSTITUTIONS = new Set([
+  'Asian Institute of Management', 'BOMBA Pilipinas', 'Light Bearer Christian Academy',
+  'NU East Ortigas', "The Abba's Orchard", 'Xavier School San Juan',
+])
+function isPartnerResponse(item: any): boolean {
+  return (item?.answers || []).some((a: any) => {
+    if (a?.choice?.label && PARTNER_INSTITUTIONS.has(a.choice.label)) return true
+    if (Array.isArray(a?.choices?.labels)) return a.choices.labels.some((l: string) => PARTNER_INSTITUTIONS.has(l))
+    return false
+  })
+}
+
 type FormType = typeof FORM_TYPES[0]
 interface ResponseItem {
   landing_id: string
@@ -454,15 +467,17 @@ export default function RegistrationFormsClient({ role }: Props) {
                             : false
                           const respName = getResponsePatientName(item, results.fields).toLowerCase().trim()
                           const converted = respName !== '' && patientNames.has(respName)
+                          const partner = isPartnerResponse(item)
                           return (
                           <tr
                             key={item.landing_id || i}
                             className="transition-colors"
                             style={{
                               borderTop: '1px solid var(--border)',
-                              // Priority: if converted → green; if new only → yellow; else plain
-                              background: converted ? '#F0FDF4' : isNew ? '#FEFCE8' : undefined,
-                              borderLeft: converted ? '3px solid #16A34A' : isNew ? '3px solid #EAB308' : '3px solid transparent',
+                              // Priority: converted → green; partner institution → yellow (prioritize);
+                              // new only → pale yellow; else plain.
+                              background: converted ? '#F0FDF4' : partner ? '#FEF9C3' : isNew ? '#FEFCE8' : undefined,
+                              borderLeft: converted ? '3px solid #16A34A' : partner ? '3px solid #F59E0B' : isNew ? '3px solid #EAB308' : '3px solid transparent',
                             }}
                           >
                             <td className="px-3 py-2" style={{ color: converted ? '#15803D' : isNew ? '#854D0E' : undefined, fontWeight: (isNew || converted) ? 600 : undefined }}>{i + 1}</td>
@@ -477,6 +492,11 @@ export default function RegistrationFormsClient({ role }: Props) {
                                 {converted && (
                                   <span style={{ background: '#DCFCE7', color: '#15803D', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }}>
                                     CONVERTED
+                                  </span>
+                                )}
+                                {partner && (
+                                  <span style={{ background: '#FDE047', color: '#854D0E', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }} title="Registrant is from a partner institution">
+                                    For prioritization
                                   </span>
                                 )}
                               </div>

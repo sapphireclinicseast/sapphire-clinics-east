@@ -9,6 +9,19 @@ import {
 
 type Tab = 'waitlist' | 'followup' | 'noshow' | 'cancellation'
 
+// Partner institutions get priority — the front desk should schedule them first.
+const PARTNER_INSTITUTIONS = new Set([
+  'Asian Institute of Management', 'BOMBA Pilipinas', 'Light Bearer Christian Academy',
+  'NU East Ortigas', "The Abba's Orchard", 'Xavier School San Juan',
+])
+function isPartnerResponse(item: any): boolean {
+  return (item?.answers || []).some((a: any) => {
+    if (a?.choice?.label && PARTNER_INSTITUTIONS.has(a.choice.label)) return true
+    if (Array.isArray(a?.choices?.labels)) return a.choices.labels.some((l: string) => PARTNER_INSTITUTIONS.has(l))
+    return false
+  })
+}
+
 const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
@@ -260,9 +273,10 @@ function WaitlistTab({ branch }: { branch: string }) {
               <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>No responses found.</td></tr>
             ) : paginated.map((item: any) => {
               const converted = isConverted(item)
+              const partner = isPartnerResponse(item)
               return (
               <Fragment key={item.landing_id}>
-                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: converted ? '#F0FDF4' : undefined }}
+                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: converted ? '#F0FDF4' : partner ? '#FEF9C3' : undefined, borderLeft: partner && !converted ? '3px solid #F59E0B' : undefined }}
                   onClick={() => setExpanded(expanded === item.landing_id ? null : item.landing_id)}>
                   <td className="px-4 py-3" style={{ width: 30 }}>
                     {expanded === item.landing_id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -270,6 +284,7 @@ function WaitlistTab({ branch }: { branch: string }) {
                   <td className="px-4 py-3 font-semibold" style={{ color: converted ? '#15803D' : 'var(--charcoal)' }}>
                     {getName(item)}
                     {converted && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#15803D', fontWeight: 600, fontSize: '0.65rem' }}>Converted</span>}
+                    {partner && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: '#FDE047', color: '#854D0E', fontWeight: 700, fontSize: '0.65rem' }} title="Registrant is from a partner institution">For prioritization</span>}
                   </td>
                   <td className="px-4 py-3" style={{ color: '#6B7280' }}>{item._formTitle}</td>
                   <td className="px-4 py-3 flex items-center gap-2" style={{ color: '#374151' }}>
