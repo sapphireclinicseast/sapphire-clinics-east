@@ -23,7 +23,7 @@ const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const
 const MAX_PATIENTS_PER_CELL = 3
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth()
@@ -34,6 +34,10 @@ export async function POST(
   }
 
   const { id } = await params
+
+  // Accept optional overrides from the modal (staff, date, time)
+  let overrides: { staffId?: string; date?: string; startTime?: string; endTime?: string } = {}
+  try { overrides = await req.json() } catch { /* no body — use booking defaults */ }
 
   const booking = await prisma.patientBooking.findUnique({
     where: { id },
@@ -51,16 +55,24 @@ export async function POST(
     )
   }
 
+  // Apply overrides from modal (staff/date/time can be reassigned by front desk)
+  const effectiveStaffId  = overrides.staffId   || booking.staffId
+  const effectiveDate     = overrides.date
+    ? new Date(overrides.date + 'T00:00:00Z')
+    : booking.date
+  const effectiveStart    = overrides.startTime || booking.startTime
+  const effectiveEnd      = overrides.endTime   || booking.endTime
+
   // Compute the dayOfWeek the slot maps to in the recurring grid.
-  const dow = DAY_NAMES[booking.date.getUTCDay()]
+  const dow = DAY_NAMES[effectiveDate.getUTCDay()]
 
   // Idempotency: does a slot for this (staff, day, time) already include
   // this patient?
   const existing = await prisma.deckingSlot.findFirst({
     where: {
-      staffId: booking.staffId,
+      staffId: effectiveStaffId,
       dayOfWeek: dow,
-      startTime: booking.startTime,
+      startTime: effectiveStart,
       patientId: booking.patientId,
     },
     select: { id: true },
@@ -78,9 +90,9 @@ export async function POST(
   // Capacity check: max 3 patients per cell (matches /api/decking/slots).
   const occupants = await prisma.deckingSlot.count({
     where: {
-      staffId: booking.staffId,
+      staffId: effectiveStaffId,
       dayOfWeek: dow,
-      startTime: booking.startTime,
+      startTime: effectiveStart,
       patientId: { not: null },
     },
   })
@@ -93,11 +105,11 @@ export async function POST(
 
   const slot = await prisma.deckingSlot.create({
     data: {
-      staffId: booking.staffId,
+      staffId: effectiveStaffId,
       patientId: booking.patientId,
       dayOfWeek: dow,
-      startTime: booking.startTime,
-      endTime: booking.endTime,
+      startTime: effectiveStart,
+      endTime: effectiveEnd,
       branch: booking.branch,
       department: booking.department,
       notes: `Auto-added from portal booking ${booking.id}`,

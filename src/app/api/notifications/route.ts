@@ -98,14 +98,17 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
       take: 50,
     }),
-    // Appointment bookings (hub DB)
+    // Client-portal bookings (hub DB) — only unprocessed ones (addedToDeck=false).
+    // Use OR so a booking created earlier but paid recently still surfaces.
     prisma.patientBooking.findMany({
       where: {
-        createdAt: { gte: since },
+        OR: [{ createdAt: { gte: since } }, { paidAt: { gte: since } }],
         status: { in: ['PENDING', 'PAID'] },
+        addedToDeck: false,
         ...(bookingBranches ? { branch: { in: bookingBranches } } : {}),
       },
-      include: {
+      select: {
+        id: true, branch: true, status: true, createdAt: true, paidAt: true,
         patient: { select: { firstName: true, lastName: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -130,7 +133,8 @@ export async function GET() {
       name: `${b.patient.firstName} ${b.patient.lastName}`.trim(),
       branch: b.branch,
       status: b.status,
-      createdAt: b.createdAt.toISOString(),
+      // Use paidAt when available so a recently-paid booking sorts to the top
+      createdAt: (b.paidAt ?? b.createdAt).toISOString(),
       href: '/decking',
     })),
     ...formResponses,
