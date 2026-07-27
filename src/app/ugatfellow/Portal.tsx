@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import s from './ugat.module.css'
 import { loanAgreementBlocks, annexTables, annexIntro, annexNote } from '@/lib/ugat-loan-agreement'
+import { bandScore, type RubricConfig, type Criterion, type GradeBand } from '@/lib/ugat-rubric'
 
 const API = '/api/public/ugat'
 const QUESTION_MAX = 1500
@@ -131,7 +132,7 @@ export default function Portal({
           {active === 'application' && (
             role === 'SCHOLAR'
               ? <ScholarApplication session={session} token={token} authHeaders={authHeaders} />
-              : <AdminApplication token={token} authHeaders={authHeaders} readOnly={role === 'UNIVERSITY_ADMIN'} onGoTo={setActive} />
+              : <AdminApplication token={token} authHeaders={authHeaders} role={role} readOnly={role === 'UNIVERSITY_ADMIN'} onGoTo={setActive} />
           )}
           {active === 'dashboard' && <Dashboard authHeaders={authHeaders} />}
           {active === 'schools' && <SchoolsData />}
@@ -932,9 +933,9 @@ interface Cycle { id: string; academicYear: string; opensAt: string; closesAt: s
 interface Slot { id: string; startsAt: string; durationMins: number; capacity: number; booked: number }
 const fmtWhen = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
-function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: string; authHeaders: Record<string, string>; readOnly: boolean; onGoTo: (k: SectionKey) => void }) {
+function AdminApplication({ token, authHeaders, role, readOnly, onGoTo }: { token: string; authHeaders: Record<string, string>; role: Role; readOnly: boolean; onGoTo: (k: SectionKey) => void }) {
   const { rows, load } = useScholars(authHeaders)
-  const [tab, setTab] = useState<'initial' | 'interview' | 'acceptance'>('initial')
+  const [tab, setTab] = useState<'initial' | 'interview' | 'acceptance' | 'assessors'>('initial')
   const [openId, setOpenId] = useState<string | null>(null)
   const [cycles, setCycles] = useState<Cycle[] | null>(null)
   const [openAY, setOpenAY] = useState<string | undefined>(undefined)
@@ -951,6 +952,12 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
   async function setDecision(id: string, initialDecision: string) {
     await fetch(`${API}/scholars`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ id, initialDecision }) })
     load()
+  }
+  async function sendInterviewInvite(id: string): Promise<{ ok: boolean; error?: string }> {
+    const r = await fetch(`${API}/interview/invite`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ id }) })
+    if (r.ok) return { ok: true }
+    const d = await r.json().catch(() => ({}))
+    return { ok: false, error: d.error || 'Could not send the email.' }
   }
 
   if (!rows) return <div className={s.sec}><p className={s.muted}>Loading…</p></div>
@@ -1004,6 +1011,7 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
         <button className={`${s.subTab} ${tab === 'initial' ? s.subTabActive : ''}`} onClick={() => setTab('initial')}>Initial</button>
         <button className={`${s.subTab} ${tab === 'interview' ? s.subTabActive : ''}`} onClick={() => setTab('interview')}>Interview</button>
         <button className={`${s.subTab} ${tab === 'acceptance' ? s.subTabActive : ''}`} onClick={() => setTab('acceptance')}>Acceptance</button>
+        {role === 'MAIN_ADMIN' && <button className={`${s.subTab} ${tab === 'assessors' ? s.subTabActive : ''}`} onClick={() => setTab('assessors')}>Assessors</button>}
       </div>
 
       {tab === 'initial' && (
@@ -1018,21 +1026,23 @@ function AdminApplication({ token, authHeaders, readOnly, onGoTo }: { token: str
                 <span className={s.tagType}>{TRACK_LABEL[r.application?.track || 'ARAL']}</span>
                 <span className={`${s.statusPill} ${r.application?.initialDecision === 'FOR_INTERVIEW' ? s.stAccepted : r.application?.initialDecision === 'NOT_CONSIDERED' ? s.stRejected : s.stApplied}`}>{DECISION_LABEL[r.application?.initialDecision || 'PENDING']}</span>
               </button>
-              {openId === r.id && <ApplicantDetail r={r} token={token} readOnly={readOnly} onDecide={(d) => setDecision(r.id, d)} />}
+              {openId === r.id && <ApplicantDetail r={r} token={token} role={role} authHeaders={authHeaders} readOnly={readOnly} onDecide={(d) => setDecision(r.id, d)} onInvite={() => sendInterviewInvite(r.id)} />}
             </div>
           ))}
         </div>
       )}
 
-      {tab === 'interview' && <InterviewStage students={forInterview} authHeaders={authHeaders} readOnly={readOnly} reloadScholars={load} />}
+      {tab === 'interview' && <InterviewStage students={forInterview} authHeaders={authHeaders} role={role} readOnly={readOnly} reloadScholars={load} />}
 
       {tab === 'acceptance' && <AcceptanceStage fellows={accepted} token={token} authHeaders={authHeaders} readOnly={readOnly} reloadScholars={load} onGoTo={onGoTo} />}
+
+      {tab === 'assessors' && role === 'MAIN_ADMIN' && <AssessorsAdmin authHeaders={authHeaders} cycles={cycles} />}
     </div>
   )
 }
 
 // ══ Interview stage (admin) — slots + booked students + decisions ══
-function InterviewStage({ students, authHeaders, readOnly, reloadScholars }: { students: AdminScholar[]; authHeaders: Record<string, string>; readOnly: boolean; reloadScholars: () => void }) {
+function InterviewStage({ students, authHeaders, role, readOnly, reloadScholars }: { students: AdminScholar[]; authHeaders: Record<string, string>; role: Role; readOnly: boolean; reloadScholars: () => void }) {
   const [slots, setSlots] = useState<Slot[] | null>(null)
   const [form, setForm] = useState({ startsAt: '', durationMins: '30', capacity: '1' })
   const [showSlots, setShowSlots] = useState(false)
@@ -1108,14 +1118,17 @@ function InterviewStage({ students, authHeaders, readOnly, reloadScholars }: { s
                     {a?.interviewAt ? <>🗓 {fmtWhen(a.interviewAt)}{a.jitsiUrl ? <> · <a href={a.jitsiUrl} target="_blank" rel="noreferrer" className={s.linkBtn2}>Jitsi link</a></> : ''}</> : 'Not yet booked'}
                   </div>
                 </div>
-                {readOnly ? (
-                  <span className={`${s.statusPill} ${a?.interviewDecision === 'FOR_ACCEPTANCE' ? s.stAccepted : a?.interviewDecision === 'NOT_CONSIDERED' ? s.stRejected : s.stApplied}`}>{IDECISION_LABEL[a?.interviewDecision || 'PENDING']}</span>
-                ) : (
+                {role === 'MAIN_ADMIN' ? (
                   <select className={s.statusSelect} value={a?.interviewDecision || 'PENDING'} onChange={(e) => setDecision(r.id, e.target.value)}>
                     {IDECISIONS.map((d) => <option key={d} value={d}>{IDECISION_LABEL[d]}</option>)}
                   </select>
+                ) : (
+                  <span className={`${s.statusPill} ${a?.interviewDecision === 'FOR_ACCEPTANCE' ? s.stAccepted : a?.interviewDecision === 'NOT_CONSIDERED' ? s.stRejected : s.stApplied}`}>{IDECISION_LABEL[a?.interviewDecision || 'PENDING']}</span>
                 )}
               </div>
+              {!readOnly && (role === 'MAIN_ADMIN' || role === 'STAFF_ADMIN') && (
+                <AssessmentBlock scholarId={r.id} stage="INTERVIEW" role={role} track={r.track === 'TINDIG' ? 'TINDIG' : 'ARAL'} authHeaders={authHeaders} />
+              )}
             </div>
           )
         })}
@@ -1298,7 +1311,7 @@ function CyclesPanel({ authHeaders, cycles, reload }: { authHeaders: Record<stri
   )
 }
 
-function ApplicantDetail({ r, token, readOnly, onDecide }: { r: AdminScholar; token: string; readOnly: boolean; onDecide: (d: string) => void }) {
+function ApplicantDetail({ r, token, role, authHeaders, readOnly, onDecide, onInvite }: { r: AdminScholar; token: string; role: Role; authHeaders: Record<string, string>; readOnly: boolean; onDecide: (d: string) => void; onInvite: () => Promise<{ ok: boolean; error?: string }> }) {
   const [step, setStep] = useState(1)
   const a = r.application || {}
   const isTindig = a.track === 'TINDIG'
@@ -1313,12 +1326,315 @@ function ApplicantDetail({ r, token, readOnly, onDecide }: { r: AdminScholar; to
       {step === 2 && <div className={s.docLinks}>{r.uploadKinds.LETTER ? <a className={s.miniBtn} href={`${API}/uploads/${r.uploadKinds.LETTER}?t=${token}`} target="_blank" rel="noreferrer">View motivational letter</a> : <span className={s.muted}>No letter uploaded.</span>}</div>}
       {step === 3 && <div className={s.docLinks}>{isTindig ? [doc('TOR', 'Transcript of Records'), doc('GRAD_PROOF', 'Proof of graduation / internship')] : ['GRADES_Y1', 'GRADES_Y2', 'GRADES_Y3'].map((k) => doc(k, `Grades — Year ${k.slice(-1)}`))}</div>}
       {step === 4 && <div><div className={s.docLinks}>{r.uploadKinds.SIGNATURE ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={`${API}/uploads/${r.uploadKinds.SIGNATURE}?t=${token}`} alt="signature" className={s.sigView} /> : <span className={s.muted}>No signature.</span>}</div><p className={s.muted} style={{ marginTop: 8 }}>Declaration affirmed: {a.truthAffirmed ? 'Yes' : 'No'}{a.signedAt ? ` · signed ${new Date(a.signedAt).toLocaleDateString()}` : ''}</p></div>}
-      {!readOnly && (
+      {!readOnly && (role === 'MAIN_ADMIN' || role === 'STAFF_ADMIN') && (
+        <AssessmentBlock scholarId={r.id} stage="INITIAL" role={role} track={a.track === 'TINDIG' ? 'TINDIG' : 'ARAL'} authHeaders={authHeaders} />
+      )}
+      {role === 'MAIN_ADMIN' && (
         <div className={s.decisionRow}>
           <label className={s.qLabel} style={{ margin: 0 }}>Decision:</label>
           <select className={s.statusSelect} value={a.initialDecision || 'PENDING'} onChange={(e) => onDecide(e.target.value)}>{DECISIONS.map((d) => <option key={d} value={d}>{DECISION_LABEL[d]}</option>)}</select>
+          {a.initialDecision === 'FOR_INTERVIEW' && <SendInviteButton onInvite={onInvite} />}
         </div>
       )}
+    </div>
+  )
+}
+
+// Button that emails a For-Interview applicant to pick a slot.
+function SendInviteButton({ onInvite }: { onInvite: () => Promise<{ ok: boolean; error?: string }> }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle')
+  const [err, setErr] = useState<string | null>(null)
+  async function go() {
+    setState('busy'); setErr(null)
+    const r = await onInvite()
+    if (r.ok) setState('sent')
+    else { setState('idle'); setErr(r.error || 'Could not send.') }
+  }
+  return (
+    <span className={s.inviteWrap}>
+      <button className={s.btnGhost3} disabled={state === 'busy'} onClick={go}>
+        <Mail size={15} /> {state === 'busy' ? 'Sending…' : state === 'sent' ? 'Invite sent ✓' : 'Send Interview Schedule Email'}
+      </button>
+      {err && <span className={s.assessErr}>{err}</span>}
+    </span>
+  )
+}
+
+// ══ Assessor grading ═══════════════════════════════════════════════
+type AssessStage = 'INITIAL' | 'INTERVIEW'
+interface AssessMine { scores?: { step1?: Record<string, number>; step2?: Record<string, number>; step3?: { grades?: Record<string, number> }; interview?: Record<string, number> }; remarks?: Record<string, string> }
+interface AssessEntry { adminId: string; name: string; weight: number; assigned: boolean; submitted: boolean; score: number | null; breakdown?: { step1: number | null; step2: number | null; step3: number | null }; remarks: Record<string, string> }
+interface AssessResp { role: 'main' | 'assessor'; academicYear: string; stage: AssessStage; locked: boolean; rubric: RubricConfig; overall?: number | null; entries?: AssessEntry[]; assigned?: boolean; mine?: AssessMine | null }
+const REMARK_LABEL: Record<string, string> = { step1: 'Step 1 — Answers', step2: 'Step 2 — Letter', step3: 'Step 3 — Grades', interview: 'Interview' }
+const fmtScore = (n: number | null | undefined) => (n == null ? '—' : n.toFixed(2))
+
+function ScoreScale({ value, onChange, disabled }: { value?: number; onChange: (v: number) => void; disabled?: boolean }) {
+  return (
+    <div className={s.scoreScale}>
+      {[0, 1, 2, 3, 4, 5].map((n) => (
+        <button key={n} type="button" disabled={disabled} className={`${s.scoreBtn} ${value === n ? s.scoreBtnOn : ''}`} onClick={() => onChange(n)}>{n}</button>
+      ))}
+    </div>
+  )
+}
+
+function AssessSection({ title, criteria, scores, onScore, remark, onRemark, disabled }: { title: string; criteria: Criterion[]; scores: Record<string, number>; onScore: (k: string, v: number) => void; remark: string; onRemark: (t: string) => void; disabled?: boolean }) {
+  return (
+    <div className={s.assessSec}>
+      <h5 className={s.assessSecH}>{title}</h5>
+      {criteria.map((c) => (
+        <div key={c.key} className={s.critRow}>
+          <span className={s.critLabel}>{c.label}</span>
+          <ScoreScale value={scores[c.key]} onChange={(v) => onScore(c.key, v)} disabled={disabled} />
+        </div>
+      ))}
+      <textarea className={s.assessRemark} placeholder="Remarks…" value={remark} disabled={disabled} onChange={(e) => onRemark(e.target.value)} />
+    </div>
+  )
+}
+
+function AssessmentBlock({ scholarId, stage, role, track, authHeaders }: { scholarId: string; stage: AssessStage; role: Role; track: 'ARAL' | 'TINDIG'; authHeaders: Record<string, string> }) {
+  const [d, setD] = useState<AssessResp | null>(null)
+  const [step1, setStep1] = useState<Record<string, number>>({})
+  const [step2, setStep2] = useState<Record<string, number>>({})
+  const [interview, setInterview] = useState<Record<string, number>>({})
+  const [grades, setGrades] = useState<Record<string, string>>({})
+  const [remarks, setRemarks] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+
+  const load = useCallback(async () => {
+    const r = await fetch(`${API}/assessments?scholarId=${scholarId}&stage=${stage}`, { headers: authHeaders })
+    if (!r.ok) { setD(null); return }
+    const j: AssessResp = await r.json()
+    setD(j)
+    if (j.role === 'assessor' && j.mine) {
+      const sc = j.mine.scores || {}
+      setStep1(sc.step1 || {}); setStep2(sc.step2 || {}); setInterview(sc.interview || {})
+      setGrades(Object.fromEntries(Object.entries(sc.step3?.grades || {}).map(([k, v]) => [k, String(v)])))
+      setRemarks(j.mine.remarks || {})
+    }
+  }, [scholarId, stage, authHeaders])
+  useEffect(() => { load() }, [load])
+
+  if (!d) return <div className={s.assessCard}><p className={s.muted} style={{ margin: 0 }}>Loading assessment…</p></div>
+  const rubric = d.rubric
+
+  if (d.role === 'assessor') {
+    if (!d.assigned) return <div className={s.assessCard}><p className={s.muted} style={{ margin: 0 }}>You aren&rsquo;t an assigned assessor for <b>A.Y. {d.academicYear || '—'}</b>. Ask the main administrator to add you in <b>Application &rarr; Assessors</b>.</p></div>
+    const locked = d.locked
+    const gradeKeys = track === 'TINDIG' ? [{ k: 'gwa', label: 'General weighted average' }] : [{ k: 'y1', label: 'Year 1' }, { k: 'y2', label: 'Year 2' }, { k: 'y3', label: 'Year 3' }]
+    async function save() {
+      setSaving(true); setMsg(null)
+      const gradesNum: Record<string, number> = {}
+      for (const [k, v] of Object.entries(grades)) { const n = Number(v); if (v !== '' && !Number.isNaN(n)) gradesNum[k] = n }
+      const data = stage === 'INITIAL'
+        ? { scores: { step1, step2, step3: { grades: gradesNum } }, remarks }
+        : { scores: { interview }, remarks }
+      const r = await fetch(`${API}/assessments`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ scholarId, stage, data }) })
+      setSaving(false)
+      if (!r.ok) { const j = await r.json().catch(() => ({})); setMsg({ ok: false, t: j.error || 'Could not save.' }); return }
+      setMsg({ ok: true, t: 'Saved.' }); load()
+    }
+    return (
+      <div className={s.assessCard}>
+        <div className={s.assessTitle}>My assessment {locked && <span className={s.assessLock}>view-only — applicant has moved to the next stage</span>}</div>
+        {stage === 'INITIAL' ? (
+          <>
+            <AssessSection title="Step 1 — Answers" criteria={rubric.step1.criteria} scores={step1} onScore={(k, v) => setStep1((p) => ({ ...p, [k]: v }))} remark={remarks.step1 || ''} onRemark={(t) => setRemarks((p) => ({ ...p, step1: t }))} disabled={locked} />
+            <AssessSection title="Step 2 — Motivational letter" criteria={rubric.step2.criteria} scores={step2} onScore={(k, v) => setStep2((p) => ({ ...p, [k]: v }))} remark={remarks.step2 || ''} onRemark={(t) => setRemarks((p) => ({ ...p, step2: t }))} disabled={locked} />
+            <div className={s.assessSec}>
+              <h5 className={s.assessSecH}>Step 3 — Grades</h5>
+              {gradeKeys.map(({ k, label }) => {
+                const n = Number(grades[k]); const sc = grades[k] != null && grades[k] !== '' && !Number.isNaN(n) ? bandScore(rubric.step3.bands, n) : null
+                return (
+                  <div key={k} className={s.gradeRow}>
+                    <span className={s.critLabel}>{label}</span>
+                    <input className={s.gradeInput} type="number" min={0} max={100} step="0.01" value={grades[k] ?? ''} disabled={locked} onChange={(e) => setGrades((p) => ({ ...p, [k]: e.target.value }))} placeholder="0–100" />
+                    <span className={s.gradeScore}>{sc != null ? `→ ${sc} / 5` : ''}</span>
+                  </div>
+                )
+              })}
+              <textarea className={s.assessRemark} placeholder="Remarks on the grades…" value={remarks.step3 || ''} disabled={locked} onChange={(e) => setRemarks((p) => ({ ...p, step3: e.target.value }))} />
+            </div>
+          </>
+        ) : (
+          <AssessSection title="Interview" criteria={rubric.interview.criteria} scores={interview} onScore={(k, v) => setInterview((p) => ({ ...p, [k]: v }))} remark={remarks.interview || ''} onRemark={(t) => setRemarks((p) => ({ ...p, interview: t }))} disabled={locked} />
+        )}
+        {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`} style={{ marginTop: 8 }}>{msg.t}</div>}
+        {!locked && <button className={s.btn2} disabled={saving} onClick={save} style={{ marginTop: 10 }}>{saving ? 'Saving…' : 'Save my assessment'}</button>}
+      </div>
+    )
+  }
+
+  // Main admin summary
+  return (
+    <div className={s.assessCard}>
+      <div className={s.assessSummaryTop}>
+        <span className={s.assessTitle}>Assessors&rsquo; scores{d.locked ? ' (locked)' : ''}</span>
+        <span className={s.assessOverall}>{d.overall != null ? d.overall.toFixed(2) : '—'}<small> / 5 weighted</small></span>
+      </div>
+      {(!d.entries || d.entries.length === 0)
+        ? <p className={s.muted} style={{ margin: 0 }}>No assessors assigned for <b>A.Y. {d.academicYear || '—'}</b> yet. Assign them in <b>Assessors</b>.</p>
+        : d.entries.map((e) => <AssessorSummaryRow key={e.adminId} e={e} stage={stage} />)}
+    </div>
+  )
+}
+
+function AssessorSummaryRow({ e, stage }: { e: AssessEntry; stage: AssessStage }) {
+  const [open, setOpen] = useState(false)
+  const remarkEntries = Object.entries(e.remarks || {}).filter(([, v]) => v && v.trim())
+  return (
+    <div className={s.assessorRow}>
+      <button type="button" className={s.assessorHead} onClick={() => setOpen((o) => !o)}>
+        <ChevronDown size={15} className={open ? s.rot : ''} />
+        <span className={s.assessorName}>{e.name}</span>
+        <span className={s.assessorWeight}>{e.weight}%</span>
+        <span className={`${s.assessorScore} ${!e.submitted ? s.assessorPending : ''}`}>{e.submitted ? `${fmtScore(e.score)} / 5` : 'not scored yet'}</span>
+      </button>
+      {open && e.submitted && (
+        <div className={s.assessorDetail}>
+          {stage === 'INITIAL' && e.breakdown && (
+            <div className={s.breakdownRow}><span>Step 1: <b>{fmtScore(e.breakdown.step1)}</b></span><span>Step 2: <b>{fmtScore(e.breakdown.step2)}</b></span><span>Step 3: <b>{fmtScore(e.breakdown.step3)}</b></span></div>
+          )}
+          {remarkEntries.length ? remarkEntries.map(([k, v]) => (
+            <div key={k} className={s.remarkItem}><span className={s.remarkLabel}>{REMARK_LABEL[k] || k}</span><p>{v}</p></div>
+          )) : <p className={s.muted} style={{ margin: 0 }}>No remarks.</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══ Assessors setup (Main Admin) — assign staff + weights, edit rubric ══
+function AssessorsAdmin({ authHeaders, cycles }: { authHeaders: Record<string, string>; cycles: Cycle[] | null }) {
+  const years = useMemo(() => (cycles || []).map((c) => c.academicYear), [cycles])
+  const [year, setYear] = useState('')
+  const [staff, setStaff] = useState<{ id: string; name: string; username: string }[]>([])
+  const [weights, setWeights] = useState<Record<string, string>>({})
+  const [assessorId, setAssessorId] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+
+  useEffect(() => { if (!year && years.length) setYear(years[0]) }, [years, year])
+
+  const load = useCallback(async () => {
+    if (!year) return
+    const r = await fetch(`${API}/assessors?academicYear=${encodeURIComponent(year)}`, { headers: authHeaders })
+    if (!r.ok) return
+    const d = await r.json()
+    setStaff(d.staff || [])
+    const w: Record<string, string> = {}; const idm: Record<string, string> = {}
+    for (const a of (d.assessors || [])) { w[a.adminId] = String(a.weightPercent); idm[a.adminId] = a.id }
+    setWeights(w); setAssessorId(idm)
+  }, [year, authHeaders])
+  useEffect(() => { load() }, [load])
+
+  const total = staff.reduce((sum, st) => sum + (Number(weights[st.id]) || 0), 0)
+  async function save() {
+    if (!year) return
+    setSaving(true); setMsg(null)
+    for (const st of staff) {
+      const w = Math.max(0, Math.min(100, Math.round(Number(weights[st.id]) || 0)))
+      if (w > 0) await fetch(`${API}/assessors`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ adminId: st.id, academicYear: year, weightPercent: w }) })
+      else if (assessorId[st.id]) await fetch(`${API}/assessors`, { method: 'DELETE', headers: authHeaders, body: JSON.stringify({ id: assessorId[st.id] }) })
+    }
+    setSaving(false); setMsg({ ok: true, t: 'Assessors saved for A.Y. ' + year + '.' }); load()
+  }
+
+  return (
+    <div className={s.card2}>
+      <h3 className={s.card2H}>Assessors &amp; weights</h3>
+      <p className={s.muted} style={{ margin: '0 0 12px' }}>Choose who can grade applicants for an academic year, and how much each assessor&rsquo;s scores count. Set a weight of <b>0</b> to remove someone. Weights are combined proportionally, so they don&rsquo;t have to add up to exactly 100.</p>
+      {years.length === 0 ? <p className={s.muted}>Create an application cycle first (in <b>Application timelines</b>) so there&rsquo;s a year to assign assessors to.</p> : (
+        <>
+          <div className={s.ayFilter} style={{ marginBottom: 12 }}>
+            <label className={s.cellSub}>Academic Year:</label>
+            <select className={s.statusSelect} value={year} onChange={(e) => setYear(e.target.value)}>{years.map((y) => <option key={y} value={y}>A.Y. {y}</option>)}</select>
+          </div>
+          {staff.length === 0 ? <p className={s.muted}>No Staff Admin accounts yet. Create them in <b>User Access</b> first.</p> : (
+            <>
+              {staff.map((st) => (
+                <div key={st.id} className={s.assessorAssignRow}>
+                  <span className={s.assessorName}>{st.name} <span className={s.muted} style={{ fontWeight: 400 }}>@{st.username}</span></span>
+                  <div className={s.weightWrap}>
+                    <input className={s.gradeInput} type="number" min={0} max={100} value={weights[st.id] ?? ''} placeholder="0" onChange={(e) => setWeights((p) => ({ ...p, [st.id]: e.target.value }))} />
+                    <span className={s.muted}>%</span>
+                  </div>
+                </div>
+              ))}
+              <div className={s.weightTotal}>Total weight: <b className={total === 100 ? s.wOk : s.wWarn}>{total}%</b>{total !== 100 && total > 0 && <span className={s.muted}> (weights are normalized, so this is fine)</span>}</div>
+              {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
+              <button className={s.btn2} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save assessors'}</button>
+            </>
+          )}
+        </>
+      )}
+      <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '22px 0' }} />
+      <RubricEditor authHeaders={authHeaders} />
+    </div>
+  )
+}
+
+// Editable grading rubric (criteria for Steps 1/2 + Interview, Step-3 bands).
+function RubricEditor({ authHeaders }: { authHeaders: Record<string, string> }) {
+  const [cfg, setCfg] = useState<RubricConfig | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+
+  useEffect(() => { fetch(`${API}/rubric`, { headers: authHeaders }).then((r) => r.json()).then((d) => setCfg(d.rubric)).catch(() => {}) }, [authHeaders])
+  if (!cfg) return <p className={s.muted}>Loading rubric…</p>
+  const newKey = () => 'c' + Math.random().toString(36).slice(2, 8)
+
+  function setCrit(sec: 'step1' | 'step2' | 'interview', criteria: Criterion[]) { setCfg((p) => (p ? { ...p, [sec]: { criteria } } : p)) }
+  function setBands(bands: GradeBand[]) { setCfg((p) => (p ? { ...p, step3: { bands } } : p)) }
+
+  async function save() {
+    setSaving(true); setMsg(null)
+    const r = await fetch(`${API}/rubric`, { method: 'PATCH', headers: authHeaders, body: JSON.stringify({ config: cfg }) })
+    setSaving(false)
+    if (!r.ok) { setMsg({ ok: false, t: 'Could not save the rubric.' }); return }
+    const d = await r.json(); setCfg(d.rubric); setMsg({ ok: true, t: 'Rubric saved.' })
+  }
+
+  const CritList = ({ sec, title }: { sec: 'step1' | 'step2' | 'interview'; title: string }) => {
+    const list = cfg![sec].criteria
+    return (
+      <div className={s.rubSec}>
+        <h5 className={s.assessSecH}>{title} <span className={s.muted} style={{ fontWeight: 400 }}>· each scored 0–5</span></h5>
+        {list.map((c, i) => (
+          <div key={c.key} className={s.rubRow}>
+            <input className={s.input} value={c.label} onChange={(e) => { const cp = list.slice(); cp[i] = { ...cp[i], label: e.target.value }; setCrit(sec, cp) }} />
+            <button type="button" className={`${s.iconBtn} ${s.iconDanger}`} title="Remove" onClick={() => setCrit(sec, list.filter((_, j) => j !== i))}><Trash2 size={15} /></button>
+          </div>
+        ))}
+        <button type="button" className={s.btnGhost3} onClick={() => setCrit(sec, [...list, { key: newKey(), label: 'New criterion' }])}><Plus size={14} /> Add criterion</button>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <h3 className={s.card2H}>Grading rubric</h3>
+      <p className={s.muted} style={{ margin: '0 0 12px' }}>Edit the criteria assessors score against, and the grade bands that turn Year grades into a 0–5 score.</p>
+      <CritList sec="step1" title="Step 1 — Answers" />
+      <CritList sec="step2" title="Step 2 — Motivational letter" />
+      <div className={s.rubSec}>
+        <h5 className={s.assessSecH}>Step 3 — Grade bands <span className={s.muted} style={{ fontWeight: 400 }}>· a Year grade in a range earns that score</span></h5>
+        <div className={s.bandHead}><span>From</span><span>To</span><span>Score</span><span></span></div>
+        {cfg.step3.bands.map((b, i) => (
+          <div key={i} className={s.bandRow}>
+            <input className={s.gradeInput} type="number" value={b.min} onChange={(e) => { const cp = cfg.step3.bands.slice(); cp[i] = { ...cp[i], min: Number(e.target.value) }; setBands(cp) }} />
+            <input className={s.gradeInput} type="number" value={b.max} onChange={(e) => { const cp = cfg.step3.bands.slice(); cp[i] = { ...cp[i], max: Number(e.target.value) }; setBands(cp) }} />
+            <input className={s.gradeInput} type="number" min={0} max={5} value={b.score} onChange={(e) => { const cp = cfg.step3.bands.slice(); cp[i] = { ...cp[i], score: Number(e.target.value) }; setBands(cp) }} />
+            <button type="button" className={`${s.iconBtn} ${s.iconDanger}`} title="Remove" onClick={() => setBands(cfg.step3.bands.filter((_, j) => j !== i))}><Trash2 size={15} /></button>
+          </div>
+        ))}
+        <button type="button" className={s.btnGhost3} onClick={() => setBands([...cfg.step3.bands, { min: 0, max: 0, score: 0 }])}><Plus size={14} /> Add band</button>
+      </div>
+      <CritList sec="interview" title="Interview" />
+      {msg && <div className={`${s.alert2} ${msg.ok ? s.alertOk2 : s.alertErr2}`}>{msg.t}</div>}
+      <button className={s.btn2} disabled={saving} onClick={save} style={{ marginTop: 6 }}>{saving ? 'Saving…' : 'Save rubric'}</button>
     </div>
   )
 }

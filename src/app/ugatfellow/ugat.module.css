@@ -1003,3 +1003,58 @@
 /* Brochure row (portal Marketing admin) */
 .brochureRow { display: flex; align-items: center; gap: 12px; color: var(--deep); }
 .brochureName { font-weight: 600; font-size: 14px; color: var(--deep); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Assessor grading ─────────────────────────────────────────── */
+.assessCard { margin: 12px 0 4px; padding: 14px 16px; border-radius: 12px; background: rgba(36,73,82,0.035); border: 1px solid var(--line); }
+.assessTitle { font-family: var(--display); font-weight: 700; font-size: 13.5px; color: var(--deep); }
+.assessLock { margin-left: 8px; font-family: var(--body); font-weight: 600; font-size: 11px; color: var(--gold); background: rgba(198,152,73,0.14); padding: 2px 8px; border-radius: 999px; }
+.assessSec { margin: 12px 0; }
+.assessSecH { margin: 0 0 8px; font-family: var(--display); font-weight: 700; font-size: 12.5px; color: var(--green); }
+.critRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line-soft, rgba(36,73,82,0.08)); }
+.critRow:first-of-type { border-top: 0; }
+.critLabel { font-size: 13px; color: var(--ink); flex: 1; min-width: 0; }
+.assessRemark { width: 100%; box-sizing: border-box; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-family: var(--body); font-size: 13px; color: var(--ink); background: #fff; resize: vertical; min-height: 46px; }
+.assessRemark:disabled { background: rgba(36,73,82,0.03); color: var(--deep-70); }
+
+.scoreScale { display: inline-flex; gap: 3px; flex: none; }
+.scoreBtn { width: 28px; height: 28px; border: 1px solid var(--line); background: #fff; border-radius: 7px; font-family: var(--display); font-weight: 700; font-size: 12.5px; color: var(--deep-70); cursor: pointer; }
+.scoreBtn:hover:not(:disabled) { border-color: var(--green); color: var(--green); }
+.scoreBtnOn { background: var(--green); border-color: var(--green); color: #fff; }
+.scoreBtn:disabled { opacity: 0.55; cursor: default; }
+
+.gradeRow { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.gradeInput { width: 84px; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; font-family: var(--body); font-size: 13px; color: var(--ink); background: #fff; }
+.gradeInput:disabled { background: rgba(36,73,82,0.03); }
+.gradeScore { font-family: var(--display); font-weight: 700; font-size: 12.5px; color: var(--green); min-width: 56px; }
+
+.assessSummaryTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.assessOverall { font-family: var(--display); font-weight: 800; font-size: 22px; color: var(--deep); }
+.assessOverall small { font-size: 11px; font-weight: 600; color: var(--deep-70); }
+.assessorRow { border-top: 1px solid var(--line); }
+.assessorRow:first-of-type { border-top: 0; }
+.assessorHead { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.assessorName { font-family: var(--display); font-weight: 600; font-size: 13px; color: var(--deep); flex: 1; min-width: 0; }
+.assessorWeight { font-size: 11.5px; color: var(--deep-70); font-variant-numeric: tabular-nums; }
+.assessorScore { font-family: var(--display); font-weight: 700; font-size: 13px; color: var(--green); font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
+.assessorPending { color: var(--deep-70); font-weight: 500; font-style: italic; }
+.assessorDetail { padding: 4px 0 12px 25px; }
+.breakdownRow { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink); margin-bottom: 8px; }
+.remarkItem { margin: 6px 0; }
+.remarkLabel { font-family: var(--display); font-weight: 700; font-size: 11px; letter-spacing: 0.02em; color: var(--green); text-transform: uppercase; }
+.remarkItem p { margin: 2px 0 0; font-size: 13px; color: var(--ink); white-space: pre-wrap; }
+
+.inviteWrap { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.assessErr { font-size: 12px; color: var(--err); }
+
+/* Assessors setup */
+.assessorAssignRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line-soft, rgba(36,73,82,0.08)); }
+.assessorAssignRow:first-of-type { border-top: 0; }
+.weightWrap { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.weightTotal { margin: 10px 0 12px; font-size: 13px; color: var(--deep); }
+.wOk { color: var(--green); } .wWarn { color: var(--gold); }
+.rubSec { margin: 14px 0; }
+.rubRow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.rubRow .input { flex: 1; }
+.bandHead { display: grid; grid-template-columns: 1fr 1fr 1fr 32px; gap: 8px; font-size: 11px; font-weight: 700; color: var(--deep-70); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px; }
+.bandRow { display: grid; grid-template-columns: 1fr 1fr 1fr 32px; gap: 8px; align-items: center; margin: 5px 0; }
+.bandRow .gradeInput { width: 100%; }

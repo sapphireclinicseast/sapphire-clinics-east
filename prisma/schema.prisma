@@ -1819,6 +1819,47 @@ model UgatMarketingAsset {
   updatedAt  DateTime @updatedAt
 }
 
+/// Assigns a Staff Admin (UgatAdmin) as an assessor for a given academic year,
+/// with a weight (%) that scales how much their scores count toward the
+/// weighted average. One row per (assessor, year).
+model UgatAssessor {
+  id            String   @id @default(cuid())
+  adminId       String
+  academicYear  String
+  weightPercent Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([adminId, academicYear])
+  @@index([academicYear])
+}
+
+/// The editable grading rubric (criteria for Steps 1/2 and Interview, plus the
+/// Step-3 grade→score bands). Single row keyed "default".
+model UgatRubric {
+  id        String   @id @default(cuid())
+  key       String   @unique @default("default")
+  config    Json
+  updatedAt DateTime @updatedAt
+}
+
+/// One assessor's scores + per-step remarks for one applicant at one stage
+/// (INITIAL or INTERVIEW). `data` holds { scores: {...}, remarks: {...} }.
+model UgatAssessment {
+  id           String   @id @default(cuid())
+  scholarId    String
+  adminId      String
+  academicYear String
+  stage        String
+  data         Json
+  submittedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([scholarId, adminId, stage])
+  @@index([scholarId, stage])
+  @@index([academicYear, stage])
+}
+
 /// Tracks per-user notification dismiss timestamp so the bell badge persists
 /// across sign-out / refresh / cache clear and stays independent per user.
 model UserNotificationState {
