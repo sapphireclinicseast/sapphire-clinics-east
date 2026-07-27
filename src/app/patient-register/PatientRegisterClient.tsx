@@ -200,9 +200,12 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
 
           {/* Doctor's Referral */}
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>
               Doctor&apos;s Referral
             </label>
+            <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginBottom: 6, lineHeight: 1.5 }}>
+              e.g. doctor&apos;s prescription, medical abstract, medical certificate, or doctor&apos;s report
+            </p>
             {referralFile ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#f0f9fa', border: '1.5px solid #1a7b8a', borderRadius: 8 }}>
                 <FileText size={14} style={{ color: '#1a7b8a', flexShrink: 0 }} />
