@@ -356,7 +356,12 @@ function AuthCard({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Nationality"><input name="nationality" className="input" placeholder="e.g. Filipino" /></Field>
-            <Field label="PWD / Senior ID"><input name="pwdSeniorId" className="input" placeholder="Optional — for discount" /></Field>
+            <Field label="PWD / Senior ID">
+              <input name="pwdSeniorId" className="input" placeholder="ID number" />
+              <span className="block text-[11px] text-[color:var(--clay)] mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+                Required to receive the 20% PWD / Senior Citizen discount.
+              </span>
+            </Field>
           </div>
 
           <SectionLabel>Documents (optional)</SectionLabel>
@@ -369,6 +374,9 @@ function AuthCard({
             </Field>
             <Field label="PWD ID / Senior ID">
               <input name="pwdIdFile" type="file" accept="image/*,application/pdf" className="input-file" />
+              <span className="block text-[11px] text-[color:var(--clay)] mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+                Required to receive the 20% PWD / Senior Citizen discount.
+              </span>
             </Field>
           </div>
 
