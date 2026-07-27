@@ -97,8 +97,26 @@ export const TELE_CHECKOUT: Record<string, string> = {
   'SBEA:SLP:pkg12': 'https://accounting.sapphireclinicseast.org/pay/bEo0Cf_iqQ7j', // ₱23,400
   'SBEA:SLP:pkg12-spec': 'https://accounting.sapphireclinicseast.org/pay/tyDgUWhI5V6H', // ₱28,800
 
-  // ── Greenhills Branch (SBGH) — OT & SLP — awaiting links ──
-  // 'SBGH:OT:session': '',  … etc.
+  // ── Greenhills Branch (SBGH / account AHGH) — verified by /api/public/pay amount, 2026-07-27 ──
+  // Occupational Therapy
+  'SBGH:OT:session': 'https://accounting.sapphireclinicseast.org/pay/HIwVW4j8Syor', // ₱2,000
+  'SBGH:OT:session-spec': 'https://accounting.sapphireclinicseast.org/pay/WmCzxt_2D3Nt', // ₱2,500
+  'SBGH:OT:eval': 'https://accounting.sapphireclinicseast.org/pay/GaIp6avi5_qD', // ₱2,875
+  'SBGH:OT:eval-spec': 'https://accounting.sapphireclinicseast.org/pay/FHSQMHo8EskU', // ₱3,200
+  'SBGH:OT:pkg8': 'https://accounting.sapphireclinicseast.org/pay/t2ZgwJIcvchP', // ₱15,840
+  'SBGH:OT:pkg8-spec': 'https://accounting.sapphireclinicseast.org/pay/p27Au55LYAd7', // ₱19,600
+  'SBGH:OT:pkg12': 'https://accounting.sapphireclinicseast.org/pay/5TQ9xWts88lG', // ₱23,400
+  'SBGH:OT:pkg12-spec': 'https://accounting.sapphireclinicseast.org/pay/lWyMvZkzMS5C', // ₱28,800
+
+  // Speech-Language Pathology
+  'SBGH:SLP:session': 'https://accounting.sapphireclinicseast.org/pay/t_y-ii6czH4F', // ₱2,000
+  'SBGH:SLP:session-spec': 'https://accounting.sapphireclinicseast.org/pay/fuuHQ6uzWDV4', // ₱2,500
+  'SBGH:SLP:eval': 'https://accounting.sapphireclinicseast.org/pay/ujNu9tu0qrol', // ₱3,000
+  'SBGH:SLP:eval-spec': 'https://accounting.sapphireclinicseast.org/pay/ZTYqtF8IAPqH', // ₱3,200
+  'SBGH:SLP:pkg8': 'https://accounting.sapphireclinicseast.org/pay/ZQXs87Bf59Wr', // ₱15,840
+  'SBGH:SLP:pkg8-spec': 'https://accounting.sapphireclinicseast.org/pay/hRAgQV0aOmcS', // ₱19,600
+  'SBGH:SLP:pkg12': 'https://accounting.sapphireclinicseast.org/pay/7ALfd6eJavaC', // ₱23,400
+  'SBGH:SLP:pkg12-spec': 'https://accounting.sapphireclinicseast.org/pay/f5jaNQcMSQca', // ₱28,800
 }
 
 export function checkoutUrlFor(branch: TeleBranch, dept: TeleDept, id: string): string | undefined {
