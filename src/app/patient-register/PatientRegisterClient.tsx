@@ -4,9 +4,9 @@ import { useRef, useState } from 'react'
 import { CheckCircle2, Loader2, Upload, FileText, X } from 'lucide-react'
 
 const BRANCHES = [
-  { value: 'SANDBOX_EAST',       label: 'East Branch' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
-  { value: 'VERDANA_STORE',      label: 'Verdana Store' },
+  { value: 'SANDBOX_EAST',       label: 'Aura Health East' },
+  { value: 'SANDBOX_GREENHILLS', label: 'Aura Health Greenhills' },
+  { value: 'VERDANA_STORE',      label: 'Verdana Rehab Store' },
 ]
 
 interface FormState {
