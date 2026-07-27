@@ -208,6 +208,9 @@ export default function PatientRequestsPanel({ branch }: Props) {
       const r = await fetch(`/api/decking/bookings/${b.id}/recorded-in-accounting`, { method: 'POST' })
       const data = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(data.error || 'Recording failed')
+      if (data.orderNumber) {
+        alert(`POS Order #${data.orderNumber} created in Accounting Hub.`)
+      }
       await load()
     } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }

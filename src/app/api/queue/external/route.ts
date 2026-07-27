@@ -21,62 +21,33 @@ export async function GET(req: NextRequest) {
   const dayStart = new Date(`${dateStr}T00:00:00.000Z`)
   const dayEnd   = new Date(`${dateStr}T23:59:59.999Z`)
 
-  // An appointment belongs to the branch of the PATIENT being seen, not the
-  // clinician's staff branch. Clinicians who consult inter-branch are merged
-  // into ONE staff profile pinned to a single branch, so filtering by
-  // staff.branch mis-buckets their cross-branch appointments (e.g. a Greenhills
-  // patient booked with an East-pinned clinician leaked into the East queue).
-  // Fetch the day's schedules and attribute each by its patient's branch,
-  // falling back to the staff branch only when the patient has no branch set.
-  const CODE: Record<string, string> = {
-    SANDBOX_EAST: 'SBEA',
-    SANDBOX_GREENHILLS: 'SBGH',
-    VERDANA_STORE: 'VER',
-  }
-  const patientBranchCodes = (p: { branch: string | null; branches: string[] } | null): string[] => {
-    const raw = p ? (p.branches?.length ? p.branches : (p.branch ? [p.branch] : [])) : []
-    return raw.map(b => CODE[b]).filter(Boolean)
-  }
-
   const schedules = await prisma.schedule.findMany({
     where: {
       date: { gte: dayStart, lte: dayEnd },
+      staff: { branch },
       ...(statusFilter ? { status: statusFilter } : {}),
     },
     include: {
       staff:   { select: { firstName: true, lastName: true, department: true, branch: true } },
-      patient: { select: { id: true, firstName: true, lastName: true, branch: true, branches: true } },
+      patient: { select: { id: true, firstName: true, lastName: true } },
     },
     orderBy: { startTime: 'asc' },
   })
 
-  const items = schedules
-    .map(s => {
-      const pb = patientBranchCodes(s.patient)
-      // Single-branch patient → that branch. Multi-branch → prefer the clinician's
-      // branch if the patient is registered there, else the patient's first branch.
-      // No patient branch on file → fall back to the clinician's branch.
-      const effectiveBranch = pb.length === 1
-        ? pb[0]
-        : pb.length > 1
-          ? (pb.includes(s.staff.branch) ? s.staff.branch : pb[0])
-          : s.staff.branch
-      return {
-        id:          s.id,
-        startTime:   s.startTime,
-        endTime:     s.endTime,
-        sessionType: s.sessionType,
-        status:      s.status,
-        department:  s.staff.department,
-        branch:      effectiveBranch,
-        clinician:   `${s.staff.lastName}, ${s.staff.firstName}`,
-        patientId:   s.patient?.id ?? null,
-        patientName: s.patient
-          ? `${s.patient.firstName} ${s.patient.lastName}`
-          : '—',
-      }
-    })
-    .filter(it => it.branch === branch)
+  const items = schedules.map(s => ({
+    id:          s.id,
+    startTime:   s.startTime,
+    endTime:     s.endTime,
+    sessionType: s.sessionType,
+    status:      s.status,
+    department:  s.staff.department,
+    branch:      s.staff.branch,
+    clinician:   `${s.staff.lastName}, ${s.staff.firstName}`,
+    patientId:   s.patient?.id ?? null,
+    patientName: s.patient
+      ? `${s.patient.firstName} ${s.patient.lastName}`
+      : '—',
+  }))
 
   // ── Class portal "Pay at front desk" notifications ─────────────
   // Parents on /pay → cash → "Notify front desk" land in ClassPortalFrontDeskPayment.
@@ -172,11 +143,15 @@ export async function GET(req: NextRequest) {
   //     the downpayment should only surface in the queue for that day.
   let bookingItems: typeof items = []
   try {
+    // Exclude teletherapy bookings (isTeletherapy=true or null date) — those
+    // don't need queue conversion because the accounting-hub PayMongo webhook
+    // already created their POS order when the patient paid the static link.
     const paidBookings = await prisma.patientBooking.findMany({
       where: {
         branch,
         status: 'PAID',
         accountingRecorded: false,
+        isTeletherapy: false,
         date: { gte: dayStart, lte: dayEnd },
       },
       include: {
@@ -186,9 +161,11 @@ export async function GET(req: NextRequest) {
       orderBy: { paidAt: 'asc' },
     })
     const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    bookingItems = paidBookings.map(b => {
+    bookingItems = paidBookings
+      .filter(b => b.date !== null && b.staff !== null)
+      .map(b => {
       const dp = b.downpayment ? Number(b.downpayment) : 0
-      const dateLabel = b.date.toISOString().slice(0, 10)
+      const dateLabel = b.date!.toISOString().slice(0, 10)
       return {
         id:          `pbk_${b.id}`,
         startTime:   b.startTime,
@@ -199,7 +176,7 @@ export async function GET(req: NextRequest) {
         status:      'CONFIRMED',
         department:  b.department,
         branch,
-        clinician:   `${b.staff.lastName}, ${b.staff.firstName}`,
+        clinician:   b.staff ? `${b.staff.lastName}, ${b.staff.firstName}` : '—',
         patientId:   b.patient?.id ?? null,
         patientName: b.patient ? `${b.patient.firstName} ${b.patient.lastName}` : '—',
       }
