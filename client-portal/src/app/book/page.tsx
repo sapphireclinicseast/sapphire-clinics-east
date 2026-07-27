@@ -23,8 +23,11 @@ const SERVICES_SBGH = [
 // SBEA's old generic "MD" is replaced by its concrete sub-specialties;
 // Developmental Pediatrician is still tile-visible but offline-only for
 // now (the clinic handles those requests by phone).
-const ONLINE_ENABLED_SBEA = new Set<string>(['PT', 'REHABILITATION_MEDICINE'])
-const ONLINE_ENABLED_SBGH = new Set<string>(['PT'])
+const ONLINE_ENABLED_SBEA = new Set<string>(['PT', 'REHABILITATION_MEDICINE', 'OT', 'SLP'])
+const ONLINE_ENABLED_SBGH = new Set<string>(['PT', 'OT', 'SLP'])
+
+// Services bookable online but ONLY as teletherapy (no in-clinic slot picker).
+const TELETHERAPY_ONLY = new Set<string>(['OT', 'SLP'])
 
 // Departments that are sub-specialties of the Medical Doctor service.
 // Used to surface the "Medical Doctor" tag on the upper-right of each tile.
@@ -276,6 +279,7 @@ function ServiceTile({
 }) {
   const Icon = SERVICE_ICONS[s] ?? IconSparkle
   const showMdTag = MD_SUBSPECIALTIES.has(s)
+  const showTeleTag = TELETHERAPY_ONLY.has(s)
   return (
     <button
       onClick={onClick}
@@ -301,6 +305,17 @@ function ServiceTile({
           <Icon />
         </div>
         <div className="flex flex-col items-end gap-1">
+          {showTeleTag && (
+            <span
+              className={`text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded ${
+                active && online
+                  ? 'bg-white/20 text-white'
+                  : 'bg-[color:var(--pale-teal)] text-[color:var(--teal)]'
+              }`}
+            >
+              Teletherapy
+            </span>
+          )}
           {showMdTag && (
             <span
               className={`text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded ${
