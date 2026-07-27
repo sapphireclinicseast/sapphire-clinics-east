@@ -236,3 +236,37 @@ export function verifyWebhookSignature(rawBody: string, signatureHeader: string 
   }
   return { valid: false, livemode: false }
 }
+
+/**
+ * Which instrument the payer used, normalised to CARD | GCASH | PAYMAYA | QRPH.
+ *
+ * PayMongo doesn't document one single field for this and it varies by method, so several
+ * plausible locations are checked rather than betting on one. Returns null when it can't be
+ * determined — callers fall back to a generic PayMongo payment mode and surface a warning
+ * instead of silently mis-tagging the sale. The full payload is kept on the checkout row, so
+ * an unrecognised shape can be inspected later.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function resolvePaymentMethodUsed(payment: any): 'CARD' | 'GCASH' | 'PAYMAYA' | 'QRPH' | null {
+  const a = payment?.attributes || {}
+  const candidates = [
+    a.source?.type, a.source?.brand, a.payment_method_type, a.method_used,
+    a.payment_method?.type, a.instrument?.type,
+  ]
+  const hay = candidates.filter(Boolean).map((v: unknown) => String(v).toLowerCase()).join(' ')
+  if (!hay) return null
+  if (hay.includes('qrph') || hay.includes('qr_ph') || hay.includes('qr')) return 'QRPH'
+  if (hay.includes('gcash')) return 'GCASH'
+  if (hay.includes('paymaya') || hay.includes('maya')) return 'PAYMAYA'
+  // Card brands (visa/mastercard/amex) and plain 'card'.
+  if (/\bcard\b|visa|master|amex|jcb|discover/.test(hay)) return 'CARD'
+  return null
+}
+
+/** POS PaymentMode name for an account + instrument, e.g. "Paymongo - AHEA (QRPH)". */
+export function paymongoPaymentModeName(account: string, method: 'CARD' | 'GCASH' | 'PAYMAYA' | 'QRPH'): string {
+  // The seeded modes use VER for Verdana; the others match the account code.
+  const short = account === 'VERDANA' ? 'VER' : account
+  const label = method === 'CARD' ? 'Credit Card' : method === 'GCASH' ? 'Gcash' : method === 'PAYMAYA' ? 'Paymaya' : 'QRPH'
+  return `Paymongo - ${short} (${label})`
+}

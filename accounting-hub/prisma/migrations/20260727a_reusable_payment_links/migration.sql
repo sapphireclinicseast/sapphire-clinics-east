@@ -30,3 +30,7 @@ CREATE INDEX IF NOT EXISTS "PaymongoCheckout_paymentLinkId_idx" ON "PaymongoChec
 -- Optional promo pre-applied to a reusable link (every payer gets it automatically).
 ALTER TABLE "PaymentLink" ADD COLUMN IF NOT EXISTS "voucherId" TEXT;
 ALTER TABLE "PaymentLink" ADD COLUMN IF NOT EXISTS "voucherCode" TEXT;
+
+-- Which instrument the payer used (CARD/GCASH/PAYMAYA/QRPH) + POS conversion stamp.
+ALTER TABLE "PaymongoCheckout" ADD COLUMN IF NOT EXISTS "paymentMethodUsed" TEXT;
+ALTER TABLE "PaymongoCheckout" ADD COLUMN IF NOT EXISTS "convertedAt" TIMESTAMP(3);

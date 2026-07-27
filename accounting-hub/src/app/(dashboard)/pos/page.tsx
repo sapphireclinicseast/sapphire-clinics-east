@@ -15,6 +15,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { TiktokImportModal } from './TiktokImportModal'
 import Pagination from '@/components/ui/Pagination'
+import { PaymongoConvertQueue } from './PaymongoConvertQueue'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -601,6 +602,11 @@ export default function POSPage() {
           </button>
         ))}
       </div>
+
+      {/* Online PayMongo payments waiting to be recorded as a sale. Hidden when empty. */}
+      {(mainTab === 'services' || mainTab === 'products') && (
+        <PaymongoConvertQueue branch={branch === 'ALL' ? '' : branch} />
+      )}
 
       {/* Content */}
       {mainTab === 'services' && (

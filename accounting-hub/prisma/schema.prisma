@@ -896,6 +896,10 @@ model PaymongoCheckout {
   customerEmail     String?
   // Voucher applied (if any). grossAmount = list price before discount; amount = charged.
   paymentLinkId     String?   // the reusable PaymentLink this payment came through
+  // Which instrument the payer actually used: CARD | GCASH | PAYMAYA | QRPH.
+  // Read from the PayMongo payment payload and used to pick the matching POS PaymentMode.
+  paymentMethodUsed String?
+  convertedAt       DateTime? // when a cashier turned this payment into a POS order
   voucherId         String?
   voucherCode       String?
   grossAmount       Decimal?

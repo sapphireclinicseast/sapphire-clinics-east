@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { listPayments, parsePayment, retrieveCheckout, paymongoConfigured, isPaymongoAccount, configuredAccounts } from '@/lib/paymongo'
+import { listPayments, parsePayment, retrieveCheckout, paymongoConfigured, isPaymongoAccount, configuredAccounts, resolvePaymentMethodUsed } from '@/lib/paymongo'
 import { postPaymongoSale } from '@/lib/accounting/post-paymongo-sale'
 
 // Friendly department names, matching the labels used in the reports drill-down.
@@ -68,6 +68,8 @@ export async function GET(req: Request) {
             where: { id: rec.id },
             data: {
               status: 'PAID', paymentId: p.paymentId, fee: p.feePhp, netAmount: p.netPhp, paidAt: p.paidAt, raw: payment as object,
+              // Which instrument was used → picks the POS PaymentMode on conversion.
+              ...(resolvePaymentMethodUsed(payment) ? { paymentMethodUsed: resolvePaymentMethodUsed(payment) } : {}),
               // Don't blank anything already recorded if PayMongo returns an empty billing object.
               ...(firstName ? { customerFirstName: firstName } : {}),
               ...(lastName ? { customerLastName: lastName } : {}),
@@ -129,6 +131,7 @@ export async function GET(req: Request) {
       voucherCode: true, grossAmount: true, discountAmount: true,
       amount: true, status: true, checkoutUrl: true, fee: true, netAmount: true,
       paidAt: true, payoutId: true, livemode: true, createdAt: true,
+      paymentMethodUsed: true, convertedAt: true, orderId: true,
     },
   })
 
