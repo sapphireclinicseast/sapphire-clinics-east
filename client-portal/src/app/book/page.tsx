@@ -193,7 +193,7 @@ export default function BookStep1Page() {
             onClick={next}
             className="btn-cta"
           >
-            {selectedIsTele ? 'Continue → Choose a package' : 'Continue → Pick a slot'}
+            {selectedIsTele ? 'Continue → Choose a service' : 'Continue → Pick a slot'}
           </button>
         </div>
       </div>
