@@ -113,7 +113,7 @@ function WaitlistTab({ branch }: { branch: string }) {
     fetch('/api/patients?limit=10000').then(r => r.json()).then(d => {
       const names = new Set<string>()
       for (const p of (d.patients || [])) {
-        const n = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase()
+        const n = `${p.firstName || ''} ${p.lastName || ''}`.replace(/\s+/g, ' ').trim().toLowerCase()
         if (n) names.add(n)
       }
       setPatientNames(names)
@@ -166,13 +166,13 @@ function WaitlistTab({ branch }: { branch: string }) {
     for (const a of item.answers) {
       const title = getFieldTitleLower(item, a)
       if ((title.includes('name') && title.includes('patient')) || title.includes('name of')) {
-        if (a.contact) return `${a.contact.first_name || ''} ${a.contact.last_name || ''}`.trim()
+        if (a.contact) return `${a.contact.first_name || ''} ${a.contact.last_name || ''}`.replace(/\s+/g, ' ').trim()
         if (a.text) return a.text
       }
     }
     // Fallback: first contact_info field
     const contactAnswer = item.answers.find((a: any) => a.field?.type === 'contact_info' || a.contact)
-    if (contactAnswer?.contact) return `${contactAnswer.contact.first_name || ''} ${contactAnswer.contact.last_name || ''}`.trim()
+    if (contactAnswer?.contact) return `${contactAnswer.contact.first_name || ''} ${contactAnswer.contact.last_name || ''}`.replace(/\s+/g, ' ').trim()
     if (contactAnswer?.text) return contactAnswer.text
     return 'Unknown'
   }
@@ -226,6 +226,8 @@ function WaitlistTab({ branch }: { branch: string }) {
         body: JSON.stringify(patientData),
       })
       if (res.ok) {
+        // Delete the form response from HR Platform so it doesn't reappear on page reload
+        await fetch(`/api/patient-relationship?tab=waitlist-delete&formId=${item._formId}&submissionId=${item.landing_id}`, { method: 'DELETE' }).catch(() => {})
         alert('Patient converted successfully! They are now in the Patient CRM.')
         setResponses(prev => prev.filter(r => r.landing_id !== item.landing_id))
       } else {
