@@ -842,6 +842,33 @@ model PaymentModeDeduction {
 }
 
 // ── PayMongo integration ─────────────────────────────────
+// A REUSABLE payment link for one service/product on one PayMongo account.
+// PayMongo checkout sessions are single-use and (with QRPh) never ask the payer for their
+// details, so the intake is hosted here instead: the shared URL is /pay/<token>, where the
+// payer enters their name / contact / email, and only then is a fresh PayMongo checkout
+// session minted for them. One link therefore serves any number of patients.
+model PaymentLink {
+  id              String   @id @default(cuid())
+  token           String   @unique   // public, unguessable slug used in /pay/<token>
+  account         String              // AHEA | AHGH | VERDANA | AHI
+  branch          String?
+  serviceId       String?
+  inventoryItemId String?
+  itemName        String
+  department      String?
+  quantity        Int      @default(1)
+  unitPrice       Decimal             // snapshot; re-read from the catalogue on each visit
+  allowVoucher    Boolean  @default(true)
+  isActive        Boolean  @default(true)
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([account])
+  @@index([token])
+  @@index([isActive])
+}
+
 // Tracks a PayMongo checkout session ↔ POS order, plus the settled payment fee/net.
 model PaymongoCheckout {
   id            String    @id @default(cuid())
@@ -863,6 +890,7 @@ model PaymongoCheckout {
   customerPhone     String?
   customerEmail     String?
   // Voucher applied (if any). grossAmount = list price before discount; amount = charged.
+  paymentLinkId     String?   // the reusable PaymentLink this payment came through
   voucherId         String?
   voucherCode       String?
   grossAmount       Decimal?

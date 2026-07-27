@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search } from 'lucide-react'
+import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search, Link as LinkIcon } from 'lucide-react'
 import { PosLinksPanel } from './PosLinksPanel'
 
 const ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER']
@@ -17,6 +17,13 @@ const ACCOUNTS = [
 ] as const
 type Tab = typeof ACCOUNTS[number]['code'] | 'VOUCHERS' | 'POS'
 
+const DEPT_LABELS: Record<string, string> = {
+  PT: 'Physical Therapy', OT: 'Occupational Therapy', ST: 'Speech Therapy',
+  SLP: 'Speech-Language Pathology', SPED: 'Special Education', PSY: 'Psychology',
+  PSYCHOLOGY: 'Psychology', MD: 'Medical Doctor', CLI: 'Clinic', DIG: 'Digital & Tech',
+  EDU: 'Training & Education', MER: 'Merchandise', OTHER: 'Other',
+}
+
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
@@ -27,6 +34,10 @@ interface Txn {
   voucherCode: string | null; grossAmount: number | null; discountAmount: number | null
   amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null
   paidAt: string | null; payoutId: string | null; livemode: boolean; createdAt: string
+}
+interface PayLink {
+  id: string; token: string; itemName: string; department: string | null; quantity: number
+  unitPrice: number; amount: number; allowVoucher: boolean; isActive: boolean; kind: string; paidCount: number; createdAt: string
 }
 interface Payout { payoutId: string; net: number; fee: number; status: string; settled: boolean; paidAt: string | null }
 interface Item { id: string; name: string; price: number; sku?: string; stock?: number; department?: string }
@@ -63,11 +74,10 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
   const [itemQuery, setItemQuery] = useState('')
   const [itemOpen, setItemOpen] = useState(false)
   const [qty, setQty] = useState('1')
-  const [code, setCode] = useState('')
-  const [preview, setPreview] = useState<{ ok: boolean; reason?: string; discount?: number; netAmount?: number } | null>(null)
   const [busy, setBusy] = useState(false)
-  const [lastUrl, setLastUrl] = useState('')
-  const [copied, setCopied] = useState(false)
+  const [links, setLinks] = useState<PayLink[]>([])
+  const [copiedToken, setCopiedToken] = useState('')
+  const [allowVoucher, setAllowVoucher] = useState(true)
 
   const list = kind === 'SERVICE' ? items.services : items.products
   const chosen = list.find(i => i.id === itemId)
@@ -84,15 +94,21 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
     }).slice(0, 60)
   }, [list, itemQuery])
 
-  const pickItem = (i: Item) => { setItemId(i.id); setItemQuery(i.name); setItemOpen(false); setPreview(null) }
+  const pickItem = (i: Item) => { setItemId(i.id); setItemQuery(i.name); setItemOpen(false) }
+
+  // Absolute URL for the payer page — resolved client-side so it works on any host.
+  const [origin, setOrigin] = useState('')
+  useEffect(() => { setOrigin(window.location.origin) }, [])
 
   const load = useCallback(async (sync = false) => {
     setLoading(true); setError('')
     try {
-      const [t, p] = await Promise.all([
+      const [t, p, l] = await Promise.all([
         fetch(`/api/paymongo/transactions?account=${account}${sync ? '&sync=1' : ''}`).then(r => r.json()),
         fetch(`/api/paymongo/payouts?account=${account}`).then(r => r.json()),
+        fetch(`/api/paymongo/links?account=${account}`).then(r => r.ok ? r.json() : []),
       ])
+      setLinks(Array.isArray(l) ? l : [])
       setTxns(t.transactions || []); setConfigured(t.configured !== false)
       if (t.syncError) setError(t.syncError)
       // Sales that couldn't be booked to the GL (e.g. an item with no revenue account).
@@ -110,28 +126,19 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
       .then(d => setItems({ services: d.services || [], products: d.products || [] }))
       .catch(() => setItems({ services: [], products: [] }))
   }, [account])
-  useEffect(() => { setItemId(''); setItemQuery(''); setItemOpen(false); setPreview(null) }, [kind])
+  useEffect(() => { setItemId(''); setItemQuery(''); setItemOpen(false) }, [kind])
 
-  const checkCode = async () => {
-    if (!code.trim() || gross <= 0) { setPreview(null); return }
-    const r = await fetch('/api/paymongo/vouchers/validate', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, account, amountPhp: gross }),
-    })
-    setPreview(await r.json())
-  }
 
   const generate = async () => {
     setBusy(true); setError('')
     try {
-      const r = await fetch('/api/paymongo/checkout', {
+      const r = await fetch('/api/paymongo/links', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account, kind, itemId, quantity: parseInt(qty, 10) || 1, voucherCode: code.trim() || undefined }),
+        body: JSON.stringify({ account, kind, itemId, quantity: parseInt(qty, 10) || 1, allowVoucher }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Failed to create link')
-      setLastUrl(j.checkoutUrl); setCopied(false)
-      setCode(''); setPreview(null); setItemId(''); setItemQuery('')
+      setItemId(''); setItemQuery('')
       await load(false)
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
@@ -143,8 +150,20 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
     load(false)
   }
 
-  // Only the item matters now — the payer fills in their own details on PayMongo's page.
-  const canSubmit = !!itemId && gross > 0 && !(preview && !preview.ok)
+  const toggleLink = async (l: PayLink) => {
+    const r = await fetch('/api/paymongo/links', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: l.id, isActive: !l.isActive }) })
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Failed'); return }
+    load(false)
+  }
+  const delLink = async (l: PayLink) => {
+    if (!confirm(`Delete the payment link for ${l.itemName}?`)) return
+    const r = await fetch(`/api/paymongo/links?id=${l.id}`, { method: 'DELETE' })
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Failed'); return }
+    load(false)
+  }
+
+  // Only the item matters — the payer enters their own details on the payer page.
+  const canSubmit = !!itemId && gross > 0
 
   return (
     <div className="space-y-4">
@@ -159,7 +178,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
       {/* ── Generate a payment link ── */}
       <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
         <p className="text-sm font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Generate Payment Link — {label}</p>
-        <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>The payer enters their own name, contact number and email on the PayMongo checkout page — those details then appear in Transactions Received below. Each link is valid for a single payment, so generate one per patient.</p>
+        <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Create one link per service or product and reuse it for every patient. Each payer opens the link, enters their own name, contact number and email, then pays — and those details appear in Transactions Received below.</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
           <div>
             <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Pay for</label>
@@ -174,7 +193,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
               <Search size={13} className="absolute left-2.5 top-2.5" style={{ color: 'var(--mid-gray)' }} />
               <input
                 value={itemQuery}
-                onChange={e => { setItemQuery(e.target.value); setItemId(''); setItemOpen(true); setPreview(null) }}
+                onChange={e => { setItemQuery(e.target.value); setItemId(''); setItemOpen(true) }}
                 onFocus={() => setItemOpen(true)}
                 onBlur={() => window.setTimeout(() => setItemOpen(false), 150)}
                 onKeyDown={e => {
@@ -219,40 +238,83 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
           </div>
           <div>
             <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Qty</label>
-            <input type="number" min={1} value={qty} onChange={e => { setQty(e.target.value); setPreview(null) }} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
-          </div>
-          <div className="md:col-span-2">
-            <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Voucher code (optional)</label>
-            <div className="flex gap-2">
-              <input value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setPreview(null) }} onBlur={checkCode} className="flex-1 px-3 py-2 rounded-xl border font-mono" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. SUMMER10" />
-              <button onClick={checkCode} disabled={!code.trim() || gross <= 0} className="px-3 py-2 rounded-xl text-xs font-medium border disabled:opacity-40" style={{ borderColor: 'var(--light-gray)' }}>Check</button>
-            </div>
-            {preview && (preview.ok
-              ? <p className="mt-1 text-[11px]" style={{ color: '#166534' }}>✓ Discount {peso(preview.discount || 0)} → charge {peso(preview.netAmount || 0)}</p>
-              : <p className="mt-1 text-[11px] text-red-600">{preview.reason}</p>)}
+            <input type="number" min={1} value={qty} onChange={e => { setQty(e.target.value) }} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
           </div>
           <div className="md:col-span-2 flex items-end">
             <div className="w-full rounded-xl border px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Amount to charge</span>
-              <div className="font-mono font-bold text-base" style={{ color: 'var(--deep-teal)' }}>
-                {peso(preview?.ok ? (preview.netAmount || 0) : gross)}
-                {preview?.ok && (preview.discount || 0) > 0 && <span className="ml-2 text-[11px] font-normal line-through" style={{ color: 'var(--mid-gray)' }}>{peso(gross)}</span>}
-              </div>
+              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Amount the payer will be charged</span>
+              <div className="font-mono font-bold text-base" style={{ color: 'var(--deep-teal)' }}>{peso(gross)}</div>
             </div>
+          </div>
+          <div className="md:col-span-2 flex items-end">
+            <label className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--charcoal)' }}>
+              <input type="checkbox" checked={allowVoucher} onChange={e => setAllowVoucher(e.target.checked)} />
+              Let the payer enter a voucher code
+            </label>
           </div>
         </div>
         <div className="flex items-center gap-3 mt-3 flex-wrap">
           <button onClick={generate} disabled={busy || !canSubmit || !configured} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-            {busy ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />} Generate Link
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />} Create Payment Link
           </button>
-          {lastUrl && (
-            <div className="flex items-center gap-3 text-xs">
-              <a href={lastUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-medium underline" style={{ color: 'var(--teal)' }}><ExternalLink size={12} /> Open link</a>
-              <button onClick={() => { navigator.clipboard?.writeText(lastUrl); setCopied(true) }} className="flex items-center gap-1 font-medium" style={{ color: copied ? '#166534' : 'var(--mid-gray)' }}>
-                {copied ? <><CheckCircle2 size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
-              </button>
-            </div>
-          )}
+        </div>
+      </div>
+
+      {/* ── Reusable payment links ── */}
+      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+          <LinkIcon size={15} style={{ color: 'var(--teal)' }} />
+          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Payment Links — {label}</span>
+          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>· share these; each one works for any number of patients</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Item</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Amount</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Voucher</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Paid</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Status</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Link</th>
+            </tr></thead>
+            <tbody>
+              {links.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No payment links yet — create one above.</td></tr>
+              ) : links.map(l => {
+                const url = `${origin}/pay/${l.token}`
+                return (
+                  <tr key={l.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className="px-3 py-2">
+                      <span style={{ color: 'var(--charcoal)' }}>{l.itemName}{l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>
+                      {(l.department || l.kind === 'PRODUCT') && (
+                        <span className="block mt-0.5">
+                          {l.department && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#eff6ff', color: '#1e40af' }}>{DEPT_LABELS[l.department] || l.department}</span>}
+                          {l.kind === 'PRODUCT' && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(l.amount)}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{l.allowVoucher ? 'Allowed' : '—'}</td>
+                    <td className="px-3 py-2 text-right font-semibold" style={{ color: l.paidCount > 0 ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>{l.paidCount}</td>
+                    <td className="px-3 py-2">
+                      {l.isActive
+                        ? <span style={{ color: '#166534' }}>Active</span>
+                        : <span style={{ color: 'var(--mid-gray)' }}>Disabled</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <button onClick={() => { navigator.clipboard?.writeText(url); setCopiedToken(l.token) }}
+                        className="text-[11px] font-medium mr-2" style={{ color: copiedToken === l.token ? '#166534' : 'var(--teal)' }}>
+                        {copiedToken === l.token ? 'Copied' : 'Copy link'}
+                      </button>
+                      <a href={url} target="_blank" rel="noreferrer" className="mr-2" title="Open payer page"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>
+                      <button onClick={() => toggleLink(l)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--mid-gray)' }}>{l.isActive ? 'Disable' : 'Enable'}</button>
+                      {l.paidCount === 0 && <button onClick={() => delLink(l)} title="Delete"><Trash2 size={13} className="text-red-500 inline" /></button>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
