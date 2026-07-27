@@ -41,6 +41,8 @@ interface Consultant {
   pagibigNumber?: string | null
   taxDeduction: string
   monthlyRetainer: number | string
+  /** Retainer split per branch, e.g. { SBGH: 10000 }. Null = all of it on the primary branch. */
+  retainerByBranch?: Record<string, number | string> | null
   bankName?: string | null
   bankAccountNo?: string | null
   isActive: boolean
@@ -815,6 +817,9 @@ export default function PayrollPage() {
   const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null }>>({})
   const [editingTax, setEditingTax] = useState('')
   const [editingRetainer, setEditingRetainer] = useState('')
+  // Per-branch retainer amounts while editing, keyed by branch code. A branch present here is
+  // ticked; its value is the monthly amount for that branch.
+  const [editingRetainerBranches, setEditingRetainerBranches] = useState<Record<string, string>>({})
   const [editingBirAddress, setEditingBirAddress] = useState('')
   const [savingConsultant, setSavingConsultant] = useState(false)
 
@@ -1611,6 +1616,9 @@ export default function PayrollPage() {
     setEditingRates(rateMap)
     setEditingTax(c.taxDeduction)
     setEditingRetainer(String(toNum(c.monthlyRetainer)))
+    setEditingRetainerBranches(Object.fromEntries(
+      Object.entries(c.retainerByBranch || {}).map(([b, v]) => [b, String(toNum(v))]),
+    ))
     setEditingBirAddress(c.birAddress || '')
   }
 
@@ -1639,11 +1647,22 @@ export default function PayrollPage() {
           thresholdAmount: r.thresholdAmount ?? null,
           reducedAmount: r.reducedAmount ?? null,
         }))
-      await fetch('/api/payroll/consultants', {
+      // A per-branch split, when set, is what payroll uses and the total follows from it.
+      const splitEntries = Object.entries(editingRetainerBranches)
+        .map(([b, v]) => [b, parseFloat(v) || 0] as const)
+        .filter(([, amt]) => amt > 0)
+      const retainerByBranch = splitEntries.length > 0 ? Object.fromEntries(splitEntries) : null
+      const r = await fetch('/api/payroll/consultants', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: c.id, taxDeduction: editingTax, monthlyRetainer: parseFloat(editingRetainer) || 0, birAddress: editingBirAddress, unitPayRates }),
+        body: JSON.stringify({
+          id: c.id, taxDeduction: editingTax,
+          monthlyRetainer: parseFloat(editingRetainer) || 0,
+          retainerByBranch,
+          birAddress: editingBirAddress, unitPayRates,
+        }),
       })
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'Failed to save') }
       await fetchConsultants()
     } catch { setError('Failed to save') }
     finally { setSavingConsultant(false) }
@@ -3107,6 +3126,16 @@ export default function PayrollPage() {
                           </td>
                           <td className="px-4 py-3 text-right text-xs font-medium" style={{ color: 'var(--charcoal)' }}>
                             {toNum(c.monthlyRetainer) > 0 ? formatCurrency(toNum(c.monthlyRetainer)) + '/mo' : '—'}
+                            {/* Which branch actually carries it — matters for interbranch consultants. */}
+                            {c.retainerByBranch && Object.keys(c.retainerByBranch).length > 0 && (
+                              <span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>
+                                {Object.entries(c.retainerByBranch).map(([b, v]) =>
+                                  Object.keys(c.retainerByBranch!).length > 1
+                                    ? `${branchLabel(b)} ${formatCurrency(toNum(v))}`
+                                    : branchLabel(b),
+                                ).join(' · ')}
+                              </span>
+                            )}
                           </td>
                         </tr>
                         {expandedConsultant === c.id && (
@@ -3122,11 +3151,64 @@ export default function PayrollPage() {
                                     </label>
                                   ))}
                                 </div>
-                                <div>
-                                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Fixed Monthly Retainer</label>
-                                  <input type="number" min={0} step="0.01" value={editingRetainer} onChange={e => setEditingRetainer(e.target.value)}
-                                    className="px-3 py-2 rounded-xl border text-sm outline-none w-48" style={{ borderColor: 'var(--light-gray)' }} />
-                                </div>
+                                {(() => {
+                                  const affiliated = (c.affiliatedBranches && c.affiliatedBranches.length ? c.affiliatedBranches : [c.branch]).filter(Boolean)
+                                  const split = Object.entries(editingRetainerBranches).filter(([, v]) => (parseFloat(v) || 0) > 0)
+                                  const splitTotal = split.reduce((s, [, v]) => s + (parseFloat(v) || 0), 0)
+                                  const setBranchAmount = (b: string, v: string | null) => setEditingRetainerBranches(prev => {
+                                    const next = { ...prev }
+                                    if (v === null) delete next[b]; else next[b] = v
+                                    return next
+                                  })
+                                  return (
+                                    <div>
+                                      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Fixed Monthly Retainer</label>
+                                      <input type="number" min={0} step="0.01" value={split.length > 0 ? String(splitTotal) : editingRetainer}
+                                        onChange={e => setEditingRetainer(e.target.value)} disabled={split.length > 0}
+                                        className="px-3 py-2 rounded-xl border text-sm outline-none w-48 disabled:bg-gray-50 disabled:text-gray-500"
+                                        style={{ borderColor: 'var(--light-gray)' }} />
+
+                                      {/* Interbranch consultants: a retainer may belong to one branch only, or be
+                                          split across branches. Only offered when there is more than one branch. */}
+                                      {affiliated.length > 1 && (
+                                        <div className="mt-2 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Retainer branch(es)</p>
+                                          <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                                            Tick the branch(es) that pay this retainer and set each amount. Leave all unticked
+                                            to charge the whole retainer to {branchLabel(c.branch)} (the primary branch).
+                                          </p>
+                                          <div className="space-y-1.5">
+                                            {affiliated.map(b => {
+                                              const ticked = editingRetainerBranches[b] !== undefined
+                                              return (
+                                                <div key={b} className="flex items-center gap-2">
+                                                  <label className="flex items-center gap-2 text-xs cursor-pointer w-44">
+                                                    <input type="checkbox" checked={ticked}
+                                                      onChange={e => setBranchAmount(b, e.target.checked ? (editingRetainer || '0') : null)} />
+                                                    {branchLabel(b)}
+                                                  </label>
+                                                  <input type="number" min={0} step="0.01" disabled={!ticked}
+                                                    value={editingRetainerBranches[b] ?? ''}
+                                                    onChange={e => setBranchAmount(b, e.target.value)}
+                                                    placeholder="0.00"
+                                                    className="px-2.5 py-1.5 rounded-lg border text-xs outline-none w-32 disabled:bg-gray-100"
+                                                    style={{ borderColor: 'var(--light-gray)' }} />
+                                                  <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>/mo</span>
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                          {split.length > 0 && (
+                                            <p className="mt-2 text-[11px]" style={{ color: 'var(--deep-teal)' }}>
+                                              Total {formatCurrency(splitTotal)}/mo · {formatCurrency(splitTotal / 2)} per cutoff, charged to{' '}
+                                              {split.map(([b]) => branchLabel(b)).join(' + ')}.
+                                            </p>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
                                 <div>
                                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
                                     BIR Registered Address

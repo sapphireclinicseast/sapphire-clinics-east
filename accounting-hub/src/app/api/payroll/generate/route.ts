@@ -163,7 +163,12 @@ export async function GET(req: Request) {
       branchSessionNames = new Set(oc.map(o => (o.clinicianName || '').trim().toUpperCase()).filter(Boolean))
     }
     const consultants = branch
-      ? consultantsNoEmp.filter(c => c.branch === branch || (c.extraBranches || []).includes(branch) || branchSessionNames.has(c.name.trim().toUpperCase()))
+      ? consultantsNoEmp.filter(c =>
+          c.branch === branch
+          || (c.extraBranches || []).includes(branch)
+          || branchSessionNames.has(c.name.trim().toUpperCase())
+          // Retained here → owed a payslip at this branch even with no sessions this cutoff.
+          || Number((c.retainerByBranch as Record<string, unknown> | null)?.[branch] ?? 0) > 0)
       : consultantsNoEmp
 
     // Get all orders in the cutoff period
@@ -360,11 +365,21 @@ export async function GET(req: Request) {
       }
 
       const unitPayTotal = unitPayBreakdown.reduce((s, b) => s + b.lineTotal, 0)
-      // Retainer + benefits are monthly per-person amounts, NOT per-branch. For an
-      // interbranch consultant appearing on two branch payslips in the same cutoff,
-      // apply them only on their PRIMARY branch so they aren't counted twice.
+      // Benefits are monthly per-person amounts, NOT per-branch. For an interbranch
+      // consultant appearing on two branch payslips in the same cutoff, apply them only on
+      // their PRIMARY branch so they aren't counted twice.
       const isPrimaryBranch = !branch || c.branch === branch
-      const retainerAmount = isPrimaryBranch ? Number(c.monthlyRetainer) / 2 : 0
+
+      // A retainer belongs to the branch(es) that actually retain the consultant: someone may
+      // consult interbranch yet be retained at one branch only, or split across both. When no
+      // split is configured the whole retainer sits on the primary branch, as before.
+      const split = (c.retainerByBranch || null) as Record<string, unknown> | null
+      const retainerTotalForCutoff: number = split && Object.keys(split).length > 0
+        ? (branch
+            ? Number(split[branch] ?? 0)                                              // this branch's share
+            : Object.values(split).reduce((s: number, v) => s + (Number(v) || 0), 0)) // all-branch run
+        : (isPrimaryBranch ? Number(c.monthlyRetainer) : 0)
+      const retainerAmount = retainerTotalForCutoff / 2   // per cutoff (half the month)
 
       // ── Incentive calculation ────────────────────────────────
       // Count sessions per calendar day (Asia/Manila). A single order with

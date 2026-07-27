@@ -9,6 +9,7 @@ const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AH
 const BRANCH_TO_ORDER: Record<string, string> = {
   SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE',
 }
+const BRANCH_CODES = Object.keys(BRANCH_TO_ORDER)
 
 /** Branch-specific roles can only see their branch + VERDANA */
 function allowedBranches(role: string): string[] | null {
@@ -239,13 +240,38 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, taxDeduction, monthlyRetainer, unitPayRates, isActive, name, department, branch, birAddress } = await req.json()
+    const { id, taxDeduction, monthlyRetainer, retainerByBranch, unitPayRates, isActive, name, department, branch, birAddress } = await req.json()
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     if (taxDeduction !== undefined) data.taxDeduction = taxDeduction
     if (monthlyRetainer !== undefined) data.monthlyRetainer = Number(monthlyRetainer)
+
+    // Per-branch retainer for an interbranch consultant, e.g. { SBGH: 10000 } for someone who
+    // consults at both branches but is retained only at Greenhills. monthlyRetainer is kept as
+    // the total so payslips, exports and the roster column stay consistent with the split.
+    if (retainerByBranch !== undefined) {
+      if (retainerByBranch === null) {
+        data.retainerByBranch = null
+      } else {
+        const clean: Record<string, number> = {}
+        for (const [code, amt] of Object.entries(retainerByBranch as Record<string, unknown>)) {
+          if (!BRANCH_CODES.includes(code)) {
+            return NextResponse.json({ error: `Unknown branch "${code}"` }, { status: 400 })
+          }
+          const n = Number(amt)
+          if (!Number.isFinite(n) || n < 0) {
+            return NextResponse.json({ error: `Retainer for ${code} must be zero or more` }, { status: 400 })
+          }
+          if (n > 0) clean[code] = Math.round(n * 100) / 100
+        }
+        const keys = Object.keys(clean)
+        data.retainerByBranch = keys.length > 0 ? clean : null
+        // The split is authoritative when present, so the total follows it.
+        if (keys.length > 0) data.monthlyRetainer = keys.reduce((s, k) => s + clean[k], 0)
+      }
+    }
     if (isActive !== undefined) data.isActive = isActive
     if (name !== undefined) data.name = name.trim()
     if (department !== undefined) data.department = department

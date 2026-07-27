@@ -27,6 +27,7 @@ export async function GET() {
     startDate: v.startDate ? v.startDate.toISOString().slice(0, 10) : null,
     endDate: v.endDate ? v.endDate.toISOString().slice(0, 10) : null,
     branches: v.branches, usageLimitType: v.usageLimitType, maxUses: v.maxUses,
+    requiresPwdId: v.requiresPwdId,
     accountId: v.accountId, accountLabel: v.account ? `${v.account.accountNumber} ${v.account.accountTitle}` : null,
     isActive: v.isActive, uses: v._count.redemptions, createdAt: v.createdAt,
   })))
@@ -49,6 +50,8 @@ function normalise(b: any) {
     branches,
     usageLimitType,
     maxUses: usageLimitType === 'MAX_USES' ? (parseInt(String(b.maxUses), 10) || null) : null,
+    // Only honoured for a payer whose Patient CRM record holds a PWD/Senior ID + photo.
+    requiresPwdId: !!b.requiresPwdId,
     accountId: b.accountId || null,
     isActive: b.isActive === undefined ? true : !!b.isActive,
   }

@@ -944,6 +944,9 @@ model Voucher {
   // Usage cap: UNLIMITED | ONCE_PER_CUSTOMER (by email) | MAX_USES (see maxUses).
   usageLimitType String  @default("UNLIMITED")
   maxUses        Int?
+  // PWD/Senior vouchers only apply when Patient CRM (Operations Hub) holds BOTH a
+  // PWD/Senior ID number AND an uploaded ID photo for the payer. Checked at payment time.
+  requiresPwdId  Boolean @default(false)
   // Contra-revenue account this discount is booked to (chosen from the COA).
   accountId     String?
   account       Account? @relation("VoucherDiscountAccount", fields: [accountId], references: [id], onDelete: SetNull)
@@ -1046,7 +1049,11 @@ model Consultant {
   bankName        String?
   bankAccountNo   String?
   taxDeduction    String    @default("NONE") // "FIVE_PERCENT" or "NONE"
-  monthlyRetainer Decimal   @default(0)
+  monthlyRetainer Decimal   @default(0)   // total per month; = sum of retainerByBranch when that is set
+  // Which branch(es) the retainer is actually for, e.g. { "SBGH": 10000 } for a consultant
+  // who works interbranch but is only retained at Greenhills. Null/empty falls back to the
+  // whole of monthlyRetainer on the primary branch.
+  retainerByBranch Json?
   isActive        Boolean   @default(true)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

@@ -31,9 +31,17 @@ export async function POST(req: Request) {
       account: link.account,
       amountPhp: gross,
       customerEmail: b.email || null,
+      // Needed by a PWD/Senior-gated code, which is matched against Patient CRM.
+      customerFirstName: b.firstName || null,
+      customerLastName: b.lastName || null,
+      customerPhone: b.phone || null,
     })
-    // Don't leak voucher internals to the public — just the outcome and amounts.
-    return NextResponse.json({ ok: res.ok, reason: res.reason, discount: res.discount, netAmount: res.netAmount })
+    // Don't leak voucher internals to the public — just the outcome and amounts, plus the
+    // matched patient name so the payer can see whose registered ID was recognised.
+    return NextResponse.json({
+      ok: res.ok, reason: res.reason, discount: res.discount, netAmount: res.netAmount,
+      pwdPatientName: res.pwdPatientName,
+    })
   } catch {
     return NextResponse.json({ ok: false, reason: 'Could not check that code.' }, { status: 500 })
   }

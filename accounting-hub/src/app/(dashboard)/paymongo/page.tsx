@@ -73,6 +73,7 @@ interface Voucher {
   id: string; name: string; code: string; discountType: string; discountValue: number
   isLifetime: boolean; startDate: string | null; endDate: string | null; branches: string[]
   usageLimitType: string; maxUses: number | null; accountId: string | null; accountLabel: string | null
+  requiresPwdId: boolean
   isActive: boolean; uses: number
 }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
@@ -474,6 +475,7 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
     name: '', code: '', discountType: 'PERCENTAGE', discountValue: '',
     isLifetime: false, startDate: todayStr(), endDate: todayStr(),
     branches: [] as string[], usageLimitType: 'UNLIMITED', maxUses: '', accountId: '', isActive: true,
+    requiresPwdId: false,
   })
   const [saving, setSaving] = useState(false)
 
@@ -490,7 +492,7 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
 
   const openNew = () => {
     setEditId(null)
-    setF({ name: '', code: '', discountType: 'PERCENTAGE', discountValue: '', isLifetime: false, startDate: todayStr(), endDate: todayStr(), branches: [], usageLimitType: 'UNLIMITED', maxUses: '', accountId: '', isActive: true })
+    setF({ name: '', code: '', discountType: 'PERCENTAGE', discountValue: '', isLifetime: false, startDate: todayStr(), endDate: todayStr(), branches: [], usageLimitType: 'UNLIMITED', maxUses: '', accountId: '', isActive: true, requiresPwdId: false })
     setOpen(true); setError('')
   }
   const openEdit = (v: Voucher) => {
@@ -499,7 +501,7 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
       name: v.name, code: v.code, discountType: v.discountType, discountValue: String(v.discountValue),
       isLifetime: v.isLifetime, startDate: v.startDate || todayStr(), endDate: v.endDate || todayStr(),
       branches: v.branches || [], usageLimitType: v.usageLimitType, maxUses: v.maxUses ? String(v.maxUses) : '',
-      accountId: v.accountId || '', isActive: v.isActive,
+      accountId: v.accountId || '', isActive: v.isActive, requiresPwdId: !!v.requiresPwdId,
     })
     setOpen(true); setError('')
   }
@@ -554,7 +556,16 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
             ) : rows.map(v => (
               <tr key={v.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                 <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{v.name}</td>
-                <td className="px-3 py-2 font-mono" style={{ color: 'var(--deep-teal)' }}>{v.code}</td>
+                <td className="px-3 py-2 font-mono" style={{ color: 'var(--deep-teal)' }}>
+                  {v.code}
+                  {v.requiresPwdId && (
+                    <span className="block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-sans font-semibold w-fit"
+                      style={{ background: '#e0f2fe', color: '#075985' }}
+                      title="Only works for a payer with a PWD/Senior ID number AND ID photo in Patient CRM">
+                      PWD / SENIOR ID REQUIRED
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{v.discountType === 'FIXED' ? peso(v.discountValue) : `${v.discountValue}%`}</td>
                 <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{v.isLifetime ? <span className="font-medium" style={{ color: 'var(--deep-teal)' }}>Lifetime</span> : `${v.startDate} → ${v.endDate}`}</td>
                 <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{v.branches.length ? v.branches.join(', ') : 'All'}</td>
@@ -640,6 +651,18 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
                   {coa.map(a => <option key={a.id} value={a.id}>{a.accountNumber} · {a.accountTitle}</option>)}
                 </select>
                 <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Contra-revenue accounts (DEBIT balance, e.g. 7210 Other Discounts) show the promo as a deduction in the Income Statement.</p>
+              </div>
+
+              <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <label className="flex items-start gap-2 font-medium" style={{ color: 'var(--charcoal)' }}>
+                  <input type="checkbox" className="mt-0.5" checked={f.requiresPwdId} onChange={e => setF({ ...f, requiresPwdId: e.target.checked })} />
+                  <span>Requires a registered PWD / Senior ID</span>
+                </label>
+                <p className="mt-1 text-[11px] pl-6" style={{ color: 'var(--mid-gray)' }}>
+                  The code is refused unless Patient CRM (Operations Hub) holds <strong>both</strong> a PWD/Senior ID
+                  number <strong>and</strong> an uploaded ID photo for the payer. Matched on the name, mobile number
+                  or email they enter at checkout.
+                </p>
               </div>
 
               <label className="flex items-center gap-2 font-medium" style={{ color: 'var(--charcoal)' }}>

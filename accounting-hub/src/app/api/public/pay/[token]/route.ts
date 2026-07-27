@@ -90,18 +90,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
     if (phone.replace(/\D/g, '').length < 7) return NextResponse.json({ error: 'Please enter a valid contact number.' }, { status: 400 })
 
-    // Voucher (optional) — full checks now apply because we know the payer's email.
+    // Voucher (optional) — full checks now apply because we know who the payer is. For a
+    // PWD/Senior-gated voucher that includes verifying their registered ID in Patient CRM.
     let voucherId: string | null = null, voucherCode: string | null = null
     let discountAmount = 0, amountPhp = gross
+    let pwdPatientName: string | null = null
     // The link's own promo wins; otherwise use whatever the payer typed.
     const rawCode = link.voucherCode || String(b.voucherCode || '').trim()
     if (rawCode) {
       if (!link.voucherCode && !link.allowVoucher) return NextResponse.json({ error: 'Vouchers are not accepted on this link.' }, { status: 400 })
-      const chk = await checkVoucher(prisma, { code: rawCode, account: link.account, amountPhp: gross, customerEmail: email })
+      const chk = await checkVoucher(prisma, {
+        code: rawCode, account: link.account, amountPhp: gross, customerEmail: email,
+        customerFirstName: firstName, customerLastName: lastName, customerPhone: phone,
+      })
       if (!chk.ok) return NextResponse.json({ error: chk.reason || 'That voucher code is not valid.' }, { status: 400 })
       voucherId = chk.voucher!.id; voucherCode = chk.voucher!.code
       discountAmount = chk.discount || 0
       amountPhp = chk.netAmount ?? gross
+      pwdPatientName = chk.pwdPatientName || null
     }
     if (!(amountPhp > 0)) return NextResponse.json({ error: 'This voucher covers the full amount — please contact the clinic.' }, { status: 400 })
 
@@ -120,7 +126,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       cancelUrl: `${origin}/pay/${token}?status=cancelled`,
       // Prefill from what the payer typed here — QRPh never asks for it on PayMongo's side.
       customerName, customerEmail: email, customerPhone: phone,
-      metadata: { referenceCode, account: link.account, customer: customerName, email, ...(voucherCode ? { voucherCode } : {}) },
+      metadata: {
+        referenceCode, account: link.account, customer: customerName, email,
+        ...(voucherCode ? { voucherCode } : {}),
+        // Whose registered PWD/Senior ID granted the discount — the audit trail for it.
+        ...(pwdPatientName ? { pwdPatient: pwdPatientName } : {}),
+      },
     })
 
     await prisma.$transaction(async (tx) => {

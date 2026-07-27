@@ -1,4 +1,5 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { verifyPwdEligibility } from './pwd-verify'
 
 type Tx = PrismaClient | Prisma.TransactionClient
 
@@ -8,6 +9,9 @@ export interface VoucherCheck {
   voucher?: { id: string; name: string; code: string; discountType: string; discountValue: number; accountId: string | null }
   discount?: number      // PHP discount for the given amount
   netAmount?: number     // amount − discount (never below 0)
+  /** PWD/Senior voucher only: the CRM patient whose registered ID granted it (audit trail). */
+  pwdPatientId?: string
+  pwdPatientName?: string
 }
 
 /** Round to centavos. */
@@ -24,6 +28,8 @@ export async function checkVoucher(
   tx: Tx,
   opts: {
     code: string; account: string; amountPhp: number; customerEmail?: string | null
+    // Identify the payer for a PWD/Senior-gated voucher (matched against Patient CRM).
+    customerFirstName?: string | null; customerLastName?: string | null; customerPhone?: string | null
     /**
      * True when validating while CREATING a payment link. The payer types their email on
      * PayMongo's hosted page, so it isn't known yet — ONCE_PER_CUSTOMER therefore can't be
@@ -75,6 +81,21 @@ export async function checkVoucher(
     }
   }
 
+  // PWD / Senior discount — only for a payer whose Patient CRM record carries BOTH an ID
+  // number and an uploaded ID photo. Skipped at link creation, where the payer is unknown;
+  // the check then runs for real when they pay.
+  let pwd: { patientId?: string; patientName?: string } = {}
+  if (v.requiresPwdId && !opts.atCreation) {
+    const elig = await verifyPwdEligibility({
+      firstName: opts.customerFirstName, lastName: opts.customerLastName,
+      email: opts.customerEmail, phone: opts.customerPhone,
+    })
+    if (!elig.verified) {
+      return { ok: false, reason: elig.reason || 'This voucher needs a registered PWD/Senior ID.' }
+    }
+    pwd = { patientId: elig.patientId, patientName: elig.patientName }
+  }
+
   const gross = Number(opts.amountPhp) || 0
   const value = Number(v.discountValue) || 0
   const raw = v.discountType === 'FIXED' ? value : gross * (value / 100)
@@ -85,6 +106,8 @@ export async function checkVoucher(
     voucher: { id: v.id, name: v.name, code: v.code, discountType: v.discountType, discountValue: value, accountId: v.accountId },
     discount,
     netAmount: r2(gross - discount),
+    pwdPatientId: pwd.patientId,
+    pwdPatientName: pwd.patientName,
   }
 }
 

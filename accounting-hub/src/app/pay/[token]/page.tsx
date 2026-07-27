@@ -41,7 +41,7 @@ export default function PayPage() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
-  const [preview, setPreview] = useState<{ ok: boolean; reason?: string; discount?: number; netAmount?: number } | null>(null)
+  const [preview, setPreview] = useState<{ ok: boolean; reason?: string; discount?: number; netAmount?: number; pwdPatientName?: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -56,10 +56,15 @@ export default function PayPage() {
 
   const checkCode = async () => {
     if (!code.trim() || !info) { setPreview(null); return }
-    if (!email.trim()) { setPreview({ ok: false, reason: 'Enter your email first so we can check the voucher.' }); return }
+    // PWD/Senior codes are matched against the clinic's patient records, so the name and
+    // contact number matter as much as the email — ask for all of them up front.
+    if (!email.trim() || !firstName.trim() || !lastName.trim() || !phone.trim()) {
+      setPreview({ ok: false, reason: 'Fill in your name, contact number and email first, then apply the code.' })
+      return
+    }
     const r = await fetch('/api/public/pay/voucher-check', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, code, email }),
+      body: JSON.stringify({ token, code, email, firstName, lastName, phone }),
     })
     setPreview(await r.json())
   }
@@ -144,10 +149,10 @@ export default function PayPage() {
 
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div><label style={label}>First name</label><input style={input} value={firstName} onChange={e => setFirstName(e.target.value)} autoComplete="given-name" /></div>
-          <div><label style={label}>Last name</label><input style={input} value={lastName} onChange={e => setLastName(e.target.value)} autoComplete="family-name" /></div>
+          <div><label style={label}>First name</label><input style={input} value={firstName} onChange={e => { setFirstName(e.target.value); setPreview(null) }} autoComplete="given-name" /></div>
+          <div><label style={label}>Last name</label><input style={input} value={lastName} onChange={e => { setLastName(e.target.value); setPreview(null) }} autoComplete="family-name" /></div>
         </div>
-        <div><label style={label}>Contact number</label><input style={input} value={phone} onChange={e => setPhone(e.target.value)} placeholder="09xx xxx xxxx" inputMode="tel" autoComplete="tel" /></div>
+        <div><label style={label}>Contact number</label><input style={input} value={phone} onChange={e => { setPhone(e.target.value); setPreview(null) }} placeholder="09xx xxx xxxx" inputMode="tel" autoComplete="tel" /></div>
         <div><label style={label}>Email address</label><input style={input} type="email" value={email} onChange={e => { setEmail(e.target.value); setPreview(null) }} autoComplete="email" /></div>
 
         {info.allowVoucher && (
@@ -161,8 +166,15 @@ export default function PayPage() {
               </button>
             </div>
             {preview && (
-              <p style={{ fontSize: 12, marginTop: 6, color: preview.ok ? '#166534' : '#b91c1c' }}>
-                {preview.ok ? `✓ Discount ${peso(preview.discount || 0)} applied` : preview.reason}
+              <p style={{ fontSize: 12, marginTop: 6, color: preview.ok ? '#166534' : '#b91c1c', lineHeight: 1.5 }}>
+                {preview.ok
+                  ? `✓ Discount ${peso(preview.discount || 0)} applied`
+                  : preview.reason}
+                {preview.ok && preview.pwdPatientName && (
+                  <span style={{ display: 'block', color: '#6b7280' }}>
+                    Verified against the PWD/Senior ID registered for {preview.pwdPatientName}.
+                  </span>
+                )}
               </p>
             )}
           </div>
