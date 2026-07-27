@@ -140,6 +140,9 @@ export function registerPatient(payload: {
   pwdSeniorId?: string
   branch: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'
   patientType: 'PEDIATRIC' | 'ADULT'
+  // Optional attachments, sent as base64 data URLs.
+  referralFile?: { name?: string; dataUrl: string }
+  pwdIdFile?: { name?: string; dataUrl: string }
 }) {
   return jsonFetch<AuthResult>(`/patients/register`, {
     method: 'POST',
@@ -163,6 +166,8 @@ export interface PatientProfile {
   pwdSeniorId: string | null
   username: string | null
   profilePhoto: string | null
+  referralUrl?: string | null
+  pwdIdUrl?: string | null
 }
 export interface PatientSessionRecord {
   id: string

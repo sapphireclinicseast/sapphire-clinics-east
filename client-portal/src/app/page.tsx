@@ -155,6 +155,8 @@ function AuthCard({
     setBusy(true); setErr(null)
     const get = (k: string) => String(f.get(k) ?? '').trim() || undefined
     try {
+      const referralFile = await fileToDataUrl(f.get('referralFile') as File | null)
+      const pwdIdFile = await fileToDataUrl(f.get('pwdIdFile') as File | null)
       const res = await registerPatient({
         firstName: String(f.get('firstName')),
         lastName: String(f.get('lastName')),
@@ -172,6 +174,8 @@ function AuthCard({
         pwdSeniorId: get('pwdSeniorId'),
         branch: f.get('branch') as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS',
         patientType: f.get('patientType') as 'PEDIATRIC' | 'ADULT',
+        referralFile,
+        pwdIdFile,
       })
       setSession(res)
       onAuthed(res.firstName, res.token)
@@ -353,6 +357,19 @@ function AuthCard({
           <div className="grid grid-cols-2 gap-3">
             <Field label="Nationality"><input name="nationality" className="input" placeholder="e.g. Filipino" /></Field>
             <Field label="PWD / Senior ID"><input name="pwdSeniorId" className="input" placeholder="Optional — for discount" /></Field>
+          </div>
+
+          <SectionLabel>Documents (optional)</SectionLabel>
+          <p className="text-[11.5px] text-[color:var(--mid-gray)] -mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+            You may upload these now or bring them to the clinic. JPG, PNG, or PDF (max 12 MB).
+          </p>
+          <div className="grid grid-cols-1 gap-3">
+            <Field label="Doctor's Referral">
+              <input name="referralFile" type="file" accept="image/*,application/pdf" className="input-file" />
+            </Field>
+            <Field label="PWD ID / Senior ID">
+              <input name="pwdIdFile" type="file" accept="image/*,application/pdf" className="input-file" />
+            </Field>
           </div>
 
           <button type="submit" disabled={busy} className="btn-primary w-full mt-2">
@@ -540,6 +557,8 @@ function ProfileSection({
           To update your Patient Profile, please inform the front desk so they can edit your details in the Operations Hub.
         </p>
       </div>
+
+      <MyDocumentsCard profile={p} />
 
       <AccountSettings token={token} currentUsername={p.username} onUpdated={onUpdated} />
     </div>
@@ -1025,6 +1044,59 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   )
+}
+
+// Patient-facing copies of the docs they uploaded at sign-up (or that the front
+// desk attached in the CRM). Links open the file served from the Operations Hub.
+function MyDocumentsCard({ profile }: { profile: MeResult['profile'] }) {
+  const items = [
+    { label: "Doctor's Referral", url: profile.referralUrl ?? null },
+    { label: 'PWD ID / Senior ID', url: profile.pwdIdUrl ?? null },
+  ]
+  return (
+    <div className="card-static">
+      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">My Documents</h3>
+      <div className="mt-4 space-y-2.5">
+        {items.map((it) => (
+          <div key={it.label} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[color:var(--light-gray)]">
+            <span className="text-sm font-semibold text-[color:var(--deep-teal)]">{it.label}</span>
+            {it.url ? (
+              <a
+                href={it.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold text-[color:var(--teal)] hover:underline inline-flex items-center gap-1"
+              >
+                View <span aria-hidden>→</span>
+              </a>
+            ) : (
+              <span className="text-[13px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+                Not uploaded
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
+        Uploaded these at sign-up? They&apos;ll show here. To add or replace a document, please ask the front desk.
+      </p>
+    </div>
+  )
+}
+
+// Read an optional file input into a base64 data URL for the register payload.
+async function fileToDataUrl(file: File | null): Promise<{ name: string; dataUrl: string } | undefined> {
+  if (!file || file.size === 0) return undefined
+  if (file.size > 12 * 1024 * 1024) {
+    throw new Error(`"${file.name}" is too large. Please keep files under 12 MB.`)
+  }
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Could not read the selected file.'))
+    reader.readAsDataURL(file)
+  })
+  return { name: file.name, dataUrl }
 }
 
 function Detail({ label, value }: { label: string; value: string | null }) {

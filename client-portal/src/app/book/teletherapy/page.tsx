@@ -90,34 +90,34 @@ function BookTeletherapyInner() {
                   return (
                     <div
                       key={item.id}
-                      className="rounded-2xl border border-[color:var(--paper-3)] bg-white p-4 flex items-center justify-between gap-4 flex-wrap hover:border-[color:var(--sage)] hover:shadow-[0_4px_14px_rgba(27,63,56,0.06)] transition-all"
+                      className="rounded-xl border border-[color:var(--paper-3)] bg-white px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 hover:border-[color:var(--sage)] hover:shadow-[0_4px_14px_rgba(27,63,56,0.06)] transition-all"
                     >
-                      <div className="min-w-0">
-                        <div className="text-[15px] font-semibold text-[color:var(--narra)] leading-tight">{item.name}</div>
+                      <div className="min-w-0 sm:flex-1">
+                        <div className="text-[14px] font-semibold text-[color:var(--narra)] leading-tight sm:truncate" title={item.name}>{item.name}</div>
                         {item.note && (
-                          <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5" style={{ fontFamily: 'var(--font-display)' }}>{item.note}</div>
+                          <div className="text-[11px] text-[color:var(--mid-gray)] mt-0.5 leading-none" style={{ fontFamily: 'var(--font-display)' }}>{item.note}</div>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-4 flex-wrap">
-                        <div className="text-right" style={{ fontFamily: 'var(--font-display)' }}>
-                          <div className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]">Regular</div>
-                          <div className="text-[16px] font-semibold text-[color:var(--narra)] tabular-nums">{peso(item.gross)}</div>
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <div className="text-right leading-none" style={{ fontFamily: 'var(--font-display)' }}>
+                          <div className="text-[9px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] mb-0.5">Regular</div>
+                          <div className="text-[14px] font-semibold text-[color:var(--narra)] tabular-nums">{peso(item.gross)}</div>
                         </div>
-                        <div className="text-right rounded-xl bg-[color:var(--paper-2)] px-3 py-1.5" style={{ fontFamily: 'var(--font-display)' }}>
-                          <div className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--moss)]">PWD / Senior</div>
-                          <div className="text-[16px] font-semibold text-[color:var(--moss)] tabular-nums">{peso(net)}</div>
+                        <div className="text-right leading-none rounded-lg bg-[color:var(--paper-2)] px-2.5 py-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+                          <div className="text-[9px] uppercase tracking-[0.08em] text-[color:var(--moss)] mb-0.5">PWD / Senior</div>
+                          <div className="text-[14px] font-semibold text-[color:var(--moss)] tabular-nums">{peso(net)}</div>
                         </div>
 
                         {url ? (
-                          <a href={url} target="_blank" rel="noreferrer" className="btn-cta shrink-0">
+                          <a href={url} target="_blank" rel="noreferrer" className="btn-cta shrink-0 !px-4 !py-2 !text-[13px]">
                             Book &amp; Pay
                           </a>
                         ) : (
                           <button
                             disabled
                             title="Payment link coming soon"
-                            className="btn-cta shrink-0 opacity-50 cursor-not-allowed"
+                            className="btn-cta shrink-0 opacity-50 cursor-not-allowed !px-4 !py-2 !text-[13px]"
                           >
                             Coming soon
                           </button>

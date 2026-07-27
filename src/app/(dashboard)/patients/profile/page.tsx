@@ -29,6 +29,7 @@ interface PatientInfo {
   branches?: string[]
   branch?: string | null
   referralUrl?: string | null
+  pwdIdUrl?: string | null
 }
 
 interface SessionStats {
@@ -347,7 +348,7 @@ export default function PatientProfilePage() {
           </div>
 
           {/* Documents & Files */}
-          <DocumentsCard patientId={p?.id ?? null} referralUrl={p?.referralUrl ?? null} />
+          <DocumentsCard patientId={p?.id ?? null} referralUrl={p?.referralUrl ?? null} pwdIdUrl={p?.pwdIdUrl ?? null} />
 
           {/* Session Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -532,7 +533,7 @@ interface DocsResponse {
   otherDocuments: DocRow[]
 }
 
-function DocumentsCard({ patientId, referralUrl }: { patientId: string | null; referralUrl: string | null }) {
+function DocumentsCard({ patientId, referralUrl, pwdIdUrl }: { patientId: string | null; referralUrl: string | null; pwdIdUrl: string | null }) {
   const [data, setData] = useState<DocsResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -549,6 +550,7 @@ function DocumentsCard({ patientId, referralUrl }: { patientId: string | null; r
 
   const totalCount =
     (referralUrl ? 1 : 0) +
+    (pwdIdUrl ? 1 : 0) +
     (data?.progressReports.length ?? 0) +
     (data?.initialEvaluations.length ?? 0) +
     (data?.otherDocuments.length ?? 0)
@@ -580,6 +582,26 @@ function DocumentsCard({ patientId, referralUrl }: { patientId: string | null; r
               description: null,
             }] : []}
             buildHref={() => referralUrl ?? '#'}
+            external
+            hideTimeline
+          />
+
+          <DocSection
+            title="PWD / Senior ID"
+            tint="green"
+            empty="No PWD / Senior ID on file."
+            rows={pwdIdUrl ? [{
+              id: 'pwdid',
+              fileName: pwdIdUrl.split('/').pop() ?? 'PWD / Senior ID',
+              mimeType: null,
+              department: '',
+              createdAt: '',
+              informedFrontDeskAt: null,
+              paidForAt: null,
+              emailedToPatientAt: null,
+              description: null,
+            }] : []}
+            buildHref={() => pwdIdUrl ?? '#'}
             external
             hideTimeline
           />
@@ -620,13 +642,14 @@ const TINTS: Record<string, { bg: string; border: string; title: string; chipBg:
   blue:   { bg: '#EFF6FF', border: '#BFDBFE', title: '#1E3A8A', chipBg: '#DBEAFE', chipText: '#1E40AF', viewBg: '#fff', viewText: '#1E3A8A' },
   purple: { bg: '#F5F3FF', border: '#DDD6FE', title: '#5B21B6', chipBg: '#EDE9FE', chipText: '#5B21B6', viewBg: '#fff', viewText: '#5B21B6' },
   gray:   { bg: '#F8FAFC', border: '#E2E8F0', title: '#334155', chipBg: '#F1F5F9', chipText: '#475569', viewBg: '#fff', viewText: '#334155' },
+  green:  { bg: '#F0FDF4', border: '#BBF7D0', title: '#166534', chipBg: '#DCFCE7', chipText: '#15803D', viewBg: '#fff', viewText: '#166534' },
 }
 
 function DocSection({
   title, tint, empty, rows, buildHref, external, hideTimeline,
 }: {
   title: string
-  tint: 'orange' | 'blue' | 'purple' | 'gray'
+  tint: 'orange' | 'blue' | 'purple' | 'gray' | 'green'
   empty: string
   rows: DocRow[]
   buildHref: (r: DocRow) => string
