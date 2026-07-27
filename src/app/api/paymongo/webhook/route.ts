@@ -5,23 +5,25 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { verifyPaymongoSignature } from '@/lib/paymongo'
+import { verifyPaymongoSignature, hasWebhookSecret } from '@/lib/paymongo'
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
   const signature = req.headers.get('paymongo-signature')
 
-  // Signature verification is strict in production. If PAYMONGO_WEBHOOK_SECRET
-  // is not set (e.g. first-time setup), we log a warning and accept, but this
-  // should be set on the VPS env immediately after the webhook is registered.
-  if (process.env.PAYMONGO_WEBHOOK_SECRET) {
+  // Signature verification is strict in production. Verifies against any
+  // configured branch secret (PAYMONGO_WEBHOOK_SECRET_SBEA/_SBGH) or the legacy
+  // single PAYMONGO_WEBHOOK_SECRET. If none is set (first-time setup) we log a
+  // warning and accept, but a secret should be set immediately after the
+  // webhook is registered.
+  if (hasWebhookSecret()) {
     const ok = verifyPaymongoSignature(rawBody, signature)
     if (!ok) {
       console.warn('PayMongo webhook signature verification failed')
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
   } else {
-    console.warn('PAYMONGO_WEBHOOK_SECRET not set — accepting webhook unverified')
+    console.warn('No PayMongo webhook secret set — accepting webhook unverified')
   }
 
   let payload: {

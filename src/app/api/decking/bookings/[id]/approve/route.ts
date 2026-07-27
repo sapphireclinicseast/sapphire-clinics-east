@@ -99,6 +99,7 @@ export async function POST(
       amountPhp: downpaymentPhp,
       description: `Sapphire Clinics ${activeBooking.branch} — ${activeBooking.department} downpayment (${activeBooking.date.toISOString().slice(0, 10)} ${activeBooking.startTime})`,
       remarks: `Booking ${activeBooking.id} — ${activeBooking.patient.firstName} ${activeBooking.patient.lastName}`,
+      branch: activeBooking.branch,
     })
     payment = await prisma.patientPayment.create({
       data: {
