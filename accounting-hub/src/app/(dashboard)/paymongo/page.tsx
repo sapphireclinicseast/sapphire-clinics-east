@@ -23,6 +23,7 @@ const todayStr = () => new Date().toISOString().slice(0, 10)
 interface Txn {
   id: string; checkoutId: string; referenceCode: string | null; itemName: string | null; description: string | null
   customerName: string; customerEmail: string | null; customerPhone: string | null
+  department: string | null; departmentLabel: string | null; kind: string | null
   voucherCode: string | null; grossAmount: number | null; discountAmount: number | null
   amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null
   paidAt: string | null; payoutId: string | null; livemode: boolean; createdAt: string
@@ -296,7 +297,19 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{t.itemName || t.description || '—'}</td>
+                  <td className="px-3 py-2">
+                    <span style={{ color: 'var(--charcoal)' }}>{t.itemName || t.description || '—'}</span>
+                    {(t.departmentLabel || t.kind === 'PRODUCT') && (
+                      <span className="block mt-0.5">
+                        {t.departmentLabel && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#eff6ff', color: '#1e40af' }}>{t.departmentLabel}</span>
+                        )}
+                        {t.kind === 'PRODUCT' && (
+                          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>
+                        )}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>{t.voucherCode || '—'}</td>
                   <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.grossAmount != null ? peso(t.grossAmount) : '—'}</td>
                   <td className="px-3 py-2 text-right font-mono" style={{ color: (t.discountAmount || 0) > 0 ? '#c44b00' : 'var(--light-gray)' }}>{(t.discountAmount || 0) > 0 ? peso(t.discountAmount!) : '—'}</td>

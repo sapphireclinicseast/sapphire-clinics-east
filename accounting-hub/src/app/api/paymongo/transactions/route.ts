@@ -4,6 +4,15 @@ import { prisma } from '@/lib/prisma'
 import { listPayments, parsePayment, retrieveCheckout, paymongoConfigured, isPaymongoAccount, configuredAccounts } from '@/lib/paymongo'
 import { postPaymongoSale } from '@/lib/accounting/post-paymongo-sale'
 
+// Friendly department names, matching the labels used in the reports drill-down.
+const DEPT_LABELS: Record<string, string> = {
+  PT: 'Physical Therapy', OT: 'Occupational Therapy', ST: 'Speech Therapy',
+  SLP: 'Speech-Language Pathology', SPED: 'Special Education',
+  PSY: 'Psychology', PSYCHOLOGY: 'Psychology', MD: 'Medical Doctor',
+  CLI: 'Clinic', DIG: 'Digital & Tech', EDU: 'Training & Education',
+  MER: 'Merchandise', ORTHOSIS_PROSTHESIS: 'Orthosis & Prosthesis', OTHER: 'Other',
+}
+
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 /**
@@ -115,6 +124,7 @@ export async function GET(req: Request) {
     orderBy: { createdAt: 'desc' }, take: 200,
     select: {
       id: true, checkoutId: true, referenceCode: true, itemName: true, description: true,
+      serviceId: true, inventoryItemId: true,
       customerFirstName: true, customerLastName: true, customerEmail: true, customerPhone: true,
       voucherCode: true, grossAmount: true, discountAmount: true,
       amount: true, status: true, checkoutUrl: true, fee: true, netAmount: true,
@@ -122,11 +132,27 @@ export async function GET(req: Request) {
     },
   })
 
+  // Resolve each row's department: Service.department for services, SKU department for
+  // products. Done in two batched lookups rather than per-row joins.
+  const svcIds = [...new Set(rows.map(r => r.serviceId).filter(Boolean))] as string[]
+  const invIds = [...new Set(rows.map(r => r.inventoryItemId).filter(Boolean))] as string[]
+  const [svcs, invs] = await Promise.all([
+    svcIds.length ? prisma.service.findMany({ where: { id: { in: svcIds } }, select: { id: true, department: true } }) : [],
+    invIds.length ? prisma.inventoryItem.findMany({ where: { id: { in: invIds } }, select: { id: true, skuDepartment: true } }) : [],
+  ])
+  const svcDept = new Map(svcs.map(x => [x.id, x.department]))
+  const invDept = new Map(invs.map(x => [x.id, x.skuDepartment]))
+  const deptOf = (r: { serviceId: string | null; inventoryItemId: string | null }) =>
+    (r.serviceId ? svcDept.get(r.serviceId) : r.inventoryItemId ? invDept.get(r.inventoryItemId) : null) || null
+
   return NextResponse.json({
     account, configured, syncError,
     postWarnings,
     transactions: rows.map(r => ({
       ...r,
+      department: deptOf(r),
+      departmentLabel: DEPT_LABELS[(deptOf(r) || '').toUpperCase()] || deptOf(r),
+      kind: r.serviceId ? 'SERVICE' : r.inventoryItemId ? 'PRODUCT' : null,
       customerName: [r.customerFirstName, r.customerLastName].filter(Boolean).join(' '),
       grossAmount: r.grossAmount == null ? null : Number(r.grossAmount),
       discountAmount: r.discountAmount == null ? null : Number(r.discountAmount),
