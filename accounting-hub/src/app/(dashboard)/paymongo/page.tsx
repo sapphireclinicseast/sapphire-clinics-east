@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark } from 'lucide-react'
+import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search } from 'lucide-react'
 import { PosLinksPanel } from './PosLinksPanel'
 
 const ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER']
@@ -58,6 +58,9 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
 
   const [kind, setKind] = useState<'SERVICE' | 'PRODUCT'>('SERVICE')
   const [itemId, setItemId] = useState('')
+  // Type-to-search picker: the catalogue is long, so filtering beats scrolling a dropdown.
+  const [itemQuery, setItemQuery] = useState('')
+  const [itemOpen, setItemOpen] = useState(false)
   const [qty, setQty] = useState('1')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -72,6 +75,19 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
   const list = kind === 'SERVICE' ? items.services : items.products
   const chosen = list.find(i => i.id === itemId)
   const gross = useMemo(() => (chosen ? chosen.price * (parseInt(qty, 10) || 1) : 0), [chosen, qty])
+
+  // Match on name or SKU, so "philbritish", "cryo" or an OT-TOY-… code all work.
+  const matches = useMemo(() => {
+    const q = itemQuery.trim().toLowerCase()
+    if (!q) return list.slice(0, 60)
+    const terms = q.split(/\s+/)
+    return list.filter(i => {
+      const hay = `${i.name} ${i.sku || ''}`.toLowerCase()
+      return terms.every(t => hay.includes(t))
+    }).slice(0, 60)
+  }, [list, itemQuery])
+
+  const pickItem = (i: Item) => { setItemId(i.id); setItemQuery(i.name); setItemOpen(false); setPreview(null) }
 
   const load = useCallback(async (sync = false) => {
     setLoading(true); setError('')
@@ -97,7 +113,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
       .then(d => setItems({ services: d.services || [], products: d.products || [] }))
       .catch(() => setItems({ services: [], products: [] }))
   }, [account])
-  useEffect(() => { setItemId(''); setPreview(null) }, [kind])
+  useEffect(() => { setItemId(''); setItemQuery(''); setItemOpen(false); setPreview(null) }, [kind])
 
   const checkCode = async () => {
     if (!code.trim() || gross <= 0) { setPreview(null); return }
@@ -118,7 +134,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Failed to create link')
       setLastUrl(j.checkoutUrl); setCopied(false)
-      setFirstName(''); setLastName(''); setPhone(''); setEmail(''); setCode(''); setPreview(null); setItemId('')
+      setFirstName(''); setLastName(''); setPhone(''); setEmail(''); setCode(''); setPreview(null); setItemId(''); setItemQuery('')
       await load(false)
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
@@ -153,12 +169,54 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
               <option value="PRODUCT">Product</option>
             </select>
           </div>
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 relative">
             <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>{kind === 'SERVICE' ? 'Service' : 'Product'}</label>
-            <select value={itemId} onChange={e => { setItemId(e.target.value); setPreview(null) }} className="w-full px-3 py-2 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
-              <option value="">Select {kind === 'SERVICE' ? 'a service' : 'a product'}…</option>
-              {list.map(i => <option key={i.id} value={i.id}>{i.name}{i.sku ? ` (${i.sku})` : ''} — {peso(i.price)}{i.stock != null ? ` · stock ${i.stock}` : ''}</option>)}
-            </select>
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-2.5" style={{ color: 'var(--mid-gray)' }} />
+              <input
+                value={itemQuery}
+                onChange={e => { setItemQuery(e.target.value); setItemId(''); setItemOpen(true); setPreview(null) }}
+                onFocus={() => setItemOpen(true)}
+                onBlur={() => window.setTimeout(() => setItemOpen(false), 150)}
+                onKeyDown={e => {
+                  // Enter picks the only/first match; Escape closes without choosing.
+                  if (e.key === 'Enter' && matches.length > 0) { e.preventDefault(); pickItem(matches[0]) }
+                  else if (e.key === 'Escape') setItemOpen(false)
+                }}
+                placeholder={`Type to search ${kind === 'SERVICE' ? 'services' : 'products'}…`}
+                className="w-full pl-8 pr-16 py-2 rounded-xl border" style={{ borderColor: itemId ? 'var(--teal)' : 'var(--light-gray)' }} />
+              {itemId && chosen && (
+                <span className="absolute right-2 top-2 text-[11px] font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(chosen.price)}</span>
+              )}
+              {itemQuery && !itemId && (
+                <button type="button" onClick={() => { setItemQuery(''); setItemOpen(false) }} className="absolute right-2 top-2" title="Clear">
+                  <X size={13} style={{ color: 'var(--mid-gray)' }} />
+                </button>
+              )}
+            </div>
+            {itemOpen && (
+              <div className="absolute z-[70] left-0 right-0 mt-1 rounded-xl border bg-white shadow-xl overflow-auto"
+                style={{ maxHeight: 260, borderColor: 'var(--light-gray)' }}>
+                {list.length === 0 ? (
+                  <div className="px-3 py-2.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>No {kind === 'SERVICE' ? 'services' : 'products'} available for this branch.</div>
+                ) : matches.length === 0 ? (
+                  <div className="px-3 py-2.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>No match for “{itemQuery}”.</div>
+                ) : matches.map(i => (
+                  <button key={i.id} type="button" onMouseDown={e => { e.preventDefault(); pickItem(i) }}
+                    className="w-full text-left px-3 py-2 hover:bg-[var(--pale-teal)] border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-xs" style={{ color: 'var(--charcoal)' }}>{i.name}</span>
+                      <span className="text-xs font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(i.price)}</span>
+                    </div>
+                    {(i.sku || i.stock != null || i.department) && (
+                      <div className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                        {[i.sku, i.department, i.stock != null ? `stock ${i.stock}` : null].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Qty</label>
