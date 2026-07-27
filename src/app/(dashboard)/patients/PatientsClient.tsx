@@ -1561,8 +1561,15 @@ function PatientRegisterQrModal({
   const [loading, setLoading] = useState(false)
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const registerUrl = branch
-    ? `${origin}/patient-register?branch=${encodeURIComponent(branch)}`
+  // Use friendly URL aliases so patients don't see "SANDBOX" in shared links
+  const BRANCH_URL_ALIASES: Record<string, string> = {
+    'SANDBOX_EAST': 'east',
+    'SANDBOX_GREENHILLS': 'greenhills',
+    'VERDANA_STORE': 'verdana',
+  }
+  const branchAlias = BRANCH_URL_ALIASES[branch] ?? branch
+  const registerUrl = branchAlias
+    ? `${origin}/patient-register?branch=${encodeURIComponent(branchAlias)}`
     : `${origin}/patient-register`
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { CheckCircle2, Loader2, Upload, FileText, X } from 'lucide-react'
 
 const BRANCHES = [
   { value: 'SANDBOX_EAST',       label: 'East Branch' },
@@ -36,8 +36,13 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
   const initial: FormState = { ...EMPTY, branches: defaultBranch ? [defaultBranch] : [] }
   const [form, setForm] = useState<FormState>(initial)
   const [submitting, setSubmitting] = useState(false)
+  const [submitStage, setSubmitStage] = useState<'idle' | 'creating' | 'uploading'>('idle')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [referralFile, setReferralFile] = useState<File | null>(null)
+  const [pwdIdFile, setPwdIdFile] = useState<File | null>(null)
+  const referralInputRef = useRef<HTMLInputElement>(null)
+  const pwdIdInputRef = useRef<HTMLInputElement>(null)
 
   function upd<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(f => ({ ...f, [key]: value }))
@@ -68,6 +73,7 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
       return
     }
     setSubmitting(true)
+    setSubmitStage('creating')
     try {
       const res = await fetch('/api/public/patient-register', {
         method: 'POST',
@@ -79,11 +85,27 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
         setError(data.error ?? 'Registration failed. Please try again.')
         return
       }
+
+      // Upload documents if provided
+      if ((referralFile || pwdIdFile) && data.id) {
+        setSubmitStage('uploading')
+        const uploadFile = async (file: File, docType: string) => {
+          const fd = new FormData()
+          fd.append('patientId', data.id)
+          fd.append('docType', docType)
+          fd.append('file', file)
+          await fetch('/api/public/patient-register/upload', { method: 'POST', body: fd })
+        }
+        if (referralFile) await uploadFile(referralFile, 'referral')
+        if (pwdIdFile)   await uploadFile(pwdIdFile, 'pwd-id')
+      }
+
       setSuccess(true)
     } catch {
       setError('Network error. Please try again.')
     } finally {
       setSubmitting(false)
+      setSubmitStage('idle')
     }
   }
 
@@ -170,6 +192,58 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
             ))}
           </div>
 
+          {/* ── Documents (optional) ─────────────────────────────────────── */}
+          <SectionTitle>Documents (Optional)</SectionTitle>
+          <p style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: 12, lineHeight: 1.5 }}>
+            You may upload a photo or scan of your documents now, or bring them to the clinic.
+          </p>
+
+          {/* Doctor's Referral */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+              Doctor&apos;s Referral
+            </label>
+            {referralFile ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#f0f9fa', border: '1.5px solid #1a7b8a', borderRadius: 8 }}>
+                <FileText size={14} style={{ color: '#1a7b8a', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.82rem', color: '#111827', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{referralFile.name}</span>
+                <button type="button" onClick={() => setReferralFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', lineHeight: 0, flexShrink: 0 }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => referralInputRef.current?.click()}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderRadius: 8, border: '1.5px dashed #d1d5db', background: '#f9fafb', color: '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', width: '100%', justifyContent: 'center' }}>
+                <Upload size={14} /> Upload Doctor&apos;s Referral
+              </button>
+            )}
+            <input ref={referralInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) setReferralFile(f); e.target.value = '' }} />
+          </div>
+
+          {/* PWD / Senior ID */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+              PWD ID / Senior ID Photo
+            </label>
+            {pwdIdFile ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#f0f9fa', border: '1.5px solid #1a7b8a', borderRadius: 8 }}>
+                <FileText size={14} style={{ color: '#1a7b8a', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.82rem', color: '#111827', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pwdIdFile.name}</span>
+                <button type="button" onClick={() => setPwdIdFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', lineHeight: 0, flexShrink: 0 }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => pwdIdInputRef.current?.click()}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderRadius: 8, border: '1.5px dashed #d1d5db', background: '#f9fafb', color: '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', width: '100%', justifyContent: 'center' }}>
+                <Upload size={14} /> Upload PWD ID / Senior ID Photo
+              </button>
+            )}
+            <input ref={pwdIdInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) setPwdIdFile(f); e.target.value = '' }} />
+          </div>
+
           {error && (
             <div style={{
               padding: '12px 14px', background: '#fef2f2', border: '1px solid #fecaca',
@@ -191,7 +265,9 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
             }}
           >
             {submitting && <Loader2 size={16} className="animate-spin" />}
-            {submitting ? 'Submitting…' : 'Submit Registration'}
+            {submitting
+              ? submitStage === 'uploading' ? 'Uploading documents…' : 'Submitting…'
+              : 'Submit Registration'}
           </button>
 
           <p style={{ marginTop: 14, fontSize: '0.72rem', color: '#9ca3af', textAlign: 'center', lineHeight: 1.5 }}>
