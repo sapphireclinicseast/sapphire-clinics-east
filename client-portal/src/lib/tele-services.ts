@@ -26,10 +26,10 @@ export function pwdNet(gross: number): number {
 }
 
 const PACKAGES: TeleService[] = [
-  { id: 'pkg8', name: '8-Session Package', note: '8 sessions', gross: 15840 },
-  { id: 'pkg8-spec', name: '8-Session Package — Specialized', note: '8 sessions', gross: 19600 },
-  { id: 'pkg12', name: '12-Session Package', note: '12 sessions', gross: 23400 },
-  { id: 'pkg12-spec', name: '12-Session Package — Specialized', note: '12 sessions', gross: 28800 },
+  { id: 'pkg8', name: '8-Session Package (Teletherapy)', note: '8 sessions', gross: 15840 },
+  { id: 'pkg8-spec', name: '8-Session Package — Specialized (Teletherapy)', note: '8 sessions', gross: 19600 },
+  { id: 'pkg12', name: '12-Session Package (Teletherapy)', note: '12 sessions', gross: 23400 },
+  { id: 'pkg12-spec', name: '12-Session Package — Specialized (Teletherapy)', note: '12 sessions', gross: 28800 },
 ]
 
 export const TELE_CATALOG: Record<TeleDept, TeleGroup[]> = {
@@ -37,15 +37,15 @@ export const TELE_CATALOG: Record<TeleDept, TeleGroup[]> = {
     {
       label: 'Single session',
       items: [
-        { id: 'session', name: 'Teletherapy Session', gross: 2000 },
-        { id: 'session-spec', name: 'Specialized Session', gross: 2500 },
+        { id: 'session', name: 'Basic Session (Teletherapy)', gross: 2000 },
+        { id: 'session-spec', name: 'Specialized Session (Teletherapy)', gross: 2500 },
       ],
     },
     {
       label: 'Initial evaluation',
       items: [
-        { id: 'eval', name: 'Initial Evaluation', gross: 2875 },
-        { id: 'eval-spec', name: 'Initial Evaluation — Specialized', gross: 3200 },
+        { id: 'eval', name: 'Initial Evaluation (Teletherapy)', gross: 2875 },
+        { id: 'eval-spec', name: 'Initial Evaluation — Specialized (Teletherapy)', gross: 3200 },
       ],
     },
     { label: 'Packages', items: PACKAGES },
@@ -54,15 +54,15 @@ export const TELE_CATALOG: Record<TeleDept, TeleGroup[]> = {
     {
       label: 'Single session',
       items: [
-        { id: 'session', name: 'Teletherapy Session', gross: 2000 },
-        { id: 'session-spec', name: 'Specialized Session', gross: 2500 },
+        { id: 'session', name: 'Basic Session (Teletherapy)', gross: 2000 },
+        { id: 'session-spec', name: 'Specialized Session (Teletherapy)', gross: 2500 },
       ],
     },
     {
       label: 'Initial evaluation',
       items: [
-        { id: 'eval', name: 'Initial Evaluation', gross: 3000 },
-        { id: 'eval-spec', name: 'Initial Evaluation — Specialized', gross: 3200 },
+        { id: 'eval', name: 'Initial Evaluation (Teletherapy)', gross: 3000 },
+        { id: 'eval-spec', name: 'Initial Evaluation — Specialized (Teletherapy)', gross: 3200 },
       ],
     },
     { label: 'Packages', items: PACKAGES },
