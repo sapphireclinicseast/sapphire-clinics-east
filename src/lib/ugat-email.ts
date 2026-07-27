@@ -272,6 +272,32 @@ export async function sendUgatInterviewEmail(params: {
 }
 
 /** Accepted! Your UGAT Fellowship Agreement is ready to review + e-sign. */
+/** Invite a shortlisted applicant to pick an interview slot. */
+export async function sendUgatInterviewInviteEmail(params: { to: string | string[]; firstName: string; url: string }): Promise<void> {
+  const { to, firstName, url } = params
+  const subject = 'Schedule your UGAT Fellowship interview'
+  const html = `
+  <div style="margin:0;padding:0;background:${CREAM};font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:560px;margin:0 auto;padding:32px 20px">
+      <div style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(36,73,82,0.12)">
+        <div style="background:${DEEP};padding:26px;text-align:center">
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:${GOLD};font-size:12px;letter-spacing:2px;text-transform:uppercase">Interview stage</div>
+          <div style="font-family:'Montserrat',Arial,sans-serif;color:#ffffff;font-size:24px;font-weight:800;margin-top:6px">Good news, ${escapeHtml(firstName)}!</div>
+        </div>
+        <div style="padding:28px 30px;color:${DEEP}">
+          <p style="margin:0 0 14px;line-height:1.6;font-size:15px">Your application has advanced to the <strong>interview stage</strong> of the UGAT Fellowship. The next step is to choose an interview time that works for you.</p>
+          <p style="margin:0 0 18px;line-height:1.6;font-size:15px">Sign in to your account and open <strong>Application &rarr; Interview</strong> to pick a slot from the available schedule. You&rsquo;ll get a video-call link and a calendar reminder once you book.</p>
+          <div style="text-align:center;margin:22px 0">
+            <a href="${url}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:15px;padding:13px 28px;border-radius:999px">Choose my interview slot</a>
+          </div>
+        </div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.</div>
+      </div>
+    </div>
+  </div>`
+  await send({ to, subject, html })
+}
+
 export async function sendUgatContractEmail(params: { to: string | string[]; firstName: string; signUrl: string }): Promise<void> {
   const { to, firstName, signUrl } = params
   const subject = 'Congratulations! Your UGAT Fellowship agreement is ready'
