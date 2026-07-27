@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { listPayments, parsePayment, retrieveCheckout, paymongoConfigured, isPaymongoAccount, configuredAccounts, resolvePaymentMethodUsed } from '@/lib/paymongo'
 import { postPaymongoSale } from '@/lib/accounting/post-paymongo-sale'
+import { PAYMONGO_READ_ROLES as READ_ROLES, canReadPaymongoAccount } from '@/lib/paymongo-access'
 
 // Friendly department names, matching the labels used in the reports drill-down.
 const DEPT_LABELS: Record<string, string> = {
@@ -12,8 +13,6 @@ const DEPT_LABELS: Record<string, string> = {
   CLI: 'Clinic', DIG: 'Digital & Tech', EDU: 'Training & Education',
   MER: 'Merchandise', ORTHOSIS_PROSTHESIS: 'Orthosis & Prosthesis', OTHER: 'Other',
 }
-
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 /**
  * GET ?account=AHEA[&sync=1] — transactions for one PayMongo account.
@@ -32,6 +31,10 @@ export async function GET(req: Request) {
   const account = String(sp.get('account') || '').toUpperCase()
   if (!account) return NextResponse.json({ accounts: configuredAccounts() })
   if (!isPaymongoAccount(account)) return NextResponse.json({ error: 'Invalid account' }, { status: 400 })
+  // Front desk only sees their own branch's account.
+  if (!canReadPaymongoAccount(session.user.role as string, account)) {
+    return NextResponse.json({ error: 'Not your branch' }, { status: 403 })
+  }
 
   const configured = paymongoConfigured(account)
   let syncError: string | null = null

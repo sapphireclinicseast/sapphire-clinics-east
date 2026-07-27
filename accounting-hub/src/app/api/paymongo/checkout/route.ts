@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { createCheckoutSession, expireCheckout, paymongoConfigured, paymongoLivemode, isPaymongoAccount, PAYMONGO_ACCOUNTS } from '@/lib/paymongo'
 import { checkVoucher, recordRedemption } from '@/lib/vouchers'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+import { PAYMONGO_WRITE_ROLES as WRITE_ROLES } from '@/lib/paymongo-access'
 
 const branchOf = (account: string) => PAYMONGO_ACCOUNTS.find(a => a.code === account)?.branch || null
 

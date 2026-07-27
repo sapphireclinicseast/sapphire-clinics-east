@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search, Link as LinkIcon } from 'lucide-react'
 import { PosLinksPanel } from './PosLinksPanel'
+import { allowedPaymongoAccounts, canWritePaymongo } from '@/lib/paymongo-access'
 
 const ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER']
 const VOUCHER_WRITE = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -88,7 +89,7 @@ function Badge({ s }: { s: string }) {
 }
 
 /* ══════════════════ One branch account ══════════════════ */
-function BranchPanel({ account, label }: { account: string; label: string }) {
+function BranchPanel({ account, label, canWrite }: { account: string; label: string; canWrite: boolean }) {
   const [items, setItems] = useState<{ services: Item[]; products: Item[] }>({ services: [], products: [] })
   const [txns, setTxns] = useState<Txn[]>([])
   const [payouts, setPayouts] = useState<Payout[]>([])
@@ -205,7 +206,8 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
       )}
       {error && <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>}
 
-      {/* ── Generate a payment link ── */}
+      {/* ── Generate a payment link (writers only; front desk is view-only) ── */}
+      {canWrite && (
       <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
         <p className="text-sm font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Generate Payment Link — {label}</p>
         <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Create one link per service or product and reuse it for every patient. Each payer opens the link, enters their own name, contact number and email, then pays — and those details appear in Transactions Received below.</p>
@@ -292,6 +294,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
           </button>
         </div>
       </div>
+      )}
 
       {/* ── Reusable payment links ── */}
       <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
@@ -342,8 +345,9 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
                         {copiedToken === l.token ? 'Copied' : 'Copy link'}
                       </button>
                       <a href={url} target="_blank" rel="noreferrer" className="mr-2" title="Open payer page"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>
-                      <button onClick={() => toggleLink(l)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--mid-gray)' }}>{l.isActive ? 'Disable' : 'Enable'}</button>
-                      {l.paidCount === 0 && <button onClick={() => delLink(l)} title="Delete"><Trash2 size={13} className="text-red-500 inline" /></button>}
+                      {/* Front desk can hand the link out, but not change or remove it. */}
+                      {canWrite && <button onClick={() => toggleLink(l)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--mid-gray)' }}>{l.isActive ? 'Disable' : 'Enable'}</button>}
+                      {canWrite && l.paidCount === 0 && <button onClick={() => delLink(l)} title="Delete"><Trash2 size={13} className="text-red-500 inline" /></button>}
                     </td>
                   </tr>
                 )
@@ -414,7 +418,7 @@ function BranchPanel({ account, label }: { account: string; label: string }) {
                   <td className="px-3 py-2"><Badge s={t.status} />{t.payoutId && <span className="block text-[10px] mt-0.5" style={{ color: '#166534' }}>settled</span>}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {t.checkoutUrl && t.status === 'PENDING' && <a href={t.checkoutUrl} target="_blank" rel="noreferrer" className="mr-2" title="Open link"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>}
-                    {t.status !== 'PAID' && <button onClick={() => del(t)} title="Delete link"><Trash2 size={13} className="text-red-500 inline" /></button>}
+                    {canWrite && t.status !== 'PAID' && <button onClick={() => del(t)} title="Delete link"><Trash2 size={13} className="text-red-500 inline" /></button>}
                   </td>
                 </tr>
               ))}
@@ -694,11 +698,22 @@ export default function PaymongoPage() {
     return <div className="p-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>You do not have permission to view this page.</div>
   }
 
+  // Front desk is read-only and scoped to their own branch: one account tab, no voucher
+  // setup and no POS-link tooling.
+  const allowed = allowedPaymongoAccounts(role)
+  const canWrite = canWritePaymongo(role)
+  const visibleAccounts = allowed ? ACCOUNTS.filter(a => allowed.includes(a.code)) : [...ACCOUNTS]
+
   const TABS: { key: Tab; label: string }[] = [
-    ...ACCOUNTS.map(a => ({ key: a.code as Tab, label: a.label })),
-    { key: 'VOUCHERS', label: 'Voucher Discounts' },
-    { key: 'POS', label: 'POS Links' },
+    ...visibleAccounts.map(a => ({ key: a.code as Tab, label: a.label })),
+    ...(canWrite ? [{ key: 'VOUCHERS' as Tab, label: 'Voucher Discounts' }, { key: 'POS' as Tab, label: 'POS Links' }] : []),
   ]
+
+  // Land on a tab this role can actually open, whatever the default was.
+  const activeTab: Tab = TABS.some(t => t.key === tab) ? tab : (TABS[0]?.key ?? 'AHEA')
+  if (TABS.length === 0) {
+    return <div className="p-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No PayMongo account is assigned to your branch.</div>
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
@@ -708,7 +723,11 @@ export default function PaymongoPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>PayMongo</h1>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Each branch has its own PayMongo account — pick a section to generate a link and see that account&apos;s transactions and payouts.</p>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            {canWrite
+              ? 'Each branch has its own PayMongo account — pick a section to generate a link and see that account’s transactions and payouts.'
+              : 'View-only: your branch’s payment links, the payments received on them, and its bank payouts.'}
+          </p>
         </div>
       </div>
 
@@ -716,15 +735,15 @@ export default function PaymongoPage() {
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors flex items-center gap-1.5"
-            style={{ borderColor: tab === t.key ? 'var(--teal)' : 'transparent', color: tab === t.key ? 'var(--teal)' : 'var(--mid-gray)' }}>
+            style={{ borderColor: activeTab === t.key ? 'var(--teal)' : 'transparent', color: activeTab === t.key ? 'var(--teal)' : 'var(--mid-gray)' }}>
             {t.key === 'VOUCHERS' && <Ticket size={14} />}{t.label}
           </button>
         ))}
       </div>
 
-      {tab === 'VOUCHERS' ? <VouchersPanel canWrite={VOUCHER_WRITE.includes(role as string)} />
-        : tab === 'POS' ? <PosLinksPanel />
-        : <BranchPanel account={tab} label={ACCOUNTS.find(a => a.code === tab)!.label} />}
+      {activeTab === 'VOUCHERS' ? <VouchersPanel canWrite={VOUCHER_WRITE.includes(role as string)} />
+        : activeTab === 'POS' ? <PosLinksPanel />
+        : <BranchPanel account={activeTab} label={ACCOUNTS.find(a => a.code === activeTab)!.label} canWrite={canWrite} />}
     </div>
   )
 }

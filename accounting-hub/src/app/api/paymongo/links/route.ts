@@ -4,9 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPaymongoAccount, PAYMONGO_ACCOUNTS } from '@/lib/paymongo'
 import { checkVoucher } from '@/lib/vouchers'
-
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+import { PAYMONGO_READ_ROLES as READ_ROLES, PAYMONGO_WRITE_ROLES as WRITE_ROLES, canReadPaymongoAccount } from '@/lib/paymongo-access'
 
 const branchOf = (a: string) => PAYMONGO_ACCOUNTS.find(x => x.code === a)?.branch || null
 
@@ -18,6 +16,10 @@ export async function GET(req: Request) {
   }
   const account = String(new URL(req.url).searchParams.get('account') || '').toUpperCase()
   if (!isPaymongoAccount(account)) return NextResponse.json({ error: 'Invalid account' }, { status: 400 })
+  // Front desk only sees their own branch's account.
+  if (!canReadPaymongoAccount(session.user.role as string, account)) {
+    return NextResponse.json({ error: 'Not your branch' }, { status: 403 })
+  }
 
   const links = await prisma.paymentLink.findMany({ where: { account }, orderBy: { createdAt: 'desc' } })
   const ids = links.map(l => l.id)

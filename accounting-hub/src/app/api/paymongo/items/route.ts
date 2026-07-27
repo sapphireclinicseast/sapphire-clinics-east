@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPaymongoAccount, PAYMONGO_ACCOUNTS } from '@/lib/paymongo'
 
-const ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+import { PAYMONGO_READ_ROLES as ROLES, canReadPaymongoAccount } from '@/lib/paymongo-access'
 
 // Service.branch is its own enum (ServiceBranch) that also allows ALL.
 const SERVICE_BRANCH: Record<string, string> = {
@@ -21,6 +21,9 @@ export async function GET(req: Request) {
   }
   const account = String(new URL(req.url).searchParams.get('account') || '').toUpperCase()
   if (!isPaymongoAccount(account)) return NextResponse.json({ error: 'Invalid account' }, { status: 400 })
+  if (!canReadPaymongoAccount(session.user.role as string, account)) {
+    return NextResponse.json({ error: 'Not your branch' }, { status: 403 })
+  }
   const branch = PAYMONGO_ACCOUNTS.find(a => a.code === account)!.branch
   const svcBranch = SERVICE_BRANCH[account]
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { listPayouts, parsePayout, paymongoConfigured, isPaymongoAccount } from '@/lib/paymongo'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+import { PAYMONGO_READ_ROLES as READ_ROLES, canReadPaymongoAccount } from '@/lib/paymongo-access'
 
 /**
  * GET ?account=AHEA — payouts (bank settlements) for one PayMongo account, read live.
@@ -15,6 +15,10 @@ export async function GET(req: Request) {
   }
   const account = String(new URL(req.url).searchParams.get('account') || '').toUpperCase()
   if (!isPaymongoAccount(account)) return NextResponse.json({ error: 'Invalid account' }, { status: 400 })
+  // Front desk only sees their own branch's account.
+  if (!canReadPaymongoAccount(session.user.role as string, account)) {
+    return NextResponse.json({ error: 'Not your branch' }, { status: 403 })
+  }
   if (!paymongoConfigured(account)) {
     return NextResponse.json({ account, configured: false, payouts: [] })
   }
