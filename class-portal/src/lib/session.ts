@@ -1458,9 +1458,33 @@ export interface PaymentReminderLogRow {
   plan: 'MONTHLY' | 'BIANNUAL' | 'ANNUAL'
   period: string
   dueOn: string      // ISO
-  reason: 'WINDOW_OPEN' | 'DUE_SOON' | 'PAST_DUE'
+  reason: 'WINDOW_OPEN' | 'DUE_SOON' | 'PAST_DUE' | 'MANUAL'
   severity: 'INFO' | 'WARNING'
   sentAt: string     // ISO
+}
+
+/** Fire a one-off manual payment reminder email at a specific student.
+ *  Backed by /api/public/class-portal/payment-reminders/manual which
+ *  uses the same email infra as the daily cron but logs with
+ *  reason='MANUAL'. Returns the sentAt ISO on success, null on
+ *  failure — caller decides how to surface the error. */
+export async function sendManualPaymentReminder(args: {
+  studentId: string
+  period: string
+  dueOn?: string
+}): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const { sentAt } = await backendJson<{ ok: true; sentAt: string }>(
+      '/api/public/class-portal/payment-reminders/manual',
+      { method: 'POST', body: JSON.stringify(args) },
+    )
+    return sentAt ?? null
+  } catch (e) {
+    console.warn('[sendManualPaymentReminder] failed:', e)
+    return null
+  }
 }
 
 /** Admin/branch-admin/frontdesk: list the reminders the cron has sent

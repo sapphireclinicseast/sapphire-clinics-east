@@ -58,10 +58,14 @@ export default function PaymentReminderNotifications() {
   function reasonLabel(reason: PaymentReminderLogRow['reason']): string {
     return reason === 'WINDOW_OPEN' ? '5-day heads-up'
       : reason === 'DUE_SOON'     ? 'Due tomorrow'
-      : 'Past due'
+      : reason === 'PAST_DUE'     ? 'Past due'
+      : 'Manual reminder'
   }
   function reasonBadgeClass(r: PaymentReminderLogRow['reason']): string {
-    return r === 'PAST_DUE' ? 'badge-due' : r === 'DUE_SOON' ? 'badge-pending' : 'badge-approved'
+    return r === 'PAST_DUE' ? 'badge-due'
+      : r === 'DUE_SOON' ? 'badge-pending'
+      : r === 'MANUAL'   ? 'badge-rejected'
+      : 'badge-approved'
   }
 
   return (

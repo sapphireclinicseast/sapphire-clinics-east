@@ -8,6 +8,7 @@ import {
   currentPeriodPaymentStatusFor, inferPaymentPlanFor,
   didPayForBiannualHalf, didPayForMonth, schoolYearLabelFor, biannualHalfFor,
   unpaidBackMonthsFor,
+  sendManualPaymentReminder,
   type PaymentRecord, type PaymentMethod, type PaymentPlan,
   type StoredUser, type EnrollmentLevel,
 } from '@/lib/session'
@@ -139,6 +140,36 @@ export default function PaymentsGrouped({
   )
   const [search, setSearch] = useState('')
   const [busyDelete, setBusyDelete] = useState<string | null>(null)
+  // Overdue-row "🔔 Remind" — keyed by studentId. `busyRemind` marks
+  // the currently-firing row; `remindSent` sticks the ✓ for a few
+  // seconds after success so staff can see the ack.
+  const [busyRemind, setBusyRemind] = useState<string | null>(null)
+  const [remindSent, setRemindSent] = useState<Record<string, boolean>>({})
+
+  async function handleManualRemind(r: Row) {
+    if (busyRemind || !r.deadline || !r.plan) return
+    const period = r.payment?.period
+      || (r.plan === 'MONTHLY'
+        ? `${['January','February','March','April','May','June','July','August','September','October','November','December'][r.deadline.getMonth()]} ${r.deadline.getFullYear()}`
+        : r.plan === 'BIANNUAL'
+          ? (r.deadline.getMonth() >= 11
+              ? `Second half SY ${r.deadline.getFullYear()}–${r.deadline.getFullYear() + 1}`
+              : `First half SY ${r.deadline.getFullYear()}–${r.deadline.getFullYear() + 1}`)
+          : `SY ${r.deadline.getFullYear()}–${r.deadline.getFullYear() + 1}`)
+    setBusyRemind(r.student.id)
+    const sentAt = await sendManualPaymentReminder({
+      studentId: r.student.id,
+      period,
+      dueOn: r.deadline.toISOString(),
+    })
+    setBusyRemind(null)
+    if (sentAt) {
+      setRemindSent(prev => ({ ...prev, [r.student.id]: true }))
+      window.setTimeout(() => setRemindSent(prev => ({ ...prev, [r.student.id]: false })), 4000)
+    } else {
+      alert(`Could not send reminder to ${r.student.email}. Retry?`)
+    }
+  }
 
   useEffect(() => {
     hydrateUsers().then(us => setStudents(activeStudentsOnly(us))).catch(() => setStudents(activeStudentsOnly(getUsers())))
@@ -266,7 +297,7 @@ export default function PaymentsGrouped({
           <div>
             <h2 className="text-[18px] leading-tight">Pending payments — by deadline</h2>
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              Closest deadline first. Reminders go out automatically 5 days before, the day before, and the day after each deadline — see the Notifications panel below for a full log of who&rsquo;s been emailed.
+              Closest deadline first. Reminders go out automatically 5 days before, the day before, and the day after each deadline. For an overdue row, click <span aria-hidden>🔔</span> <strong>Remind</strong> to fire a manual reminder email now — every send is logged in the Notifications panel below.
             </p>
           </div>
           <input
@@ -292,6 +323,7 @@ export default function PaymentsGrouped({
                   <th className="py-2 px-3 text-right">Amount</th>
                   <th className="py-2 px-3">Method</th>
                   <th className="py-2 px-3">Proof</th>
+                  <th className="py-2 px-3 text-right">Remind</th>
                   {canDelete && <th className="py-2 px-3 text-right">Action</th>}
                 </tr>
               </thead>
@@ -327,6 +359,28 @@ export default function PaymentsGrouped({
                       <td className="py-2.5 px-3 text-right tabular-nums">{r.payment ? fmt(r.payment.tuitionAmount + r.payment.miscAmount) : '—'}</td>
                       <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.payment?.method)}</td>
                       <td className="py-2.5 px-3"><ProofBtn payment={r.payment} /></td>
+                      <td className="py-2.5 px-3 text-right">
+                        {overdue ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-[11.5px] px-2 py-1 rounded-md font-semibold transition-colors disabled:opacity-50"
+                            style={{
+                              background: remindSent[r.student.id] ? '#dcfce7' : '#fee2e2',
+                              color:      remindSent[r.student.id] ? '#166534' : '#9f1239',
+                              border:     `1px solid ${remindSent[r.student.id] ? 'rgba(22,101,52,0.35)' : 'rgba(159,18,42,0.35)'}`,
+                            }}
+                            onClick={() => void handleManualRemind(r)}
+                            disabled={busyRemind === r.student.id}
+                            title={`Send an overdue-reminder email to ${r.student.email}`}
+                          >
+                            {remindSent[r.student.id] ? '✓ Sent'
+                              : busyRemind === r.student.id ? 'Sending…'
+                              : <><span aria-hidden>🔔</span> Remind</>}
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-[color:var(--mid-gray)]">—</span>
+                        )}
+                      </td>
                       {canDelete && (
                         <td className="py-2.5 px-3 text-right">
                           <button
