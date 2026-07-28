@@ -364,6 +364,10 @@ model Staff {
   branch          String          // "SBEA" | "SBGH" — primary branch (from HR)
   extraBranches      String[]        @default([]) // additional branches; never overwritten by sync
   branchEmployment   Json            @default("{}") // per-branch employment: { SBEA: { employmentType, employeeId, department, jobTitle }, SBGH: {...} }
+  // Per-branch role owned by Operations: {"SBEA":"consultant","SBGH":"employee"}. HR carries
+  // a single employmentType, so this is set here and — like extraBranches — is never
+  // overwritten by the HR sync. Absent/empty = use employmentType for every branch.
+  employmentByBranch Json?
   dob             DateTime?       // Birthday — synced from HR Platform
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
   employmentType  String?         // "employee" | "consultant"

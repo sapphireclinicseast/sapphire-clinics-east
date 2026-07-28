@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { fetchHrStaffForSync } from '@/lib/external-staff'
+import { fetchExternalStaffForSync, fetchHrStaffForSync } from '@/lib/external-staff'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
@@ -32,6 +32,23 @@ export async function GET(req: Request) {
   if (sync) {
     try {
       const staff = await fetchHrStaffForSync()
+
+      // Per-branch role overrides are owned by Operations (Staff Profiles), because HR only
+      // carries one employmentType and so can't say "consultant at East, employee at
+      // Greenhills". Keyed by HR id via Staff.hrPlatformId. Employee details still come from
+      // HR — this only decides whether, and at which branch, they belong in this tab.
+      const employeeBranchOverride = new Map<string, string[]>()
+      try {
+        for (const o of await fetchExternalStaffForSync()) {
+          const map = (o.employmentByBranch || null) as Record<string, string> | null
+          if (!o.hrPlatformId || !map) continue
+          const branches = Object.entries(map).filter(([, t]) => t === 'employee').map(([b]) => b)
+          if (branches.length > 0) employeeBranchOverride.set(String(o.hrPlatformId), branches)
+        }
+      } catch (e) {
+        console.error('[payroll/employees] per-branch override fetch failed:', e)
+      }
+
       if (staff.length > 0) {
         // Track which externalStaffIds are valid employees (for purge step below)
         const validExternalIds = new Set<string>()
@@ -41,10 +58,14 @@ export async function GET(req: Request) {
           const isVerdana = ['VDNA', 'VERDANA'].includes(br.toUpperCase())
           // Only sync staff with employmentType='employee' (not consultants/therapists on
           // retainer). Verdana Store staff are ALL synced regardless of employment type.
-          if (!isVerdana && s.employmentType !== 'employee') continue
+          // A branch marked 'employee' in Operations keeps them here even when HR's single
+          // employmentType says consultant (they may be a consultant at the OTHER branch).
+          const overrideBranches = employeeBranchOverride.get(String(s.id)) || []
+          if (!isVerdana && overrideBranches.length === 0 && s.employmentType !== 'employee') continue
 
           validExternalIds.add(s.id)
-          const normalizedBranch = isVerdana ? 'VERDANA' : br
+          // Place them at the branch that employs them, not HR's single primary branch.
+          const normalizedBranch = isVerdana ? 'VERDANA' : (overrideBranches[0] || br)
 
           try {
             // Fields to sync — deliberately excludes dailyRate / monthlyRate / rateType

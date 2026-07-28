@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
 /** Branch-specific roles see their branch + Verdana Store */
@@ -48,6 +49,7 @@ export async function PATCH(req: Request) {
     id?: string
     sex?: string | null
     extraBranches?: string[]
+    employmentByBranch?: Record<string, string> | null
   }
   if (!body.id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
@@ -64,6 +66,40 @@ export async function PATCH(req: Request) {
       where: { id: body.id },
       data: { extraBranches: branches },
       select: { id: true, extraBranches: true },
+    })
+    return NextResponse.json(updated)
+  }
+
+  // employmentByBranch — ADMIN only. Lets one profile be a consultant at one branch and an
+  // employee at another; Payroll in the Accounting Hub reads this to decide which tab the
+  // person lands in per branch. Owned here, never overwritten by the HR sync.
+  if ('employmentByBranch' in body) {
+    if (role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Only the Clinic Manager can set per-branch employment' }, { status: 403 })
+    }
+    const VALID_BRANCH = ['SBEA', 'SBGH', 'VDNA']
+    const VALID_TYPE = ['employee', 'consultant']
+    const raw = body.employmentByBranch
+    let value: Record<string, string> | null = null
+    if (raw && typeof raw === 'object') {
+      const clean: Record<string, string> = {}
+      for (const [branch, type] of Object.entries(raw)) {
+        if (!VALID_BRANCH.includes(branch)) {
+          return NextResponse.json({ error: `Unknown branch "${branch}"` }, { status: 400 })
+        }
+        const t = String(type || '').toLowerCase()
+        if (!t) continue                       // blank = no override for that branch
+        if (!VALID_TYPE.includes(t)) {
+          return NextResponse.json({ error: `Employment must be employee or consultant, got "${type}"` }, { status: 400 })
+        }
+        clean[branch] = t
+      }
+      value = Object.keys(clean).length > 0 ? clean : null
+    }
+    const updated = await prisma.staff.update({
+      where: { id: body.id },
+      data: { employmentByBranch: value ?? Prisma.DbNull },
+      select: { id: true, employmentByBranch: true },
     })
     return NextResponse.json(updated)
   }

@@ -57,6 +57,10 @@ export async function GET(req: NextRequest) {
         branchEmployment: true,
         jobTitle: true,
         employmentType: true,
+        // Per-branch role + the other branches they work at, so Payroll can place the
+        // same person as an employee at one branch and a consultant at another.
+        employmentByBranch: true,
+        extraBranches: true,
         hrPlatformId: true,
         sss: true,
         philhealth: true,
@@ -69,33 +73,14 @@ export async function GET(req: NextRequest) {
       ...(search ? { take: 20 } : {}),
     })
 
-    // For staff who work at multiple branches, emit an additional row per extra branch
-    // using the per-branch employment details stored in branchEmployment.
-    // This allows the accounting hub payroll sync to create separate employee/consultant
-    // records for each branch a person works at (e.g. consultant@SBEA + employee@SBGH).
+    // Per-branch roles are carried on the record itself (employmentByBranch), NOT by emitting
+    // a second row per branch. A synthetic "staffId:branch" id would land in
+    // Consultant.externalStaffId and orphan the real record — whose id is the plain staffId —
+    // so the consultant sync's purge step would deactivate consultants that hold locked
+    // payslips. One row per person; the payroll syncs read employmentByBranch to decide which
+    // tab and which branch they belong to.
     type StaffRow = (typeof staff)[0] & { id: string; branch: string }
     const extraRows: StaffRow[] = []
-    for (const s of staff) {
-      if (!s.extraBranches || s.extraBranches.length === 0) continue
-      const empMap = (s.branchEmployment ?? {}) as Record<string, { employmentType?: string; employeeId?: string; department?: string; jobTitle?: string }>
-      for (const xb of s.extraBranches) {
-        const emp = empMap[xb]
-        if (!emp) continue
-        // Skip if branch filter is active and this isn't the requested branch
-        if (branch && xb !== branch) continue
-        extraRows.push({
-          ...s,
-          id:             `${s.id}:${xb}`,  // synthetic id: unique per person-branch
-          branch:         xb,
-          employeeId:     emp.employeeId    ?? s.employeeId,
-          department:     (emp.department   ?? s.department) as typeof s.department,
-          jobTitle:       emp.jobTitle      ?? s.jobTitle,
-          employmentType: emp.employmentType ?? s.employmentType,
-          extraBranches:  [],  // secondary rows don't nest further
-          branchEmployment: {},
-        })
-      }
-    }
 
     // If includeHR is requested, fetch gov IDs from HR platform
     // Try multiple URLs to handle Docker networking on Linux
