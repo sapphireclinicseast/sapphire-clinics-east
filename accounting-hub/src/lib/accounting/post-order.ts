@@ -90,8 +90,12 @@ export async function postOrderJournal(
       include: { account: { select: { id: true, accountNumber: true, accountTitle: true } } },
     }),
     prisma.account.findFirst({ where: { accountNumber: '1010', accountType: 'ASSET' } }),
-    prisma.account.findFirst({ where: { accountNumber: '4055' } }) ??
-      prisma.account.findFirst({ where: { accountNumber: '4050' } }),
+    // 4050 Unearned Revenue — the liability a deposit creates and a wallet draw-down clears.
+    // NOT 4055 "Refunds of Unearned Revenue", which is the refunds contra: this used to read
+    // `findFirst(4055) ?? findFirst(4050)`, but the left side is a Promise and so never null,
+    // making the 4050 fallback dead code. Once 4055 was created every deposit and draw-down
+    // silently landed in the refunds contra instead of the liability.
+    prisma.account.findFirst({ where: { accountNumber: '4050' } }),
     prisma.account.findFirst({
       where: {
         accountType: 'ASSET',

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
+import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
 import { TiktokImportModal } from './TiktokImportModal'
 import Pagination from '@/components/ui/Pagination'
 
@@ -601,6 +602,11 @@ export default function POSPage() {
           </button>
         ))}
       </div>
+
+      {/* Online payments waiting to be loaded onto a patient's advance. Hidden when empty. */}
+      {(mainTab === 'services' || mainTab === 'products') && (
+        <PaymongoAdvanceQueue branch={branch === 'ALL' ? '' : branch} />
+      )}
 
       {/* Content */}
       {mainTab === 'services' && (

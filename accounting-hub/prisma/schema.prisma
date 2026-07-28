@@ -899,7 +899,11 @@ model PaymongoCheckout {
   // Which instrument the payer actually used: CARD | GCASH | PAYMAYA | QRPH.
   // Read from the PayMongo payment payload and used to pick the matching POS PaymentMode.
   paymentMethodUsed String?
-  convertedAt       DateTime? // when a cashier turned this payment into a POS order
+  convertedAt       DateTime? // when a cashier recorded this payment (as an advance, or a POS order)
+  // The patient ADVANCE wallet this payment was loaded into. The money is banked when the
+  // payer pays (DR clearing / CR 4050 Unearned) — converting only moves it into the wallet so
+  // the cashier can charge the session against it later, which is what clears 4050.
+  advanceWalletId   String?
   voucherId         String?
   voucherCode       String?
   grossAmount       Decimal?
