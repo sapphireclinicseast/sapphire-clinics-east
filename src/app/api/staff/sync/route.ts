@@ -13,6 +13,13 @@ const VALID_DEPTS: Set<string> = new Set([
   'OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'FRONT_DESK', 'ADMINISTRATION',
 ])
 
+interface HRBranchEmployment {
+  employmentType: string | null
+  employeeId: string | null
+  department: string | null
+  jobTitle: string | null
+}
+
 interface HRStaff {
   hrId: string
   employeeId: string | null
@@ -20,6 +27,7 @@ interface HRStaff {
   lastName: string
   branch: string          // primary branch
   branches?: string[]     // all branches — present when profile is merged (interbranch consultant)
+  branchEmployment?: Record<string, HRBranchEmployment> // per-branch details (new)
   department: string
   jobTitle: string | null
   employmentType: string | null
@@ -48,7 +56,7 @@ export async function POST() {
 
   const role = (session.user as { role?: string }).role ?? ''
   console.log('[staff-sync] User role:', role)
-  if (!['ADMIN', 'MARKETING_ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK'].includes(role)) {
+  if (!['ADMIN', 'MARKETING_ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN', 'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK'].includes(role)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
@@ -120,41 +128,38 @@ export async function POST() {
     }
     const sex = sexFromHr ?? match?.sex ?? null
 
-    // extraBranches is a locally-managed field: only update it from the HR
-    // sync when HR explicitly returns a merged-profile branches[] with more
-    // than one entry. If HR does not send branches[] (or sends only the
-    // primary branch), preserve whatever is already stored locally so that
-    // admin-set values are never silently wiped by a sync.
+    // Derive extra branches from the HR merged profile's branches[] array.
+    // If HR returns branches: ['SBEA', 'SBGH'] for an interbranch consultant,
+    // extraBranches becomes ['SBGH'] (all valid branches except the primary).
     const VALID_BRANCHES = ['SBEA', 'SBGH', 'VDNA']
-    const hrExtraBranches = Array.isArray(hr.branches) && hr.branches.length > 1
-      ? hr.branches.filter((b: string) => VALID_BRANCHES.includes(b) && b !== hr.branch)
-      : null // null = "HR didn't tell us — leave local value alone"
+    const extraBranches = (hr.branches ?? [hr.branch])
+      .filter(b => VALID_BRANCHES.includes(b) && b !== hr.branch)
 
     const payload = {
-      firstName:      hr.firstName,
-      lastName:       hr.lastName,
-      email:          hr.email,
-      phone:          hr.phone,
+      firstName:        hr.firstName,
+      lastName:         hr.lastName,
+      email:            hr.email,
+      phone:            hr.phone,
       dob,
       sex,
-      department:     hr.department as StaffDepartment,
-      branch:         hr.branch,
-      ...(hrExtraBranches !== null ? { extraBranches: hrExtraBranches } : {}),
-      jobTitle:       hr.jobTitle,
-      employmentType: hr.employmentType,
-      employeeId:     hr.employeeId,
+      department:       hr.department as StaffDepartment,
+      branch:           hr.branch,
+      extraBranches,
+      branchEmployment: hr.branchEmployment ?? {},
+      jobTitle:         hr.jobTitle,
+      employmentType:   hr.employmentType,
+      employeeId:       hr.employeeId,
       // Financial / gov-ID fields — written one-way from HR. If HR
       // returns null for any of these, the local field is set to null
       // (HR is the single source of truth, so a deletion on HR clears
       // the local copy on the next sync).
-      tin:            hr.tin,
-      sss:            hr.sss,
-      pagibig:        hr.pagibig,
-      philhealth:     hr.philhealth,
-      bankName:       hr.bankName,
-      bankAccountNo:  hr.bankAccountNo,
-      hrPlatformId:   hr.hrId,
-      active:         true, // present in HR's active feed → (re)activate
+      tin:              hr.tin,
+      sss:              hr.sss,
+      pagibig:          hr.pagibig,
+      philhealth:       hr.philhealth,
+      bankName:         hr.bankName,
+      bankAccountNo:    hr.bankAccountNo,
+      hrPlatformId:     hr.hrId,
     }
 
     try {
@@ -173,55 +178,18 @@ export async function POST() {
     }
   }
 
-  // Staff no longer in HR's active feed (inactive or removed in HR). Try a
-  // hard delete; if they have history (survey/peer-eval/schedule rows with FK
-  // constraints), soft-deactivate instead so they drop out of the Staff Module
-  // and Top 5 while their records are preserved.
-  const toRemove = existing.filter(s => !matchedIds.has(s.id))
+  const toDelete = existing.filter(s => !matchedIds.has(s.id))
   let deleted = 0
-  let deactivated = 0
-  for (const s of toRemove) {
+  for (const s of toDelete) {
     try {
       await prisma.staff.delete({ where: { id: s.id } })
       deleted++
-    } catch {
-      try {
-        if (s.active !== false) {
-          await prisma.staff.update({ where: { id: s.id }, data: { active: false } })
-        }
-        deactivated++
-      } catch (err2) {
-        const msg = err2 instanceof Error ? err2.message : String(err2)
-        errors.push('Deactivate ' + s.firstName + ' ' + s.lastName + ': ' + msg)
-      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push('Delete ' + s.firstName + ' ' + s.lastName + ': ' + msg)
     }
   }
 
-  // ── Keep staff-portal logins in step with the synced staff email ──────────
-  // Staff emails are managed in HR and flow here on sync. When a staff member's
-  // email changes, their Staff Portal login (TherapistAccount, same shared DB —
-  // not in this app's Prisma schema, so updated by raw SQL) must follow it
-  // automatically, keeping the SAME password. Match by the linked staffId;
-  // store lower-cased to match the login lookup; skip any target email that
-  // already belongs to a different account (email is unique).
-  let loginEmailsUpdated = 0
-  try {
-    loginEmailsUpdated = await prisma.$executeRaw`
-      UPDATE "TherapistAccount" ta
-      SET email = lower(btrim(s.email)), "updatedAt" = NOW()
-      FROM "Staff" s
-      WHERE ta."staffId" = s.id
-        AND s.email IS NOT NULL AND btrim(s.email) <> ''
-        AND lower(ta.email) <> lower(btrim(s.email))
-        AND NOT EXISTS (
-          SELECT 1 FROM "TherapistAccount" x
-          WHERE lower(x.email) = lower(btrim(s.email)) AND x.id <> ta.id
-        )
-    `
-  } catch (err) {
-    errors.push('Login-email reconcile: ' + (err instanceof Error ? err.message : String(err)))
-  }
-
-  console.log('[staff-sync] Done:', { created, updated, deleted, deactivated, loginEmailsUpdated, nameChanges, errors: errors.length })
-  return NextResponse.json({ synced: created + updated, created, updated, deleted, deactivated, loginEmailsUpdated, nameChanges, errors, total: hrStaff.length })
+  console.log('[staff-sync] Done:', { created, updated, deleted, nameChanges, errors: errors.length })
+  return NextResponse.json({ synced: created + updated, created, updated, deleted, nameChanges, errors, total: hrStaff.length })
 }

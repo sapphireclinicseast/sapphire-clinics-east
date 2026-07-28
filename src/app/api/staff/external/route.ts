@@ -34,7 +34,6 @@ export async function GET(req: NextRequest) {
   try {
     const staff = await prisma.staff.findMany({
       where: {
-        active: true, // exclude staff marked inactive in HR (mirror Staff Module + Top 5)
         ...(branch ? { branch } : {}),
         ...(search
           ? {
@@ -54,6 +53,8 @@ export async function GET(req: NextRequest) {
         phone: true,
         department: true,
         branch: true,
+        extraBranches: true,
+        branchEmployment: true,
         jobTitle: true,
         employmentType: true,
         hrPlatformId: true,
@@ -67,6 +68,34 @@ export async function GET(req: NextRequest) {
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       ...(search ? { take: 20 } : {}),
     })
+
+    // For staff who work at multiple branches, emit an additional row per extra branch
+    // using the per-branch employment details stored in branchEmployment.
+    // This allows the accounting hub payroll sync to create separate employee/consultant
+    // records for each branch a person works at (e.g. consultant@SBEA + employee@SBGH).
+    type StaffRow = (typeof staff)[0] & { id: string; branch: string }
+    const extraRows: StaffRow[] = []
+    for (const s of staff) {
+      if (!s.extraBranches || s.extraBranches.length === 0) continue
+      const empMap = (s.branchEmployment ?? {}) as Record<string, { employmentType?: string; employeeId?: string; department?: string; jobTitle?: string }>
+      for (const xb of s.extraBranches) {
+        const emp = empMap[xb]
+        if (!emp) continue
+        // Skip if branch filter is active and this isn't the requested branch
+        if (branch && xb !== branch) continue
+        extraRows.push({
+          ...s,
+          id:             `${s.id}:${xb}`,  // synthetic id: unique per person-branch
+          branch:         xb,
+          employeeId:     emp.employeeId    ?? s.employeeId,
+          department:     (emp.department   ?? s.department) as typeof s.department,
+          jobTitle:       emp.jobTitle      ?? s.jobTitle,
+          employmentType: emp.employmentType ?? s.employmentType,
+          extraBranches:  [],  // secondary rows don't nest further
+          branchEmployment: {},
+        })
+      }
+    }
 
     // If includeHR is requested, fetch gov IDs from HR platform
     // Try multiple URLs to handle Docker networking on Linux
@@ -88,7 +117,7 @@ export async function GET(req: NextRequest) {
               hrByName.set(key, h)
             }
             // Merge HR data into staff results
-            const enriched = staff.map(s => {
+            const enriched = [...staff, ...extraRows].map(s => {
               const key = `${s.firstName.toUpperCase()}|${s.lastName.toUpperCase()}`
               const hr = hrByName.get(key)
               return {
@@ -104,7 +133,7 @@ export async function GET(req: NextRequest) {
                 hrEmployeeId: hr?.employeeId || null,
               }
             })
-            console.log(`[external-staff] HR fetch OK via ${hrUrl}, enriched ${enriched.length} staff`)
+            console.log(`[external-staff] HR fetch OK via ${hrUrl}, enriched ${enriched.length} staff (${extraRows.length} extra branch rows)`)
             return NextResponse.json({ staff: enriched })
           }
         } catch (hrErr) {
@@ -115,7 +144,7 @@ export async function GET(req: NextRequest) {
       console.error('[external-staff] All HR URLs failed — returning staff without HR data')
     }
 
-    return NextResponse.json({ staff })
+    return NextResponse.json({ staff: [...staff, ...extraRows] })
   } catch (err) {
     console.error('[external-staff] Query failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -1,20 +1,15 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { fetchExternalStaffForSync } from '@/lib/external-staff'
 
-const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
-
-// Consultants store branch as SBEA/SBGH/VERDANA/AHI; orders store the long branch code.
-const BRANCH_TO_ORDER: Record<string, string> = {
-  SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE',
-}
-const BRANCH_CODES = Object.keys(BRANCH_TO_ORDER)
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
 /** Branch-specific roles can only see their branch + VERDANA */
 function allowedBranches(role: string): string[] | null {
-  if (role === 'AHEA_ADMIN') return ['SBEA', 'VERDANA']
-  if (role === 'AHGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
   if (role === 'VERDANA_ADMIN') return ['VERDANA']
   return null
 }
@@ -35,11 +30,16 @@ export async function GET(req: Request) {
   const department = searchParams.get('department') || ''
   const sync = searchParams.get('sync') === 'true'
 
-  // Optionally sync external staff (Operations for Aura Health branches, HR Platform for Verdana)
+  // Optionally sync from marketing hub
   if (sync) {
     try {
-      const staff = await fetchExternalStaffForSync()
-      if (staff.length > 0) {
+      const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external?includeHR=true`, {
+        headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const staff = data.staff || []
         const syncedExternalIds = new Set<string>()
 
         // Phase 1: Clean existing duplicates (same name + same branch, prefer one with externalStaffId)
@@ -63,13 +63,12 @@ export async function GET(req: Request) {
           const name = formatName(`${s.firstName} ${s.lastName}`)
           const dept = s.department || ''
           const br = s.branch || ''
-          // Skip front desk, and anyone the source marks as an employee — they belong
-          // in the Employees tab, not Consultants (employmentType==='employee' is the
-          // same discriminator the Employee sync uses; clinicians carry a different type).
-          // Not adding their id to syncedExternalIds lets Phase 3 deactivate any that were
-          // previously mis-synced as consultants.
+          // Front desk are never consultants; skip them entirely.
           if (dept === 'FRONT_DESK') continue
-          if (s.employmentType === 'employee') continue
+          // Admin staff are usually employees, but some are explicitly consultants
+          // (e.g. a bookkeeper engaged per-branch). Only skip admin when they're NOT
+          // classified as consultants — employees belong in the employees sync instead.
+          if (dept === 'ADMINISTRATION' && s.employmentType !== 'consultant') continue
 
           syncedExternalIds.add(s.id)
 
@@ -89,9 +88,7 @@ export async function GET(req: Request) {
             }
           }
 
-          // Always re-activate: if marketing hub returns this person, they should be active.
-          // Omitting isActive here would leave previously deactivated consultants frozen as inactive.
-          const syncData: Record<string, unknown> = { name, department: dept, branch: br, isActive: true }
+          const syncData: Record<string, unknown> = { name, department: dept, branch: br }
 
           // Sync contact info
           if (s.email) syncData.email = s.email
@@ -140,70 +137,28 @@ export async function GET(req: Request) {
   const where: any = { isActive: true }
   if (department) where.department = department
 
+  // Enforce branch restriction based on role
   const allowed = allowedBranches((session.user as { role?: string }).role || '')
-  if (branch && allowed && !allowed.includes(branch)) {
-    return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
-  }
-  if (!branch && allowed) {
-    where.OR = [{ branch: { in: allowed } }, { extraBranches: { hasSome: allowed } }]
-  }
-
-  // Interbranch consultants have a merged HR profile: one record with a primary
-  // `branch` + `extraBranches`, and they may take sessions at more than one branch.
-  // They must appear under EVERY branch they actually work in so a separate payslip
-  // can be produced per branch. Source of truth for "works here" = orders (sessions)
-  // billed at the branch, matched by clinician name — same match payroll generation uses.
-  let interbranchNames = new Set<string>()
   if (branch) {
-    const orderBranch = BRANCH_TO_ORDER[branch] || branch
-    const orderClinicians = await prisma.order.findMany({
-      where: { branch: orderBranch, status: 'COMPLETED', clinicianName: { not: null } },
-      select: { clinicianName: true },
-      distinct: ['clinicianName'],
-    })
-    interbranchNames = new Set(orderClinicians.map(o => (o.clinicianName || '').trim().toUpperCase()).filter(Boolean))
+    if (allowed && !allowed.includes(branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
+    where.branch = branch
+  } else if (allowed) {
+    where.branch = { in: allowed }
   }
 
-  // Fetch the full active roster (dept + role scope applied), then narrow to the
-  // requested branch by primary branch OR extraBranches OR having sessions there.
-  const roster = await prisma.consultant.findMany({
+  const consultants = await prisma.consultant.findMany({
     where,
     orderBy: { name: 'asc' },
     include: {
       unitPayRates: {
         include: { unitPay: { select: { id: true, name: true } } },
       },
-      benefits: { where: { isActive: true } },
     },
   })
-  const consultants = branch
-    ? roster.filter(c => c.branch === branch || (c.extraBranches || []).includes(branch) || interbranchNames.has(c.name.trim().toUpperCase()))
-    : roster
 
-  // Affiliated branches = primary + extraBranches + every branch they have sessions in.
-  // Shown in the Branch column so interbranch consultants list all their branches, not
-  // just the primary of their merged profile.
-  const ORDER_TO_BRANCH: Record<string, string> = Object.fromEntries(Object.entries(BRANCH_TO_ORDER).map(([k, v]) => [v, k]))
-  const sessionBranches = await prisma.order.groupBy({
-    by: ['clinicianName', 'branch'],
-    where: { status: 'COMPLETED', clinicianName: { not: null } },
-  })
-  const nameToBranches = new Map<string, Set<string>>()
-  for (const g of sessionBranches) {
-    const code = ORDER_TO_BRANCH[g.branch]
-    if (!code) continue
-    const key = (g.clinicianName || '').trim().toUpperCase()
-    if (!key) continue
-    if (!nameToBranches.has(key)) nameToBranches.set(key, new Set())
-    nameToBranches.get(key)!.add(code)
-  }
-  const withAffiliations = consultants.map(c => {
-    const set = new Set<string>([c.branch, ...(c.extraBranches || [])])
-    for (const b of nameToBranches.get(c.name.trim().toUpperCase()) || []) set.add(b)
-    return { ...c, affiliatedBranches: Array.from(set).filter(Boolean) }
-  })
-
-  return NextResponse.json(withAffiliations)
+  return NextResponse.json(consultants)
 }
 
 export async function POST(req: Request) {
@@ -240,38 +195,13 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, taxDeduction, monthlyRetainer, retainerByBranch, unitPayRates, isActive, name, department, branch, birAddress } = await req.json()
+    const { id, taxDeduction, monthlyRetainer, unitPayRates, isActive, name, department, branch, birAddress } = await req.json()
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     if (taxDeduction !== undefined) data.taxDeduction = taxDeduction
     if (monthlyRetainer !== undefined) data.monthlyRetainer = Number(monthlyRetainer)
-
-    // Per-branch retainer for an interbranch consultant, e.g. { SBGH: 10000 } for someone who
-    // consults at both branches but is retained only at Greenhills. monthlyRetainer is kept as
-    // the total so payslips, exports and the roster column stay consistent with the split.
-    if (retainerByBranch !== undefined) {
-      if (retainerByBranch === null) {
-        data.retainerByBranch = null
-      } else {
-        const clean: Record<string, number> = {}
-        for (const [code, amt] of Object.entries(retainerByBranch as Record<string, unknown>)) {
-          if (!BRANCH_CODES.includes(code)) {
-            return NextResponse.json({ error: `Unknown branch "${code}"` }, { status: 400 })
-          }
-          const n = Number(amt)
-          if (!Number.isFinite(n) || n < 0) {
-            return NextResponse.json({ error: `Retainer for ${code} must be zero or more` }, { status: 400 })
-          }
-          if (n > 0) clean[code] = Math.round(n * 100) / 100
-        }
-        const keys = Object.keys(clean)
-        data.retainerByBranch = keys.length > 0 ? clean : null
-        // The split is authoritative when present, so the total follows it.
-        if (keys.length > 0) data.monthlyRetainer = keys.reduce((s, k) => s + clean[k], 0)
-      }
-    }
     if (isActive !== undefined) data.isActive = isActive
     if (name !== undefined) data.name = name.trim()
     if (department !== undefined) data.department = department
