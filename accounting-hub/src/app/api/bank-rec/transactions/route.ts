@@ -145,7 +145,7 @@ export async function PATCH(req: Request) {
       const bankAccountId = body.bankAccountId
       if (!bankAccountId) return NextResponse.json({ error: 'bankAccountId is required' }, { status: 400 })
       const cutoff = await tagCutoff(bankAccountId)
-      if (!cutoff) return NextResponse.json({ error: 'Set a reconciliation start date for this account in Beginning Balances first.' }, { status: 400 })
+      if (!cutoff) return NextResponse.json({ error: 'Set a reconciliation start date for this account under Opening balance first.' }, { status: 400 })
       const res = await prisma.bankTransaction.updateMany({
         where: { bankAccountId, status: 'PENDING', date: { lt: cutoff } },
         data: { status: ARCHIVED },

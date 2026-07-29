@@ -80,7 +80,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/chart-of-accounts', icon: BookOpen, label: 'Chart of Accounts', roles: COA_ACCESS },
       { href: '/subsidiary-ledger', icon: ScrollText, label: 'Subsidiary Ledger', roles: FULL_ACCESS },
-      { href: '/beginning-balances', icon: BookOpen, label: 'Beginning Balances', roles: FULL_ACCESS },
       { href: '/bank-reconciliation', icon: ArrowLeftRight, label: 'Bank Reconciliation', roles: FULL_ACCESS },
     ],
   },

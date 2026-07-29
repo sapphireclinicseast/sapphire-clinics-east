@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
-import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock } from 'lucide-react'
+import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -190,7 +190,7 @@ export default function BankReconciliationPage() {
 
       {accounts.length === 0 ? (
         <div className="rounded-2xl border p-6 text-sm" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
-          No bank accounts yet. In <strong>Chart of Accounts</strong>, tick <strong>&quot;Is this a bank account?&quot;</strong> on your Current-Asset bank accounts, then set their opening balance &amp; start date in <strong>Beginning Balances</strong>.
+          No bank accounts yet. In <strong>Chart of Accounts</strong>, tick <strong>&quot;Is this a bank account?&quot;</strong> on your Current-Asset bank accounts, then set their opening balance &amp; start date here.
         </div>
       ) : (
         <>
@@ -219,9 +219,13 @@ export default function BankReconciliationPage() {
 
           {account && !account.startDate && (
             <div className="rounded-xl border px-4 py-2 text-xs" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
-              No reconciliation start date set for this account. Set one in <strong>Beginning Balances</strong> so matching only considers Hub entries from that date onward.
+              No reconciliation start date set for this account. Set one under <strong>Opening balance</strong> below so matching only considers Hub entries from that date onward.
             </div>
           )}
+
+          {/* Opening balance — the figure the Balance Sheet starts this account
+              from, and the date reconciliation begins counting Hub entries. */}
+          {account && <OpeningBalance account={account} canWrite={canWrite} onSaved={refreshAll} />}
 
           {/* Exchange rates — only for accounts not held in PHP */}
           {foreignCur && (
@@ -689,6 +693,116 @@ function Modal({ title, children, onClose, wide }: { title: string; children: Re
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{title}</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
         {children}
       </div>
+    </div>
+  )
+}
+
+
+// Opening balance for one bank account. This used to be a separate page listing
+// every account in the chart, but only bank accounts ever carried a figure, and
+// the date it sets is what bank reconciliation counts from — so it belongs with
+// the account it describes.
+function OpeningBalance({ account, canWrite, onSaved }: { account: BankAcct; canWrite: boolean; onSaved: () => void }) {
+  const thisYear = new Date().getFullYear()
+  const [year, setYear] = useState(thisYear)
+  const [amount, setAmount] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    setAmount(account.beginningBalance ? String(account.beginningBalance) : '')
+    setStartDate(account.startDate || '')
+  }, [account.id, account.beginningBalance, account.startDate])
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const r = await fetch('/api/beginning-balances', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, entries: [{ accountId: account.id, amount: Number(amount) || 0, startDate: startDate || null }] }),
+      })
+      if (!r.ok) { alert('Failed to save: ' + (await r.text())); return }
+      await onSaved()
+    } finally { setBusy(false) }
+  }
+
+  // Read the figure off the uploaded statements rather than typing it in.
+  const prefill = async () => {
+    const asOf = prompt(`Read this account's balance from its uploaded statements as of which date?`, `${year - 1}-12-31`)
+    if (!asOf) return
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/bank-rec/balance-as-of?date=${encodeURIComponent(asOf)}`)
+      const d = await r.json()
+      if (!r.ok) { alert(d.error || 'Failed'); return }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const row = (d.accounts || []).find((a: any) => a.accountId === account.id)
+      if (!row || row.balance === null) {
+        alert(row?.needsRate
+          ? `This account is held in ${row.currency} and has no exchange rate on file for ${asOf}, so it cannot be stated in PHP yet.`
+          : `No uploaded statement line on or before ${asOf} carries a running balance for this account.\n\nRe-upload with the Balance column mapped.`)
+        return
+      }
+      setAmount(String(row.balance))
+      if (!startDate) setStartDate(asOf)
+      alert(row.currency !== 'PHP'
+        ? `${row.native.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${row.currency} @ ${row.rate} = PHP ${row.balance.toLocaleString('en-PH', { minimumFractionDigits: 2 })}.\n\nNot saved yet — press Save.`
+        : `PHP ${row.balance.toLocaleString('en-PH', { minimumFractionDigits: 2 })} as of ${row.asOf}.\n\nNot saved yet — press Save.`)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-2xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      <button onClick={() => setOpen(v => !v)} className="w-full flex items-center justify-between px-4 py-2.5 text-left">
+        <span className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+          <Wallet size={14} style={{ color: 'var(--teal)' }} /> Opening balance
+          {!account.startDate && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#fef3c7', color: '#92400e' }}>no start date</span>}
+        </span>
+        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+          {account.currency !== 'PHP' ? account.currency : '₱'}{peso(account.beginningBalance)}{account.startDate ? ` · from ${account.startDate}` : ''} · {open ? 'Hide' : 'Edit'}
+        </span>
+      </button>
+      {open && (
+        <div className="border-t px-4 py-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+            The figure the Balance Sheet starts this account from, and the date reconciliation begins counting Hub entries. Lines dated before it are kept on file but locked from tagging.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs">
+              <span className="block mb-1 font-semibold" style={{ color: 'var(--charcoal)' }}>Fiscal year</span>
+              <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                {Array.from({ length: 5 }, (_, i) => thisYear - i).map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+            <label className="text-xs">
+              <span className="block mb-1 font-semibold" style={{ color: 'var(--charcoal)' }}>Opening balance (PHP)</span>
+              <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00"
+                className="w-40 px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+            </label>
+            <label className="text-xs">
+              <span className="block mb-1 font-semibold" style={{ color: 'var(--charcoal)' }}>Reconcile from</span>
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+            </label>
+            {canWrite && (
+              <>
+                <button onClick={prefill} disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                  <Wand2 size={13} /> Read from statements
+                </button>
+                <button onClick={save} disabled={busy} className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                  {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
+                </button>
+              </>
+            )}
+          </div>
+          {account.currency !== 'PHP' && (
+            <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>
+              This account is held in {account.currency}. The Balance Sheet is PHP throughout, so the opening balance is stored as its PHP equivalent.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
