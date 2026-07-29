@@ -563,15 +563,22 @@ export async function computeLedgerStatements(
   const accumDep = byNumber.get('2010') || findByTitle(/accumulated dep/i) || virt('2010', 'Accumulated Depreciation', 'ASSET', 'PPE', 'CREDIT')
   const hasDepJEs = (glRefIds.get('DEPRECIATION')?.size || 0) > 0
   if (!hasDepJEs) {
+    // Accrue only months that have actually elapsed: for the current year stop
+    // at this month (matching Asset Management's depreciation-to-date), for
+    // past years take all 12, for future years none.
+    const nowDate = new Date()
+    const depMonthCap = year < nowDate.getUTCFullYear() ? 12
+      : year > nowDate.getUTCFullYear() ? 0
+      : nowDate.getUTCMonth() + 1
     let depTotal = 0
-    for (let m = 0; m < 12; m++) {
+    for (let m = 0; m < depMonthCap; m++) {
       const monthStart = new Date(Date.UTC(year, m, 1))
       const monthEnd = new Date(Date.UTC(year, m + 1, 1))
       let monthDep = 0
       for (const a of assets) {
         const md = Number(a.monthlyDepreciation)
         if (!md) continue
-        if (new Date(a.dateBought) < monthEnd && new Date(a.depreciationEndDate) >= monthStart) monthDep += md
+        if (new Date(a.dateBought) < monthEnd && new Date(a.depreciationEndDate) > monthStart) monthDep += md
       }
       if (monthDep > 0.005) {
         depTotal += monthDep
