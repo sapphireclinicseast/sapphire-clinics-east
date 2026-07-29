@@ -2012,7 +2012,7 @@ export default function ReportsPage() {
           />
         )}
         {!loading && !data?.historical && engine === 'ledger' && year >= 2026 && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} />
+          <LedgerStatements year={year} branch={branch} tab={effTab} monthly={effView === 'monthly'} />
         )}
         {!loading && data && !data.historical && (engine === 'standard' || year < 2026 || isMedrep) && (
           <div className="py-2">
