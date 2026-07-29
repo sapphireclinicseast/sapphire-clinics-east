@@ -94,7 +94,9 @@ interface ReportData {
 }
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
-type ViewMode = 'annual' | 'monthly'
+// 'quarterly' is offered on the Ledger engine only; the standard components
+// treat it as 'annual' if it ever reaches them.
+type ViewMode = 'annual' | 'quarterly' | 'monthly'
 type OnDrillDown = (label: string, category: string, month: number, accountKey?: string, opts?: { subtype?: string; portion?: string }) => void
 
 interface DrillDownState {
@@ -1918,7 +1920,7 @@ export default function ReportsPage() {
         {/* View Mode */}
         {!isMedrep && (
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-          {(['annual', 'monthly'] as ViewMode[]).map((mode) => (
+          {((engine === 'ledger' && year >= 2026 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
@@ -1928,7 +1930,7 @@ export default function ReportsPage() {
                 color: viewMode === mode ? 'white' : 'var(--charcoal)',
               }}
             >
-              {mode === 'annual' ? 'Whole Year' : 'Monthly'}
+              {mode === 'annual' ? 'Whole Year' : mode === 'quarterly' ? 'Quarterly' : 'Monthly'}
             </button>
           ))}
         </div>
@@ -1958,7 +1960,7 @@ export default function ReportsPage() {
             {([['standard', 'Standard'], ['ledger', 'Ledger (beta)']] as const).map(([mode, label]) => (
               <button
                 key={mode}
-                onClick={() => setEngine(mode)}
+                onClick={() => { setEngine(mode); if (mode === 'standard' && viewMode === 'quarterly') setViewMode('annual') }}
                 title={mode === 'ledger' ? 'Derive all three statements from one balanced double-entry dataset (A = L + E guaranteed)' : 'Current derivation engine'}
                 className="px-3 py-2 text-sm font-medium transition-colors"
                 style={{
@@ -2015,7 +2017,7 @@ export default function ReportsPage() {
           />
         )}
         {!loading && !data?.historical && engine === 'ledger' && year >= 2026 && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} monthly={effView === 'monthly'} />
+          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
         )}
         {!loading && data && !data.historical && (engine === 'standard' || year < 2026 || isMedrep) && (
           <div className="py-2">
@@ -2055,7 +2057,7 @@ export default function ReportsPage() {
         @media print {
           body { background: white !important; }
           .print\\:hidden { display: none !important; }
-          @page { margin: 0.75in; size: ${effView === 'monthly' ? 'landscape' : 'portrait'}; }
+          @page { margin: 0.75in; size: ${effView !== 'annual' ? 'landscape' : 'portrait'}; }
         }
       `}</style>
     </div>

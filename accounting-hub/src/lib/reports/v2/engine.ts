@@ -22,6 +22,7 @@
  */
 import { prisma } from '@/lib/prisma'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
+import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -83,6 +84,8 @@ export interface V2Statements {
   collectedTotals?: { debit: number; credit: number }
   incomeStatement: {
     sections: { key: string; label: string; rows: V2AccountRow[]; total: number }[]
+    /** 7080 Sales of Product Income sub-classification (Department · Category) */
+    productSubtypes: { label: string; monthly: number[]; total: number }[]
     netSales: number
     totalCOGS: number
     grossProfit: number
@@ -355,7 +358,7 @@ export async function computeLedgerStatements(
         select: {
           lineTotal: true, cogsCost: true, quantity: true, isFreeSample: true,
           service: { select: { revenueAccount: { select: { accountNumber: true } } } },
-          inventoryItem: { select: { accountSubType: true, revenueAccount: { select: { accountNumber: true } }, expenseAccount: { select: { accountNumber: true } } } },
+          inventoryItem: { select: { accountSubType: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true } }, expenseAccount: { select: { accountNumber: true } } } },
         },
       },
       payments: {
@@ -367,6 +370,10 @@ export async function computeLedgerStatements(
     },
   })
   let synthesizedOrders = 0
+  // Product-income sub-classification (Department · Category) for the 7080
+  // breakdown — display analytics over ALL completed orders' product items,
+  // posted and synthesized alike.
+  const productSubtypes = new Map<string, number[]>()
   const discountAcct = (label: string | null, discountType?: string | null): AcctInfo => {
     const l = (label || '').toLowerCase()
     const pick = (n: string, fallbackTitle: string) => byNumber.get(n) || virt(n, fallbackTitle, 'REVENUE', 'OPERATING_REVENUE', 'DEBIT')
@@ -377,6 +384,15 @@ export async function computeLedgerStatements(
     return pick('7210', 'Other Discounts')
   }
   for (const o of orders) {
+    if (o.revenueType !== 'UNEARNED') {
+      const mIdx = monthOf(o.transactionDate) - 1
+      for (const it of o.items) {
+        if (!it.inventoryItem || it.isFreeSample) continue
+        const lbl = productSubtypeLabel(it.inventoryItem.skuDepartment, it.inventoryItem.skuCategory)
+        if (!productSubtypes.has(lbl)) productSubtypes.set(lbl, Array(12).fill(0))
+        productSubtypes.get(lbl)![mIdx] += Number(it.lineTotal)
+      }
+    }
     if (hasRef('POS_ORDER', o.id)) continue
     synthesizedOrders++
     const oMonth = monthOf(o.transactionDate)
@@ -803,6 +819,10 @@ export async function computeLedgerStatements(
     ...(collect ? { collected: collected.slice(0, COLLECT_CAP), collectedTruncated, collectedTotals } : {}),
     incomeStatement: {
       sections: isSections,
+      productSubtypes: Array.from(productSubtypes.entries())
+        .map(([label, monthly]) => ({ label, monthly: monthly.map(round2), total: round2(monthly.reduce((s, v) => s + v, 0)) }))
+        .filter(s => Math.abs(s.total) >= 0.005)
+        .sort((a, b) => b.total - a.total),
       netSales, totalCOGS, grossProfit, totalOpex, ebitda,
       depreciation, interest, nonOperating, ebt, taxProvision, netIncome,
     },

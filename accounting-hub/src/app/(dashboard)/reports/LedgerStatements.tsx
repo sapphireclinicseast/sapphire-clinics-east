@@ -2,15 +2,17 @@
 
 // Renders the Reports v2 (ledger-derived) statements — one balanced dataset,
 // three interconnected statements. Amounts are clickable (drill down to the
-// underlying entries), the Income Statement has a monthly view, and the
-// integrity card sits at the bottom in plain language.
+// underlying entries with Excel export), the Income Statement offers monthly /
+// quarterly columns and a vertical-analysis mode (every line as % of gross
+// revenue), and the integrity card sits at the bottom in plain language.
 import { useEffect, useState } from 'react'
-import { CheckCircle2, AlertTriangle, Loader2, X } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, Loader2, X, Download } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import type { V2Statements, V2AccountRow, V2CollectedLine } from '@/lib/reports/v2/engine'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4']
 
 // Plain-language names for entry sources (journal reference types + the
 // engine's synthesized sources).
@@ -70,21 +72,24 @@ const sourceLabel = (s: string) => SOURCE_LABELS[s]
   || s.replace(/^journal:/, '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())
 
 const fmtAmt = (v: number) => (v < 0 ? `(${formatCurrency(Math.abs(v))})` : formatCurrency(v))
+const fmtPct = (v: number, base: number) => (Math.abs(base) < 0.005 ? '—' : `${(v / base * 100).toFixed(1)}%`)
 
-function Amt({ v, bold, onClick }: { v: number; bold?: boolean; onClick?: () => void }) {
+function Amt({ v, bold, onClick, pctBase }: { v: number; bold?: boolean; onClick?: () => void; pctBase?: number | null }) {
+  const usePct = pctBase !== undefined && pctBase !== null
   return (
     <span
       className={`tabular-nums${onClick ? ' cursor-pointer hover:underline' : ''}`}
       style={{ color: v < 0 ? '#b91c1c' : '#111827', fontWeight: bold ? 600 : 400 }}
       onClick={onClick}
     >
-      {fmtAmt(v)}
+      {usePct ? fmtPct(v, pctBase) : fmtAmt(v)}
     </span>
   )
 }
 
-function Row({ label, amount, indent = 0, bold, rule, doubleRule, onClick }: {
-  label: string; amount?: number; indent?: number; bold?: boolean; rule?: boolean; doubleRule?: boolean; onClick?: () => void
+function Row({ label, amount, indent = 0, bold, rule, doubleRule, muted, onClick, pctBase }: {
+  label: React.ReactNode; amount?: number; indent?: number; bold?: boolean; rule?: boolean; doubleRule?: boolean
+  muted?: boolean; onClick?: () => void; pctBase?: number | null
 }) {
   return (
     <div
@@ -96,46 +101,55 @@ function Row({ label, amount, indent = 0, bold, rule, doubleRule, onClick }: {
         // its amount across the full row width.
         borderBottom: doubleRule ? '3px double #111827' : rule || bold ? undefined : '1px solid #f3f4f6',
         background: doubleRule ? '#f9fafb' : undefined,
+        fontStyle: muted ? 'italic' : undefined,
+        color: muted ? '#6b7280' : undefined,
       }}
     >
-      <span style={{ fontWeight: bold ? 600 : 400, color: '#111827' }}>{label}</span>
-      {amount !== undefined && <Amt v={amount} bold={bold} onClick={onClick} />}
+      <span style={{ fontWeight: bold ? 600 : 400, color: muted ? '#6b7280' : '#111827' }}>{label}</span>
+      {amount !== undefined && <Amt v={amount} bold={bold} onClick={onClick} pctBase={pctBase} />}
     </div>
   )
 }
 
-/* ── Monthly income-statement table ─────────────────────────────── */
+/* ── Multi-column (monthly / quarterly) income-statement table ──── */
 
-function MonthlyCells({ values, total, bold, onClickCell }: {
+function MultiCells({ values, total, bold, onClickCell, pctBases, pctBaseTotal }: {
   values: number[]; total: number; bold?: boolean; onClickCell?: (m: number | null) => void
+  pctBases?: number[] | null; pctBaseTotal?: number | null
 }) {
   return (
     <>
       {values.map((v, i) => (
         <td key={i} className="px-2 py-1 text-right whitespace-nowrap">
-          {Math.abs(v) >= 0.005 ? <Amt v={v} bold={bold} onClick={onClickCell ? () => onClickCell(i + 1) : undefined} /> : <span style={{ color: '#d1d5db' }}>—</span>}
+          {Math.abs(v) >= 0.005
+            ? <Amt v={v} bold={bold} onClick={onClickCell ? () => onClickCell(i + 1) : undefined} pctBase={pctBases ? pctBases[i] : undefined} />
+            : <span style={{ color: '#d1d5db' }}>—</span>}
         </td>
       ))}
       <td className="px-2 py-1 text-right whitespace-nowrap" style={{ borderLeft: '1px solid #e5e7eb' }}>
-        <Amt v={total} bold={bold} onClick={onClickCell ? () => onClickCell(null) : undefined} />
+        <Amt v={total} bold={bold} onClick={onClickCell ? () => onClickCell(null) : undefined} pctBase={pctBaseTotal} />
       </td>
     </>
   )
 }
 
-function MonthlyRow({ label, indent, bold, rule, doubleRule, ...cells }: {
-  label: string; values: number[]; total: number; indent?: number; bold?: boolean; rule?: boolean; doubleRule?: boolean; onClickCell?: (m: number | null) => void
+function MultiRow({ label, indent, bold, rule, doubleRule, muted, ...cells }: {
+  label: React.ReactNode; values: number[]; total: number; indent?: number; bold?: boolean; rule?: boolean
+  doubleRule?: boolean; muted?: boolean; onClickCell?: (m: number | null) => void
+  pctBases?: number[] | null; pctBaseTotal?: number | null
 }) {
   return (
     <tr className="hover:bg-gray-50" style={{
       borderTop: rule ? '1px solid #d1d5db' : undefined,
       borderBottom: doubleRule ? '3px double #111827' : rule || bold ? undefined : '1px solid #f3f4f6',
       background: doubleRule ? '#f9fafb' : undefined,
+      fontStyle: muted ? 'italic' : undefined,
+      color: muted ? '#6b7280' : undefined,
     }}>
       <td className="px-3 py-1 whitespace-nowrap" style={{ paddingLeft: indent ? `${1 + indent * 1.25}rem` : undefined, fontWeight: bold ? 600 : 400 }}>
         {label}
       </td>
-      <MonthlyCells {...cells} bold={bold} />
+      <MultiCells {...cells} bold={bold} />
     </tr>
   )
 }
@@ -175,6 +189,33 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
   const sumCredit = totals?.credit ?? (lines || []).reduce((s, l) => s + l.credit, 0)
   const net = sumDebit - sumCredit
 
+  const downloadExcel = () => {
+    if (!lines) return
+    const rows: string[][] = [
+      [title, month ? MONTHS[month - 1] : 'Whole year', String(year), branch],
+      [],
+      ['Month', 'Source', 'Detail', 'Debit', 'Credit'],
+      ...lines.map(l => [
+        l.month === 0 ? 'Opening' : MONTHS[l.month - 1],
+        sourceLabel(l.source),
+        l.label,
+        l.debit ? l.debit.toFixed(2) : '',
+        l.credit ? l.credit.toFixed(2) : '',
+      ]),
+      ['Totals', '', '', sumDebit.toFixed(2), sumCredit.toFixed(2)],
+      ['Net (debits − credits)', '', '', '', net.toFixed(2)],
+      ...(truncated ? [[`Note: list shows the first ${lines.length} entries — totals cover every entry.`]] : []),
+    ]
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${account}-${year}-${branch}${month ? '-' + MONTHS[month - 1] : ''}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
       <div className="rounded-xl w-full max-w-3xl max-h-[80vh] flex flex-col" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
@@ -185,7 +226,17 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
               {month ? MONTHS[month - 1] : 'Whole year'} · every underlying entry, from the ledger dataset
             </p>
           </div>
-          <button onClick={onClose}><X size={18} style={{ color: '#6b7280' }} /></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={downloadExcel}
+              disabled={!lines || lines.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-40"
+              style={{ background: 'var(--charcoal, #1f2937)', color: 'white' }}
+            >
+              <Download size={13} /> Download Excel
+            </button>
+            <button onClick={onClose}><X size={18} style={{ color: '#6b7280' }} /></button>
+          </div>
         </div>
         <div className="overflow-y-auto px-2 py-2">
           {!lines && !error && (
@@ -249,17 +300,18 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
 
 /* ── Main component ─────────────────────────────────────────────── */
 
-export default function LedgerStatements({ year, branch, tab, monthly }: {
+export default function LedgerStatements({ year, branch, tab, view }: {
   year: number
   branch: string
   tab: 'balance-sheet' | 'income-statement' | 'cash-flow'
-  monthly: boolean
+  view: 'annual' | 'quarterly' | 'monthly'
 }) {
   // Keyed result: loading is derived (result key ≠ current key), so the effect
   // never calls setState synchronously.
   const key = `${year}|${branch}`
   const [result, setResult] = useState<{ key: string; data: V2Statements | null; error: string | null }>({ key: '', data: null, error: null })
   const [drill, setDrill] = useState<{ account: string; title: string; month: number | null } | null>(null)
+  const [verticalAnalysis, setVerticalAnalysis] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -358,111 +410,155 @@ export default function LedgerStatements({ year, branch, tab, monthly }: {
   if (tab === 'income-statement') {
     const is = data.incomeStatement
     const sec = (key: string) => is.sections.find(s => s.key === key)
-    const secMonthly = (key: string) => {
+    const multiCol = view !== 'annual'
+    const colLabels = view === 'quarterly' ? QUARTERS : MONTHS
+    // Fold Jan..Dec into the selected column granularity.
+    const toCols = (m12: number[]) => view === 'quarterly'
+      ? [0, 1, 2, 3].map(q => (m12[q * 3] || 0) + (m12[q * 3 + 1] || 0) + (m12[q * 3 + 2] || 0))
+      : m12
+    // Column click → month filter (monthly view only; a quarter spans months,
+    // so quarterly cells drill to the whole year).
+    const cellMonth = (i: number | null): number | null => (view === 'monthly' ? i : null)
+    const secCols = (key: string) => {
       const s = sec(key)
-      return Array.from({ length: 12 }, (_, i) => (s?.rows || []).reduce((sum, r) => sum + (r.monthly?.[i] || 0), 0))
+      const m12 = Array.from({ length: 12 }, (_, i) => (s?.rows || []).reduce((sum, r) => sum + (r.monthly?.[i] || 0), 0))
+      return toCols(m12)
     }
-    if (monthly) {
-      const revM = secMonthly('REVENUE'), discM = secMonthly('DISCOUNTS'), cogsM = secMonthly('COGS'), opexM = secMonthly('OPEX')
-      const depM = secMonthly('DEPRECIATION'), intM = secMonthly('INTEREST'), nonopM = secMonthly('NON_OPERATING')
-      const netSalesM = revM.map((r, i) => r - discM[i])
-      const ebitdaM = netSalesM.map((n, i) => n - cogsM[i] - opexM[i])
-      const ebtM = ebitdaM.map((e, i) => e - depM[i] - intM[i] - nonopM[i])
-      const mv = (r: V2AccountRow) => ({ values: r.monthly || Array(12).fill(0), total: (r.monthly || []).reduce((s, x) => s + x, 0) })
+    const revC = secCols('REVENUE'), discC = secCols('DISCOUNTS'), cogsC = secCols('COGS'), opexC = secCols('OPEX')
+    const depC = secCols('DEPRECIATION'), intC = secCols('INTEREST'), nonopC = secCols('NON_OPERATING')
+    const netSalesC = revC.map((r, i) => r - discC[i])
+    const ebitdaC = netSalesC.map((n, i) => n - cogsC[i] - opexC[i])
+    const ebtC = ebitdaC.map((e, i) => e - depC[i] - intC[i] - nonopC[i])
+    const grossTotal = revC.reduce((a, b) => a + b, 0)
+    // Vertical analysis: every line as % of gross revenue for its column/period.
+    const vaBases = verticalAnalysis ? revC : null
+    const vaTotal = verticalAnalysis ? grossTotal : null
+    const rowVals = (r: V2AccountRow, negate = false) => {
+      const cols = toCols(r.monthly || Array(12).fill(0)).map(x => (negate ? -x : x))
+      return { values: cols, total: cols.reduce((s, x) => s + x, 0) }
+    }
+    const annualVal = (r: V2AccountRow) => r.closing - r.opening
+
+    const vaToggle = (
+      <label className="flex items-center gap-2 px-4 py-2 text-xs cursor-pointer select-none" style={{ color: '#374151' }}>
+        <input type="checkbox" checked={verticalAnalysis} onChange={e => setVerticalAnalysis(e.target.checked)} />
+        Vertical Analysis — show every line as a % of total gross revenue for the {view === 'annual' ? 'period' : view === 'quarterly' ? 'quarter' : 'month'}
+      </label>
+    )
+
+    // 7080 sub-classification rows (Department · Category), shown under 7080.
+    const total7080 = is.productSubtypes.reduce((s, p) => s + p.total, 0)
+    const subtypeRows = (renderRow: (p: { label: string; monthly: number[]; total: number }, mix: string) => React.ReactNode) =>
+      is.productSubtypes.map(p => renderRow(p, total7080 ? `${Math.round(p.total / total7080 * 100)}%` : '—'))
+
+    if (multiCol) {
       body = (
-        <div className="overflow-x-auto py-1">
-          <table className="w-full text-[0.75rem]" style={{ borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151' }}>Line Item</th>
-                {MONTHS.map(m => <th key={m} className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151' }}>{m}</th>)}
-                <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', borderLeft: '1px solid #e5e7eb' }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sec('REVENUE') && (<>
-                <tr><td colSpan={14} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Gross Revenue</td></tr>
-                {sec('REVENUE')!.rows.map(r => (
-                  <MonthlyRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...mv(r)}
-                    onClickCell={m => openDrill(r, m)} />
-                ))}
-                <MonthlyRow label="Total Gross Revenue" values={revM} total={revM.reduce((a, b) => a + b, 0)} bold rule />
-              </>)}
-              {sec('DISCOUNTS') && (<>
-                <tr><td colSpan={14} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Discounts and Refunds</td></tr>
-                {sec('DISCOUNTS')!.rows.map(r => (
-                  <MonthlyRow key={r.number} label={`${r.number} ${r.title}`} indent={1}
-                    values={(r.monthly || []).map(x => -x)} total={-(r.monthly || []).reduce((s, x) => s + x, 0)}
-                    onClickCell={m => openDrill(r, m)} />
-                ))}
-              </>)}
-              <MonthlyRow label="Net Sales" values={netSalesM} total={is.netSales} bold doubleRule />
-              {sec('COGS') && (<>
-                <tr><td colSpan={14} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Cost of Sales</td></tr>
-                {sec('COGS')!.rows.map(r => (
-                  <MonthlyRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...mv(r)} onClickCell={m => openDrill(r, m)} />
-                ))}
-              </>)}
-              <MonthlyRow label="Gross Profit" values={netSalesM.map((n, i) => n - cogsM[i])} total={is.grossProfit} bold doubleRule />
-              {sec('OPEX') && (<>
-                <tr><td colSpan={14} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Operating Expenses</td></tr>
-                {sec('OPEX')!.rows.map(r => (
-                  <MonthlyRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...mv(r)} onClickCell={m => openDrill(r, m)} />
-                ))}
-              </>)}
-              <MonthlyRow label="EBITDA" values={ebitdaM} total={is.ebitda} bold doubleRule />
-              {(['DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const).map(k => sec(k) && sec(k)!.rows.map(r => (
-                <MonthlyRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...mv(r)} onClickCell={m => openDrill(r, m)} />
-              )))}
-              <MonthlyRow label="EBT" values={ebtM} total={is.ebt} bold rule />
-              <MonthlyRow label="Provision for Income Tax (20%)" indent={1}
-                values={ebtM.map(e => e * INCOME_TAX_RATE)} total={is.taxProvision} />
-              <MonthlyRow label="NET INCOME" values={ebtM.map(e => e * (1 - INCOME_TAX_RATE))} total={is.netIncome} bold doubleRule />
-            </tbody>
-          </table>
+        <div className="py-1">
+          {vaToggle}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[0.75rem]" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151' }}>Line Item</th>
+                  {colLabels.map(m => <th key={m} className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151' }}>{m}</th>)}
+                  <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', borderLeft: '1px solid #e5e7eb' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sec('REVENUE') && (<>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Gross Revenue</td></tr>
+                  {sec('REVENUE')!.rows.map(r => (<>
+                    <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)}
+                      onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                    {r.number === '7080' && subtypeRows((p, mix) => {
+                      const cols = toCols(p.monthly)
+                      return <MultiRow key={`sub-${p.label}`} label={`${p.label} (${mix})`} indent={2} muted
+                        values={cols} total={p.total} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                    })}
+                  </>))}
+                  <MultiRow label="Total Gross Revenue" values={revC} total={grossTotal} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
+                </>)}
+                {sec('DISCOUNTS') && (<>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Discounts and Refunds</td></tr>
+                  {sec('DISCOUNTS')!.rows.map(r => {
+                    const rv = rowVals(r, true)
+                    return <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rv}
+                      onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                  })}
+                </>)}
+                <MultiRow label="Net Sales" values={netSalesC} total={is.netSales} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
+                {sec('COGS') && (<>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Cost of Sales</td></tr>
+                  {sec('COGS')!.rows.map(r => (
+                    <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                  ))}
+                </>)}
+                <MultiRow label="Gross Profit" values={netSalesC.map((n, i) => n - cogsC[i])} total={is.grossProfit} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
+                {sec('OPEX') && (<>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Operating Expenses</td></tr>
+                  {sec('OPEX')!.rows.map(r => (
+                    <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                  ))}
+                </>)}
+                <MultiRow label="EBITDA" values={ebitdaC} total={is.ebitda} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
+                {(['DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const).map(k => sec(k) && sec(k)!.rows.map(r => (
+                  <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                )))}
+                <MultiRow label="EBT" values={ebtC} total={is.ebt} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
+                <MultiRow label="Provision for Income Tax (20%)" indent={1}
+                  values={ebtC.map(e => e * INCOME_TAX_RATE)} total={is.taxProvision} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                <MultiRow label="NET INCOME" values={ebtC.map(e => e * (1 - INCOME_TAX_RATE))} total={is.netIncome} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
+              </tbody>
+            </table>
+          </div>
         </div>
       )
     } else {
+      const vaBase = verticalAnalysis ? grossTotal : null
       body = (
         <div className="py-1">
+          {vaToggle}
           {sec('REVENUE') && (<>
             <Row label="Gross Revenue" bold />
-            {sec('REVENUE')!.rows.map(r => (
-              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`}
-                amount={r.closing - r.opening} indent={1} onClick={() => openDrill(r)} />
-            ))}
-            <Row label="Total Gross Revenue" amount={sec('REVENUE')!.total} bold rule />
+            {sec('REVENUE')!.rows.map(r => (<div key={r.number}>
+              <Row label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`}
+                amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
+              {r.number === '7080' && subtypeRows((p, mix) => (
+                <Row key={`sub-${p.label}`} label={`${p.label} (${mix})`} amount={p.total} indent={2} muted pctBase={vaBase} />
+              ))}
+            </div>))}
+            <Row label="Total Gross Revenue" amount={sec('REVENUE')!.total} bold rule pctBase={vaBase} />
           </>)}
           {sec('DISCOUNTS') && (<>
             <Row label="Discounts and Refunds" bold />
             {sec('DISCOUNTS')!.rows.map(r => (
-              <Row key={r.number} label={`${r.number} ${r.title}`} amount={-(r.closing - r.opening)} indent={1} onClick={() => openDrill(r)} />
+              <Row key={r.number} label={`${r.number} ${r.title}`} amount={-annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
             ))}
-            <Row label="Total Discounts and Refunds" amount={-sec('DISCOUNTS')!.total} bold rule />
+            <Row label="Total Discounts and Refunds" amount={-sec('DISCOUNTS')!.total} bold rule pctBase={vaBase} />
           </>)}
-          <Row label="Net Sales" amount={is.netSales} bold doubleRule />
+          <Row label="Net Sales" amount={is.netSales} bold doubleRule pctBase={vaBase} />
           {sec('COGS') && (<>
             <Row label="Cost of Sales" bold />
             {sec('COGS')!.rows.map(r => (
-              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={r.closing - r.opening} indent={1} onClick={() => openDrill(r)} />
+              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
             ))}
-            <Row label="Total Cost of Sales" amount={is.totalCOGS} bold rule />
+            <Row label="Total Cost of Sales" amount={is.totalCOGS} bold rule pctBase={vaBase} />
           </>)}
-          <Row label="Gross Profit" amount={is.grossProfit} bold doubleRule />
+          <Row label="Gross Profit" amount={is.grossProfit} bold doubleRule pctBase={vaBase} />
           {sec('OPEX') && (<>
             <Row label="Operating Expenses" bold />
             {sec('OPEX')!.rows.map(r => (
-              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={r.closing - r.opening} indent={1} onClick={() => openDrill(r)} />
+              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
             ))}
-            <Row label="Total Operating Expenses" amount={is.totalOpex} bold rule />
+            <Row label="Total Operating Expenses" amount={is.totalOpex} bold rule pctBase={vaBase} />
           </>)}
-          <Row label="EBITDA" amount={is.ebitda} bold doubleRule />
+          <Row label="EBITDA" amount={is.ebitda} bold doubleRule pctBase={vaBase} />
           {(['DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const).map(k => sec(k)?.rows.map(r => (
-            <Row key={r.number} label={`${r.number} ${r.title}`} amount={r.closing - r.opening} indent={1} onClick={() => openDrill(r)} />
+            <Row key={r.number} label={`${r.number} ${r.title}`} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
           )))}
-          <Row label="EBT" amount={is.ebt} bold rule />
-          <Row label="Provision for Income Tax (20%)" amount={is.taxProvision} indent={1} />
-          <Row label="NET INCOME" amount={is.netIncome} bold doubleRule />
+          <Row label="EBT" amount={is.ebt} bold rule pctBase={vaBase} />
+          <Row label="Provision for Income Tax (20%)" amount={is.taxProvision} indent={1} pctBase={vaBase} />
+          <Row label="NET INCOME" amount={is.netIncome} bold doubleRule pctBase={vaBase} />
         </div>
       )
     }
@@ -470,9 +566,9 @@ export default function LedgerStatements({ year, branch, tab, monthly }: {
     const bs = data.balanceSheet
     body = (
       <div className="py-1">
-        {monthly && (
+        {view !== 'annual' && (
           <p className="text-xs italic px-4 py-2" style={{ color: 'var(--mid-gray)' }}>
-            The Balance Sheet is a point-in-time statement — showing the year-end position. Use the Income Statement for monthly breakdowns.
+            The Balance Sheet is a point-in-time statement — showing the year-end position. Use the Income Statement for monthly or quarterly breakdowns.
           </p>
         )}
         {bs.sections.map(s => (
