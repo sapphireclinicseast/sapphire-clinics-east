@@ -949,12 +949,21 @@ export async function GET(req: Request) {
     const depByMonth: Record<number, number> = {}
     for (let m = 1; m <= 12; m++) depByMonth[m] = 0
 
+    // Accrue only months that have actually elapsed: for the current year stop
+    // at this month (so the IS matches Asset Management's depreciation-to-date
+    // instead of pre-booking Aug–Dec), past years take all 12, future years none.
+    const depNow = new Date()
+    const depMonthCap = year < depNow.getUTCFullYear() ? 12
+      : year > depNow.getUTCFullYear() ? 0
+      : depNow.getUTCMonth() + 1
+
     for (const asset of assets) {
       const monthlyDep = Number(asset.monthlyDepreciation)
       for (let m = 1; m <= 12; m++) {
         // Months before the opening-balance cutoff are already in opening RE /
         // accumulated depreciation, so keep them out of current-year expense.
         if (m < cutoffMonth) continue
+        if (m > depMonthCap) continue
         const monthStart = new Date(Date.UTC(year, m - 1, 1))
         const monthEnd = new Date(Date.UTC(year, m, 1))
         const depStart = new Date(asset.dateBought)
@@ -966,11 +975,17 @@ export async function GET(req: Request) {
     }
 
     let accumulatedDep = 0
+    // Accumulated depreciation stops at the last elapsed month, same cap as above.
+    const accumCapDate = new Date(Date.UTC(
+      depMonthCap === 12 ? year + 1 : year,
+      depMonthCap === 12 ? 0 : depMonthCap,
+      1,
+    ))
     for (const asset of assets) {
       const monthlyDep = Number(asset.monthlyDepreciation)
       const depStart = new Date(asset.dateBought)
       const depEnd = new Date(asset.depreciationEndDate)
-      const yearEnd = new Date(Date.UTC(year + 1, 0, 1))
+      const yearEnd = accumCapDate
       const effectiveEnd = depEnd < yearEnd ? depEnd : yearEnd
       if (depStart >= yearEnd || effectiveEnd <= depStart) continue
       let months = (effectiveEnd.getUTCFullYear() - depStart.getUTCFullYear()) * 12
