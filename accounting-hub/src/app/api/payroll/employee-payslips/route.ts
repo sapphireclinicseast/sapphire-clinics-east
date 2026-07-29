@@ -132,10 +132,18 @@ export async function GET(req: Request) {
   }
 
   // Historical payslips (FINAL / LOCKED) are permanent records and must stay visible
-  // even after an employee resigns (isActive=false). Only hide inactive employees from
-  // DRAFT previews. When no status filter is passed, show everything so resigned staff's
-  // locked payslips still appear.
-  if (status === 'DRAFT') where.employee = { isActive: true }
+  // even after an employee resigns (isActive=false) or moves branch — someone really was
+  // paid that, there, then. Only DRAFT previews are filtered, and they are filtered on the
+  // employee as they stand TODAY: an unfinalised draft left behind when someone moved to
+  // another branch is not a payslip anyone owes, it is a preview of a job they no longer
+  // hold, and it kept them listed under a branch they had left.
+  const draftEmployee: { isActive: boolean; branch?: string } = { isActive: true }
+  if (branch) draftEmployee.branch = branch
+  if (status === 'DRAFT') {
+    where.employee = draftEmployee
+  } else if (!status) {
+    where.OR = [{ status: { not: 'DRAFT' } }, { employee: draftEmployee }]
+  }
 
   const payslips = await prisma.employeePayslip.findMany({
     where,
