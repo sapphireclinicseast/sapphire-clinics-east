@@ -828,7 +828,7 @@ export default function PayrollPage() {
   const [inlineBirValue, setInlineBirValue] = useState('')
   const [savingInlineBir, setSavingInlineBir] = useState(false)
 
-  /* ── Past Payslips in Clinician List ── */
+  /* ── Past Payslips in Consultant List ── */
   interface ConsultantPayslip { id: string; cutoffPeriod: string; branch: string; grossPay: number; netPay: number; status: string; pdfUrl?: string | null }
   const [clinicianPastPayslips, setClinicianPastPayslips] = useState<ConsultantPayslip[]>([])
   const [loadingClinicianPayslips, setLoadingClinicianPayslips] = useState(false)
@@ -1712,7 +1712,7 @@ export default function PayrollPage() {
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed') }
       setTrFormOpen(false); setTrUnitPayId(''); setTrThreshold(''); setTrReduced(''); setTrSelectedConsultants([])
-      // Refetch consultants so the Clinician List reflects the new threshold settings
+      // Refetch consultants so the Consultant List reflects the new threshold settings
       // (prevents stale expand→save from wiping the threshold)
       await Promise.all([fetchThresholdRules(), fetchConsultants()])
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed to save rule') }
@@ -2954,7 +2954,7 @@ export default function PayrollPage() {
           {/* Sub-tabs */}
           <div className="flex gap-2 border-b pb-2" style={{ borderColor: 'var(--light-gray)' }}>
             {[
-              { key: 'list' as const, label: 'Clinician List', icon: Users },
+              { key: 'list' as const, label: 'Consultant List', icon: Users },
               { key: 'unit-pay' as const, label: 'Unit Pay Settings', icon: Settings },
               { key: 'pay-rules' as const, label: 'Clinician Pay Rules', icon: BadgeDollarSign },
               { key: 'benefits' as const, label: 'Benefits Setting', icon: Shield },
@@ -2972,7 +2972,7 @@ export default function PayrollPage() {
 
           {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{error}</p>}
 
-          {/* ══ TAB 1: Clinician List ══ */}
+          {/* ══ TAB 1: Consultant List ══ */}
           {subTab === 'list' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -3704,7 +3704,7 @@ export default function PayrollPage() {
                           </label>
                         ))}
                       {trUnitPayId && consultants.filter(c => c.isActive && c.unitPayRates.some(r => r.unitPayId === trUnitPayId)).length === 0 && (
-                        <p className="text-xs py-2" style={{ color: 'var(--mid-gray)' }}>No clinicians have a rate set for this unit pay type. Set rates in the Clinician List tab first.</p>
+                        <p className="text-xs py-2" style={{ color: 'var(--mid-gray)' }}>No clinicians have a rate set for this unit pay type. Set rates in the Consultant List tab first.</p>
                       )}
                     </div>
                   </div>
