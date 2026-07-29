@@ -202,7 +202,7 @@ export default function UgatFellowClient() {
               {/* Program info for mobile (left panel is hidden < 900px). */}
               <div className={s.mobileProgram}>
                 <p className={s.mobileProgramDesc}>
-                  The UGAT Fellowship Program is an educational fellowship you never have to pay back — not a loan — for Allied Health
+                  The UGAT Fellowship Program is a fully-condonable educational fellowship — you never pay it back if you build your career with us — for Allied Health
                   Professionals in their final year of university — helping fellows stay
                   grounded in their values (<i>ugat</i>) as they pursue excellence
                   (<i>galing</i>), integrity (<i>tindig</i>), and service (<i>paglilingkod</i>).
@@ -244,7 +244,7 @@ function LeftPanel() {
         <h1 className={s.leftTitle}>Rooted in values.<br />Growing in service.</h1>
         <p className={s.leftTagline}>A fellowship for the next generation of Allied Health Professionals.</p>
         <p className={s.leftDesc}>
-          An educational fellowship — not a loan — for Allied Health Professionals in
+          A fully-condonable educational fellowship for Allied Health Professionals in
           their final year. Like strong roots (<i>ugat</i>), our fellows stay grounded
           in their values as they grow: excellence (<i>galing</i>), integrity
           (<i>tindig</i>), and service (<i>paglilingkod</i>).
@@ -734,7 +734,7 @@ function PrivacyStrip() {
 const FAQS: { q: string; a: React.ReactNode }[] = [
   {
     q: 'What is the difference between the Aral Track and the Tindig Track?',
-    a: <>The fellowship has two tracks. The <b>Aral Track</b> is for <b>final-year interns</b> still undergoing their clinical internship — fellowship assistance released as a monthly allowance (₱5,000 or ₱10,000) for 5–10 months. The <b>Tindig Track</b> is for <b>graduates preparing for the Licensure Examination</b> who have completed their internship and were not Aral awardees — ₱30,000 of review support (review fees, or ₱5,000/month for six months). It is <b>educational assistance — not a loan, and never charged interest</b>, and it is <b>fully forgivable</b>: after you are licensed, render <b>1,500 patient-session hours</b> with us and it is written off in full — you pay nothing. When you apply, you&rsquo;ll first choose the track that fits you.</>,
+    a: <>The fellowship has two tracks. The <b>Aral Track</b> is for <b>final-year interns</b> still undergoing their clinical internship — fellowship assistance released as a monthly allowance (₱5,000 or ₱10,000) for 5–10 months. The <b>Tindig Track</b> is for <b>graduates preparing for the Licensure Examination</b> who have completed their internship and were not Aral awardees — ₱30,000 of review support (review fees, or ₱5,000/month for six months). It is educational assistance <b>treated as a simple loan</b>, but <b>fully condonable</b>: after you are licensed, render <b>1,500 patient-session hours</b> with us and it is written off in full — you pay nothing, no interest. If you'd rather repay, you pay back only what you received, interest-free (interest or a small penalty applies only if you default). When you apply, you&rsquo;ll first choose the track that fits you.</>,
   },
   {
     q: 'I am not yet in my final year of college. Can I apply?',
@@ -754,7 +754,7 @@ const FAQS: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: 'Do I have obligations after availing of the fellowship?',
-    a: <>After you are licensed, you settle it one of two ways. <b>Option A — render your service:</b> render <b>1,500 patient-session hours</b> at <b>Aura Health Rehab</b> as a fully-compensated licensed clinician (beginning within <b>60 days</b> of receiving your license) and the entire assistance is <b>forgiven</b> — you pay nothing. <b>Option B — Reimbursement:</b> reimburse <b>only what you actually received</b>, in equal monthly installments, with <b>no interest and no charges of any kind</b>. Service is never compelled; Option A is simply the path designed to cost you nothing. Because service is rendered on-site, please make sure you can reach and work at Aura Health Rehab&rsquo;s clinic locations.</>,
+    a: <>After you are licensed, you settle it one of two ways. <b>Option A — render your service:</b> render <b>1,500 patient-session hours</b> at <b>Aura Health Rehab</b> as a fully-compensated licensed clinician (beginning within <b>60 days</b> of receiving your license) and the entire loan is <b>condoned</b> — you pay nothing. <b>Option B — Repayment:</b> repay <b>only what you actually received</b>, in equal monthly installments (3 months up to ₱50,000, 6 months above), <b>interest-free</b>. Interest or a penalty applies only if you default on payments or need a restructured extension. Service is never compelled; Option A is simply the path designed to cost you nothing. Because service is rendered on-site, please make sure you can reach and work at Aura Health Rehab&rsquo;s clinic locations.</>,
   },
   {
     q: 'If I render service at the accredited partner clinics, is my professional compensation deducted?',

@@ -115,8 +115,8 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     para('UGAT FELLOWSHIP AGREEMENT', { center: true, bold: true, size: 11, gap: 0.5 })
     para('(Educational Assistance with Full Condonation through Professional Service)', { center: true, size: 8, gap: 0.5 })
     para(loanSubtitle(isTindig), { center: true, size: 8, gap: 3 })
-    if (isTindig) para('Your award: review-support fellowship assistance of up to PHP 30,000 (review fees, or PHP 5,000/month for 6 months) — fully condonable through service; reimbursed with no interest if you choose Option B.', { size: 8.5, gap: 3 })
-    else para(`Your award: fellowship assistance released as ${m ? `PHP ${m.toLocaleString()}/month for ${n} months (assistance amount approx. PHP ${(m * (n || 0)).toLocaleString()})` : 'a monthly allowance'} — fully condonable through service; reimbursed with no interest if you choose Option B.`, { size: 8.5, gap: 3 })
+    if (isTindig) para('Your award: review-support of up to PHP 30,000 (review fees, or PHP 5,000/month for 6 months), treated as a simple, fully-condonable loan — you pay nothing if you serve 1,500 hours (Option A), else repay only what you received, interest-free (Option B). Interest / a penalty applies only on default or restructuring.', { size: 8.5, gap: 3 })
+    else para(`Your award: a monthly allowance of ${m ? `PHP ${m.toLocaleString()} for ${n} months (about PHP ${(m * (n || 0)).toLocaleString()})` : 'a monthly allowance'}, treated as a simple, fully-condonable loan — you pay nothing if you serve 1,500 hours (Option A), else repay only what you received, interest-free (Option B). Interest / a penalty applies only on default or restructuring.`, { size: 8.5, gap: 3 })
 
     // ── Body (shared source of truth) ──
     const blocks = loanAgreementBlocks({ track: input.track, fellowName: input.fellowName, program: input.program, school: input.school, monthly: input.monthly, months: input.months, comakerName: input.comakerName })
@@ -156,7 +156,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     // ── Annex A (fresh page) ──
     doc.addPage(); y = 20
     para('ANNEX “A”', { center: true, bold: true, size: 12, gap: 0.5 })
-    para('SAMPLE REIMBURSEMENT COMPUTATION — REIMBURSEMENT OPTION (OPTION B)', { center: true, bold: true, size: 9.5, gap: 3 })
+    para('SAMPLE REPAYMENT COMPUTATION — REPAYMENT OPTION (OPTION B)', { center: true, bold: true, size: 9.5, gap: 3 })
     para(annexIntro(isTindig), { size: 8.5, gap: 3 })
     for (const tbl of annexTables(isTindig)) {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
