@@ -642,6 +642,10 @@ export async function GET(req: Request) {
             transactionDate: { gte: startDate, lt: endDate },
             ...branchFilter,
             discountAmount: { gt: 0 },
+            // UNEARNED (package/wallet) purchases defer the sale net of discount;
+            // their discount is recognized on the earned per-session orders, so
+            // listing them here would show it twice (mirrors the reports API).
+            revenueType: { not: 'UNEARNED' },
           },
           select: {
             orderNumber: true,

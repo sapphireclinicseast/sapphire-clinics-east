@@ -105,6 +105,20 @@ await prisma.order.create({
   },
 })
 
+// package purchase (UNEARNED, mirrors prod order #1328): 25,500 package,
+// PWD 5,100, net 20,400 collected → should credit Unearned only, NO discount
+// on the IS at purchase time.
+await prisma.order.create({
+  data: {
+    orderType: 'SERVICE', branch: 'SANDBOX_EAST', status: 'COMPLETED', paymentStatus: 'PAID',
+    subtotal: 25500, discountAmount: 5100, discountType: 'PWD_SC', discountLabel: 'PWD/Senior Citizen (20%)',
+    netAmount: 20400, revenueType: 'UNEARNED', referenceNumber: 'V2TEST',
+    transactionDate: new Date(Date.UTC(YEAR, 4, 12)), createdById: admin.id,
+    items: { create: [{ name: '12 BASIC SESSION PACKAGE', quantity: 1, unitPrice: 25500, lineTotal: 25500 }] },
+    payments: { create: [{ method: 'CASH', amount: 20400, paymentModeId: mode.id }] },
+  },
+})
+
 // asset: 24,000 bought Jan-2026, 1,000/month
 await prisma.asset.create({
   data: {
