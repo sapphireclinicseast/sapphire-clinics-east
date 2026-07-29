@@ -46,7 +46,18 @@ export interface V2AccountRow {
   debit: number
   credit: number
   closing: number   // signed in the account's normal direction
+  /** Jan..Dec period movement, signed in the account's normal direction */
+  monthly: number[]
   virtual: boolean
+}
+
+/** One underlying line, returned when a drill-down is requested. */
+export interface V2CollectedLine {
+  month: number          // 1..12, or 0 for opening balances
+  source: string         // engine source key (journal:<refType> or a synthesis key)
+  label: string          // human context: JE description, order #, PCV, asset name…
+  debit: number
+  credit: number
 }
 
 export interface V2Statements {
@@ -64,6 +75,8 @@ export interface V2Statements {
     aLEDiff: number
     cfTies: boolean
   }
+  /** Present only when a drill-down was requested (account [+ month]). */
+  collected?: V2CollectedLine[]
   incomeStatement: {
     sections: { key: string; label: string; rows: V2AccountRow[]; total: number }[]
     netSales: number
@@ -136,9 +149,20 @@ function isCashAccount(a: AcctInfo): boolean {
 
 /* ── Engine ────────────────────────────────────────────────────── */
 
-export async function computeLedgerStatements(year: number, branch: string): Promise<V2Statements> {
+export async function computeLedgerStatements(
+  year: number,
+  branch: string,
+  collect?: { account: string; month?: number },
+): Promise<V2Statements> {
   const start = new Date(Date.UTC(year, 0, 1))
   const end = new Date(Date.UTC(year + 1, 0, 1))
+  const collected: V2CollectedLine[] = []
+  const monthOf = (d: Date | string) => {
+    const dt = new Date(d)
+    if (dt < start) return 1
+    if (dt >= end) return 12 // e.g. payroll finalized in Jan–Feb belonging to Dec cutoffs
+    return dt.getUTCMonth() + 1
+  }
   const orderBranch = BRANCH_MAP[branch] || branch
   const branchValues = branch === 'ALL' ? null : Array.from(new Set([branch, orderBranch]))
 
@@ -200,28 +224,36 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
     return virt('9998', `Unmapped: ${key}`, 'EXPENSE', 'UNCLASSIFIED', 'DEBIT')
   }
 
-  /* ── Movement ledger ── */
+  /* ── Movement ledger (per month, 1..12) ── */
   const mov = new Map<string, Movement>()
+  const movMonthly = new Map<string, { debit: number[]; credit: number[] }>()
   const opening = new Map<string, number>() // signed in normal direction
-  const add = (acct: AcctInfo, debit: number, credit: number) => {
+  const add = (acct: AcctInfo, month: number, debit: number, credit: number, source: string, label: string) => {
     if (!mov.has(acct.number)) mov.set(acct.number, { debit: 0, credit: 0 })
     const m = mov.get(acct.number)!
     m.debit += debit
     m.credit += credit
+    if (!movMonthly.has(acct.number)) movMonthly.set(acct.number, { debit: Array(13).fill(0), credit: Array(13).fill(0) })
+    const mm = movMonthly.get(acct.number)!
+    mm.debit[month] += debit
+    mm.credit[month] += credit
+    if (collect && collect.account === acct.number && (!collect.month || collect.month === month) && (debit || credit)) {
+      collected.push({ month, source, label, debit: round2(debit), credit: round2(credit) })
+    }
   }
   // A source posts lines through a collector that guarantees balance:
-  const postBalanced = (source: string, lines: { acct: AcctInfo; debit?: number; credit?: number }[]) => {
+  const postBalanced = (source: string, month: number, label: string, lines: { acct: AcctInfo; debit?: number; credit?: number }[]) => {
     let dr = 0, cr = 0
     for (const l of lines) {
       const d = round2(l.debit || 0), c = round2(l.credit || 0)
       if (!d && !c) continue
-      add(l.acct, d, c)
+      add(l.acct, month, d, c, source, label)
       dr += d; cr += c
     }
     const diff = round2(dr - cr)
     if (Math.abs(diff) >= 0.01) {
       const plug = virt(IMBALANCE_PLUG, 'Derivation Imbalance (see validation)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
-      add(plug, diff < 0 ? -diff : 0, diff > 0 ? diff : 0)
+      add(plug, month, diff < 0 ? -diff : 0, diff > 0 ? diff : 0, source, `${label} — did not balance`)
       const existing = validation.imbalancePlugs.find(p => p.source === source)
       if (existing) existing.amount = round2(existing.amount + diff)
       else validation.imbalancePlugs.push({ source, amount: diff })
@@ -244,6 +276,13 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       opening.set(acct.number, (opening.get(acct.number) || 0) + amt)
       if (acct.normalBalance === 'DEBIT') openDr += amt
       else openCr += amt
+      if (collect && collect.account === acct.number && !collect.month) {
+        collected.push({
+          month: 0, source: 'opening', label: `Opening balance (${year})`,
+          debit: acct.normalBalance === 'DEBIT' ? amt : 0,
+          credit: acct.normalBalance === 'CREDIT' ? amt : 0,
+        })
+      }
     }
     const openDiff = round2(openDr - openCr)
     if (Math.abs(openDiff) >= 0.01) {
@@ -273,7 +312,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
   const journalEntries = await prisma.journalEntry.findMany({
     where: jeWhere,
     select: {
-      id: true, referenceType: true, referenceId: true, entryDate: true,
+      id: true, referenceType: true, referenceId: true, entryDate: true, description: true,
       lines: { select: { debit: true, credit: true, account: { select: { accountNumber: true } } } },
     },
   })
@@ -290,7 +329,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       if (!glRefIds.has(je.referenceType || '')) glRefIds.set(je.referenceType || '', new Set())
       glRefIds.get(je.referenceType || '')!.add(je.referenceId)
     }
-    postBalanced(`journal:${je.referenceType || 'manual'}`, je.lines.map(l => ({
+    postBalanced(`journal:${je.referenceType || 'manual'}`, monthOf(je.entryDate), je.description || `Journal entry ${je.id.slice(-6)}`, je.lines.map(l => ({
       acct: l.account ? (byNumber.get(l.account.accountNumber) || virt(l.account.accountNumber, 'Unknown account', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT')) : virt('9998', 'Unmapped journal line', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT'),
       debit: Number(l.debit), credit: Number(l.credit),
     })))
@@ -306,7 +345,8 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
     },
     select: {
-      id: true, netAmount: true, revenueType: true, discountAmount: true, discountLabel: true,
+      id: true, orderNumber: true, patientName: true, transactionDate: true,
+      netAmount: true, revenueType: true, discountAmount: true, discountLabel: true,
       items: {
         select: {
           lineTotal: true, cogsCost: true, quantity: true, isFreeSample: true,
@@ -335,6 +375,8 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
   for (const o of orders) {
     if (hasRef('POS_ORDER', o.id)) continue
     synthesizedOrders++
+    const oMonth = monthOf(o.transactionDate)
+    const oLabel = `Order #${o.orderNumber}${o.patientName ? ` — ${o.patientName}` : ''}`
     const lines: { acct: AcctInfo; debit?: number; credit?: number }[] = []
     let paid = 0
     for (const p of o.payments) {
@@ -374,7 +416,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       }
       if (Number(o.discountAmount) > 0.005) lines.push({ acct: discountAcct(o.discountLabel), debit: Number(o.discountAmount) })
     }
-    postBalanced('orders', lines)
+    postBalanced('orders', oMonth, oLabel, lines)
 
     // COGS / free samples at FIFO cost against inventory
     for (const it of o.items) {
@@ -383,7 +425,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       if (it.isFreeSample && hasRef('FREE_SAMPLE', o.id)) continue
       const expNum = it.isFreeSample ? '8120' : (it.inventoryItem?.expenseAccount?.accountNumber || '8320')
       const exp = byNumber.get(expNum) || virt(expNum, it.isFreeSample ? 'Marketing and Advertising Expense' : 'Cost of Sales', 'EXPENSE', it.isFreeSample ? 'INDIRECT_EXPENSES' : 'DIRECT_EXPENSES', 'DEBIT')
-      postBalanced('cogs', [
+      postBalanced('cogs', oMonth, `${oLabel} — cost of goods`, [
         { acct: exp, debit: cogs },
         { acct: inventoryAcct(it.inventoryItem?.accountSubType), credit: cogs },
       ])
@@ -397,7 +439,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       paymentDate: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: { in: [branch, orderBranch] } } : {}),
     },
-    select: { id: true, amount: true, discount: true, cashAccount: { select: { accountNumber: true } }, discountAccount: { select: { accountNumber: true } } },
+    select: { id: true, amount: true, discount: true, paymentDate: true, cashAccount: { select: { accountNumber: true } }, discountAccount: { select: { accountNumber: true } }, wallet: { select: { patientName: true } } },
   })
   let synthesizedAr = 0
   for (const p of arPayments) {
@@ -412,7 +454,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       const dA = p.discountAccount ? byNumber.get(p.discountAccount.accountNumber) : undefined
       lines.push({ acct: dA || discountAcct('other'), debit: Number(p.discount) })
     }
-    postBalanced('ar-collections', lines)
+    postBalanced('ar-collections', monthOf(p.paymentDate), `HMO/GL collection${p.wallet?.patientName ? ` — ${p.wallet.patientName}` : ''}`, lines)
   }
   if (synthesizedAr) validation.synthesized.push(`ar-collections (${synthesizedAr})`)
 
@@ -423,7 +465,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       date: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
     },
-    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, skipReports: true },
+    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, skipReports: true, pcvNumber: true, description: true },
   })
   let pcCount = 0
   for (const e of pcEntries) {
@@ -435,7 +477,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
     const net = e.vatable === 'VAT' ? gross / 1.12 : gross
     const vat = gross - net
     pcCount++
-    postBalanced('petty-cash', [
+    postBalanced('petty-cash', monthOf(e.date), `PCV ${e.pcvNumber}${e.description ? ` — ${e.description}` : ''}`, [
       { acct: parseAccountKey(e.accountTitle), debit: net },
       ...(vat > 0.005 ? [{ acct: inputVat(), debit: vat }] : []),
       { acct: pcCash, credit: gross },
@@ -454,7 +496,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       distributeStart: { not: null }, distributeEnd: { not: null },
       ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
     },
-    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, distributeStart: true, distributeEnd: true, branch: true },
+    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, distributeStart: true, distributeEnd: true, branch: true, pcvNumber: true, description: true },
   })
   for (const e of distEntries) {
     if (!e.accountTitle || !e.distributeStart || !e.distributeEnd) continue
@@ -470,8 +512,9 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
     if (count <= 0) continue
     const prepaidKey = prepaidByBranch[e.branch]
     const prepaid = prepaidKey ? parseAccountKey(prepaidKey) : inputVat()
+    const prepaidLabel = `PCV ${e.pcvNumber}${e.description ? ` — ${e.description}` : ''}`
     if (e.date && new Date(e.date).getUTCFullYear() === year) {
-      postBalanced('prepaid-recurring', [
+      postBalanced('prepaid-recurring', monthOf(e.date), `${prepaidLabel} (prepaid payment)`, [
         { acct: prepaid, debit: net },
         ...(vat > 0.005 ? [{ acct: inputVat(), debit: vat }] : []),
         { acct: pcCash, credit: gross },
@@ -479,7 +522,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
     }
     for (let idx = sIdx; idx <= eIdx; idx++) {
       if (Math.floor(idx / 12) !== year) continue
-      postBalanced('prepaid-recurring', [
+      postBalanced('prepaid-recurring', (idx % 12) + 1, `${prepaidLabel} (monthly amortization)`, [
         { acct: parseAccountKey(e.accountTitle), debit: net / count },
         { acct: prepaid, credit: net / count },
       ])
@@ -489,7 +532,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
   // CEO petty cash allocated across branches
   const ceoEntries = await prisma.pettyCashEntry.findMany({
     where: { branch: 'CEO', date: { gte: start, lt: end } },
-    select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true },
+    select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true, pcvNumber: true, description: true },
   })
   for (const e of ceoEntries) {
     if (!e.accountTitle || !e.date) continue
@@ -503,7 +546,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
       if (branch !== 'ALL' && ab !== orderBranch) continue
       const netA = e.vatable === 'VAT' ? ag / 1.12 : ag
       const vatA = ag - netA
-      postBalanced('petty-cash-ceo', [
+      postBalanced('petty-cash-ceo', monthOf(e.date), `PCV ${e.pcvNumber} (CEO allocation)${e.description ? ` — ${e.description}` : ''}`, [
         { acct: parseAccountKey(e.accountTitle), debit: netA },
         ...(vatA > 0.005 ? [{ acct: inputVat(), debit: vatA }] : []),
         { acct: pcCash, credit: ag },
@@ -514,29 +557,31 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
   /* ── 6. Depreciation schedule (synthesized unless DEPRECIATION JEs exist) ── */
   const assets = await prisma.asset.findMany({
     where: { ...(branch !== 'ALL' ? { branch: orderBranch as never } : {}) },
-    select: { id: true, dateBought: true, depreciationEndDate: true, monthlyDepreciation: true, classification: true, totalAmount: true, fromPettyCash: true, sourceAccountId: true },
+    select: { id: true, name: true, dateBought: true, depreciationEndDate: true, monthlyDepreciation: true, classification: true, totalAmount: true, fromPettyCash: true, sourceAccountId: true },
   })
   const depAcct = byNumber.get('8070') || virt('8070', 'Depreciation Expense', 'EXPENSE', 'NON_OPERATING_EXPENSES', 'DEBIT')
   const accumDep = byNumber.get('2010') || findByTitle(/accumulated dep/i) || virt('2010', 'Accumulated Depreciation', 'ASSET', 'PPE', 'CREDIT')
   const hasDepJEs = (glRefIds.get('DEPRECIATION')?.size || 0) > 0
   if (!hasDepJEs) {
     let depTotal = 0
-    for (const a of assets) {
-      const md = Number(a.monthlyDepreciation)
-      if (!md) continue
-      for (let m = 0; m < 12; m++) {
-        const monthStart = new Date(Date.UTC(year, m, 1))
-        const monthEnd = new Date(Date.UTC(year, m + 1, 1))
-        if (new Date(a.dateBought) < monthEnd && new Date(a.depreciationEndDate) >= monthStart) depTotal += md
+    for (let m = 0; m < 12; m++) {
+      const monthStart = new Date(Date.UTC(year, m, 1))
+      const monthEnd = new Date(Date.UTC(year, m + 1, 1))
+      let monthDep = 0
+      for (const a of assets) {
+        const md = Number(a.monthlyDepreciation)
+        if (!md) continue
+        if (new Date(a.dateBought) < monthEnd && new Date(a.depreciationEndDate) >= monthStart) monthDep += md
+      }
+      if (monthDep > 0.005) {
+        depTotal += monthDep
+        postBalanced('depreciation-schedule', m + 1, 'Monthly depreciation (asset schedule)', [
+          { acct: depAcct, debit: monthDep },
+          { acct: accumDep, credit: monthDep },
+        ])
       }
     }
-    if (depTotal > 0.005) {
-      postBalanced('depreciation-schedule', [
-        { acct: depAcct, debit: depTotal },
-        { acct: accumDep, credit: depTotal },
-      ])
-      validation.synthesized.push('depreciation-schedule')
-    }
+    if (depTotal > 0.005) validation.synthesized.push('depreciation-schedule')
   }
 
   /* ── 7. Asset purchases this year (synthesized unless ASSET_PURCHASE JE) ── */
@@ -552,7 +597,7 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
     const creditA = a.fromPettyCash ? pcCash
       : a.sourceAccountId ? (byId.get(a.sourceAccountId) || defaultCash())
       : defaultCash()
-    postBalanced('asset-purchases', [
+    postBalanced('asset-purchases', monthOf(a.dateBought), `Asset purchase — ${a.name}`, [
       { acct: ppe, debit: amt },
       { acct: creditA, credit: amt },
     ])
@@ -568,12 +613,17 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
   for (const n of numbers) {
     const a = byNumber.get(n)!
     const m = mov.get(n) || { debit: 0, credit: 0 }
+    const mm = movMonthly.get(n)
     const open = opening.get(n) || 0
     const closing = a.normalBalance === 'DEBIT' ? open + m.debit - m.credit : open + m.credit - m.debit
+    const monthly = Array.from({ length: 12 }, (_, i) => {
+      const d = mm?.debit[i + 1] || 0, c = mm?.credit[i + 1] || 0
+      return round2(a.normalBalance === 'DEBIT' ? d - c : c - d)
+    })
     rows.push({
       number: n, title: a.title, type: a.type, subType: a.subType,
       opening: round2(open), debit: round2(m.debit), credit: round2(m.credit),
-      closing: round2(closing), virtual: a.virtual,
+      closing: round2(closing), monthly, virtual: a.virtual,
     })
   }
   rows.sort((x, y) => x.number.localeCompare(y.number))
@@ -725,9 +775,13 @@ export async function computeLedgerStatements(year: number, branch: string): Pro
     { key: 'NON_OPERATING', label: 'Non-Operating Expenses', rows: nonopRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: nonOperating },
   ].filter(s => s.rows.length > 0)
 
+  // Sort drill-down lines chronologically for display
+  collected.sort((a, b) => a.month - b.month)
+
   return {
     year, branch, engine: 'ledger-v2',
     validation,
+    ...(collect ? { collected } : {}),
     incomeStatement: {
       sections: isSections,
       netSales, totalCOGS, grossProfit, totalOpex, ebitda,

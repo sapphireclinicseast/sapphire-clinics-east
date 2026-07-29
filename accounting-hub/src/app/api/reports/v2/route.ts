@@ -15,8 +15,15 @@ export async function GET(req: Request) {
   if (year <= 2025) {
     return NextResponse.json({ error: 'Years up to 2025 are served by the manual statements — the ledger engine starts with 2026.' }, { status: 400 })
   }
+  // Optional drill-down: return the underlying lines for one account (+month)
+  const account = searchParams.get('account') || undefined
+  const monthParam = searchParams.get('month')
+  const month = monthParam ? parseInt(monthParam) : undefined
   try {
-    const statements = await computeLedgerStatements(year, branch)
+    const statements = await computeLedgerStatements(
+      year, branch,
+      account ? { account, ...(month && month >= 1 && month <= 12 ? { month } : {}) } : undefined,
+    )
     return NextResponse.json(statements)
   } catch (err) {
     console.error('Reports v2 error:', err)
