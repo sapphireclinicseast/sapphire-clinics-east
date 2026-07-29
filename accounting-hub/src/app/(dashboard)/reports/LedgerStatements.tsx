@@ -78,6 +78,8 @@ const fmtAmt = (v: number) => (v < 0 ? `(${formatCurrency(Math.abs(v))})` : form
 const fmtPct = (v: number, base: number) => (Math.abs(base) < 0.005 ? '—' : `${(v / base * 100).toFixed(1)}%`)
 
 function Amt({ v, bold, onClick, pctBase }: { v: number; bold?: boolean; onClick?: () => void; pctBase?: number | null }) {
+  // Vertical analysis keeps the amount and appends the % beside it,
+  // in bright blue so it stands out: ₱454,534.91 (11.9%)
   const usePct = pctBase !== undefined && pctBase !== null
   return (
     <span
@@ -85,7 +87,10 @@ function Amt({ v, bold, onClick, pctBase }: { v: number; bold?: boolean; onClick
       style={{ color: v < 0 ? '#b91c1c' : '#111827', fontWeight: bold ? 600 : 400 }}
       onClick={onClick}
     >
-      {usePct ? fmtPct(v, pctBase) : fmtAmt(v)}
+      {fmtAmt(v)}
+      {usePct && (
+        <span style={{ color: '#2563eb', fontWeight: 600, marginLeft: 4 }}>({fmtPct(v, pctBase)})</span>
+      )}
     </span>
   )
 }
