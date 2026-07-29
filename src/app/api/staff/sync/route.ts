@@ -6,7 +6,16 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { StaffDepartment } from '@prisma/client'
 
-const HR_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
+// Try multiple Docker bridge addresses in case HR_PLATFORM_URL is not set.
+// Inside the sapphire_app container, 127.0.0.1 is the container itself;
+// the host gateway is reachable via the Docker bridge IP.
+const HR_URLS = [
+  process.env.HR_PLATFORM_URL,
+  'http://172.17.0.1:3457',   // default Docker bridge gateway
+  'http://172.18.0.1:3457',   // compose network gateway
+  'http://host.docker.internal:3457',
+  'http://127.0.0.1:3457',    // localhost (works outside Docker)
+].filter(Boolean) as string[]
 const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
 
 const VALID_DEPTS: Set<string> = new Set([
@@ -66,22 +75,36 @@ export async function POST() {
   }
 
   let hrStaff: HRStaff[]
-  try {
-    console.log('[staff-sync] Fetching from', HR_URL + '/staff/external')
-    const res = await fetch(HR_URL + '/staff/external', {
-      headers: { Authorization: 'Bearer ' + HR_KEY },
-      cache: 'no-store',
-    })
-    if (!res.ok) {
-      console.error('[staff-sync] HR returned', res.status)
-      return NextResponse.json({ error: 'HR Platform returned ' + res.status }, { status: 502 })
+  {
+    let fetched = false
+    let lastErr = ''
+    hrStaff = []
+    for (const hrUrl of HR_URLS) {
+      try {
+        console.log('[staff-sync] Trying', hrUrl + '/staff/external')
+        const res = await fetch(hrUrl + '/staff/external', {
+          headers: { Authorization: 'Bearer ' + HR_KEY },
+          cache: 'no-store',
+          signal: AbortSignal.timeout(5000),
+        })
+        if (!res.ok) {
+          lastErr = 'HR returned ' + res.status + ' from ' + hrUrl
+          console.error('[staff-sync]', lastErr)
+          continue
+        }
+        const data = await res.json()
+        hrStaff = data.staff || []
+        console.log('[staff-sync] Got', hrStaff.length, 'staff via', hrUrl)
+        fetched = true
+        break
+      } catch (err) {
+        lastErr = err instanceof Error ? err.message : String(err)
+        console.error('[staff-sync] Failed via', hrUrl + ':', lastErr)
+      }
     }
-    const data = await res.json()
-    hrStaff = data.staff || []
-    console.log('[staff-sync] Got', hrStaff.length, 'staff from HR')
-  } catch (err) {
-    console.error('[staff-sync] Fetch failed:', err)
-    return NextResponse.json({ error: 'Cannot reach HR Platform' }, { status: 502 })
+    if (!fetched) {
+      return NextResponse.json({ error: 'Cannot reach HR Platform: ' + lastErr }, { status: 502 })
+    }
   }
 
   const existing = await prisma.staff.findMany()
