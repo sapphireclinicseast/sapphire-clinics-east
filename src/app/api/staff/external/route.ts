@@ -58,10 +58,13 @@ export async function GET(req: NextRequest) {
         phone: true,
         department: true,
         branch: true,
-        extraBranches: true,
         branchEmployment: true,
         jobTitle: true,
         employmentType: true,
+        // Whether they are still with us. Emitted always — a consumer asking for inactive
+        // staff needs to tell which ones they are, and one asking only for current staff
+        // can now record the answer rather than inferring it from an absence.
+        active: true,
         // Per-branch role + the other branches they work at, so Payroll can place the
         // same person as an employee at one branch and a consultant at another.
         employmentByBranch: true,

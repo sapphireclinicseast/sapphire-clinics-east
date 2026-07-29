@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { fetchExternalStaffForSync } from '@/lib/external-staff'
 import { consultantBranchesOf } from '@/lib/branch-roles'
+import { recordStaffSync } from '@/lib/staff-directory'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -39,8 +40,11 @@ export async function GET(req: Request) {
   // Optionally sync external staff (Operations for Aura Health branches, HR Platform for Verdana)
   if (sync) {
     try {
-      const staff = await fetchExternalStaffForSync()
+      // includeInactive so a resignation arrives as a flag we can act on rather than as an
+      // absence we have to guess about; recordStaffSync keeps our own copy of who we saw.
+      const staff = await fetchExternalStaffForSync({ includeInactive: true })
       if (staff.length > 0) {
+        const directory = await recordStaffSync(staff, 'OPERATIONS')
         const syncedExternalIds = new Set<string>()
 
         // Phase 1: Clean existing duplicates (same name + same branch, prefer one with externalStaffId)
@@ -70,6 +74,9 @@ export async function GET(req: Request) {
           // Not adding their id to syncedExternalIds lets Phase 3 deactivate any that were
           // previously mis-synced as consultants.
           if (dept === 'FRONT_DESK') continue
+          // Resigned upstream. Leave them out of syncedExternalIds so Phase 3 retires them,
+          // and never re-create them: this is the signal the directory exists to give us.
+          if (directory.inactiveIds.has(String(s.id))) continue
 
           // Per-branch role override (set in Operations → Staff Profiles). Someone can be a
           // consultant at one branch and an employee at another, which the single
@@ -152,6 +159,15 @@ export async function GET(req: Request) {
           )
           for (const c of linkedConsultants) {
             if (!c.externalStaffId || syncedExternalIds.has(c.externalStaffId)) continue
+            // Resigned — either the feed says so outright, or they have now been missing from
+            // it across more than one sync. Payslips are keyed to this row, not its isActive
+            // flag, so everything they were ever paid stays on the books.
+            if (directory.inactiveIds.has(c.externalStaffId) || directory.goneIds.has(c.externalStaffId)) {
+              console.warn(`[payroll/consultants] ${c.name} has left the staff feed — deactivating `
+                + `(${c._count.payrollEntries} payslip(s) kept).`)
+              await prisma.consultant.update({ where: { id: c.id }, data: { isActive: false } })
+              continue
+            }
             // A merged twin must go even with payslips behind it, or the person is generated
             // twice at whichever branch both records reach. The payslips are keyed to the
             // Consultant row, not its isActive flag, so past payroll stays intact.

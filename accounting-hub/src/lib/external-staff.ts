@@ -52,12 +52,20 @@ export async function fetchHrStaffForSync(): Promise<ExternalStaff[]> {
   }
 }
 
-export async function fetchExternalStaffForSync(): Promise<ExternalStaff[]> {
+/**
+ * @param opts.includeInactive  Ask Operations for deactivated profiles too. Sync callers want
+ *   this: a person the feed marks inactive is an explicit resignation they can act on, whereas
+ *   a filtered feed only ever reports it as an absence. Everyone else (POS search, payslip
+ *   email lookup) wants the default — current staff only.
+ */
+export async function fetchExternalStaffForSync(
+  opts: { includeInactive?: boolean } = {},
+): Promise<ExternalStaff[]> {
   let staff: ExternalStaff[] = []
 
   // Operations — every branch EXCEPT Verdana (Aura Health East/Greenhills).
   try {
-    const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external?includeHR=true`, {
+    const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external?includeHR=true${opts.includeInactive ? '&includeInactive=true' : ''}`, {
       headers: { Authorization: `Bearer ${EXTERNAL_API_KEY}` },
       cache: 'no-store',
     })

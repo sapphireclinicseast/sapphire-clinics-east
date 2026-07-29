@@ -2833,3 +2833,31 @@ model BudgetLock {
 
   @@unique([year, month, branch])
 }
+
+/// Accounting's own copy of the staff feed, one row per person ever synced.
+///
+/// The upstream feeds only list people who are still with us, so once someone resigns they
+/// simply stop appearing — leaving Payroll unable to tell "resigned" from "the feed hiccuped",
+/// which is why resigned consultants used to be left active forever and kept turning up in
+/// payslip generation. This table remembers everyone we have ever seen, so absence becomes a
+/// fact we can act on. It is a record of the FEED, never a payroll record: payslips stay keyed
+/// to Consultant/Employee, so retiring someone here never hides what they were paid.
+model StaffDirectory {
+  id              String    @id @default(cuid())
+  externalStaffId String    @unique  // Operations Staff.id, or HR id for HR-sourced staff
+  source          String              // OPERATIONS | HR
+  name            String
+  branch          String
+  department      String?
+  employmentType  String?
+  activeUpstream  Boolean   @default(true)  // what the feed last said about them
+  firstSeenAt     DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
+  missingSince    DateTime?           // first sync that stopped listing them at all
+  resignedAt      DateTime?           // when we concluded they are gone (flag or absence)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([branch])
+  @@index([resignedAt])
+}
