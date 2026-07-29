@@ -21,61 +21,69 @@ export async function GET(req: NextRequest) {
   const dayStart = new Date(`${dateStr}T00:00:00.000Z`)
   const dayEnd   = new Date(`${dateStr}T23:59:59.999Z`)
 
-  // Map the short branch code to the Patient.branch enum used in the DB.
-  const BRANCH_ENUM: Record<string, string> = {
-    SBEA: 'SANDBOX_EAST',
-    SBGH: 'SANDBOX_GREENHILLS',
+  // A session belongs to the branch of the PATIENT, not the clinician's primary branch —
+  // interbranch clinicians are one staff profile pinned to a single branch, so their
+  // cross-branch sessions would otherwise queue at the wrong cashier.
+  //
+  // Where a patient's branch actually lives has moved: `branches[]` is the current field and
+  // `branch` the legacy single one, and most patients now carry ONLY `branches[]` with
+  // `branch` left null. A rule that reads `branch` alone therefore matches neither the
+  // patient clause nor the walk-in clause for those, and their sessions disappear from every
+  // cashier queue rather than landing at the wrong one.
+  //
+  // So attribution is decided here in JS, over the whole day's schedules, from whichever
+  // field is populated. Each session resolves to exactly ONE branch — no session is shown
+  // twice, and none can fall through the gaps.
+  const CODE: Record<string, string> = {
+    SANDBOX_EAST: 'SBEA',
+    SANDBOX_GREENHILLS: 'SBGH',
+    VERDANA_STORE: 'VER',
   }
-  const patientBranchEnum = BRANCH_ENUM[branch] ?? null
+  const patientBranchCodes = (p: { branch: string | null; branches: string[] } | null): string[] => {
+    const raw = p ? (p.branches?.length ? p.branches : (p.branch ? [p.branch] : [])) : []
+    return raw.map(b => CODE[b]).filter(Boolean)
+  }
 
   const schedules = await prisma.schedule.findMany({
     where: {
       date: { gte: dayStart, lte: dayEnd },
       ...(statusFilter ? { status: statusFilter } : {}),
-      // Attribution rule: a session belongs to the branch of the PATIENT, not
-      // the clinician's primary branch. This ensures interbranch clinicians
-      // (e.g. primary=SBEA, also works at SBGH) have their Greenhills patients
-      // surfaced in the Greenhills cashier queue, not East.
-      // Walk-in slots (no patient) fall back to the staff's primary branch.
-      ...(patientBranchEnum ? {
-        OR: [
-          {
-            // Patient sessions: patient's branch is the authoritative one.
-            patient: { branch: patientBranchEnum as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' },
-            staff: { OR: [{ branch }, { extraBranches: { has: branch } }] },
-          },
-          {
-            // Walk-ins: no patient, use staff's primary branch to avoid
-            // the same slot appearing in multiple cashier queues.
-            patientId: null,
-            staff: { branch },
-          },
-        ],
-      } : {
-        staff: { branch },
-      }),
     },
     include: {
       staff:   { select: { firstName: true, lastName: true, department: true, branch: true } },
-      patient: { select: { id: true, firstName: true, lastName: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, branch: true, branches: true } },
     },
     orderBy: { startTime: 'asc' },
   })
 
-  const items = schedules.map(s => ({
-    id:          s.id,
-    startTime:   s.startTime,
-    endTime:     s.endTime,
-    sessionType: s.sessionType,
-    status:      s.status,
-    department:  s.staff.department,
-    branch,
-    clinician:   `${s.staff.lastName}, ${s.staff.firstName}`,
-    patientId:   s.patient?.id ?? null,
-    patientName: s.patient
-      ? `${s.patient.firstName} ${s.patient.lastName}`
-      : '—',
-  }))
+  const items = schedules
+    .map(s => {
+      const pb = patientBranchCodes(s.patient)
+      // One branch on file → that branch. Registered at several → the clinician's branch if
+      // the patient is registered there too, otherwise their first. Nothing on file, and
+      // walk-ins with no patient at all → the clinician's branch, so the session still
+      // reaches one queue.
+      const effectiveBranch = pb.length === 1
+        ? pb[0]
+        : pb.length > 1
+          ? (pb.includes(s.staff.branch) ? s.staff.branch : pb[0])
+          : s.staff.branch
+      return {
+        id:          s.id,
+        startTime:   s.startTime,
+        endTime:     s.endTime,
+        sessionType: s.sessionType,
+        status:      s.status,
+        department:  s.staff.department,
+        branch:      effectiveBranch,
+        clinician:   `${s.staff.lastName}, ${s.staff.firstName}`,
+        patientId:   s.patient?.id ?? null,
+        patientName: s.patient
+          ? `${s.patient.firstName} ${s.patient.lastName}`
+          : '—',
+      }
+    })
+    .filter(i => i.branch === branch)
 
   // ── Class portal "Pay at front desk" notifications ─────────────
   // Parents on /pay → cash → "Notify front desk" land in ClassPortalFrontDeskPayment.
