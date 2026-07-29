@@ -532,8 +532,13 @@ export async function GET(req: Request) {
         }
       }
 
-      // Route order-level discounts (PWD/SC, Custom) to their COA accounts
-      const discAmt = Number(order.discountAmount)
+      // Route order-level discounts (PWD/SC, Custom) to their COA accounts.
+      // UNEARNED orders (package/wallet top-ups) defer the whole sale: the
+      // liability is credited NET of the discount, and the discount is
+      // recognized later, pro-rata, on the earned per-session orders. Booking
+      // it here too would double-count it (once at purchase, again at
+      // consumption) against revenue that isn't on the IS yet.
+      const discAmt = order.revenueType === 'UNEARNED' ? 0 : Number(order.discountAmount)
       if (discAmt > 0) {
         let discAcctKey = ''
 
