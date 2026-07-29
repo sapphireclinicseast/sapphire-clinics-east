@@ -31,17 +31,13 @@ interface StaffMember {
   bankAccountNo: string | null
   hrPlatformId: string | null
   extraBranches: string[]
+  branchEmployment: Record<string, { employmentType?: string | null }> | null
   createdAt: string
   updatedAt?: string | null
 }
 
 type SortCol = 'name' | 'department' | 'branch' | 'email' | 'phone' | 'jobTitle' | 'sex' | 'employmentType'
 type SortDir = 'asc' | 'desc'
-
-const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-}
 
 function branchFromRole(role: string): string | null {
   if (role.startsWith('SBEA_')) return 'SBEA'
@@ -62,7 +58,7 @@ function BranchChip({ branch }: { branch: string }) {
         ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
         : { background: '#FFF3CD', color: '#92400E' }
     }>
-      {BRANCH_LABEL[branch] ?? branch}
+      {BRANCH_DISPLAY[branch] ?? branch}
     </span>
   )
 }
@@ -228,7 +224,7 @@ export default function StaffClient({ role }: { role: string }) {
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null)
   // Roles allowed to view the full HR profile (TIN, SSS, banking, etc.).
   // Excludes FRONT_DESK and MARKETING_ADMIN by design.
-  const canViewStaffDetails = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN'].includes(role)
+  const canViewStaffDetails = ['ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN'].includes(role)
 
   // Pagination
   const [page,     setPage]     = useState(1)
@@ -338,12 +334,12 @@ export default function StaffClient({ role }: { role: string }) {
 
   const statCards = autoBranch
     ? [
-        { label: `${BRANCH_LABEL[autoBranch] ?? autoBranch} Staff`, value: staff.length, icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
+        { label: `${autoBranch} Staff`, value: staff.length, icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
       ]
     : [
         { label: 'Total Staff', value: staff.length,  icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
-        { label: 'East Branch',       value: totalSBEA, icon: <span className="text-xs font-bold" style={{ color: 'var(--teal)' }}>SBEA</span> },
-        { label: 'Greenhills Branch', value: totalSBGH, icon: <span className="text-xs font-bold" style={{ color: '#92400E' }}>SBGH</span> },
+        { label: 'East Branch',        value: totalSBEA, icon: <span className="text-xs font-bold" style={{ color: 'var(--teal)' }}>AHEA</span> },
+        { label: 'Greenhills Branch',  value: totalSBGH, icon: <span className="text-xs font-bold" style={{ color: '#92400E' }}>AHGH</span> },
       ]
 
   const COLS: { col: SortCol; label: string }[] = [
@@ -595,14 +591,43 @@ export default function StaffClient({ role }: { role: string }) {
                       {s.jobTitle ? s.jobTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      {s.employmentType
-                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                            style={s.employmentType === 'employee'
-                              ? { background: '#DBEAFE', color: '#1E40AF' }
-                              : { background: '#FEF3C7', color: '#92400E' }}>
-                            {s.employmentType.charAt(0).toUpperCase() + s.employmentType.slice(1)}
-                          </span>
-                        : <span style={{ color: 'var(--mid-gray)', fontSize: '13px' }}>—</span>}
+                      {(() => {
+                        const empMap = s.branchEmployment ?? {}
+                        const entries = Object.entries(empMap).filter(([, v]) => v?.employmentType)
+                        const types = new Set(entries.map(([, v]) => v.employmentType))
+                        if (entries.length >= 2 && types.size >= 2) {
+                          return (
+                            <div className="flex flex-col gap-1">
+                              {entries.map(([br, v]) => {
+                                const type = v.employmentType!
+                                const isEmp = type === 'employee'
+                                const isSBEA = br === 'SBEA'
+                                return (
+                                  <div key={br} className="flex items-center gap-1">
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                                      style={isEmp ? { background: '#DBEAFE', color: '#1E40AF' } : { background: '#FEF3C7', color: '#92400E' }}>
+                                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                                    </span>
+                                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>·</span>
+                                    <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold"
+                                      style={isSBEA ? { background: 'var(--pale-teal)', color: 'var(--teal)' } : { background: '#FFF3CD', color: '#92400E' }}>
+                                      {BRANCH_DISPLAY[br] ?? br}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        }
+                        return s.employmentType
+                          ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                              style={s.employmentType === 'employee'
+                                ? { background: '#DBEAFE', color: '#1E40AF' }
+                                : { background: '#FEF3C7', color: '#92400E' }}>
+                              {s.employmentType.charAt(0).toUpperCase() + s.employmentType.slice(1)}
+                            </span>
+                          : <span style={{ color: 'var(--mid-gray)', fontSize: '13px' }}>—</span>
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
@@ -658,7 +683,7 @@ export default function StaffClient({ role }: { role: string }) {
       </div>
 
       {/* Staff Details Modal — surfaces every field synced from HR Hub.
-          Visible ONLY to ADMIN / AHEA_ADMIN / AHGH_ADMIN. Defense-in-depth:
+          Visible ONLY to ADMIN / SBEA_ADMIN / SBGH_ADMIN. Defense-in-depth:
           even if a non-admin somehow set selectedStaff, the modal won't render. */}
       {selectedStaff && canViewStaffDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
