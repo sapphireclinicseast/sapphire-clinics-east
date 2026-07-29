@@ -1,0 +1,12 @@
+-- Mark which bank accounts actually take part in buying foreign currency.
+--
+-- Currency-exchange matching pairs a line on this account with one on any
+-- account held in a different currency. That is right while only one pair
+-- exchanges money, but it offers unrelated accounts as soon as a second foreign
+-- account exists — and the two sides of an exchange never share an amount, so
+-- there is no amount check to fall back on.
+--
+-- Defaults to false everywhere. Matching treats "none marked" as "no preference
+-- recorded" and keeps considering every cross-currency account, so behaviour is
+-- unchanged until the setting is actually used.
+ALTER TABLE "Account" ADD COLUMN IF NOT EXISTS "isForexAccount" BOOLEAN NOT NULL DEFAULT false;

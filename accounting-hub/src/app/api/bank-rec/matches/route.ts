@@ -24,12 +24,19 @@ async function forexCandidates(txn: Txn) {
   const lo = new Date(txn.date); lo.setUTCDate(lo.getUTCDate() - FOREX_WINDOW_DAYS)
   const hi = new Date(txn.date); hi.setUTCDate(hi.getUTCDate() + FOREX_WINDOW_DAYS + 1)
 
-  // other bank accounts held in a different currency
-  const others = await prisma.account.findMany({
-    where: { isBankAccount: true, isActive: true, id: { not: txn.bankAccountId } },
-    select: { id: true, accountNumber: true, accountTitle: true, currency: true },
+  // Other bank accounts held in a different currency. Where the accounts that
+  // actually buy foreign currency have been marked, only those are paired —
+  // the two sides of an exchange never share an amount, so there is no amount
+  // check to weed out an account that merely happens to hold another currency.
+  const all = await prisma.account.findMany({
+    where: { isBankAccount: true, isActive: true },
+    select: { id: true, accountNumber: true, accountTitle: true, currency: true, isForexAccount: true },
   })
-  const cross = others.filter(a => (a.currency || 'PHP') !== (account?.currency || 'PHP'))
+  const configured = all.some(a => a.isForexAccount)
+  if (configured && !all.find(a => a.id === txn.bankAccountId)?.isForexAccount) return []
+  const cross = all.filter(a => a.id !== txn.bankAccountId
+    && (a.currency || 'PHP') !== (account?.currency || 'PHP')
+    && (!configured || a.isForexAccount))
   if (cross.length === 0) return []
 
   const lines = await prisma.bankTransaction.findMany({

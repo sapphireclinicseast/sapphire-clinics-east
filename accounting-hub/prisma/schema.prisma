@@ -120,6 +120,10 @@ model Account {
   isActive      Boolean       @default(true)
   isBankAccount Boolean       @default(false)  // Current-asset account that is a bank account (shows in Fund Transfer dropdowns)
   isCheckingAccount Boolean   @default(false)  // Bank account that is specifically a checking account (Check Release Monitoring)
+  // Bank account that actually takes part in buying foreign currency. Only these
+  // are paired when matching a currency exchange, so unrelated accounts that
+  // merely happen to hold another currency are not offered.
+  isForexAccount Boolean      @default(false)
   createdById   String
   createdBy     User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   createdAt     DateTime      @default(now())

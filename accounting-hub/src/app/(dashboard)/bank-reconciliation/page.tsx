@@ -45,6 +45,7 @@ interface Coa { id: string; accountNumber: string; accountTitle: string }
 interface Match { type: string; id: string; label: string; date: string; amount: number }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
 interface Hint { kind: string; label: string; amount: number; date: string; n: number }
+interface ForexAcct { id: string; accountNumber: string; accountTitle: string; currency: string; isForexAccount: boolean }
 interface FxRate { id: string; currency: string; date: string; phpPerUnit: number; source: string; note: string | null }
 interface ImportBatch { id: string; fileName: string | null; createdAt: string; createdBy: string | null; total: number; pending: number; posted: number; archived: number; from: string | null; to: string | null }
 
@@ -67,6 +68,7 @@ export default function BankReconciliationPage() {
   const [hints, setHints] = useState<Record<string, Hint>>({})
   const [showImports, setShowImports] = useState(false)
   const [rates, setRates] = useState<FxRate[]>([])
+  const [showForexCfg, setShowForexCfg] = useState(false)
   const [catFor, setCatFor] = useState<Txn | null>(null)
   const [sortKey, setSortKey] = useState('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -182,6 +184,7 @@ export default function BankReconciliationPage() {
             {account?.startDate && (account?.pendingCount ?? 0) > 0 && (
               <button onClick={lockOlder} title={`Lock untagged lines dated before ${account.startDate}`} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Lock size={14} /> Lock pre-{account.startDate.slice(0, 7)}</button>
             )}
+            <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
             <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Upload size={14} /> Upload from file</button>
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add transaction</button>
           </div>
@@ -804,5 +807,87 @@ function OpeningBalance({ account, canWrite, onSaved }: { account: BankAcct; can
         </div>
       )}
     </div>
+  )
+}
+
+
+// Which bank accounts actually buy foreign currency.
+//
+// Currency-exchange matching has no amount to check — the two sides never agree
+// on one — so it pairs on direction and date. That is fine while a single pair
+// of accounts exchanges money and misleading as soon as it is not, which is what
+// this narrows.
+function ForexAccountsModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [accounts, setAccounts] = useState<ForexAcct[]>([])
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/bank-rec/forex-accounts').then(r => r.ok ? r.json() : { accounts: [] }).then(d => {
+      setAccounts(d.accounts || [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setPicked(new Set((d.accounts || []).filter((a: any) => a.isForexAccount).map((a: any) => a.id)))
+    }).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const toggle = (id: string) => setPicked(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const save = async () => {
+    setBusy(true)
+    try {
+      const r = await fetch('/api/bank-rec/forex-accounts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountIds: [...picked] }),
+      })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+
+  const currencies = [...new Set(accounts.filter(a => picked.has(a.id)).map(a => a.currency || 'PHP'))]
+  const onlyOneCurrency = picked.size > 0 && currencies.length < 2
+
+  return (
+    <Modal title="Currency exchange accounts" onClose={onClose}>
+      <p className="text-sm mb-1" style={{ color: 'var(--mid-gray)' }}>
+        Tick the bank accounts that actually take part in buying foreign currency — the account the pesos leave, and the one the currency arrives in.
+      </p>
+      <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+        The two sides of an exchange never share an amount, so they are paired on direction and date alone. Narrowing this to the accounts really involved is what keeps that from suggesting unrelated pairs.
+      </p>
+
+      {loading ? <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={15} className="inline animate-spin" /> Loading…</p> : (
+        <div className="space-y-1.5 mb-3 max-h-72 overflow-auto">
+          {accounts.map(a => (
+            <label key={a.id} className="flex items-center gap-2.5 px-3 py-2 rounded-xl border cursor-pointer"
+              style={{ borderColor: picked.has(a.id) ? 'var(--teal)' : 'var(--light-gray)', background: picked.has(a.id) ? 'var(--off-white)' : 'transparent' }}>
+              <input type="checkbox" checked={picked.has(a.id)} onChange={() => toggle(a.id)} />
+              <span className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                <strong>{a.accountNumber}</strong> — {a.accountTitle}
+              </span>
+              <span className="ml-auto text-[11px] font-semibold" style={{ color: a.currency !== 'PHP' ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>{a.currency || 'PHP'}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {picked.size === 0 && !loading && (
+        <p className="text-[11px] rounded-xl px-3 py-2 mb-3" style={{ background: '#fffbeb', color: '#92400e' }}>
+          Nothing ticked, so no preference is recorded and every account held in another currency is still considered — the behaviour before this setting existed.
+        </p>
+      )}
+      {onlyOneCurrency && (
+        <p className="text-[11px] rounded-xl px-3 py-2 mb-3" style={{ background: '#fffbeb', color: '#92400e' }}>
+          Every ticked account is held in {currencies[0]}. An exchange needs two currencies, so nothing will be suggested until an account in another one is ticked too.
+        </p>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
+        <button onClick={save} disabled={busy || loading} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+          {busy ? <Loader2 size={14} className="inline animate-spin" /> : null} Save
+        </button>
+      </div>
+    </Modal>
   )
 }
