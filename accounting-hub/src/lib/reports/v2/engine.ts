@@ -356,7 +356,7 @@ export async function computeLedgerStatements(
       netAmount: true, revenueType: true, discountAmount: true, discountLabel: true, discountType: true,
       items: {
         select: {
-          lineTotal: true, cogsCost: true, quantity: true, isFreeSample: true,
+          name: true, lineTotal: true, cogsCost: true, quantity: true, isFreeSample: true,
           service: { select: { revenueAccount: { select: { accountNumber: true } } } },
           inventoryItem: { select: { accountSubType: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true } }, expenseAccount: { select: { accountNumber: true } } } },
         },
@@ -370,6 +370,21 @@ export async function computeLedgerStatements(
     },
   })
   let synthesizedOrders = 0
+  // Name → revenue-account fallback for order items with no service/inventory
+  // relation (free-text POS lines). Mirrors the v1 report's resolveItemAccount:
+  // services take precedence over inventory on a name collision.
+  const nameRev = new Map<string, string>()
+  const nameSku = new Map<string, { dept: string; cat: string }>()
+  const [svcCatalog, invCatalog] = await Promise.all([
+    prisma.service.findMany({ where: { revenueAccountId: { not: null } }, select: { name: true, revenueAccount: { select: { accountNumber: true } } } }),
+    prisma.inventoryItem.findMany({ where: { revenueAccountId: { not: null } }, select: { name: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true } } } }),
+  ])
+  for (const inv of invCatalog) {
+    const k = inv.name.trim().toUpperCase()
+    if (inv.revenueAccount) nameRev.set(k, inv.revenueAccount.accountNumber)
+    nameSku.set(k, { dept: inv.skuDepartment, cat: inv.skuCategory })
+  }
+  for (const s of svcCatalog) if (s.revenueAccount) nameRev.set(s.name.trim().toUpperCase(), s.revenueAccount.accountNumber)
   // Product-income sub-classification (Department · Category) for the 7080
   // breakdown — display analytics over ALL completed orders' product items,
   // posted and synthesized alike.
@@ -387,8 +402,12 @@ export async function computeLedgerStatements(
     if (o.revenueType !== 'UNEARNED') {
       const mIdx = monthOf(o.transactionDate) - 1
       for (const it of o.items) {
-        if (!it.inventoryItem || it.isFreeSample) continue
-        const lbl = productSubtypeLabel(it.inventoryItem.skuDepartment, it.inventoryItem.skuCategory)
+        if (it.isFreeSample) continue
+        const sku = it.inventoryItem
+          ? { dept: it.inventoryItem.skuDepartment, cat: it.inventoryItem.skuCategory }
+          : (!it.service ? nameSku.get((it.name || '').trim().toUpperCase()) : undefined)
+        if (!sku) continue
+        const lbl = productSubtypeLabel(sku.dept, sku.cat)
         if (!productSubtypes.has(lbl)) productSubtypes.set(lbl, Array(12).fill(0))
         productSubtypes.get(lbl)![mIdx] += Number(it.lineTotal)
       }
@@ -430,6 +449,7 @@ export async function computeLedgerStatements(
       for (const it of o.items) {
         if (it.isFreeSample) continue
         const revNum = it.service?.revenueAccount?.accountNumber || it.inventoryItem?.revenueAccount?.accountNumber
+          || nameRev.get((it.name || '').trim().toUpperCase())
         const rev = revNum ? (byNumber.get(revNum) || virt(revNum, 'Revenue', 'REVENUE', 'OPERATING_REVENUE', 'CREDIT'))
           : (byNumber.get('7000') || virt('7000', 'Gross Revenue', 'REVENUE', 'OPERATING_REVENUE', 'CREDIT'))
         lines.push({ acct: rev, credit: Number(it.lineTotal) })

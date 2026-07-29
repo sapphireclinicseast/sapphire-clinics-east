@@ -98,6 +98,12 @@ export async function POST(req: Request) {
     const parent: any = isLoan ? await prisma.loan.findUnique({ where: { id: b.parentId } }) : await prisma.advance.findUnique({ where: { id: b.parentId } })
     if (!parent) return NextResponse.json({ error: 'Parent not found' }, { status: 404 })
 
+    // One payment per installment: the same (parent, due date) must not be recorded twice.
+    const dupe = isLoan
+      ? await prisma.loanPayout.findFirst({ where: { loanId: b.parentId, dueDate: new Date(b.dueDate) }, select: { paidDate: true } })
+      : await prisma.advancePayout.findFirst({ where: { advanceId: b.parentId, dueDate: new Date(b.dueDate) }, select: { paidDate: true } })
+    if (dupe) return NextResponse.json({ error: `This installment (due ${String(b.dueDate).slice(0, 10)}) is already recorded as paid${dupe.paidDate ? ` on ${dupe.paidDate.toISOString().slice(0, 10)}` : ''}. Delete the existing payment first to re-record it.` }, { status: 409 })
+
     // Other expenses tied to this payment transaction (bank/wire fees, DST, etc.):
     // each DR its expense account and increases the total CR bank (cash out).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
