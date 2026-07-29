@@ -175,9 +175,9 @@ export default function AssetManagementPage() {
 
   const userRole = session?.user?.role as string
   const isBranchRestricted = ['AHEA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_ADMIN', 'AHGH_FRONTDESK', 'VERDANA_ADMIN'].includes(userRole)
-  const userBranch = userRole?.includes('SBEA')
+  const userBranch = userRole?.includes('AHEA')
     ? 'SANDBOX_EAST'
-    : userRole?.includes('SBGH')
+    : userRole?.includes('AHGH')
     ? 'SANDBOX_GREENHILLS'
     : userRole?.includes('VERDANA')
     ? 'VERDANA_STORE'
