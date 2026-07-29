@@ -139,7 +139,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     para('Hannah Jara — CEO and President', { gap: 5 })
 
     ensure(46)
-    para('THE FELLOW:', { bold: true, gap: 1 })
+    para('THE APPLICANT:', { bold: true, gap: 1 })
     para(input.fellowName || '____________', { gap: 1 })
     if (fellowDataUrl) { try { doc.addImage(fellowDataUrl, fellowMime, M, y, 55, 20); y += 22 } catch { /* skip */ } }
     para('Signature over printed name', { size: 8, gap: 5 })
@@ -151,7 +151,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
 
     ensure(14)
     doc.setDrawColor(150); doc.line(M, y, M + W, y); y += 5
-    para(`Signed electronically (soft copy) by the FELLOW on ${fmtDate(input.dateSigned)}. This soft copy will be countersigned in person (hard copy) with the CO-MAKER at an Aura Health Rehab branch, before witnesses and a Notary Public, to complete execution.`, { size: 8 })
+    para(`Signed electronically (soft copy) by the APPLICANT on ${fmtDate(input.dateSigned)}. This soft copy will be countersigned in person (hard copy) with the CO-MAKER at an Aura Health Rehab branch, before witnesses and a Notary Public, to complete execution.`, { size: 8 })
 
     // ── Annex A (fresh page) ──
     doc.addPage(); y = 20
