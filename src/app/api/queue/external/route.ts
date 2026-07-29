@@ -21,11 +21,39 @@ export async function GET(req: NextRequest) {
   const dayStart = new Date(`${dateStr}T00:00:00.000Z`)
   const dayEnd   = new Date(`${dateStr}T23:59:59.999Z`)
 
+  // Map the short branch code to the Patient.branch enum used in the DB.
+  const BRANCH_ENUM: Record<string, string> = {
+    SBEA: 'SANDBOX_EAST',
+    SBGH: 'SANDBOX_GREENHILLS',
+  }
+  const patientBranchEnum = BRANCH_ENUM[branch] ?? null
+
   const schedules = await prisma.schedule.findMany({
     where: {
       date: { gte: dayStart, lte: dayEnd },
-      staff: { branch },
       ...(statusFilter ? { status: statusFilter } : {}),
+      // Attribution rule: a session belongs to the branch of the PATIENT, not
+      // the clinician's primary branch. This ensures interbranch clinicians
+      // (e.g. primary=SBEA, also works at SBGH) have their Greenhills patients
+      // surfaced in the Greenhills cashier queue, not East.
+      // Walk-in slots (no patient) fall back to the staff's primary branch.
+      ...(patientBranchEnum ? {
+        OR: [
+          {
+            // Patient sessions: patient's branch is the authoritative one.
+            patient: { branch: patientBranchEnum as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' },
+            staff: { OR: [{ branch }, { extraBranches: { has: branch } }] },
+          },
+          {
+            // Walk-ins: no patient, use staff's primary branch to avoid
+            // the same slot appearing in multiple cashier queues.
+            patientId: null,
+            staff: { branch },
+          },
+        ],
+      } : {
+        staff: { branch },
+      }),
     },
     include: {
       staff:   { select: { firstName: true, lastName: true, department: true, branch: true } },
@@ -41,7 +69,7 @@ export async function GET(req: NextRequest) {
     sessionType: s.sessionType,
     status:      s.status,
     department:  s.staff.department,
-    branch:      s.staff.branch,
+    branch,
     clinician:   `${s.staff.lastName}, ${s.staff.firstName}`,
     patientId:   s.patient?.id ?? null,
     patientName: s.patient
