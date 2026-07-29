@@ -1,10 +1,39 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { redirect } from 'next/navigation'
 import { PieChart, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
+import { applySortFilter, type SortCol } from '@/components/SortFilterHead'
+
+// Shares bought back are shown net, so sorting and filtering follow the figure
+// on screen rather than the original subscription.
+const netShares = (r: { numberOfShares: number; buybackShares?: number; boughtBack?: boolean }) =>
+  r.boughtBack && (r.buybackShares || 0) > 0 ? r.numberOfShares - (r.buybackShares || 0) : r.numberOfShares
+
+const COMMON_COLS: SortCol[] = [
+  { key: 'shNumber', label: 'SH #' }, { key: 'name', label: 'Investor' },
+  { key: 'shareClass', label: 'Class' }, { key: 'dateAcquired', label: 'Date Acq.' },
+  { key: 'stockCertNumber', label: 'Stock Cert.' }, { key: 'shares', label: 'Shares' },
+  { key: 'truePar', label: 'True Par (PHP)' }, { key: 'apic', label: 'APIC (PHP)' },
+  { key: 'pricePerShare', label: 'Price/Share (PHP)' }, { key: 'capitalization', label: 'Capitalization' },
+  { key: 'stakeCurrent', label: '% Stake (Current)' }, { key: 'stakeTotal', label: '% Stake (Total)' },
+  { key: 'bank', label: 'Bank Debited' }, { key: 'boughtBack', label: 'Bought back?' },
+  { key: 'validId', label: 'Valid ID' }, { key: 'proofs', label: 'Proofs' },
+]
+const COMMON_NUMERIC = ['dateAcquired', 'shares', 'truePar', 'apic', 'pricePerShare', 'capitalization', 'stakeCurrent', 'stakeTotal']
+
+const PREFERRED_COLS: SortCol[] = [
+  { key: 'shNumber', label: 'SH #' }, { key: 'name', label: 'Investor' },
+  { key: 'shareClass', label: 'Class' }, { key: 'dateAcquired', label: 'Date' },
+  { key: 'shares', label: 'Shares' }, { key: 'truePar', label: 'True Par (PHP)' },
+  { key: 'apic', label: 'APIC (PHP)' }, { key: 'pricePerShare', label: 'Price/Share (PHP)' },
+  { key: 'capitalization', label: 'Capitalization' }, { key: 'stake', label: '% Stake' },
+  { key: 'interest', label: 'Interest' }, { key: 'maturity', label: 'Maturity' },
+  { key: 'payout', label: 'Payout' }, { key: 'bank', label: 'Bank' }, { key: 'validId', label: 'Valid ID' },
+]
+const PREFERRED_NUMERIC = ['dateAcquired', 'shares', 'truePar', 'apic', 'pricePerShare', 'capitalization', 'stake', 'interest']
 import { ScanUpload } from '@/components/ScanUpload'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -90,6 +119,47 @@ export default function EquityPage() {
     await fetch(`/api/equity/common?id=${row.id}`, { method: 'DELETE' }); load()
   }
   const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? `${b.accountNumber} ${b.accountTitle}` : '—' }
+
+  const cs = useSortFilter('shNumber')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const commonValue = (r: any, k: string): string | number => {
+    switch (k) {
+      case 'dateAcquired': return +new Date(String(r.dateAcquired).slice(0, 10))
+      case 'shares': return netShares(r)
+      case 'capitalization': return netShares(r) * r.pricePerShare
+      case 'truePar': return r.truePar
+      case 'apic': return r.apic
+      case 'pricePerShare': return r.pricePerShare
+      case 'stakeCurrent': return r.equityStakeCurrent
+      case 'stakeTotal': return r.equityStakeTotal
+      case 'bank': return bankLabel(r.bankAccountId)
+      case 'boughtBack': return r.boughtBack ? `yes ${r.buybackShares}` : 'no'
+      case 'validId': return (r.validIdUrls || []).length
+      case 'proofs': return (r.proofOfDepositUrls || []).length
+      default: return r[k] ?? ''
+    }
+  }
+  // Filters match what is on screen: a date reads as its printed string, and an
+  // amount as its formatted figure, so "5,008" and "2024-02" both work.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const commonText = (r: any, k: string): string => {
+    switch (k) {
+      case 'dateAcquired': return String(r.dateAcquired).slice(0, 10)
+      case 'shares': return netShares(r).toLocaleString('en-PH')
+      case 'capitalization': return peso(netShares(r) * r.pricePerShare)
+      case 'truePar': return peso(r.truePar)
+      case 'apic': return peso(r.apic)
+      case 'pricePerShare': return peso(r.pricePerShare)
+      case 'stakeCurrent': return r.equityStakeCurrent.toFixed(3)
+      case 'stakeTotal': return r.equityStakeTotal.toFixed(3)
+      default: return String(commonValue(r, k))
+    }
+  }
+  const commonRows = useMemo(
+    () => applySortFilter(data?.rows || [], commonValue, cs.sortKey, cs.sortDir, cs.filters, commonText),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, cs.sortKey, cs.sortDir, cs.filters, banks],
+  )
 
   // Export the common-shareholder list (net-of-buyback shares & capitalization) to Excel/PDF.
   const exportCommon = (format: 'xlsx' | 'pdf') => {
@@ -242,12 +312,11 @@ export default function EquityPage() {
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <table ref={commonTableRef} className="w-full text-xs" style={commonRz.tableStyle}>
               <ResizableColgroup rz={commonRz} />
-              <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Investor', 'Class', 'Date Acq.', 'Stock Cert.', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake (Current)', '% Stake (Total)', 'Bank Debited', 'Bought back?', 'Valid ID', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={commonRz} index={i} /></th>)}
-              </tr></thead>
+              <SortHead cols={COMMON_COLS} sortKey={cs.sortKey} sortDir={cs.sortDir} filters={cs.filters}
+                onToggleSort={k => cs.toggleSort(k, COMMON_NUMERIC)} onFilter={cs.setFilter} rz={commonRz} />
               <tbody>
                 {loading ? <tr><td colSpan={17} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-                : (data?.rows || []).map(r => (
+                : commonRows.map(r => (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.boughtBack ? '#fef2f2' : undefined }}>
                     <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.shNumber}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>{r.name}{r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{r.soldFromTreasury && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
@@ -284,7 +353,12 @@ export default function EquityPage() {
                     </td>
                   </tr>
                 ))}
-                {!loading && (data?.rows || []).length === 0 && <tr><td colSpan={17} className="text-center py-10 text-gray-400">No common shareholders yet.</td></tr>}
+                {!loading && commonRows.length === 0 && (
+                  <tr><td colSpan={17} className="text-center py-10 text-gray-400">
+                    {(data?.rows || []).length === 0 ? 'No common shareholders yet.'
+                      : <>No rows match these filters. <button onClick={() => cs.setFilters({})} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button></>}
+                  </td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -580,6 +654,42 @@ function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { bank
   useEffect(() => { load() }, [load])
   const del = async (r: PrefRow) => { if (!confirm(`Delete ${r.shNumber} — ${r.name}'s preferred shares?`)) return; await fetch(`/api/equity/preferred?id=${r.id}`, { method: 'DELETE' }); load(); onChanged() }
   const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? `${b.accountNumber} ${b.accountTitle}` : '—' }
+
+  const ps = useSortFilter('shNumber')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const prefValue = (r: any, k: string): string | number => {
+    switch (k) {
+      case 'dateAcquired': return +new Date(String(r.dateAcquired).slice(0, 10))
+      case 'shares': return r.numberOfShares
+      case 'capitalization': return r.totalCapitalization
+      case 'stake': return r.equityStake
+      case 'interest': return r.annualInterest ?? -1
+      case 'maturity': return r.maturityYears ?? -1
+      case 'payout': return r.payoutSchedule || ''
+      case 'bank': return bankLabel(r.bankAccountId)
+      case 'validId': return (r.validIdUrls || []).length
+      default: return r[k] ?? ''
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const prefText = (r: any, k: string): string => {
+    switch (k) {
+      case 'dateAcquired': return String(r.dateAcquired).slice(0, 10)
+      case 'shares': return r.numberOfShares.toLocaleString('en-PH')
+      case 'capitalization': return peso(r.totalCapitalization)
+      case 'truePar': return peso(r.truePar)
+      case 'apic': return peso(r.apic)
+      case 'pricePerShare': return peso(r.pricePerShare)
+      case 'stake': return r.equityStake.toFixed(2)
+      case 'interest': return r.annualInterest != null ? String(r.annualInterest) : ''
+      default: return String(prefValue(r, k))
+    }
+  }
+  const prefRows = useMemo(
+    () => applySortFilter(rows, prefValue, ps.sortKey, ps.sortDir, ps.filters, prefText),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, ps.sortKey, ps.sortDir, ps.filters, banks],
+  )
   const exportPreferred = (format: 'xlsx' | 'pdf') => {
     const num = (n: number) => n.toLocaleString('en-PH')
     const headers = ['SH #', 'Investor', 'Class', 'Date', 'Shares', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank']
@@ -621,11 +731,12 @@ function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { bank
         {canWrite && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button>}
       </div>
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-          {['SH #', 'Investor', 'Class', 'Date', 'Shares', 'True Par (PHP)', 'APIC (PHP)', 'Price/Share (PHP)', 'Capitalization', '% Stake', 'Interest', 'Maturity', 'Payout', 'Bank', 'Valid ID', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
-        </tr></thead><tbody>
+        <table className="w-full text-xs">
+          <SortHead cols={PREFERRED_COLS} sortKey={ps.sortKey} sortDir={ps.sortDir} filters={ps.filters}
+            onToggleSort={k => ps.toggleSort(k, PREFERRED_NUMERIC)} onFilter={ps.setFilter} />
+          <tbody>
           {loading ? <tr><td colSpan={16} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-          : rows.map(r => (
+          : prefRows.map(r => (
             <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
               <td className="px-3 py-2 font-mono font-semibold">{r.shNumber}</td>
               <td className="px-3 py-2">{r.name}</td>
@@ -645,7 +756,12 @@ function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { bank
               <td className="px-3 py-2 text-right whitespace-nowrap">{canWrite && <><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></>}</td>
             </tr>
           ))}
-          {!loading && rows.length === 0 && <tr><td colSpan={16} className="text-center py-10 text-gray-400">No preferred shareholders yet.</td></tr>}
+          {!loading && prefRows.length === 0 && (
+            <tr><td colSpan={16} className="text-center py-10 text-gray-400">
+              {rows.length === 0 ? 'No preferred shareholders yet.'
+                : <>No rows match these filters. <button onClick={() => ps.setFilters({})} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button></>}
+            </td></tr>
+          )}
         </tbody></table>
       </div>
       {(showAdd || edit) && <PreferredModal row={edit} shareholders={shareholders} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load(); onChanged() }} />}
@@ -1152,3 +1268,51 @@ function PreferredDividendDetail({ release, onClose, onChanged }: { release: any
   )
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+
+// Sortable, filterable header. The shared SortFilterHead cannot be used on these
+// tables: their columns are user-resizable, and the drag handle has to stay in
+// the header cell. Same interaction, same helper doing the sorting.
+type RzLike = { /* ResizableColgroup handle bag */ } | null
+function SortHead({ cols, sortKey, sortDir, filters, onToggleSort, onFilter, rz, trailing = true }: {
+  cols: SortCol[]; sortKey: string; sortDir: 'asc' | 'desc'; filters: Record<string, string>
+  onToggleSort: (k: string) => void; onFilter: (k: string, v: string) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rz?: any; trailing?: boolean
+}) {
+  return (
+    <thead>
+      <tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+        {cols.map((c, i) => (
+          <th key={c.key} className="px-3 py-2 font-semibold whitespace-nowrap relative align-top">
+            <button onClick={() => onToggleSort(c.key)} className="flex items-center gap-1">
+              {c.label}
+              <span style={{ color: sortKey === c.key ? 'var(--teal)' : 'var(--light-gray)' }}>
+                {sortKey === c.key ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+              </span>
+            </button>
+            <input value={filters[c.key] || ''} onChange={e => onFilter(c.key, e.target.value)} placeholder="filter…"
+              className="mt-1 w-full min-w-[60px] px-1.5 py-0.5 rounded border text-[10px] font-normal"
+              style={{ borderColor: 'var(--light-gray)' }} />
+            {rz && <ColResizeHandle rz={rz} index={i} />}
+          </th>
+        ))}
+        {trailing && <th className="px-3 py-2" />}
+      </tr>
+    </thead>
+  )
+}
+
+// Shared sort/filter state for one table.
+function useSortFilter(initialKey: string) {
+  const [sortKey, setSortKey] = useState(initialKey)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filters, setFilters] = useState<Record<string, string>>({})
+  const toggleSort = (k: string, numericKeys: string[] = []) => {
+    if (k === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir(numericKeys.includes(k) ? 'desc' : 'asc') }
+  }
+  const setFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }))
+  const activeFilters = Object.values(filters).filter(Boolean).length
+  return { sortKey, sortDir, filters, toggleSort, setFilter, setFilters, activeFilters }
+}
