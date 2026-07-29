@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { fetchExternalStaffForSync, fetchHrStaffForSync } from '@/lib/external-staff'
 import { employeeBranchesOf } from '@/lib/branch-roles'
+import { recordStaffSync } from '@/lib/staff-directory'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
@@ -33,6 +34,10 @@ export async function GET(req: Request) {
   if (sync) {
     try {
       const staff = await fetchHrStaffForSync()
+      // Keep our own copy of who HR listed. The purge below already retires anyone missing
+      // from this feed, so employees never linger the way consultants did — the directory is
+      // here so Payroll can still say WHO resigned and WHEN, long after the feed forgot them.
+      await recordStaffSync(staff, 'HR')
 
       // Per-branch role overrides are owned by Operations (Staff Profiles), because HR only
       // carries one employmentType and so can't say "consultant at East, employee at
