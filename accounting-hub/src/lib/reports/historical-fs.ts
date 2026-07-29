@@ -28,7 +28,7 @@ export interface HistoricalReportPayload {
   year: number
   branch: string
   source: string
-  /** Notes shown under every tab (projected months, branch coverage…) */
+  /** Notes shown under every tab (branch coverage, consolidation caveats…) */
   notes: string[]
   /** Notes shown under the Income Statement tab only */
   isNotes: string[]
@@ -104,7 +104,9 @@ export function getHistoricalReport(year: number, branch: string): HistoricalRep
         payload.notes.push('Aura East was the only operating branch in 2024.')
       }
       if (year === 2025) {
-        payload.notes.push('November and December 2025 figures are projected/estimated per the source books, not booked actuals.')
+        // Per the owner: November and December 2025 are booked ACTUALS for both
+        // East and Greenhills (the source workbook's index note calling them
+        // projected was outdated) — so no caveat is shown.
         if (br === 'ALL') {
           payload.isNotes.push('Income statement shown is East + Greenhills combined. Greenhills opened October 2025.')
         }
