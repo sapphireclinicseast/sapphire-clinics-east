@@ -77,6 +77,10 @@ export interface V2Statements {
   }
   /** Present only when a drill-down was requested (account [+ month]). */
   collected?: V2CollectedLine[]
+  /** True when the drill-down list was cut at the cap (totals stay complete). */
+  collectedTruncated?: boolean
+  /** Full debit/credit sums over ALL matching lines (exact even when truncated). */
+  collectedTotals?: { debit: number; credit: number }
   incomeStatement: {
     sections: { key: string; label: string; rows: V2AccountRow[]; total: number }[]
     netSales: number
@@ -570,22 +574,22 @@ export async function computeLedgerStatements(
     const depMonthCap = year < nowDate.getUTCFullYear() ? 12
       : year > nowDate.getUTCFullYear() ? 0
       : nowDate.getUTCMonth() + 1
+    // One entry per asset per month, so drilling into 8070 / 2010 shows
+    // exactly which assets make up the depreciation figure.
     let depTotal = 0
     for (let m = 0; m < depMonthCap; m++) {
       const monthStart = new Date(Date.UTC(year, m, 1))
       const monthEnd = new Date(Date.UTC(year, m + 1, 1))
-      let monthDep = 0
       for (const a of assets) {
         const md = Number(a.monthlyDepreciation)
         if (!md) continue
-        if (new Date(a.dateBought) < monthEnd && new Date(a.depreciationEndDate) > monthStart) monthDep += md
-      }
-      if (monthDep > 0.005) {
-        depTotal += monthDep
-        postBalanced('depreciation-schedule', m + 1, 'Monthly depreciation (asset schedule)', [
-          { acct: depAcct, debit: monthDep },
-          { acct: accumDep, credit: monthDep },
-        ])
+        if (new Date(a.dateBought) < monthEnd && new Date(a.depreciationEndDate) > monthStart) {
+          depTotal += md
+          postBalanced('depreciation-schedule', m + 1, `Depreciation — ${a.name}`, [
+            { acct: depAcct, debit: md },
+            { acct: accumDep, credit: md },
+          ])
+        }
       }
     }
     if (depTotal > 0.005) validation.synthesized.push('depreciation-schedule')
@@ -782,13 +786,21 @@ export async function computeLedgerStatements(
     { key: 'NON_OPERATING', label: 'Non-Operating Expenses', rows: nonopRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: nonOperating },
   ].filter(s => s.rows.length > 0)
 
-  // Sort drill-down lines chronologically for display
+  // Sort drill-down lines chronologically for display; cap the payload for
+  // very wide selections (a whole-year revenue account can have thousands of
+  // entries) — the statement totals are unaffected, only the list is cut.
   collected.sort((a, b) => a.month - b.month)
+  const COLLECT_CAP = 2000
+  const collectedTruncated = collected.length > COLLECT_CAP
+  const collectedTotals = {
+    debit: round2(collected.reduce((s, l) => s + l.debit, 0)),
+    credit: round2(collected.reduce((s, l) => s + l.credit, 0)),
+  }
 
   return {
     year, branch, engine: 'ledger-v2',
     validation,
-    ...(collect ? { collected } : {}),
+    ...(collect ? { collected: collected.slice(0, COLLECT_CAP), collectedTruncated, collectedTotals } : {}),
     incomeStatement: {
       sections: isSections,
       netSales, totalCOGS, grossProfit, totalOpex, ebitda,

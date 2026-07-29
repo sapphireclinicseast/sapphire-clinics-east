@@ -144,6 +144,8 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
   year: number; branch: string; account: string; title: string; month: number | null; onClose: () => void
 }) {
   const [lines, setLines] = useState<V2CollectedLine[] | null>(null)
+  const [totals, setTotals] = useState<{ debit: number; credit: number } | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -155,13 +157,21 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
         const j = await r.json()
         if (!live) return
         if (!r.ok) setError(j.error || 'Failed to load')
-        else setLines(j.collected || [])
+        else {
+          setLines(j.collected || [])
+          setTotals(j.collectedTotals || null)
+          setTruncated(!!j.collectedTruncated)
+        }
       })
       .catch(() => live && setError('Failed to load'))
     return () => { live = false }
   }, [year, branch, account, month])
 
-  const net = (lines || []).reduce((s, l) => s + l.debit - l.credit, 0)
+  // Exact sums come from the engine (correct even when the list is capped);
+  // fall back to summing the visible lines.
+  const sumDebit = totals?.debit ?? (lines || []).reduce((s, l) => s + l.debit, 0)
+  const sumCredit = totals?.credit ?? (lines || []).reduce((s, l) => s + l.credit, 0)
+  const net = sumDebit - sumCredit
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
@@ -208,10 +218,24 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
                 ))}
               </tbody>
               <tfoot>
+                {truncated && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-1.5 text-xs italic" style={{ color: '#b45309' }}>
+                      Showing the first {lines.length.toLocaleString()} entries — the totals below still cover every entry.
+                    </td>
+                  </tr>
+                )}
                 <tr style={{ borderTop: '1px solid #d1d5db' }}>
-                  <td colSpan={3} className="px-3 py-1.5 font-semibold" style={{ color: '#111827' }}>Net (debits − credits)</td>
-                  <td colSpan={2} className="px-2 py-1.5 text-right font-semibold tabular-nums" style={{ color: '#111827' }}>{fmtAmt(net)}</td>
+                  <td colSpan={3} className="px-3 py-1.5 font-semibold" style={{ color: '#111827' }}>Totals</td>
+                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums" style={{ color: '#111827' }}>{sumDebit ? formatCurrency(sumDebit) : ''}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums" style={{ color: '#111827' }}>{sumCredit ? formatCurrency(sumCredit) : ''}</td>
                 </tr>
+                {sumDebit > 0.005 && sumCredit > 0.005 && (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-1 text-right" style={{ color: '#6b7280' }}>Net (debits − credits)</td>
+                    <td className="px-2 py-1 text-right font-semibold tabular-nums" style={{ color: '#111827' }}>{fmtAmt(net)}</td>
+                  </tr>
+                )}
               </tfoot>
             </table>
           )}
