@@ -44,6 +44,7 @@ interface Txn { id: string; date: string; description: string; spent: number; re
 interface Coa { id: string; accountNumber: string; accountTitle: string }
 interface Match { type: string; id: string; label: string; date: string; amount: number }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
+interface Hint { kind: string; label: string; amount: number; date: string; n: number }
 interface FxRate { id: string; currency: string; date: string; phpPerUnit: number; source: string; note: string | null }
 interface ImportBatch { id: string; fileName: string | null; createdAt: string; createdBy: string | null; total: number; pending: number; posted: number; archived: number; from: string | null; to: string | null }
 
@@ -63,21 +64,28 @@ export default function BankReconciliationPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [matchFor, setMatchFor] = useState<Txn | null>(null)
   const [imports, setImports] = useState<ImportBatch[]>([])
+  const [hints, setHints] = useState<Record<string, Hint>>({})
   const [showImports, setShowImports] = useState(false)
   const [rates, setRates] = useState<FxRate[]>([])
   const [catFor, setCatFor] = useState<Txn | null>(null)
   const [sortKey, setSortKey] = useState('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filters, setFilters] = useState<Record<string, string>>({})
+  const [onlyHinted, setOnlyHinted] = useState(false)
 
   const account = accounts.find(a => a.id === sel) || null
   const cur = account && account.currency !== 'PHP' ? account.currency : ''
   const money = (n: number) => (cur ? `${cur} ${peso(n)}` : `₱${peso(n)}`)
 
-  const visible = useMemo(
+  const sorted = useMemo(
     () => applySortFilter(txns, cellValue, sortKey, sortDir, filters, cellText),
     [txns, sortKey, sortDir, filters],
   )
+  const visible = useMemo(
+    () => (onlyHinted ? sorted.filter(t => hints[t.id]) : sorted),
+    [sorted, onlyHinted, hints],
+  )
+  const hintCount = useMemo(() => sorted.filter(t => hints[t.id]).length, [sorted, hints])
   const toggleSort = (k: string) => {
     // Same column flips direction; a new column starts descending for dates and
     // amounts (most recent / largest first) and ascending for text.
@@ -106,6 +114,17 @@ export default function BankReconciliationPage() {
   }, [sel])
   useEffect(() => { loadImports() }, [loadImports])
 
+  // Which rows look like something the Hub already recorded. Advisory only —
+  // nothing is posted from this; it just says where to look first.
+  const loadHints = useCallback(async () => {
+    if (!sel) { setHints({}); return }
+    try {
+      const r = await fetch(`/api/bank-rec/match-hints?bankAccountId=${sel}&status=${tab}`)
+      setHints(r.ok ? (await r.json()).hints || {} : {})
+    } catch { setHints({}) }
+  }, [sel, tab])
+  useEffect(() => { loadHints() }, [loadHints])
+
   const foreignCur = account && account.currency !== 'PHP' ? account.currency : ''
   const loadRates = useCallback(async () => {
     if (!foreignCur) { setRates([]); return }
@@ -127,7 +146,7 @@ export default function BankReconciliationPage() {
     await Promise.all([loadRates(), loadAccounts()])
   }
 
-  const refreshAll = async () => { await Promise.all([loadAccounts(), loadTxns(), loadImports()]) }
+  const refreshAll = async () => { await Promise.all([loadAccounts(), loadTxns(), loadImports(), loadHints()]) }
   const deleteBatch = async (b: ImportBatch, force = false) => {
     if (!force && !confirm(`Delete this upload?\n\n${b.fileName || 'Upload'} — ${b.total} line(s)${b.from ? `, ${b.from} to ${b.to}` : ''}.\n\nEvery line it created is removed from this account.`)) return
     const r = await fetch(`/api/bank-rec/imports?id=${b.id}${force ? '&force=1' : ''}`, { method: 'DELETE' })
@@ -301,6 +320,15 @@ export default function BankReconciliationPage() {
               <Search size={14} style={{ color: 'var(--mid-gray)', position: 'absolute', left: 10, top: 9 }} />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search description…" className="pl-8 pr-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)', minWidth: 220 }} />
             </div>
+            {hintCount > 0 && (
+              <button onClick={() => setOnlyHinted(v => !v)}
+                title="Rows whose amount and date line up with something already recorded in the Hub"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
+                style={{ borderColor: onlyHinted ? '#ca8a04' : 'var(--light-gray)', background: onlyHinted ? '#fef9c3' : 'transparent', color: '#854d0e' }}>
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: '#fde047' }} />
+                {hintCount} likely match{hintCount > 1 ? 'es' : ''}
+              </button>
+            )}
             {activeFilters > 0 && (
               <button onClick={() => setFilters({})} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                 <X size={13} /> Clear {activeFilters} filter{activeFilters > 1 ? 's' : ''}
@@ -328,9 +356,16 @@ export default function BankReconciliationPage() {
                     No rows match these filters. <button onClick={() => setFilters({})} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button>
                   </td></tr>
                 ) : visible.map(t => (
-                  <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: hints[t.id] ? '#fef9c3' : undefined }}>
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date}</td>
-                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{t.description}</td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>
+                      {t.description}
+                      {hints[t.id] && (
+                        <span className="block text-[10px] mt-0.5" style={{ color: '#854d0e' }} title={`${hints[t.id].label} · ₱${peso(hints[t.id].amount)} on ${hints[t.id].date}`}>
+                          Likely {hints[t.id].kind.toLowerCase()}: {hints[t.id].label}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-right text-xs font-semibold" style={{ color: t.spent > 0 ? '#b91c1c' : 'var(--light-gray)' }}>{t.spent > 0 ? money(t.spent) : ''}</td>
                     <td className="px-3 py-2.5 text-right text-xs font-semibold" style={{ color: t.received > 0 ? '#166534' : 'var(--light-gray)' }}>{t.received > 0 ? money(t.received) : ''}</td>
                     <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{t.fromToName || ''}</td>
