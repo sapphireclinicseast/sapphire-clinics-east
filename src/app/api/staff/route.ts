@@ -5,8 +5,8 @@ import { prisma } from '@/lib/prisma'
 
 /** Branch-specific roles see their branch + Verdana Store */
 function allowedBranches(role: string): string[] | null {
-  if (role.startsWith('SBEA_')) return ['SBEA', 'VDNA']
-  if (role.startsWith('SBGH_')) return ['SBGH', 'VDNA']
+  if (role.startsWith('SBEA_') || role.startsWith('AHEA_')) return ['SBEA', 'VDNA']
+  if (role.startsWith('SBGH_') || role.startsWith('AHGH_')) return ['SBGH', 'VDNA']
   return null // ADMIN / MARKETING_ADMIN — no restriction
 }
 

@@ -44,8 +44,8 @@ function formatTime(t: string): string {
 }
 
 function visibleBranches(role: string): string[] {
-  if (role.startsWith('SBEA_')) return ['SBEA']
-  if (role.startsWith('SBGH_')) return ['SBGH']
+  if (role.startsWith('SBEA_') || role.startsWith('AHEA_')) return ['SBEA']
+  if (role.startsWith('SBGH_') || role.startsWith('AHGH_')) return ['SBGH']
   return ['SBEA', 'SBGH']
 }
 

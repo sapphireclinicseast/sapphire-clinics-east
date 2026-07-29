@@ -52,7 +52,10 @@ export async function GET(req: NextRequest) {
       ...(staffId ? { staffId } : {}),
       date: { gte: dayStart, lte: dayEnd },
       ...(patientBranchEnum ? {
-        patient: { branch: patientBranchEnum as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' },
+        OR: [
+          { patientId: null },
+          { patient: { branch: patientBranchEnum as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' } },
+        ],
       } : {}),
     },
     include: {
