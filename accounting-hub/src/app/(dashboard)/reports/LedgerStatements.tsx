@@ -154,7 +154,12 @@ function MultiRow({ label, indent, bold, rule, doubleRule, muted, ...cells }: {
       fontStyle: muted ? 'italic' : undefined,
       color: muted ? '#6b7280' : undefined,
     }}>
-      <td className="px-3 py-1 whitespace-nowrap" style={{ paddingLeft: indent ? `${1 + indent * 1.25}rem` : undefined, fontWeight: bold ? 600 : 400 }}>
+      {/* Frozen first column: keeps the line item visible while scrolling sideways. */}
+      <td className="px-3 py-1 whitespace-nowrap" style={{
+        paddingLeft: indent ? `${1 + indent * 1.25}rem` : undefined, fontWeight: bold ? 600 : 400,
+        position: 'sticky', left: 0, zIndex: 1, background: doubleRule ? '#f9fafb' : 'white',
+        boxShadow: 'inset -1px 0 0 #f3f4f6',
+      }}>
         {label}
       </td>
       <MultiCells {...cells} bold={bold} />
@@ -483,27 +488,27 @@ export default function LedgerStatements({ year, branch, tab, view }: {
             <table className="w-full text-[0.75rem]" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>Line Item</th>
+                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151', position: 'sticky', top: 0, left: 0, zIndex: 3, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>Line Item</th>
                   {colLabels.map(m => <th key={m} className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>{m}</th>)}
                   <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', borderLeft: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
                 {sec('REVENUE') && (<>
-                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Gross Revenue</td></tr>
-                  {sec('REVENUE')!.rows.map(r => (<>
-                    <MultiRow key={r.number} label={rowLabel(r)} indent={1} {...rowVals(r)}
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Gross Revenue</span></td></tr>
+                  {sec('REVENUE')!.rows.map(r => (<Fragment key={r.number}>
+                    <MultiRow label={rowLabel(r)} indent={1} {...rowVals(r)}
                       onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
                     {r.number === '7080' && subtypeRows((p, mix) => {
                       const cols = toCols(p.monthly)
                       return <MultiRow key={`sub-${p.label}`} label={`${p.label} (${mix})`} indent={2} muted
                         values={cols} total={p.total} pctBases={vaBases} pctBaseTotal={vaTotal} />
                     })}
-                  </>))}
+                  </Fragment>))}
                   <MultiRow label="Total Gross Revenue" values={revC} total={grossTotal} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
                 </>)}
                 {sec('DISCOUNTS') && (<>
-                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Discounts and Refunds</td></tr>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Discounts and Refunds</span></td></tr>
                   {sec('DISCOUNTS')!.rows.map(r => {
                     const rv = rowVals(r, true)
                     return <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rv}
@@ -512,14 +517,14 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                 </>)}
                 <MultiRow label="Net Sales" values={netSalesC} total={is.netSales} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
                 {sec('COGS') && (<>
-                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Cost of Sales</td></tr>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Cost of Sales</span></td></tr>
                   {sec('COGS')!.rows.map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
                   ))}
                 </>)}
                 <MultiRow label="Gross Profit" values={netSalesC.map((n, i) => n - cogsC[i])} total={is.grossProfit} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
                 {sec('OPEX') && (<>
-                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Operating Expenses</td></tr>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Operating Expenses</span></td></tr>
                   {sec('OPEX')!.rows.map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
                   ))}
@@ -624,13 +629,13 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                 <tr>
                   {['Line Item', ...colLabels, 'Year End'].map((m, i) => (
                     <th key={m} className={`px-2 py-1.5 font-semibold ${i === 0 ? 'text-left px-3' : 'text-right'}`}
-                      style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb', ...(m === 'Year End' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
+                      style={{ color: '#374151', position: 'sticky', top: 0, zIndex: i === 0 ? 3 : 2, ...(i === 0 ? { left: 0 } : {}), background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb', ...(m === 'Year End' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {bs.sections.map(s => (<Fragment key={s.key}>
-                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>{s.label}</td></tr>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>{s.label}</span></td></tr>
                   {s.rows.map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={1}
                       values={pick(r.monthly || [])} total={r.closing}
@@ -712,12 +717,12 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                 <tr>
                   {['Line Item', ...colLabels, 'Total'].map((m, i) => (
                     <th key={m} className={`px-2 py-1.5 font-semibold ${i === 0 ? 'text-left px-3' : 'text-right'}`}
-                      style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb', ...(m === 'Total' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
+                      style={{ color: '#374151', position: 'sticky', top: 0, zIndex: i === 0 ? 3 : 2, ...(i === 0 ? { left: 0 } : {}), background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb', ...(m === 'Total' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Cash Flows from Operating Activities</td></tr>
+                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Cash Flows from Operating Activities</span></td></tr>
                 <MultiRow label="Net Income" indent={1} values={niM} total={cf.netIncome} bold />
                 <MultiRow label="Add: Depreciation (non-cash)" indent={1} values={depMv} total={cf.depreciation} />
                 <MultiRow label="Add: Income tax provision (accrued)" indent={1} values={provM} total={cf.taxProvision} />
@@ -725,12 +730,12 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                   <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
                 ))}
                 <MultiRow label="Net Cash from Operating Activities" values={opsM} total={cf.netOperating} bold rule />
-                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Investing Activities</td></tr>
+                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Investing Activities</span></td></tr>
                 {cf.investing.map((w, i) => (
                   <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
                 ))}
                 <MultiRow label="Net Cash from Investing Activities" values={invM} total={cf.netInvesting} bold rule />
-                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Financing Activities</td></tr>
+                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Financing Activities</span></td></tr>
                 {cf.financing.map((w, i) => (
                   <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
                 ))}
