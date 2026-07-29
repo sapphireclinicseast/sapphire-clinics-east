@@ -45,6 +45,7 @@ interface Coa { id: string; accountNumber: string; accountTitle: string }
 interface Match { type: string; id: string; label: string; date: string; amount: number }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
 interface Hint { kind: string; label: string; amount: number; date: string; n: number }
+interface UntaggedGroup { type: string; label: string; count: number; total: number; truncated: boolean; items: { id: string; label: string; date: string; amount: number; dir: string }[] }
 interface ForexAcct { id: string; accountNumber: string; accountTitle: string; currency: string; isForexAccount: boolean }
 interface FxRate { id: string; currency: string; date: string; phpPerUnit: number; source: string; note: string | null }
 interface ImportBatch { id: string; fileName: string | null; createdAt: string; createdBy: string | null; total: number; pending: number; posted: number; archived: number; from: string | null; to: string | null }
@@ -225,6 +226,9 @@ export default function BankReconciliationPage() {
               No reconciliation start date set for this account. Set one under <strong>Opening balance</strong> below so matching only considers Hub entries from that date onward.
             </div>
           )}
+
+          {/* Records the Hub holds that no bank line accounts for */}
+          <UntaggedPanel />
 
           {/* Opening balance — the figure the Balance Sheet starts this account
               from, and the date reconciliation begins counting Hub entries. */}
@@ -890,5 +894,111 @@ function ForexAccountsModal({ onClose, onSaved }: { onClose: () => void; onSaved
         </button>
       </div>
     </Modal>
+  )
+}
+
+
+// Records the Hub holds that no bank line accounts for.
+//
+// The grid shows the other half of reconciliation — bank lines with nothing
+// matched to them. A payment with no bank line at all appears nowhere in that
+// view, which makes it the easier of the two to miss entirely.
+function UntaggedPanel() {
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState<{ from: string; to: string; totalUntagged: number; totalRecords: number; groups: UntaggedGroup[] } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const today = new Date().toISOString().slice(0, 10)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const q = new URLSearchParams()
+      if (from) q.set('from', from)
+      if (to) q.set('to', to)
+      const r = await fetch(`/api/bank-rec/untagged?${q}`)
+      setData(r.ok ? await r.json() : null)
+    } catch { setData(null) } finally { setLoading(false) }
+  }, [from, to])
+  useEffect(() => { if (open) load() }, [open, load])
+
+  return (
+    <div className="rounded-2xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      <button onClick={() => setOpen(v => !v)} className="w-full flex items-center justify-between px-4 py-2.5 text-left">
+        <span className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+          <Link2 size={14} style={{ color: 'var(--teal)' }} /> Untagged transactions
+          {data && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+              style={{ background: data.totalUntagged ? '#fef3c7' : 'var(--off-white)', color: data.totalUntagged ? '#92400e' : 'var(--mid-gray)' }}>
+              {data.totalUntagged}
+            </span>
+          )}
+        </span>
+        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{open ? 'Hide' : 'Show'}</span>
+      </button>
+
+      {open && (
+        <div className="border-t px-4 py-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+            Everything recorded in the Hub that no posted bank line points at, across every bank account. The grid above shows the opposite case — bank lines with nothing matched to them.
+          </p>
+          <div className="flex flex-wrap items-end gap-2 mb-3">
+            <label className="text-xs">
+              <span className="block mb-1 font-semibold" style={{ color: 'var(--charcoal)' }}>From</span>
+              <input type="date" value={from} max={to || today} onChange={e => setFrom(e.target.value)} className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+            </label>
+            <label className="text-xs">
+              <span className="block mb-1 font-semibold" style={{ color: 'var(--charcoal)' }}>To</span>
+              <input type="date" value={to} min={from} max={today} onChange={e => setTo(e.target.value)} className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+            </label>
+            <button onClick={load} disabled={loading} className="px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              {loading ? <Loader2 size={13} className="inline animate-spin" /> : null} Refresh
+            </button>
+            {data && <span className="text-[11px] ml-auto" style={{ color: 'var(--mid-gray)' }}>{data.from} to {data.to} · {data.totalUntagged} of {data.totalRecords} records untagged</span>}
+          </div>
+
+          {loading && !data ? <p className="text-xs py-6 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={14} className="inline animate-spin" /> Loading…</p>
+          : !data || data.groups.length === 0 ? (
+            <p className="text-xs py-6 text-center" style={{ color: 'var(--mid-gray)' }}>
+              Nothing untagged in this period — every recorded payment has a bank line pointing at it.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {data.groups.map(g => (
+                <div key={g.type} className="rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                  <button onClick={() => setExpanded(e => e === g.type ? null : g.type)} className="w-full flex items-center justify-between px-3 py-2 text-left">
+                    <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>{g.label}</span>
+                    <span className="text-xs flex items-center gap-3">
+                      <span style={{ color: 'var(--mid-gray)' }}>{g.count} record{g.count === 1 ? '' : 's'}</span>
+                      <strong style={{ color: 'var(--charcoal)' }}>₱{peso(g.total)}</strong>
+                      <span style={{ color: 'var(--mid-gray)' }}>{expanded === g.type ? '▲' : '▼'}</span>
+                    </span>
+                  </button>
+                  {expanded === g.type && (
+                    <div className="border-t overflow-auto" style={{ borderColor: 'var(--light-gray)', maxHeight: 280 }}>
+                      <table className="w-full text-[11px]">
+                        <tbody>
+                          {g.items.map(i => (
+                            <tr key={i.id} className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-3 py-1.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{i.date}</td>
+                              <td className="px-3 py-1.5" style={{ color: 'var(--charcoal)' }}>{i.label}</td>
+                              <td className="px-3 py-1.5 text-right whitespace-nowrap font-semibold"
+                                style={{ color: i.dir === 'out' ? '#b91c1c' : '#166534' }}>₱{peso(i.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {g.truncated && <p className="px-3 py-1.5 text-[10px]" style={{ color: 'var(--mid-gray)' }}>Showing the 200 most recent of {g.count}.</p>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

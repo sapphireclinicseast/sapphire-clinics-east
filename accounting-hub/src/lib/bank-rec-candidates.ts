@@ -19,13 +19,22 @@ export interface Candidate {
 
 const num = (v: unknown) => Number(v ?? 0)
 
-export async function candidates(bankAccountId: string, lo: Date, hi: Date): Promise<Candidate[]> {
+/**
+ * @param bankAccountId scope to one bank account, or null for every record the
+ *   Hub holds regardless of which account it moved through — what the untagged
+ *   view needs, since a record with no bank account named is exactly the kind
+ *   that goes unnoticed.
+ */
+export async function candidates(bankAccountId: string | null, lo: Date, hi: Date): Promise<Candidate[]> {
   const range = { gte: lo, lte: hi }
+  // An account filter that matches everything when no account is given.
+  const on = <T extends string>(field: T, id: string | null) =>
+    (id ? { OR: [{ [field]: id }, { [field]: null }] } : {}) as Record<string, unknown>
   const [
     transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
-      where: { date: range, OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] },
+      where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
       select: { id: true, refNumber: true, amount: true, date: true, fromAccountId: true },
     }),
     // Petty cash, expenses, refunds and taxes all raise a Reimbursement Report;
@@ -42,33 +51,33 @@ export async function candidates(bankAccountId: string, lo: Date, hi: Date): Pro
     // The rest name the bank account they moved through. Rows that never had one
     // set are still offered, so nothing is hidden by an unfilled field.
     prisma.aRPayment.findMany({
-      where: { paymentDate: range, OR: [{ cashAccountId: bankAccountId }, { cashAccountId: null }] },
+      where: { paymentDate: range, ...on('cashAccountId', bankAccountId) },
       select: { id: true, amount: true, paymentDate: true, salesInvoiceNumber: true },
     }),
     prisma.salaryPayment.findMany({
-      where: { paymentDate: range, status: 'COMPLETED', fromAccountId: bankAccountId },
+      where: { paymentDate: range, status: 'COMPLETED', ...on('fromAccountId', bankAccountId) },
       select: { id: true, totalAmount: true, paymentDate: true, cutoffPeriod: true, paymentType: true },
     }),
     prisma.benefitPayment.findMany({
-      where: { paymentDate: range, status: 'COMPLETED', fromAccountId: bankAccountId },
+      where: { paymentDate: range, status: 'COMPLETED', ...on('fromAccountId', bankAccountId) },
       select: { id: true, totalAmount: true, paymentDate: true, cutoffPeriod: true },
     }),
     prisma.taxPayment.findMany({
-      where: { paymentDate: range, status: 'COMPLETED', fromAccountId: bankAccountId },
+      where: { paymentDate: range, status: 'COMPLETED', ...on('fromAccountId', bankAccountId) },
       select: { id: true, totalAmount: true, paymentDate: true, paymentType: true },
     }),
     prisma.cashAdvance.findMany({
-      where: { dateReleased: range, OR: [{ sourceAccountId: bankAccountId }, { sourceAccountId: null }] },
+      where: { dateReleased: range, ...on('sourceAccountId', bankAccountId) },
       select: { id: true, refNumber: true, amount: true, dateReleased: true, accountableName: true },
     }),
     // Equity deposits name the account they were debited into, so they are only
     // offered against that account.
     prisma.commonShare.findMany({
-      where: { dateAcquired: range, bankAccountId },
+      where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
       select: { id: true, dateAcquired: true, numberOfShares: true, pricePerShare: true, shareholder: { select: { name: true } } },
     }),
     prisma.preferredShare.findMany({
-      where: { dateAcquired: range, bankAccountId },
+      where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
       select: { id: true, dateAcquired: true, numberOfShares: true, pricePerShare: true, shareholder: { select: { name: true } } },
     }),
   ])
@@ -79,7 +88,7 @@ export async function candidates(bankAccountId: string, lo: Date, hi: Date): Pro
     out.push({
       type: 'FUND_TRANSFER', id: t.id, label: `${t.refNumber} · Fund Transfer`,
       date: t.date, amount: num(t.amount),
-      dir: t.fromAccountId === bankAccountId ? 'out' : 'in',
+      dir: !bankAccountId ? 'either' : (t.fromAccountId === bankAccountId ? 'out' : 'in'),
     })
   }
   for (const r of rfps) {
