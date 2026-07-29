@@ -139,7 +139,7 @@ export default function HandbookPage() {
         <UL>
           <li><strong>Oversight</strong> — Dashboard, Reports, Sales Summary, and Sales/Products Analysis for trends.</li>
           <li><strong>People &amp; access</strong> — create staff accounts and set roles in <strong>Users</strong> (only you).</li>
-          <li><strong>Company setup</strong> — Chart of Accounts, Beginning Balances, Budgets, and settings such as authorized shares (Equity).</li>
+          <li><strong>Company setup</strong> — Chart of Accounts, Budgets, and settings such as authorized shares (Equity).</li>
           <li><strong>Money movement</strong> — Fund Transfer, Taxes, Loans &amp; Advances, Equity, Scholars.</li>
           <li>Everything the other roles can do — POS, Payroll, Expenses, Receivables, PayMongo, Referral.</li>
         </UL>
@@ -188,9 +188,9 @@ export default function HandbookPage() {
         <H3>3.2 Chart of Accounts <span style={{ fontWeight: 400, color: 'var(--mid-gray)' }}>(General Ledger)</span></H3>
         <P>The master list of accounts — every peso lands in one of these. Each account has a <strong>number</strong> (e.g. 7010 Physical Therapy Revenue, 2070 PPE &amp; Lease Improvements), a <strong>type</strong> (Asset / Liability / Equity / Revenue / Expense), and flags such as <strong>&ldquo;is a bank account.&rdquo;</strong> This is the backbone every other screen posts to. Add or edit accounts here; the ⌘K global search can jump straight to one.</P>
 
-        <H3>3.3 Beginning Balances &amp; Bank Reconciliation</H3>
+        <H3>3.3 Bank Reconciliation</H3>
         <UL>
-          <li><strong>Beginning Balances</strong> — the opening figure per account for a year (e.g. each bank&apos;s starting balance). Bank reconciliation only counts Hub entries on/after the balance&apos;s start date.</li>
+          <li><strong>Opening balance</strong> — set per bank account inside Bank Reconciliation: the figure the Balance Sheet starts that account from, and the date reconciliation begins counting Hub entries. Lines dated before it are kept on file but locked from tagging.</li>
           <li><strong>Bank Reconciliation</strong> — match the Hub&apos;s recorded bank movements against the actual bank statement, and tick off what has cleared. Fund transfers, PayMongo payouts, and payments all surface here for matching.</li>
         </UL>
 

@@ -1021,7 +1021,7 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
           {!isBalanced && data.year >= 2026 && (
             <p className="mt-2 text-xs italic" style={{ color: 'var(--mid-gray)' }}>
               To fully chain this sheet off the audited FY2025 statements, enter the Dec-31-2025 balance-sheet
-              amounts as {data.year} opening balances in Beginning Balances — the remaining difference is the
+              amounts as {data.year} opening balances (bank accounts: Bank Reconciliation › Opening balance) — the remaining difference is the
               opening position not yet entered.
             </p>
           )}
