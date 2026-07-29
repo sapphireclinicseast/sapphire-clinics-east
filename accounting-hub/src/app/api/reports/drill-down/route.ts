@@ -35,6 +35,10 @@ const BRANCH_LABELS: Record<string, string> = {
 const MONTH_NAMES = ['January','February','March','April','May','June',
                      'July','August','September','October','November','December']
 
+// Historical JE / petty-cash descriptions were stored with the pre-rebrand branch
+// codes — sanitize at display time only (never applied to identifiers or queries).
+const rebrand = (s: string) => s.replace(/\bSBEA\b/g, 'AHEA').replace(/\bSBGH\b/g, 'AHGH')
+
 function formatCutoffLabel(period: string): string {
   // period format: "2026-05-2" (year-month-cutoffNum) or "2026-05-1"
   const parts = period.split('-')
@@ -388,7 +392,7 @@ export async function GET(req: Request) {
 
         return {
           date: displayDate,
-          type: `${line.journalEntry.description}${line.description ? ` — ${line.description}` : ''}`,
+          type: rebrand(`${line.journalEntry.description}${line.description ? ` — ${line.description}` : ''}`),
           branch: line.journalEntry.referenceType || '—',
           amount,
         }
@@ -411,7 +415,7 @@ export async function GET(req: Request) {
         if (!net) continue
         items.push({
           date: e.date ? e.date.toISOString().split('T')[0] : '',
-          type: `${e.pcvNumber} — ${e.description || ''} · Petty Cash`,
+          type: rebrand(`${e.pcvNumber} — ${e.description || ''} · Petty Cash`),
           branch: 'PETTY CASH',
           amount: net,
         })
@@ -443,7 +447,7 @@ export async function GET(req: Request) {
           if (mDate >= startDate && mDate < endDate) {
             items.push({
               date: `${y}-${String(m0 + 1).padStart(2, '0')}-01`,
-              type: `${e.pcvNumber} — ${e.description || ''} · Prepaid amortization (${count}-mo)`,
+              type: rebrand(`${e.pcvNumber} — ${e.description || ''} · Prepaid amortization (${count}-mo)`),
               branch: 'PETTY CASH',
               amount: Math.round(monthlyNet * 100) / 100,
             })
@@ -472,7 +476,7 @@ export async function GET(req: Request) {
           if (!netA) continue
           items.push({
             date: e.date ? e.date.toISOString().split('T')[0] : '',
-            type: `${e.pcvNumber} — ${e.description || ''} · CEO Petty Cash`,
+            type: rebrand(`${e.pcvNumber} — ${e.description || ''} · CEO Petty Cash`),
             branch: 'CEO',
             amount: netA,
           })
@@ -948,7 +952,7 @@ export async function GET(req: Request) {
         if (amt === 0) continue
         items.push({
           date: line.journalEntry.entryDate.toISOString().split('T')[0],
-          type: `JE: ${line.journalEntry.description}`,
+          type: rebrand(`JE: ${line.journalEntry.description}`),
           branch: BRANCH_LABELS[line.journalEntry.branch] || line.journalEntry.branch,
           amount: amt,
         })

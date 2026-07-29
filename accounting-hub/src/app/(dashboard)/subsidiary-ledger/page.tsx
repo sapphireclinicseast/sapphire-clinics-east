@@ -117,6 +117,9 @@ const fmtDate = (s: string) =>
 /** Signed amounts render as plain figures; only negatives get the parenthesis treatment. */
 const money = (n: number) => (n < 0 ? `(${formatCurrency(Math.abs(n))})` : formatCurrency(n))
 
+/** Historical JE descriptions were stored with the pre-rebrand branch codes — sanitize at display time only. */
+const rebrand = (s: string) => s.replace(/\bSBEA\b/g, 'AHEA').replace(/\bSBGH\b/g, 'AHGH')
+
 export default function SubsidiaryLedgerPage() {
   const [from, setFrom] = useState(monthStart())
   const [to, setTo] = useState(iso(new Date()))
@@ -222,7 +225,7 @@ export default function SubsidiaryLedgerPage() {
             fmtDate(l.date),
             refTypeLabel(l.refType),
             l.refId || '',
-            l.description,
+            rebrand(l.description),
             l.split,
             l.debit || '',
             l.credit || '',
@@ -450,7 +453,7 @@ export default function SubsidiaryLedgerPage() {
                                   <td className="px-4 py-1.5 text-xs whitespace-nowrap">{fmtDate(l.date)}</td>
                                   <td className="px-3 py-1.5 text-xs">{refTypeLabel(l.refType)}</td>
                                   <td className="px-3 py-1.5 font-mono text-[11px] text-gray-500 truncate max-w-[8rem]" title={l.refId || ''}>{l.refId || '—'}</td>
-                                  <td className="px-3 py-1.5 text-xs" title={l.entryDescription}>{l.description}</td>
+                                  <td className="px-3 py-1.5 text-xs" title={rebrand(l.entryDescription)}>{rebrand(l.description)}</td>
                                   <td className="px-3 py-1.5 text-xs text-gray-500 truncate max-w-[14rem]" title={l.splitLines.map(s => s.account).join(', ')}>{l.split}</td>
                                   <td className="px-3 py-1.5 text-right font-mono text-xs">{l.debit ? formatCurrency(l.debit) : ''}</td>
                                   <td className="px-3 py-1.5 text-right font-mono text-xs">{l.credit ? formatCurrency(l.credit) : ''}</td>
@@ -513,7 +516,7 @@ export default function SubsidiaryLedgerPage() {
             </div>
 
             <div className="px-5 py-3">
-              <p className="text-sm mb-3">{detail.line.entryDescription}</p>
+              <p className="text-sm mb-3">{rebrand(detail.line.entryDescription)}</p>
               <table className="w-full text-sm">
                 <thead className="text-[10px] uppercase tracking-wider text-gray-500">
                   <tr>
@@ -541,7 +544,7 @@ export default function SubsidiaryLedgerPage() {
                 </tbody>
               </table>
               {detail.line.description !== detail.line.entryDescription && (
-                <p className="text-xs text-gray-500 mt-3">Line memo: {detail.line.description}</p>
+                <p className="text-xs text-gray-500 mt-3">Line memo: {rebrand(detail.line.description)}</p>
               )}
               <p className="text-[10px] text-gray-400 mt-3 font-mono">Journal entry {detail.line.journalEntryId}</p>
             </div>
