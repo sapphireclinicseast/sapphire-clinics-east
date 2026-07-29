@@ -80,6 +80,27 @@ export async function GET(req: Request) {
     }
   }
 
+  // ── the other leg of a currency exchange ──────────────────────────────────
+  // Money out of a PHP account landing in an account held in another currency
+  // never matches on amount, so it is easy to mistake for something to
+  // categorise. Flagging it points at the Currency exchange flow instead.
+  const thisAccount = await prisma.account.findUnique({
+    where: { id: bankAccountId }, select: { currency: true },
+  })
+  const otherCurrencyAccounts = await prisma.account.findMany({
+    where: { isBankAccount: true, isActive: true, id: { not: bankAccountId } },
+    select: { id: true, accountNumber: true, accountTitle: true, currency: true },
+  })
+  const crossIds = otherCurrencyAccounts
+    .filter(a => (a.currency || 'PHP') !== (thisAccount?.currency || 'PHP'))
+    .map(a => a.id)
+  const crossLines = crossIds.length
+    ? await prisma.bankTransaction.findMany({
+        where: { bankAccountId: { in: crossIds }, date: { gte: lo, lte: hi }, status: 'PENDING' },
+        select: { bankAccountId: true, date: true, spent: true, received: true },
+      })
+    : []
+
   // ── money out: things the Hub already knows were paid ─────────────────────
   const [rfps, transfers] = await Promise.all([
     prisma.reimbursementReport.findMany({
@@ -120,6 +141,25 @@ export async function GET(req: Request) {
     const batch = [...batches.values()].find(b => b.n > 1 && within(b.date, t.date) && close(b.amount, received))
     if (batch) {
       hints[t.id] = { kind: 'Day settlement', label: `${batch.n} × ${batch.label} on ${dayKey(batch.date)}`, amount: batch.amount, date: dayKey(batch.date), n: batch.n }
+    }
+  }
+
+  // Currency-exchange legs, applied last so a real settlement match wins: this
+  // one is only a direction-and-date coincidence, since the two sides of an
+  // exchange never share an amount.
+  for (const t of txns) {
+    if (hints[t.id]) continue
+    const out = Number(t.spent) > 0
+    const legs = crossLines.filter(l => within(l.date, t.date)
+      && (out ? Number(l.received) > 0 : Number(l.spent) > 0))
+    if (legs.length !== 1) continue      // ambiguous, so say nothing
+    const leg = legs[0]
+    const acct = otherCurrencyAccounts.find(a => a.id === leg.bankAccountId)!
+    const amt = out ? Number(leg.received) : Number(leg.spent)
+    hints[t.id] = {
+      kind: 'Currency exchange',
+      label: `${amt.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${acct.currency} on ${acct.accountNumber} — use Match › Currency exchange`,
+      amount: amt, date: dayKey(leg.date), n: 1,
     }
   }
 
