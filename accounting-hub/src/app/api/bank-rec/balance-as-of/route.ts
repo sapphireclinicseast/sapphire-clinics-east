@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isForeign, rateFor, toPhp } from '@/lib/fx'
 
 // GET ?date=YYYY-MM-DD → for every bank account that has uploaded statement
 // lines carrying a running balance, the balance as of that date.
@@ -36,10 +37,20 @@ export async function GET(req: Request) {
       orderBy: { date: 'desc' },
       select: { date: true },
     })
+    const native = line?.statementBalance != null ? Number(line.statementBalance) : null
+    // Beginning Balances feeds the Balance Sheet, which is PHP throughout, so a
+    // foreign account's opening figure has to be its PHP equivalent — posting
+    // the native figure would read as pesos and misstate total assets.
+    const cur = a.currency || 'PHP'
+    const rate = native !== null && isForeign(cur) ? await rateFor(cur, new Date(date)) : null
     out.push({
       accountId: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle,
-      currency: a.currency || 'PHP',
-      balance: line?.statementBalance != null ? Number(line.statementBalance) : null,
+      currency: cur,
+      native,
+      balance: native === null ? null : (isForeign(cur) ? (rate ? toPhp(native, rate.phpPerUnit) : null) : native),
+      rate: rate?.phpPerUnit ?? null,
+      rateDate: rate?.rateDate ?? null,
+      needsRate: native !== null && isForeign(cur) && !rate,
       asOf: line?.date ? line.date.toISOString().slice(0, 10) : null,
       dataThrough: latest?.date ? latest.date.toISOString().slice(0, 10) : null,
     })

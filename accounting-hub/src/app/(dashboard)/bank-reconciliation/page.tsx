@@ -7,11 +7,12 @@ import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, Ro
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number }
+interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
 interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
 interface Match { type: string; id: string; label: string; date: string; amount: number }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
+interface FxRate { id: string; currency: string; date: string; phpPerUnit: number; source: string; note: string | null }
 interface ImportBatch { id: string; fileName: string | null; createdAt: string; createdBy: string | null; total: number; pending: number; posted: number; archived: number; from: string | null; to: string | null }
 
 export default function BankReconciliationPage() {
@@ -31,6 +32,7 @@ export default function BankReconciliationPage() {
   const [matchFor, setMatchFor] = useState<Txn | null>(null)
   const [imports, setImports] = useState<ImportBatch[]>([])
   const [showImports, setShowImports] = useState(false)
+  const [rates, setRates] = useState<FxRate[]>([])
   const [catFor, setCatFor] = useState<Txn | null>(null)
 
   const account = accounts.find(a => a.id === sel) || null
@@ -53,6 +55,27 @@ export default function BankReconciliationPage() {
     try { const r = await fetch(`/api/bank-rec/imports?bankAccountId=${sel}`); setImports(r.ok ? await r.json() : []) } catch { setImports([]) }
   }, [sel])
   useEffect(() => { loadImports() }, [loadImports])
+
+  const foreignCur = account && account.currency !== 'PHP' ? account.currency : ''
+  const loadRates = useCallback(async () => {
+    if (!foreignCur) { setRates([]); return }
+    try { const r = await fetch(`/api/bank-rec/rates?currency=${foreignCur}`); setRates(r.ok ? await r.json() : []) } catch { setRates([]) }
+  }, [foreignCur])
+  useEffect(() => { loadRates() }, [loadRates])
+  const addRate = async () => {
+    const date = prompt(`Rate date (YYYY-MM-DD) for ${foreignCur}:`, new Date().toISOString().slice(0, 10))
+    if (!date) return
+    const v = prompt(`PHP for 1 ${foreignCur} on ${date}:`, '')
+    if (!v || !(Number(v) > 0)) return
+    const r = await fetch('/api/bank-rec/rates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currency: foreignCur, date, phpPerUnit: Number(v) }) })
+    if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+    await Promise.all([loadRates(), loadAccounts()])
+  }
+  const delRate = async (id: string) => {
+    if (!confirm('Remove this rate?\n\nLines already posted keep the rate they were posted at.')) return
+    await fetch(`/api/bank-rec/rates?id=${id}`, { method: 'DELETE' })
+    await Promise.all([loadRates(), loadAccounts()])
+  }
 
   const refreshAll = async () => { await Promise.all([loadAccounts(), loadTxns(), loadImports()]) }
   const deleteBatch = async (b: ImportBatch, force = false) => {
@@ -112,7 +135,14 @@ export default function BankReconciliationPage() {
                   {a.pendingCount > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--charcoal)', color: '#fff' }}>{a.pendingCount}</span>}
                 </div>
                 <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{a.accountTitle}</p>
-                <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(a.postedBalance)}</p>
+                <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>
+                  {a.currency && a.currency !== 'PHP' ? `${a.currency} ` : '₱'}{peso(a.postedBalance)}
+                </p>
+                {a.currency !== 'PHP' && (
+                  <p className="text-[11px] font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                    {a.postedBalancePhp !== null ? `≈ ₱${peso(a.postedBalancePhp)} @ ${a.fxRate}` : 'No exchange rate on file'}
+                  </p>
+                )}
                 <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Posted balance{a.startDate ? ` · since ${a.startDate}` : ''}</p>
               </button>
             ))}
@@ -121,6 +151,33 @@ export default function BankReconciliationPage() {
           {account && !account.startDate && (
             <div className="rounded-xl border px-4 py-2 text-xs" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
               No reconciliation start date set for this account. Set one in <strong>Beginning Balances</strong> so matching only considers Hub entries from that date onward.
+            </div>
+          )}
+
+          {/* Exchange rates — only for accounts not held in PHP */}
+          {foreignCur && (
+            <div className="rounded-2xl border bg-white p-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{foreignCur} exchange rates</p>
+                {canWrite && <button onClick={addRate} className="text-xs font-semibold px-2.5 py-1 rounded-lg border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>+ Add rate</button>}
+              </div>
+              <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                Used to state this account in PHP for the Balance Sheet. Matching a currency exchange records the rate it implied automatically.
+              </p>
+              {rates.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No rates yet — match a currency exchange, or add one.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {rates.slice(0, 12).map(r => (
+                    <span key={r.id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px]" style={{ borderColor: 'var(--light-gray)' }}>
+                      <span style={{ color: 'var(--mid-gray)' }}>{r.date}</span>
+                      <strong style={{ color: 'var(--charcoal)' }}>{r.phpPerUnit}</strong>
+                      {r.source === 'FOREX_MATCH' && <span title="Captured from a matched currency exchange" style={{ color: 'var(--deep-teal)' }}>auto</span>}
+                      {canWrite && <button onClick={() => delRate(r.id)} style={{ color: '#b91c1c' }}>×</button>}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -256,7 +313,7 @@ export default function BankReconciliationPage() {
 
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
-      {catFor && <CategoriseModal txn={catFor} coa={coa} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
+      {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
       {matchFor && <MatchModal txn={matchFor} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
     </div>
   )
@@ -392,20 +449,59 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
   )
 }
 
-function CategoriseModal({ txn, coa, onClose, onDone }: { txn: Txn; coa: Coa[]; onClose: () => void; onDone: () => void }) {
+function CategoriseModal({ txn, coa, account, onClose, onDone }: { txn: Txn; coa: Coa[]; account: BankAcct | null; onClose: () => void; onDone: () => void }) {
   const [q, setQ] = useState('')
   const [categoryAccountId, setCat] = useState('')
   const [fromToName, setFromTo] = useState(txn.fromToName || '')
   const [busy, setBusy] = useState(false)
   const filtered = coa.filter(c => !q || `${c.accountNumber} ${c.accountTitle}`.toLowerCase().includes(q.toLowerCase())).slice(0, 50)
-  const save = async () => {
+  const foreign = !!account && account.currency !== 'PHP'
+  const native = txn.spent > 0 ? txn.spent : txn.received
+  const [rate, setRate] = useState<string>('')
+  const effRate = Number(rate) || account?.fxRate || 0
+  const save = async (withRate?: number) => {
     if (!categoryAccountId) { alert('Choose a category account.'); return }
     setBusy(true)
-    try { const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'categorise', categoryAccountId, fromToName }) }); if (!r.ok) { alert((await r.json()).error || 'Failed'); return } onDone() } finally { setBusy(false) }
+    try {
+      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'categorise', categoryAccountId, fromToName, fxRate: withRate ?? (rate ? Number(rate) : undefined) }) })
+      const d = await r.json()
+      if (!r.ok) {
+        // No rate on file yet — take one here rather than sending the user away.
+        if (d.needsRate) {
+          const entered = prompt(`${d.error}\n\nPHP for 1 ${d.currency} on ${txn.date}:`, '')
+          if (entered && Number(entered) > 0) {
+            await fetch('/api/bank-rec/rates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currency: d.currency, date: txn.date, phpPerUnit: Number(entered), note: 'Entered while categorising' }) })
+            return save(Number(entered))
+          }
+          return
+        }
+        alert(d.error || 'Failed'); return
+      }
+      onDone()
+    } finally { setBusy(false) }
   }
   return (
     <Modal title="Categorise & post" onClose={onClose}>
-      <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>₱{peso(txn.spent > 0 ? txn.spent : txn.received)}</strong> {txn.spent > 0 ? '(out)' : '(in)'}</p>
+      <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>{foreign ? `${account!.currency} ` : '₱'}{peso(native)}</strong> {txn.spent > 0 ? '(out)' : '(in)'}</p>
+      {foreign && (
+        <div className="rounded-xl border px-3 py-2 mb-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-[11px] mb-1.5" style={{ color: 'var(--mid-gray)' }}>
+            The ledger is kept in PHP, so this line is posted at the rate for its date.
+          </p>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>PHP per 1 {account!.currency}</label>
+            <input value={rate} onChange={e => setRate(e.target.value)} inputMode="decimal"
+              placeholder={account!.fxRate ? String(account!.fxRate) : '0.0000'}
+              className="w-28 px-2 py-1 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+            <span className="text-xs font-semibold ml-auto" style={{ color: 'var(--deep-teal)' }}>
+              {effRate > 0 ? `= ₱${peso(Math.round(native * effRate * 100) / 100)}` : 'no rate on file'}
+            </span>
+          </div>
+          {!rate && account!.fxRateDate && (
+            <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Using the rate recorded {account!.fxRateDate}. Leave blank to keep it.</p>
+          )}
+        </div>
+      )}
       <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>From / To (payee or customer)</label>
       <input value={fromToName} onChange={e => setFromTo(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
       <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Category account</label>
@@ -416,7 +512,7 @@ function CategoriseModal({ txn, coa, onClose, onDone }: { txn: Txn; coa: Coa[]; 
         ))}
       </div>
       <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Posts a journal entry: {txn.spent > 0 ? 'debit the category, credit this bank account.' : 'debit this bank account, credit the category.'}</p>
-      <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Categorise & post'}</button>
+      <button onClick={() => save()} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Categorise & post'}</button>
     </Modal>
   )
 }

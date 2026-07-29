@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
+import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -156,8 +157,27 @@ export async function PATCH(req: Request) {
     if (action === 'categorise') {
       const categoryAccountId = body.categoryAccountId
       if (!categoryAccountId) return NextResponse.json({ error: 'Choose a category account' }, { status: 400 })
-      const amount = Number(txn.spent) > 0 ? Number(txn.spent) : Number(txn.received)
+      const native = Number(txn.spent) > 0 ? Number(txn.spent) : Number(txn.received)
       const isSpent = Number(txn.spent) > 0
+
+      // The ledger is kept in PHP, so a line on an account held in another
+      // currency is translated at the rate for its date before it is posted.
+      const bankAcct = await prisma.account.findUnique({
+        where: { id: txn.bankAccountId }, select: { currency: true },
+      })
+      const cur = bankAcct?.currency || 'PHP'
+      let amount = native, usedRate: number | null = null
+      if (isForeign(cur)) {
+        const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate), rateDate: '', onOrBefore: true } : await rateFor(cur, txn.date)
+        if (!rate || !(rate.phpPerUnit > 0)) {
+          return NextResponse.json({
+            error: `No ${cur} exchange rate is on file for ${txn.date.toISOString().slice(0, 10)}. Add one, or match a currency exchange so the rate is captured from it.`,
+            needsRate: true, currency: cur,
+          }, { status: 400 })
+        }
+        usedRate = rate.phpPerUnit
+        amount = toPhp(native, usedRate)
+      }
       // Spent: Dr category / Cr bank.  Received: Dr bank / Cr category.
       const lines = isSpent
         ? [{ accountId: categoryAccountId, debit: amount, credit: 0 }, { accountId: txn.bankAccountId, debit: 0, credit: amount }]
@@ -166,15 +186,19 @@ export async function PATCH(req: Request) {
         if (txn.journalEntryId) await tx.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
         const created = await tx.journalEntry.create({
           data: {
-            entryDate: txn.date, description: `Bank: ${txn.description}`, referenceType: 'BANK_REC', referenceId: txn.id,
+            entryDate: txn.date,
+            description: usedRate
+              ? `Bank: ${txn.description} (${native.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${bankAcct?.currency} @ ${usedRate})`
+              : `Bank: ${txn.description}`,
+            referenceType: 'BANK_REC', referenceId: txn.id,
             totalAmount: amount, createdById: session.user!.id as string,
             lines: { create: lines.map(l => ({ accountId: l.accountId, debit: l.debit, credit: l.credit, description: txn.description })) },
           },
         })
-        await tx.bankTransaction.update({ where: { id }, data: { status: 'POSTED', categoryAccountId, journalEntryId: created.id, matchType: null, matchId: null, matchLabel: null, fromToName: body.fromToName ?? txn.fromToName } })
+        await tx.bankTransaction.update({ where: { id }, data: { status: 'POSTED', categoryAccountId, journalEntryId: created.id, fxRate: usedRate, matchType: null, matchId: null, matchLabel: null, fromToName: body.fromToName ?? txn.fromToName } })
         return created
       })
-      return NextResponse.json({ success: true, journalEntryId: je.id })
+      return NextResponse.json({ success: true, journalEntryId: je.id, php: amount, rate: usedRate })
     }
 
     // Currency exchange: this line and its counterpart on a bank account held in
@@ -227,6 +251,9 @@ export async function PATCH(req: Request) {
         }
         return created
       })
+      // The exchange just proved a real rate for that day — keep it so other
+      // lines on the foreign account can be stated in PHP.
+      await recordRate(toAcct?.currency || '', out.date, rate, `${transfer.refNumber}`, session.user!.id)
       return NextResponse.json({ success: true, refNumber: transfer.refNumber, rate })
     }
 

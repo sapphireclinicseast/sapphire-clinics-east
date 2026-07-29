@@ -112,14 +112,24 @@ export default function BeginningBalancesPage() {
       if (!res.ok) { alert(d.error || 'Failed'); return }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const withData = (d.accounts || []).filter((a: any) => a.balance !== null)
-      if (!withData.length) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blocked = (d.accounts || []).filter((a: any) => a.needsRate)
+      if (!withData.length && !blocked.length) {
         alert(`No uploaded statement lines carry a running balance on or before ${asOf}.\n\nRe-upload the statements with the Balance column mapped in Bank Reconciliation, then try again.`)
         return
       }
+      // Beginning balances are a PHP figure, so a foreign account is filled with
+      // its converted value and its own currency is shown alongside.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const lines = withData.map((a: any) =>
-        `${a.accountNumber} ${a.accountTitle}: ${a.currency} ${a.balance.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
-        + (a.asOf !== asOf ? `  (last line ${a.asOf})` : '')).join('\n')
+        `${a.accountNumber} ${a.accountTitle}: PHP ${a.balance.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+        + (a.currency !== 'PHP' ? `  (${a.currency} ${a.native.toLocaleString('en-PH', { minimumFractionDigits: 2 })} @ ${a.rate})` : '')
+        + (a.asOf !== asOf ? `  [last line ${a.asOf}]` : '')).join('\n')
+      if (blocked.length) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        alert(`Skipped ${blocked.length} foreign-currency account(s) with no exchange rate on file:\n\n${blocked.map((a: any) => `${a.accountNumber} ${a.accountTitle} (${a.currency})`).join('\n')}\n\nRecord a rate for them first — matching a currency exchange in Bank Reconciliation captures one automatically.`)
+        if (!withData.length) return
+      }
       if (!confirm(`Fill these ${withData.length} bank account(s)?\n\n${lines}\n\nNothing is saved until you press Save.`)) return
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       withData.forEach((a: any) => setAmount(a.accountId, a.balance))

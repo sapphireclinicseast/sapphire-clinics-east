@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isForeign, rateFor, toPhp } from '@/lib/fx'
 
 // GET → bank accounts (COA isBankAccount) with pending/posted/excluded counts,
 // beginning balance + start date, and a posted running balance.
@@ -25,6 +26,14 @@ export async function GET() {
   const begOf = (id: string) => balances.find(b => b.accountId === id) // latest year
   const postOf = (id: string) => postedAgg.find(p => p.bankAccountId === id)
 
+  // Foreign accounts are also shown in PHP, at the latest rate on file, so the
+  // figure on the card can be read against the rest of the (PHP) books.
+  const fx = new Map<string, { phpPerUnit: number; rateDate: string } | null>()
+  for (const a of accounts) {
+    const cur = a.currency || 'PHP'
+    if (isForeign(cur) && !fx.has(cur)) fx.set(cur, await rateFor(cur, new Date()))
+  }
+
   return NextResponse.json(accounts.map(a => {
     const beg = begOf(a.id)
     const begAmt = beg ? Number(beg.amount) : 0
@@ -36,6 +45,10 @@ export async function GET() {
       archivedCount: countOf(a.id, 'ARCHIVED'),
       beginningBalance: begAmt, startDate: beg?.startDate ? new Date(beg.startDate).toISOString().slice(0, 10) : null,
       postedBalance: begAmt + movement,
+      fxRate: isForeign(a.currency || 'PHP') ? (fx.get(a.currency || 'PHP')?.phpPerUnit ?? null) : null,
+      fxRateDate: isForeign(a.currency || 'PHP') ? (fx.get(a.currency || 'PHP')?.rateDate ?? null) : null,
+      postedBalancePhp: isForeign(a.currency || 'PHP') && fx.get(a.currency || 'PHP')
+        ? toPhp(begAmt + movement, fx.get(a.currency || 'PHP')!.phpPerUnit) : null,
     }
   }))
 }

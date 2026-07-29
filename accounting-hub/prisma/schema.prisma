@@ -2742,6 +2742,10 @@ model BankTransaction {
   // file carries one. Lets a balance "as of" any date be read straight off the
   // statement instead of being inferred from a chain of movements.
   statementBalance  Decimal?
+  // Rate applied when this line was posted, for accounts not held in PHP. Kept
+  // on the line so the general-ledger figure can always be traced back to the
+  // rate that produced it, even if the rate table is edited afterwards.
+  fxRate            Decimal?
   importBatch       String?
   createdById       String?
   createdAt         DateTime @default(now())
@@ -2766,6 +2770,25 @@ model BankImportBatch {
   createdAt     DateTime @default(now())
 
   @@index([bankAccountId])
+}
+
+// Exchange rates used to state foreign-currency accounts in PHP.
+//
+// Rates are captured from transactions that actually happened — every currency
+// exchange matched in Bank Reconciliation records the rate it implied — and can
+// also be entered by hand for dates with no exchange of their own.
+model ExchangeRate {
+  id          String   @id @default(cuid())
+  currency    String   // the foreign currency, e.g. "CNY"
+  date        DateTime @db.Date  // effective date
+  phpPerUnit  Decimal  // PHP for 1 unit of `currency`
+  source      String   @default("MANUAL")  // MANUAL | FOREX_MATCH
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([currency, date])
+  @@index([currency, date])
 }
 
 model SkuDefinition {
