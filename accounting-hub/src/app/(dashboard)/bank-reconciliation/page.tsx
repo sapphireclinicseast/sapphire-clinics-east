@@ -2,23 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download } from 'lucide-react'
+import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number }
+interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
 interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
 interface Match { type: string; id: string; label: string; date: string; amount: number }
+interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
+interface FxRate { id: string; currency: string; date: string; phpPerUnit: number; source: string; note: string | null }
+interface ImportBatch { id: string; fileName: string | null; createdAt: string; createdBy: string | null; total: number; pending: number; posted: number; archived: number; from: string | null; to: string | null }
 
 export default function BankReconciliationPage() {
   const { data: session } = useSession()
   const canWrite = WRITE_ROLES.includes((session?.user?.role as string) || '')
+  const isAdmin = (session?.user?.role as string) === 'ADMIN'
 
   const [accounts, setAccounts] = useState<BankAcct[]>([])
   const [sel, setSel] = useState('')
-  const [tab, setTab] = useState<'PENDING' | 'POSTED' | 'EXCLUDED'>('PENDING')
+  const [tab, setTab] = useState<'PENDING' | 'POSTED' | 'EXCLUDED' | 'ARCHIVED'>('PENDING')
   const [txns, setTxns] = useState<Txn[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -26,6 +30,9 @@ export default function BankReconciliationPage() {
   const [showUpload, setShowUpload] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [matchFor, setMatchFor] = useState<Txn | null>(null)
+  const [imports, setImports] = useState<ImportBatch[]>([])
+  const [showImports, setShowImports] = useState(false)
+  const [rates, setRates] = useState<FxRate[]>([])
   const [catFor, setCatFor] = useState<Txn | null>(null)
 
   const account = accounts.find(a => a.id === sel) || null
@@ -43,9 +50,57 @@ export default function BankReconciliationPage() {
   }, [sel, tab, search])
   useEffect(() => { loadTxns() }, [loadTxns])
 
-  const refreshAll = async () => { await Promise.all([loadAccounts(), loadTxns()]) }
+  const loadImports = useCallback(async () => {
+    if (!sel) { setImports([]); return }
+    try { const r = await fetch(`/api/bank-rec/imports?bankAccountId=${sel}`); setImports(r.ok ? await r.json() : []) } catch { setImports([]) }
+  }, [sel])
+  useEffect(() => { loadImports() }, [loadImports])
+
+  const foreignCur = account && account.currency !== 'PHP' ? account.currency : ''
+  const loadRates = useCallback(async () => {
+    if (!foreignCur) { setRates([]); return }
+    try { const r = await fetch(`/api/bank-rec/rates?currency=${foreignCur}`); setRates(r.ok ? await r.json() : []) } catch { setRates([]) }
+  }, [foreignCur])
+  useEffect(() => { loadRates() }, [loadRates])
+  const addRate = async () => {
+    const date = prompt(`Rate date (YYYY-MM-DD) for ${foreignCur}:`, new Date().toISOString().slice(0, 10))
+    if (!date) return
+    const v = prompt(`PHP for 1 ${foreignCur} on ${date}:`, '')
+    if (!v || !(Number(v) > 0)) return
+    const r = await fetch('/api/bank-rec/rates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currency: foreignCur, date, phpPerUnit: Number(v) }) })
+    if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+    await Promise.all([loadRates(), loadAccounts()])
+  }
+  const delRate = async (id: string) => {
+    if (!confirm('Remove this rate?\n\nLines already posted keep the rate they were posted at.')) return
+    await fetch(`/api/bank-rec/rates?id=${id}`, { method: 'DELETE' })
+    await Promise.all([loadRates(), loadAccounts()])
+  }
+
+  const refreshAll = async () => { await Promise.all([loadAccounts(), loadTxns(), loadImports()]) }
+  const deleteBatch = async (b: ImportBatch, force = false) => {
+    if (!force && !confirm(`Delete this upload?\n\n${b.fileName || 'Upload'} — ${b.total} line(s)${b.from ? `, ${b.from} to ${b.to}` : ''}.\n\nEvery line it created is removed from this account.`)) return
+    const r = await fetch(`/api/bank-rec/imports?id=${b.id}${force ? '&force=1' : ''}`, { method: 'DELETE' })
+    const d = await r.json()
+    if (!r.ok) {
+      if (d.needsForce && confirm(`${d.error}\n\nDelete them anyway?`)) return deleteBatch(b, true)
+      if (!d.needsForce) alert(d.error || 'Failed')
+      return
+    }
+    alert(`Deleted ${d.deleted} line(s).`)
+    await refreshAll()
+  }
   const act = async (body: Record<string, unknown>) => { const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!r.ok) { alert((await r.json()).error || 'Failed'); return } await refreshAll() }
   const del = async (id: string) => { if (!confirm('Delete this bank line?')) return; await fetch(`/api/bank-rec/transactions?id=${id}`, { method: 'DELETE' }); await refreshAll() }
+  const lockOlder = async () => {
+    if (!account?.startDate) return
+    if (!confirm(`Lock every untagged bank line dated before ${account.startDate}?\n\nThey stay on file but can no longer be matched or categorised. Already-posted lines are not affected.`)) return
+    const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'lock-older', bankAccountId: account.id }) })
+    const d = await r.json()
+    if (!r.ok) { alert(d.error || 'Failed'); return }
+    alert(`Locked ${d.archived} line(s) dated before ${d.cutoff}.`)
+    await refreshAll()
+  }
 
   return (
     <div className="space-y-4">
@@ -55,6 +110,9 @@ export default function BankReconciliationPage() {
         </h1>
         {canWrite && sel && (
           <div className="flex items-center gap-2">
+            {account?.startDate && (account?.pendingCount ?? 0) > 0 && (
+              <button onClick={lockOlder} title={`Lock untagged lines dated before ${account.startDate}`} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Lock size={14} /> Lock pre-{account.startDate.slice(0, 7)}</button>
+            )}
             <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Upload size={14} /> Upload from file</button>
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add transaction</button>
           </div>
@@ -77,7 +135,14 @@ export default function BankReconciliationPage() {
                   {a.pendingCount > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--charcoal)', color: '#fff' }}>{a.pendingCount}</span>}
                 </div>
                 <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{a.accountTitle}</p>
-                <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(a.postedBalance)}</p>
+                <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>
+                  {a.currency && a.currency !== 'PHP' ? `${a.currency} ` : '₱'}{peso(a.postedBalance)}
+                </p>
+                {a.currency !== 'PHP' && (
+                  <p className="text-[11px] font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                    {a.postedBalancePhp !== null ? `≈ ₱${peso(a.postedBalancePhp)} @ ${a.fxRate}` : 'No exchange rate on file'}
+                  </p>
+                )}
                 <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Posted balance{a.startDate ? ` · since ${a.startDate}` : ''}</p>
               </button>
             ))}
@@ -89,10 +154,96 @@ export default function BankReconciliationPage() {
             </div>
           )}
 
+          {/* Exchange rates — only for accounts not held in PHP */}
+          {foreignCur && (
+            <div className="rounded-2xl border bg-white p-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{foreignCur} exchange rates</p>
+                {canWrite && <button onClick={addRate} className="text-xs font-semibold px-2.5 py-1 rounded-lg border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>+ Add rate</button>}
+              </div>
+              <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                Used to state this account in PHP for the Balance Sheet. Matching a currency exchange records the rate it implied automatically.
+              </p>
+              {rates.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No rates yet — match a currency exchange, or add one.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {rates.slice(0, 12).map(r => (
+                    <span key={r.id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px]" style={{ borderColor: 'var(--light-gray)' }}>
+                      <span style={{ color: 'var(--mid-gray)' }}>{r.date}</span>
+                      <strong style={{ color: 'var(--charcoal)' }}>{r.phpPerUnit}</strong>
+                      {r.source === 'FOREX_MATCH' && <span title="Captured from a matched currency exchange" style={{ color: 'var(--deep-teal)' }}>auto</span>}
+                      {canWrite && <button onClick={() => delRate(r.id)} style={{ color: '#b91c1c' }}>×</button>}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Uploaded data */}
+          {imports.length > 0 && (
+            <div className="rounded-2xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+              <button onClick={() => setShowImports(v => !v)} className="w-full flex items-center justify-between px-4 py-2.5 text-left">
+                <span className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                  <Upload size={14} style={{ color: 'var(--teal)' }} /> Uploaded data
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{imports.length}</span>
+                </span>
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{showImports ? 'Hide' : 'Show'}</span>
+              </button>
+              {showImports && (
+                <div className="border-t overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr style={{ background: 'var(--off-white)' }}>
+                        {['File', 'Uploaded', 'Covers', 'Lines', 'Pending', 'Posted', 'Locked', ''].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {imports.map(b => (
+                        <tr key={b.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{b.fileName || 'Upload'}</td>
+                          <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                            {b.createdAt.startsWith('1970') ? '—' : new Date(b.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
+                            {b.createdBy ? ` · ${b.createdBy}` : ''}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{b.from ? `${b.from} → ${b.to}` : '—'}</td>
+                          <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{b.total}</td>
+                          <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{b.pending}</td>
+                          <td className="px-3 py-2" style={{ color: b.posted ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>{b.posted}</td>
+                          <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{b.archived}</td>
+                          <td className="px-3 py-2 text-right">
+                            {canWrite && (
+                              <button onClick={() => deleteBatch(b)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: '#fca5a5', color: '#b91c1c' }}>
+                                <Trash2 size={12} /> Delete upload
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="px-3 py-2 text-[11px] border-t" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    Deleting an upload removes every line it created on this account. Posted lines are kept back unless you confirm again, because removing them also drops the journal entries they produced.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'ARCHIVED' && (
+            <div className="rounded-xl border px-4 py-2 text-xs" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              <Lock size={12} className="inline mr-1.5" style={{ verticalAlign: '-1px' }} />
+              Kept on file for the record{account?.startDate ? ` — dated before ${account.startDate}` : ''}. These pre-date the Hub, so there is nothing recorded here to match them against; they are locked from tagging and post nothing to the general ledger.
+            </div>
+          )}
+
           {/* Tabs + search */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex rounded-xl overflow-hidden border w-fit" style={{ borderColor: 'var(--light-gray)' }}>
-              {([['PENDING', `Pending (${account?.pendingCount ?? 0})`], ['POSTED', `Posted (${account?.postedCount ?? 0})`], ['EXCLUDED', `Excluded (${account?.excludedCount ?? 0})`]] as const).map(([k, lbl]) => (
+              {([['PENDING', `Pending (${account?.pendingCount ?? 0})`], ['POSTED', `Posted (${account?.postedCount ?? 0})`], ['EXCLUDED', `Excluded (${account?.excludedCount ?? 0})`], ['ARCHIVED', `Archived (${account?.archivedCount ?? 0})`]] as const).map(([k, lbl]) => (
                 <button key={k} onClick={() => setTab(k)} className="px-4 py-2 text-xs font-semibold" style={tab === k ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{lbl}</button>
               ))}
             </div>
@@ -128,6 +279,7 @@ export default function BankReconciliationPage() {
                       {t.status === 'POSTED'
                         ? (t.matchLabel ? <span style={{ color: 'var(--deep-teal)' }}>Matched · {t.matchLabel}</span> : t.categoryLabel ? <span style={{ color: 'var(--deep-teal)' }}>{t.categoryLabel}</span> : <span style={{ color: 'var(--mid-gray)' }}>Posted</span>)
                         : t.status === 'EXCLUDED' ? <span style={{ color: 'var(--mid-gray)' }}>Excluded</span>
+                        : t.status === 'ARCHIVED' ? <span className="inline-flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}><Lock size={12} /> Locked — pre-Hub</span>
                         : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
@@ -140,6 +292,9 @@ export default function BankReconciliationPage() {
                       )}
                       {canWrite && t.status === 'POSTED' && (
                         <button onClick={() => act({ id: t.id, action: 'unpost' })} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><RotateCcw size={13} /> Undo</button>
+                      )}
+                      {isAdmin && t.status === 'ARCHIVED' && (
+                        <button onClick={() => act({ id: t.id, action: 'unarchive' })} title="Unlock this line for tagging" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Unlock size={13} /> Unlock</button>
                       )}
                       {canWrite && t.status === 'EXCLUDED' && (
                         <>
@@ -158,7 +313,7 @@ export default function BankReconciliationPage() {
 
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
-      {catFor && <CategoriseModal txn={catFor} coa={coa} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
+      {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
       {matchFor && <MatchModal txn={matchFor} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
     </div>
   )
@@ -198,7 +353,7 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [rows, setRows] = useState<any[]>([])
   const [headers, setHeaders] = useState<string[]>([])
-  const [map, setMap] = useState<{ date: string; description: string; spent: string; received: string }>({ date: '', description: '', spent: '', received: '' })
+  const [map, setMap] = useState<{ date: string; description: string; spent: string; received: string; balance: string }>({ date: '', description: '', spent: '', received: '', balance: '' })
   const [busy, setBusy] = useState(false)
   const [fileName, setFileName] = useState('')
 
@@ -220,24 +375,30 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
       date: find(['txn date', 'transaction date', 'date']),
       description: find(['description', 'desc', 'memo', 'txn code', 'particular', 'narration', 'details', 'remarks', 'code']),
       spent: find(['spent', 'debit', 'withdraw', 'paid out', 'out']), received: find(['received', 'credit', 'deposit', 'paid in']),
+      // Optional: the statement's running balance, used to prefill Beginning Balances.
+      balance: find(['balance', 'running balance']),
     })
   }
   const toNum = (v: unknown) => { const n = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : Math.abs(n) }
   // Use LOCAL date components (avoids a UTC off-by-one for midnight dates like "2/3/25").
   const pad = (n: number) => String(n).padStart(2, '0')
   const toDate = (v: unknown) => { const d = v instanceof Date ? v : new Date(String(v)); return isNaN(+d) ? '' : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
-  const preview = useMemo(() => rows.slice(0, 5).map(r => ({ date: toDate(r[map.date]), description: String(r[map.description] || '').trim(), spent: toNum(r[map.spent]), received: toNum(r[map.received]) })), [rows, map])
+  const toBal = (v: unknown) => { if (v === undefined || v === null || String(v).trim() === '') return '' ; const n = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(n) ? '' : n }
+  const preview = useMemo(() => rows.slice(0, 5).map(r => ({ date: toDate(r[map.date]), description: String(r[map.description] || '').trim(), spent: toNum(r[map.spent]), received: toNum(r[map.received]), balance: map.balance ? toBal(r[map.balance]) : '' })), [rows, map])
 
   const importRows = async () => {
     if (!map.date || !map.description || (!map.spent && !map.received)) { alert('Map Date, Description, and at least one of Spent / Received.'); return }
-    const payload = rows.map(r => ({ date: toDate(r[map.date]), description: String(r[map.description] || '').trim(), spent: toNum(r[map.spent]), received: toNum(r[map.received]) })).filter(r => r.date && (r.spent > 0 || r.received > 0))
+    const payload = rows.map(r => ({ date: toDate(r[map.date]), description: String(r[map.description] || '').trim(), spent: toNum(r[map.spent]), received: toNum(r[map.received]), balance: map.balance ? toBal(r[map.balance]) : '' })).filter(r => r.date && (r.spent > 0 || r.received > 0))
     if (!payload.length) { alert('No valid rows after mapping.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/bank-rec/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bankAccountId, rows: payload, batchStamp: preview[0]?.date || '' }) })
+      const r = await fetch('/api/bank-rec/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bankAccountId, rows: payload, fileName, batchStamp: preview[0]?.date || '' }) })
       const d = await r.json()
       if (!r.ok) { alert(d.error || 'Import failed'); return }
-      alert(`Imported ${d.imported} transaction(s).`); onDone()
+      const bits = [`Imported ${d.imported} transaction(s).`]
+      if (d.archived) bits.push(`${d.archived} pre-date the reconciliation start date and were filed as Archived (locked from tagging).`)
+      if (d.skipped) bits.push(`${d.skipped} skipped as already on file.`)
+      alert(bits.join('\n')); onDone()
     } finally { setBusy(false) }
   }
   const Sel = ({ k, label }: { k: keyof typeof map; label: string }) => (
@@ -249,9 +410,9 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
   )
   const downloadTemplate = () => {
     const csv = [
-      'Date,Description,Spent,Received',
-      '2025-02-03,Sample payment out (e.g. ONLINE TRANSFER / check),1000.00,',
-      '2025-02-04,Sample deposit in (e.g. CD / collection),,2500.00',
+      'Date,Description,Spent,Received,Balance',
+      '2025-02-03,Sample payment out (e.g. ONLINE TRANSFER / check),1000.00,,24000.00',
+      '2025-02-04,Sample deposit in (e.g. CD / collection),,2500.00,26500.00',
     ].join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -272,8 +433,8 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
       </div>
       {headers.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-            <Sel k="date" label="Date" /><Sel k="description" label="Description" /><Sel k="spent" label="Spent (debit)" /><Sel k="received" label="Received (credit)" />
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+            <Sel k="date" label="Date" /><Sel k="description" label="Description" /><Sel k="spent" label="Spent (debit)" /><Sel k="received" label="Received (credit)" /><Sel k="balance" label="Balance (optional)" />
           </div>
           <p className="text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Preview ({rows.length} rows)</p>
           <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: 180 }}>
@@ -288,20 +449,59 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
   )
 }
 
-function CategoriseModal({ txn, coa, onClose, onDone }: { txn: Txn; coa: Coa[]; onClose: () => void; onDone: () => void }) {
+function CategoriseModal({ txn, coa, account, onClose, onDone }: { txn: Txn; coa: Coa[]; account: BankAcct | null; onClose: () => void; onDone: () => void }) {
   const [q, setQ] = useState('')
   const [categoryAccountId, setCat] = useState('')
   const [fromToName, setFromTo] = useState(txn.fromToName || '')
   const [busy, setBusy] = useState(false)
   const filtered = coa.filter(c => !q || `${c.accountNumber} ${c.accountTitle}`.toLowerCase().includes(q.toLowerCase())).slice(0, 50)
-  const save = async () => {
+  const foreign = !!account && account.currency !== 'PHP'
+  const native = txn.spent > 0 ? txn.spent : txn.received
+  const [rate, setRate] = useState<string>('')
+  const effRate = Number(rate) || account?.fxRate || 0
+  const save = async (withRate?: number) => {
     if (!categoryAccountId) { alert('Choose a category account.'); return }
     setBusy(true)
-    try { const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'categorise', categoryAccountId, fromToName }) }); if (!r.ok) { alert((await r.json()).error || 'Failed'); return } onDone() } finally { setBusy(false) }
+    try {
+      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'categorise', categoryAccountId, fromToName, fxRate: withRate ?? (rate ? Number(rate) : undefined) }) })
+      const d = await r.json()
+      if (!r.ok) {
+        // No rate on file yet — take one here rather than sending the user away.
+        if (d.needsRate) {
+          const entered = prompt(`${d.error}\n\nPHP for 1 ${d.currency} on ${txn.date}:`, '')
+          if (entered && Number(entered) > 0) {
+            await fetch('/api/bank-rec/rates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currency: d.currency, date: txn.date, phpPerUnit: Number(entered), note: 'Entered while categorising' }) })
+            return save(Number(entered))
+          }
+          return
+        }
+        alert(d.error || 'Failed'); return
+      }
+      onDone()
+    } finally { setBusy(false) }
   }
   return (
     <Modal title="Categorise & post" onClose={onClose}>
-      <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>₱{peso(txn.spent > 0 ? txn.spent : txn.received)}</strong> {txn.spent > 0 ? '(out)' : '(in)'}</p>
+      <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>{foreign ? `${account!.currency} ` : '₱'}{peso(native)}</strong> {txn.spent > 0 ? '(out)' : '(in)'}</p>
+      {foreign && (
+        <div className="rounded-xl border px-3 py-2 mb-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-[11px] mb-1.5" style={{ color: 'var(--mid-gray)' }}>
+            The ledger is kept in PHP, so this line is posted at the rate for its date.
+          </p>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>PHP per 1 {account!.currency}</label>
+            <input value={rate} onChange={e => setRate(e.target.value)} inputMode="decimal"
+              placeholder={account!.fxRate ? String(account!.fxRate) : '0.0000'}
+              className="w-28 px-2 py-1 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+            <span className="text-xs font-semibold ml-auto" style={{ color: 'var(--deep-teal)' }}>
+              {effRate > 0 ? `= ₱${peso(Math.round(native * effRate * 100) / 100)}` : 'no rate on file'}
+            </span>
+          </div>
+          {!rate && account!.fxRateDate && (
+            <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Using the rate recorded {account!.fxRateDate}. Leave blank to keep it.</p>
+          )}
+        </div>
+      )}
       <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>From / To (payee or customer)</label>
       <input value={fromToName} onChange={e => setFromTo(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
       <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Category account</label>
@@ -312,19 +512,55 @@ function CategoriseModal({ txn, coa, onClose, onDone }: { txn: Txn; coa: Coa[]; 
         ))}
       </div>
       <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Posts a journal entry: {txn.spent > 0 ? 'debit the category, credit this bank account.' : 'debit this bank account, credit the category.'}</p>
-      <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Categorise & post'}</button>
+      <button onClick={() => save()} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Categorise & post'}</button>
     </Modal>
   )
 }
 
 function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose: () => void; onDone: () => void; onCategorise: () => void }) {
   const [matches, setMatches] = useState<Match[] | null>(null)
+  const [fx, setFx] = useState<FxMatch[]>([])
   const [busy, setBusy] = useState(false)
   useEffect(() => { fetch(`/api/bank-rec/matches?txnId=${txn.id}`).then(r => r.ok ? r.json() : { matches: [] }).then(d => setMatches(d.matches || [])).catch(() => setMatches([])) }, [txn.id])
+  useEffect(() => { fetch(`/api/bank-rec/matches?txnId=${txn.id}&mode=forex`).then(r => r.ok ? r.json() : { matches: [] }).then(d => setFx(d.matches || [])).catch(() => setFx([])) }, [txn.id])
   const pick = async (m: Match) => { setBusy(true); try { await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: m.label }) }); onDone() } finally { setBusy(false) } }
+  const pickFx = async (m: FxMatch) => {
+    const mine = txn.spent > 0 ? txn.spent : txn.received
+    if (!confirm(`Record a currency exchange?\n\n₱${peso(txn.spent > 0 ? mine : m.amount)} ⇄ ${peso(txn.spent > 0 ? m.amount : mine)} ${m.currency}\nRate: 1 ${m.currency} = ${m.rate} PHP\n\nBoth bank lines will be posted against one fund transfer.`)) return
+    setBusy(true)
+    try {
+      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'match-forex', counterpartId: m.id }) })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error || 'Failed'); return }
+      alert(`Recorded ${d.refNumber} at 1 ${m.currency} = ${d.rate} PHP.`)
+      onDone()
+    } finally { setBusy(false) }
+  }
   return (
     <Modal title="Match to a recorded transaction" onClose={onClose}>
       <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>₱{peso(txn.spent > 0 ? txn.spent : txn.received)}</strong></p>
+
+      {fx.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: 'var(--charcoal)' }}>
+            <ArrowLeftRight size={13} style={{ color: 'var(--teal)' }} /> Currency exchange
+          </p>
+          <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+            The other side of this exchange, on an account held in another currency. Picking one records a single fund transfer and stores the rate it implies — check the rate looks right before confirming.
+          </p>
+          <div className="space-y-2">
+            {fx.map(m => (
+              <button key={m.id} onClick={() => pickFx(m)} disabled={busy} className="w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left disabled:opacity-50" style={{ borderColor: 'var(--teal)' }}>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{m.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} {m.currency}</p>
+                  <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>{m.date} · {m.label}</p>
+                </div>
+                <span className="text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>1 {m.currency} = {m.rate} PHP</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {matches === null ? <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={15} className="inline animate-spin" /> Finding matches…</p>
         : matches.length === 0 ? (
           <div className="text-center py-4">

@@ -2248,6 +2248,12 @@ model FundTransfer {
   fromAccountId String
   toAccountId   String
   amount        Decimal
+  // Cross-currency transfers (e.g. buying CNY out of a PHP account): `amount` is
+  // always what left the source account, `toAmount` what landed in the
+  // destination, and the implied rate is amount / toAmount. Both null on an
+  // ordinary same-currency transfer.
+  toAmount      Decimal?
+  exchangeRate  Decimal?
   checkNumber   String?
   description   String?
   proofUrl      String?
@@ -2732,6 +2738,14 @@ model BankTransaction {
   journalEntryId    String?  // GL journal posted on Categorise
   note              String?
   proofUrl          String?
+  // Running balance printed on the statement for this line, when the uploaded
+  // file carries one. Lets a balance "as of" any date be read straight off the
+  // statement instead of being inferred from a chain of movements.
+  statementBalance  Decimal?
+  // Rate applied when this line was posted, for accounts not held in PHP. Kept
+  // on the line so the general-ledger figure can always be traced back to the
+  // rate that produced it, even if the rate table is edited afterwards.
+  fxRate            Decimal?
   importBatch       String?
   createdById       String?
   createdAt         DateTime @default(now())
@@ -2744,6 +2758,39 @@ model BankTransaction {
 // SKU Guide: a manually-maintained dictionary of SKU classification codes
 // (DEPT-CAT-SUBCAT prefix → human meaning). Product count is derived live from
 // InventoryItem.sku (startsWith "<skuCode>-").
+// One "Upload from file" run in Bank Reconciliation. Statement uploads are
+// corrected and re-done often, so the lines from a single file are grouped here
+// and can be removed together instead of one row at a time.
+model BankImportBatch {
+  id            String   @id @default(cuid())
+  bankAccountId String
+  fileName      String?
+  rowCount      Int      @default(0)
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  @@index([bankAccountId])
+}
+
+// Exchange rates used to state foreign-currency accounts in PHP.
+//
+// Rates are captured from transactions that actually happened — every currency
+// exchange matched in Bank Reconciliation records the rate it implied — and can
+// also be entered by hand for dates with no exchange of their own.
+model ExchangeRate {
+  id          String   @id @default(cuid())
+  currency    String   // the foreign currency, e.g. "CNY"
+  date        DateTime @db.Date  // effective date
+  phpPerUnit  Decimal  // PHP for 1 unit of `currency`
+  source      String   @default("MANUAL")  // MANUAL | FOREX_MATCH
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([currency, date])
+  @@index([currency, date])
+}
+
 model SkuDefinition {
   id           String   @id @default(cuid())
   skuCode      String   @unique

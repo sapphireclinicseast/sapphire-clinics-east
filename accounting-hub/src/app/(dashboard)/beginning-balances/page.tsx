@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Loader2, Save, Calendar } from 'lucide-react'
+import { Loader2, Save, Calendar, Wand2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 interface Row {
@@ -98,6 +98,44 @@ export default function BeginningBalancesPage() {
     }
   }
 
+  // Bank accounts whose uploaded statements carry a running balance can have
+  // their opening figure read straight off the statement, rather than typed in
+  // from the PDFs one account at a time.
+  const [prefilling, setPrefilling] = useState(false)
+  const prefillFromStatements = async () => {
+    const asOf = prompt('Prefill bank balances as of which date?\n\nThe balance printed on each account\'s last statement line on or before this date is used.', `${year - 1}-12-31`)
+    if (!asOf) return
+    setPrefilling(true)
+    try {
+      const res = await fetch(`/api/bank-rec/balance-as-of?date=${encodeURIComponent(asOf)}`)
+      const d = await res.json()
+      if (!res.ok) { alert(d.error || 'Failed'); return }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const withData = (d.accounts || []).filter((a: any) => a.balance !== null)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blocked = (d.accounts || []).filter((a: any) => a.needsRate)
+      if (!withData.length && !blocked.length) {
+        alert(`No uploaded statement lines carry a running balance on or before ${asOf}.\n\nRe-upload the statements with the Balance column mapped in Bank Reconciliation, then try again.`)
+        return
+      }
+      // Beginning balances are a PHP figure, so a foreign account is filled with
+      // its converted value and its own currency is shown alongside.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const lines = withData.map((a: any) =>
+        `${a.accountNumber} ${a.accountTitle}: PHP ${a.balance.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+        + (a.currency !== 'PHP' ? `  (${a.currency} ${a.native.toLocaleString('en-PH', { minimumFractionDigits: 2 })} @ ${a.rate})` : '')
+        + (a.asOf !== asOf ? `  [last line ${a.asOf}]` : '')).join('\n')
+      if (blocked.length) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        alert(`Skipped ${blocked.length} foreign-currency account(s) with no exchange rate on file:\n\n${blocked.map((a: any) => `${a.accountNumber} ${a.accountTitle} (${a.currency})`).join('\n')}\n\nRecord a rate for them first — matching a currency exchange in Bank Reconciliation captures one automatically.`)
+        if (!withData.length) return
+      }
+      if (!confirm(`Fill these ${withData.length} bank account(s)?\n\n${lines}\n\nNothing is saved until you press Save.`)) return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      withData.forEach((a: any) => setAmount(a.accountId, a.balance))
+    } finally { setPrefilling(false) }
+  }
+
   const dirtyCount = Object.keys(edits).length
 
   return (
@@ -116,6 +154,11 @@ export default function BeginningBalancesPage() {
           </div>
           <input type="text" placeholder="Filter accounts…" value={filter} onChange={e => setFilter(e.target.value)}
             className="text-sm px-3 py-1.5 rounded-lg border border-gray-200" />
+          <button onClick={prefillFromStatements} disabled={prefilling} title="Read each bank account's balance off its uploaded statements"
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white disabled:opacity-50">
+            {prefilling ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+            Prefill bank balances
+          </button>
           <button onClick={save} disabled={saving || dirtyCount === 0}
             className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-teal-600 text-white disabled:opacity-50">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}

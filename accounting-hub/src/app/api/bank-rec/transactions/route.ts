@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
+import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -48,23 +50,65 @@ export async function POST(req: Request) {
     if (!bankAccountId) return NextResponse.json({ error: 'bankAccountId is required' }, { status: 400 })
 
     if (Array.isArray(body.rows)) {
-      const batch = `imp_${session.user.id}_${body.batchStamp || ''}`
+      // One batch record per upload so the whole file can be removed again later.
+      const batchRow = await prisma.bankImportBatch.create({
+        data: { bankAccountId, fileName: String(body.fileName || '').slice(0, 200) || null, createdById: session.user.id ?? null },
+      })
+      const batch = batchRow.id
+      const cutoff = await tagCutoff(bankAccountId)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = body.rows.map((r: any) => ({
-        bankAccountId, date: new Date(r.date), description: String(r.description || '').slice(0, 500),
-        spent: Number(r.spent) || 0, received: Number(r.received) || 0, importBatch: batch, createdById: session.user.id ?? null,
+      const data = body.rows.map((r: any) => {
+        const date = new Date(r.date)
+        return {
+          bankAccountId, date, description: String(r.description || '').slice(0, 500),
+          spent: Number(r.spent) || 0, received: Number(r.received) || 0,
+          statementBalance: r.balance === '' || r.balance == null || isNaN(Number(r.balance)) ? null : Number(r.balance),
+          // Pre-Hub periods come in for the record only — locked from tagging.
+          status: isLocked(date, cutoff) ? ARCHIVED : 'PENDING',
+          importBatch: batch, createdById: session.user.id ?? null,
+        }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })).filter((r: any) => !isNaN(+r.date) && (r.spent > 0 || r.received > 0))
-      if (data.length === 0) return NextResponse.json({ error: 'No valid rows found (need a date and a Spent or Received amount)' }, { status: 400 })
-      const res = await prisma.bankTransaction.createMany({ data })
-      return NextResponse.json({ imported: res.count })
+      }).filter((r: any) => !isNaN(+r.date) && (r.spent > 0 || r.received > 0))
+      if (data.length === 0) {
+        await prisma.bankImportBatch.delete({ where: { id: batch } }).catch(() => {})
+        return NextResponse.json({ error: 'No valid rows found (need a date and a Spent or Received amount)' }, { status: 400 })
+      }
+
+      // Re-uploading a statement must not double up the ledger, so skip lines
+      // this account already has on the same date, amount and description.
+      const dates = data.map((r: { date: Date }) => +r.date)
+      const existing = await prisma.bankTransaction.findMany({
+        where: { bankAccountId, date: { gte: new Date(Math.min(...dates)), lte: new Date(Math.max(...dates)) } },
+        select: { date: true, description: true, spent: true, received: true },
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const key = (r: any) => `${new Date(r.date).toISOString().slice(0, 10)}|${String(r.description).trim().toLowerCase()}|${Number(r.spent).toFixed(2)}|${Number(r.received).toFixed(2)}`
+      const seen = new Set(existing.map(key))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fresh = data.filter((r: any) => { const k = key(r); if (seen.has(k)) return false; seen.add(k); return true })
+      const skipped = data.length - fresh.length
+      if (fresh.length === 0) {
+        await prisma.bankImportBatch.delete({ where: { id: batch } }).catch(() => {})
+        return NextResponse.json({ imported: 0, skipped, archived: 0 })
+      }
+
+      const res = await prisma.bankTransaction.createMany({ data: fresh })
+      await prisma.bankImportBatch.update({ where: { id: batch }, data: { rowCount: res.count } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const archived = fresh.filter((r: any) => r.status === ARCHIVED).length
+      return NextResponse.json({ imported: res.count, skipped, archived })
     }
 
     if (!body.date || !body.description) return NextResponse.json({ error: 'Date and description are required' }, { status: 400 })
     const spent = Number(body.spent) || 0, received = Number(body.received) || 0
     if (spent <= 0 && received <= 0) return NextResponse.json({ error: 'Enter a Spent or Received amount' }, { status: 400 })
+    const date = new Date(body.date)
     const t = await prisma.bankTransaction.create({
-      data: { bankAccountId, date: new Date(body.date), description: body.description, spent, received, fromToName: body.fromToName || null, createdById: session.user.id ?? null },
+      data: {
+        bankAccountId, date, description: body.description, spent, received,
+        status: isLocked(date, await tagCutoff(bankAccountId)) ? ARCHIVED : 'PENDING',
+        fromToName: body.fromToName || null, createdById: session.user.id ?? null,
+      },
     })
     return NextResponse.json({ id: t.id })
   } catch (e) {
@@ -82,15 +126,58 @@ export async function PATCH(req: Request) {
   try {
     const body = await req.json()
     const { id, action } = body
+
+    // Bulk: archive every still-untagged line that pre-dates the account's
+    // reconciliation start date. Never touches POSTED lines.
+    if (action === 'lock-older') {
+      const bankAccountId = body.bankAccountId
+      if (!bankAccountId) return NextResponse.json({ error: 'bankAccountId is required' }, { status: 400 })
+      const cutoff = await tagCutoff(bankAccountId)
+      if (!cutoff) return NextResponse.json({ error: 'Set a reconciliation start date for this account in Beginning Balances first.' }, { status: 400 })
+      const res = await prisma.bankTransaction.updateMany({
+        where: { bankAccountId, status: 'PENDING', date: { lt: cutoff } },
+        data: { status: ARCHIVED },
+      })
+      return NextResponse.json({ success: true, archived: res.count, cutoff: cutoff.toISOString().slice(0, 10) })
+    }
+
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
     const txn = await prisma.bankTransaction.findUnique({ where: { id } })
     if (!txn) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+    if (txn.status === ARCHIVED && ['categorise', 'match', 'match-forex', 'exclude', 'unpost'].includes(action)) {
+      return NextResponse.json({ error: 'This period is locked. It pre-dates the Hub, so there is nothing here to match it against.' }, { status: 409 })
+    }
+    if (action === 'unarchive') {
+      if (session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Only an admin can unlock an archived period' }, { status: 403 })
+      await prisma.bankTransaction.update({ where: { id }, data: { status: 'PENDING' } })
+      return NextResponse.json({ success: true })
+    }
+
     if (action === 'categorise') {
       const categoryAccountId = body.categoryAccountId
       if (!categoryAccountId) return NextResponse.json({ error: 'Choose a category account' }, { status: 400 })
-      const amount = Number(txn.spent) > 0 ? Number(txn.spent) : Number(txn.received)
+      const native = Number(txn.spent) > 0 ? Number(txn.spent) : Number(txn.received)
       const isSpent = Number(txn.spent) > 0
+
+      // The ledger is kept in PHP, so a line on an account held in another
+      // currency is translated at the rate for its date before it is posted.
+      const bankAcct = await prisma.account.findUnique({
+        where: { id: txn.bankAccountId }, select: { currency: true },
+      })
+      const cur = bankAcct?.currency || 'PHP'
+      let amount = native, usedRate: number | null = null
+      if (isForeign(cur)) {
+        const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate), rateDate: '', onOrBefore: true } : await rateFor(cur, txn.date)
+        if (!rate || !(rate.phpPerUnit > 0)) {
+          return NextResponse.json({
+            error: `No ${cur} exchange rate is on file for ${txn.date.toISOString().slice(0, 10)}. Add one, or match a currency exchange so the rate is captured from it.`,
+            needsRate: true, currency: cur,
+          }, { status: 400 })
+        }
+        usedRate = rate.phpPerUnit
+        amount = toPhp(native, usedRate)
+      }
       // Spent: Dr category / Cr bank.  Received: Dr bank / Cr category.
       const lines = isSpent
         ? [{ accountId: categoryAccountId, debit: amount, credit: 0 }, { accountId: txn.bankAccountId, debit: 0, credit: amount }]
@@ -99,15 +186,75 @@ export async function PATCH(req: Request) {
         if (txn.journalEntryId) await tx.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
         const created = await tx.journalEntry.create({
           data: {
-            entryDate: txn.date, description: `Bank: ${txn.description}`, referenceType: 'BANK_REC', referenceId: txn.id,
+            entryDate: txn.date,
+            description: usedRate
+              ? `Bank: ${txn.description} (${native.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${bankAcct?.currency} @ ${usedRate})`
+              : `Bank: ${txn.description}`,
+            referenceType: 'BANK_REC', referenceId: txn.id,
             totalAmount: amount, createdById: session.user!.id as string,
             lines: { create: lines.map(l => ({ accountId: l.accountId, debit: l.debit, credit: l.credit, description: txn.description })) },
           },
         })
-        await tx.bankTransaction.update({ where: { id }, data: { status: 'POSTED', categoryAccountId, journalEntryId: created.id, matchType: null, matchId: null, matchLabel: null, fromToName: body.fromToName ?? txn.fromToName } })
+        await tx.bankTransaction.update({ where: { id }, data: { status: 'POSTED', categoryAccountId, journalEntryId: created.id, fxRate: usedRate, matchType: null, matchId: null, matchLabel: null, fromToName: body.fromToName ?? txn.fromToName } })
         return created
       })
-      return NextResponse.json({ success: true, journalEntryId: je.id })
+      return NextResponse.json({ success: true, journalEntryId: je.id, php: amount, rate: usedRate })
+    }
+
+    // Currency exchange: this line and its counterpart on a bank account held in
+    // another currency are two halves of one transfer. Recording it as a single
+    // FundTransfer keeps the implied rate with the movement that produced it.
+    if (action === 'match-forex') {
+      const other = await prisma.bankTransaction.findUnique({ where: { id: body.counterpartId || '' } })
+      if (!other) return NextResponse.json({ error: 'Choose the matching line on the other account' }, { status: 400 })
+      if (other.bankAccountId === txn.bankAccountId) return NextResponse.json({ error: 'Both lines are on the same bank account' }, { status: 400 })
+      if (other.status === 'POSTED') return NextResponse.json({ error: 'That line is already posted' }, { status: 409 })
+      if (other.status === ARCHIVED) return NextResponse.json({ error: 'That line sits in a locked period and cannot be tagged.' }, { status: 409 })
+
+      const out = Number(txn.spent) > 0 ? txn : (Number(other.spent) > 0 ? other : null)
+      const inn = out && out.id === txn.id ? other : txn
+      if (!out || !(Number(out.spent) > 0) || !(Number(inn.received) > 0)) {
+        return NextResponse.json({ error: 'A currency exchange needs one line paying out and one receiving' }, { status: 400 })
+      }
+      const [fromAcct, toAcct] = await Promise.all([
+        prisma.account.findUnique({ where: { id: out.bankAccountId }, select: { currency: true } }),
+        prisma.account.findUnique({ where: { id: inn.bankAccountId }, select: { currency: true } }),
+      ])
+      if ((fromAcct?.currency || 'PHP') === (toAcct?.currency || 'PHP')) {
+        return NextResponse.json({ error: 'Both accounts are in the same currency — use a normal fund transfer' }, { status: 400 })
+      }
+      const paid = Number(out.spent), got = Number(inn.received)
+      if (!(paid > 0 && got > 0)) return NextResponse.json({ error: 'Both amounts must be greater than zero' }, { status: 400 })
+      const rate = Number((paid / got).toFixed(6))
+
+      const transfer = await prisma.$transaction(async (tx) => {
+        let s = await tx.fundTransferSettings.findUnique({ where: { id: 'singleton' } })
+        if (!s) s = await tx.fundTransferSettings.create({ data: { id: 'singleton', nextSeq: 1 } })
+        const seq = s.nextSeq
+        await tx.fundTransferSettings.update({ where: { id: 'singleton' }, data: { nextSeq: seq + 1 } })
+        const created = await tx.fundTransfer.create({
+          data: {
+            refNumber: `FT${new Date().getFullYear() % 100}-${String(seq).padStart(6, '0')}`, refSeq: seq,
+            date: out.date, fromAccountId: out.bankAccountId, toAccountId: inn.bankAccountId,
+            amount: paid, toAmount: got, exchangeRate: rate,
+            description: body.description
+              || `Currency exchange · ${got.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${toAcct?.currency || ''} @ ${rate}`,
+            createdById: session.user!.id ?? null,
+          },
+        })
+        const label = `${created.refNumber} · FX @ ${rate} ${fromAcct?.currency || 'PHP'}/${toAcct?.currency || ''}`
+        for (const t of [out, inn]) {
+          await tx.bankTransaction.update({
+            where: { id: t.id },
+            data: { status: 'POSTED', matchType: 'FOREX', matchId: created.id, matchLabel: label, categoryAccountId: null },
+          })
+        }
+        return created
+      })
+      // The exchange just proved a real rate for that day — keep it so other
+      // lines on the foreign account can be stated in PHP.
+      await recordRate(toAcct?.currency || '', out.date, rate, `${transfer.refNumber}`, session.user!.id)
+      return NextResponse.json({ success: true, refNumber: transfer.refNumber, rate })
     }
 
     if (action === 'match') {
@@ -121,6 +268,20 @@ export async function PATCH(req: Request) {
     }
     if (action === 'unpost') {
       if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+      // A currency exchange is one transfer spanning two bank lines, so undoing
+      // either side must release both and drop the transfer they created —
+      // otherwise the other line stays posted against a record that is gone.
+      if (txn.matchType === 'FOREX' && txn.matchId) {
+        const both = await prisma.bankTransaction.findMany({ where: { matchType: 'FOREX', matchId: txn.matchId } })
+        await prisma.$transaction(async (tx) => {
+          await tx.bankTransaction.updateMany({
+            where: { id: { in: both.map(b => b.id) } },
+            data: { status: 'PENDING', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null },
+          })
+          await tx.fundTransfer.delete({ where: { id: txn.matchId! } }).catch(() => {})
+        })
+        return NextResponse.json({ success: true, released: both.length })
+      }
       await prisma.bankTransaction.update({ where: { id }, data: { status: 'PENDING', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null } })
       return NextResponse.json({ success: true })
     }

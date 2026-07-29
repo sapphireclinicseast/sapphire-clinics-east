@@ -1,0 +1,12 @@
+-- Keep the statement's own running balance against each imported bank line.
+--
+-- Beginning Balances needs the balance of an account as of a given date. Adding
+-- up movements cannot produce that on its own — it yields a change, not a
+-- position, unless an opening figure is already known, which is the very thing
+-- being set. Bank statements print the running balance on every line, so when
+-- the uploaded file carries that column the balance as of any date is simply
+-- the last line on or before it.
+--
+-- Nullable: uploads without a balance column, and manually added lines, keep
+-- working exactly as before.
+ALTER TABLE "BankTransaction" ADD COLUMN IF NOT EXISTS "statementBalance" DECIMAL(65,30);
