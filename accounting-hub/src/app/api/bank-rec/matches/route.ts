@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { candidates, forDirection } from '@/lib/bank-rec-candidates'
 
 const WINDOW_DAYS = 7
 const FOREX_WINDOW_DAYS = 7
@@ -84,23 +85,12 @@ export async function GET(req: Request) {
   const cutoff = beg?.startDate ? new Date(beg.startDate) : null
   const gte = (d: Date) => (!cutoff || d >= cutoff)
 
-  const out: { type: string; id: string; label: string; date: string; amount: number }[] = []
-
-  // Fund transfers (direction-aware on the bank account)
-  const transfers = await prisma.fundTransfer.findMany({
-    where: { date: { gte: lo, lt: hi }, ...(isSpent ? { fromAccountId: txn.bankAccountId } : { toAccountId: txn.bankAccountId }) },
-  })
-  for (const t of transfers) if (near(Number(t.amount), amount) && gte(t.date)) out.push({ type: 'FUND_TRANSFER', id: t.id, label: `${t.refNumber} · Fund Transfer`, date: t.date.toISOString().slice(0, 10), amount: Number(t.amount) })
-
-  if (isSpent) {
-    // Paid RFPs (petty cash / expense / tax) — money out.
-    const rfps = await prisma.reimbursementReport.findMany({ where: { status: 'PAID', paidAt: { gte: lo, lt: hi } } })
-    for (const r of rfps) if (r.paidAt && near(Number(r.grossTotal), amount) && gte(r.paidAt)) out.push({ type: 'RFP', id: r.id, label: `${r.refNumber} · RFP`, date: r.paidAt.toISOString().slice(0, 10), amount: Number(r.grossTotal) })
-  } else {
-    // Sales / AR receipts — money in.
-    const orders = await prisma.order.findMany({ where: { status: 'COMPLETED', transactionDate: { gte: lo, lt: hi } }, select: { id: true, orderNumber: true, netAmount: true, transactionDate: true, patientName: true } })
-    for (const o of orders) if (near(Number(o.netAmount), amount) && gte(o.transactionDate)) out.push({ type: 'ORDER', id: o.id, label: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}`, date: o.transactionDate.toISOString().slice(0, 10), amount: Number(o.netAmount) })
-  }
+  // Every recorded source the Hub knows about, not just transfers, RFPs and
+  // orders — a payment missing from this list simply looks unmatchable.
+  const all = await candidates(txn.bankAccountId, lo, hi)
+  const out = forDirection(all, isSpent)
+    .filter(c => near(c.amount, amount) && gte(c.date))
+    .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount }))
 
   // Closest dates first.
   out.sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))

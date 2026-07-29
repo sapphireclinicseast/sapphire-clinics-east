@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { candidates, forDirection } from '@/lib/bank-rec-candidates'
 
 // Which bank lines look like they correspond to something already recorded in
 // the Hub, so the grid can flag them instead of the user opening every row.
@@ -15,6 +16,12 @@ const WINDOW_DAYS = 5
 const TOLERANCE = 1.0   // pesos; absorbs per-item rounding inside a settlement
 
 type Hint = { kind: string; label: string; amount: number; date: string; n: number }
+
+const KIND: Record<string, string> = {
+  FUND_TRANSFER: 'Fund transfer', RFP: 'Paid RFP', ORDER: 'Sale', AR_PAYMENT: 'AR receipt',
+  SALARY: 'Salaries payable', BENEFIT: 'Benefits payable', TAX: 'Tax payment',
+  CASH_ADVANCE: 'Cash advance', EQUITY: 'Equity deposit',
+}
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10)
 const within = (a: Date, b: Date) => Math.abs(+a - +b) <= WINDOW_DAYS * 86400000
@@ -101,17 +108,12 @@ export async function GET(req: Request) {
       })
     : []
 
-  // ── money out: things the Hub already knows were paid ─────────────────────
-  const [rfps, transfers] = await Promise.all([
-    prisma.reimbursementReport.findMany({
-      where: { status: 'PAID', paidAt: { gte: lo, lte: hi } },
-      select: { refNumber: true, grossTotal: true, paidAt: true },
-    }),
-    prisma.fundTransfer.findMany({
-      where: { date: { gte: lo, lte: hi }, OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] },
-      select: { refNumber: true, amount: true, date: true, fromAccountId: true },
-    }),
-  ])
+  // ── everything else the Hub has recorded ──────────────────────────────────
+  // Fund transfers, RFPs from petty cash / expenses / refunds / taxes, POS
+  // orders, AR receipts, salaries and benefits, cash advances and equity
+  // deposits — all from one source, so the grid flags exactly what the Match
+  // picker will go on to offer.
+  const recorded = await candidates(bankAccountId, lo, hi)
 
   const hints: Record<string, Hint> = {}
   for (const t of txns) {
@@ -119,18 +121,12 @@ export async function GET(req: Request) {
     const out = spent > 0
     const amount = out ? spent : received
 
-    const transfer = transfers.find(f => within(f.date, t.date) && close(Number(f.amount), amount)
-      && (out ? f.fromAccountId === bankAccountId : f.fromAccountId !== bankAccountId))
-    if (transfer) {
-      hints[t.id] = { kind: 'Fund transfer', label: `${transfer.refNumber} · Fund Transfer`, amount: Number(transfer.amount), date: dayKey(transfer.date), n: 1 }
+    const hit = forDirection(recorded, out).find(c => within(c.date, t.date) && close(c.amount, amount))
+    if (hit) {
+      hints[t.id] = { kind: KIND[hit.type] || 'Recorded', label: hit.label, amount: hit.amount, date: dayKey(hit.date), n: 1 }
       continue
     }
-
-    if (out) {
-      const rfp = rfps.find(r => r.paidAt && within(r.paidAt, t.date) && close(Number(r.grossTotal), amount))
-      if (rfp) hints[t.id] = { kind: 'Paid RFP', label: `${rfp.refNumber} · RFP`, amount: Number(rfp.grossTotal), date: dayKey(rfp.paidAt!), n: 1 }
-      continue
-    }
+    if (out) continue        // the settlement shapes below are money-in only
 
     // One sale settling on its own reads more clearly than a day's total, so it wins.
     const single = singles.find(s => within(s.date, t.date) && close(s.amount, received))
