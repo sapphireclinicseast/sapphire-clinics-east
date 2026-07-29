@@ -1401,10 +1401,17 @@ export default function AccountsReceivablePage() {
         </table>
       </div>}
 
-      {/* Payment History */}
-      {arPayments.length > 0 && (
+      {/* Payment History — always shown, on both tabs. Hiding it when empty made
+          it look as though HMO had no such section at all, when in fact no HMO
+          payment had been recorded (the one that was is since reversed). */}
+      {(
         <div id="ar-payment-history">
-          <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Payment History</h3>
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+            Payment History — {tab}
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              {arPayments.length}
+            </span>
+          </h3>
           <div className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '320px' }}>
             <table className="w-full text-xs">
               <thead>
@@ -1415,6 +1422,11 @@ export default function AccountsReceivablePage() {
                 </tr>
               </thead>
               <tbody>
+                {arPayments.length === 0 && (
+                  <tr><td colSpan={11} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    No {tab} payments recorded yet. Payments recorded against {tab === 'HMO' ? 'an HMO provider' : 'a Guarantee Letter agency'} appear here, newest first.
+                  </td></tr>
+                )}
                 {arPayments.map(p => {
                   const wallet = wallets.find(w => w.id === p.walletId)
                   const proofFiles = parseProofUrls(p.proofUrl)
