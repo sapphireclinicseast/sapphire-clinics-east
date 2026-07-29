@@ -160,6 +160,9 @@ export async function GET(req: Request) {
         ...(walletId ? { walletId } : {}),
       },
       orderBy: { paymentDate: 'desc' },
+      // The history is meant to show everything recorded, so the cap is a
+      // runaway guard rather than a page size.
+      take: 2000,
       select: {
         id: true,
         walletId: true,
@@ -175,7 +178,6 @@ export async function GET(req: Request) {
         createdBy: { select: { name: true } },
         items: { select: { orderId: true } },
       },
-      take: 200,
     })
 
     return NextResponse.json({ wallets: walletsOut, orders, arPayments })
