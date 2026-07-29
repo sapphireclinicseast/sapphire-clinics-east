@@ -547,7 +547,10 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
   )
 }
 
-function CategoriseModal({ txn, coa, account, onClose, onDone }: { txn: Txn; coa: Coa[]; account: BankAcct | null; onClose: () => void; onDone: () => void }) {
+function CategoriseModal({ txn, coa: allCoa, account, onClose, onDone }: { txn: Txn; coa: Coa[]; account: BankAcct | null; onClose: () => void; onDone: () => void }) {
+  // This line's own bank account is never a valid category — picking it debits
+  // and credits the same account, so the entry records nothing.
+  const coa = useMemo(() => allCoa.filter(c => c.id !== account?.id), [allCoa, account])
   const [q, setQ] = useState('')
   const [categoryAccountId, setCat] = useState('')
   const [fromToName, setFromTo] = useState(txn.fromToName || '')

@@ -169,6 +169,16 @@ export async function PATCH(req: Request) {
     if (action === 'categorise') {
       const categoryAccountId = body.categoryAccountId
       if (!categoryAccountId) return NextResponse.json({ error: 'Choose a category account' }, { status: 400 })
+      // Categorising a bank line to the account it is already on would debit and
+      // credit the same account: the entry cancels itself and records nothing.
+      // Money leaving one of your own accounts belongs to the other side of a
+      // transfer, not to a category.
+      if (categoryAccountId === txn.bankAccountId) {
+        return NextResponse.json({
+          error: 'That is this line\'s own bank account, so the entry would cancel itself out and record nothing. If this moved money to another account of yours, use Match — and Currency exchange if the other account is held in a different currency.',
+          selfCategorise: true,
+        }, { status: 400 })
+      }
       const native = Number(txn.spent) > 0 ? Number(txn.spent) : Number(txn.received)
       const isSpent = Number(txn.spent) > 0
 
