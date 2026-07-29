@@ -44,6 +44,7 @@ interface CfData extends IsReportData {
 export interface CashFlowTotals {
   netIncome: number
   depreciation: number
+  taxProvision: number          // 20% accrual inside Net Income — non-cash add-back
   // Working-capital changes (increase in an asset is a USE of cash → negative)
   arChange: number
   inventoryChange: number
@@ -67,7 +68,7 @@ export interface CashFlowTotals {
 }
 
 export function computeCashFlowTotals(data: CfData): CashFlowTotals {
-  const { netIncome, totalDepreciation } = computeIncomeStatementTotals(data as unknown as IsReportData)
+  const { netIncome, totalDepreciation, taxProvision } = computeIncomeStatementTotals(data as unknown as IsReportData)
 
   const monthly = data.monthly
   const cashAdj = data.cashAdjustments || {
@@ -162,8 +163,10 @@ export function computeCashFlowTotals(data: CfData): CashFlowTotals {
   const payablesChange = payablesEnding - openingPayables       // Payables up → cash up
   const unearnedChange = unearnedEnding - openingUnearned       // Unearned up → cash up
 
+  // The 20% income-tax provision is an accrual (Income Tax Payable / Deferred
+  // Tax Asset on the BS), not a cash movement — add it back like depreciation.
   const netCashFromOperations =
-    netIncome + totalDepreciation + arChange + inventoryChange +
+    netIncome + totalDepreciation + taxProvision + arChange + inventoryChange +
     otherCurrentAssetChange + payablesChange + unearnedChange
 
   // ── Investing: PPE purchased at cost this period ──
@@ -189,7 +192,7 @@ export function computeCashFlowTotals(data: CfData): CashFlowTotals {
   const unreconciled = actualNetChange - computedNetChange
 
   return {
-    netIncome, depreciation: totalDepreciation,
+    netIncome, depreciation: totalDepreciation, taxProvision,
     arChange, inventoryChange, otherCurrentAssetChange, payablesChange, unearnedChange,
     netCashFromOperations,
     ppePurchases, netCashFromInvesting,

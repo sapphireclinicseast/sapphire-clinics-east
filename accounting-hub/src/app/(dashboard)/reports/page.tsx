@@ -8,9 +8,10 @@ import {
   Calendar, Building2, LayoutList, BarChart3, X,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { computeIncomeStatementTotals } from '@/lib/reports/income-statement-totals'
+import { computeIncomeStatementTotals, INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
 import HistoricalReport from './HistoricalReport'
+import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -739,8 +740,19 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   }
   const totalCash = Object.values(cashByAccountBalance).reduce((s, v) => s + v, 0)
 
+  // Net income for retained earnings — MUST match Income Statement logic.
+  // Use the shared helper so BS equity and IS net income can never drift apart.
+  const { netIncome, taxProvision } = computeIncomeStatementTotals(data)
+
+  // The 20% income-tax provision inside Net Income is an accrual with no cash
+  // movement, so it needs a balancing line to keep A = L + E: a positive
+  // provision is Income Tax Payable (current liability); a provision on a loss
+  // is a Deferred Tax Asset — the same treatment as the audited FY2024 BS.
+  const incomeTaxPayable = taxProvision > 0 ? taxProvision : 0
+  const deferredTaxAsset = taxProvision < 0 ? -taxProvision : 0
+
   // Computed totals
-  const totalCurrentAssets = totalCash + invTotal + deductionAssetTotal + arTotal
+  const totalCurrentAssets = totalCash + invTotal + deductionAssetTotal + arTotal + deferredTaxAsset
   const totalGrossAssets = Object.values(depreciation?.assetsByClassification || {}).reduce((s, v) => s + v, 0)
   const accumulatedDep = depreciation?.accumulated || 0
   const totalNonCurrentAssets = totalGrossAssets - accumulatedDep
@@ -764,13 +776,9 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   // revenueType=UNEARNED for receivables (which would otherwise leave AR un-offset).
   const unearnedRevFromAR = data.unearnedRevenueFromAR || 0
 
-  const totalCurrentLiabilities = wallets.total + sourceAccountTotal + payrollPayableTotal + unearnedRevFromAR
+  const totalCurrentLiabilities = wallets.total + sourceAccountTotal + payrollPayableTotal + unearnedRevFromAR + incomeTaxPayable
   const totalNonCurrentLiabilities = 0
   const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities
-
-  // Net income for retained earnings — MUST match Income Statement logic.
-  // Use the shared helper so BS equity and IS net income can never drift apart.
-  const { netIncome } = computeIncomeStatementTotals(data)
 
   // Opening balances for Cash, Owner's Equity, and Retained Earnings come from
   // the BeginningBalance table (one row per account per fiscal year). They are
@@ -785,6 +793,14 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   const openingOwnersEquity = sumOpeningForAccts(ownersEquityAccounts)
   const openingRetainedEarnings = sumOpeningForAccts(retainedEarningsAccounts)
 
+  // Chain the manual years into the derived years: when no retained-earnings
+  // opening balance has been entered, carry forward the Dec-2025 audited
+  // consolidated RE (All-Branches view only — no per-branch 2025 BS exists).
+  const reBroughtForward = openingRetainedEarnings !== 0
+    ? openingRetainedEarnings
+    : (data.year >= 2026 && data.branch === 'ALL' ? RETAINED_EARNINGS_BF_2026 : 0)
+  const usesAuditedReBf = openingRetainedEarnings === 0 && reBroughtForward !== 0
+
   // Journal-entry EQUITY balances (share capital issuance, treasury buyback,
   // dividends) from the Equity module. Each equity JE posts a matching bank leg
   // that already flows into Cash above, so including the equity leg here keeps
@@ -794,7 +810,7 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
     .filter(jb => jb.accountType === 'EQUITY')
     .reduce((s, jb) => s + jb.balance, 0)
 
-  const totalEquity = openingOwnersEquity + openingRetainedEarnings + equityJournalTotal + netIncome
+  const totalEquity = openingOwnersEquity + reBroughtForward + equityJournalTotal + netIncome
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity
 
   // Balance sheet equation check
@@ -855,6 +871,9 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
           </>
         )}
         <AnnualRow label="Total Inventory" amount={invTotal} indent={2} bold />
+        {deferredTaxAsset > 0 && (
+          <AnnualRow label="Deferred Tax Asset (20% provision on current-year loss)" amount={deferredTaxAsset} indent={2} />
+        )}
         <AnnualRow label="Total Current Assets" amount={totalCurrentAssets} indent={1} isTotal bold />
 
         <SubSectionHeader label="Non-Current Assets" />
@@ -933,6 +952,9 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {unclassifiedAP > 0 && (
           <AnnualRow label="Unclassified Accounts Payable" amount={unclassifiedAP} indent={2} />
         )}
+        {incomeTaxPayable > 0 && (
+          <AnnualRow label="Income Tax Payable (20% provision, accrued)" amount={incomeTaxPayable} indent={2} />
+        )}
         {wallets.total === 0 && currentLiabAccounts.length === 0 && sourceAccountTotal === 0 && payrollPayableTotal === 0 && (
           <AnnualRow label="(No current liabilities recorded)" amount={0} indent={2} />
         )}
@@ -967,6 +989,9 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle} (Opening)`}
             amount={(openingByAcctNum[a.accountNumber] || 0) + (journalBalanceMap[`${a.accountNumber} ${a.accountTitle}`] || 0)} indent={1} />
         ))}
+        {usesAuditedReBf && (
+          <AnnualRow label="Retained Earnings b/f (per Dec-2025 audited consolidated BS)" amount={reBroughtForward} indent={1} />
+        )}
         <AnnualRow label="Net Income (Current Year)" amount={netIncome} indent={1} />
         <AnnualRow label="TOTAL EQUITY" amount={totalEquity} isGrandTotal />
 
@@ -992,6 +1017,13 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
               Opening-balance cutoff: transactions before {data.cutoffDate} are excluded (already embedded in the bank opening balances).
             </p>
           )}
+          {!isBalanced && data.year >= 2026 && (
+            <p className="mt-2 text-xs italic" style={{ color: 'var(--mid-gray)' }}>
+              To fully chain this sheet off the audited FY2025 statements, enter the Dec-31-2025 balance-sheet
+              amounts as {data.year} opening balances in Beginning Balances — the remaining difference is the
+              opening position not yet entered.
+            </p>
+          )}
         </div>
       </div>
     )
@@ -1015,14 +1047,8 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
   const grossRevenueAccts = allRevenueSubTypes.filter(a => a.normalBalance !== 'DEBIT')
   const discountAccts = allRevenueSubTypes.filter(a => a.normalBalance === 'DEBIT')
 
-  // COA-driven: Expense accounts by subType
-  const directExpenseAccts = accounts.EXPENSE?.DIRECT_EXPENSES || []
-  const cogsAccts = accounts.EXPENSE?.COGS || []
-  const costOfSalesAccts = [...directExpenseAccts, ...cogsAccts]
-  const indirectExpenseAccts = accounts.EXPENSE?.INDIRECT_EXPENSES || []
-  // 8070 Depreciation Expense is shown in its own Depreciation section, so keep
-  // it out of Non-Operating Expenses to avoid listing it twice.
-  const nonOpExpenseAccts = (accounts.EXPENSE?.NON_OPERATING_EXPENSES || []).filter(a => a.accountNumber !== '8070')
+  // Expense buckets come from the shared totals helper (below) so the rows the
+  // page lists and the totals it prints can never use different groupings.
 
   // Collect revenue by account keys from monthly data
   const allRevenueKeys = new Set<string>()
@@ -1077,11 +1103,24 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
   const {
     effectiveGrossRevenue, totalDiscounts, netSales, totalCOGS,
     directJournalExpenses: totalDirectExpJournal,
-    grossProfit, totalOpex, ebitda, totalDepreciation, netIncome,
+    grossProfit, totalOpex, ebitda, totalDepreciation,
+    totalInterest, totalNonOperating, ebt, taxProvision, netIncome,
+    costOfSalesAccts: directExpenseAccts,
+    operatingExpenseAccts: indirectExpenseAccts,
+    interestAccts, nonOperatingAccts: nonOpExpenseAccts,
     grossRevenueForMonth, discountsForMonth, netSalesForMonth,
     directExpForMonth, indirectExpForMonth,
+    interestForMonth, nonOperatingForMonth, journalDepForMonth,
   } = totals
   const depByMonth = data.depreciation?.byMonth || {}
+  // Full per-month depreciation (asset schedule + direct 8070 postings) and the
+  // per-month P&L chain below EBITDA, mirroring the annual totals
+  const depForMonthIdx = (i: number) => (depByMonth[i + 1] || 0) + journalDepForMonth(monthly[i + 1])
+  const ebtForMonthIdx = (i: number) => {
+    const m = monthly[i + 1]
+    return netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m)
+      - depForMonthIdx(i) - interestForMonth(m) - nonOperatingForMonth(m)
+  }
 
   if (viewMode === 'annual') {
     const cogsByAcctAnnual: Record<string, number> = {}
@@ -1200,23 +1239,45 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
         <AnnualRow label="EBITDA" amount={ebitda} isGrandTotal />
 
         {/* DEPRECIATION */}
-        {totalDepreciation > 0 && (
+        {totalDepreciation !== 0 && (
           <>
             <SectionHeader label="Depreciation" />
             <AnnualRow label="8070 Depreciation Expense" amount={totalDepreciation} indent={1}
               onDrillDown={() => onDrillDown('8070 Depreciation Expense', 'DEPRECIATION_EXPENSE', 0)} />
-            <AnnualRow label="Total Depreciation" amount={totalDepreciation} indent={0} isTotal bold />
+          </>
+        )}
+
+        {/* INTEREST */}
+        {totalInterest !== 0 && (
+          <>
+            <SectionHeader label="Interest" />
+            {interestAccts.map((a) => {
+              const acctKey = `${a.accountNumber} ${a.accountTitle}`
+              return (
+                <AnnualRow key={a.accountNumber} label={acctKey} amount={expenseAmount(a.accountNumber, a.accountTitle)} indent={1}
+                  onDrillDown={() => onDrillDown(acctKey, 'JOURNAL_ACCOUNT', 0, acctKey)} />
+              )
+            })}
           </>
         )}
 
         {/* NON-OPERATING EXPENSES */}
-        {nonOpExpenseAccts.length > 0 && (
-          <SectionHeader label="Non-Operating Expenses" collapsed={!!col['nonop']} onToggle={() => tog('nonop')} />
+        {totalNonOperating !== 0 && (
+          <>
+            <SectionHeader label="Non-Operating Expenses" collapsed={!!col['nonop']} onToggle={() => tog('nonop')} />
+            {!col['nonop'] && nonOpExpenseAccts.map((a) => {
+              const acctKey = `${a.accountNumber} ${a.accountTitle}`
+              const amt = expenseAmount(a.accountNumber, a.accountTitle)
+              return amt !== 0 ? (
+                <AnnualRow key={a.accountNumber} label={acctKey} amount={amt} indent={1}
+                  onDrillDown={() => onDrillDown(acctKey, 'JOURNAL_ACCOUNT', 0, acctKey)} />
+              ) : null
+            })}
+          </>
         )}
-        {!col['nonop'] && nonOpExpenseAccts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
-        ))}
 
+        <AnnualRow label="EBT" amount={ebt} isGrandTotal />
+        <AnnualRow label="Provision for Income Tax (20%)" amount={taxProvision} indent={1} negative={taxProvision > 0} />
         <AnnualRow label="NET INCOME" amount={netIncome} isGrandTotal />
       </div>
     )
@@ -1371,33 +1432,57 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
         total={ebitda} isGrandTotal />
 
       {/* DEPRECIATION */}
-      {totalDepreciation > 0 && (
+      {totalDepreciation !== 0 && (
         <>
           <SectionHeader label="Depreciation" />
           <MonthlyRow label="8070 Depreciation Expense"
-            values={Array.from({ length: 12 }, (_, i) => depByMonth[i + 1] || 0)}
+            values={Array.from({ length: 12 }, (_, i) => depForMonthIdx(i))}
             total={totalDepreciation} indent={1}
             onClickCell={(m) => onDrillDown('8070 Depreciation Expense', 'DEPRECIATION_EXPENSE', m ?? 0)} />
-          <MonthlyRow label="Total Depreciation"
-            values={Array.from({ length: 12 }, (_, i) => depByMonth[i + 1] || 0)}
-            total={totalDepreciation} bold isTotal />
+        </>
+      )}
+
+      {/* INTEREST */}
+      {totalInterest !== 0 && (
+        <>
+          <SectionHeader label="Interest" />
+          {interestAccts.map((a) => {
+            const acctKey = `${a.accountNumber} ${a.accountTitle}`
+            return (
+              <MonthlyRow key={a.accountNumber} label={acctKey}
+                values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[acctKey] || 0)}
+                total={expenseAmount(a.accountNumber, a.accountTitle)} indent={1}
+                onClickCell={(m) => onDrillDown(acctKey, 'JOURNAL_ACCOUNT', m ?? 0, acctKey)} />
+            )
+          })}
         </>
       )}
 
       {/* NON-OPERATING */}
-      {nonOpExpenseAccts.length > 0 && (
-        <SectionHeader label="Non-Operating Expenses" collapsed={!!col['nonop']} onToggle={() => tog('nonop')} />
+      {totalNonOperating !== 0 && (
+        <>
+          <SectionHeader label="Non-Operating Expenses" collapsed={!!col['nonop']} onToggle={() => tog('nonop')} />
+          {!col['nonop'] && nonOpExpenseAccts.map((a) => {
+            const acctKey = `${a.accountNumber} ${a.accountTitle}`
+            const amt = expenseAmount(a.accountNumber, a.accountTitle)
+            return amt !== 0 ? (
+              <MonthlyRow key={a.accountNumber} label={acctKey}
+                values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[acctKey] || 0)}
+                total={amt} indent={1}
+                onClickCell={(m) => onDrillDown(acctKey, 'JOURNAL_ACCOUNT', m ?? 0, acctKey)} />
+            ) : null
+          })}
+        </>
       )}
-      {!col['nonop'] && nonOpExpenseAccts.map((a) => (
-        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-          values={Array(12).fill(0)} total={0} indent={1} />
-      ))}
 
+      <MonthlyRow label="EBT"
+        values={Array.from({ length: 12 }, (_, i) => ebtForMonthIdx(i))}
+        total={ebt} isGrandTotal />
+      <MonthlyRow label="Provision for Income Tax (20%)"
+        values={Array.from({ length: 12 }, (_, i) => ebtForMonthIdx(i) * INCOME_TAX_RATE)}
+        total={taxProvision} indent={1} />
       <MonthlyRow label="NET INCOME"
-        values={Array.from({ length: 12 }, (_, i) => {
-          const m = monthly[i + 1]
-          return netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m) - (depByMonth[i + 1] || 0)
-        })}
+        values={Array.from({ length: 12 }, (_, i) => ebtForMonthIdx(i) * (1 - INCOME_TAX_RATE))}
         total={netIncome} isGrandTotal />
       </>)}
     </div>
@@ -1424,6 +1509,9 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
       <SubSectionHeader label="Adjustments for non-cash items" />
       <AnnualRow label="Add: Depreciation" amount={cf.depreciation} indent={2}
         onDrillDown={() => onDrillDown('8070 Depreciation Expense', 'DEPRECIATION_EXPENSE', 0)} />
+      {cf.taxProvision !== 0 && (
+        <AnnualRow label="Add: Provision for Income Tax (accrued, non-cash)" amount={cf.taxProvision} indent={2} />
+      )}
 
       <SubSectionHeader label="Changes in Working Capital" />
       <AnnualRow label="(Increase) / decrease in Accounts Receivable" amount={cf.arChange} indent={2} />
@@ -1580,6 +1668,7 @@ export default function ReportsPage() {
       downloadRowsAsCSV(rows)
       return
     }
+    const t = computeIncomeStatementTotals(data)
     const { monthly, accounts } = data
     const allRevSubs = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
     const grossRevAccts = allRevSubs.filter(a => a.normalBalance !== 'DEBIT')
@@ -1653,7 +1742,12 @@ export default function ReportsPage() {
         })
         rows.push(['Total for Expenses', tOpex.toFixed(2)])
         rows.push(['EBITDA', ebda.toFixed(2)])
-        rows.push(['NET INCOME', ebda.toFixed(2)])
+        rows.push(['Depreciation', t.totalDepreciation.toFixed(2)])
+        rows.push(['Interest', t.totalInterest.toFixed(2)])
+        if (t.totalNonOperating !== 0) rows.push(['Non-Operating Expenses', t.totalNonOperating.toFixed(2)])
+        rows.push(['EBT', t.ebt.toFixed(2)])
+        rows.push(['Provision for Income Tax (20%)', t.taxProvision.toFixed(2)])
+        rows.push(['NET INCOME', t.netIncome.toFixed(2)])
       } else {
         const mv = (getter: (m: MonthData) => number) =>
           Array.from({ length: 12 }, (_, i) => getter(monthly[i + 1]).toFixed(2))
@@ -1708,7 +1802,9 @@ export default function ReportsPage() {
         })
         rows.push(['Total for Expenses', ...mv(mIndirExp), tOpex.toFixed(2)])
         rows.push(['EBITDA', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m) - mIndirExp(m)), ebda.toFixed(2)])
-        rows.push(['NET INCOME', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m) - mIndirExp(m)), ebda.toFixed(2)])
+        rows.push(['EBT', ...Array(12).fill(''), t.ebt.toFixed(2)])
+        rows.push(['Provision for Income Tax (20%)', ...Array(12).fill(''), t.taxProvision.toFixed(2)])
+        rows.push(['NET INCOME', ...Array(12).fill(''), t.netIncome.toFixed(2)])
       }
     } else {
       rows.push([`${reportTitle} — ${year} — ${branchLbl}`])

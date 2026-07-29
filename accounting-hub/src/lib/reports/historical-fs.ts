@@ -15,6 +15,15 @@ import {
 
 export const LAST_MANUAL_YEAR = 2025
 
+/**
+ * Retained earnings brought forward into FY2026, per the Dec-31-2025 audited
+ * consolidated balance sheet: Retained Earnings (−2,262,610.00) + FY2025 Net
+ * Income (−866,569.18). Used by the derived Balance Sheet as the opening RE
+ * when no BeginningBalance row for retained earnings has been entered, so the
+ * manual years chain into the transaction-derived years.
+ */
+export const RETAINED_EARNINGS_BF_2026 = -2262610.0 + -866569.18
+
 export interface HistoricalReportPayload {
   year: number
   branch: string
