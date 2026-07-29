@@ -143,6 +143,27 @@ for (const month of [5, 6]) {
   })
 }
 
+// product (7080) order with a sub-classified inventory item, for the
+// Sales-of-Product-Income category breakdown
+const prod7080 = await acct('7080', 'Sales of Product Income', 'REVENUE', 'OPERATING_REVENUE', 'CREDIT')
+const invItem = await prisma.inventoryItem.findFirst({ where: { sku: 'V2TEST-SKU-1' } })
+  || await prisma.inventoryItem.create({
+    data: {
+      name: 'V2 Test Sensory Ball', sku: 'V2TEST-SKU-1', skuDepartment: 'OT', skuCategory: 'TOY',
+      skuSubcategory: 'GEN', skuSequence: 999901, branch: 'SANDBOX_EAST',
+      quantity: 10, unitCost: 100, revenueAccountId: prod7080.id, createdById: admin.id,
+    },
+  })
+await prisma.order.create({
+  data: {
+    orderType: 'PRODUCT', branch: 'SANDBOX_EAST', status: 'COMPLETED', paymentStatus: 'PAID',
+    subtotal: 800, discountAmount: 0, netAmount: 800, revenueType: 'EARNED', referenceNumber: 'V2TEST',
+    transactionDate: new Date(Date.UTC(YEAR, 4, 20)), createdById: admin.id,
+    items: { create: [{ inventoryItemId: invItem.id, name: invItem.name, quantity: 2, unitPrice: 400, lineTotal: 800, cogsCost: 200 }] },
+    payments: { create: [{ method: 'CASH', amount: 800, paymentModeId: mode.id }] },
+  },
+})
+
 // asset: 24,000 bought Jan-2026, 1,000/month
 await prisma.asset.create({
   data: {

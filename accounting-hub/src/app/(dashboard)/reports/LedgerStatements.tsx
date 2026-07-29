@@ -6,7 +6,7 @@
 // quarterly columns and a vertical-analysis mode (every line as % of gross
 // revenue), and the integrity card sits at the bottom in plain language.
 import { useEffect, useState } from 'react'
-import { CheckCircle2, AlertTriangle, Loader2, X, Download } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, Loader2, X, Download, ChevronDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import type { V2Statements, V2AccountRow, V2CollectedLine } from '@/lib/reports/v2/engine'
@@ -315,6 +315,8 @@ export default function LedgerStatements({ year, branch, tab, view }: {
   const [result, setResult] = useState<{ key: string; data: V2Statements | null; error: string | null }>({ key: '', data: null, error: null })
   const [drill, setDrill] = useState<{ account: string; title: string; month: number | null } | null>(null)
   const [verticalAnalysis, setVerticalAnalysis] = useState(false)
+  // 7080 Sales of Product Income category breakdown — collapsed by default.
+  const [show7080Breakdown, setShow7080Breakdown] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -449,29 +451,43 @@ export default function LedgerStatements({ year, branch, tab, view }: {
       </label>
     )
 
-    // 7080 sub-classification rows (Department · Category), shown under 7080.
+    // 7080 sub-classification rows (Department · Category) — collapsible via a
+    // chevron on the 7080 line, hidden by default.
     const total7080 = is.productSubtypes.reduce((s, p) => s + p.total, 0)
     const subtypeRows = (renderRow: (p: { label: string; monthly: number[]; total: number }, mix: string) => React.ReactNode) =>
-      is.productSubtypes.map(p => renderRow(p, total7080 ? `${Math.round(p.total / total7080 * 100)}%` : '—'))
+      show7080Breakdown ? is.productSubtypes.map(p => renderRow(p, total7080 ? `${Math.round(p.total / total7080 * 100)}%` : '—')) : null
+    const rowLabel = (r: V2AccountRow) => {
+      const text = `${r.number} ${r.title}${r.virtual ? ' *' : ''}`
+      if (r.number !== '7080' || is.productSubtypes.length === 0) return text
+      return (
+        <span className="inline-flex items-center gap-1 cursor-pointer select-none" onClick={() => setShow7080Breakdown(s => !s)}
+          title={show7080Breakdown ? 'Hide category breakdown' : 'Show category breakdown'}>
+          <ChevronDown size={12} style={{ color: '#6b7280', transition: 'transform 0.15s', transform: show7080Breakdown ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
+          {text}
+        </span>
+      )
+    }
 
     if (multiCol) {
       body = (
         <div className="py-1">
           {vaToggle}
-          <div className="overflow-x-auto">
+          {/* Contained scroll area so the column headers stay pinned while
+              scrolling long statements (sticky needs the scrolling ancestor). */}
+          <div className="overflow-auto" style={{ maxHeight: '75vh' }}>
             <table className="w-full text-[0.75rem]" style={{ borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151' }}>Line Item</th>
-                  {colLabels.map(m => <th key={m} className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151' }}>{m}</th>)}
-                  <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', borderLeft: '1px solid #e5e7eb' }}>Total</th>
+                <tr>
+                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>Line Item</th>
+                  {colLabels.map(m => <th key={m} className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>{m}</th>)}
+                  <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', borderLeft: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
                 {sec('REVENUE') && (<>
                   <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Gross Revenue</td></tr>
                   {sec('REVENUE')!.rows.map(r => (<>
-                    <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)}
+                    <MultiRow key={r.number} label={rowLabel(r)} indent={1} {...rowVals(r)}
                       onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
                     {r.number === '7080' && subtypeRows((p, mix) => {
                       const cols = toCols(p.monthly)
@@ -524,7 +540,7 @@ export default function LedgerStatements({ year, branch, tab, view }: {
           {sec('REVENUE') && (<>
             <Row label="Gross Revenue" bold />
             {sec('REVENUE')!.rows.map(r => (<div key={r.number}>
-              <Row label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`}
+              <Row label={rowLabel(r)}
                 amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
               {r.number === '7080' && subtypeRows((p, mix) => (
                 <Row key={`sub-${p.label}`} label={`${p.label} (${mix})`} amount={p.total} indent={2} muted pctBase={vaBase} />
