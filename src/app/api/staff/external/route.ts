@@ -30,10 +30,15 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get('search')?.trim()
   const branch = searchParams.get('branch')?.toUpperCase()
   const includeHR = searchParams.get('includeHR') === 'true'
+  // Deactivated profiles are excluded by default. Merging an interbranch person leaves the
+  // absorbed branch profile behind as active:false; emitting it kept Payroll syncing a second
+  // Consultant record for the same human, which then produced two payslips at one branch.
+  const includeInactive = searchParams.get('includeInactive') === 'true'
 
   try {
     const staff = await prisma.staff.findMany({
       where: {
+        ...(includeInactive ? {} : { active: true }),
         ...(branch ? { branch } : {}),
         ...(search
           ? {
