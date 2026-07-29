@@ -31,8 +31,7 @@ interface StaffMember {
   bankAccountNo: string | null
   hrPlatformId: string | null
   extraBranches: string[]
-  employmentByBranch?: Record<string, string> | null
-  branchEmployment: Record<string, { employmentType?: string | null }> | null
+  branchEmployment: Record<string, { employmentType?: string | null; employeeId?: string | null; department?: string | null; jobTitle?: string | null }> | null
   createdAt: string
   updatedAt?: string | null
 }
@@ -119,76 +118,6 @@ function ExtraBranchToggle({
 }) {
   const [busy, setBusy] = useState(false)
   const extra = ['SBEA', 'SBGH'].filter(b => b !== primaryBranch)
-
-/**
- * Per-branch role. Someone can be a consultant at one branch and an employee at another —
- * HR only stores one employmentType, so this override lives here and drives which Payroll
- * tab they land in per branch over in the Accounting Hub.
- */
-function EmploymentByBranchEditor({ staffId, branches, value, fallback, onChange }: {
-  staffId: string
-  branches: string[]
-  value: Record<string, string> | null | undefined
-  fallback: string | null | undefined
-  onChange: (v: Record<string, string> | null) => void
-}) {
-  const [busy, setBusy] = useState(false)
-  const current = value ?? {}
-
-  async function set(branch: string, type: string) {
-    if (busy) return
-    const next: Record<string, string> = { ...current }
-    if (type) next[branch] = type; else delete next[branch]
-    setBusy(true)
-    try {
-      const res = await fetch('/api/staff', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: staffId, employmentByBranch: Object.keys(next).length ? next : null }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.error || 'Save failed')
-      }
-      onChange(Object.keys(next).length ? next : null)
-    } catch (err) {
-      alert('Failed to save: ' + (err instanceof Error ? err.message : String(err)))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="py-2">
-      <div className="text-xs font-semibold mb-1" style={{ color: '#475569' }}>Role per branch</div>
-      <div className="space-y-1.5">
-        {branches.map(b => (
-          <div key={b} className="flex items-center gap-2">
-            <span className="text-xs w-16" style={{ color: '#334155' }}>{b}</span>
-            <select
-              value={current[b] ?? ''}
-              disabled={busy}
-              onChange={e => set(b, e.target.value)}
-              className="text-xs px-2 py-1 rounded-lg border disabled:opacity-50"
-              style={{ borderColor: '#CBD5E1' }}
-            >
-              <option value="">
-                Same as profile{fallback ? ` (${fallback})` : ''}
-              </option>
-              <option value="employee">Employee</option>
-              <option value="consultant">Consultant</option>
-            </select>
-          </div>
-        ))}
-      </div>
-      <p className="text-[11px] mt-1.5" style={{ color: '#64748B' }}>
-        Payroll in the Accounting Hub uses this: a branch set to Employee lists them under
-        Employees for that branch, Consultant lists them under Consultants. Left as
-        &ldquo;same as profile&rdquo; everywhere, nothing changes.
-      </p>
-    </div>
-  )
-}
 
   async function toggle(branch: string) {
     if (busy) return
@@ -799,7 +728,20 @@ export default function StaffClient({ role }: { role: string }) {
             {/* Body — sections of fields */}
             <div className="px-6 py-5 space-y-6 text-sm">
               <DetailSection title="Role">
-                <DetailRow label="Employee ID"     value={selectedStaff.employeeId} mono />
+                {(() => {
+                  const empMap = selectedStaff.branchEmployment ?? {}
+                  const entries = Object.entries(empMap).filter(([, v]) => v?.employeeId)
+                  const uniqueIds = new Set(entries.map(([, v]) => v.employeeId))
+                  if (entries.length >= 2 && uniqueIds.size >= 2) {
+                    return entries.map(([br, v]) => (
+                      <DetailRow key={br}
+                        label={`Employee ID (${BRANCH_DISPLAY[br] ?? br})`}
+                        value={v.employeeId ?? null}
+                        mono />
+                    ))
+                  }
+                  return <DetailRow label="Employee ID" value={selectedStaff.employeeId} mono />
+                })()}
                 <DetailRow label="Job Title"       value={selectedStaff.jobTitle ? selectedStaff.jobTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null} />
                 <DetailRow label="Department"      value={selectedStaff.department.replace(/_/g, ' ')} />
                 <DetailRow label="Primary Branch"  value={selectedStaff.branch} />
@@ -818,18 +760,6 @@ export default function StaffClient({ role }: { role: string }) {
                     : null
                 }
                 <DetailRow label="Employment"      value={selectedStaff.employmentType ? (selectedStaff.employmentType.charAt(0).toUpperCase() + selectedStaff.employmentType.slice(1)) : null} />
-                {role === 'ADMIN' && (
-                  <EmploymentByBranchEditor
-                    staffId={selectedStaff.id}
-                    branches={Array.from(new Set([selectedStaff.branch, ...(selectedStaff.extraBranches ?? [])])).filter(Boolean)}
-                    value={selectedStaff.employmentByBranch}
-                    fallback={selectedStaff.employmentType}
-                    onChange={(v) => {
-                      setSelectedStaff(s => s ? { ...s, employmentByBranch: v } : s)
-                      setStaff(prev => prev.map(x => x.id === selectedStaff.id ? { ...x, employmentByBranch: v } : x))
-                    }}
-                  />
-                )}
               </DetailSection>
 
               <DetailSection title="Contact">
