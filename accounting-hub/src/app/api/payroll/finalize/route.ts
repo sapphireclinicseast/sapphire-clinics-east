@@ -4,6 +4,11 @@ import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
+// Display-only branch codes for human-readable JE descriptions (SBEA→AHEA rebrand).
+// NEVER use for referenceId / branch fields — those must keep the stored codes.
+const BRANCH_DISPLAY: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH' }
+const branchDisplay = (b: string) => BRANCH_DISPLAY[b] ?? b
+
 // Unlock payroll — reverse a previous lock & finalize
 export async function DELETE(req: Request) {
   const session = await auth()
@@ -298,7 +303,7 @@ export async function POST(req: Request) {
         const journalEntry = await tx.journalEntry.create({
           data: {
             entryDate: new Date(),
-            description: `Payroll — Consultants — ${cutoffPeriod} — ${branch}`,
+            description: `Payroll — Consultants — ${cutoffPeriod} — ${branchDisplay(branch)}`,
             referenceType: 'PAYROLL_CONSULTANT',
             referenceId: `${cutoffPeriod}|${branch}`,
             totalAmount: totalGross,
@@ -393,7 +398,7 @@ export async function POST(req: Request) {
         const journalEntry = await tx.journalEntry.create({
           data: {
             entryDate: new Date(),
-            description: `Payroll — Employees — ${cutoffPeriod} — ${branch}`,
+            description: `Payroll — Employees — ${cutoffPeriod} — ${branchDisplay(branch)}`,
             referenceType: 'PAYROLL_EMPLOYEE',
             referenceId: `${cutoffPeriod}|${branch}`,
             totalAmount: totalTaxableSalary + totalBenefitsER,

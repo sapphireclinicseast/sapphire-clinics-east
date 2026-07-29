@@ -71,6 +71,9 @@ const SOURCE_LABELS: Record<string, string> = {
 const sourceLabel = (s: string) => SOURCE_LABELS[s]
   || s.replace(/^journal:/, '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())
 
+/** Historical ledger labels/descriptions were stored with the pre-rebrand branch codes — sanitize at display time only. */
+const rebrand = (s: string) => s.replace(/\bSBEA\b/g, 'AHEA').replace(/\bSBGH\b/g, 'AHGH')
+
 const fmtAmt = (v: number) => (v < 0 ? `(${formatCurrency(Math.abs(v))})` : formatCurrency(v))
 const fmtPct = (v: number, base: number) => (Math.abs(base) < 0.005 ? '—' : `${(v / base * 100).toFixed(1)}%`)
 
@@ -198,7 +201,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
       ...lines.map(l => [
         l.month === 0 ? 'Opening' : MONTHS[l.month - 1],
         sourceLabel(l.source),
-        l.label,
+        rebrand(l.label),
         l.debit ? l.debit.toFixed(2) : '',
         l.credit ? l.credit.toFixed(2) : '',
       ]),
@@ -264,7 +267,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#6b7280' }}>{l.month === 0 ? 'Opening' : MONTHS[l.month - 1]}</td>
                     <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#374151' }}>{sourceLabel(l.source)}</td>
-                    <td className="px-3 py-1" style={{ color: '#111827' }}>{l.label}</td>
+                    <td className="px-3 py-1" style={{ color: '#111827' }}>{rebrand(l.label)}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{l.debit ? formatCurrency(l.debit) : ''}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{l.credit ? formatCurrency(l.credit) : ''}</td>
                   </tr>

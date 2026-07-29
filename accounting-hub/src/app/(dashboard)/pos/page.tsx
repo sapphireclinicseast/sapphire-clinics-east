@@ -8512,7 +8512,7 @@ function PaymentModeSettingsPanel() {
                     <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{m.name}</span>
                     {m.branch ? (
                       <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                        {m.branch === 'SANDBOX_EAST' ? 'SBEA' : m.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : m.branch === 'VERDANA_STORE' ? 'Verdana' : m.branch}
+                        {m.branch === 'SANDBOX_EAST' ? 'AHEA' : m.branch === 'SANDBOX_GREENHILLS' ? 'AHGH' : m.branch === 'VERDANA_STORE' ? 'Verdana' : m.branch}
                       </span>
                     ) : (
                       <span className="ml-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>All</span>
@@ -8570,7 +8570,7 @@ function PaymentModeSettingsPanel() {
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Mode Name *</label>
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Cash - SBEA, GCash, Credit Card"
+                  placeholder="e.g. Cash - AHEA, GCash, Credit Card"
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
 
