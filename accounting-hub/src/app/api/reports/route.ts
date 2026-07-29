@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
+import { getHistoricalReport } from '@/lib/reports/historical-fs'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP']
 
@@ -14,6 +15,13 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()))
   const branch = searchParams.get('branch') || 'ALL'
+
+  // FY2024–FY2025 live as manual statements from the audited management
+  // accounts, not as tagged transactions — serve them directly.
+  const historical = getHistoricalReport(year, branch)
+  if (historical) {
+    return NextResponse.json({ historical })
+  }
 
   const startDate = new Date(`${year}-01-01T00:00:00.000Z`)
   const endDate = new Date(`${year + 1}-01-01T00:00:00.000Z`)
