@@ -348,10 +348,13 @@ function AnnualRow({
         fontWeight: isGrandTotal || isTotal || bold ? 600 : 400,
         fontStyle: muted ? 'italic' : undefined,
         borderTop: isGrandTotal ? '2px solid #111827' : isTotal ? '1px solid #d1d5db' : undefined,
-        borderBottom: isGrandTotal ? '3px double #111827' : isTotal ? '1px solid #d1d5db' : undefined,
+        // Thin separator on plain line items so the eye can track a label to
+        // its amount across the full row width.
+        borderBottom: isGrandTotal ? '3px double #111827' : isTotal ? '1px solid #d1d5db' : '1px solid #f3f4f6',
         background: isGrandTotal ? '#f0f9f8' : undefined,
         color: muted ? '#6b7280' : '#111827',
       }}
+      className="hover:bg-gray-50"
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: expandable ? 'pointer' : undefined }}
         onClick={expandable ? onToggleExpand : undefined}>

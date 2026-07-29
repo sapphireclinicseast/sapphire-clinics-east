@@ -76,9 +76,12 @@ function StatementTable({
             return (
               <tr
                 key={i}
+                className="hover:bg-gray-50"
                 style={{
                   borderTop: isSubtotal || isGrand ? '1px solid #d1d5db' : undefined,
-                  borderBottom: isGrand ? '3px double #111827' : undefined,
+                  // Thin separator on plain line items so the eye can track a
+                  // label to its amount across the full row width.
+                  borderBottom: isGrand ? '3px double #111827' : isSubtotal ? undefined : '1px solid #f3f4f6',
                   background: isGrand ? '#f9fafb' : undefined,
                 }}
               >

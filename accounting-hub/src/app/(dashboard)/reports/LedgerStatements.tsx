@@ -88,11 +88,13 @@ function Row({ label, amount, indent = 0, bold, rule, doubleRule, onClick }: {
 }) {
   return (
     <div
-      className="flex items-center justify-between px-4 py-1 text-[0.8rem]"
+      className="flex items-center justify-between px-4 py-1 text-[0.8rem] hover:bg-gray-50"
       style={{
         paddingLeft: `${1 + indent * 1.25}rem`,
         borderTop: rule ? '1px solid #d1d5db' : undefined,
-        borderBottom: doubleRule ? '3px double #111827' : undefined,
+        // Thin separator on plain line items so the eye can track a label to
+        // its amount across the full row width.
+        borderBottom: doubleRule ? '3px double #111827' : rule || bold ? undefined : '1px solid #f3f4f6',
         background: doubleRule ? '#f9fafb' : undefined,
       }}
     >
@@ -125,9 +127,9 @@ function MonthlyRow({ label, indent, bold, rule, doubleRule, ...cells }: {
   label: string; values: number[]; total: number; indent?: number; bold?: boolean; rule?: boolean; doubleRule?: boolean; onClickCell?: (m: number | null) => void
 }) {
   return (
-    <tr style={{
+    <tr className="hover:bg-gray-50" style={{
       borderTop: rule ? '1px solid #d1d5db' : undefined,
-      borderBottom: doubleRule ? '3px double #111827' : undefined,
+      borderBottom: doubleRule ? '3px double #111827' : rule || bold ? undefined : '1px solid #f3f4f6',
       background: doubleRule ? '#f9fafb' : undefined,
     }}>
       <td className="px-3 py-1 whitespace-nowrap" style={{ paddingLeft: indent ? `${1 + indent * 1.25}rem` : undefined, fontWeight: bold ? 600 : 400 }}>
