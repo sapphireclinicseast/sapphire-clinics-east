@@ -350,7 +350,7 @@ export async function computeLedgerStatements(
     },
     select: {
       id: true, orderNumber: true, patientName: true, transactionDate: true,
-      netAmount: true, revenueType: true, discountAmount: true, discountLabel: true,
+      netAmount: true, revenueType: true, discountAmount: true, discountLabel: true, discountType: true,
       items: {
         select: {
           lineTotal: true, cogsCost: true, quantity: true, isFreeSample: true,
@@ -367,10 +367,10 @@ export async function computeLedgerStatements(
     },
   })
   let synthesizedOrders = 0
-  const discountAcct = (label: string | null): AcctInfo => {
+  const discountAcct = (label: string | null, discountType?: string | null): AcctInfo => {
     const l = (label || '').toLowerCase()
     const pick = (n: string, fallbackTitle: string) => byNumber.get(n) || virt(n, fallbackTitle, 'REVENUE', 'OPERATING_REVENUE', 'DEBIT')
-    if (/pwd|senior/.test(l)) return pick('7130', 'PWD or Senior Citizen Discount')
+    if (discountType === 'PWD_SC' || /pwd|senior/.test(l)) return pick('7130', 'PWD or Senior Citizen Discount')
     if (/vip/.test(l)) return pick('7170', 'VIP Card Discount')
     if (/interbranch/.test(l)) return pick('7190', 'Employee Interbranch Discount')
     if (/employee/.test(l)) return pick('7180', 'Employee Discount')
@@ -418,7 +418,7 @@ export async function computeLedgerStatements(
           : (byNumber.get('7000') || virt('7000', 'Gross Revenue', 'REVENUE', 'OPERATING_REVENUE', 'CREDIT'))
         lines.push({ acct: rev, credit: Number(it.lineTotal) })
       }
-      if (Number(o.discountAmount) > 0.005) lines.push({ acct: discountAcct(o.discountLabel), debit: Number(o.discountAmount) })
+      if (Number(o.discountAmount) > 0.005) lines.push({ acct: discountAcct(o.discountLabel, o.discountType), debit: Number(o.discountAmount) })
     }
     postBalanced('orders', oMonth, oLabel, lines)
 

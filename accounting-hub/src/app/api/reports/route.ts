@@ -500,7 +500,11 @@ export async function GET(req: Request) {
             || item.inventoryItem?.revenueAccount?.accountType
           if (itemRevenueAcctType !== 'LIABILITY') {
             const acctKey = resolveItemAccount(item)
-            const refund = Number(item.refundAmount || 0)
+            // Only PRODUCT returns (Verdana merchandise) are sales returns on the
+            // IS (7160). SERVICE refunds return prepaid, un-consumed amounts —
+            // they reduce Unearned Revenue on the balance sheet (the refund JE
+            // debits 4055) and must never appear as an income-statement deduction.
+            const refund = item.inventoryItemId ? Number(item.refundAmount || 0) : 0
             // lineTotal is the full gross sale (incl. returned units). Revenue = lineTotal;
             // the refunded portion is booked as a Refund deduction (7160). Net = gross − refund.
             m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
