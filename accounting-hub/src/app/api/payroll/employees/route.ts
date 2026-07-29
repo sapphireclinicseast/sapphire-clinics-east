@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { fetchExternalStaffForSync, fetchHrStaffForSync } from '@/lib/external-staff'
+import { employeeBranchesOf } from '@/lib/branch-roles'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
@@ -40,9 +41,8 @@ export async function GET(req: Request) {
       const employeeBranchOverride = new Map<string, string[]>()
       try {
         for (const o of await fetchExternalStaffForSync()) {
-          const map = (o.employmentByBranch || null) as Record<string, string> | null
-          if (!o.hrPlatformId || !map) continue
-          const branches = Object.entries(map).filter(([, t]) => t === 'employee').map(([b]) => b)
+          if (!o.hrPlatformId) continue
+          const branches = employeeBranchesOf(o)
           if (branches.length > 0) employeeBranchOverride.set(String(o.hrPlatformId), branches)
         }
       } catch (e) {

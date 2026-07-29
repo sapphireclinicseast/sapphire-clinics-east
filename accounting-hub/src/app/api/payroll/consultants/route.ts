@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { fetchExternalStaffForSync } from '@/lib/external-staff'
+import { consultantBranchesOf } from '@/lib/branch-roles'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -74,10 +75,7 @@ export async function GET(req: Request) {
           // consultant at one branch and an employee at another, which the single
           // employmentType can't express. A branch listed as 'consultant' here keeps them in
           // this tab even when the profile says employee — and pins them to that branch.
-          const perBranch = (s.employmentByBranch || null) as Record<string, string> | null
-          const consultantBranches = perBranch
-            ? Object.entries(perBranch).filter(([, t]) => t === 'consultant').map(([b]) => b)
-            : []
+          const consultantBranches = consultantBranchesOf(s)
           if (consultantBranches.length === 0 && s.employmentType === 'employee') continue
 
           syncedExternalIds.add(s.id)
