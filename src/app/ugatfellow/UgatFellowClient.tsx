@@ -207,7 +207,6 @@ export default function UgatFellowClient() {
                   grounded in their values (<i>ugat</i>) as they pursue excellence
                   (<i>galing</i>), integrity (<i>tindig</i>), and service (<i>paglilingkod</i>).
                 </p>
-                <ProgramTimeline />
                 <p className={s.mobilePartner}>
                   Interested to have your school partner with us for accepting fellows for
                   Allied Health? Contact us at{' '}
@@ -249,34 +248,12 @@ function LeftPanel() {
           in their values as they grow: excellence (<i>galing</i>), integrity
           (<i>tindig</i>), and service (<i>paglilingkod</i>).
         </p>
-        <ProgramTimeline />
         <p className={s.leftPartner}>
           Interested to have your school partner with us for accepting fellows for
           Allied Health? Contact us at{' '}
           <a href="mailto:fellowship@sapphireclinicseast.org">fellowship@sapphireclinicseast.org</a>.
         </p>
       </div>
-    </div>
-  )
-}
-
-// ── Application timeline (shared by desktop panel + mobile block) ───
-function ProgramTimeline() {
-  return (
-    <div className={s.timeline}>
-      <p className={s.timelineTitle}>📅 Typical cycle — the year at a glance</p>
-
-      <p className={s.timelineCycle}>Cycle 1 <span>· Annual applicants</span></p>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>Jan – May</span><span>Applications open</span></div>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>Jun – Jul</span><span>Deliberations by our assessors</span></div>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>Jul – Aug</span><span>New fellows announced!</span></div>
-
-      <p className={s.timelineCycle}>Cycle 2 <span>· Semestral applicants</span></p>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>Jun – Aug</span><span>Applications open</span></div>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>Oct – Nov</span><span>Deliberations by our assessors</span></div>
-      <div className={s.timelineRow}><span className={s.timelineWhen}>Nov – Dec</span><span>New fellows announced!</span></div>
-
-      <p className={s.timelineNote}>May have adjustments depending on the intake of fellows.</p>
     </div>
   )
 }
