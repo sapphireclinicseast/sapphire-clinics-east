@@ -54,6 +54,8 @@ export async function GET(req: NextRequest) {
       ...(patientBranchEnum ? {
         OR: [
           { patientId: null },
+          // Patients with no branch set pre-date the branch field — include them everywhere
+          { patient: { branch: null } },
           { patient: { branch: patientBranchEnum as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' } },
         ],
       } : {}),
