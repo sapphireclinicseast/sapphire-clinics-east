@@ -144,8 +144,23 @@ export async function GET(req: Request) {
             where: { externalStaffId: { not: null }, isActive: true },
             select: { id: true, name: true, externalStaffId: true, _count: { select: { payrollEntries: true } } },
           })
+          // Names the feed still carries. Someone who dropped out but whose name is still
+          // listed is a merged twin — the branch profile that was absorbed when the person
+          // became interbranch — not someone who left.
+          const syncedNames = new Set(
+            staff.map(s => formatName(`${s.firstName} ${s.lastName}`).trim().toUpperCase())
+          )
           for (const c of linkedConsultants) {
             if (!c.externalStaffId || syncedExternalIds.has(c.externalStaffId)) continue
+            // A merged twin must go even with payslips behind it, or the person is generated
+            // twice at whichever branch both records reach. The payslips are keyed to the
+            // Consultant row, not its isActive flag, so past payroll stays intact.
+            if (syncedNames.has(c.name.trim().toUpperCase())) {
+              console.warn(`[payroll/consultants] ${c.name} has a second record that is no longer in `
+                + `the staff feed — deactivating it as a merged duplicate (${c._count.payrollEntries} payslip(s) kept).`)
+              await prisma.consultant.update({ where: { id: c.id }, data: { isActive: false } })
+              continue
+            }
             // Never deactivate someone who has been paid. A rename upstream, a changed id, or
             // a source that briefly stops listing them would otherwise silently pull the
             // consultant behind locked payslips out of payroll. Absence from one sync is not

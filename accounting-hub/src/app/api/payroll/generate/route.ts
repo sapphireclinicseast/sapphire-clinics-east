@@ -162,7 +162,7 @@ export async function GET(req: Request) {
       })
       branchSessionNames = new Set(oc.map(o => (o.clinicianName || '').trim().toUpperCase()).filter(Boolean))
     }
-    const consultants = branch
+    const branchConsultants = branch
       ? consultantsNoEmp.filter(c =>
           c.branch === branch
           || (c.extraBranches || []).includes(branch)
@@ -205,6 +205,36 @@ export async function GET(req: Request) {
     })
     const existingMap = new Map(existingEntries.map(e => [e.consultantId, e.status]))
     const existingDataMap = new Map(existingEntries.map(e => [e.consultantId, e]))
+
+    // One payslip per person, however many Consultant rows they have. Sessions are matched to a
+    // consultant by clinician NAME, so two rows for the same human both claim the same orders and
+    // each would produce a full payslip at this branch — the person shows up twice and, if both
+    // are saved, is owed twice. Duplicate rows come from a merged interbranch staff profile whose
+    // absorbed twin lingers; the sync now retires those, and this keeps the money right meanwhile.
+    // Keep the row this cutoff's payslip was already written against, so a locked payslip stays
+    // the one on screen.
+    const rank = (c: { id: string; branch: string; externalStaffId: string | null; createdAt: Date }) => {
+      const st = existingMap.get(c.id)
+      return [
+        st === 'LOCKED' || st === 'FINAL' ? 1 : 0,
+        st ? 1 : 0,
+        branch && c.branch === branch ? 1 : 0,
+        c.externalStaffId ? 1 : 0,
+        -new Date(c.createdAt).getTime(),   // older row = longer history
+      ]
+    }
+    const byPerson = new Map<string, typeof branchConsultants[number]>()
+    for (const c of branchConsultants) {
+      const key = c.name.trim().toUpperCase()
+      const prev = byPerson.get(key)
+      if (!prev) { byPerson.set(key, c); continue }
+      const [a, b] = [rank(c), rank(prev)]
+      const better = a.findIndex((v, i) => v !== b[i])
+      if (better !== -1 && a[better] > b[better]) byPerson.set(key, c)
+      console.warn(`[payroll/generate] ${c.name} has more than one active consultant record at `
+        + `${branch || 'all branches'} — generating one payslip from ${(byPerson.get(key) as { id: string }).id}.`)
+    }
+    const consultants = branchConsultants.filter(c => byPerson.get(c.name.trim().toUpperCase())?.id === c.id)
 
     // Load active incentive rules
     const incentiveRules = await prisma.incentiveRule.findMany({ where: { isActive: true } })
