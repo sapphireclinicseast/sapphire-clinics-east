@@ -456,7 +456,11 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
       if (!r.ok) { alert(d.error || 'Import failed'); return }
       const bits = [`Imported ${d.imported} transaction(s).`]
       if (d.archived) bits.push(`${d.archived} pre-date the reconciliation start date and were filed as Archived (locked from tagging).`)
-      if (d.skipped) bits.push(`${d.skipped} skipped as already on file.`)
+      // "Skipped" means this account already held an identical line from an
+      // earlier upload, so it was not added a second time. It does not mean the
+      // line was matched to anything — matching is reconciling a bank line
+      // against a Hub record, which is a separate step you do in the grid.
+      if (d.skipped) bits.push(`${d.skipped} already uploaded previously, so not added again (this is not the same as matching).`)
       alert(bits.join('\n')); onDone()
     } finally { setBusy(false) }
   }
