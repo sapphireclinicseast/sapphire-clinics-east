@@ -94,12 +94,17 @@ export async function GET(req: Request) {
   const thisAccount = await prisma.account.findUnique({
     where: { id: bankAccountId }, select: { currency: true },
   })
-  const otherCurrencyAccounts = await prisma.account.findMany({
-    where: { isBankAccount: true, isActive: true, id: { not: bankAccountId } },
-    select: { id: true, accountNumber: true, accountTitle: true, currency: true },
+  const allBank = await prisma.account.findMany({
+    where: { isBankAccount: true, isActive: true },
+    select: { id: true, accountNumber: true, accountTitle: true, currency: true, isForexAccount: true },
   })
-  const crossIds = otherCurrencyAccounts
-    .filter(a => (a.currency || 'PHP') !== (thisAccount?.currency || 'PHP'))
+  // Only the accounts marked as taking part in forex, once any have been.
+  const forexConfigured = allBank.some(a => a.isForexAccount)
+  const thisTakesPart = !forexConfigured || !!allBank.find(a => a.id === bankAccountId)?.isForexAccount
+  const otherCurrencyAccounts = allBank.filter(a => a.id !== bankAccountId)
+  const crossIds = !thisTakesPart ? [] : otherCurrencyAccounts
+    .filter(a => (a.currency || 'PHP') !== (thisAccount?.currency || 'PHP')
+      && (!forexConfigured || a.isForexAccount))
     .map(a => a.id)
   const crossLines = crossIds.length
     ? await prisma.bankTransaction.findMany({
