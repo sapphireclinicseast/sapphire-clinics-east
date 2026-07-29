@@ -10,6 +10,8 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { computeIncomeStatementTotals } from '@/lib/reports/income-statement-totals'
 import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
+import HistoricalReport from './HistoricalReport'
+import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -45,6 +47,9 @@ interface AccountEntry {
 }
 
 interface ReportData {
+  // Present (alone) for manual/historical years (<= 2025) — every other field
+  // is absent in that case and the page renders <HistoricalReport> instead.
+  historical?: HistoricalReportPayload
   year: number
   branch: string
   cutoffDate?: string | null   // opening-balance date; transactions before it are excluded
@@ -1540,8 +1545,41 @@ export default function ReportsPage() {
     window.print()
   }
 
+  const downloadRowsAsCSV = (rows: string[][]) => {
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeTab}-${year}-${branch}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleDownloadCSV = () => {
     if (!data) return
+    if (data.historical) {
+      const h = data.historical
+      const stmt = activeTab === 'income-statement' ? h.incomeStatement
+        : activeTab === 'balance-sheet' ? h.balanceSheet
+        : h.cashFlow
+      if (!stmt) return
+      const withMonths = activeTab !== 'balance-sheet' && viewMode === 'monthly'
+      const rows: string[][] = []
+      const title = 'title' in stmt ? stmt.title : ''
+      rows.push([`${title} — ${year}`, ...(withMonths ? FULL_MONTHS : []), activeTab === 'balance-sheet' ? 'Amount (PHP)' : 'FY Total'])
+      for (const r of stmt.rows) {
+        if (r.kind === 'header') {
+          rows.push([r.label, ...(withMonths ? Array(12).fill('') : []), r.total !== null ? r.total.toFixed(2) : ''])
+        } else {
+          const label = r.kind === 'line' ? `  ${r.label}` : r.label
+          const months = withMonths ? (r.monthly ?? Array(12).fill(0)).map((v: number) => v.toFixed(2)) : []
+          rows.push([label, ...months, r.total !== null ? r.total.toFixed(2) : ''])
+        }
+      }
+      downloadRowsAsCSV(rows)
+      return
+    }
     const { monthly, accounts } = data
     const allRevSubs = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
     const grossRevAccts = allRevSubs.filter(a => a.normalBalance !== 'DEBIT')
@@ -1677,14 +1715,7 @@ export default function ReportsPage() {
       rows.push(['Note: For Balance Sheet and Cash Flow, use Print (PDF) for a formatted version.'])
     }
 
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${activeTab}-${year}-${branch}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadRowsAsCSV(rows)
   }
 
   const reportTitle = activeTab === 'balance-sheet'
@@ -1852,7 +1883,15 @@ export default function ReportsPage() {
         )}
 
         {/* Report content */}
-        {!loading && data && (
+        {!loading && data?.historical && (
+          <HistoricalReport
+            hist={data.historical}
+            tab={effTab}
+            monthly={effView === 'monthly'}
+            revenueOnly={isMedrep}
+          />
+        )}
+        {!loading && data && !data.historical && (
           <div className="py-2">
             {effTab === 'balance-sheet' && (
               <BalanceSheet data={data} viewMode={effView} onDrillDown={effDrill} />
