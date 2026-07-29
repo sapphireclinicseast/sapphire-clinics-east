@@ -26,6 +26,7 @@ for (const o of oldOrders) {
   await prisma.order.delete({ where: { id: o.id } })
 }
 await prisma.asset.deleteMany({ where: { name: 'V2 Test Equipment' } })
+await prisma.digitalWallet.deleteMany({ where: { barcode: 'V2TEST-WALLET' } })
 
 async function acct(accountNumber, accountTitle, accountType, subType, normalBalance, extra = {}) {
   const existing = await prisma.account.findUnique({ where: { accountNumber } })
@@ -118,6 +119,29 @@ await prisma.order.create({
     payments: { create: [{ method: 'CASH', amount: 20400, paymentModeId: mode.id }] },
   },
 })
+
+// package wallet: net 20,400 loaded, 2 sessions consumed at 1,700 net each → 17,000 left
+const wallet = await prisma.digitalWallet.create({
+  data: {
+    patientId: 'v2-test-patient', patientName: 'V2 Test Patient', barcode: 'V2TEST-WALLET',
+    walletType: 'PACKAGE', balance: 17000, branch: 'SANDBOX_EAST',
+  },
+})
+
+// consumption: 2 earned session orders drawn from the package wallet —
+// gross 2,125, PWD 425, net 1,700 each (the discount recognized pro-rata here)
+for (const month of [5, 6]) {
+  await prisma.order.create({
+    data: {
+      orderType: 'SERVICE', branch: 'SANDBOX_EAST', status: 'COMPLETED', paymentStatus: 'PAID',
+      subtotal: 2125, discountAmount: 425, discountType: 'PWD_SC', discountLabel: 'PWD/Senior Citizen (20%)',
+      netAmount: 1700, revenueType: 'EARNED', referenceNumber: 'V2TEST',
+      transactionDate: new Date(Date.UTC(YEAR, month, 5)), createdById: admin.id,
+      items: { create: [{ serviceId: svc.id, name: svc.name, quantity: 1, unitPrice: 2125, lineTotal: 2125 }] },
+      payments: { create: [{ method: 'PREPAID_CARD', amount: 1700, walletId: wallet.id }] },
+    },
+  })
+}
 
 // asset: 24,000 bought Jan-2026, 1,000/month
 await prisma.asset.create({

@@ -137,9 +137,12 @@ export async function postOrderJournal(
     revenueAccountIds.add(revAcct.id)
   }
 
-  /* ── 2. Discount (DR contra-revenue) ──────────────────────────── */
+  /* ── 2. Discount (DR contra-revenue) ──────────────────────────────
+     UNEARNED orders skip this entirely: the deposit liability is credited NET
+     of the discount (step 5), and the discount is recognized later on the
+     earned per-session orders — booking it here would double-count it. ── */
   const discountAmount = Number(order.discountAmount)
-  if (discountAmount > 0) {
+  if (discountAmount > 0 && order.revenueType !== 'UNEARNED') {
     let discAcctId: string | undefined
     if (order.discountType === 'PWD_SC') {
       const pwdSetting = discountSettings.find(d => /pwd|senior/i.test(d.name))
@@ -234,7 +237,7 @@ export async function postOrderJournal(
      from Revenue to Unearned Revenue. This affects ONLY the portion paid via
      HMO/GL (cash UNEARNED is a contradiction; ignored). */
   if (order.revenueType === 'UNEARNED' && defaultUnearnedAccount) {
-    // The whole order is unearned (e.g. a PayMongo downpayment/deposit): no tender's
+    // The whole order is unearned (e.g. a package purchase or deposit): no tender's
     // share should sit in Revenue yet. Move EVERY item-revenue credit to Unearned
     // Revenue (deposit liability), whatever the payment method. Only the accounts we
     // credited as revenue are moved — the Inventory CR from the COGS pair is left alone.
@@ -247,6 +250,13 @@ export async function postOrderJournal(
         agg.set(accId, line)
       }
     }
+    // The discount defers too: the liability is what was actually collected —
+    // gross minus discount (e.g. 25,500 package − 5,100 PWD → CR 4050 20,400).
+    // Step 2 skipped the discount DR for unearned orders, so net it out of the
+    // liability here. The discount is recognized later, pro-rata, on the
+    // earned per-session orders; deferring gross would overstate 4050 by an
+    // amount the draw-downs (which total the net) would never clear.
+    unearnedShare -= discountAmount
     if (unearnedShare > 0) addLine(defaultUnearnedAccount.id, 'credit', unearnedShare, `Unearned deposit — order ${order.id}`)
   }
 
