@@ -9,19 +9,6 @@ import {
 
 type Tab = 'waitlist' | 'followup' | 'noshow' | 'cancellation'
 
-// Partner institutions get priority — the front desk should schedule them first.
-const PARTNER_INSTITUTIONS = new Set([
-  'Asian Institute of Management', 'BOMBA Pilipinas', 'Light Bearer Christian Academy',
-  'NU East Ortigas', "The Abba's Orchard", 'Xavier School San Juan',
-])
-function isPartnerResponse(item: any): boolean {
-  return (item?.answers || []).some((a: any) => {
-    if (a?.choice?.label && PARTNER_INSTITUTIONS.has(a.choice.label)) return true
-    if (Array.isArray(a?.choices?.labels)) return a.choices.labels.some((l: string) => PARTNER_INSTITUTIONS.has(l))
-    return false
-  })
-}
-
 const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
@@ -38,16 +25,6 @@ const selectStyle: React.CSSProperties = {
 
 const PAGE_OPTIONS = [25, 50, 75, 100]
 
-function pageWindow(page: number, pages: number): (number | '…')[] {
-  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1)
-  const result: (number | '…')[] = [1]
-  if (page > 3) result.push('…')
-  for (let p = Math.max(2, page - 1); p <= Math.min(pages - 1, page + 1); p++) result.push(p)
-  if (page < pages - 2) result.push('…')
-  result.push(pages)
-  return result
-}
-
 function Pagination({ total, page, perPage, onPage, onPerPage }: {
   total: number; page: number; perPage: number; onPage: (p: number) => void; onPerPage: (n: number) => void
 }) {
@@ -63,22 +40,14 @@ function Pagination({ total, page, perPage, onPage, onPerPage }: {
       </div>
       {pages > 1 && (
         <div className="flex items-center gap-1">
-          <button onClick={() => onPage(page - 1)} disabled={page === 1}
-            style={{ padding: '2px 8px', borderRadius: 6, border: 'none', cursor: page === 1 ? 'default' : 'pointer', fontSize: '0.75rem', fontWeight: 600, background: '#F3F4F6', color: page === 1 ? '#D1D5DB' : '#6B7280' }}>
-            ‹
-          </button>
-          {pageWindow(page, pages).map((p, i) =>
-            p === '…'
-              ? <span key={`e${i}`} style={{ padding: '2px 2px', color: '#9CA3AF', userSelect: 'none' }}>…</span>
-              : <button key={p} onClick={() => onPage(p as number)}
-                  style={{ padding: '2px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, background: page === p ? 'var(--teal)' : '#F3F4F6', color: page === p ? '#fff' : '#6B7280' }}>
-                  {p}
-                </button>
-          )}
-          <button onClick={() => onPage(page + 1)} disabled={page === pages}
-            style={{ padding: '2px 8px', borderRadius: 6, border: 'none', cursor: page === pages ? 'default' : 'pointer', fontSize: '0.75rem', fontWeight: 600, background: '#F3F4F6', color: page === pages ? '#D1D5DB' : '#6B7280' }}>
-            ›
-          </button>
+          {Array.from({ length: Math.min(pages, 10) }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => onPage(p)}
+              style={{
+                padding: '2px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                background: page === p ? 'var(--teal)' : '#F3F4F6', color: page === p ? '#fff' : '#6B7280',
+              }}>{p}</button>
+          ))}
+          {pages > 10 && <span>...</span>}
         </div>
       )}
     </div>
@@ -186,7 +155,6 @@ function WaitlistTab({ branch }: { branch: string }) {
   async function convertToPatient(item: any) {
     setConverting(item.landing_id)
     try {
-      // Extract fields from the form response
       const answers = item.answers || []
       const findByTitle = (keywords: string[]) => {
         for (const a of answers) {
@@ -196,13 +164,30 @@ function WaitlistTab({ branch }: { branch: string }) {
         return null
       }
 
-      // Patient name from contact_info field
-      const patientNameAnswer = findByTitle(['name of', 'patient'])
-      const contactAnswer = patientNameAnswer || answers.find((a: any) => a.contact)
-      const firstName = contactAnswer?.contact?.first_name || ''
-      const lastName = contactAnswer?.contact?.last_name || ''
-      const email = contactAnswer?.contact?.email || ''
-      const phone = contactAnswer?.contact?.phone_number || ''
+      // Name extraction: prefer a structured contact_info answer; fall back to
+      // splitting the same display name that getName() already extracts correctly.
+      let firstName = '', lastName = '', email = '', phone = ''
+      const contactField = answers.find((a: any) => a.contact?.first_name || a.contact?.last_name)
+      if (contactField?.contact) {
+        firstName = contactField.contact.first_name  || ''
+        lastName  = contactField.contact.last_name   || ''
+        email     = contactField.contact.email        || ''
+        phone     = contactField.contact.phone_number || ''
+      } else {
+        // Text-type name field — reuse getName() which already handles all form layouts.
+        const fullName = getName(item)
+        if (fullName && fullName !== 'Unknown') {
+          const parts = fullName.trim().split(/\s+/).filter(Boolean)
+          firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '')
+          lastName  = parts.length > 1 ? parts[parts.length - 1] : ''
+        }
+        // Look for email and phone in separate text answers
+        for (const a of answers) {
+          const t = getFieldTitleLower(item, a)
+          if (!email && (a.email || t.includes('email'))) email = a.email || a.text || ''
+          if (!phone && (a.phone_number || t.includes('phone') || t.includes('mobile'))) phone = a.phone_number || a.text || ''
+        }
+      }
 
       // Try birthday field
       const dobAnswer = findByTitle(['birthday', 'birth', 'dob'])
@@ -226,10 +211,13 @@ function WaitlistTab({ branch }: { branch: string }) {
         body: JSON.stringify(patientData),
       })
       if (res.ok) {
-        // Delete the form response from HR Platform so it doesn't reappear on page reload
-        await fetch(`/api/patient-relationship?tab=waitlist-delete&formId=${item._formId}&submissionId=${item.landing_id}`, { method: 'DELETE' }).catch(() => {})
+        // Delete the HR form response so it won't reappear on next reload
+        fetch(`/api/patient-relationship?tab=waitlist-delete&formId=${item._formId}&submissionId=${item.landing_id}`, { method: 'DELETE' }).catch(() => {})
+        // Mark as converted in local state: add name to patientNames so isConverted()
+        // returns true and the row turns green — do NOT remove from responses list.
+        const convertedName = `${firstName} ${lastName}`.replace(/\s+/g, ' ').trim().toLowerCase()
+        if (convertedName) setPatientNames(prev => new Set([...prev, convertedName]))
         alert('Patient converted successfully! They are now in the Patient CRM.')
-        setResponses(prev => prev.filter(r => r.landing_id !== item.landing_id))
       } else {
         const d = await res.json()
         alert(d.error || 'Failed to convert')
@@ -275,10 +263,9 @@ function WaitlistTab({ branch }: { branch: string }) {
               <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>No responses found.</td></tr>
             ) : paginated.map((item: any) => {
               const converted = isConverted(item)
-              const partner = isPartnerResponse(item)
               return (
               <Fragment key={item.landing_id}>
-                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: converted ? '#F0FDF4' : partner ? '#FEF9C3' : undefined, borderLeft: partner && !converted ? '3px solid #F59E0B' : undefined }}
+                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: converted ? '#F0FDF4' : undefined }}
                   onClick={() => setExpanded(expanded === item.landing_id ? null : item.landing_id)}>
                   <td className="px-4 py-3" style={{ width: 30 }}>
                     {expanded === item.landing_id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -286,7 +273,6 @@ function WaitlistTab({ branch }: { branch: string }) {
                   <td className="px-4 py-3 font-semibold" style={{ color: converted ? '#15803D' : 'var(--charcoal)' }}>
                     {getName(item)}
                     {converted && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#15803D', fontWeight: 600, fontSize: '0.65rem' }}>Converted</span>}
-                    {partner && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: '#FDE047', color: '#854D0E', fontWeight: 700, fontSize: '0.65rem' }} title="Registrant is from a partner institution">For prioritization</span>}
                   </td>
                   <td className="px-4 py-3" style={{ color: '#6B7280' }}>{item._formTitle}</td>
                   <td className="px-4 py-3 flex items-center gap-2" style={{ color: '#374151' }}>

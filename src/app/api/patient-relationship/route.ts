@@ -2,8 +2,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const HR_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
+const HR_URLS = [
+  process.env.HR_PLATFORM_URL,
+  'http://172.17.0.1:3457',
+  'http://172.18.0.1:3457',
+  'http://host.docker.internal:3457',
+  'http://127.0.0.1:3457',
+].filter(Boolean) as string[]
 const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
+
+async function hrFetch(path: string, opts: RequestInit = {}): Promise<Response> {
+  let lastErr: unknown = new Error('No HR URLs configured')
+  for (const base of HR_URLS) {
+    try {
+      const res = await fetch(`${base}${path}`, {
+        ...opts,
+        signal: AbortSignal.timeout(5000),
+        headers: { Authorization: `Bearer ${HR_KEY}`, ...opts.headers },
+      })
+      return res
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr
+}
 
 // Department-specific follow-up intervals (in days)
 const DEPT_FOLLOWUP: Record<string, { days: number; label: string }> = {
@@ -55,24 +78,20 @@ export async function GET(req: NextRequest) {
     // Fetch responses from HR platform
     const responses: any[] = []
     try {
-      const res1 = await fetch(`${HR_URL}/forms/external/${form.sbea}/responses`, {
-        headers: { Authorization: `Bearer ${HR_KEY}` }, cache: 'no-store',
-      })
+      const res1 = await hrFetch(`/forms/external/${form.sbea}/responses`, { cache: 'no-store' })
       const d1 = await res1.json()
       if (d1.ok && d1.items) {
         for (const item of d1.items) {
-          responses.push({ ...item, fields: d1.fields || [], _branch: 'SBEA', _formTitle: form.title, _formId: form.sbea })
+          responses.push({ ...item, _branch: 'SBEA', _formTitle: form.title, _formId: form.sbea })
         }
       }
 
       if (form.sbgh) {
-        const res2 = await fetch(`${HR_URL}/forms/external/${form.sbgh}/responses`, {
-          headers: { Authorization: `Bearer ${HR_KEY}` }, cache: 'no-store',
-        })
+        const res2 = await hrFetch(`/forms/external/${form.sbgh}/responses`, { cache: 'no-store' })
         const d2 = await res2.json()
         if (d2.ok && d2.items) {
           for (const item of d2.items) {
-            responses.push({ ...item, fields: d2.fields || [], _branch: 'SBGH', _formTitle: form.title, _formId: form.sbgh })
+            responses.push({ ...item, _branch: 'SBGH', _formTitle: form.title, _formId: form.sbgh })
           }
         }
       }
@@ -391,10 +410,7 @@ export async function DELETE(req: NextRequest) {
     const submissionId = searchParams.get('submissionId')
     if (!formId || !submissionId) return NextResponse.json({ error: 'formId and submissionId required' }, { status: 400 })
     try {
-      const res = await fetch(`${HR_URL}/forms/external/${formId}/responses/${submissionId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${HR_KEY}` },
-      })
+      const res = await hrFetch(`/forms/external/${formId}/responses/${submissionId}`, { method: 'DELETE' })
       if (res.ok) return NextResponse.json({ ok: true })
       return NextResponse.json({ error: 'Failed to delete from HR' }, { status: 500 })
     } catch {
