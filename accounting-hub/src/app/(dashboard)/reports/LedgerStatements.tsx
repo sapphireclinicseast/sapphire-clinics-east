@@ -599,11 +599,9 @@ export default function LedgerStatements({ year, branch, tab, view }: {
       const mvSum = (key: string) => Array.from({ length: 12 }, (_, i) => (isSec(key)?.rows || []).reduce((s, r) => s + (r.monthly?.[i] || 0), 0))
       const revM = mvSum('REVENUE'), discM = mvSum('DISCOUNTS'), cogsM = mvSum('COGS'), opexM = mvSum('OPEX')
       const depM = mvSum('DEPRECIATION'), intM = mvSum('INTEREST'), nonopM = mvSum('NON_OPERATING')
-      let run = 0
-      const cumEbt = Array.from({ length: 12 }, (_, i) => {
-        run += revM[i] - discM[i] - cogsM[i] - opexM[i] - depM[i] - intM[i] - nonopM[i]
-        return run
-      })
+      const ebtDelta = Array.from({ length: 12 }, (_, i) =>
+        revM[i] - discM[i] - cogsM[i] - opexM[i] - depM[i] - intM[i] - nonopM[i])
+      const cumEbt = ebtDelta.map((_, i) => ebtDelta.slice(0, i + 1).reduce((a, b) => a + b, 0))
       const niCum = cumEbt.map(e => e * (1 - INCOME_TAX_RATE))
       const itpCum = cumEbt.map(e => (e > 0 ? e * INCOME_TAX_RATE : 0))
       const dtaCum = cumEbt.map(e => (e < 0 ? -e * INCOME_TAX_RATE : 0))
@@ -700,8 +698,8 @@ export default function LedgerStatements({ year, branch, tab, view }: {
       const finM = colLabels.map((_, i) => cf.financing.reduce((s, w) => s + (fold(w.monthly || zero)[i] || 0), 0))
       const opsM = niM.map((n, i) => n + depMv[i] + provM[i] + wcM[i])
       const cashDeltaM = fold(cf.monthly.cashDelta)
-      let runCash = cf.beginningCash
-      const beginM = cashDeltaM.map(d => { const b = runCash; runCash += d; return b })
+      const beginM = cashDeltaM.map((_, i) =>
+        cf.beginningCash + cashDeltaM.slice(0, i).reduce((a, b) => a + b, 0))
       const endM = cashDeltaM.map((d, i) => beginM[i] + d)
       body = (
         <div className="py-1">
