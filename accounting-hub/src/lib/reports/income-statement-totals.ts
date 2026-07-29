@@ -94,8 +94,6 @@ export function computeIncomeStatementTotals(data: IsReportData): IncomeStatemen
 
   // Expense buckets. Depreciation (8070) and Interest (8310) get their own lines
   // below EBITDA regardless of which subType they were filed under.
-  const isSpecial = (a: IsAccountEntry) =>
-    a.accountNumber === DEPRECIATION_ACCT || a.accountNumber === INTEREST_ACCT
   const expenseSubTypes = accounts.EXPENSE || {}
   const costOfSalesAccts: IsAccountEntry[] = []
   const operatingExpenseAccts: IsAccountEntry[] = []
