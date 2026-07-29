@@ -235,6 +235,9 @@ const DEPARTMENTS = [
   { value: 'MD', label: 'Medical Doctor' },
   { value: 'PSYCHOLOGY', label: 'Psychology' },
   { value: 'ORTHOSIS', label: 'Orthosis & Prosthesis' },
+  // Some admin staff are engaged as consultants (Jara, Senajon). They earn no unit pay, so
+  // their payslip generates at zero and is filled in with a manual adjustment.
+  { value: 'ADMINISTRATION', label: 'Administration' },
 ]
 
 const DEPT_LABELS: Record<string, string> = Object.fromEntries(
@@ -249,6 +252,7 @@ const POSITION_LABELS: Record<string, string> = {
   MD: 'Medical Doctor',
   PSYCHOLOGY: 'Psychologist',
   ORTHOSIS: 'Orthotist & Prosthetist',
+  ADMINISTRATION: 'Administrative Staff',
 }
 
 const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
@@ -1327,9 +1331,7 @@ export default function PayrollPage() {
         if (previewRes.ok) {
           const d = await previewRes.json()
           const payrolls: PayrollPreview[] = d.payrolls || []
-          // ADMINISTRATION staff are salaried employees, not consultants — never show
-          // them in consultant payslip generation (already excluded from payslip PDFs).
-          setPayrollPreviews(payrolls.filter(p => p.department !== 'ADMINISTRATION'))
+          setPayrollPreviews(payrolls)
           const newAdj: Record<string, AdjustmentLine[]> = {}
           const newExtra: Record<string, ExtraUnitPayLine[]> = {}
           for (const p of payrolls) {
@@ -1364,9 +1366,7 @@ export default function PayrollPage() {
         if (previewRes.ok) {
           const d = await previewRes.json()
           const payrolls: PayrollPreview[] = d.payrolls || []
-          // ADMINISTRATION staff are salaried employees, not consultants — never show
-          // them in consultant payslip generation (already excluded from payslip PDFs).
-          setPayrollPreviews(payrolls.filter(p => p.department !== 'ADMINISTRATION'))
+          setPayrollPreviews(payrolls)
           const newAdj: Record<string, AdjustmentLine[]> = {}
           const newExtra: Record<string, ExtraUnitPayLine[]> = {}
           for (const p of payrolls) {
@@ -1587,6 +1587,12 @@ export default function PayrollPage() {
       const bv = cSortField === 'name' ? b.name : b.department
       return cSortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
     })
+
+  // Benefits are set for anyone on the roster, so this tab deliberately does NOT reuse
+  // filteredConsultants: the search box and department filter live on the Consultant List
+  // tab, and carrying them over here silently hid most of the roster behind controls that
+  // aren't on screen.
+  const benefitConsultants = [...consultants].sort((a, b) => a.name.localeCompare(b.name))
 
   const bulkApplicableUPs = unitPays.filter(up =>
     bulkDept && ((up.departments as string[])?.length === 0 || (up.departments as string[])?.includes(bulkDept))
@@ -1887,9 +1893,7 @@ export default function PayrollPage() {
       const res = await fetch(`/api/payroll/generate?${params}`)
       const data = await res.json()
       const payrolls: PayrollPreview[] = data.payrolls || []
-      // ADMINISTRATION staff are salaried employees, not consultants — never show them in
-      // consultant payslip generation (also excluded from payslip PDFs).
-      setPayrollPreviews(payrolls.filter(p => p.department !== 'ADMINISTRATION'))
+      setPayrollPreviews(payrolls)
       setGeneratedDateRange({ start: customDates.start.toISOString(), end: customDates.end.toISOString() })
       if (resetExtras) {
         // User clicked Generate — fresh slate
@@ -2380,7 +2384,7 @@ export default function PayrollPage() {
   }
 
   const downloadAllPdfs = async () => {
-    const active = payrollPreviews.filter(p => (p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null) && p.department !== 'ADMINISTRATION')
+    const active = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
     if (active.length === 0) return
     setDownloadingAll(true)
     setDownloadPct(0)
@@ -3989,8 +3993,8 @@ export default function PayrollPage() {
                       {canWrite && (
                         <th className="text-center px-2 py-2.5">
                           <input type="checkbox"
-                            checked={filteredConsultants.length > 0 && filteredConsultants.every(c => conBenefitSelIds.has(c.id))}
-                            onChange={e => setConBenefitSelIds(e.target.checked ? new Set(filteredConsultants.map(c => c.id)) : new Set())} />
+                            checked={benefitConsultants.length > 0 && benefitConsultants.every(c => conBenefitSelIds.has(c.id))}
+                            onChange={e => setConBenefitSelIds(e.target.checked ? new Set(benefitConsultants.map(c => c.id)) : new Set())} />
                         </th>
                       )}
                       <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant</th>
@@ -4001,9 +4005,9 @@ export default function PayrollPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredConsultants.length === 0 ? (
+                    {benefitConsultants.length === 0 ? (
                       <tr><td colSpan={canWrite ? 6 : 5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No consultants</td></tr>
-                    ) : filteredConsultants.map(c => {
+                    ) : benefitConsultants.map(c => {
                       const sss = c.benefits?.find(b => b.benefitType === 'SSS')
                       const phil = c.benefits?.find(b => b.benefitType === 'PHILHEALTH')
                       const pag = c.benefits?.find(b => b.benefitType === 'PAGIBIG')
@@ -4040,7 +4044,7 @@ export default function PayrollPage() {
                         <select value={conBenefitCId} onChange={e => setConBenefitCId(e.target.value)}
                           className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
                           <option value="">Select consultant...</option>
-                          {filteredConsultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {benefitConsultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
                       <div>
@@ -4430,7 +4434,10 @@ export default function PayrollPage() {
 
               {/* Preview table — expandable summary rows */}
               {payrollPreviews.length > 0 && (() => {
-                const visiblePreviews = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
+                // Administration consultants earn no unit pay, so they generate at zero and would
+                // fall out of this list before anyone could add the adjustment that pays them.
+                const visiblePreviews = payrollPreviews.filter(p =>
+                  p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null || p.department === 'ADMINISTRATION')
                 return (
                 <div className="space-y-3">
                   <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
