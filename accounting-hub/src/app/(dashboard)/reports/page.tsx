@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/utils'
 import { computeIncomeStatementTotals, INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
 import HistoricalReport from './HistoricalReport'
+import LedgerStatements from './LedgerStatements'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 
@@ -1594,6 +1595,9 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
+  // 'standard' = current derivation engine; 'ledger' = v2 beta (one balanced
+  // dataset, statements interconnected). Only applies to derived years (2026+).
+  const [engine, setEngine] = useState<'standard' | 'ledger'>('standard')
 
   const handleDrillDown: OnDrillDown = (label, category, month, accountKey, opts) => {
     setDrillDown({ label, category, month, accountKey, subtype: opts?.subtype, portion: opts?.portion })
@@ -1944,6 +1948,26 @@ export default function ReportsPage() {
             <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
           </div>
         </div>
+
+        {/* Engine (derived years only) */}
+        {!isMedrep && year >= 2026 && (
+          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+            {([['standard', 'Standard'], ['ledger', 'Ledger (beta)']] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => setEngine(mode)}
+                title={mode === 'ledger' ? 'Derive all three statements from one balanced double-entry dataset (A = L + E guaranteed)' : 'Current derivation engine'}
+                className="px-3 py-2 text-sm font-medium transition-colors"
+                style={{
+                  background: engine === mode ? 'var(--teal)' : 'white',
+                  color: engine === mode ? 'white' : 'var(--charcoal)',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Report Container ───────────────────────────────────── */}
@@ -1987,7 +2011,10 @@ export default function ReportsPage() {
             revenueOnly={isMedrep}
           />
         )}
-        {!loading && data && !data.historical && (
+        {!loading && !data?.historical && engine === 'ledger' && year >= 2026 && !isMedrep && (
+          <LedgerStatements year={year} branch={branch} tab={effTab} />
+        )}
+        {!loading && data && !data.historical && (engine === 'standard' || year < 2026 || isMedrep) && (
           <div className="py-2">
             {effTab === 'balance-sheet' && (
               <BalanceSheet data={data} viewMode={effView} onDrillDown={effDrill} />
