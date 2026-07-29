@@ -24,6 +24,24 @@ const KIND: Record<string, string> = {
 }
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+const money = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// Card and e-wallet settlements land one or two banking days after the sale, and
+// a weekend or holiday pushes them to the next one. Counting in banking days
+// rather than calendar days is what makes a Friday sale settling on Tuesday read
+// as normal instead of four days late. Holidays are not known here, so a run of
+// non-working days only widens what counts as expected — it never excludes.
+function bankingDaysBetween(from: Date, to: Date): number {
+  if (+to < +from) return -bankingDaysBetween(to, from)
+  let n = 0
+  const d = new Date(from)
+  while (dayKey(d) < dayKey(to)) {
+    d.setUTCDate(d.getUTCDate() + 1)
+    const wd = d.getUTCDay()
+    if (wd !== 0 && wd !== 6) n++
+  }
+  return n
+}
 const within = (a: Date, b: Date) => Math.abs(+a - +b) <= WINDOW_DAYS * 86400000
 const close = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE
 
@@ -59,7 +77,7 @@ export async function GET(req: Request) {
   }
 
   const singles: { date: Date; label: string; amount: number }[] = []
-  const batches = new Map<string, { date: Date; label: string; amount: number; n: number }>()
+  const batches = new Map<string, { date: Date; label: string; amount: number; gross: number; n: number }>()
   if (modes.length) {
     const payments = await prisma.orderPayment.findMany({
       where: {
@@ -82,8 +100,14 @@ export async function GET(req: Request) {
       // a day's takings on one mode, settled as a single deposit
       const k = `${dayKey(p.order.transactionDate)}|${p.paymentModeId}`
       const cur = batches.get(k)
-      if (cur) { cur.amount = Math.round((cur.amount + net) * 100) / 100; cur.n++ }
-      else batches.set(k, { date: p.order.transactionDate, label: mode.name, amount: net, n: 1 })
+      const gross = Number(p.amount)
+      if (cur) {
+        cur.amount = Math.round((cur.amount + net) * 100) / 100
+        cur.gross = Math.round((cur.gross + gross) * 100) / 100
+        cur.n++
+      } else {
+        batches.set(k, { date: p.order.transactionDate, label: mode.name, amount: net, gross, n: 1 })
+      }
     }
   }
 
@@ -139,9 +163,37 @@ export async function GET(req: Request) {
       hints[t.id] = { kind: 'Card/e-wallet sale', label: single.label, amount: single.amount, date: dayKey(single.date), n: 1 }
       continue
     }
-    const batch = [...batches.values()].find(b => b.n > 1 && within(b.date, t.date) && close(b.amount, received))
+    const clumps = [...batches.values()]
+      .filter(b => b.n > 1 && within(b.date, t.date) && close(b.amount, received))
+      // T+1 and T+2 banking days are the norm, so the nearest such lag wins.
+      .sort((a, b) => Math.abs(bankingDaysBetween(a.date, t.date) - 1.5) - Math.abs(bankingDaysBetween(b.date, t.date) - 1.5))
+    const batch = clumps[0]
     if (batch) {
-      hints[t.id] = { kind: 'Day settlement', label: `${batch.n} × ${batch.label} on ${dayKey(batch.date)}`, amount: batch.amount, date: dayKey(batch.date), n: batch.n }
+      const lag = bankingDaysBetween(batch.date, t.date)
+      const fees = Math.round((batch.gross - batch.amount) * 100) / 100
+      hints[t.id] = {
+        kind: 'Day settlement',
+        label: `${batch.n} × ${batch.label} on ${dayKey(batch.date)} · ${money(batch.gross)} gross less ${money(fees)} fees · settled T+${lag} banking day${lag === 1 ? '' : 's'}`,
+        amount: batch.amount, date: dayKey(batch.date), n: batch.n,
+      }
+      continue
+    }
+
+    // Nothing matched exactly. A day's clump that is merely close is still worth
+    // pointing at — a deposit into a cash account is the day's takings plus any
+    // transfer a patient made straight to the bank and the cashier recorded as
+    // cash, so it legitimately exceeds the day's sales. Naming the difference is
+    // more use than saying nothing.
+    const near = [...batches.values()]
+      .filter(b => within(b.date, t.date) && Math.abs(b.amount - received) <= Math.max(50, received * 0.02))
+      .sort((a, b) => Math.abs(a.amount - received) - Math.abs(b.amount - received))[0]
+    if (near) {
+      const diff = Math.round((received - near.amount) * 100) / 100
+      hints[t.id] = {
+        kind: 'Close to a day settlement',
+        label: `${near.n} × ${near.label} on ${dayKey(near.date)} nets ${money(near.amount)} — this line is ${diff >= 0 ? 'higher' : 'lower'} by ${money(Math.abs(diff))}`,
+        amount: near.amount, date: dayKey(near.date), n: near.n,
+      }
     }
   }
 
