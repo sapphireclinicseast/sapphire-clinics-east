@@ -1602,7 +1602,9 @@ export default function ReportsPage() {
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
   // 'standard' = current derivation engine; 'ledger' = v2 beta (one balanced
   // dataset, statements interconnected). Only applies to derived years (2026+).
-  const [engine, setEngine] = useState<'standard' | 'ledger'>('standard')
+  // Ledger is the default since 2026-07-29 (owner-validated); Standard remains
+  // available on the toggle for comparison during the transition.
+  const [engine, setEngine] = useState<'standard' | 'ledger'>('ledger')
 
   const handleDrillDown: OnDrillDown = (label, category, month, accountKey, opts) => {
     setDrillDown({ label, category, month, accountKey, subtype: opts?.subtype, portion: opts?.portion })
