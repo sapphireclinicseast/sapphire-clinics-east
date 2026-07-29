@@ -76,6 +76,13 @@ export async function POST(req: Request) {
 
       // Re-uploading a statement must not double up the ledger, so skip lines
       // this account already has on the same date, amount and description.
+      //
+      // Counted, not de-duplicated: a statement legitimately repeats a line —
+      // two suppliers paying the same amount on the same day are two separate
+      // transactions, not one entered twice. So a line is skipped only while the
+      // account already holds an unclaimed copy of it. A file with two identical
+      // rows against an empty account imports both; re-uploading that same file
+      // then skips both.
       const dates = data.map((r: { date: Date }) => +r.date)
       const existing = await prisma.bankTransaction.findMany({
         where: { bankAccountId, date: { gte: new Date(Math.min(...dates)), lte: new Date(Math.max(...dates)) } },
@@ -83,9 +90,14 @@ export async function POST(req: Request) {
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const key = (r: any) => `${new Date(r.date).toISOString().slice(0, 10)}|${String(r.description).trim().toLowerCase()}|${Number(r.spent).toFixed(2)}|${Number(r.received).toFixed(2)}`
-      const seen = new Set(existing.map(key))
+      const onFile = new Map<string, number>()
+      for (const e of existing) onFile.set(key(e), (onFile.get(key(e)) || 0) + 1)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fresh = data.filter((r: any) => { const k = key(r); if (seen.has(k)) return false; seen.add(k); return true })
+      const fresh = data.filter((r: any) => {
+        const k = key(r), left = onFile.get(k) || 0
+        if (left > 0) { onFile.set(k, left - 1); return false }
+        return true
+      })
       const skipped = data.length - fresh.length
       if (fresh.length === 0) {
         await prisma.bankImportBatch.delete({ where: { id: batch } }).catch(() => {})

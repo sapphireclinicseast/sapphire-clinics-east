@@ -2,10 +2,42 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
 import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const GRID_COLS: SortCol[] = [
+  { key: 'date', label: 'Date' }, { key: 'description', label: 'Bank Description' },
+  { key: 'spent', label: 'Spent' }, { key: 'received', label: 'Received' },
+  { key: 'fromTo', label: 'From/To' }, { key: 'match', label: 'Match / Categorise' },
+]
+
+// Sort value per column. Dates and amounts are returned as numbers so they order
+// by magnitude rather than as text ("9" before "10").
+const cellValue = (t: Txn, key: string): string | number => {
+  switch (key) {
+    case 'date': return +new Date(t.date)
+    case 'description': return t.description || ''
+    case 'spent': return t.spent || 0
+    case 'received': return t.received || 0
+    case 'fromTo': return t.fromToName || ''
+    case 'match': return t.matchLabel || t.categoryLabel || ''
+    default: return ''
+  }
+}
+
+// What a typed filter matches against: the text as displayed, so "2026-06"
+// filters dates and "1,454" filters an amount the way it is shown.
+const cellText = (t: Txn, key: string): string => {
+  switch (key) {
+    case 'date': return t.date
+    case 'spent': return t.spent > 0 ? peso(t.spent) : ''
+    case 'received': return t.received > 0 ? peso(t.received) : ''
+    default: return String(cellValue(t, key))
+  }
+}
 
 interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
 interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null }
@@ -34,8 +66,26 @@ export default function BankReconciliationPage() {
   const [showImports, setShowImports] = useState(false)
   const [rates, setRates] = useState<FxRate[]>([])
   const [catFor, setCatFor] = useState<Txn | null>(null)
+  const [sortKey, setSortKey] = useState('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [filters, setFilters] = useState<Record<string, string>>({})
 
   const account = accounts.find(a => a.id === sel) || null
+  const cur = account && account.currency !== 'PHP' ? account.currency : ''
+  const money = (n: number) => (cur ? `${cur} ${peso(n)}` : `₱${peso(n)}`)
+
+  const visible = useMemo(
+    () => applySortFilter(txns, cellValue, sortKey, sortDir, filters, cellText),
+    [txns, sortKey, sortDir, filters],
+  )
+  const toggleSort = (k: string) => {
+    // Same column flips direction; a new column starts descending for dates and
+    // amounts (most recent / largest first) and ascending for text.
+    if (k === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir(['date', 'spent', 'received'].includes(k) ? 'desc' : 'asc') }
+  }
+  const setFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }))
+  const activeFilters = Object.values(filters).filter(Boolean).length
 
   const loadAccounts = useCallback(async () => {
     try { const r = await fetch('/api/bank-rec/accounts'); const d = r.ok ? await r.json() : []; setAccounts(d); setSel(prev => (prev && d.find((a: BankAcct) => a.id === prev)) ? prev : (d[0]?.id || '')) } catch { setAccounts([]) }
@@ -251,29 +301,38 @@ export default function BankReconciliationPage() {
               <Search size={14} style={{ color: 'var(--mid-gray)', position: 'absolute', left: 10, top: 9 }} />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search description…" className="pl-8 pr-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)', minWidth: 220 }} />
             </div>
+            {activeFilters > 0 && (
+              <button onClick={() => setFilters({})} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <X size={13} /> Clear {activeFilters} filter{activeFilters > 1 ? 's' : ''}
+              </button>
+            )}
+            {txns.length > 0 && (
+              <span className="text-[11px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                {visible.length === txns.length ? `${txns.length} rows` : `${visible.length} of ${txns.length} rows`}
+              </span>
+            )}
           </div>
 
           {/* Grid */}
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
-                  {['Date', 'Bank Description', 'Spent', 'Received', 'From/To', 'Match / Categorise', 'Action'].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
+              <SortFilterHead cols={GRID_COLS} sortKey={sortKey} sortDir={sortDir} filters={filters}
+                onToggleSort={toggleSort} onFilter={setFilter} trailing />
               <tbody>
                 {loading ? (
                   <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 ) : txns.length === 0 ? (
                   <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No {tab.toLowerCase()} transactions.</td></tr>
-                ) : txns.map(t => (
+                ) : visible.length === 0 ? (
+                  <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                    No rows match these filters. <button onClick={() => setFilters({})} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button>
+                  </td></tr>
+                ) : visible.map(t => (
                   <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date}</td>
                     <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{t.description}</td>
-                    <td className="px-3 py-2.5 text-right text-xs font-semibold" style={{ color: t.spent > 0 ? '#b91c1c' : 'var(--light-gray)' }}>{t.spent > 0 ? `₱${peso(t.spent)}` : ''}</td>
-                    <td className="px-3 py-2.5 text-right text-xs font-semibold" style={{ color: t.received > 0 ? '#166534' : 'var(--light-gray)' }}>{t.received > 0 ? `₱${peso(t.received)}` : ''}</td>
+                    <td className="px-3 py-2.5 text-right text-xs font-semibold" style={{ color: t.spent > 0 ? '#b91c1c' : 'var(--light-gray)' }}>{t.spent > 0 ? money(t.spent) : ''}</td>
+                    <td className="px-3 py-2.5 text-right text-xs font-semibold" style={{ color: t.received > 0 ? '#166534' : 'var(--light-gray)' }}>{t.received > 0 ? money(t.received) : ''}</td>
                     <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{t.fromToName || ''}</td>
                     <td className="px-3 py-2.5 text-xs">
                       {t.status === 'POSTED'
@@ -397,7 +456,11 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
       if (!r.ok) { alert(d.error || 'Import failed'); return }
       const bits = [`Imported ${d.imported} transaction(s).`]
       if (d.archived) bits.push(`${d.archived} pre-date the reconciliation start date and were filed as Archived (locked from tagging).`)
-      if (d.skipped) bits.push(`${d.skipped} skipped as already on file.`)
+      // "Skipped" means this account already held an identical line from an
+      // earlier upload, so it was not added a second time. It does not mean the
+      // line was matched to anything — matching is reconciling a bank line
+      // against a Hub record, which is a separate step you do in the grid.
+      if (d.skipped) bits.push(`${d.skipped} already uploaded previously, so not added again (this is not the same as matching).`)
       alert(bits.join('\n')); onDone()
     } finally { setBusy(false) }
   }
