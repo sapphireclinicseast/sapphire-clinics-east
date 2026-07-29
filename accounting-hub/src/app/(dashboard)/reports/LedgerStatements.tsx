@@ -5,7 +5,7 @@
 // underlying entries with Excel export), the Income Statement offers monthly /
 // quarterly columns and a vertical-analysis mode (every line as % of gross
 // revenue), and the integrity card sits at the bottom in plain language.
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Loader2, X, Download, ChevronDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
@@ -588,13 +588,76 @@ export default function LedgerStatements({ year, branch, tab, view }: {
     }
   } else if (tab === 'balance-sheet') {
     const bs = data.balanceSheet
+    if (view !== 'annual') {
+      // Month-end (or quarter-end) POSITIONS: engine sends cumulative
+      // statement-signed balances in `monthly` for balance-sheet rows.
+      const colLabels = view === 'quarterly' ? QUARTERS : MONTHS
+      const colIdx = view === 'quarterly' ? [2, 5, 8, 11] : Array.from({ length: 12 }, (_, i) => i)
+      const pick = (m12: number[]) => colIdx.map(i => m12[i] || 0)
+      // cumulative EBT per month → monthly NI / ITP / DTA (statement-signed)
+      const isSec = (key: string) => data.incomeStatement.sections.find(s => s.key === key)
+      const mvSum = (key: string) => Array.from({ length: 12 }, (_, i) => (isSec(key)?.rows || []).reduce((s, r) => s + (r.monthly?.[i] || 0), 0))
+      const revM = mvSum('REVENUE'), discM = mvSum('DISCOUNTS'), cogsM = mvSum('COGS'), opexM = mvSum('OPEX')
+      const depM = mvSum('DEPRECIATION'), intM = mvSum('INTEREST'), nonopM = mvSum('NON_OPERATING')
+      let run = 0
+      const cumEbt = Array.from({ length: 12 }, (_, i) => {
+        run += revM[i] - discM[i] - cogsM[i] - opexM[i] - depM[i] - intM[i] - nonopM[i]
+        return run
+      })
+      const niCum = cumEbt.map(e => e * (1 - INCOME_TAX_RATE))
+      const itpCum = cumEbt.map(e => (e > 0 ? e * INCOME_TAX_RATE : 0))
+      const dtaCum = cumEbt.map(e => (e < 0 ? -e * INCOME_TAX_RATE : 0))
+      const secMonthly = (s: (typeof bs.sections)[number]) =>
+        Array.from({ length: 12 }, (_, i) => s.rows.reduce((sum, r) => sum + (r.monthly?.[i] || 0), 0))
+      const assetsM = Array.from({ length: 12 }, (_, i) =>
+        bs.sections.filter(s => s.key.includes('ASSETS')).reduce((sum, s) => sum + secMonthly(s)[i], 0) + dtaCum[i])
+      const liabM = Array.from({ length: 12 }, (_, i) =>
+        bs.sections.filter(s => s.key.includes('LIABILITIES')).reduce((sum, s) => sum + secMonthly(s)[i], 0) + itpCum[i])
+      const equityM = Array.from({ length: 12 }, (_, i) =>
+        bs.sections.filter(s => s.key === 'EQUITY').reduce((sum, s) => sum + secMonthly(s)[i], 0) + niCum[i])
+      body = (
+        <div className="py-1">
+          <p className="text-xs italic px-4 py-2" style={{ color: 'var(--mid-gray)' }}>
+            Position at each {view === 'quarterly' ? 'quarter' : 'month'} end — the Total column is the year-end position.
+          </p>
+          <div className="overflow-auto" style={{ maxHeight: '75vh' }}>
+            <table className="w-full text-[0.75rem]" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Line Item', ...colLabels, 'Year End'].map((m, i) => (
+                    <th key={m} className={`px-2 py-1.5 font-semibold ${i === 0 ? 'text-left px-3' : 'text-right'}`}
+                      style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb', ...(m === 'Year End' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {bs.sections.map(s => (<Fragment key={s.key}>
+                  <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>{s.label}</td></tr>
+                  {s.rows.map(r => (
+                    <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={1}
+                      values={pick(r.monthly || [])} total={r.closing}
+                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null)} />
+                  ))}
+                  {s.key === 'CURRENT_ASSETS' && bs.deferredTaxAsset > 0 && (
+                    <MultiRow label="Deferred Tax Asset (20% provision on loss)" indent={1} values={pick(dtaCum)} total={bs.deferredTaxAsset} />
+                  )}
+                  {s.key === 'CURRENT_LIABILITIES' && bs.incomeTaxPayable > 0 && (
+                    <MultiRow label="Income Tax Payable (20% provision)" indent={1} values={pick(itpCum)} total={bs.incomeTaxPayable} />
+                  )}
+                  {s.key === 'EQUITY' && <MultiRow label="Net Income (Cumulative)" indent={1} values={pick(niCum)} total={bs.netIncome} />}
+                </Fragment>))}
+                <MultiRow label="TOTAL ASSETS" values={pick(assetsM)} total={bs.totalAssets} bold doubleRule />
+                <MultiRow label="TOTAL LIABILITIES" values={pick(liabM)} total={bs.totalLiabilities} bold />
+                <MultiRow label="TOTAL EQUITY" values={pick(equityM)} total={bs.totalEquity} bold />
+                <MultiRow label="TOTAL LIABILITIES & EQUITY" values={pick(liabM.map((l, i) => l + equityM[i]))} total={bs.totalLiabilities + bs.totalEquity} bold doubleRule />
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )
+    } else {
     body = (
       <div className="py-1">
-        {view !== 'annual' && (
-          <p className="text-xs italic px-4 py-2" style={{ color: 'var(--mid-gray)' }}>
-            The Balance Sheet is a point-in-time statement — showing the year-end position. Use the Income Statement for monthly or quarterly breakdowns.
-          </p>
-        )}
         {bs.sections.map(s => (
           <div key={s.key}>
             <Row label={s.label} bold />
@@ -622,8 +685,67 @@ export default function LedgerStatements({ year, branch, tab, view }: {
         <Row label="TOTAL LIABILITIES & EQUITY" amount={bs.totalLiabilities + bs.totalEquity} bold doubleRule />
       </div>
     )
+    }
   } else {
     const cf = data.cashFlow
+    if (view !== 'annual' && cf.monthly) {
+      const colLabels = view === 'quarterly' ? QUARTERS : MONTHS
+      const fold = (m12: number[]) => view === 'quarterly'
+        ? [0, 1, 2, 3].map(q => (m12[q * 3] || 0) + (m12[q * 3 + 1] || 0) + (m12[q * 3 + 2] || 0))
+        : m12
+      const zero = Array(12).fill(0)
+      const niM = fold(cf.monthly.netIncome), depMv = fold(cf.monthly.depreciation), provM = fold(cf.monthly.taxProvision)
+      const wcM = colLabels.map((_, i) => cf.workingCapital.reduce((s, w) => s + (fold(w.monthly || zero)[i] || 0), 0))
+      const invM = colLabels.map((_, i) => cf.investing.reduce((s, w) => s + (fold(w.monthly || zero)[i] || 0), 0))
+      const finM = colLabels.map((_, i) => cf.financing.reduce((s, w) => s + (fold(w.monthly || zero)[i] || 0), 0))
+      const opsM = niM.map((n, i) => n + depMv[i] + provM[i] + wcM[i])
+      const cashDeltaM = fold(cf.monthly.cashDelta)
+      let runCash = cf.beginningCash
+      const beginM = cashDeltaM.map(d => { const b = runCash; runCash += d; return b })
+      const endM = cashDeltaM.map((d, i) => beginM[i] + d)
+      body = (
+        <div className="py-1">
+          <p className="text-xs italic px-4 py-2" style={{ color: 'var(--mid-gray)' }}>
+            Indirect-method flows per {view === 'quarterly' ? 'quarter' : 'month'} — ending cash chains into the next {view === 'quarterly' ? 'quarter' : 'month'}&apos;s beginning cash.
+          </p>
+          <div className="overflow-auto" style={{ maxHeight: '75vh' }}>
+            <table className="w-full text-[0.75rem]" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Line Item', ...colLabels, 'Total'].map((m, i) => (
+                    <th key={m} className={`px-2 py-1.5 font-semibold ${i === 0 ? 'text-left px-3' : 'text-right'}`}
+                      style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb', ...(m === 'Total' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Cash Flows from Operating Activities</td></tr>
+                <MultiRow label="Net Income" indent={1} values={niM} total={cf.netIncome} bold />
+                <MultiRow label="Add: Depreciation (non-cash)" indent={1} values={depMv} total={cf.depreciation} />
+                <MultiRow label="Add: Income tax provision (accrued)" indent={1} values={provM} total={cf.taxProvision} />
+                {cf.workingCapital.map((w, i) => (
+                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
+                ))}
+                <MultiRow label="Net Cash from Operating Activities" values={opsM} total={cf.netOperating} bold rule />
+                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Investing Activities</td></tr>
+                {cf.investing.map((w, i) => (
+                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
+                ))}
+                <MultiRow label="Net Cash from Investing Activities" values={invM} total={cf.netInvesting} bold rule />
+                <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}>Financing Activities</td></tr>
+                {cf.financing.map((w, i) => (
+                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
+                ))}
+                <MultiRow label="Net Cash from Financing Activities" values={finM} total={cf.netFinancing} bold rule />
+                <MultiRow label="NET CHANGE IN CASH" values={cashDeltaM} total={cf.netChange} bold doubleRule />
+                <MultiRow label="Beginning Cash" values={beginM} total={cf.beginningCash} />
+                <MultiRow label="ENDING CASH" values={endM} total={cf.endingCash} bold doubleRule />
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )
+    } else {
     body = (
       <div className="py-1">
         <Row label="Cash Flows from Operating Activities" bold />
@@ -652,6 +774,7 @@ export default function LedgerStatements({ year, branch, tab, view }: {
         <Row label="ENDING CASH" amount={cf.endingCash} bold doubleRule />
       </div>
     )
+    }
   }
 
   return (

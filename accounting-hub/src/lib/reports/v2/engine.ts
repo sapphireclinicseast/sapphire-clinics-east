@@ -111,16 +111,18 @@ export interface V2Statements {
     netIncome: number
     depreciation: number
     taxProvision: number
-    workingCapital: { label: string; amount: number }[]
+    workingCapital: { label: string; amount: number; monthly?: number[] }[]
     netOperating: number
-    investing: { label: string; amount: number }[]
+    investing: { label: string; amount: number; monthly?: number[] }[]
     netInvesting: number
-    financing: { label: string; amount: number }[]
+    financing: { label: string; amount: number; monthly?: number[] }[]
     netFinancing: number
     netChange: number
     beginningCash: number
     endingCash: number
     cashAccounts: { key: string; amount: number }[]
+    /** Per-month chain for the monthly/quarterly view */
+    monthly: { netIncome: number[]; depreciation: number[]; taxProvision: number[]; cashDelta: number[] }
   }
 }
 
@@ -696,17 +698,26 @@ export async function computeLedgerStatements(
   // Statement-signed value: contra accounts (credit-normal assets like
   // Accumulated Depreciation, debit-normal equity like Treasury Shares) show
   // and sum as negatives on their own side of the sheet.
-  const bsVal = (r: V2AccountRow) => {
+  const bsFactor = (r: V2AccountRow) => {
     const nb = isRow(r).normalBalance
-    return r.type === 'ASSET' ? (nb === 'DEBIT' ? r.closing : -r.closing) : (nb === 'CREDIT' ? r.closing : -r.closing)
+    return r.type === 'ASSET' ? (nb === 'DEBIT' ? 1 : -1) : (nb === 'CREDIT' ? 1 : -1)
   }
+  const bsVal = (r: V2AccountRow) => r.closing * bsFactor(r)
   const claimed = new Set<string>()
   const bsSections = BS_SECTION.map(([key, label, match]) => {
     const secRows = bsRows.filter(r => !claimed.has(r.number) && match(isRow(r)))
     for (const r of secRows) claimed.add(r.number)
     return {
       key, label,
-      rows: secRows.filter(r => Math.abs(r.closing) >= 0.005 || Math.abs(r.opening) >= 0.005).map(r => ({ ...r, closing: bsVal(r) })),
+      // NOTE: on balance-sheet rows, `monthly` carries statement-signed
+      // MONTH-END BALANCES (opening + cumulative movement), unlike income-
+      // statement rows where it carries period movements.
+      rows: secRows.filter(r => Math.abs(r.closing) >= 0.005 || Math.abs(r.opening) >= 0.005).map(r => {
+        const f = bsFactor(r)
+        let run = r.opening
+        const monthlyBal = (r.monthly || Array(12).fill(0)).map(mv => { run += mv; return round2(run * f) })
+        return { ...r, closing: round2(bsVal(r)), monthly: monthlyBal }
+      }),
       total: round2(secRows.reduce((s, r) => s + bsVal(r), 0)),
     }
   }).filter(s => s.rows.length > 0 || Math.abs(s.total) >= 0.005)
@@ -736,31 +747,38 @@ export async function computeLedgerStatements(
   const drDelta = (r: V2AccountRow) =>
     round2(isRow(r).normalBalance === 'DEBIT' ? r.closing - r.opening : -(r.closing - r.opening))
   const delta = (r: V2AccountRow) => -drDelta(r)
+  // Per-month cash effect of a non-cash account (same sign convention).
+  const effMonthly = (r: V2AccountRow) => {
+    const nb = isRow(r).normalBalance
+    return (r.monthly || Array(12).fill(0)).map(mv => round2(-(nb === 'DEBIT' ? mv : -mv)))
+  }
+  const sumMonthlyOf = (rs: V2AccountRow[]) =>
+    Array.from({ length: 12 }, (_, i) => round2(rs.reduce((s, r) => s + (r.monthly?.[i] || 0), 0)))
 
   const wcRows = bsRows.filter(r => !cashNumbers.has(r.number) && (
     (r.type === 'ASSET' && (r.subType === 'CURRENT_ASSETS' || r.subType === 'INVENTORY' || r.subType.startsWith('INV_'))) ||
     (r.type === 'LIABILITY' && r.subType === 'CURRENT_LIABILITIES')
   ))
   const FINANCING_LIAB = /advance.*(stock|share)holder|(stock|share)holder.*advance|bonds?\s*payable|corporate\s*bond|(short|long)[-\s]*term\s*loan|loan.*payable/i
-  const workingCapital: { label: string; amount: number }[] = []
+  const workingCapital: { label: string; amount: number; monthly?: number[] }[] = []
   let wcTotal = 0
   for (const r of wcRows) {
     if (FINANCING_LIAB.test(r.title)) continue
     const effect = delta(r) // cash effect
     if (Math.abs(effect) < 0.005) continue
-    workingCapital.push({ label: `${r.number} ${r.title}`, amount: round2(effect) })
+    workingCapital.push({ label: `${r.number} ${r.title}`, amount: round2(effect), monthly: effMonthly(r) })
     wcTotal += effect
   }
   const investingRows = bsRows.filter(r => r.type === 'ASSET' && ['PPE', 'INTANGIBLE_ASSETS', 'OTHER_NON_CURRENT_ASSETS'].includes(r.subType) && r.number !== accumDep.number)
-  const investing: { label: string; amount: number }[] = []
+  const investing: { label: string; amount: number; monthly?: number[] }[] = []
   let invTotal = 0
   for (const r of investingRows) {
     const effect = delta(r) // cash effect (purchase = negative)
     if (Math.abs(effect) < 0.005) continue
-    investing.push({ label: `${r.number} ${r.title}`, amount: round2(effect) })
+    investing.push({ label: `${r.number} ${r.title}`, amount: round2(effect), monthly: effMonthly(r) })
     invTotal += effect
   }
-  const financing: { label: string; amount: number }[] = []
+  const financing: { label: string; amount: number; monthly?: number[] }[] = []
   let finTotal = 0
   for (const r of bsRows) {
     const isFinancing = r.type === 'EQUITY'
@@ -768,7 +786,7 @@ export async function computeLedgerStatements(
     if (!isFinancing) continue
     const effect = delta(r) // cash effect
     if (Math.abs(effect) < 0.005) continue
-    financing.push({ label: `${r.number} ${r.title}`, amount: round2(effect) })
+    financing.push({ label: `${r.number} ${r.title}`, amount: round2(effect), monthly: effMonthly(r) })
     finTotal += effect
   }
   // Non-current, non-investing, non-financing asset deltas (e.g. accumulated dep
@@ -781,7 +799,7 @@ export async function computeLedgerStatements(
     if (r.number === accumDep.number) continue // depreciation add-back
     const effect = delta(r) // cash effect
     if (Math.abs(effect) < 0.005) continue
-    workingCapital.push({ label: `${r.number} ${r.title} (other)`, amount: round2(effect) })
+    workingCapital.push({ label: `${r.number} ${r.title} (other)`, amount: round2(effect), monthly: effMonthly(r) })
     wcTotal += effect
   }
 
@@ -791,6 +809,19 @@ export async function computeLedgerStatements(
   const netChange = round2(netOperating + netInvesting + netFinancing)
   const actualChange = round2(endingCash - beginningCash)
   validation.cfTies = Math.abs(netChange - actualChange) < 0.02
+
+  // Per-month chain for the monthly/quarterly cash-flow view — same buckets,
+  // month by month. Cash delta per month comes straight from the cash accounts.
+  const revM = sumMonthlyOf(revRows), discM = sumMonthlyOf(discRows), cogsM = sumMonthlyOf(cogsRows)
+  const opexM = sumMonthlyOf(opexRows), depM = sumMonthlyOf(depRows), intM = sumMonthlyOf(intRows), nonopM = sumMonthlyOf(nonopRows)
+  const ebtM = Array.from({ length: 12 }, (_, i) =>
+    round2(revM[i] - discM[i] - cogsM[i] - opexM[i] - depM[i] - intM[i] - nonopM[i]))
+  const cfMonthly = {
+    netIncome: ebtM.map(e => round2(e * (1 - INCOME_TAX_RATE))),
+    depreciation: depM,
+    taxProvision: ebtM.map(e => round2(e * INCOME_TAX_RATE)),
+    cashDelta: sumMonthlyOf(cashRows),
+  }
 
   const isSections = [
     { key: 'REVENUE', label: 'Gross Revenue', rows: revRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: grossRevenue },
@@ -838,6 +869,7 @@ export async function computeLedgerStatements(
       financing, netFinancing,
       netChange, beginningCash, endingCash,
       cashAccounts: cashRows.filter(r => Math.abs(r.closing) >= 0.005).map(r => ({ key: `${r.number} ${r.title}`, amount: r.closing })),
+      monthly: cfMonthly,
     },
   }
 }
