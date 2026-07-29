@@ -33,6 +33,7 @@ export async function GET() {
     return {
       id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle, currency: a.currency,
       pendingCount: countOf(a.id, 'PENDING'), postedCount: countOf(a.id, 'POSTED'), excludedCount: countOf(a.id, 'EXCLUDED'),
+      archivedCount: countOf(a.id, 'ARCHIVED'),
       beginningBalance: begAmt, startDate: beg?.startDate ? new Date(beg.startDate).toISOString().slice(0, 10) : null,
       postedBalance: begAmt + movement,
     }
