@@ -412,6 +412,7 @@ export default function BankReconciliationPage() {
         </>
       )}
 
+      {showForexCfg && <ForexAccountsModal onClose={() => setShowForexCfg(false)} onSaved={async () => { setShowForexCfg(false); await refreshAll() }} />}
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
       {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
