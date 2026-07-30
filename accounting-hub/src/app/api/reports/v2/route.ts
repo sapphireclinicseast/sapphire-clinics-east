@@ -12,8 +12,8 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()))
   const branch = searchParams.get('branch') || 'ALL'
-  if (year <= 2025) {
-    return NextResponse.json({ error: 'Years up to 2025 are served by the manual statements — the ledger engine starts with 2026.' }, { status: 400 })
+  if (year < 2024) {
+    return NextResponse.json({ error: 'The ledger engine starts with 2024 — no transaction data exists before that.' }, { status: 400 })
   }
   // Optional drill-down: return the underlying lines for one account (+month)
   const account = searchParams.get('account') || undefined
