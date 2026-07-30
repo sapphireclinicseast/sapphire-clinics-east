@@ -688,7 +688,11 @@ export async function computeLedgerStatements(
     const st = r.subType
     if (st === 'DIRECT_EXPENSES' || st.startsWith('COGS')) return 'cogs'
     if (st === 'INDIRECT_EXPENSES' || st === 'OPERATING_EXPENSES') return 'opex'
-    return 'nonop'
+    if (st.includes('NON_OPERATING')) return 'nonop'
+    // Unknown/blank sub-type (incl. virtual accounts synthesized from free-text
+    // titles): treat as OPERATING so an unclassified expense never silently
+    // slips below EBITDA. It still surfaces in validation.unclassified.
+    return 'opex'
   }
   const sum = (rs: V2AccountRow[]) => round2(rs.reduce((s, r) => s + r.closing - r.opening, 0)) // period movement only for IS
   const grossRevenue = sum(revRows)
