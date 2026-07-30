@@ -105,57 +105,49 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'Professional Fees and Salaries Payable accounts must be configured.' }, { status: 400 })
         }
 
+        // RESTATE, never append: recompute the whole journal entry from every
+        // payslip in the period. Appending double-posted whenever payslips were
+        // unlocked back to FINAL and re-finalized, and payslip corrections made
+        // after finalization silently drifted away from the JE. Re-running
+        // finalize now always converges the JE and payable to payslip truth,
+        // so it doubles as a "re-sync" after corrections.
         const addEntries = await prisma.payrollEntry.findMany({ where: { cutoffPeriod, branch, status: 'FINAL' } })
         if (addEntries.length === 0) {
-          // Distinguish: are entries still in DRAFT (not yet approved), or are they all LOCKED (truly done)?
           const draftCount = await prisma.payrollEntry.count({ where: { cutoffPeriod, branch, status: 'DRAFT' } })
           if (draftCount > 0) {
             return NextResponse.json({
               error: `${draftCount} payslip(s) are still in Draft status — please approve them to Final before locking payroll.`,
             }, { status: 400 })
           }
-          return NextResponse.json({ error: 'This payroll period has already been finalized and locked.' }, { status: 400 })
+          // No new payslips — fall through and restate anyway (re-sync).
         }
         if (!existingPayable.journalEntryId) {
           return NextResponse.json({ error: 'Existing payable has no linked journal entry — unlock the period and re-lock.' }, { status: 400 })
         }
         const journalEntryId: string = existingPayable.journalEntryId
 
-        let addGross = 0, addTax = 0, addNet = 0
-        for (const e of addEntries) { addGross += Number(e.grossPay); addTax += Number(e.taxAmount); addNet += Number(e.netPay) }
-
         const result = await prisma.$transaction(async (tx) => {
+          await tx.payrollEntry.updateMany({ where: { cutoffPeriod, branch, status: 'FINAL' }, data: { status: 'LOCKED' } })
+          const all = await tx.payrollEntry.findMany({ where: { cutoffPeriod, branch, status: 'LOCKED' } })
+          let totalGross = 0, totalTax = 0, totalNet = 0
+          for (const e of all) { totalGross += Number(e.grossPay); totalTax += Number(e.taxAmount); totalNet += Number(e.netPay) }
+
           const lines = await tx.journalEntryLine.findMany({ where: { journalEntryId } })
-          for (const line of lines) {
-            if (line.accountId === mapping.professionalFeesAccountId) {
-              await tx.journalEntryLine.update({ where: { id: line.id }, data: { debit: (Number(line.debit) + addGross) } })
-            } else if (line.accountId === mapping.salariesPayableAccountId) {
-              await tx.journalEntryLine.update({ where: { id: line.id }, data: { credit: (Number(line.credit) + addNet) } })
-            } else if (mapping.taxPayableAccountId && line.accountId === mapping.taxPayableAccountId) {
-              await tx.journalEntryLine.update({ where: { id: line.id }, data: { credit: (Number(line.credit) + addTax) } })
-            }
+          const setLine = async (accountId: string | null, side: 'debit' | 'credit', amount: number, description: string) => {
+            if (!accountId) return
+            const line = lines.find(l => l.accountId === accountId)
+            if (line) await tx.journalEntryLine.update({ where: { id: line.id }, data: { [side]: amount } })
+            else if (amount > 0) await tx.journalEntryLine.create({ data: { journalEntryId, accountId, debit: side === 'debit' ? amount : 0, credit: side === 'credit' ? amount : 0, description } })
           }
-          const hasTaxLine = lines.some(l => mapping.taxPayableAccountId && l.accountId === mapping.taxPayableAccountId)
-          if (addTax > 0 && mapping.taxPayableAccountId && !hasTaxLine) {
-            await tx.journalEntryLine.create({
-              data: { journalEntryId, accountId: mapping.taxPayableAccountId, debit: 0, credit: addTax, description: 'Withholding Tax Payable — Consultants' },
-            })
-          }
+          await setLine(mapping.professionalFeesAccountId, 'debit', totalGross, 'Professional Fees (Consultants)')
+          await setLine(mapping.salariesPayableAccountId, 'credit', totalNet, 'Salaries Payable — Consultants')
+          await setLine(mapping.taxPayableAccountId, 'credit', totalTax, 'Withholding Tax Payable — Consultants')
 
-          const je = await tx.journalEntry.findUnique({ where: { id: journalEntryId } })
-          if (je) {
-            await tx.journalEntry.update({ where: { id: je.id }, data: { totalAmount: (Number(je.totalAmount) + addGross) } })
-          }
-
+          await tx.journalEntry.update({ where: { id: journalEntryId }, data: { totalAmount: totalGross } })
           await tx.payrollPayableStatus.update({
             where: { id: existingPayable.id },
-            data: {
-              totalSalariesPayable: (Number(existingPayable.totalSalariesPayable) + addNet),
-              totalTaxPayable: (Number(existingPayable.totalTaxPayable) + addTax),
-            },
+            data: { totalSalariesPayable: totalNet, totalTaxPayable: totalTax },
           })
-
-          await tx.payrollEntry.updateMany({ where: { cutoffPeriod, branch, status: 'FINAL' }, data: { status: 'LOCKED' } })
           return { lockedCount: addEntries.length }
         })
 
@@ -172,16 +164,17 @@ export async function POST(req: Request) {
       if (!mapping.salaryExpenseAccountId || !mapping.salariesPayableAccountId) {
         return NextResponse.json({ error: 'Salary Expense and Salaries Payable accounts must be configured.' }, { status: 400 })
       }
+      // RESTATE, never append (see the consultant path above): re-running
+      // finalize converges the JE and payable to current payslip truth.
       const addPayslips = await prisma.employeePayslip.findMany({ where: { cutoffPeriod, branch, status: 'FINAL' } })
       if (addPayslips.length === 0) {
-        // Distinguish: are payslips still in DRAFT (not yet approved), or all LOCKED (truly done)?
         const draftCount = await prisma.employeePayslip.count({ where: { cutoffPeriod, branch, status: 'DRAFT' } })
         if (draftCount > 0) {
           return NextResponse.json({
             error: `${draftCount} payslip(s) are still in Draft status — please approve them to Final before locking payroll.`,
           }, { status: 400 })
         }
-        return NextResponse.json({ error: 'This payroll period has already been finalized and locked.' }, { status: 400 })
+        // No new payslips — fall through and restate anyway (re-sync).
       }
       if (!existingPayable.journalEntryId) {
         return NextResponse.json({ error: 'Existing payable has no linked journal entry — unlock the period and re-lock.' }, { status: 400 })
@@ -193,63 +186,47 @@ export async function POST(req: Request) {
       }
       const journalEntryId: string = existingPayable.journalEntryId
 
-      let addGross = 0, addNet = 0, addTax = 0
-      let addSssEE = 0, addSssER = 0, addPhilEE = 0, addPhilER = 0, addPagEE = 0, addPagER = 0
-      for (const p of addPayslips) {
-        addGross  += Number(p.grossPay);          addNet    += Number(p.netPay)
-        addTax    += Number(p.taxDeduction);       addSssEE  += Number(p.sssDeduction)
-        addSssER  += Number(p.sssEmployerShare);   addPhilEE += Number(p.philhealthDeduction)
-        addPhilER += Number(p.philhealthEmployerShare); addPagEE += Number(p.pagibigDeduction)
-        addPagER  += Number(p.pagibigEmployerShare)
-      }
-      const addBenefitsER = addSssER + addPhilER + addPagER
-      const addBenefits   = (addSssEE + addPhilEE + addPagEE) + addBenefitsER
-      // 8232 debit = gross taxable earnings (excludes non-taxable allowances & undertime).
-      // Formula: netPay + EE govt contributions + withholding tax
-      //          = grossPay − undertimeDeduction − otherDeductions (adj deductions)
-      const addTaxableSalary = addNet + addSssEE + addPhilEE + addPagEE + addTax
-
       const suppResult = await prisma.$transaction(async (tx) => {
-        const lines = await tx.journalEntryLine.findMany({ where: { journalEntryId } })
-        for (const line of lines) {
-          if (line.accountId === mapping.salaryExpenseAccountId) {
-            await tx.journalEntryLine.update({ where: { id: line.id }, data: { debit: Number(line.debit) + addTaxableSalary } })
-          } else if (line.accountId === mapping.salariesPayableAccountId) {
-            await tx.journalEntryLine.update({ where: { id: line.id }, data: { credit: Number(line.credit) + addNet } })
-          } else if (mapping.benefitsPayableAccountId && line.accountId === mapping.benefitsPayableAccountId) {
-            await tx.journalEntryLine.update({ where: { id: line.id }, data: { credit: Number(line.credit) + addBenefits } })
-          } else if (mapping.taxPayableAccountId && line.accountId === mapping.taxPayableAccountId) {
-            await tx.journalEntryLine.update({ where: { id: line.id }, data: { credit: Number(line.credit) + addTax } })
-          } else if (mapping.hdmfERAccountId && line.accountId === mapping.hdmfERAccountId) {
-            await tx.journalEntryLine.update({ where: { id: line.id }, data: { debit: Number(line.debit) + addPagER } })
-          } else if (mapping.sssERAccountId && line.accountId === mapping.sssERAccountId) {
-            await tx.journalEntryLine.update({ where: { id: line.id }, data: { debit: Number(line.debit) + addSssER } })
-          } else if (mapping.philhealthERAccountId && line.accountId === mapping.philhealthERAccountId) {
-            await tx.journalEntryLine.update({ where: { id: line.id }, data: { debit: Number(line.debit) + addPhilER } })
-          }
+        await tx.employeePayslip.updateMany({ where: { cutoffPeriod, branch, status: 'FINAL' }, data: { status: 'LOCKED' } })
+        const all = await tx.employeePayslip.findMany({ where: { cutoffPeriod, branch, status: 'LOCKED' } })
+        let totalNet = 0, totalTax = 0
+        let sssEE = 0, sssER = 0, philEE = 0, philER = 0, pagEE = 0, pagER = 0
+        for (const p of all) {
+          totalNet += Number(p.netPay);                totalTax += Number(p.taxDeduction)
+          sssEE += Number(p.sssDeduction);             sssER += Number(p.sssEmployerShare)
+          philEE += Number(p.philhealthDeduction);     philER += Number(p.philhealthEmployerShare)
+          pagEE += Number(p.pagibigDeduction);         pagER += Number(p.pagibigEmployerShare)
         }
-        // Create missing ER / benefit / tax lines if they didn't exist in the original JE
-        if (addPagER > 0 && mapping.hdmfERAccountId && !lines.some(l => l.accountId === mapping.hdmfERAccountId))
-          await tx.journalEntryLine.create({ data: { journalEntryId, accountId: mapping.hdmfERAccountId, debit: addPagER, credit: 0, description: 'HDMF Contribution (ER)' } })
-        if (addSssER > 0 && mapping.sssERAccountId && !lines.some(l => l.accountId === mapping.sssERAccountId))
-          await tx.journalEntryLine.create({ data: { journalEntryId, accountId: mapping.sssERAccountId, debit: addSssER, credit: 0, description: 'SSS Contribution (ER)' } })
-        if (addPhilER > 0 && mapping.philhealthERAccountId && !lines.some(l => l.accountId === mapping.philhealthERAccountId))
-          await tx.journalEntryLine.create({ data: { journalEntryId, accountId: mapping.philhealthERAccountId, debit: addPhilER, credit: 0, description: 'PHIC Contribution (ER)' } })
-        if (addBenefits > 0 && mapping.benefitsPayableAccountId && !lines.some(l => l.accountId === mapping.benefitsPayableAccountId))
-          await tx.journalEntryLine.create({ data: { journalEntryId, accountId: mapping.benefitsPayableAccountId, debit: 0, credit: addBenefits, description: 'SSS, PHIC, HDMF Payable (EE + ER)' } })
-        if (addTax > 0 && mapping.taxPayableAccountId && !lines.some(l => l.accountId === mapping.taxPayableAccountId))
-          await tx.journalEntryLine.create({ data: { journalEntryId, accountId: mapping.taxPayableAccountId, debit: 0, credit: addTax, description: 'Withholding Tax Payable — Employees' } })
+        const benefitsER = sssER + philER + pagER
+        const benefits = (sssEE + philEE + pagEE) + benefitsER
+        // 8232 debit = gross taxable earnings (excludes non-taxable allowances & undertime).
+        // Formula: netPay + EE govt contributions + withholding tax
+        const taxableSalary = totalNet + sssEE + philEE + pagEE + totalTax
 
-        await tx.journalEntry.update({ where: { id: journalEntryId }, data: { totalAmount: Number(existingJE.totalAmount) + addTaxableSalary + addBenefitsER } })
+        const lines = await tx.journalEntryLine.findMany({ where: { journalEntryId } })
+        const setLine = async (accountId: string | null, side: 'debit' | 'credit', amount: number, description: string) => {
+          if (!accountId) return
+          const line = lines.find(l => l.accountId === accountId)
+          if (line) await tx.journalEntryLine.update({ where: { id: line.id }, data: { [side]: amount } })
+          else if (amount > 0) await tx.journalEntryLine.create({ data: { journalEntryId, accountId, debit: side === 'debit' ? amount : 0, credit: side === 'credit' ? amount : 0, description } })
+        }
+        await setLine(mapping.salaryExpenseAccountId, 'debit', taxableSalary, 'Salaries and Wages')
+        await setLine(mapping.hdmfERAccountId, 'debit', pagER, 'HDMF Contribution (ER)')
+        await setLine(mapping.sssERAccountId, 'debit', sssER, 'SSS Contribution (ER)')
+        await setLine(mapping.philhealthERAccountId, 'debit', philER, 'PHIC Contribution (ER)')
+        await setLine(mapping.salariesPayableAccountId, 'credit', totalNet, 'Salaries Payable — Employees')
+        await setLine(mapping.benefitsPayableAccountId, 'credit', benefits, 'SSS, PHIC, HDMF Payable (EE + ER)')
+        await setLine(mapping.taxPayableAccountId, 'credit', totalTax, 'Withholding Tax Payable — Employees')
+
+        await tx.journalEntry.update({ where: { id: journalEntryId }, data: { totalAmount: taxableSalary + benefitsER } })
         await tx.payrollPayableStatus.update({
           where: { id: existingPayable.id },
           data: {
-            totalSalariesPayable: Number(existingPayable.totalSalariesPayable) + addNet,
-            totalBenefitsPayable: Number(existingPayable.totalBenefitsPayable) + addBenefits,
-            totalTaxPayable: Number(existingPayable.totalTaxPayable) + addTax,
+            totalSalariesPayable: totalNet,
+            totalBenefitsPayable: benefits,
+            totalTaxPayable: totalTax,
           },
         })
-        await tx.employeePayslip.updateMany({ where: { cutoffPeriod, branch, status: 'FINAL' }, data: { status: 'LOCKED' } })
         return { lockedCount: addPayslips.length }
       })
 
