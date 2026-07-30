@@ -759,8 +759,10 @@ export async function GET(req: Request) {
       if (!line.account || line.account.accountType !== 'REVENUE') continue
       // POS_ORDER revenue and discounts (incl. 7140 Merchant Discount Rate) are already
       // counted above from the order/payment data — skip them here to avoid double-counting.
+      // Reversals (voided orders) are skipped for the same reason: the voided order was
+      // never counted above, so folding its reversal would double-subtract.
       // This fold is for manual/indirect entries (e.g. 7220 Other Comprehensive Income).
-      if (line.journalEntry.referenceType === 'POS_ORDER') continue
+      if (line.journalEntry.referenceType === 'POS_ORDER' || line.journalEntry.referenceType === 'POS_ORDER_REVERSAL') continue
       const key = `${line.account.accountNumber} ${line.account.accountTitle}`
       const month = new Date(line.journalEntry.entryDate).getMonth() + 1
       const credit = Number(line.credit) || 0
@@ -786,8 +788,10 @@ export async function GET(req: Request) {
       if (
         line.journalEntry.referenceType === 'PAYROLL_CONSULTANT' ||
         line.journalEntry.referenceType === 'PAYROLL_EMPLOYEE' ||
-        // POS_ORDER COGS (e.g. 8320 Cost of Sales) is already counted from order items above
-        line.journalEntry.referenceType === 'POS_ORDER'
+        // POS_ORDER COGS (e.g. 8320 Cost of Sales) is already counted from order items above;
+        // reversals of voided orders are skipped for the same reason (never counted above)
+        line.journalEntry.referenceType === 'POS_ORDER' ||
+        line.journalEntry.referenceType === 'POS_ORDER_REVERSAL'
       ) continue
       const key = `${line.account.accountNumber} ${line.account.accountTitle}`
       const month = new Date(line.journalEntry.entryDate).getUTCMonth() + 1

@@ -1576,7 +1576,7 @@ export default function ExpensesPage() {
 
       {payTarget && (
         <ForPaymentModal count={payTarget._count.entries} bankOptions={bankOptions} cards={cards} paying={paying}
-          title={`Record RFP as Paid — ${payTarget.refNumber}`} confirmLabel="Confirm Payment"
+          title={`Record RFP as Paid — ${payTarget.refNumber}`} confirmLabel="Confirm Payment" proofPrefix={payTarget.refNumber}
           onClose={() => setPayTarget(null)} onAddCard={addCard} onSubmit={p => recordRfpPaid(payTarget, p)} />
       )}
 
@@ -1710,10 +1710,10 @@ export default function ExpensesPage() {
 }
 
 // ── For Payment modal ──────────────────────────────────────────
-function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabel, onClose, onAddCard, onSubmit }: {
-  count: number; bankOptions: string[]; cards: Card[]; paying: boolean; title?: string; confirmLabel?: string
+function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabel, proofPrefix, onClose, onAddCard, onSubmit }: {
+  count: number; bankOptions: string[]; cards: Card[]; paying: boolean; title?: string; confirmLabel?: string; proofPrefix?: string
   onClose: () => void; onAddCard: (bank: string, cardNumber: string, bankCode: string) => Promise<Card | null>
-  onSubmit: (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string }) => void
+  onSubmit: (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string; proofUrl: string | null }) => void
 }) {
   const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
   const [method, setMethod] = useState('')
@@ -1721,6 +1721,7 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
   const [bankAccount, setBankAccount] = useState('')
   const [cardId, setCardId] = useState('')
   const [payrollAccount, setPayrollAccount] = useState('')
+  const [proofUrl, setProofUrl] = useState('')
   const [showAddCard, setShowAddCard] = useState(false)
   const [nb, setNb] = useState(''); const [nn, setNn] = useState(''); const [nc, setNc] = useState('')
 
@@ -1737,7 +1738,7 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
     if (isCard && !cardId) { alert('Choose a credit card.'); return }
     if (isPayroll && !payrollAccount) { alert("Enter the admin officer's bank account number."); return }
     const selCard = cards.find(c => c.id === cardId)
-    onSubmit({ datePaid, paymentMethod: method, checkNumber: (isCheck || isTT) ? checkNumber : '', paymentBankAccount: (isCheck || isTT) ? bankAccount : '', creditCard: isCard && selCard ? cardLabel(selCard) : '', creditCardId: isCard ? cardId : '', payrollAccount: isPayroll ? payrollAccount : '' })
+    onSubmit({ datePaid, paymentMethod: method, checkNumber: (isCheck || isTT) ? checkNumber : '', paymentBankAccount: (isCheck || isTT) ? bankAccount : '', creditCard: isCard && selCard ? cardLabel(selCard) : '', creditCardId: isCard ? cardId : '', payrollAccount: isPayroll ? payrollAccount : '', proofUrl: proofUrl || null })
   }
 
   const saveNewCard = async () => {
@@ -1828,6 +1829,17 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
             <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Leading zeros are preserved.</p>
           </>
         )}
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of payment (optional)</label>
+        <div className="mb-3">
+          <ScanUpload section="rfp-payment" prefix={proofPrefix || 'rfp-payment'} onUploaded={url => setProofUrl(url)} />
+          {proofUrl && (
+            <div className="flex items-center gap-2 mt-1">
+              <a href={proofUrl} target="_blank" rel="noreferrer" className="text-[11px] underline" style={{ color: 'var(--teal)' }}>View proof</a>
+              <button onClick={() => setProofUrl('')} className="text-[11px] underline" style={{ color: 'var(--mid-gray)' }}>Remove</button>
+            </div>
+          )}
+        </div>
 
         <button onClick={submit} disabled={paying}
           className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"

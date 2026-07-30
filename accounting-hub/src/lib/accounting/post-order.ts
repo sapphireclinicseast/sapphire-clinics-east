@@ -43,13 +43,14 @@ export async function postOrderJournal(
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
 
-  // Idempotency: if a forward JE already exists for this order, skip.
-  // (Reversals don't count — they have referenceType=POS_ORDER_REVERSAL, etc.)
-  const existing = await prisma.journalEntry.findFirst({
-    where: { referenceType: 'POS_ORDER', referenceId: orderId },
-    select: { id: true },
-  })
-  if (existing) return { posted: false, alreadyPosted: true, journalEntryId: existing.id }
+  // Idempotency: skip while an ACTIVE forward JE exists for this order. A
+  // forward JE cancelled by a POS_ORDER_REVERSAL (void → reopen → complete
+  // again) no longer counts, so the re-completed sale posts a fresh JE.
+  const [forwardCount, reversalCount] = await Promise.all([
+    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER', referenceId: orderId } }),
+    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER_REVERSAL', referenceId: orderId } }),
+  ])
+  if (forwardCount > reversalCount) return { posted: false, alreadyPosted: true }
 
   // Pull everything we need in one round-trip.
   const order = await prisma.order.findUnique({
@@ -110,6 +111,16 @@ export async function postOrderJournal(
   ])
 
   const pmById = new Map(paymentModes.map(p => [p.id, p]))
+  // Fallback: legs recorded without an explicit mode (front desk isn't required
+  // to pick one for plain cash) resolve by (branch, method) — but only when
+  // exactly ONE active mode matches, so PayMongo (several per branch) never
+  // resolves implicitly.
+  const pmByBranchMethod = new Map<string, (typeof paymentModes)[number] | null>()
+  for (const pm of paymentModes) {
+    if (!pm.paymentMethod || !pm.branch) continue
+    const k = `${pm.branch}:${pm.paymentMethod}`
+    pmByBranchMethod.set(k, pmByBranchMethod.has(k) ? null : pm)
+  }
   const dsByLabel = new Map(discountSettings.map(d => [d.name.trim().toLowerCase(), d]))
 
   // Aggregator: accountId → { debit, credit }
@@ -181,7 +192,8 @@ export async function postOrderJournal(
     }
 
     if (CASH_METHODS.has(p.method)) {
-      const pm = p.paymentModeId ? pmById.get(p.paymentModeId) : null
+      const pm = (p.paymentModeId ? pmById.get(p.paymentModeId) : null)
+        || pmByBranchMethod.get(`${order.branch}:${p.method}`)
       const cashAcct = pm?.account
       if (!cashAcct) {
         return { posted: false, reason: `cash payment ${p.method} ${gross} has no payment-mode account configured` }
@@ -268,6 +280,21 @@ export async function postOrderJournal(
   }
   if (lines.length === 0) return { posted: false, reason: 'no postable lines (free-sample-only order?)' }
 
+  // Fractional discounts (e.g. 25% of ₱2,062.50 = ₱515.625) leave a sub-centavo
+  // gap against centavo-rounded payment amounts, and float drift pushes an
+  // exactly-0.005 gap just past the balance tolerance. Absorb residuals of up
+  // to 2 centavos into the discount line — that's where the fraction came
+  // from — falling back to the largest debit line. Bigger gaps are real
+  // errors and still refuse below.
+  const drTotal = lines.reduce((s, l) => s + (l.debit || 0), 0)
+  const crTotal = lines.reduce((s, l) => s + (l.credit || 0), 0)
+  const gap = drTotal - crTotal
+  if (gap !== 0 && Math.abs(gap) <= 0.02) {
+    const target = lines.find(l => (l.debit || 0) > Math.abs(gap) && l.description?.startsWith('Discount'))
+      || lines.filter(l => (l.debit || 0) > Math.abs(gap)).sort((a, b) => (b.debit || 0) - (a.debit || 0))[0]
+    if (target) target.debit = Math.round(((target.debit || 0) - gap) * 100) / 100
+  }
+
   try {
     const je = await postJournalEntry(prisma, {
       entryDate:     order.transactionDate,
@@ -282,6 +309,60 @@ export async function postOrderJournal(
   } catch (e) {
     if (e instanceof UnbalancedJournalEntryError) {
       console.error('[POS_ORDER] refused unbalanced JE for order', order.id, '—', e.message)
+      return { posted: false, reason: e.message }
+    }
+    throw e
+  }
+}
+
+/**
+ * Reverse an order's forward JE when the sale stops standing (void, buyer
+ * return, reopen). Posts a mirrored POS_ORDER_REVERSAL dated now — the
+ * original entry is left untouched so the ledger keeps the full history,
+ * and JE-based reports (Ledger dataset, Subsidiary Ledger) net to zero.
+ * Idempotent: skips when there is no un-reversed forward JE.
+ */
+export async function reverseOrderJournal(
+  prisma: PrismaClient,
+  orderId: string,
+  createdById: string,
+  reason: string,
+): Promise<PostOrderResult> {
+  if (process.env.ENABLE_GL_POSTING !== 'true') {
+    return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
+  }
+  const [original, reversalCount] = await Promise.all([
+    prisma.journalEntry.findFirst({
+      where: { referenceType: 'POS_ORDER', referenceId: orderId },
+      include: { lines: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER_REVERSAL', referenceId: orderId } }),
+  ])
+  if (!original) return { posted: false, reason: 'no forward JE to reverse' }
+  const forwardCount = await prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER', referenceId: orderId } })
+  if (reversalCount >= forwardCount) return { posted: false, alreadyPosted: true }
+
+  const lines: PostingLine[] = original.lines.map(l => ({
+    accountId: l.accountId,
+    debit:  Number(l.credit) || 0,   // swap sides
+    credit: Number(l.debit)  || 0,
+    description: `Reversal — ${reason}`,
+  }))
+  try {
+    const je = await postJournalEntry(prisma, {
+      entryDate:     new Date(),
+      description:   `Reversal of ${original.description} — ${reason}`,
+      referenceType: 'POS_ORDER_REVERSAL',
+      referenceId:   orderId,
+      branch:        original.branch,
+      createdById,
+      lines,
+    })
+    return { posted: true, journalEntryId: je.id }
+  } catch (e) {
+    if (e instanceof UnbalancedJournalEntryError) {
+      console.error('[POS_ORDER_REVERSAL] refused unbalanced JE for order', orderId, '—', e.message)
       return { posted: false, reason: e.message }
     }
     throw e
