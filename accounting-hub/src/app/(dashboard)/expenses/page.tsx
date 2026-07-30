@@ -2205,6 +2205,20 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
   const [erSort, setErSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'paymentDate', dir: 'asc' })
   const [erFilters, setErFilters] = useState<Record<string, string>>({})
   const erToggleSort = (k: string) => setErSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  // User-adjustable column widths (drag the header edges); persisted per
+  // browser. Loaded in an effect so the server and first client render match.
+  const [colWidths, setColWidths] = useState<Record<string, number> | null>(null)
+  useEffect(() => {
+    try { setColWidths(JSON.parse(localStorage.getItem('er-col-widths') || 'null')) } catch { /* ignore */ }
+  }, [])
+  const saveColWidths = (w: Record<string, number>) => {
+    setColWidths(w)
+    try { localStorage.setItem('er-col-widths', JSON.stringify(w)) } catch { /* ignore */ }
+  }
+  const resetColWidths = () => {
+    setColWidths(null)
+    try { localStorage.removeItem('er-col-widths') } catch { /* ignore */ }
+  }
   const erCols = [
     { key: 'source', label: 'Source' },
     { key: 'payee', label: 'Payee' }, { key: 'paymentAccount', label: 'Payment Account' }, { key: 'paymentDate', label: 'Payment Date' },
@@ -2300,16 +2314,29 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
         <span className="text-[11px] flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
           <span className="inline-block w-3 h-3 rounded" style={{ background: '#dbeafe' }} /> Petty cash (reimbursement)
         </span>
+        <div className="flex-1" />
+        {colWidths && (
+          <button onClick={resetColWidths} className="px-3 py-1.5 rounded-xl text-[11px] font-semibold border"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="Restore automatic column widths">
+            Reset column widths
+          </button>
+        )}
       </div>
 
-      {/* Table */}
+      {/* Table — drag a column header's right edge to resize it */}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: '62vh' }}>
         {loading ? (
           <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
-        ) : (
-          <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 1700 }}>
+        ) : (<>
+          {/* Fixed layout clips long text instead of stretching the column back out */}
+          {colWidths && <style>{'.er-report-table td{overflow:hidden;text-overflow:ellipsis}'}</style>}
+          <table className={`text-xs${colWidths ? ' er-report-table' : ''}`}
+            style={colWidths
+              ? { borderCollapse: 'collapse', tableLayout: 'fixed', width: Object.values(colWidths).reduce((s, w) => s + w, 0) + (canEdit ? 70 : 0) }
+              : { borderCollapse: 'collapse', minWidth: 1700 }}>
             <SortFilterHead cols={erCols} sortKey={erSort.key} sortDir={erSort.dir} filters={erFilters}
-              onToggleSort={erToggleSort} onFilter={(k, v) => setErFilters(f => ({ ...f, [k]: v }))} trailing={canEdit} />
+              onToggleSort={erToggleSort} onFilter={(k, v) => setErFilters(f => ({ ...f, [k]: v }))} trailing={canEdit}
+              widths={colWidths} onWidthsChange={saveColWidths} />
             <tbody>
               {shown.map(r => {
                 const pc = r.source === 'PETTY_CASH'
@@ -2355,7 +2382,7 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
               )}
             </tbody>
           </table>
-        )}
+        </>)}
       </div>
 
       {editRow && (
