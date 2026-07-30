@@ -111,6 +111,16 @@ export async function postOrderJournal(
   ])
 
   const pmById = new Map(paymentModes.map(p => [p.id, p]))
+  // Fallback: legs recorded without an explicit mode (front desk isn't required
+  // to pick one for plain cash) resolve by (branch, method) — but only when
+  // exactly ONE active mode matches, so PayMongo (several per branch) never
+  // resolves implicitly.
+  const pmByBranchMethod = new Map<string, (typeof paymentModes)[number] | null>()
+  for (const pm of paymentModes) {
+    if (!pm.paymentMethod || !pm.branch) continue
+    const k = `${pm.branch}:${pm.paymentMethod}`
+    pmByBranchMethod.set(k, pmByBranchMethod.has(k) ? null : pm)
+  }
   const dsByLabel = new Map(discountSettings.map(d => [d.name.trim().toLowerCase(), d]))
 
   // Aggregator: accountId → { debit, credit }
@@ -182,7 +192,8 @@ export async function postOrderJournal(
     }
 
     if (CASH_METHODS.has(p.method)) {
-      const pm = p.paymentModeId ? pmById.get(p.paymentModeId) : null
+      const pm = (p.paymentModeId ? pmById.get(p.paymentModeId) : null)
+        || pmByBranchMethod.get(`${order.branch}:${p.method}`)
       const cashAcct = pm?.account
       if (!cashAcct) {
         return { posted: false, reason: `cash payment ${p.method} ${gross} has no payment-mode account configured` }
