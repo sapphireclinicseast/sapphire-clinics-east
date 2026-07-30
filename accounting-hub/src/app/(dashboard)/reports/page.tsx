@@ -66,6 +66,10 @@ interface ReportData {
     paymentsReceived: number
     discounts: number
     byCashAccount: { accountNumber: string; accountTitle: string; amount: number }[]
+    glApproved?: number
+    glConsumed?: number
+    glCollected?: number
+    glOverpayment?: number
   }
   inventorySourceAccounts?: { accountNumber: string; accountTitle: string; accountType: string; amount: number }[]
   unclassifiedAP?: number
@@ -782,7 +786,12 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   // revenueType=UNEARNED for receivables (which would otherwise leave AR un-offset).
   const unearnedRevFromAR = data.unearnedRevenueFromAR || 0
 
-  const totalCurrentLiabilities = wallets.total + sourceAccountTotal + payrollPayableTotal + unearnedRevFromAR + incomeTaxPayable
+  // Agencies settle the approved SOA amount, not the sessions consumed against it,
+  // so a Guarantee Letter paid beyond its consumption leaves money held for the
+  // agency. That is a liability, not a reduction of the receivable.
+  const glOverpayment = accountsReceivable?.glOverpayment || 0
+
+  const totalCurrentLiabilities = wallets.total + sourceAccountTotal + payrollPayableTotal + unearnedRevFromAR + incomeTaxPayable + glOverpayment
   const totalNonCurrentLiabilities = 0
   const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities
 
@@ -951,6 +960,10 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
           <AnnualRow label="4055 — Unearned Revenue (HMO/GL receivables)" amount={unearnedRevFromAR} indent={2}
             onDrillDown={() => onDrillDown('Unearned Revenue from HMO/GL', 'UNEARNED_AR', 0)} />
         )}
+        {/* Guarantee Letters settled beyond the sessions consumed against them. */}
+        {glOverpayment > 0 && (
+          <AnnualRow label="Overpayment by GL agencies (unconsumed SOA settled)" amount={glOverpayment} indent={2} />
+        )}
         {/* Inventory source accounts (only liability/payable accounts) */}
         {liabilitySourceAccounts.length > 0 && liabilitySourceAccounts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={a.amount} indent={2} />
@@ -961,7 +974,7 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {incomeTaxPayable > 0 && (
           <AnnualRow label="Income Tax Payable (20% provision, accrued)" amount={incomeTaxPayable} indent={2} />
         )}
-        {wallets.total === 0 && currentLiabAccounts.length === 0 && sourceAccountTotal === 0 && payrollPayableTotal === 0 && (
+        {wallets.total === 0 && currentLiabAccounts.length === 0 && sourceAccountTotal === 0 && payrollPayableTotal === 0 && glOverpayment === 0 && (
           <AnnualRow label="(No current liabilities recorded)" amount={0} indent={2} />
         )}
         <AnnualRow label="Total Current Liabilities" amount={totalCurrentLiabilities} indent={1} isTotal bold />
@@ -1601,11 +1614,8 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
   // 'standard' = current derivation engine; 'ledger' = v2 beta (one balanced
-  // dataset, statements interconnected). Ledger is the default since 2026-07-29
-  // (owner-validated); Standard remains available on the toggle. For 2024/2025
-  // Standard shows the audited manual statements while Ledger derives the
-  // clickable layout from the imported QuickBooks actuals.
-  const [engine, setEngine] = useState<'standard' | 'ledger'>('ledger')
+  // dataset, statements interconnected). Only applies to derived years (2026+).
+  const [engine, setEngine] = useState<'standard' | 'ledger'>('standard')
 
   const handleDrillDown: OnDrillDown = (label, category, month, accountKey, opts) => {
     setDrillDown({ label, category, month, accountKey, subtype: opts?.subtype, portion: opts?.portion })
@@ -1923,7 +1933,7 @@ export default function ReportsPage() {
         {/* View Mode */}
         {!isMedrep && (
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-          {((engine === 'ledger' && year >= 2024 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
+          {((engine === 'ledger' && year >= 2026 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
@@ -1957,9 +1967,8 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* Engine — 2024+ (for 2024/2025, Standard = audited manual statements,
-            Ledger = clickable layout derived from imported actuals) */}
-        {!isMedrep && year >= 2024 && (
+        {/* Engine (derived years only) */}
+        {!isMedrep && year >= 2026 && (
           <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
             {([['standard', 'Standard'], ['ledger', 'Ledger (beta)']] as const).map(([mode, label]) => (
               <button
@@ -2011,10 +2020,8 @@ export default function ReportsPage() {
           </div>
         )}
 
-        {/* Report content. For 2024/2025 the manual (audited) statements render
-            on Standard; the Ledger engine derives the clickable layout from the
-            imported actuals for any year with transaction data (2024+). */}
-        {!loading && data?.historical && (engine === 'standard' || isMedrep) && (
+        {/* Report content */}
+        {!loading && data?.historical && (
           <HistoricalReport
             hist={data.historical}
             tab={effTab}
@@ -2022,18 +2029,10 @@ export default function ReportsPage() {
             revenueOnly={isMedrep}
           />
         )}
-        {!loading && engine === 'ledger' && year >= 2024 && !isMedrep && (
-          <>
-            {year <= 2025 && (
-              <p className="px-5 pt-3 text-xs" style={{ color: '#6b7280' }}>
-                Derived live from the imported transaction data for {year} — the audited financial
-                statements for this year remain available under <strong>Standard</strong>.
-              </p>
-            )}
-            <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
-          </>
+        {!loading && !data?.historical && engine === 'ledger' && year >= 2026 && !isMedrep && (
+          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
         )}
-        {!loading && data && !data.historical && (engine === 'standard' || year < 2024 || isMedrep) && (
+        {!loading && data && !data.historical && (engine === 'standard' || year < 2026 || isMedrep) && (
           <div className="py-2">
             {effTab === 'balance-sheet' && (
               <BalanceSheet data={data} viewMode={effView} onDrillDown={effDrill} />

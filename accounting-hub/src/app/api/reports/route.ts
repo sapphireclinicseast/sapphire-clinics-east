@@ -137,10 +137,16 @@ export async function GET(req: Request) {
         select: { quantity: true, unitCost: true, skuDepartment: true, branch: true, fromPettyCash: true, sourceAccountId: true, sourceAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } },
       }),
 
-      // Digital wallets — unearned revenue (liability) + AR (HMO/GL)
+      // Digital wallets — unearned revenue (liability) + AR (HMO/GL).
+      // GL receivables need every payment ever collected, not just this period's:
+      // a receivable is a balance, so the date-windowed arPayments fetch below
+      // (which serves the cash side) cannot be reused for it.
       prisma.digitalWallet.findMany({
         where: { isActive: true },
-        select: { walletType: true, balance: true, totalGlAmount: true },
+        select: {
+          walletType: true, balance: true, totalGlAmount: true,
+          arPayments: { select: { amount: true } },
+        },
       }),
 
       // Payment modes with deduction rates (MDR, CWT) + COA account for cash routing
@@ -654,13 +660,43 @@ export async function GET(req: Request) {
     let totalWalletBalance = 0
     let totalARBalance = 0
     const arByType: Record<string, number> = {}
+    // GL monitoring figures — approved authorisations and agency overpayments, which
+    // are reported alongside the receivable rather than inside it.
+    let glApproved = 0
+    let glConsumed = 0
+    let glCollected = 0
+    let glOverpayment = 0
     for (const w of wallets) {
       const bal = Number(w.balance)
       if (AR_WALLET_TYPES.has(w.walletType)) {
-        // HMO = balance is AR; GL = totalGlAmount is the full receivable (balance is just remaining usable amount)
-        const arAmt = w.walletType === 'GL' && w.totalGlAmount ? Number(w.totalGlAmount) : bal
-        totalARBalance += arAmt
-        arByType[w.walletType] = (arByType[w.walletType] || 0) + arAmt
+        // HMO: the balance IS the receivable — recording a payment decrements it.
+        //
+        // GL: only sessions actually delivered are receivable. The approved amount
+        // on the Guarantee Letter is an authorisation to spend, not a debt owed, so
+        // the unused part of it is not an asset — it is monitored in the Accounts
+        // Receivable section instead. Consumption is the approved amount less the
+        // remaining usable balance.
+        //
+        // The agency settles the approved SOA amount rather than what was consumed,
+        // so a letter can be paid for more than the sessions taken against it. That
+        // excess is money held for the agency — a liability — and must be reported
+        // separately: netting it against other letters' receivables would understate
+        // both sides. Hence per-wallet, never in aggregate.
+        if (w.walletType === 'GL') {
+          const approved = w.totalGlAmount ? Number(w.totalGlAmount) : 0
+          const consumed = Math.max(0, approved - bal)
+          const paid = w.arPayments.reduce((s, p) => s + Number(p.amount), 0)
+          const receivable = Math.max(0, consumed - paid)
+          glApproved += approved
+          glConsumed += consumed
+          glCollected += paid
+          glOverpayment += Math.max(0, paid - consumed)
+          totalARBalance += receivable
+          arByType.GL = (arByType.GL || 0) + receivable
+        } else {
+          totalARBalance += bal
+          arByType[w.walletType] = (arByType[w.walletType] || 0) + bal
+        }
       } else {
         // Package, VIP, Prepaid Card, etc. = Unearned Revenue (liability)
         totalWalletBalance += bal
@@ -759,10 +795,8 @@ export async function GET(req: Request) {
       if (!line.account || line.account.accountType !== 'REVENUE') continue
       // POS_ORDER revenue and discounts (incl. 7140 Merchant Discount Rate) are already
       // counted above from the order/payment data — skip them here to avoid double-counting.
-      // Reversals (voided orders) are skipped for the same reason: the voided order was
-      // never counted above, so folding its reversal would double-subtract.
       // This fold is for manual/indirect entries (e.g. 7220 Other Comprehensive Income).
-      if (line.journalEntry.referenceType === 'POS_ORDER' || line.journalEntry.referenceType === 'POS_ORDER_REVERSAL') continue
+      if (line.journalEntry.referenceType === 'POS_ORDER') continue
       const key = `${line.account.accountNumber} ${line.account.accountTitle}`
       const month = new Date(line.journalEntry.entryDate).getMonth() + 1
       const credit = Number(line.credit) || 0
@@ -788,10 +822,8 @@ export async function GET(req: Request) {
       if (
         line.journalEntry.referenceType === 'PAYROLL_CONSULTANT' ||
         line.journalEntry.referenceType === 'PAYROLL_EMPLOYEE' ||
-        // POS_ORDER COGS (e.g. 8320 Cost of Sales) is already counted from order items above;
-        // reversals of voided orders are skipped for the same reason (never counted above)
-        line.journalEntry.referenceType === 'POS_ORDER' ||
-        line.journalEntry.referenceType === 'POS_ORDER_REVERSAL'
+        // POS_ORDER COGS (e.g. 8320 Cost of Sales) is already counted from order items above
+        line.journalEntry.referenceType === 'POS_ORDER'
       ) continue
       const key = `${line.account.accountNumber} ${line.account.accountTitle}`
       const month = new Date(line.journalEntry.entryDate).getUTCMonth() + 1
@@ -1115,6 +1147,10 @@ export async function GET(req: Request) {
         paymentsReceived: totalARPaymentsReceived,
         discounts: totalARDiscounts,
         byCashAccount: Object.values(arPaymentsByCashAccount),
+        glApproved,
+        glConsumed,
+        glCollected,
+        glOverpayment,
       },
       inventorySourceAccounts: Object.values(inventoryBySourceAccount),
       unclassifiedAP,
