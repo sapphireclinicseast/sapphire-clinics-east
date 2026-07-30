@@ -30,9 +30,11 @@ export async function GET() {
   // Match each referred patient's POS orders (by CRM id, else name) → net sales.
   const ids = Array.from(new Set(referred.map(r => r.patientId).filter(Boolean))) as string[]
   const names = Array.from(new Set(referred.map(r => r.patientName)))
+  // Earned revenue only — package payments and prepaid-card reloads (UNEARNED)
+  // don't count toward a referrer's net sales.
   const orders = (ids.length || names.length)
     ? await prisma.order.findMany({
-        where: { status: { notIn: ['VOIDED'] }, OR: [...(ids.length ? [{ patientId: { in: ids } }] : []), ...(names.length ? [{ patientName: { in: names } }] : [])] },
+        where: { status: { notIn: ['VOIDED'] }, revenueType: { not: 'UNEARNED' }, OR: [...(ids.length ? [{ patientId: { in: ids } }] : []), ...(names.length ? [{ patientName: { in: names } }] : [])] },
         select: { patientId: true, patientName: true, netAmount: true },
       })
     : []

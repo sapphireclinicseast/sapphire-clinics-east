@@ -26,9 +26,29 @@ export async function GET(req: Request) {
     orderBy: { createdAt: 'desc' },
     include: { referrer: { select: { id: true, name: true, type: true } } },
   })
+
+  // Which branch(es) each patient actually visits, from their POS orders
+  // (matched by CRM id, else name — same matching as the sessions drill-down).
+  const ids = Array.from(new Set(rows.map(r => r.patientId).filter(Boolean))) as string[]
+  const names = Array.from(new Set(rows.map(r => r.patientName)))
+  const orders = rows.length
+    ? await prisma.order.findMany({
+        where: { status: { notIn: ['VOIDED'] }, OR: [...(ids.length ? [{ patientId: { in: ids } }] : []), ...(names.length ? [{ patientName: { in: names } }] : [])] },
+        select: { patientId: true, patientName: true, branch: true },
+      })
+    : []
+  const branchesById = new Map<string, Set<string>>()
+  const branchesByName = new Map<string, Set<string>>()
+  for (const o of orders) {
+    if (o.patientId) (branchesById.get(o.patientId) ?? branchesById.set(o.patientId, new Set()).get(o.patientId)!).add(o.branch)
+    const k = (o.patientName || '').trim().toLowerCase()
+    if (k) (branchesByName.get(k) ?? branchesByName.set(k, new Set()).get(k)!).add(o.branch)
+  }
+
   return NextResponse.json(rows.map(r => ({
     id: r.id, patientId: r.patientId, patientName: r.patientName, note: r.note,
     referrerId: r.referrerId, referrerName: r.referrer?.name || '—', referrerType: r.referrer?.type || null,
+    branches: Array.from((r.patientId && branchesById.get(r.patientId)) || branchesByName.get(r.patientName.trim().toLowerCase()) || []).sort(),
     createdAt: r.createdAt,
   })))
 }

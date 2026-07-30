@@ -12,7 +12,7 @@ const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { min
 
 interface RefOpt { id: string; name: string; type?: string | null }
 interface PatientHit { id: string; name: string; email?: string | null }
-interface RP { id: string; patientId: string | null; patientName: string; referrerId: string; referrerName: string; referrerType: string | null; note: string | null; createdAt: string }
+interface RP { id: string; patientId: string | null; patientName: string; referrerId: string; referrerName: string; referrerType: string | null; branches: string[]; note: string | null; createdAt: string }
 interface Sess { id: string; orderNumber: number; date: string; branch: string; paymentStatus: string; services: string; departments: string[]; netAmount: number }
 interface DashRow { referrerId: string; name: string; type: string | null; referrals: number; net: number }
 
@@ -54,7 +54,7 @@ function ReferredPatientsPanel() {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [sessionsFor, setSessionsFor] = useState<RP | null>(null)
-  const [sortField, setSortField] = useState<'patientName' | 'referrerName' | 'referrerType' | 'createdAt'>('createdAt')
+  const [sortField, setSortField] = useState<'patientName' | 'referrerName' | 'referrerType' | 'branches' | 'createdAt'>('createdAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const toggleSort = (f: typeof sortField) => { if (sortField === f) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField(f); setSortDir('asc') } }
 
@@ -98,7 +98,7 @@ function ReferredPatientsPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--pale-teal)' }}>
-                {([['patientName', 'Patient'], ['referrerName', 'Referrer'], ['referrerType', 'Type'], ['createdAt', 'Added']] as [typeof sortField, string][]).map(([key, label]) => (
+                {([['patientName', 'Patient'], ['referrerName', 'Referrer'], ['referrerType', 'Type'], ['branches', 'Branch'], ['createdAt', 'Added']] as [typeof sortField, string][]).map(([key, label]) => (
                   <th key={key} onClick={() => toggleSort(key)} className="px-4 py-2.5 text-left text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--deep-teal)' }}>
                     {label}{sortField === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                   </th>
@@ -116,6 +116,7 @@ function ReferredPatientsPanel() {
                   <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.patientName}</td>
                   <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{r.referrerName}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{REFERRER_TYPE_LABEL[r.referrerType || 'DOCTOR'] || '—'}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.branches?.length ? r.branches.map(branchLabel).join(', ') : '—'}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH', { dateStyle: 'medium' })}</td>
                   <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                     <button onClick={() => del(r)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>

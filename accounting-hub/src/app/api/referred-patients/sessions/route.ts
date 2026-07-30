@@ -20,8 +20,10 @@ export async function GET(req: Request) {
   if (rp.patientName) match.push({ patientName: { equals: rp.patientName, mode: 'insensitive' } })
   if (match.length === 0) return NextResponse.json({ patientName: rp.patientName, sessions: [], total: 0 })
 
+  // Earned revenue only: package payments and prepaid-card reloads are
+  // UNEARNED orders, not sessions — exclude them from the list and total.
   const orders = await prisma.order.findMany({
-    where: { status: { notIn: ['VOIDED'] }, OR: match },
+    where: { status: { notIn: ['VOIDED'] }, revenueType: { not: 'UNEARNED' }, OR: match },
     orderBy: { transactionDate: 'desc' },
     select: {
       id: true, orderNumber: true, transactionDate: true, netAmount: true, branch: true, paymentStatus: true,
