@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -24,6 +25,7 @@ export async function GET(req: Request) {
   const orderWhere: any = {
     status: 'COMPLETED',
     transactionDate: { gte: start, lte: end },
+    AND: [notMigratedOrder],
   }
   if (branch) orderWhere.branch = branch
 

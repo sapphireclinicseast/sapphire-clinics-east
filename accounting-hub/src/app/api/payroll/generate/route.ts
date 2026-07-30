@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
 
 /** Safely convert a Prisma Decimal (or any value) to a plain JS number */
 function toFloat(v: unknown): number {
@@ -157,7 +158,7 @@ export async function GET(req: Request) {
     if (branch) {
       const orderBranch = BRANCH_TO_ORDER[branch] || branch
       const oc = await prisma.order.findMany({
-        where: { branch: orderBranch, status: 'COMPLETED', clinicianName: { not: null } },
+        where: { branch: orderBranch, status: 'COMPLETED', clinicianName: { not: null }, AND: [notMigratedOrder] },
         select: { clinicianName: true }, distinct: ['clinicianName'],
       })
       branchSessionNames = new Set(oc.map(o => (o.clinicianName || '').trim().toUpperCase()).filter(Boolean))
@@ -176,6 +177,7 @@ export async function GET(req: Request) {
     const orderWhere: any = {
       status: 'COMPLETED',
       transactionDate: { gte: start, lte: end },
+      AND: [notMigratedOrder],
     }
     if (branch) orderWhere.branch = { in: [BRANCH_TO_ORDER[branch] || branch, 'ALL'] }
 

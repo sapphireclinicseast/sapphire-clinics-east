@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
 import { fetchExternalStaffForSync } from '@/lib/external-staff'
 import { consultantBranchesOf } from '@/lib/branch-roles'
 import { recordStaffSync } from '@/lib/staff-directory'
@@ -216,7 +217,7 @@ export async function GET(req: Request) {
   if (branch) {
     const orderBranch = BRANCH_TO_ORDER[branch] || branch
     const orderClinicians = await prisma.order.findMany({
-      where: { branch: orderBranch, status: 'COMPLETED', clinicianName: { not: null } },
+      where: { branch: orderBranch, status: 'COMPLETED', clinicianName: { not: null }, AND: [notMigratedOrder] },
       select: { clinicianName: true },
       distinct: ['clinicianName'],
     })
@@ -245,7 +246,7 @@ export async function GET(req: Request) {
   const ORDER_TO_BRANCH: Record<string, string> = Object.fromEntries(Object.entries(BRANCH_TO_ORDER).map(([k, v]) => [v, k]))
   const sessionBranches = await prisma.order.groupBy({
     by: ['clinicianName', 'branch'],
-    where: { status: 'COMPLETED', clinicianName: { not: null } },
+    where: { status: 'COMPLETED', clinicianName: { not: null }, AND: [notMigratedOrder] },
   })
   const nameToBranches = new Map<string, Set<string>>()
   for (const g of sessionBranches) {
