@@ -3,7 +3,6 @@
 // Renders the manual FY2024/FY2025 statements (see src/lib/reports/historical-fs.ts).
 // Layout mirrors the source workbook: line items with optional monthly columns,
 // section headers, "Total for …" subtotal rules and a double-ruled grand total.
-import { Archive } from 'lucide-react'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 import type { HistRow } from '@/lib/reports/historical-fs-data'
 
@@ -120,20 +119,12 @@ export default function HistoricalReport({
   monthly: boolean
   revenueOnly?: boolean
 }) {
-  const banner = (
-    <div
-      className="flex items-start gap-2 mx-4 mt-3 mb-1 px-3 py-2 rounded-lg text-xs"
-      style={{ background: '#fefce8', border: '1px solid #fde68a', color: '#854d0e' }}
-    >
-      <Archive size={14} className="mt-0.5 shrink-0" />
-      <span>{hist.source}</span>
-    </div>
-  )
-
+  // Source banner removed 2026-07-30 per the owner — actual 2024/2025 figures
+  // are being imported into the Hub, so the "manual figures" caveat no longer
+  // applies as a permanent label.
   if (hist.emptyReason) {
     return (
       <div>
-        {banner}
         <p className="px-6 py-10 text-sm text-center" style={{ color: 'var(--mid-gray)' }}>
           {hist.emptyReason}
         </p>
@@ -192,7 +183,6 @@ export default function HistoricalReport({
 
   return (
     <div className="pb-2">
-      {banner}
       {body}
       {(hist.notes.length > 0 || (tab === 'income-statement' && hist.isNotes.length > 0)) && (
         <ul className="px-6 pt-3 space-y-0.5">
