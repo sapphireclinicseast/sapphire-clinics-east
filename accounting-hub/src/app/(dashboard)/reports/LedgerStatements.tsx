@@ -530,9 +530,11 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                   ))}
                 </>)}
                 <MultiRow label="EBITDA" values={ebitdaC} total={is.ebitda} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
-                {(['DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const).map(k => sec(k) && sec(k)!.rows.map(r => (
-                  <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
-                )))}
+                {(['DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const).map(k => sec(k) && (<Fragment key={k}>
+                  {sec(k)!.rows.map(r => (
+                    <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                  ))}
+                </Fragment>))}
                 <MultiRow label="EBT" values={ebtC} total={is.ebt} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
                 <MultiRow label="Provision for Income Tax (20%)" indent={1}
                   values={ebtC.map(e => e * INCOME_TAX_RATE)} total={is.taxProvision} pctBases={vaBases} pctBaseTotal={vaTotal} />
@@ -582,9 +584,11 @@ export default function LedgerStatements({ year, branch, tab, view }: {
             <Row label="Total Operating Expenses" amount={is.totalOpex} bold rule pctBase={vaBase} />
           </>)}
           <Row label="EBITDA" amount={is.ebitda} bold doubleRule pctBase={vaBase} />
-          {(['DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const).map(k => sec(k)?.rows.map(r => (
-            <Row key={r.number} label={`${r.number} ${r.title}`} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
-          )))}
+          {(['DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const).map(k => sec(k) && (<Fragment key={k}>
+            {sec(k)!.rows.map(r => (
+              <Row key={r.number} label={`${r.number} ${r.title}`} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
+            ))}
+          </Fragment>))}
           <Row label="EBT" amount={is.ebt} bold rule pctBase={vaBase} />
           <Row label="Provision for Income Tax (20%)" amount={is.taxProvision} indent={1} pctBase={vaBase} />
           <Row label="NET INCOME" amount={is.netIncome} bold doubleRule pctBase={vaBase} />

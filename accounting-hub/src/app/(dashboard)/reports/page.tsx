@@ -1601,9 +1601,10 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
   // 'standard' = current derivation engine; 'ledger' = v2 beta (one balanced
-  // dataset, statements interconnected). Only applies to derived years (2026+).
-  // Ledger is the default since 2026-07-29 (owner-validated); Standard remains
-  // available on the toggle for comparison during the transition.
+  // dataset, statements interconnected). Ledger is the default since 2026-07-29
+  // (owner-validated); Standard remains available on the toggle. For 2024/2025
+  // Standard shows the audited manual statements while Ledger derives the
+  // clickable layout from the imported QuickBooks actuals.
   const [engine, setEngine] = useState<'standard' | 'ledger'>('ledger')
 
   const handleDrillDown: OnDrillDown = (label, category, month, accountKey, opts) => {
@@ -1922,7 +1923,7 @@ export default function ReportsPage() {
         {/* View Mode */}
         {!isMedrep && (
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-          {((engine === 'ledger' && year >= 2026 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
+          {((engine === 'ledger' && year >= 2024 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
@@ -1956,8 +1957,9 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* Engine (derived years only) */}
-        {!isMedrep && year >= 2026 && (
+        {/* Engine — 2024+ (for 2024/2025, Standard = audited manual statements,
+            Ledger = clickable layout derived from imported actuals) */}
+        {!isMedrep && year >= 2024 && (
           <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
             {([['standard', 'Standard'], ['ledger', 'Ledger (beta)']] as const).map(([mode, label]) => (
               <button
@@ -2009,8 +2011,10 @@ export default function ReportsPage() {
           </div>
         )}
 
-        {/* Report content */}
-        {!loading && data?.historical && (
+        {/* Report content. For 2024/2025 the manual (audited) statements render
+            on Standard; the Ledger engine derives the clickable layout from the
+            imported actuals for any year with transaction data (2024+). */}
+        {!loading && data?.historical && (engine === 'standard' || isMedrep) && (
           <HistoricalReport
             hist={data.historical}
             tab={effTab}
@@ -2018,10 +2022,18 @@ export default function ReportsPage() {
             revenueOnly={isMedrep}
           />
         )}
-        {!loading && !data?.historical && engine === 'ledger' && year >= 2026 && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
+        {!loading && engine === 'ledger' && year >= 2024 && !isMedrep && (
+          <>
+            {year <= 2025 && (
+              <p className="px-5 pt-3 text-xs" style={{ color: '#6b7280' }}>
+                Derived live from the imported transaction data for {year} — the audited financial
+                statements for this year remain available under <strong>Standard</strong>.
+              </p>
+            )}
+            <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
+          </>
         )}
-        {!loading && data && !data.historical && (engine === 'standard' || year < 2026 || isMedrep) && (
+        {!loading && data && !data.historical && (engine === 'standard' || year < 2024 || isMedrep) && (
           <div className="py-2">
             {effTab === 'balance-sheet' && (
               <BalanceSheet data={data} viewMode={effView} onDrillDown={effDrill} />
