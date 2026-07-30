@@ -718,6 +718,7 @@ model Order {
   items          OrderItem[]
   payments       OrderPayment[]
   arPaymentItems ARPaymentItem[]
+  otherReceivable OtherReceivable?
 
   @@index([orderType])
   @@index([branch])
@@ -1023,6 +1024,55 @@ model ARPayment {
   @@index([paymentDate])
   @@index([branch])
   @@index([createdById])
+}
+
+// ── Other Receivables (non-HMO/GL) ───────────────────────
+// Credit/bulk sales to outside customers (e.g. Sandbox Clark): a POS product
+// order paid via "Receivable" creates one of these. Collected under Accounts
+// Receivable → Others, optionally on a staggered monthly plan with interest
+// (percent of principal or an absolute add-on) — totalDue = principal +
+// interest, monthlyAmount = totalDue / months.
+model OtherReceivable {
+  id            String   @id @default(cuid())
+  branch        String
+  customerName  String
+  orderId       String?  @unique
+  order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  principal     Decimal
+  months        Int?      // staggered plan length (null = no plan yet)
+  interestType  String?   // PERCENT | ABSOLUTE
+  interestValue Decimal?
+  totalDue      Decimal   // principal + interest (equals principal until a plan is set)
+  monthlyAmount Decimal?  // totalDue / months
+  startDate     DateTime? // first installment month
+  notes         String?
+  status        String   @default("OPEN") // OPEN | SETTLED
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payments      OtherReceivablePayment[]
+
+  @@index([branch])
+  @@index([status])
+  @@index([customerName])
+}
+
+model OtherReceivablePayment {
+  id           String   @id @default(cuid())
+  receivableId String
+  receivable   OtherReceivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  date         DateTime
+  amount       Decimal
+  method       String?
+  reference    String?
+  proofUrl     String?
+  notes        String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  @@index([receivableId])
+  @@index([date])
 }
 
 model ARPaymentItem {
