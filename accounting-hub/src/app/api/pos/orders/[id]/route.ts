@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postOrderJournal, reverseOrderJournal } from '@/lib/accounting/post-order'
+import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -524,6 +525,15 @@ export async function PUT(
           paymentsReplaced: !!payments,
         },
       },
+    })
+
+    // Mirror the (possibly newly-set) referrer into ReferredPatient so the
+    // Referral section reflects it.
+    await linkReferredPatientFromOrder(prisma, {
+      referrerId: updated.referrerId,
+      patientId: updated.patientId,
+      patientName: updated.patientName,
+      createdById: session.user.id,
     })
 
     // Keep the GL in sync: order creation auto-posts a journal entry, so re-post after

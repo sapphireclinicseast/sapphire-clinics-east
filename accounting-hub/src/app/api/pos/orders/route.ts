@@ -5,6 +5,7 @@ import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postJournalEntry, UnbalancedJournalEntryError } from '@/lib/accounting/posting'
 import { postOrderJournal } from '@/lib/accounting/post-order'
+import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 
 /* ── Free-sample JE: DR 8120 Marketing, CR Inventory ──────────────
    Tier 3: routed through the central posting service so any future
@@ -271,6 +272,15 @@ export async function POST(req: Request) {
         payments: true,
         referrer: true,
       },
+    })
+
+    // Mirror the order's referrer into ReferredPatient so the Referral section
+    // (Referred Patients tab + Dashboard) reflects front-desk entries.
+    await linkReferredPatientFromOrder(prisma, {
+      referrerId,
+      patientId,
+      patientName,
+      createdById: session.user.id,
     })
 
     // Deduct inventory for product orders using FIFO lot consumption
