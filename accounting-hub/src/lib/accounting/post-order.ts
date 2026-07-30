@@ -280,6 +280,21 @@ export async function postOrderJournal(
   }
   if (lines.length === 0) return { posted: false, reason: 'no postable lines (free-sample-only order?)' }
 
+  // Fractional discounts (e.g. 25% of ₱2,062.50 = ₱515.625) leave a sub-centavo
+  // gap against centavo-rounded payment amounts, and float drift pushes an
+  // exactly-0.005 gap just past the balance tolerance. Absorb residuals of up
+  // to 2 centavos into the discount line — that's where the fraction came
+  // from — falling back to the largest debit line. Bigger gaps are real
+  // errors and still refuse below.
+  const drTotal = lines.reduce((s, l) => s + (l.debit || 0), 0)
+  const crTotal = lines.reduce((s, l) => s + (l.credit || 0), 0)
+  const gap = drTotal - crTotal
+  if (gap !== 0 && Math.abs(gap) <= 0.02) {
+    const target = lines.find(l => (l.debit || 0) > Math.abs(gap) && l.description?.startsWith('Discount'))
+      || lines.filter(l => (l.debit || 0) > Math.abs(gap)).sort((a, b) => (b.debit || 0) - (a.debit || 0))[0]
+    if (target) target.debit = Math.round(((target.debit || 0) - gap) * 100) / 100
+  }
+
   try {
     const je = await postJournalEntry(prisma, {
       entryDate:     order.transactionDate,
