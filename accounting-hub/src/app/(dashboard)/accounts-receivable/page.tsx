@@ -25,6 +25,10 @@ interface ARWallet {
   // An agency that bills per session and settles afterwards (no approved SOA to
   // draw down against) — the Municipality of Cainta works this way, like an HMO.
   perSession?: boolean
+  // Lifetime settled by this agency (cash + tax withheld), and how long it took.
+  paidTotal?: number
+  lastPaymentDate?: string | null
+  monthsToPay?: number | null
   // Total consumed (paid + unpaid, GL only)
   totalConsumedAmount?: number
   accountId?: string | null
@@ -1301,7 +1305,16 @@ export default function AccountsReceivablePage() {
         </div>
       </div>
 
-      {/* Utilization summary table (replaces cards) */}
+      {/* Consumption — what each agency approved, how much of it has been used, and
+          what they have settled so far. */}
+      <div className="flex items-baseline justify-between mt-4 mb-2">
+        <h3 className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Consumption</h3>
+        {tab === 'GL' && (
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Months to pay counts from the letter being recorded to its latest payment, in 30-day months.
+          </p>
+        )}
+      </div>
       <div id="ar-utilization" className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
         <table className="w-full text-sm">
           <thead>
@@ -1313,6 +1326,8 @@ export default function AccountsReceivablePage() {
                 {tab === 'GL' ? 'Approved SOA' : 'Outstanding'}
               </th>
               {tab === 'GL' && <>
+                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Paid</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Months to pay</th>
                 <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Consumed</th>
                 <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>% Consumed</th>
               </>}
@@ -1324,6 +1339,7 @@ export default function AccountsReceivablePage() {
             {[...wallets.filter(w => !w.perSession), ...wallets.filter(w => w.perSession)].map((w, i, arr) => {
               const approved = toNum(w.balance)
               const consumed = typeof w.consumedOutstanding === 'number' ? w.consumedOutstanding : 0
+              const paid = toNum(w.paidTotal)
               const pct = approved > 0 ? (consumed / approved) * 100 : 0
               const isSelected = walletFilter === w.id
               const startsPerSession = tab === 'GL' && !!w.perSession && !arr[i - 1]?.perSession
@@ -1331,7 +1347,7 @@ export default function AccountsReceivablePage() {
                 <Fragment key={`grp-${w.id}`}>
                 {startsPerSession && (
                   <tr style={{ background: 'var(--pale-teal, #f0f7f6)' }}>
-                    <td colSpan={4} className="px-3 py-2 text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                    <td colSpan={6} className="px-3 py-2 text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
                       Billed per session, settled afterwards — no approved SOA
                     </td>
                   </tr>
@@ -1348,6 +1364,14 @@ export default function AccountsReceivablePage() {
                     {formatCurrency(approved)}
                   </td>
                   {tab === 'GL' && <>
+                    <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: paid > 0 ? '#166534' : 'var(--light-gray)' }}>
+                      {paid > 0 ? formatCurrency(paid) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                      {typeof w.monthsToPay === 'number'
+                        ? `${w.monthsToPay.toFixed(1)} mo`
+                        : <span style={{ color: 'var(--light-gray)' }}>unpaid</span>}
+                    </td>
                     <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
                       {consumed > 0 ? formatCurrency(consumed) : <span style={{ color: 'var(--light-gray)' }}>—</span>}
                     </td>
@@ -1365,7 +1389,18 @@ export default function AccountsReceivablePage() {
         </table>
       </div>
 
-      {/* Transactions table — hidden on HMO Overview (use Per HMO sub-tab instead) */}
+      {/* Session Tagging — the sessions themselves, and which of them a payment has
+          been applied to. Pick an agency above to see only that patient's sessions. */}
+      {!(tab === 'HMO' && hmoSubTab === 'overview') && (
+        <div className="flex items-baseline justify-between mt-4 mb-2">
+          <h3 className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Session Tagging</h3>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            {walletFilter
+              ? 'Tagging records which sessions a payment covered — it does not change the AR balance.'
+              : 'Choose an agency above to tag that patient\u2019s sessions.'}
+          </p>
+        </div>
+      )}
       {!(tab === 'HMO' && hmoSubTab === 'overview') && <div id="ar-transactions" data-ar-transactions-table className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '400px' }}>
         <table className="w-full text-sm">
           <thead>

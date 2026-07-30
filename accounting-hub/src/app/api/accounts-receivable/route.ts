@@ -24,9 +24,24 @@ export async function GET(req: Request) {
     const wallets = await prisma.digitalWallet.findMany({
       where: { walletType: type as 'HMO' | 'GL', isActive: true },
       select: { id: true, patientName: true, balance: true, totalGlAmount: true, accountId: true, approvedServices: true,
+        createdAt: true,
         account: { select: { accountNumber: true, accountTitle: true } } },
       orderBy: { patientName: 'asc' },
     })
+
+    // What each agency has settled, over the whole life of the letter — the
+    // walletId filter above narrows the transaction list, but "how much has this
+    // letter been paid" is a lifetime figure and must ignore it.
+    const paidAgg = await prisma.aRPayment.groupBy({
+      by: ['walletId'],
+      where: { wallet: { walletType: type as 'HMO' | 'GL' } },
+      _sum: { amount: true, discount: true },
+      _max: { paymentDate: true },
+    })
+    const paidByWallet = new Map(paidAgg.map(p => [p.walletId, {
+      paid: Number(p._sum.amount || 0) + Number(p._sum.discount || 0),
+      lastPaymentDate: p._max.paymentDate,
+    }]))
 
     // Build order filter
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,6 +164,14 @@ export async function GET(req: Request) {
       const consumedOutstanding = isGL && !perSession
         ? Math.max(0, approved - Number(w.balance))
         : ordersOutstanding
+      // How long the agency took to settle: from the letter being recorded to its
+      // latest payment, in months of 30 days.
+      const pay = paidByWallet.get(w.id)
+      const paidTotal = pay?.paid ?? 0
+      const lastPaymentDate = pay?.lastPaymentDate ?? null
+      const monthsToPay = lastPaymentDate
+        ? (lastPaymentDate.getTime() - new Date(w.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 30)
+        : null
       return {
         ...w,
         perSession,
@@ -156,6 +179,9 @@ export async function GET(req: Request) {
         consumedOutstanding,
         totalGlAmount: approved,
         totalConsumedAmount,
+        paidTotal,
+        lastPaymentDate,
+        monthsToPay,
       }
     })
 
