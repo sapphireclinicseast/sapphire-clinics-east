@@ -50,6 +50,8 @@ export interface V2AccountRow {
   /** Jan..Dec period movement, signed in the account's normal direction */
   monthly: number[]
   virtual: boolean
+  /** Bank-flagged in the CoA or cash-titled — grouped as Cash and Cash Equivalents on the BS. */
+  cash: boolean
 }
 
 /** One underlying line, returned when a drill-down is requested. */
@@ -673,6 +675,7 @@ export async function computeLedgerStatements(
       number: n, title: a.title, type: a.type, subType: a.subType,
       opening: round2(open), debit: round2(m.debit), credit: round2(m.credit),
       closing: round2(closing), monthly, virtual: a.virtual,
+      cash: bankFlagged.has(n) || isCashAccount(a),
     })
   }
   rows.sort((x, y) => x.number.localeCompare(y.number))
@@ -762,7 +765,7 @@ export async function computeLedgerStatements(
   validation.aLEDiff = aLEDiff
 
   /* ── Cash flow (indirect, ties by construction) ── */
-  const cashRows = rows.filter(r => isCashAccount(isRow(r)))
+  const cashRows = rows.filter(r => r.cash)
   const cashNumbers = new Set(cashRows.map(r => r.number))
   const beginningCash = round2(cashRows.reduce((s, r) => s + r.opening, 0))
   const endingCash = round2(cashRows.reduce((s, r) => s + r.closing, 0))
