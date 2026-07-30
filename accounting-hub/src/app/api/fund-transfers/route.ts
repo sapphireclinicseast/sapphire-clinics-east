@@ -37,7 +37,11 @@ export async function POST(req: Request) {
     const created = await prisma.$transaction(async (tx) => {
       let s = await tx.fundTransferSettings.findUnique({ where: { id: 'singleton' } })
       if (!s) s = await tx.fundTransferSettings.create({ data: { id: 'singleton', nextSeq: 1 } })
-      const seq = s.nextSeq
+      // The settings page lets the counter be set by hand, so it can fall behind
+      // the transfers that already exist — never allocate below max(refSeq)+1 or
+      // the refNumber unique constraint rejects the create.
+      const maxSeq = (await tx.fundTransfer.aggregate({ _max: { refSeq: true } }))._max.refSeq ?? 0
+      const seq = Math.max(s.nextSeq, maxSeq + 1)
       await tx.fundTransferSettings.update({ where: { id: 'singleton' }, data: { nextSeq: seq + 1 } })
       const yy = new Date().getFullYear() % 100
       const refNumber = `FT${yy}-${String(seq).padStart(6, '0')}`
