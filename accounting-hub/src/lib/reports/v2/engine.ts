@@ -863,6 +863,95 @@ export async function computeLedgerStatements(
     { key: 'NON_OPERATING', label: 'Non-Operating Expenses', rows: nonopRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: nonOperating },
   ].filter(s => s.rows.length > 0)
 
+  /* ── Per-person detail for the two payroll expense accounts ──────────
+     A payroll journal posts one line for an entire cutoff, which tells you
+     nothing about who was paid what. When the drill-down is on the salary or
+     consultant-fee account, that single line is replaced by one row per person.
+
+     Salary is shown as taxable pay — net pay plus the statutory deductions and
+     withholding — because that is what the journal debits. Staff are paid part
+     of their package as a non-taxable allowance, which is deliberately outside
+     declared salary, so including gross here would overstate it and stop the
+     detail from adding up to the line above it. */
+  if (collect) {
+    const mapping = await prisma.payrollCOAMapping.findFirst({
+      select: { salaryExpenseAccountId: true, professionalFeesAccountId: true },
+    })
+    const salaryNo = mapping?.salaryExpenseAccountId
+      ? byId.get(mapping.salaryExpenseAccountId)?.number : undefined
+    const consultantNo = mapping?.professionalFeesAccountId
+      ? byId.get(mapping.professionalFeesAccountId)?.number : undefined
+    const isSalary = !!salaryNo && salaryNo === collect.account
+    const isConsultant = !!consultantNo && consultantNo === collect.account
+    // A cutoff belongs to the month in its period ("2026-05-2" → May), which is
+    // where the journal put it only when it was finalized in the same month.
+    const monthOfCutoff = (c: string) => parseInt(c.split('-')[1] ?? '0', 10)
+    const keep = (l: V2CollectedLine) =>
+      !(l.source === 'journal:PAYROLL_EMPLOYEE' || l.source === 'journal:PAYROLL_CONSULTANT')
+
+    if (isSalary) {
+      const slips = await prisma.employeePayslip.findMany({
+        where: {
+          cutoffPeriod: { startsWith: `${year}-` },
+          ...(branchValues ? { branch: { in: branchValues } } : {}),
+        },
+        select: {
+          cutoffPeriod: true, branch: true, netPay: true, sssDeduction: true,
+          philhealthDeduction: true, pagibigDeduction: true, taxDeduction: true,
+          employee: { select: { firstName: true, lastName: true } },
+        },
+      })
+      const perPerson: V2CollectedLine[] = []
+      for (const s of slips) {
+        const month = monthOfCutoff(s.cutoffPeriod)
+        if (month < 1 || month > 12) continue
+        if (collect.month && collect.month !== month) continue
+        const taxable = round2(
+          Number(s.netPay) + Number(s.sssDeduction) + Number(s.philhealthDeduction) +
+          Number(s.pagibigDeduction) + Number(s.taxDeduction))
+        if (!taxable) continue
+        const who = [s.employee?.lastName, s.employee?.firstName].filter(Boolean).join(', ') || 'Unnamed employee'
+        perPerson.push({
+          month, source: 'Employee payroll',
+          label: `${who} — ${s.cutoffPeriod} — ${s.branch} (taxable pay)`,
+          debit: taxable, credit: 0,
+        })
+      }
+      if (perPerson.length) collected.splice(0, collected.length, ...collected.filter(keep), ...perPerson)
+    }
+
+    if (isConsultant) {
+      const entries = await prisma.payrollEntry.findMany({
+        where: {
+          cutoffPeriod: { startsWith: `${year}-` },
+          ...(branchValues ? { branch: { in: branchValues } } : {}),
+        },
+        select: { cutoffPeriod: true, branch: true, grossPay: true, consultantId: true },
+      })
+      // PayrollEntry holds only the consultant id, so the names come separately.
+      const consultants = await prisma.consultant.findMany({
+        where: { id: { in: Array.from(new Set(entries.map(e => e.consultantId))) } },
+        select: { id: true, name: true },
+      })
+      const nameById = new Map(consultants.map(c => [c.id, c.name]))
+      const perPerson: V2CollectedLine[] = []
+      for (const e of entries) {
+        const month = monthOfCutoff(e.cutoffPeriod)
+        if (month < 1 || month > 12) continue
+        if (collect.month && collect.month !== month) continue
+        const amt = round2(Number(e.grossPay))
+        if (!amt) continue
+        const who = nameById.get(e.consultantId) || 'Unnamed consultant'
+        perPerson.push({
+          month, source: 'Consultant payroll',
+          label: `${who} — ${e.cutoffPeriod} — ${e.branch}`,
+          debit: amt, credit: 0,
+        })
+      }
+      if (perPerson.length) collected.splice(0, collected.length, ...collected.filter(keep), ...perPerson)
+    }
+  }
+
   // Sort drill-down lines chronologically for display; cap the payload for
   // very wide selections (a whole-year revenue account can have thousands of
   // entries) — the statement totals are unaffected, only the list is cut.
