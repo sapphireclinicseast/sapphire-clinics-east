@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import { taxRfpLines, type BVLine } from '@/lib/billing-voucher'
+import { useRfpOtherFees, RfpOtherFeesSection, type CleanRfpFee } from '@/components/RfpOtherFees'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // Corporate income tax is filed as one entity; default combined, file under East.
@@ -15,7 +16,7 @@ const BRANCHES = [{ value: 'ALL', label: 'All Branches' }, { value: 'SBEA', labe
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)
 
-interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; payableTo: string | null; meta: { taxType: string; period?: { from: string; to: string } | null; itAmount?: number } | null; createdAt: string }
+interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; payableTo: string | null; meta: { taxType: string; period?: { from: string; to: string } | null; itAmount?: number; otherFees?: CleanRfpFee[]; feesTotal?: number } | null; createdAt: string }
 
 export default function IncomeTaxCorporate() {
   const { data: session } = useSession()
@@ -30,6 +31,7 @@ export default function IncomeTaxCorporate() {
   const [rfps, setRfps] = useState<TaxRfp[]>([])
   const [busy, setBusy] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const otherFees = useRfpOtherFees()
   const [payTarget, setPayTarget] = useState<TaxRfp | null>(null)
   const [bv, setBv] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string } | null>(null)
 
@@ -59,9 +61,14 @@ export default function IncomeTaxCorporate() {
     doc.text(`Ref No: ${r.refNumber}`, 120, 21)
     doc.text(`Date: ${new Date(r.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, 120, 25)
     if (r.meta?.period) doc.text(`Period: ${r.meta.period.from} to ${r.meta.period.to}`, 14, 25)
+    const fees = r.meta?.otherFees || []
+    const feesTotal = fees.reduce((s, f) => s + f.grossAmount, 0)
     autoTable(doc, {
       startY: 31, head: [['Description', 'Amount']],
-      body: [['Corporate Income Tax Payable', peso(num(r.grossTotal))]],
+      body: [
+        ['Corporate Income Tax Payable', peso(r.meta?.itAmount ?? (num(r.grossTotal) - feesTotal))],
+        ...fees.map(f => [`Other fee — ${f.description || f.requestor || 'Fee'}`, peso(f.grossAmount)]),
+      ],
       foot: [['TOTAL PAYABLE', peso(num(r.grossTotal))]],
       styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
       footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
@@ -77,12 +84,12 @@ export default function IncomeTaxCorporate() {
     try {
       const res = await fetch('/api/taxes/rfp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taxType: 'IT', payrollBranch: branch === 'ALL' ? 'SBEA' : branch, amount: amt, period: { from, to }, manualSeq: manualSeq.trim() || undefined }),
+        body: JSON.stringify({ taxType: 'IT', payrollBranch: branch === 'ALL' ? 'SBEA' : branch, amount: amt, period: { from, to }, manualSeq: manualSeq.trim() || undefined, otherFees: otherFees.cleaned() }),
       })
       const data = await res.json()
       if (!res.ok) { alert(data.error || 'Failed to create RFP'); return }
       try {
-        const created: TaxRfp = { id: data.id, refNumber: data.refNumber, grossTotal: data.grossTotal, status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, proofUrl: null, payableTo: 'Bureau of Internal Revenue', createdAt: new Date().toISOString(), meta: { taxType: 'IT', period: { from, to }, itAmount: amt } }
+        const created: TaxRfp = { id: data.id, refNumber: data.refNumber, grossTotal: data.grossTotal, status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, proofUrl: null, payableTo: 'Bureau of Internal Revenue', createdAt: new Date().toISOString(), meta: { taxType: 'IT', period: { from, to }, itAmount: amt, otherFees: otherFees.cleaned(), feesTotal: otherFees.feesTotal } }
         await fetch('/api/taxes/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: data.id, pdfData: buildPdf(created).output('datauristring') }) })
       } catch { /* best effort */ }
       setShowModal(false); setManualSeq(''); setAmount('')
@@ -114,7 +121,7 @@ export default function IncomeTaxCorporate() {
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Income tax payable</label>
             <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)', minWidth: 180 }} />
           </div>
-          <button onClick={() => setShowModal(true)} disabled={!num(amount)} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#c44b00' }}>Generate Income Tax RFP</button>
+          <button onClick={() => { otherFees.loadTemplate(branch === 'ALL' ? 'SBEA' : branch); setShowModal(true) }} disabled={!num(amount)} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#c44b00' }}>Generate Income Tax RFP</button>
         </div>
       )}
 
@@ -150,13 +157,14 @@ export default function IncomeTaxCorporate() {
 
       {showModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate Income Tax RFP</h2><button onClick={() => setShowModal(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>Income tax payable <strong>₱{peso(num(amount))}</strong> for {from} – {to} (BIR 1702).</p>
+            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>Income tax payable <strong>₱{peso(num(amount))}</strong>{otherFees.feesTotal > 0 && <> · fees <strong>₱{peso(otherFees.feesTotal)}</strong> · total <strong>₱{peso(num(amount) + otherFees.feesTotal)}</strong></>} for {from} – {to} (BIR 1702).</p>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>RFP Number (optional)</label>
             <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>From your pre-printed form. Leave blank to auto-number. Keep leading zeros.</p>
             <input value={manualSeq} onChange={e => setManualSeq(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 000007" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
-            <button onClick={generateRfp} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Generate RFP'}</button>
+            <RfpOtherFeesSection state={otherFees} branch={branch === 'ALL' ? 'SBEA' : branch} />
+            <button onClick={generateRfp} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 mt-1" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : `Generate RFP · ₱${peso(num(amount) + otherFees.feesTotal)}`}</button>
           </div>
         </div>
       )}

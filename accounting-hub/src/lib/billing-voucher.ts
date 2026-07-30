@@ -42,11 +42,23 @@ export function taxRfpLines(meta: any, grossTotal: number): BVLine[] {
   const flat = (account: string, description: string, amount: number): BVLine => ({ account, description, gross: amount, vat: 0, netVat: amount, netEwt: amount })
   const t = meta?.taxType
   const items = Array.isArray(meta?.items) ? meta.items : []
-  if (t === 'WC') return items.map((i: { name: string; period: string; tax: number }) => flat('Withholding Tax — Compensation', `${i.name}${i.period ? ` — ${i.period}` : ''}`, Number(i.tax || 0)))
-  if (t === 'EWT') return items.map((i: { name: string; period: string; rate: number | null; ewt: number; source: string }) => flat(i.source === 'CONSULTANT' ? 'EWT — Consultant' : 'EWT — Expense', `${i.name}${i.rate != null ? ` (${i.rate}%)` : ''}${i.period ? ` · ${i.period}` : ''}`, Number(i.ewt || 0)))
-  if (t === 'VAT') return [flat('Value-Added Tax (2550Q)', meta?.period ? `VAT payable · ${meta.period.from} to ${meta.period.to}` : 'VAT payable', Number(grossTotal || 0))]
-  if (t === 'IT') return [flat('Corporate Income Tax (1702)', meta?.period ? `Income tax payable · ${meta.period.from} to ${meta.period.to}` : 'Income tax payable', Number(grossTotal || 0))]
-  return items.map((i: { name?: string; description?: string; amount?: number }) => flat('Tax', i.name || i.description || '', Number(i.amount || 0)))
+  // "Other Fees" (e.g. online-transfer fees) recorded on the RFP append as their own lines.
+  const feesTotal = Array.isArray(meta?.otherFees) ? meta.otherFees.reduce((s: number, f: { grossAmount?: number }) => s + Number(f?.grossAmount || 0), 0) : 0
+  const feeLines: BVLine[] = Array.isArray(meta?.otherFees) ? meta.otherFees.flatMap((f: { accountTitle?: string; description?: string; requestor?: string; grossAmount?: number; vatable?: string; hasEwt?: boolean; ewtRate?: number | null }) => {
+    const gross = Number(f?.grossAmount || 0)
+    if (gross <= 0) return []
+    const netVat = f?.vatable === 'VAT' ? gross / 1.12 : gross
+    const vat = gross - netVat
+    const ewt = f?.hasEwt && f?.ewtRate ? netVat * (Number(f.ewtRate) / 100) : 0
+    return [{ account: f?.accountTitle || 'Other Fees', description: f?.description || f?.requestor || 'Other fee', payee: f?.requestor || '', memo: f?.description || '', gross, vat, netVat, netEwt: gross - ewt }]
+  }) : []
+  // VAT/IT store the tax amount in meta; older RFPs fall back to grossTotal (no fees then).
+  const taxOnly = (fallbackKey: 'vatAmount' | 'itAmount') => Number(meta?.[fallbackKey] ?? meta?.taxTotal ?? (Number(grossTotal || 0) - feesTotal))
+  if (t === 'WC') return [...items.map((i: { name: string; period: string; tax: number }) => flat('Withholding Tax — Compensation', `${i.name}${i.period ? ` — ${i.period}` : ''}`, Number(i.tax || 0))), ...feeLines]
+  if (t === 'EWT') return [...items.map((i: { name: string; period: string; rate: number | null; ewt: number; source: string }) => flat(i.source === 'CONSULTANT' ? 'EWT — Consultant' : 'EWT — Expense', `${i.name}${i.rate != null ? ` (${i.rate}%)` : ''}${i.period ? ` · ${i.period}` : ''}`, Number(i.ewt || 0))), ...feeLines]
+  if (t === 'VAT') return [flat('Value-Added Tax (2550Q)', meta?.period ? `VAT payable · ${meta.period.from} to ${meta.period.to}` : 'VAT payable', taxOnly('vatAmount')), ...feeLines]
+  if (t === 'IT') return [flat('Corporate Income Tax (1702)', meta?.period ? `Income tax payable · ${meta.period.from} to ${meta.period.to}` : 'Income tax payable', taxOnly('itAmount')), ...feeLines]
+  return [...items.map((i: { name?: string; description?: string; amount?: number }) => flat('Tax', i.name || i.description || '', Number(i.amount || 0))), ...feeLines]
 }
 
 export async function buildBillingVoucher(opts: BillingVoucherOpts): Promise<JsPDF> {

@@ -6,7 +6,7 @@ const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AH
 const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE' }
 const BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD', AURA_INSTITUTE: 'AHI' }
 
-// Extra "Other Fees" line entered when generating a Benefits-Payable RFP (e.g. online-transfer fees).
+// Extra "Other Fees" line entered when generating a Salaries/Benefits-Payable RFP (e.g. online-transfer fees).
 interface OtherFee { accountTitle?: string; description?: string; requestor?: string; grossAmount?: number | string; vatable?: string; hasEwt?: boolean; ewtRate?: number | null }
 function normFees(raw: unknown): { accountTitle: string; description: string; requestor: string; grossAmount: number; vatable: string; hasEwt: boolean; ewtRate: number | null }[] {
   if (!Array.isArray(raw)) return []
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     // Consultants live in PayrollEntry (both salary & benefit); employees in EmployeePayslip.
     const idKind = payableType === 'CONSULTANT' ? 'payrollEntry' : 'employeePayslip'
     const mseq = manualSeq != null && String(manualSeq).trim() !== '' ? parseInt(String(manualSeq), 10) : null
-    const fees = source === 'benefit' ? normFees(otherFees) : []
+    const fees = normFees(otherFees)
     const feesTotal = fees.reduce((s, f) => s + f.grossAmount, 0)
 
     // Per-agency benefit RFP config. SSS/PHIC/HDMF are remitted separately so each

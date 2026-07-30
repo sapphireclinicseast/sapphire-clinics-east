@@ -10,6 +10,21 @@ const BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREE
 // taxType → ReimbursementReport.module + refNumber suffix
 const TAX_MODULE: Record<string, string> = { WC: 'TAX_WC', EWT: 'TAX_EWT', VAT: 'TAX_VAT', IT: 'TAX_IT' }
 
+// Extra "Other Fees" lines entered when generating a tax RFP (e.g. online-transfer fees).
+interface OtherFee { accountTitle?: string; description?: string; requestor?: string; grossAmount?: number | string; vatable?: string; hasEwt?: boolean; ewtRate?: number | null }
+function normFees(raw: unknown): { accountTitle: string; description: string; requestor: string; grossAmount: number; vatable: string; hasEwt: boolean; ewtRate: number | null }[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((f: OtherFee) => ({
+    accountTitle: (f.accountTitle || '').trim(),
+    description: (f.description || '').trim(),
+    requestor: (f.requestor || '').trim(),
+    grossAmount: Number(f.grossAmount) || 0,
+    vatable: f.vatable === 'VAT' ? 'VAT' : 'NV',
+    hasEwt: !!f.hasEwt,
+    ewtRate: f.ewtRate != null && !isNaN(Number(f.ewtRate)) ? Number(f.ewtRate) : null,
+  })).filter(f => f.grossAmount > 0)
+}
+
 // GET ?id=...  → single report pdfData
 // GET ?taxType=WC[&payrollBranch=SBEA] → list tax RFPs of that type
 export async function GET(req: Request) {
@@ -53,13 +68,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { taxType, payrollBranch, ids, consultantIds, expenseIds, amount, period, manualSeq } = await req.json()
+    const { taxType, payrollBranch, ids, consultantIds, expenseIds, amount, period, manualSeq, otherFees } = await req.json()
     const moduleName = TAX_MODULE[taxType]
     if (!moduleName) return NextResponse.json({ error: 'Invalid taxType' }, { status: 400 })
     if (!['WC', 'EWT', 'VAT', 'IT'].includes(taxType)) return NextResponse.json({ error: `${taxType} RFP not yet supported` }, { status: 400 })
     const pcBranch = PAYROLL_TO_PC[payrollBranch]
     if (!pcBranch) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     const mseq = manualSeq != null && String(manualSeq).trim() !== '' ? parseInt(String(manualSeq), 10) : null
+    const fees = normFees(otherFees)
+    const feesTotal = fees.reduce((s, f) => s + f.grossAmount, 0)
 
     const report = await prisma.$transaction(async (tx) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -126,7 +143,8 @@ export async function POST(req: Request) {
           }
         }
       }
-      const grossTotal = (taxType === 'VAT' || taxType === 'IT') ? Number(amount) : items.reduce((sum, i) => sum + (taxType === 'WC' ? i.tax : i.ewt), 0)
+      const taxTotal = (taxType === 'VAT' || taxType === 'IT') ? Number(amount) : items.reduce((sum, i) => sum + (taxType === 'WC' ? i.tax : i.ewt), 0)
+      const grossTotal = taxTotal + feesTotal
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch: pcBranch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch: pcBranch, nextPcvSeq: 1 } })
@@ -139,7 +157,7 @@ export async function POST(req: Request) {
       const created = await tx.reimbursementReport.create({
         data: {
           branch: pcBranch, refNumber, refSeq: seq, grossTotal, module: moduleName,
-          meta: { taxType, payrollBranch, items, ...extraMeta }, createdById: session.user.id ?? null,
+          meta: { taxType, payrollBranch, items, otherFees: fees, feesTotal, taxTotal, ...extraMeta }, createdById: session.user.id ?? null,
         },
       })
       await markRemitted()

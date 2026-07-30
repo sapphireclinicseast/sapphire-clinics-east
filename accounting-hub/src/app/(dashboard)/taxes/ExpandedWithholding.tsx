@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import { taxRfpLines, type BVLine } from '@/lib/billing-voucher'
+import { useRfpOtherFees, RfpOtherFeesSection, type CleanRfpFee } from '@/components/RfpOtherFees'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -18,7 +19,7 @@ const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) |
 
 interface Item { id: string; source: 'CONSULTANT' | 'EXPENSE'; name: string; ref: string; ym: string; periodLabel: string; base: number; rate: number | null; ewt: number; remitted: boolean }
 interface MetaItem { id: string; source: string; name: string; period: string; base: number; rate: number | null; ewt: number }
-interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; meta: { taxType: string; payrollBranch: string; items: MetaItem[] } | null; createdAt: string }
+interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; meta: { taxType: string; payrollBranch: string; items: MetaItem[]; otherFees?: CleanRfpFee[]; feesTotal?: number } | null; createdAt: string }
 
 export default function ExpandedWithholding() {
   const { data: session } = useSession()
@@ -42,6 +43,7 @@ export default function ExpandedWithholding() {
   const [syncedAt, setSyncedAt] = useState('')
   const [manualSeq, setManualSeq] = useState('')
   const [busy, setBusy] = useState(false)
+  const otherFees = useRfpOtherFees()
   const [payTarget, setPayTarget] = useState<TaxRfp | null>(null)
   const [bv, setBv] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string } | null>(null)
 
@@ -141,11 +143,15 @@ export default function ExpandedWithholding() {
     doc.text(`BIR Form: 0619-E / 1601-EQ`, 14, 25)
     doc.text(`Ref No: ${r.refNumber}`, 120, 21)
     doc.text(`Date: ${new Date(r.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, 120, 25)
+    const fees = r.meta?.otherFees || []
     autoTable(doc, {
       startY: 30,
       head: [['Source', 'Payee', 'Period', 'Tax Base', 'EWT %', 'EWT Amount']],
-      body: its.map(i => [i.source === 'CONSULTANT' ? 'Consultant' : 'Expense', i.name, i.period, peso(i.base), i.rate != null ? `${i.rate}%` : '', peso(i.ewt)]),
-      foot: [['', '', '', '', 'TOTAL', peso(its.reduce((s, i) => s + i.ewt, 0))]],
+      body: [
+        ...its.map(i => [i.source === 'CONSULTANT' ? 'Consultant' : 'Expense', i.name, i.period, peso(i.base), i.rate != null ? `${i.rate}%` : '', peso(i.ewt)] as string[]),
+        ...fees.map(f => ['Other Fee', f.description || f.requestor || 'Fee', '', '', '', peso(f.grossAmount)]),
+      ],
+      foot: [['', '', '', '', 'TOTAL', peso(its.reduce((s, i) => s + i.ewt, 0) + fees.reduce((s, f) => s + f.grossAmount, 0))]],
       styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
       footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
       columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
@@ -163,12 +169,12 @@ export default function ExpandedWithholding() {
       const expenseIds = chosen.filter(e => e.source === 'EXPENSE').map(e => e.id)
       const res = await fetch('/api/taxes/rfp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taxType: 'EWT', payrollBranch: branch, consultantIds, expenseIds, manualSeq: manualSeq.trim() || undefined }),
+        body: JSON.stringify({ taxType: 'EWT', payrollBranch: branch, consultantIds, expenseIds, manualSeq: manualSeq.trim() || undefined, otherFees: otherFees.cleaned() }),
       })
       const data = await res.json()
       if (!res.ok) { alert(data.error || 'Failed to create RFP'); return }
       try {
-        const created: TaxRfp = { id: data.id, refNumber: data.refNumber, grossTotal: data.grossTotal, status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, proofUrl: null, createdAt: new Date().toISOString(), meta: { taxType: 'EWT', payrollBranch: branch, items: chosen.map(e => ({ id: e.id, source: e.source, name: e.name, period: e.periodLabel, base: e.base, rate: e.rate, ewt: e.ewt })) } }
+        const created: TaxRfp = { id: data.id, refNumber: data.refNumber, grossTotal: data.grossTotal, status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, proofUrl: null, createdAt: new Date().toISOString(), meta: { taxType: 'EWT', payrollBranch: branch, items: chosen.map(e => ({ id: e.id, source: e.source, name: e.name, period: e.periodLabel, base: e.base, rate: e.rate, ewt: e.ewt })), otherFees: otherFees.cleaned(), feesTotal: otherFees.feesTotal } }
         await fetch('/api/taxes/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: data.id, pdfData: buildPdf(created).output('datauristring') }) })
       } catch { /* best effort */ }
       setShowRfpModal(false); setManualSeq(''); setSelected(new Set())
@@ -213,7 +219,7 @@ export default function ExpandedWithholding() {
         </div>
         {canWrite && selected.size > 0 && (
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowRfpModal(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#c44b00' }}>Generate EWT RFP ({selected.size}) · ₱{peso(selectedTotal)}</button>
+            <button onClick={() => { otherFees.loadTemplate(branch); setShowRfpModal(true) }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#c44b00' }}>Generate EWT RFP ({selected.size}) · ₱{peso(selectedTotal)}</button>
             <button onClick={() => setShowOtherIncome(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#6d28d9' }}>Declare as Other Income</button>
           </div>
         )}
@@ -280,13 +286,14 @@ export default function ExpandedWithholding() {
 
       {showRfpModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowRfpModal(false)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate EWT RFP</h2><button onClick={() => setShowRfpModal(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{selected.size} item{selected.size === 1 ? '' : 's'} · total EWT <strong>₱{peso(selectedTotal)}</strong> (BIR 0619-E / 1601-EQ).</p>
+            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{selected.size} item{selected.size === 1 ? '' : 's'} · EWT <strong>₱{peso(selectedTotal)}</strong>{otherFees.feesTotal > 0 && <> · fees <strong>₱{peso(otherFees.feesTotal)}</strong></>} · total <strong>₱{peso(selectedTotal + otherFees.feesTotal)}</strong> (BIR 0619-E / 1601-EQ).</p>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>RFP Number (optional)</label>
             <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>From your pre-printed form. Leave blank to auto-number. Keep leading zeros.</p>
             <input value={manualSeq} onChange={e => setManualSeq(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 000007" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
-            <button onClick={generateRfp} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Generate RFP'}</button>
+            <RfpOtherFeesSection state={otherFees} branch={branch} />
+            <button onClick={generateRfp} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 mt-1" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : `Generate RFP · ₱${peso(selectedTotal + otherFees.feesTotal)}`}</button>
           </div>
         </div>
       )}

@@ -11,6 +11,7 @@ import {
   Lock, LockOpen, ClipboardList, Eye,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
 import EmployeePayroll from './EmployeePayroll'
 
 const toNum = (v: unknown) => Number(v) || 0
@@ -998,6 +999,7 @@ export default function PayrollPage() {
   const [payableRfp, setPayableRfp] = useState<null | { source: 'salary' | 'benefit'; payableType: 'CONSULTANT' | 'EMPLOYEE'; ids: string[]; branch: string; cutoffPeriod: string; total: number }>(null)
   const [rfpManualSeq, setRfpManualSeq] = useState('')
   const [creatingRfp, setCreatingRfp] = useState(false)
+  const payableRfpFees = useRfpOtherFees()
   const [remitPayableId, setRemitPayableId] = useState('')
   const [remitDate, setRemitDate] = useState(new Date().toISOString().slice(0, 10))
   const [remitFromAccountId, setRemitFromAccountId] = useState('')
@@ -1454,6 +1456,8 @@ export default function PayrollPage() {
     const total = chosen.reduce((s, r) => s + (source === 'benefit' ? (r.totalBenefitsPayable || 0) : r.netPay), 0)
     const cutoffPeriod = [...new Set(chosen.map(r => r.cutoffPeriod))].join(', ')
     setRfpManualSeq('')
+    // Preload the branch's saved "Other Fees" template (e.g. online-transfer fees).
+    payableRfpFees.loadTemplate(branches[0])
     setPayableRfp({ source, payableType, ids, branch: branches[0], cutoffPeriod, total })
   }
   const createPayableRfp = async () => {
@@ -1462,7 +1466,7 @@ export default function PayrollPage() {
     try {
       const res = await fetch('/api/payroll/payable-rfp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: payableRfp.source, payableType: payableRfp.payableType, ids: payableRfp.ids, branch: payableRfp.branch, cutoffPeriod: payableRfp.cutoffPeriod, manualSeq: rfpManualSeq.trim() || undefined }),
+        body: JSON.stringify({ source: payableRfp.source, payableType: payableRfp.payableType, ids: payableRfp.ids, branch: payableRfp.branch, cutoffPeriod: payableRfp.cutoffPeriod, manualSeq: rfpManualSeq.trim() || undefined, otherFees: payableRfpFees.cleaned() }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create RFP'); return }
@@ -5526,13 +5530,14 @@ export default function PayrollPage() {
          ═══════════════════════════════════════════════════════════ */}
       {payableRfp && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setPayableRfp(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate {payableRfp.source === 'salary' ? 'Salaries' : 'Benefits'} Payable RFP</h2><button onClick={() => setPayableRfp(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{payableRfp.ids.length} entr{payableRfp.ids.length === 1 ? 'y' : 'ies'} · total <strong>{formatCurrency(payableRfp.total)}</strong>. This creates an RFP in Expenses and locks these rows until paid there (or the RFP is deleted).</p>
+            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{payableRfp.ids.length} entr{payableRfp.ids.length === 1 ? 'y' : 'ies'} · {payableRfp.source === 'salary' ? 'salaries' : 'benefits'} <strong>{formatCurrency(payableRfp.total)}</strong>{payableRfpFees.feesTotal > 0 && <> · fees <strong>{formatCurrency(payableRfpFees.feesTotal)}</strong></>} · total <strong>{formatCurrency(payableRfp.total + payableRfpFees.feesTotal)}</strong>. This creates an RFP in Expenses and locks these rows until paid there (or the RFP is deleted).</p>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>RFP Number (optional)</label>
             <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>From your pre-printed form. Leave blank to auto-number. Keep leading zeros.</p>
             <input value={rfpManualSeq} onChange={e => setRfpManualSeq(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 000007" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
-            <button onClick={createPayableRfp} disabled={creatingRfp} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{creatingRfp ? <Loader2 size={15} className="inline animate-spin" /> : 'Generate RFP'}</button>
+            <RfpOtherFeesSection state={payableRfpFees} branch={payableRfp.branch} />
+            <button onClick={createPayableRfp} disabled={creatingRfp} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 mt-1" style={{ background: 'var(--teal)' }}>{creatingRfp ? <Loader2 size={15} className="inline animate-spin" /> : `Generate RFP · ${formatCurrency(payableRfp.total + payableRfpFees.feesTotal)}`}</button>
           </div>
         </div>
       )}
