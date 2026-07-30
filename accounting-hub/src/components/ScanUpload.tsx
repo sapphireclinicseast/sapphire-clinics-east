@@ -39,8 +39,14 @@ export function ScanUpload({
         const fd = new FormData(); fd.append('file', file); fd.append('prefix', prefix || section); fd.append('seq', String(n))
         const r = await fetch('/api/upload', { method: 'POST', body: fd })
         if (r.ok) { const u = (await r.json()).url; if (u) onUploaded(u) }
+        else {
+          const msg = await r.json().then(d => d?.error as string | undefined).catch(() => undefined)
+          alert(`Upload of "${file.name}" failed${msg ? `: ${msg}` : ` (HTTP ${r.status})`}. Please try again.`)
+        }
       }
-    } catch { /* ignore */ } finally { setUploading(false) }
+    } catch {
+      alert('Upload failed — the connection dropped before the file finished sending. Check your internet connection and try again.')
+    } finally { setUploading(false) }
   }
 
   const openQr = async () => {
