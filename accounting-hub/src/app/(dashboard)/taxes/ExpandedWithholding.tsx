@@ -28,6 +28,7 @@ export default function ExpandedWithholding() {
   const now = new Date()
   const [year, setYear] = useState(String(now.getFullYear()))
   const [month, setMonth] = useState('')
+  const [monthTo, setMonthTo] = useState('') // optional range end — '' = single month
   const [showRemitted, setShowRemitted] = useState(false)
 
   const [items, setItems] = useState<Item[]>([])
@@ -68,15 +69,43 @@ export default function ExpandedWithholding() {
   useEffect(() => { fetchItems(); fetchRfps(); setSelected(new Set()) }, [fetchItems, fetchRfps])
 
   const filtered = useMemo(() => {
-    const prefix = month ? `${year}-${month}` : `${year}-`
-    return items.filter(e => e.ym.startsWith(prefix) && (showRemitted || !e.remitted))
-  }, [items, year, month, showRemitted])
+    return items.filter(e => {
+      if (!e.ym.startsWith(`${year}-`)) return false
+      if (month) {
+        // Range: from `month` to `monthTo` (inclusive); a blank monthTo = single month.
+        const [lo, hi] = [month, monthTo || month].sort()
+        const mm = e.ym.slice(5, 7)
+        if (mm < lo || mm > hi) return false
+      }
+      return showRemitted || !e.remitted
+    })
+  }, [items, year, month, monthTo, showRemitted])
 
-  const selectable = filtered.filter(e => !e.remitted)
+  // Column sort + filter over the period-filtered rows — what you see is what
+  // select-all / totals / RFP generation act on.
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
+  const [colFilters, setColFilters] = useState<Record<string, string>>({})
+  const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const cols = [
+    { key: 'source', label: 'Source' }, { key: 'name', label: 'Payee' }, { key: 'period', label: 'Period' },
+    { key: 'base', label: 'Tax Base' }, { key: 'rate', label: 'EWT %' }, { key: 'ewt', label: 'EWT Amount' },
+    { key: 'si', label: 'SI (HR Hub)' }, { key: 'status', label: 'Status' },
+  ]
+  const colGet = useCallback((e: Item, k: string): string | number =>
+    k === 'source' ? (e.source === 'CONSULTANT' ? 'Consultant' : 'Expense')
+      : k === 'name' ? e.name : k === 'period' ? e.periodLabel : k === 'base' ? e.base
+      : k === 'rate' ? (e.rate ?? 0) : k === 'ewt' ? e.ewt
+      : k === 'si' ? (e.source === 'CONSULTANT' ? (siStatus[`${e.ym}|${e.name.toUpperCase().replace(/\s+/g, ' ').trim()}`] || '') : 'n/a')
+      : k === 'status' ? (e.remitted ? 'In RFP / Remitted' : 'Unremitted') : '', [siStatus])
+  // Payee filter also matches the reference line shown under the name.
+  const colFilterGet = useCallback((e: Item, k: string): string | number => k === 'name' ? `${e.name} ${e.ref}` : colGet(e, k), [colGet])
+  const shown = useMemo(() => applySortFilter(filtered, colGet, sort.key, sort.dir, colFilters, colFilterGet), [filtered, colGet, sort, colFilters, colFilterGet])
+
+  const selectable = shown.filter(e => !e.remitted)
   const allSel = selectable.length > 0 && selectable.every(e => selected.has(e.id))
   const toggleAll = () => setSelected(allSel ? new Set() : new Set(selectable.map(e => e.id)))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const selectedTotal = filtered.filter(e => selected.has(e.id)).reduce((s, e) => s + e.ewt, 0)
+  const selectedTotal = shown.filter(e => selected.has(e.id)).reduce((s, e) => s + e.ewt, 0)
   const years = useMemo(() => { const ys = new Set<string>([String(now.getFullYear())]); items.forEach(e => e.ym && ys.add(e.ym.slice(0, 4))); return [...ys].sort().reverse() }, [items, now])
 
   const normName = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
@@ -129,7 +158,7 @@ export default function ExpandedWithholding() {
     if (selected.size === 0) return
     setBusy(true)
     try {
-      const chosen = filtered.filter(e => selected.has(e.id))
+      const chosen = shown.filter(e => selected.has(e.id))
       const consultantIds = chosen.filter(e => e.source === 'CONSULTANT').map(e => e.id)
       const expenseIds = chosen.filter(e => e.source === 'EXPENSE').map(e => e.id)
       const res = await fetch('/api/taxes/rfp', {
@@ -167,8 +196,13 @@ export default function ExpandedWithholding() {
             {BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
           </div>
           <select value={year} onChange={e => setYear(e.target.value)} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
-          <select value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+          <select value={month} onChange={e => { setMonth(e.target.value); if (!e.target.value) setMonthTo('') }} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
             <option value="">All months</option>{MONTHS.map((m, i) => <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
+          </select>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+          <select value={monthTo} onChange={e => setMonthTo(e.target.value)} disabled={!month} title={month ? 'End of the month range (optional)' : 'Pick a starting month first'}
+            className="px-3 py-2 rounded-xl border text-xs font-semibold disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <option value="">— (single month)</option>{MONTHS.map((m, i) => <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
           </select>
           <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}><input type="checkbox" checked={showRemitted} onChange={e => setShowRemitted(e.target.checked)} /> Show remitted</label>
           <button onClick={() => { fetchItems(); fetchRfps() }} className="p-1.5 rounded-lg hover:bg-gray-100"><RefreshCw size={14} style={{ color: 'var(--mid-gray)' }} /></button>
@@ -187,18 +221,15 @@ export default function ExpandedWithholding() {
 
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: 'var(--off-white)' }}>
-              <th className="px-4 py-2.5 w-10">{canWrite && <input type="checkbox" checked={allSel} onChange={toggleAll} />}</th>
-              {['Source', 'Payee', 'Period', 'Tax Base', 'EWT %', 'EWT Amount', 'SI (HR Hub)', 'Status'].map(h => <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>)}
-            </tr>
-          </thead>
+          <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={colFilters}
+            onToggleSort={toggleSort} onFilter={(k, v) => setColFilters(f => ({ ...f, [k]: v }))}
+            leading={canWrite ? <input type="checkbox" checked={allSel} onChange={toggleAll} /> : null} />
           <tbody>
             {loading ? (
               <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{showRemitted ? 'No EWT records for this period.' : 'No unremitted EWT — all caught up.'}</td></tr>
-            ) : filtered.map(e => {
+            ) : shown.length === 0 ? (
+              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{filtered.length > 0 ? 'No rows match the column filters.' : showRemitted ? 'No EWT records for this period.' : 'No unremitted EWT — all caught up.'}</td></tr>
+            ) : shown.map(e => {
               const b = srcBadge(e.source)
               return (
                 <tr key={e.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
@@ -263,8 +294,8 @@ export default function ExpandedWithholding() {
       {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} onClose={() => setBv(null)} />}
       {showOtherIncome && (
         <OtherIncomeModal payrollBranch={branch} total={selectedTotal}
-          consultantIds={filtered.filter(e => selected.has(e.id) && e.source === 'CONSULTANT').map(e => e.id)}
-          expenseIds={filtered.filter(e => selected.has(e.id) && e.source === 'EXPENSE').map(e => e.id)}
+          consultantIds={shown.filter(e => selected.has(e.id) && e.source === 'CONSULTANT').map(e => e.id)}
+          expenseIds={shown.filter(e => selected.has(e.id) && e.source === 'EXPENSE').map(e => e.id)}
           onClose={() => setShowOtherIncome(false)}
           onDone={async () => { setShowOtherIncome(false); setSelected(new Set()); await fetchItems() }} />
       )}

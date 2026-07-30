@@ -11,6 +11,40 @@ const BRANCH_CODE: Record<string, string> = {
 
 // GET ?branch=...        → list reports (no pdf)
 // GET ?id=...            → single report's pdfData (for download)
+// CEO petty cash entries are linked to their branch RFPs via rfpBranchMap
+// (reimbursementId stays null so each branch portion can be reimbursed
+// separately), so the pay/unpay updateMany by reimbursementId never reaches
+// them. Recompute their status here: an entry is Replenished only when EVERY
+// branch it has a nonzero allocation to is covered by a PAID RFP; otherwise
+// it stays For Replenishment.
+async function refreshCeoEntryStatuses(meta: unknown) {
+  const m = meta as { filterBranch?: string; items?: { entryId?: string }[] } | null
+  if (!m?.filterBranch || !Array.isArray(m.items)) return
+  const entryIds = m.items.map(i => i?.entryId).filter((v): v is string => !!v)
+  if (!entryIds.length) return
+  const entries = await prisma.pettyCashEntry.findMany({
+    where: { id: { in: entryIds }, pcfStatus: { in: ['For Replenishment', 'Replenished'] } },
+    select: { id: true, pcfStatus: true, branchAllocations: true, rfpBranchMap: true },
+  })
+  const rfpIds = new Set<string>()
+  for (const e of entries) {
+    const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? e.rfpBranchMap as Record<string, string> : {}
+    for (const v of Object.values(map)) if (v) rfpIds.add(v)
+  }
+  const reports = rfpIds.size
+    ? await prisma.reimbursementReport.findMany({ where: { id: { in: [...rfpIds] } }, select: { id: true, status: true } })
+    : []
+  const paid = new Set(reports.filter(r => r.status === 'PAID').map(r => r.id))
+  for (const e of entries) {
+    const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? e.rfpBranchMap as Record<string, string> : {}
+    const allocs = Array.isArray(e.branchAllocations) ? e.branchAllocations as { branch?: string; amount?: number | string }[] : []
+    const branches = allocs.filter(a => a?.branch && Number(a.amount || 0) !== 0).map(a => a.branch as string)
+    const fullyPaid = branches.length > 0 && branches.every(b => map[b] && paid.has(map[b]))
+    const next = fullyPaid ? 'Replenished' : 'For Replenishment'
+    if (e.pcfStatus !== next) await prisma.pettyCashEntry.update({ where: { id: e.id }, data: { pcfStatus: next } })
+  }
+}
+
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -216,7 +250,7 @@ export async function PATCH(req: Request) {
     const body = await req.json()
     const { id, action } = body
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
-    const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { branch: true } })
+    const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { branch: true, meta: true } })
     if (!rep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     if (!branchAllowed((session.user as { branch?: string }).branch, rep.branch)) {
       return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
@@ -235,8 +269,11 @@ export async function PATCH(req: Request) {
           proofUrl: body.proofUrl || null,
         },
       })
-      // Paid → its entries are reimbursed/replenished.
+      // Paid → its entries are reimbursed/replenished. CEO entries are linked via
+      // rfpBranchMap (not reimbursementId — one entry can sit in several branch
+      // RFPs), so they're refreshed separately below.
       await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'Replenished' } })
+      await refreshCeoEntryStatuses(rep.meta)
       return NextResponse.json({ success: true })
     }
     if (action === 'unpay') {
@@ -245,6 +282,7 @@ export async function PATCH(req: Request) {
         data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, debitAccount: null, depositAccount: null, proofUrl: null },
       })
       await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
+      await refreshCeoEntryStatuses(rep.meta)
       return NextResponse.json({ success: true })
     }
     if (action === 'set-payable') {

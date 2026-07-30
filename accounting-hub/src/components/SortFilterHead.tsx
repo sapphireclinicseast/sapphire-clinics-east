@@ -40,9 +40,12 @@ const MIN_COL_WIDTH = 70
 // handle on its right edge; the first drag snapshots every column's rendered
 // width (so only the dragged one changes) and the parent should switch its
 // <table> to `tableLayout: 'fixed'` once widths exist.
-export function SortFilterHead({ cols, sortKey, sortDir, filters, onToggleSort, onFilter, trailing, widths, onWidthsChange }: {
+export function SortFilterHead({ cols, sortKey, sortDir, filters, onToggleSort, onFilter, leading, trailing, widths, onWidthsChange }: {
   cols: SortCol[]; sortKey: string; sortDir: 'asc' | 'desc'; filters: Record<string, string>
-  onToggleSort: (k: string) => void; onFilter: (k: string, v: string) => void; trailing?: boolean
+  onToggleSort: (k: string) => void; onFilter: (k: string, v: string) => void
+  /** Extra first cell (e.g. a select-all checkbox column). */
+  leading?: React.ReactNode
+  trailing?: boolean
   widths?: Record<string, number> | null
   onWidthsChange?: (w: Record<string, number>) => void
 }) {
@@ -76,6 +79,9 @@ export function SortFilterHead({ cols, sortKey, sortDir, filters, onToggleSort, 
   return (
     <thead className="sticky top-0 z-10">
       <tr style={{ background: 'var(--off-white)' }}>
+        {leading !== undefined && (
+          <th className="border-b border-r px-4 py-2 w-10 align-top" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{leading}</th>
+        )}
         {cols.map(c => (
           <th key={c.key} ref={el => { thRefs.current[c.key] = el }}
             className="border-b border-r px-3 py-2 text-left align-top whitespace-nowrap"

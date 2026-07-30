@@ -29,6 +29,7 @@ export default function WithholdingCompensation() {
   const now = new Date()
   const [year, setYear] = useState(String(now.getFullYear()))
   const [month, setMonth] = useState('') // '' = all
+  const [monthTo, setMonthTo] = useState('') // optional range end — '' = single month
   const [showRemitted, setShowRemitted] = useState(false)
 
   const [entries, setEntries] = useState<Entry[]>([])
@@ -79,17 +80,41 @@ export default function WithholdingCompensation() {
 
   useEffect(() => { fetchEntries(); fetchRfps(); setSelected(new Set()) }, [fetchEntries, fetchRfps])
 
-  // year/month + remitted filter
+  // year/month-range + remitted filter
   const filtered = useMemo(() => {
-    const prefix = month ? `${year}-${month}` : `${year}-`
-    return entries.filter(e => e.cutoffPeriod.startsWith(prefix) && (showRemitted || !e.taxRemitted))
-  }, [entries, year, month, showRemitted])
+    return entries.filter(e => {
+      if (!e.cutoffPeriod.startsWith(`${year}-`)) return false
+      if (month) {
+        // Range: from `month` to `monthTo` (inclusive); a blank monthTo = single month.
+        const [lo, hi] = [month, monthTo || month].sort()
+        const mm = e.cutoffPeriod.slice(5, 7)
+        if (mm < lo || mm > hi) return false
+      }
+      return showRemitted || !e.taxRemitted
+    })
+  }, [entries, year, month, monthTo, showRemitted])
 
-  const selectable = filtered.filter(e => !e.taxRemitted)
+  // Column sort + filter over the period-filtered rows — what you see is what
+  // select-all / totals / RFP generation act on.
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
+  const [colFilters, setColFilters] = useState<Record<string, string>>({})
+  const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const cols = [
+    { key: 'name', label: 'Employee' }, { key: 'period', label: 'Cutoff Period' },
+    { key: 'gross', label: 'Gross Pay' }, { key: 'tax', label: 'Withholding Tax (1601-C)' }, { key: 'status', label: 'Status' },
+  ]
+  const colGet = useCallback((e: Entry, k: string): string | number =>
+    k === 'name' ? e.consultantName : k === 'period' ? e.cutoffPeriod : k === 'gross' ? e.grossPay
+      : k === 'tax' ? e.taxAmount : k === 'status' ? (e.taxRemitted ? 'In RFP / Remitted' : 'Unremitted') : '', [])
+  // Filter the cutoff by its displayed label ("Jul 2026 — 1st cutoff"), not the raw key.
+  const colFilterGet = useCallback((e: Entry, k: string): string | number => k === 'period' ? cutoffLabel(e.cutoffPeriod) : colGet(e, k), [colGet])
+  const shown = useMemo(() => applySortFilter(filtered, colGet, sort.key, sort.dir, colFilters, colFilterGet), [filtered, colGet, sort, colFilters, colFilterGet])
+
+  const selectable = shown.filter(e => !e.taxRemitted)
   const allSel = selectable.length > 0 && selectable.every(e => selected.has(e.payrollEntryId))
   const toggleAll = () => setSelected(allSel ? new Set() : new Set(selectable.map(e => e.payrollEntryId)))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const selectedTotal = filtered.filter(e => selected.has(e.payrollEntryId)).reduce((s, e) => s + e.taxAmount, 0)
+  const selectedTotal = shown.filter(e => selected.has(e.payrollEntryId)).reduce((s, e) => s + e.taxAmount, 0)
   const years = useMemo(() => {
     const ys = new Set<string>([String(now.getFullYear())]); entries.forEach(e => ys.add(e.cutoffPeriod.slice(0, 4))); return [...ys].sort().reverse()
   }, [entries, now])
@@ -128,7 +153,7 @@ export default function WithholdingCompensation() {
       if (!res.ok) { alert(data.error || 'Failed to create RFP'); return }
       // persist PDF
       try {
-        const created: TaxRfp = { id: data.id, refNumber: data.refNumber, grossTotal: data.grossTotal, status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, proofUrl: null, createdAt: new Date().toISOString(), meta: { taxType: 'WC', payrollBranch: branch, items: filtered.filter(e => selected.has(e.payrollEntryId)).map(e => ({ id: e.payrollEntryId, name: e.consultantName, period: e.cutoffPeriod, gross: e.grossPay, tax: e.taxAmount })) } }
+        const created: TaxRfp = { id: data.id, refNumber: data.refNumber, grossTotal: data.grossTotal, status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, proofUrl: null, createdAt: new Date().toISOString(), meta: { taxType: 'WC', payrollBranch: branch, items: shown.filter(e => selected.has(e.payrollEntryId)).map(e => ({ id: e.payrollEntryId, name: e.consultantName, period: e.cutoffPeriod, gross: e.grossPay, tax: e.taxAmount })) } }
         const pdf = buildPdf(created)
         await fetch('/api/taxes/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: data.id, pdfData: pdf.output('datauristring') }) })
       } catch { /* pdf persist best-effort */ }
@@ -166,8 +191,14 @@ export default function WithholdingCompensation() {
           <select value={year} onChange={e => setYear(e.target.value)} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <select value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+          <select value={month} onChange={e => { setMonth(e.target.value); if (!e.target.value) setMonthTo('') }} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
             <option value="">All months</option>
+            {MONTHS.map((m, i) => <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
+          </select>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+          <select value={monthTo} onChange={e => setMonthTo(e.target.value)} disabled={!month} title={month ? 'End of the month range (optional)' : 'Pick a starting month first'}
+            className="px-3 py-2 rounded-xl border text-xs font-semibold disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <option value="">— (single month)</option>
             {MONTHS.map((m, i) => <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
           </select>
           <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
@@ -185,20 +216,15 @@ export default function WithholdingCompensation() {
       {/* Entries table */}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: 'var(--off-white)' }}>
-              <th className="px-4 py-2.5 w-10">{canWrite && <input type="checkbox" checked={allSel} onChange={toggleAll} />}</th>
-              {['Employee', 'Cutoff Period', 'Gross Pay', 'Withholding Tax (1601-C)', 'Status'].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
+          <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={colFilters}
+            onToggleSort={toggleSort} onFilter={(k, v) => setColFilters(f => ({ ...f, [k]: v }))}
+            leading={canWrite ? <input type="checkbox" checked={allSel} onChange={toggleAll} /> : null} />
           <tbody>
             {loading ? (
               <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{showRemitted ? 'No employee withholding records for this period.' : 'No unremitted employee withholding — all caught up.'}</td></tr>
-            ) : filtered.map(e => (
+            ) : shown.length === 0 ? (
+              <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{filtered.length > 0 ? 'No rows match the column filters.' : showRemitted ? 'No employee withholding records for this period.' : 'No unremitted employee withholding — all caught up.'}</td></tr>
+            ) : shown.map(e => (
               <tr key={e.payrollEntryId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                 <td className="px-4 py-2.5">{canWrite && !e.taxRemitted && <input type="checkbox" checked={selected.has(e.payrollEntryId)} onChange={() => toggleOne(e.payrollEntryId)} />}</td>
                 <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{e.consultantName}</td>

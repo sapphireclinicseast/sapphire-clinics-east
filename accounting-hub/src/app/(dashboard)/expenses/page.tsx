@@ -117,6 +117,11 @@ const num = (v: string | number | null) => Number(v) || 0
 const netOfVat = (e: Entry) => (e.vatable === 'VAT' ? num(e.grossAmount) / 1.12 : num(e.grossAmount))
 const vatAmount = (e: Entry) => num(e.grossAmount) - netOfVat(e)
 const descForHub = (e: Entry) => (e.description ? `${e.pcvNumber}; ${e.description}` : e.pcvNumber)
+
+// Reference number shown to users: PCV base + VAL/INV once validity is set
+// (same convention as the Petty Cash grid). RFP refs carry their own suffix.
+const validitySfx = (e: Entry) => e.validity === 'Valid' ? '-VAL' : e.validity === 'Invalid' ? '-INV' : ''
+const refOf = (e: Entry) => e.reimbursement?.refNumber || `${e.pcvNumber}${validitySfx(e)}`
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const cardLabel = (c: Card) => `${c.bank} •••• ${c.cardNumber.slice(-4)} (${c.bankCode})`
 const fetchDataUrl = async (url: string): Promise<string | null> => {
@@ -533,7 +538,7 @@ export default function ExpensesPage() {
       : ['Reference', 'Payee', 'Department', 'Date', 'Description', 'Account Title', 'Vatable', 'Validity', 'Audited', 'Gross Amount', 'Payment']
     const body = rows.map(e => isRecurring
       ? [e.reimbursement?.refNumber || e.pcvNumber, e.requestor || '', e.department || '', e.description || '', e.accountTitle || '', e.recurFrequency || '', e.vatable || '', num(e.grossAmount).toFixed(2)]
-      : [e.reimbursement?.refNumber || e.pcvNumber, e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.accountTitle || '', e.vatable || '', e.validity || '', e.audited ? 'Yes' : 'No', num(e.grossAmount).toFixed(2), e.paidAt ? `Paid ${String(e.paidAt).slice(0, 10)}` : (e.reimbursementId ? 'In RFP' : e.soaId ? 'In SOA' : '')])
+      : [refOf(e), e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.accountTitle || '', e.vatable || '', e.validity || '', e.audited ? 'Yes' : 'No', num(e.grossAmount).toFixed(2), e.paidAt ? `Paid ${String(e.paidAt).slice(0, 10)}` : (e.reimbursementId ? 'In RFP' : e.soaId ? 'In SOA' : '')])
     const title = `${isRecurring ? 'Recurring' : 'One-time'} Expenses — ${brLabel}`
     const fname = `${isRecurring ? 'recurring-expenses' : 'one-time-expenses'}-${branch}`
     if (fmt === 'xlsx') downloadXlsx(fname, [{ name: isRecurring ? 'Recurring' : 'One-time', headers, rows: body }])
@@ -754,7 +759,7 @@ export default function ExpensesPage() {
   ]
   const gridGet = (e: Entry, k: string): string | number => {
     switch (k) {
-      case 'refNumber': return e.reimbursement?.refNumber || e.pcvNumber || ''
+      case 'refNumber': return refOf(e) || ''
       case 'requestor': return e.requestor || ''
       case 'department': return e.department || ''
       case 'date': return e.date ? String(e.date).slice(0, 10) : ''
@@ -993,13 +998,14 @@ export default function ExpensesPage() {
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           {(e.reimbursementId || e.paidAt || e.soaId || !canWrite) ? (
-                            <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.reimbursement?.refNumber || e.pcvNumber}</span>
+                            <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{refOf(e)}</span>
                           ) : (
                             <div className="flex items-center whitespace-nowrap">
                               <input key={e.pcvNumber} defaultValue={e.pcvNumber} className={`${cellCls} font-mono`} style={{ minWidth: 150 }}
                                 title="Reference number — edit to match your physical hard copy"
                                 onBlur={ev => savePcv(e, ev.target.value)}
                                 onKeyDown={ev => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur() }} />
+                              {validitySfx(e) && <span className="text-[10px] pr-1 font-mono" style={{ color: 'var(--mid-gray)' }}>{validitySfx(e)}</span>}
                               {pcvBases.length > 0 && (
                                 <select value="" title="Assign to a previous PCV number"
                                   onChange={ev => { const s = ev.target.value; if (s) { if (confirm(`Assign this entry under ${pcvBases.find(b => String(b.seq) === s)?.label}?`)) assignPcv(e, Number(s)); ev.target.value = '' } }}
