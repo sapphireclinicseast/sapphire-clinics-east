@@ -141,12 +141,18 @@ export async function GET(req: Request) {
       // This captures zero-balance wallets (fully consumed) and partial consumption
       // (difference between approved SOA and remaining balance), independent of
       // whether individual orders have been tagged with an AR payment.
-      const consumedOutstanding = isGL
+      // An agency Guarantee Letter with no approved amount is not a drawdown against
+      // an authorisation — the Municipality of Cainta bills per session and settles
+      // afterwards, exactly as an HMO does — so its receivable comes from the
+      // sessions, and `perSession` lets the screen group those separately.
+      const perSession = isGL && approved <= 0
+      const consumedOutstanding = isGL && !perSession
         ? Math.max(0, approved - Number(w.balance))
         : ordersOutstanding
       return {
         ...w,
-        balance: isGL ? approved : ordersOutstanding,
+        perSession,
+        balance: isGL && !perSession ? approved : ordersOutstanding,
         consumedOutstanding,
         totalGlAmount: approved,
         totalConsumedAmount,

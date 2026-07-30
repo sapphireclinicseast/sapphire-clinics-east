@@ -75,7 +75,7 @@ export async function GET(req: Request) {
     const effectiveStart = cutoffDate || startDate
     const cutoffMonth = cutoffDate && cutoffDate.getUTCFullYear() === year ? cutoffDate.getUTCMonth() + 1 : 0
 
-    const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory, assets, beginningBalances, payrollCOAMappingRaw, payrollEntriesRaw, employeePayslipsRaw] = await Promise.all([
+    const [accounts, orders, inventoryItems, wallets, arOutstandingRaw, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory, assets, beginningBalances, payrollCOAMappingRaw, payrollEntriesRaw, employeePayslipsRaw] = await Promise.all([
       // Chart of Accounts — structure for report line items
       prisma.account.findMany({
         where: { isActive: true },
@@ -144,9 +144,23 @@ export async function GET(req: Request) {
       prisma.digitalWallet.findMany({
         where: { isActive: true },
         select: {
-          walletType: true, balance: true, totalGlAmount: true,
+          id: true, walletType: true, balance: true, totalGlAmount: true,
           arPayments: { select: { amount: true } },
         },
+      }),
+
+      // Sessions billed to an HMO or an agency and not yet settled — the receivable
+      // on a consumption basis. Untagged means no AR payment has been applied to the
+      // order yet, which is the same test the Accounts Receivable section uses, so
+      // the two screens cannot drift apart. All-time by nature: a receivable is a
+      // balance, not a period flow, so no date window applies.
+      prisma.orderPayment.findMany({
+        where: {
+          method: { in: ['HMO', 'GL'] },
+          walletId: { not: null },
+          order: { status: { not: 'VOIDED' }, arPaymentItems: { none: {} } },
+        },
+        select: { walletId: true, amount: true },
       }),
 
       // Payment modes with deduction rates (MDR, CWT) + COA account for cash routing
@@ -666,10 +680,19 @@ export async function GET(req: Request) {
     let glConsumed = 0
     let glCollected = 0
     let glOverpayment = 0
+    const arOutstandingByWallet = new Map<string, number>()
+    for (const p of arOutstandingRaw) {
+      if (!p.walletId) continue
+      arOutstandingByWallet.set(p.walletId, (arOutstandingByWallet.get(p.walletId) || 0) + Number(p.amount))
+    }
     for (const w of wallets) {
       const bal = Number(w.balance)
       if (AR_WALLET_TYPES.has(w.walletType)) {
-        // HMO: the balance IS the receivable — recording a payment decrements it.
+        // HMO: what is receivable is the sessions delivered and not yet settled, so
+        // it is summed from the orders themselves rather than from the wallet
+        // balance. The balance was a lump seeded when the Hub took over and drifted
+        // from the sessions behind it; the AR section has always read the orders,
+        // and this makes the balance sheet agree with it.
         //
         // GL: only sessions actually delivered are receivable. The approved amount
         // on the Guarantee Letter is an authorisation to spend, not a debt owed, so
@@ -682,8 +705,8 @@ export async function GET(req: Request) {
         // excess is money held for the agency — a liability — and must be reported
         // separately: netting it against other letters' receivables would understate
         // both sides. Hence per-wallet, never in aggregate.
-        if (w.walletType === 'GL') {
-          const approved = w.totalGlAmount ? Number(w.totalGlAmount) : 0
+        const approved = w.walletType === 'GL' && w.totalGlAmount ? Number(w.totalGlAmount) : 0
+        if (approved > 0) {
           const consumed = Math.max(0, approved - bal)
           const paid = w.arPayments.reduce((s, p) => s + Number(p.amount), 0)
           const receivable = Math.max(0, consumed - paid)
@@ -694,8 +717,13 @@ export async function GET(req: Request) {
           totalARBalance += receivable
           arByType.GL = (arByType.GL || 0) + receivable
         } else {
-          totalARBalance += bal
-          arByType[w.walletType] = (arByType[w.walletType] || 0) + bal
+          // HMO, and the agency Guarantee Letters that carry no approved amount —
+          // the Municipality of Cainta bills per session and settles afterwards, so
+          // there is no authorisation to draw down and the receivable can only come
+          // from the sessions themselves.
+          const outstanding = arOutstandingByWallet.get(w.id) || 0
+          totalARBalance += outstanding
+          arByType[w.walletType] = (arByType[w.walletType] || 0) + outstanding
         }
       } else {
         // Package, VIP, Prepaid Card, etc. = Unearned Revenue (liability)
