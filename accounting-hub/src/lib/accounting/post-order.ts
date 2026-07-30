@@ -43,13 +43,14 @@ export async function postOrderJournal(
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
 
-  // Idempotency: if a forward JE already exists for this order, skip.
-  // (Reversals don't count — they have referenceType=POS_ORDER_REVERSAL, etc.)
-  const existing = await prisma.journalEntry.findFirst({
-    where: { referenceType: 'POS_ORDER', referenceId: orderId },
-    select: { id: true },
-  })
-  if (existing) return { posted: false, alreadyPosted: true, journalEntryId: existing.id }
+  // Idempotency: skip while an ACTIVE forward JE exists for this order. A
+  // forward JE cancelled by a POS_ORDER_REVERSAL (void → reopen → complete
+  // again) no longer counts, so the re-completed sale posts a fresh JE.
+  const [forwardCount, reversalCount] = await Promise.all([
+    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER', referenceId: orderId } }),
+    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER_REVERSAL', referenceId: orderId } }),
+  ])
+  if (forwardCount > reversalCount) return { posted: false, alreadyPosted: true }
 
   // Pull everything we need in one round-trip.
   const order = await prisma.order.findUnique({
@@ -282,6 +283,60 @@ export async function postOrderJournal(
   } catch (e) {
     if (e instanceof UnbalancedJournalEntryError) {
       console.error('[POS_ORDER] refused unbalanced JE for order', order.id, '—', e.message)
+      return { posted: false, reason: e.message }
+    }
+    throw e
+  }
+}
+
+/**
+ * Reverse an order's forward JE when the sale stops standing (void, buyer
+ * return, reopen). Posts a mirrored POS_ORDER_REVERSAL dated now — the
+ * original entry is left untouched so the ledger keeps the full history,
+ * and JE-based reports (Ledger dataset, Subsidiary Ledger) net to zero.
+ * Idempotent: skips when there is no un-reversed forward JE.
+ */
+export async function reverseOrderJournal(
+  prisma: PrismaClient,
+  orderId: string,
+  createdById: string,
+  reason: string,
+): Promise<PostOrderResult> {
+  if (process.env.ENABLE_GL_POSTING !== 'true') {
+    return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
+  }
+  const [original, reversalCount] = await Promise.all([
+    prisma.journalEntry.findFirst({
+      where: { referenceType: 'POS_ORDER', referenceId: orderId },
+      include: { lines: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER_REVERSAL', referenceId: orderId } }),
+  ])
+  if (!original) return { posted: false, reason: 'no forward JE to reverse' }
+  const forwardCount = await prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER', referenceId: orderId } })
+  if (reversalCount >= forwardCount) return { posted: false, alreadyPosted: true }
+
+  const lines: PostingLine[] = original.lines.map(l => ({
+    accountId: l.accountId,
+    debit:  Number(l.credit) || 0,   // swap sides
+    credit: Number(l.debit)  || 0,
+    description: `Reversal — ${reason}`,
+  }))
+  try {
+    const je = await postJournalEntry(prisma, {
+      entryDate:     new Date(),
+      description:   `Reversal of ${original.description} — ${reason}`,
+      referenceType: 'POS_ORDER_REVERSAL',
+      referenceId:   orderId,
+      branch:        original.branch,
+      createdById,
+      lines,
+    })
+    return { posted: true, journalEntryId: je.id }
+  } catch (e) {
+    if (e instanceof UnbalancedJournalEntryError) {
+      console.error('[POS_ORDER_REVERSAL] refused unbalanced JE for order', orderId, '—', e.message)
       return { posted: false, reason: e.message }
     }
     throw e

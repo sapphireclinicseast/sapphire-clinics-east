@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
-import { postOrderJournal } from '@/lib/accounting/post-order'
+import { postOrderJournal, reverseOrderJournal } from '@/lib/accounting/post-order'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -126,6 +126,12 @@ export async function PUT(
         data: { status: newStatus, ...(isReturn ? { returnedByBuyer: true } : {}) },
         include: { items: true, payments: true },
       })
+
+      // The sale no longer stands — cancel its GL posting with a mirrored
+      // POS_ORDER_REVERSAL (no-op if the order was never posted). A reopened
+      // order that gets completed again posts a fresh forward JE.
+      try { await reverseOrderJournal(prisma, id, session.user.id, body.action === 'reopen' ? 'order reopened' : isReturn ? 'returned by buyer' : 'order voided') }
+      catch (e) { console.error('[GL] void/reopen reversal posting threw:', e) }
 
       // When voiding or returning, reverse ALL wallet changes
       if (body.action === 'void' || isReturn) {

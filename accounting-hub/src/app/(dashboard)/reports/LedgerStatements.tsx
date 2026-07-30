@@ -30,6 +30,7 @@ const SOURCE_LABELS: Record<string, string> = {
   'journal:MANUAL': 'Manual journal entries',
   'journal:ADJUSTMENT': 'Manual adjustments',
   'journal:POS_ORDER': 'POS sales (posted to ledger)',
+  'journal:POS_ORDER_REVERSAL': 'Voided POS orders (reversals)',
   'journal:FREE_SAMPLE': 'Free samples',
   'journal:AR_PAYMENT': 'HMO / guarantee-letter collections (posted)',
   'journal:AR_PAYMENT_REVERSAL': 'HMO / GL collection reversals',
