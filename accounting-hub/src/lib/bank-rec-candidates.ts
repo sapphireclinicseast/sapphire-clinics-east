@@ -27,9 +27,15 @@ const num = (v: unknown) => Number(v ?? 0)
  */
 export async function candidates(bankAccountId: string | null, lo: Date, hi: Date): Promise<Candidate[]> {
   const range = { gte: lo, lte: hi }
-  // An account filter that matches everything when no account is given.
+  // An account filter that matches everything when no account is given. Only
+  // for NULLABLE columns: the `null` branch also offers rows that never had an
+  // account set. On a required column Prisma rejects `{ field: null }` outright
+  // (the whole Promise.all dies and every picker shows "no matches") — use
+  // onRequired for those.
   const on = <T extends string>(field: T, id: string | null) =>
     (id ? { OR: [{ [field]: id }, { [field]: null }] } : {}) as Record<string, unknown>
+  const onRequired = <T extends string>(field: T, id: string | null) =>
+    (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
     transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred,
   ] = await Promise.all([
@@ -55,15 +61,15 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       select: { id: true, amount: true, paymentDate: true, salesInvoiceNumber: true },
     }),
     prisma.salaryPayment.findMany({
-      where: { paymentDate: range, status: 'COMPLETED', ...on('fromAccountId', bankAccountId) },
+      where: { paymentDate: range, status: 'COMPLETED', ...onRequired('fromAccountId', bankAccountId) },
       select: { id: true, totalAmount: true, paymentDate: true, cutoffPeriod: true, paymentType: true },
     }),
     prisma.benefitPayment.findMany({
-      where: { paymentDate: range, status: 'COMPLETED', ...on('fromAccountId', bankAccountId) },
+      where: { paymentDate: range, status: 'COMPLETED', ...onRequired('fromAccountId', bankAccountId) },
       select: { id: true, totalAmount: true, paymentDate: true, cutoffPeriod: true },
     }),
     prisma.taxPayment.findMany({
-      where: { paymentDate: range, status: 'COMPLETED', ...on('fromAccountId', bankAccountId) },
+      where: { paymentDate: range, status: 'COMPLETED', ...onRequired('fromAccountId', bankAccountId) },
       select: { id: true, totalAmount: true, paymentDate: true, paymentType: true },
     }),
     prisma.cashAdvance.findMany({

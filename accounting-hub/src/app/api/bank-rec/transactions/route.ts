@@ -252,7 +252,10 @@ export async function PATCH(req: Request) {
       const transfer = await prisma.$transaction(async (tx) => {
         let s = await tx.fundTransferSettings.findUnique({ where: { id: 'singleton' } })
         if (!s) s = await tx.fundTransferSettings.create({ data: { id: 'singleton', nextSeq: 1 } })
-        const seq = s.nextSeq
+        // Never allocate below max(refSeq)+1 — the hand-settable counter can lag
+        // the existing transfers and the refNumber unique constraint would reject.
+        const maxSeq = (await tx.fundTransfer.aggregate({ _max: { refSeq: true } }))._max.refSeq ?? 0
+        const seq = Math.max(s.nextSeq, maxSeq + 1)
         await tx.fundTransferSettings.update({ where: { id: 'singleton' }, data: { nextSeq: seq + 1 } })
         const created = await tx.fundTransfer.create({
           data: {
