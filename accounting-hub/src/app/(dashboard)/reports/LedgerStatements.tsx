@@ -326,6 +326,9 @@ export default function LedgerStatements({ year, branch, tab, view }: {
   const [result, setResult] = useState<{ key: string; data: V2Statements | null; error: string | null }>({ key: '', data: null, error: null })
   const [drill, setDrill] = useState<{ account: string; title: string; month: number | null } | null>(null)
   const [verticalAnalysis, setVerticalAnalysis] = useState(false)
+  // Balance sheet: bank/cash accounts collapse into one "Cash and Cash
+  // Equivalents" line; toggle to see the individual accounts.
+  const [cashOpen, setCashOpen] = useState(false)
   // 7080 Sales of Product Income category breakdown — collapsed by default.
   const [show7080Breakdown, setShow7080Breakdown] = useState(false)
 
@@ -639,9 +642,24 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                 </tr>
               </thead>
               <tbody>
-                {bs.sections.map(s => (<Fragment key={s.key}>
+                {bs.sections.map(s => { const cashRows = s.rows.filter(r => r.cash); const grouped = cashRows.length > 1; return (<Fragment key={s.key}>
                   <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>{s.label}</span></td></tr>
-                  {s.rows.map(r => (
+                  {grouped && (
+                    <MultiRow label={
+                      <button onClick={() => setCashOpen(o => !o)} className="flex items-center gap-1" title="Click to show the individual bank accounts">
+                        <ChevronDown size={12} style={{ transform: cashOpen ? undefined : 'rotate(-90deg)', transition: 'transform .15s', color: 'var(--mid-gray)' }} />
+                        Cash and Cash Equivalents
+                      </button>
+                    } indent={1}
+                      values={pick(Array.from({ length: 12 }, (_, i) => cashRows.reduce((sum, r) => sum + (r.monthly?.[i] || 0), 0)))}
+                      total={cashRows.reduce((sum, r) => sum + r.closing, 0)} />
+                  )}
+                  {grouped && cashOpen && cashRows.map(r => (
+                    <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={2} muted
+                      values={pick(r.monthly || [])} total={r.closing}
+                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null)} />
+                  ))}
+                  {(grouped ? s.rows.filter(r => !r.cash) : s.rows).map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={1}
                       values={pick(r.monthly || [])} total={r.closing}
                       onClickCell={m => openDrill(r, view === 'monthly' ? m : null)} />
@@ -653,7 +671,7 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                     <MultiRow label="Income Tax Payable (20% provision)" indent={1} values={pick(itpCum)} total={bs.incomeTaxPayable} />
                   )}
                   {s.key === 'EQUITY' && <MultiRow label="Net Income (Cumulative)" indent={1} values={pick(niCum)} total={bs.netIncome} />}
-                </Fragment>))}
+                </Fragment>) })}
                 <MultiRow label="TOTAL ASSETS" values={pick(assetsM)} total={bs.totalAssets} bold doubleRule />
                 <MultiRow label="TOTAL LIABILITIES" values={pick(liabM)} total={bs.totalLiabilities} bold />
                 <MultiRow label="TOTAL EQUITY" values={pick(equityM)} total={bs.totalEquity} bold />
@@ -666,10 +684,21 @@ export default function LedgerStatements({ year, branch, tab, view }: {
     } else {
     body = (
       <div className="py-1">
-        {bs.sections.map(s => (
+        {bs.sections.map(s => { const cashRows = s.rows.filter(r => r.cash); const grouped = cashRows.length > 1; return (
           <div key={s.key}>
             <Row label={s.label} bold />
-            {s.rows.map(r => (
+            {grouped && (
+              <Row label={
+                <button onClick={() => setCashOpen(o => !o)} className="flex items-center gap-1" title="Click to show the individual bank accounts">
+                  <ChevronDown size={12} style={{ transform: cashOpen ? undefined : 'rotate(-90deg)', transition: 'transform .15s', color: 'var(--mid-gray)' }} />
+                  Cash and Cash Equivalents
+                </button>
+              } amount={cashRows.reduce((sum, r) => sum + r.closing, 0)} indent={1} />
+            )}
+            {grouped && cashOpen && cashRows.map(r => (
+              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={r.closing} indent={2} muted onClick={() => openDrill(r)} />
+            ))}
+            {(grouped ? s.rows.filter(r => !r.cash) : s.rows).map(r => (
               <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={r.closing} indent={1} onClick={() => openDrill(r)} />
             ))}
             {s.key === 'CURRENT_ASSETS' && bs.deferredTaxAsset > 0 && (
@@ -686,7 +715,7 @@ export default function LedgerStatements({ year, branch, tab, view }: {
               + (s.key === 'EQUITY' ? bs.netIncome : 0)
             } bold rule />
           </div>
-        ))}
+        ) })}
         <Row label="TOTAL ASSETS" amount={bs.totalAssets} bold doubleRule />
         <Row label="TOTAL LIABILITIES" amount={bs.totalLiabilities} bold />
         <Row label="TOTAL EQUITY" amount={bs.totalEquity} bold />
