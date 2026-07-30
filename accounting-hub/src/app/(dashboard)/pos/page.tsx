@@ -336,6 +336,9 @@ const PAYMENT_METHODS_PRODUCT = [
   { value: 'LAZADA', label: 'Lazada' },
   { value: 'TIKTOK', label: 'TikTok Shop' },
   { value: 'REWARD_POINTS', label: 'Reward Points' },
+  // Credit/bulk sale to an outside customer (e.g. Sandbox Clark): no cash now —
+  // creates an entry under Accounts Receivable → Others, collected there later.
+  { value: 'RECEIVABLE', label: 'Receivable (charge to customer)' },
 ]
 
 const ORDER_STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -6672,6 +6675,10 @@ function ProductsSection({
   // Check if any payment is reward points
   const hasRewardPointsPayment = payments.some(p => p.method === 'REWARD_POINTS')
 
+  // Receivable sale (charge to an outside customer, e.g. Sandbox Clark)
+  const hasReceivablePayment = payments.some(p => p.method === 'RECEIVABLE')
+  const [soldTo, setSoldTo] = useState('')
+
   useEffect(() => {
     fetch(`/api/pos/payment-modes?branch=${prodBranch}`).then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
   }, [prodBranch])
@@ -6856,6 +6863,13 @@ function ProductsSection({
     }
     const allFreeSamples = cart.every(c => c.isFreeSample)
     if (!allFreeSamples && !hasRewardPointsPayment && productPaymentShort) { setError('Payments do not cover the net amount'); return }
+    if (hasReceivablePayment) {
+      if (!soldTo.trim()) { setError('Enter who this is sold to (e.g. SANDBOX CLARK) for the Receivable payment'); return }
+      if (payments.some(p => p.method !== 'RECEIVABLE' && toNum(p.amount) > 0)) {
+        setError('Receivable cannot be mixed with other payment methods — record cash portions as a separate order')
+        return
+      }
+    }
     // Re-entrancy guard — block duplicate submissions while one is in flight.
     if (submittingRef.current) return
     submittingRef.current = true
@@ -6893,6 +6907,7 @@ function ProductsSection({
         salesInvoiceNumber: prodIssuedInvoice ? normalizeSI(prodInvoiceNumber) : null,
         referenceNumber: prodReferenceNumber.trim() || null,
         notes: prodNotes.trim() || null,
+        soldTo: hasReceivablePayment ? soldTo.trim() : null,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -6922,6 +6937,7 @@ function ProductsSection({
       setAppliedDiscounts([])
       setRpSelectedWallet(null)
       setRpWalletSearch('')
+      setSoldTo('')
       setError('')
       alert(`Order ${data.orderNumber} created successfully!`)
     } catch {
@@ -7248,6 +7264,7 @@ function ProductsSection({
                     <>
                       {configuredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                       <option value="REWARD_POINTS">Reward Points</option>
+                      <option value="RECEIVABLE">Receivable (charge to customer)</option>
                     </>
                   ) : (
                     PAYMENT_METHODS_PRODUCT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)
@@ -7274,6 +7291,20 @@ function ProductsSection({
               + Add Payment
             </button>
           </div>
+
+          {/* Receivable sale: who is this sold to? Creates an entry under
+              Accounts Receivable → Others; no cash is recorded now. */}
+          {hasReceivablePayment && (
+            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+              <h4 className="text-xs font-semibold" style={{ color: '#1e40af' }}>Receivable — Sold to</h4>
+              <input value={soldTo} onChange={e => setSoldTo(e.target.value)} placeholder="Customer / branch (e.g. SANDBOX CLARK)"
+                className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
+              <p className="text-[11px]" style={{ color: '#1e40af' }}>
+                No cash is collected now. The order is saved as Unpaid and a receivable is created under
+                {' '}<strong>Accounts Receivable → Others</strong>, where you can set a staggered payment plan and record collections.
+              </p>
+            </div>
+          )}
 
           {/* Reward Points Wallet Selection */}
           {hasRewardPointsPayment && (

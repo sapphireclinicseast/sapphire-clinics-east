@@ -161,6 +161,7 @@ export async function POST(req: Request) {
       referenceNumber,
       platform,
       unpaid,
+      soldTo,
     } = body
 
     if (!orderType || !branch || !items?.length) {
@@ -183,9 +184,18 @@ export async function POST(req: Request) {
 
     const netAmount = subtotal - Number(discountAmount) - totalRefund
 
+    // Receivable sale (charge to an outside customer, e.g. Sandbox Clark): no cash
+    // now — the order is saved Unpaid and an AR → Others receivable is created.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const receivableLines = (payments || []).filter((p: any) => p.method === 'RECEIVABLE')
+    const hasReceivable = receivableLines.length > 0
+    if (hasReceivable && !String(soldTo || '').trim()) {
+      return NextResponse.json({ error: 'soldTo is required for Receivable payments' }, { status: 400 })
+    }
+
     // Unpaid: the session is recorded now (correct transactionDate) but no cash is
     // collected yet — payment (and its collection date) come later via recordPayment.
-    const isUnpaid = !!unpaid
+    const isUnpaid = !!unpaid || hasReceivable
     // Payments required only when there's something to pay (e.g., 100% discount → net 0
     // is allowed with no payments) and the order isn't explicitly saved as Unpaid.
     if (!isUnpaid && netAmount > 0 && !payments?.length) {
@@ -273,6 +283,23 @@ export async function POST(req: Request) {
         referrer: true,
       },
     })
+
+    // Receivable sale → create the AR → Others entry the collections live on.
+    if (hasReceivable) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const recvTotal = receivableLines.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) || netAmount
+      await prisma.otherReceivable.create({
+        data: {
+          branch,
+          customerName: String(soldTo).trim(),
+          orderId: order.id,
+          principal: recvTotal,
+          totalDue: recvTotal,
+          notes: `POS order #${order.orderNumber}`,
+          createdById: session.user.id ?? null,
+        },
+      })
+    }
 
     // Mirror the order's referrer into ReferredPatient so the Referral section
     // (Referred Patients tab + Dashboard) reflects front-desk entries.

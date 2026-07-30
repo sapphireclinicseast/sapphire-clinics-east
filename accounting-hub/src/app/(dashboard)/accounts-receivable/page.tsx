@@ -12,6 +12,7 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
+import OthersTab from './OthersTab'
 
 interface ARWallet {
   id: string
@@ -344,10 +345,10 @@ export default function AccountsReceivablePage() {
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const searchParams = useSearchParams()
   // HMO Officers are locked to the HMO tab only
-  const initialType = !isHmoOfficer && searchParams.get('type') === 'GL' ? 'GL' : 'HMO'
+  const initialType = !isHmoOfficer && ['GL', 'OTHERS'].includes(searchParams.get('type') || '') ? (searchParams.get('type') as 'GL' | 'OTHERS') : 'HMO'
   const initialWallet = searchParams.get('wallet') || ''
 
-  const [tab, setTab] = useState<'HMO' | 'GL'>(initialType as 'HMO' | 'GL')
+  const [tab, setTab] = useState<'HMO' | 'GL' | 'OTHERS'>(initialType as 'HMO' | 'GL' | 'OTHERS')
   const [branch, setBranch] = useState(scope.enum || '')
   useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [dateFrom, setDateFrom] = useState('')
@@ -432,6 +433,7 @@ export default function AccountsReceivablePage() {
   const canRecomputeSoa = session?.user?.role === 'ADMIN' || session?.user?.role === 'ACCOUNTANT'
 
   const fetchData = useCallback(async () => {
+    if (tab === 'OTHERS') return // Others has its own fetch inside OthersTab
     setLoading(true)
     try {
       const params = new URLSearchParams({ type: tab, sortField, sortDir })
@@ -455,6 +457,7 @@ export default function AccountsReceivablePage() {
 
   // Fetch aging dashboard data whenever tab / branch / period changes
   useEffect(() => {
+    if (tab === 'OTHERS') return
     const ctl = new AbortController()
     const load = async () => {
       try {
@@ -677,6 +680,7 @@ export default function AccountsReceivablePage() {
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>Monitor and record payments from HMO providers and Guarantee Letter agencies</p>
         </div>
+        {tab !== 'OTHERS' && (
         <div className="flex items-center gap-3">
           <div className="text-right">
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total Receivable ({tab})</p>
@@ -686,17 +690,18 @@ export default function AccountsReceivablePage() {
             <DollarSign size={16} /> Record Payment
           </button>
         </div>
+        )}
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {(['HMO', 'GL'] as const).filter(t => !(isHmoOfficer && t === 'GL')).map(t => (
+        {(['HMO', 'GL', 'OTHERS'] as const).filter(t => !(isHmoOfficer && t !== 'HMO')).map(t => (
           <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab('overview') }}
             className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
             style={tab === t
               ? { background: 'var(--teal)', color: 'white' }
               : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-            {t === 'HMO' ? 'HMO Providers' : 'Guarantee Letters (GL)'}
+            {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : 'Others'}
           </button>
         ))}
       </div>
@@ -1100,8 +1105,11 @@ export default function AccountsReceivablePage() {
         )
       })()}
 
+      {/* ── Others: receivables from outside customers (e.g. Sandbox Clark) ── */}
+      {tab === 'OTHERS' && <OthersTab branch={branch} canWrite={!isHmoOfficer} />}
+
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
-      {(tab !== 'HMO' || hmoSubTab === 'overview') && <>
+      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && <>
 
       {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
       <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -1401,7 +1409,7 @@ export default function AccountsReceivablePage() {
         </table>
       </div>}
 
-      {/* Payment History — always shown, on both tabs. Hiding it when empty made
+      {/* Payment History — always shown, on both wallet tabs. Hiding it when empty made
           it look as though HMO had no such section at all, when in fact no HMO
           payment had been recorded (the one that was is since reversed). */}
       {(
