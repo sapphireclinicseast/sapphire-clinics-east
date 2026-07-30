@@ -228,8 +228,11 @@ export async function computeLedgerStatements(
     return virt('1200', 'Inventory (derived)', 'ASSET', 'INVENTORY', 'DEBIT')
   }
   const parseAccountKey = (key: string): AcctInfo => {
-    // "8120 Marketing and Advertising Expense" → account by number, else virtual
-    const m = key.match(/^(\d{4,6})\s+(.+)$/)
+    // "8120 Marketing and Advertising Expense" → account by number, else virtual.
+    // Bank accounts are numbered by their actual account number, which runs to
+    // twelve digits — capping the match at six sent every petty cash line coded to
+    // a bank account into the unmapped bucket, and counted the cash as an expense.
+    const m = key.match(/^(\d{4,})\s+(.+)$/)
     if (m && byNumber.get(m[1])) return byNumber.get(m[1])!
     if (m) return virt(m[1], m[2], m[1].startsWith('7') ? 'REVENUE' : 'EXPENSE', 'UNCLASSIFIED', m[1].startsWith('7') ? 'CREDIT' : 'DEBIT')
     return virt('9998', `Unmapped: ${key}`, 'EXPENSE', 'UNCLASSIFIED', 'DEBIT')
