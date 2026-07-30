@@ -156,6 +156,7 @@ model Account {
   coaBenefitsPayable       PayrollCOAMapping[] @relation("COABenPayable")
   coaTaxPayable            PayrollCOAMapping[] @relation("COATaxPayable")
   beginningBalances        BeginningBalance[]
+  adjBatchFxSources        InventoryAdjustmentBatch[] @relation("AdjBatchFxSource")
 
   @@index([accountType])
   @@index([isActive])
@@ -462,6 +463,17 @@ model InventoryAdjustmentBatch {
   freight3Amount     Decimal?   // Warehouse → Office
   freight3IsForeign  Boolean   @default(false)
   totalFreightPHP    Decimal   @default(0)
+  // FX source: the foreign-currency bank account the payment was drawn from. The
+  // suggested exchange rate is the weighted purchase rate of that account's forex
+  // buys (Fund Transfer cross-currency history recorded via Bank Recon).
+  fxSourceAccountId  String?
+  fxSourceAccount    Account?  @relation("AdjBatchFxSource", fields: [fxSourceAccountId], references: [id], onDelete: SetNull)
+  // Payments behind this shipment — possibly recorded as separate Expense RFPs:
+  // one paying the manufacturer, one paying the freight forwarder.
+  manufacturerRfpId  String?
+  manufacturerRfp    ReimbursementReport? @relation("AdjBatchManufacturerRfp", fields: [manufacturerRfpId], references: [id], onDelete: SetNull)
+  freightRfpId       String?
+  freightRfp         ReimbursementReport? @relation("AdjBatchFreightRfp", fields: [freightRfpId], references: [id], onDelete: SetNull)
   proofUrls          Json?
   remarks            String?
   createdById        String
@@ -472,6 +484,9 @@ model InventoryAdjustmentBatch {
 
   @@index([createdById])
   @@index([adjustmentDate])
+  @@index([fxSourceAccountId])
+  @@index([manufacturerRfpId])
+  @@index([freightRfpId])
 }
 
 model ConsignmentTransfer {
@@ -2042,6 +2057,8 @@ model ReimbursementReport {
   updatedAt      DateTime @updatedAt
 
   entries        PettyCashEntry[]
+  adjBatchesAsManufacturer InventoryAdjustmentBatch[] @relation("AdjBatchManufacturerRfp")
+  adjBatchesAsFreight      InventoryAdjustmentBatch[] @relation("AdjBatchFreightRfp")
 
   @@unique([branch, refNumber])
   @@index([branch])
