@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
   X, AlertCircle, DollarSign, Calendar, Upload, Trash2, Pencil,
-  Download, Filter, FileText, Settings,
+  Download, Filter, FileText, Settings, Maximize2, Minimize2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -402,6 +402,11 @@ export default function AccountsReceivablePage() {
   // QB 2025) orders never reach it. The tag list instead uses a wallet-scoped
   // fetch, which the API returns uncapped-in-practice.
   const [payWalletOrders, setPayWalletOrders] = useState<AROrder[]>([])
+  // Payment-modal tagging UX: full-screen toggle + tag-list filters (search / date range)
+  const [payModalExpanded, setPayModalExpanded] = useState(false)
+  const [payTagSearch, setPayTagSearch] = useState('')
+  const [payTagFrom, setPayTagFrom] = useState('')
+  const [payTagTo, setPayTagTo] = useState('')
   const [payError, setPayError] = useState('')
   const [paySaving, setPaySaving] = useState(false)
   const [discountAccounts, setDiscountAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
@@ -549,6 +554,52 @@ export default function AccountsReceivablePage() {
   const totalReceivable = wallets.reduce((s, w) => s + toNum(w.balance), 0)
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
 
+  // ---- Payment-modal tag-list filters (shared by HMO transaction tagging and GL patient tagging) ----
+  const tagQuery = payTagSearch.trim().toLowerCase()
+  // Amount form of the query: "₱4,000" / "4,000.00" → "4000" / "4000.00"
+  const tagAmtQuery = tagQuery.replace(/[₱,\s]/g, '')
+
+  const inTagDateRange = (iso: string | null | undefined) => {
+    const d = (iso || '').slice(0, 10)
+    if (!d) return !payTagFrom && !payTagTo
+    if (payTagFrom && d < payTagFrom) return false
+    if (payTagTo && d > payTagTo) return false
+    return true
+  }
+
+  const tagTextOrAmountMatches = (text: string, amounts: number[]) => {
+    if (!tagQuery) return true
+    if (text.toLowerCase().includes(tagQuery)) return true
+    if (!tagAmtQuery || !/^[\d.]+$/.test(tagAmtQuery)) return false
+    return amounts.some(a => String(a).includes(tagAmtQuery) || a.toFixed(2).includes(tagAmtQuery))
+  }
+
+  const tagFiltersActive = !!(tagQuery || payTagFrom || payTagTo)
+
+  const renderTagFilterBar = (placeholder: string) => (
+    <div className="flex flex-wrap items-center gap-2 mb-2">
+      <div className="relative flex-1 min-w-[160px]">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+        <input type="text" value={payTagSearch} onChange={e => setPayTagSearch(e.target.value)}
+          placeholder={placeholder}
+          className="w-full pl-8 pr-2 py-2 rounded-xl border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+      </div>
+      <input type="date" value={payTagFrom} onChange={e => setPayTagFrom(e.target.value)} title="From date"
+        className="px-2 py-2 rounded-xl border text-xs outline-none"
+        style={{ borderColor: payTagFrom ? 'var(--teal)' : 'var(--light-gray)', color: 'var(--charcoal)' }} />
+      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+      <input type="date" value={payTagTo} onChange={e => setPayTagTo(e.target.value)} title="To date"
+        className="px-2 py-2 rounded-xl border text-xs outline-none"
+        style={{ borderColor: payTagTo ? 'var(--teal)' : 'var(--light-gray)', color: 'var(--charcoal)' }} />
+      {tagFiltersActive && (
+        <button type="button" onClick={() => { setPayTagSearch(''); setPayTagFrom(''); setPayTagTo('') }}
+          title="Clear filters" className="p-1.5 rounded-lg hover:bg-gray-100">
+          <X size={14} style={{ color: 'var(--mid-gray)' }} />
+        </button>
+      )}
+    </div>
+  )
+
   const openPaymentModal = () => {
     setEditingPaymentId(null)
     setPayWalletId(walletFilter || '')
@@ -565,6 +616,10 @@ export default function AccountsReceivablePage() {
     setPayProofUrls([])
     setPaySelectedOrders([])
     setPayError('')
+    setPayModalExpanded(false)
+    setPayTagSearch('')
+    setPayTagFrom('')
+    setPayTagTo('')
     setShowPaymentModal(true)
   }
 
@@ -584,6 +639,10 @@ export default function AccountsReceivablePage() {
     setPayProofUrls(parseProofUrls(p.proofUrl))
     setPaySelectedOrders(p.items.map(i => i.orderId))
     setPayError('')
+    setPayModalExpanded(false)
+    setPayTagSearch('')
+    setPayTagFrom('')
+    setPayTagTo('')
     setShowPaymentModal(true)
   }
 
@@ -2042,11 +2101,18 @@ export default function AccountsReceivablePage() {
 
       {/* Record Payment Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-lg mb-8 relative">
+        <div className={`fixed inset-0 bg-black/40 z-50 flex items-start justify-center overflow-y-auto ${payModalExpanded ? '' : 'pt-8'}`}>
+          <div className={`bg-white p-6 shadow-xl w-full relative ${payModalExpanded ? 'max-w-none min-h-full rounded-none' : 'max-w-lg mb-8 rounded-2xl'}`}>
+            <button onClick={() => setPayModalExpanded(v => !v)}
+              title={payModalExpanded ? 'Exit full screen' : 'Expand to full screen'}
+              className="absolute top-4 right-12 flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-gray-100 text-xs font-medium"
+              style={{ color: 'var(--mid-gray)' }}>
+              {payModalExpanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
+            </button>
             <button onClick={() => setShowPaymentModal(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
               <X size={18} style={{ color: 'var(--mid-gray)' }} />
             </button>
+            <div className={payModalExpanded ? 'max-w-4xl mx-auto' : ''}>
             <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
               <DollarSign size={20} className="inline" style={{ color: 'var(--teal)' }} /> {editingPaymentId ? 'Edit Payment' : 'Record Payment'}
             </h3>
@@ -2058,20 +2124,44 @@ export default function AccountsReceivablePage() {
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
                     Select GL Patients (tick all that apply)
                   </label>
-                  <div className="rounded-xl border max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                    {wallets.map(w => (
-                      <label key={w.id} className="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-50 cursor-pointer border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                        <input type="checkbox" checked={payWalletIds.includes(w.id)}
-                          onChange={() => {
-                            setPayWalletIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])
-                            if (!payWalletId) setPayWalletId(w.id)
-                          }}
-                          className="rounded" />
-                        <span className="flex-1 font-medium" style={{ color: 'var(--charcoal)' }}>{w.patientName}</span>
-                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Balance: {formatCurrency(toNum(w.balance))}</span>
-                      </label>
-                    ))}
-                  </div>
+                  {renderTagFilterBar('Search patient name or amount...')}
+                  {(() => {
+                    // Date range keeps patients with at least one transaction in range.
+                    // The page order list is capped, so a wallet with no loaded orders is
+                    // kept rather than hidden — we can't prove it falls outside the range.
+                    const dateFilterOn = !!(payTagFrom || payTagTo)
+                    const visibleWallets = wallets.filter(w => {
+                      if (!tagTextOrAmountMatches(w.patientName, [toNum(w.balance)])) return false
+                      if (!dateFilterOn) return true
+                      const walletOrders = orders.filter(o => o.payments.some(p => p.walletId === w.id))
+                      return walletOrders.length === 0 || walletOrders.some(o => inTagDateRange(o.transactionDate))
+                    })
+                    return (
+                      <>
+                        <div className={`rounded-xl border overflow-y-auto ${payModalExpanded ? 'max-h-[60vh]' : 'max-h-48'}`} style={{ borderColor: 'var(--light-gray)' }}>
+                          {visibleWallets.length === 0 ? (
+                            <p className="px-3 py-4 text-xs text-center" style={{ color: 'var(--mid-gray)' }}>No patients match the current filters.</p>
+                          ) : visibleWallets.map(w => (
+                            <label key={w.id} className="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-50 cursor-pointer border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                              <input type="checkbox" checked={payWalletIds.includes(w.id)}
+                                onChange={() => {
+                                  setPayWalletIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])
+                                  if (!payWalletId) setPayWalletId(w.id)
+                                }}
+                                className="rounded" />
+                              <span className="flex-1 font-medium" style={{ color: 'var(--charcoal)' }}>{w.patientName}</span>
+                              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Balance: {formatCurrency(toNum(w.balance))}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {tagFiltersActive && (
+                          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                            Showing {visibleWallets.length} of {wallets.length} patients{payWalletIds.length > 0 ? ` · ${payWalletIds.length} ticked` : ''}
+                          </p>
+                        )}
+                      </>
+                    )
+                  })()}
                   {payWalletIds.length > 1 && (
                     <p className="text-xs mt-1 font-medium" style={{ color: 'var(--deep-teal)' }}>
                       {payWalletIds.length} selected &middot; Combined balance: {formatCurrency(wallets.filter(w => payWalletIds.includes(w.id)).reduce((s, w) => s + toNum(w.balance), 0))}
@@ -2181,11 +2271,19 @@ export default function AccountsReceivablePage() {
                 const eligibleOrders = editingPaymentId
                   ? source.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
                   : source.filter(o => o.arPaymentItems.length === 0 && o.payments.some(p => selectedIds.includes(p.walletId || '')))
+                const visibleOrders = eligibleOrders.filter(o => {
+                  if (!inTagDateRange(o.transactionDate)) return false
+                  const amt = toNum(o.payments.find(p => selectedIds.includes(p.walletId || ''))?.amount)
+                  return tagTextOrAmountMatches(`${o.patientName} ${o.items.map(i => i.name).join(' ')}`, [amt])
+                })
                 return eligibleOrders.length > 0 ? (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Tag Transactions Included</label>
-                  <div className="rounded-xl border max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                    {eligibleOrders.map(o => {
+                  {renderTagFilterBar('Search name, service, amount...')}
+                  <div className={`rounded-xl border overflow-y-auto ${payModalExpanded ? 'max-h-[60vh]' : 'max-h-40'}`} style={{ borderColor: 'var(--light-gray)' }}>
+                    {visibleOrders.length === 0 ? (
+                      <p className="px-3 py-4 text-xs text-center" style={{ color: 'var(--mid-gray)' }}>No transactions match the current filters.</p>
+                    ) : visibleOrders.map(o => {
                       const amt = o.payments.find(p => selectedIds.includes(p.walletId || ''))
                       return (
                         <label key={o.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 cursor-pointer border-b" style={{ borderColor: 'var(--light-gray)' }}>
@@ -2199,6 +2297,11 @@ export default function AccountsReceivablePage() {
                       )
                     })}
                   </div>
+                  {tagFiltersActive && (
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      Showing {visibleOrders.length} of {eligibleOrders.length} transactions{paySelectedOrders.length > 0 ? ` · ${paySelectedOrders.length} tagged` : ''}
+                    </p>
+                  )}
                 </div>
                 ) : null
               })()}
@@ -2252,6 +2355,7 @@ export default function AccountsReceivablePage() {
                   {paySaving ? 'Saving...' : editingPaymentId ? 'Update Payment' : 'Record Payment'}
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>
