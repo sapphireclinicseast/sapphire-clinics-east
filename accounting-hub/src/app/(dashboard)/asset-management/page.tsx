@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -25,6 +25,8 @@ import {
   ClipboardCheck,
   CheckCircle2,
   Lock,
+  Calculator,
+  Upload,
 } from 'lucide-react'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 
@@ -168,6 +170,20 @@ function emptyForm(branch: string) {
   }
 }
 
+// One row of the freight-calculator item table — a new asset to create.
+type CalcRow = {
+  name: string
+  classification: string
+  dimL: string
+  dimW: string
+  dimH: string
+  manPrice: string
+  manPriceIsForeign: boolean
+  quantity: string
+}
+
+const emptyCalcRow: CalcRow = { name: '', classification: '', dimL: '', dimW: '', dimH: '', manPrice: '', manPriceIsForeign: true, quantity: '1' }
+
 // ── Page ──────────────────────────────────────────────────────
 
 export default function AssetManagementPage() {
@@ -236,6 +252,29 @@ export default function AssetManagementPage() {
   const [colFilters, setColFilters] = useState<ColFilters>({ name: '', classification: '', branch: '', utilized: '' })
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
 
+  // ── Freight calculator state (mirrors Inventory's freight-purchase modal) ──
+  const [acOpen, setAcOpen] = useState(false)
+  const [acDate, setAcDate] = useState('')
+  const [acRemarks, setAcRemarks] = useState('')
+  const [acBranch, setAcBranch] = useState('SANDBOX_EAST')
+  const [acSupplierId, setAcSupplierId] = useState('')
+  const [acSourceAccountId, setAcSourceAccountId] = useState('')
+  const [acHasForeign, setAcHasForeign] = useState(true)
+  const [acCurrency, setAcCurrency] = useState('CNY')
+  const [acExRate, setAcExRate] = useState('')
+  const [acFreight1, setAcFreight1] = useState('')
+  const [acFreight1Foreign, setAcFreight1Foreign] = useState(false)
+  const [acFreight2, setAcFreight2] = useState('')
+  const [acFreight2Foreign, setAcFreight2Foreign] = useState(false)
+  const [acFreight3, setAcFreight3] = useState('')
+  const [acFreight3Foreign, setAcFreight3Foreign] = useState(false)
+  const [acRows, setAcRows] = useState<CalcRow[]>([{ ...emptyCalcRow }])
+  const [acProofUrls, setAcProofUrls] = useState<string[]>([])
+  const [acUploading, setAcUploading] = useState(false)
+  const [acSaving, setAcSaving] = useState(false)
+  const [acError, setAcError] = useState('')
+  const acFileRef = useRef<HTMLInputElement>(null)
+
   // Depreciation defaults (classification → years)
   const [depDefaults, setDepDefaults] = useState<Record<string, number>>({})
   const [showDepSettings, setShowDepSettings] = useState(false)
@@ -263,6 +302,38 @@ export default function AssetManagementPage() {
   const yearsNum = noDep ? 0 : (parseInt(form.yearsDepreciation) || 5)
   const monthlyDepreciation = (!noDep && totalAmount > 0) ? totalAmount / (yearsNum * 12) : 0
   const depreciationEndDate = noDep ? (form.dateBought || '') : (form.dateBought ? computeEndDate(form.dateBought, yearsNum) : '')
+
+  // Freight calculator: total freight in PHP (real-time)
+  const acTotalFreightPHP = useMemo(() => {
+    const exRate = acHasForeign ? (parseFloat(acExRate) || 0) : 1
+    const f1 = (parseFloat(acFreight1) || 0) * (acFreight1Foreign && acHasForeign ? exRate : 1)
+    const f2 = (parseFloat(acFreight2) || 0) * (acFreight2Foreign && acHasForeign ? exRate : 1)
+    const f3 = (parseFloat(acFreight3) || 0) * (acFreight3Foreign && acHasForeign ? exRate : 1)
+    return f1 + f2 + f3
+  }, [acHasForeign, acExRate, acFreight1, acFreight1Foreign, acFreight2, acFreight2Foreign, acFreight3, acFreight3Foreign])
+
+  // Freight calculator: per-row computed values (CBM, freight share, unit cost)
+  const acComputedRows = useMemo(() => {
+    const exRate = acHasForeign ? (parseFloat(acExRate) || 0) : 1
+    const rowsWithCbm = acRows.map(r => {
+      const l = parseFloat(r.dimL) || 0, w = parseFloat(r.dimW) || 0, h = parseFloat(r.dimH) || 0
+      const qty = parseInt(r.quantity) || 0
+      const cbmPerUnit = l > 0 && w > 0 && h > 0 ? (l * w * h) / 1_000_000 : 0
+      return { cbmPerUnit, totalCbm: cbmPerUnit * qty }
+    })
+    const grandTotalCbm = rowsWithCbm.reduce((s, r) => s + r.totalCbm, 0)
+    const validCount = acRows.filter(r => r.name.trim() && (parseInt(r.quantity) || 0) > 0).length
+    return acRows.map((r, i) => {
+      const { cbmPerUnit, totalCbm } = rowsWithCbm[i]
+      const qty = parseInt(r.quantity) || 0
+      const manPrice = parseFloat(r.manPrice) || 0
+      const manPricePHP = r.manPriceIsForeign && acHasForeign ? manPrice * exRate : manPrice
+      const cbmShare = grandTotalCbm > 0 ? totalCbm / grandTotalCbm : (validCount > 0 ? 1 / validCount : 0)
+      const freightPerUnit = qty > 0 ? (cbmShare * acTotalFreightPHP) / qty : 0
+      const unitCost = manPricePHP + freightPerUnit
+      return { cbmPerUnit, totalCbm, freightPerUnit, manPricePHP, unitCost }
+    })
+  }, [acRows, acTotalFreightPHP, acHasForeign, acExRate])
 
   // ── Data fetching ────────────────────────────────────────────
   const fetchAssets = useCallback(async () => {
@@ -525,6 +596,124 @@ export default function AssetManagementPage() {
     }
   }
 
+  // ── Freight calculator handlers ───────────────────────────────
+  function openAssetCalc() {
+    setAcDate(new Date().toISOString().split('T')[0])
+    setAcRemarks('')
+    setAcBranch(isBranchRestricted ? userBranch : 'SANDBOX_EAST')
+    setAcSupplierId(''); setAcSourceAccountId('')
+    setAcHasForeign(true); setAcCurrency('CNY'); setAcExRate('')
+    setAcFreight1(''); setAcFreight1Foreign(false)
+    setAcFreight2(''); setAcFreight2Foreign(false)
+    setAcFreight3(''); setAcFreight3Foreign(false)
+    setAcRows([{ ...emptyCalcRow }])
+    setAcProofUrls([]); setAcError('')
+    setAcOpen(true)
+  }
+
+  async function handleAcUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setAcUploading(true)
+    const urls: string[] = []
+    for (const file of Array.from(files)) {
+      const fd = new FormData()
+      fd.append('file', file)
+      try {
+        const r = await fetch('/api/upload', { method: 'POST', body: fd })
+        const d = await r.json()
+        if (r.ok && d.url) urls.push(d.url)
+        else setAcError(d.error || 'Upload failed')
+      } catch { setAcError('Upload failed') }
+    }
+    setAcProofUrls(prev => [...prev, ...urls])
+    setAcUploading(false)
+    if (acFileRef.current) acFileRef.current.value = ''
+  }
+
+  // Creates one asset per valid row via the normal /api/assets POST, so control
+  // numbers, the acquisition journal entry, and audit logs behave exactly as if
+  // each asset had been added through the Add Asset form.
+  async function handleAcSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setAcError('')
+    const validRows = acRows.map((r, i) => ({ r, i })).filter(({ r }) => r.name.trim() && (parseInt(r.quantity) || 0) > 0)
+    if (validRows.length === 0) { setAcError('Add at least one row with an asset name and quantity'); return }
+    if (!acDate) { setAcError('Purchase date is required'); return }
+    const anyForeign = validRows.some(({ r }) => r.manPriceIsForeign)
+      || ((parseFloat(acFreight1) || 0) > 0 && acFreight1Foreign)
+      || ((parseFloat(acFreight2) || 0) > 0 && acFreight2Foreign)
+      || ((parseFloat(acFreight3) || 0) > 0 && acFreight3Foreign)
+    if (acHasForeign && anyForeign && !((parseFloat(acExRate) || 0) > 0)) {
+      setAcError('Enter the exchange rate (some amounts are in the foreign currency)')
+      return
+    }
+    for (const { r, i } of validRows) {
+      if (!r.classification) { setAcError(`Row ${i + 1} (“${r.name.trim()}”): classification is required`); return }
+      if (!(acComputedRows[i].unitCost > 0)) { setAcError(`Row ${i + 1} (“${r.name.trim()}”): unit cost must be greater than 0`); return }
+    }
+
+    setAcSaving(true)
+    const createdIdx = new Set<number>()
+    try {
+      for (const { r, i } of validRows) {
+        const c = acComputedRows[i]
+        const qty = parseInt(r.quantity) || 1
+        const unitCost = Math.round(c.unitCost * 100) / 100
+        const total = Math.round(unitCost * qty * 100) / 100
+        const dep = isDepreciating(r.classification)
+        const years = dep ? (depDefaults[r.classification] ?? 5) : 0
+        const monthly = dep && total > 0 ? total / (years * 12) : 0
+        const endDate = dep ? computeEndDate(acDate, years) : acDate
+        const fxNote = r.manPriceIsForeign && acHasForeign ? ` · ${acCurrency} @ ${acExRate}` : ''
+        const calcNote = `Freight calc: mfr ₱${c.manPricePHP.toFixed(2)} + freight ₱${c.freightPerUnit.toFixed(2)}/unit (CBM-allocated)${fxNote}`
+        const res = await fetch('/api/assets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            branch: acBranch,
+            name: r.name.trim(),
+            purchasePrice: unitCost,
+            quantity: qty,
+            totalAmount: total,
+            dateBought: acDate,
+            classification: r.classification,
+            yearsDepreciation: years,
+            monthlyDepreciation: monthly,
+            depreciationEndDate: endDate,
+            supplierId: acSupplierId || null,
+            sourceAccountId: acSourceAccountId || null,
+            photoUrl: acProofUrls[0] || null,
+            photoUrls: acProofUrls,
+            isDefective: false,
+            departments: [],
+            utilized: true,
+            remarks: acRemarks.trim() ? `${acRemarks.trim()} · ${calcNote}` : calcNote,
+          }),
+        })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          // Drop the rows that were already created so a retry doesn't duplicate them.
+          const remaining = acRows.filter((_, idx) => !createdIdx.has(idx))
+          setAcRows(remaining.length > 0 ? remaining : [{ ...emptyCalcRow }])
+          setAcError(`${createdIdx.size} asset(s) created; failed on “${r.name.trim()}”: ${d.error || 'server error'}. The created rows were removed — fix and retry the rest.`)
+          fetchAssets()
+          return
+        }
+        createdIdx.add(i)
+      }
+      setAcOpen(false)
+      fetchAssets()
+    } catch {
+      const remaining = acRows.filter((_, idx) => !createdIdx.has(idx))
+      setAcRows(remaining.length > 0 ? remaining : [{ ...emptyCalcRow }])
+      setAcError(`Network error — ${createdIdx.size} asset(s) were created before the failure. The created rows were removed — retry the rest.`)
+      fetchAssets()
+    } finally {
+      setAcSaving(false)
+    }
+  }
+
   // ── Filtered suppliers ────────────────────────────────────────
   const filteredSuppliers = supplierSearch
     ? suppliers.filter((s) => s.supplierName.toLowerCase().includes(supplierSearch.toLowerCase()))
@@ -607,6 +796,16 @@ export default function AssetManagementPage() {
             >
               <Settings2 size={16} />
               Depreciation Settings
+            </button>
+            )}
+            {canWrite && (
+            <button
+              onClick={openAssetCalc}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              title="Record a purchase of several assets — freight is allocated to each asset proportionally by CBM"
+            >
+              <Calculator size={16} />
+              Freight Calculator
             </button>
             )}
             {canWrite && (
@@ -1350,6 +1549,297 @@ export default function AssetManagementPage() {
                 {editingAsset ? 'Save Changes' : 'Add Asset'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Freight Calculator Modal (mirrors Inventory's freight purchase) ── */}
+      {acOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-6 pb-6 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full mx-4" style={{ maxWidth: '1040px' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <div>
+                <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>New Assets — Freight Purchase</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Enter assets, manufacturer prices, freight costs, and the system will compute unit costs proportionally by CBM. One asset record is created per row.</p>
+              </div>
+              <button onClick={() => setAcOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg ml-4">
+                <X size={20} style={{ color: 'var(--mid-gray)' }} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAcSubmit}>
+              <div className="px-6 py-5 space-y-5">
+                {acError && <div className="p-3 rounded-lg text-sm bg-red-50 text-red-600 flex items-center gap-1"><AlertCircle size={14} className="shrink-0" />{acError}</div>}
+
+                {/* Date + Remarks */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Purchase Date</label>
+                    <input type="date" value={acDate} onChange={e => setAcDate(e.target.value)} required
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Remarks</label>
+                    <input type="text" value={acRemarks} onChange={e => setAcRemarks(e.target.value)} placeholder="e.g. PO-2026-001 shipment"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                </div>
+
+                {/* Branch + Supplier + Funding account */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Branch</label>
+                    <select value={acBranch} onChange={e => setAcBranch(e.target.value)} disabled={isBranchRestricted}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-100" style={{ borderColor: 'var(--light-gray)' }}>
+                      {BRANCH_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Supplier</label>
+                    <select value={acSupplierId} onChange={e => setAcSupplierId(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— No Supplier —</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.supplierName}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Purchased from <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(bank)</span></label>
+                    <select value={acSourceAccountId} onChange={e => setAcSourceAccountId(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— Not recorded (no journal entry) —</option>
+                      {banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
+                    </select>
+                    {acSourceAccountId && (
+                      <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Each asset posts DR its classification / CR this bank for its total.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Exchange Rate */}
+                <div className="p-4 rounded-xl border space-y-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--charcoal)' }}>Exchange Rate</span>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                      <input type="checkbox" checked={!acHasForeign} onChange={e => setAcHasForeign(!e.target.checked)} className="rounded" />
+                      No foreign purchase (all PHP)
+                    </label>
+                  </div>
+                  {acHasForeign && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Foreign Currency</label>
+                        <select value={acCurrency} onChange={e => setAcCurrency(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                          {['CNY','USD','EUR','JPY','KRW','SGD','HKD'].map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Exchange Rate (PHP per 1 {acCurrency})</label>
+                        <input type="number" step="0.0001" min="0" value={acExRate} onChange={e => setAcExRate(e.target.value)} placeholder="e.g. 7.80"
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Freight Costs */}
+                <div className="p-4 rounded-xl border space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--charcoal)' }}>Freight Costs</span>
+                  {[
+                    { label: 'Manufacturing → Warehouse', val: acFreight1, setVal: setAcFreight1, isForeign: acFreight1Foreign, setForeign: setAcFreight1Foreign },
+                    { label: 'Foreign → Local', val: acFreight2, setVal: setAcFreight2, isForeign: acFreight2Foreign, setForeign: setAcFreight2Foreign },
+                    { label: 'Warehouse → Office', val: acFreight3, setVal: setAcFreight3, isForeign: acFreight3Foreign, setForeign: setAcFreight3Foreign },
+                  ].map(({ label, val, setVal, isForeign, setForeign }) => (
+                    <div key={label} className="flex items-center gap-3">
+                      <span className="text-xs w-44 shrink-0" style={{ color: 'var(--mid-gray)' }}>{label}</span>
+                      <input type="number" step="0.01" min="0" value={val} onChange={e => setVal(e.target.value)} placeholder="0.00"
+                        className="flex-1 px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      <button type="button" onClick={() => setForeign(!isForeign)}
+                        className="px-3 py-2 rounded-lg border text-xs font-medium transition-colors"
+                        style={isForeign && acHasForeign
+                          ? { background: '#f0fdfa', borderColor: 'var(--teal)', color: 'var(--teal)' }
+                          : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                        {isForeign && acHasForeign ? acCurrency : 'PHP'}
+                      </button>
+                      {isForeign && acHasForeign && val && acExRate && (
+                        <span className="text-xs w-28 text-right shrink-0" style={{ color: 'var(--teal)' }}>
+                          = ₱{((parseFloat(val) || 0) * (parseFloat(acExRate) || 1)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Total Freight (PHP)</span>
+                    <span className="text-sm font-bold" style={{ color: 'var(--teal)' }}>
+                      ₱{acTotalFreightPHP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Asset rows */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--charcoal)' }}>Assets</span>
+                    <button type="button"
+                      onClick={() => setAcRows(prev => [...prev, { ...emptyCalcRow }])}
+                      className="text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1"
+                      style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                      <Plus size={12} /> Add Row
+                    </button>
+                  </div>
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs" style={{ minWidth: '980px' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--off-white)' }}>
+                            <th className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', minWidth: '160px' }}>Asset Name</th>
+                            <th className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', minWidth: '160px' }}>Classification</th>
+                            <th className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '140px' }}>Mfr. Price</th>
+                            <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '64px' }}>Qty</th>
+                            <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '60px' }}>L (cm)</th>
+                            <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '60px' }}>W (cm)</th>
+                            <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '60px' }}>H (cm)</th>
+                            <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '90px' }}>CBM/unit</th>
+                            <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '90px' }}>Total CBM</th>
+                            <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--teal)', width: '100px' }}>Unit Cost (₱)</th>
+                            <th className="px-2 py-2" style={{ width: '32px' }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {acRows.map((row, i) => {
+                            const computed = acComputedRows[i]
+                            return (
+                              <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                {/* Asset name */}
+                                <td className="px-2 py-1.5">
+                                  <input type="text" value={row.name} placeholder="e.g. Treatment Table"
+                                    onChange={e => setAcRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, name: e.target.value }))}
+                                    className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                </td>
+                                {/* Classification */}
+                                <td className="px-2 py-1.5">
+                                  <select value={row.classification}
+                                    onChange={e => setAcRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, classification: e.target.value }))}
+                                    className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                                    <option value="">— Select —</option>
+                                    {CLASSIFICATION_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                  </select>
+                                </td>
+                                {/* Manufacturer price + currency toggle */}
+                                <td className="px-2 py-1.5">
+                                  <div className="flex gap-1">
+                                    <input type="number" step="0.01" min="0" value={row.manPrice}
+                                      onChange={e => setAcRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, manPrice: e.target.value }))}
+                                      placeholder="0.00"
+                                      className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                    {acHasForeign && (
+                                      <button type="button"
+                                        onClick={() => setAcRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, manPriceIsForeign: !r.manPriceIsForeign }))}
+                                        className="px-2 py-1 rounded border text-xs shrink-0 transition-colors"
+                                        style={row.manPriceIsForeign
+                                          ? { background: '#f0fdfa', borderColor: 'var(--teal)', color: 'var(--teal)' }
+                                          : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                                        {row.manPriceIsForeign ? acCurrency : 'PHP'}
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                                {/* Quantity */}
+                                <td className="px-2 py-1.5">
+                                  <input type="number" min="1" value={row.quantity}
+                                    onChange={e => setAcRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, quantity: e.target.value }))}
+                                    className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                                </td>
+                                {/* L / W / H */}
+                                {(['dimL', 'dimW', 'dimH'] as const).map(dim => (
+                                  <td key={dim} className="px-2 py-1.5">
+                                    <input type="number" step="0.01" min="0" value={row[dim]}
+                                      onChange={e => setAcRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, [dim]: e.target.value }))}
+                                      className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                                  </td>
+                                ))}
+                                {/* CBM/unit */}
+                                <td className="px-3 py-1.5 text-right" style={{ color: 'var(--mid-gray)' }}>
+                                  {computed.cbmPerUnit > 0 ? computed.cbmPerUnit.toFixed(6) : '—'}
+                                </td>
+                                {/* Total CBM */}
+                                <td className="px-3 py-1.5 text-right" style={{ color: 'var(--mid-gray)' }}>
+                                  {computed.totalCbm > 0 ? computed.totalCbm.toFixed(6) : '—'}
+                                </td>
+                                {/* Unit Cost */}
+                                <td className="px-3 py-1.5 text-right font-semibold" style={{ color: 'var(--teal)' }}>
+                                  {row.name.trim() && row.quantity ? `₱${computed.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                                </td>
+                                {/* Remove row */}
+                                <td className="px-2 py-1.5 text-center">
+                                  {acRows.length > 1 && (
+                                    <button type="button" onClick={() => setAcRows(prev => prev.filter((_, idx) => idx !== i))}
+                                      className="p-1 rounded hover:bg-red-50">
+                                      <X size={12} className="text-red-400" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>Unit Cost = manufacturer price (PHP) + freight allocated by each row&apos;s share of total CBM ÷ quantity. Depreciation years auto-fill from the classification&apos;s default.</p>
+                </div>
+
+                {/* Proof of Purchase */}
+                <div>
+                  <label className="block text-xs font-medium mb-2" style={{ color: 'var(--charcoal)' }}>
+                    Proof of Purchase <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(PDF, JPG, PNG, Word — attached to each created asset&apos;s gallery)</span>
+                  </label>
+                  <input ref={acFileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden" onChange={handleAcUpload} />
+                  <button type="button" onClick={() => acFileRef.current?.click()} disabled={acUploading}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm disabled:opacity-50"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                    {acUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                    {acUploading ? 'Uploading…' : 'Upload Files'}
+                  </button>
+                  {acProofUrls.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {acProofUrls.map((url, i) => {
+                        const filename = url.split('/').pop() || url
+                        return (
+                          <div key={i} className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ background: 'var(--off-white)' }}>
+                            <FileText size={12} style={{ color: 'var(--mid-gray)' }} />
+                            <span className="flex-1 truncate" style={{ color: 'var(--charcoal)' }}>{filename}</span>
+                            <a href={url} target="_blank" rel="noreferrer"
+                              className="px-2 py-0.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                              View
+                            </a>
+                            <button type="button" onClick={() => setAcProofUrls(prev => prev.filter((_, idx) => idx !== i))}
+                              className="p-0.5 rounded hover:bg-red-50">
+                              <X size={11} className="text-red-400" />
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <button type="button" onClick={() => setAcOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={acSaving || acRows.filter(r => r.name.trim() && (parseInt(r.quantity) || 0) > 0).length === 0}
+                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ background: 'var(--teal)' }}>
+                  {acSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Record Assets'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
