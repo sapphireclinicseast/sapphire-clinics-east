@@ -727,6 +727,17 @@ model Order {
   @@index([createdById])
   @@index([referrerId])
   @@index([queueItemId])
+  // Who the sale was to. Asked on every checkout, not just credit sales, because
+  // an official invoice needs the buyer whatever the payment mode was. A patient
+  // is matched from the CRM; anyone else is typed in, and only an invoice needs
+  // an address or a TIN — so these stay null on an ordinary walk-in sale.
+  buyerIsPatient    Boolean  @default(false)
+  buyerName         String?
+  buyerAddress      String?
+  buyerIsBusiness   Boolean  @default(false)
+  buyerBusinessName String?
+  buyerTin          String?
+
 }
 
 model OrderItem {
@@ -1042,6 +1053,7 @@ model OtherReceivable {
   isBusiness    Boolean  @default(false)
   businessName  String?
   businessTin   String?
+  buyerAddress  String?
   issuedSalesInvoice Boolean @default(false)
   orderId       String?  @unique
   order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
