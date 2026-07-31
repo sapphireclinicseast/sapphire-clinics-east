@@ -12,12 +12,29 @@ export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const users = await prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, createdAt: true },
-    orderBy: { createdAt: 'asc' },
-  })
-
-  return NextResponse.json({ users })
+  try {
+    const users = await prisma.user.findMany({
+      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    return NextResponse.json({ users })
+  } catch (err) {
+    // findMany can throw on rows the client can't deserialize (e.g. a role
+    // value missing from the generated enum, or NULL in a non-nullable
+    // column). Fall back to raw SQL with ::text casts so the list still
+    // loads, and log the underlying cause for diagnosis.
+    console.error('GET /api/users findMany failed, falling back to raw SQL:', err)
+    try {
+      const users = await prisma.$queryRaw`
+        SELECT id, COALESCE(name, '') AS name, email, role::text AS role, "createdAt"
+        FROM "User" ORDER BY "createdAt" ASC`
+      return NextResponse.json({ users })
+    } catch (rawErr) {
+      console.error('GET /api/users raw fallback also failed:', rawErr)
+      const msg = rawErr instanceof Error ? rawErr.message : 'Unknown database error'
+      return NextResponse.json({ error: `Failed to load users: ${msg}` }, { status: 500 })
+    }
+  }
 }
 
 export async function POST(req: NextRequest) {

@@ -1,0 +1,49 @@
+# ── Read-only DB diagnostics ─────────────────────────────────────────
+# Manual dispatch only. Runs a fixed set of READ-ONLY queries against the
+# marketing-hub Postgres on the VPS and prints them to the run log, plus
+# recent app-container error logs. Exists because interactive SSH to the
+# VPS is often unreachable (flaky sshd) while GitHub Actions' SSH works.
+# No inputs, no arbitrary SQL — extend the fixed query list via PR only.
+name: DB Diagnostics (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    name: Read-only diagnostics
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts || true
+
+      - name: Run diagnostics
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -s' << 'REMOTE'
+          set +e
+          PSQL="docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c"
+
+          echo "══════════ User table rows ══════════"
+          $PSQL 'SELECT id, name, email, role::text, "createdAt" FROM "User" ORDER BY "createdAt"'
+
+          echo "══════════ NULL-name users ══════════"
+          $PSQL 'SELECT count(*) AS null_name_users FROM "User" WHERE name IS NULL'
+
+          echo "══════════ Role enum values in DB ══════════"
+          $PSQL 'SELECT unnest(enum_range(NULL::"Role"))::text AS role_value'
+
+          echo "══════════ User table columns ══════════"
+          $PSQL "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'User' ORDER BY ordinal_position"
+
+          echo "══════════ Container status ══════════"
+          docker ps --format '{{.Names}}\t{{.Status}}'
+
+          echo "══════════ Recent app errors (30 min) ══════════"
+          docker logs sapphire_app --since 30m 2>&1 | grep -iB2 -A10 'error\|invalid\|prisma' | tail -80
+          exit 0
+          REMOTE
