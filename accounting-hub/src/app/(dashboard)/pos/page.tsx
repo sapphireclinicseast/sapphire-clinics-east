@@ -6685,7 +6685,6 @@ function ProductsSection({
   const soldToTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const [isBusiness, setIsBusiness] = useState(false)
   const [businessName, setBusinessName] = useState('')
-  const [issuedSalesInvoice, setIssuedSalesInvoice] = useState(false)
   const [businessTin, setBusinessTin] = useState('')
   useEffect(() => {
     if (soldTo.trim().length < 2) { setSoldToResults([]); return }
@@ -6886,7 +6885,7 @@ function ProductsSection({
     if (hasReceivablePayment) {
       if (!soldTo.trim()) { setError('Enter who this is sold to (e.g. SANDBOX CLARK) for the Receivable payment'); return }
       if (isBusiness && !businessName.trim()) { setError('Enter the business name — a company sale is billed to the company'); return }
-      if (isBusiness && issuedSalesInvoice && !businessTin.trim()) { setError('An official sales invoice needs the business TIN'); return }
+      if (isBusiness && prodIssuedInvoice && !businessTin.trim()) { setError('An official sales invoice to a business needs its TIN'); return }
       if (payments.some(p => p.method !== 'RECEIVABLE' && toNum(p.amount) > 0)) {
         setError('Receivable cannot be mixed with other payment methods — record cash portions as a separate order')
         return
@@ -6932,8 +6931,8 @@ function ProductsSection({
         soldTo: hasReceivablePayment ? soldTo.trim() : null,
         isBusiness: hasReceivablePayment && isBusiness,
         businessName: hasReceivablePayment && isBusiness ? businessName.trim() : null,
-        issuedSalesInvoice: hasReceivablePayment && isBusiness && issuedSalesInvoice,
-        businessTin: hasReceivablePayment && isBusiness && issuedSalesInvoice ? businessTin.trim() : null,
+        issuedSalesInvoice: hasReceivablePayment && isBusiness && prodIssuedInvoice,
+        businessTin: hasReceivablePayment && isBusiness && prodIssuedInvoice ? businessTin.trim() : null,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -7343,7 +7342,7 @@ function ProductsSection({
 
               <label className="flex items-center gap-2 text-xs" style={{ color: '#1e40af' }}>
                 <input type="checkbox" checked={isBusiness}
-                  onChange={e => { setIsBusiness(e.target.checked); if (!e.target.checked) { setBusinessName(''); setIssuedSalesInvoice(false); setBusinessTin('') } }} />
+                  onChange={e => { setIsBusiness(e.target.checked); if (!e.target.checked) { setBusinessName(''); setBusinessTin('') } }} />
                 Business
               </label>
 
@@ -7354,17 +7353,6 @@ function ProductsSection({
                   <input value={businessName} onChange={e => setBusinessName(e.target.value)}
                     placeholder="Business name"
                     className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
-                  <label className="flex items-center gap-2 text-xs" style={{ color: '#1e40af' }}>
-                    <input type="checkbox" checked={issuedSalesInvoice}
-                      onChange={e => { setIssuedSalesInvoice(e.target.checked); if (!e.target.checked) setBusinessTin('') }} />
-                    Issued official sales invoice
-                  </label>
-                  {/* Only an official invoice needs the buyer's TIN. */}
-                  {issuedSalesInvoice && (
-                    <input value={businessTin} onChange={e => setBusinessTin(e.target.value)}
-                      placeholder="Business TIN (e.g. 010-817-642-00000)"
-                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
-                  )}
                 </div>
               )}
               <p className="text-[11px]" style={{ color: '#1e40af' }}>
@@ -7468,9 +7456,16 @@ function ProductsSection({
               <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Issued Official Sales Invoice</span>
             </label>
             {prodIssuedInvoice && (
-              <div className="mt-2">
+              <div className="mt-2 space-y-2">
                 <input type="text" value={prodInvoiceNumber} onChange={e => setProdInvoiceNumber(e.target.value.replace(/\D/g, ""))}
                   placeholder="e.g. 0001" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                {/* An official invoice to a company carries the buyer's TIN. Asked
+                    only when the sale is to a business, since a walk-in has none. */}
+                {isBusiness && (
+                  <input value={businessTin} onChange={e => setBusinessTin(e.target.value)}
+                    placeholder="Business TIN (e.g. 010-817-642-00000)"
+                    className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                )}
               </div>
             )}
           </div>
