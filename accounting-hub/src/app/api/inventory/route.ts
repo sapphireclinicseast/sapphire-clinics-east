@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where: { ...where, isActive: true },
-      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, quantity: true }, orderBy: { variantLabel: 'asc' } } },
+      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, quantity: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
@@ -130,6 +130,7 @@ export async function POST(req: Request) {
         fromPettyCash: body.fromPettyCash === true,
         expenseAccountId: expenseAccountId || null,
         issuedOfficialInvoice: body.issuedOfficialInvoice || false,
+        isPreOrder: body.isPreOrder || false,
         dimensionLength: dimensionLength ? parseFloat(dimensionLength) : null,
         dimensionWidth: dimensionWidth ? parseFloat(dimensionWidth) : null,
         dimensionHeight: dimensionHeight ? parseFloat(dimensionHeight) : null,
@@ -163,7 +164,7 @@ export async function PUT(req: Request) {
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
             reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
-            issuedOfficialInvoice, imageUrl, isActive,
+            issuedOfficialInvoice, isPreOrder, imageUrl, isActive,
             dimensionLength, dimensionWidth, dimensionHeight } = await req.json()
 
     if (!id) {
@@ -186,6 +187,7 @@ export async function PUT(req: Request) {
     if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
     if (expenseAccountId !== undefined) data.expenseAccountId = expenseAccountId || null
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
+    if (isPreOrder !== undefined) data.isPreOrder = !!isPreOrder
     if (isActive !== undefined) data.isActive = !!isActive  // disable (retire) / restore
     if (imageUrl !== undefined) data.imageUrl = imageUrl || null
     if (dimensionLength !== undefined) data.dimensionLength = dimensionLength !== '' && dimensionLength !== null ? parseFloat(dimensionLength) : null

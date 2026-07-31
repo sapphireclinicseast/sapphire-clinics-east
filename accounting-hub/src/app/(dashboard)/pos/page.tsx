@@ -233,6 +233,7 @@ interface InventoryProduct {
   rewardPointsPrice?: number | null
   unitCost?: string | number
   quantity?: number
+  isPreOrder?: boolean
   variants?: InventoryVariant[]
   [key: string]: unknown
 }
@@ -6746,10 +6747,13 @@ function ProductsSection({
   }
 
   const handleProductClick = (p: InventoryProduct) => {
-    const activeVariants = (p.variants ?? []).filter(v => v.quantity > 0)
-    if (activeVariants.length > 0) {
+    // Pre-order items are deliberately kept at 0 stock, so their variants stay
+    // selectable — the resulting negative quantity is the backlog, netted off when
+    // the arrival is recorded in Adjustments.
+    const sellableVariants = (p.variants ?? []).filter(v => v.quantity > 0 || p.isPreOrder)
+    if (sellableVariants.length > 0) {
       setVariantPickerProduct(p)
-      setSelectedVariantId(activeVariants[0].id)
+      setSelectedVariantId(sellableVariants[0].id)
     } else {
       addToCart(p)
     }
@@ -7106,11 +7110,18 @@ function ProductsSection({
             <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No products found.</div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4">
-              {filteredProducts.map(p => (
+              {filteredProducts.map(p => {
+                const hasVariants = (p.variants ?? []).length > 0
+                const inStock = hasVariants ? (p.variants ?? []).some(v => v.quantity > 0) : (p.quantity ?? 0) > 0
+                return (
                 <button key={p.id} onClick={() => handleProductClick(p)}
                   className="text-left p-3 rounded-xl border hover:shadow-md transition-shadow"
                   style={{ borderColor: 'var(--light-gray)' }}>
-                  <p className="text-sm font-medium leading-snug" style={{ color: 'var(--charcoal)' }}>{p.name}</p>
+                  <p className="text-sm font-medium leading-snug" style={{ color: 'var(--charcoal)' }}>
+                    {p.name}
+                    {!inStock && p.isPreOrder && <span className="ml-1.5 px-1.5 py-0.5 rounded text-xs font-semibold align-middle" style={{ background: '#dbeafe', color: '#1e40af' }}>Pre-order</span>}
+                    {!inStock && !p.isPreOrder && <span className="ml-1.5 px-1.5 py-0.5 rounded text-xs font-semibold align-middle" style={{ background: '#fee2e2', color: '#b91c1c' }}>Out of stock</span>}
+                  </p>
                   {p.sku && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{p.sku}</p>}
                   {(p.variants ?? []).filter(v => v.quantity > 0).length > 0 && (
                     <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>
@@ -7124,7 +7135,8 @@ function ProductsSection({
                     </p>
                   )}
                 </button>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -7580,9 +7592,12 @@ function ProductsSection({
           {/* Variant grid (scrolls independently so the footer stays reachable) */}
           <div className="px-5 flex-1 overflow-y-auto">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {(variantPickerProduct.variants ?? []).map(v => (
+              {(variantPickerProduct.variants ?? []).map(v => {
+                // Pre-order items stay sellable at 0 stock — the backlog nets against the arrival adjustment.
+                const sellable = v.quantity > 0 || !!variantPickerProduct.isPreOrder
+                return (
                 <label key={v.id}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${selectedVariantId === v.id ? 'border-teal-500 bg-teal-50' : ''} ${v.quantity <= 0 ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${selectedVariantId === v.id ? 'border-teal-500 bg-teal-50' : ''} ${!sellable ? 'opacity-60 cursor-not-allowed' : ''}`}
                   style={{ borderColor: selectedVariantId === v.id ? 'var(--teal)' : 'var(--light-gray)' }}>
                   <input
                     type="radio"
@@ -7590,19 +7605,20 @@ function ProductsSection({
                     value={v.id}
                     checked={selectedVariantId === v.id}
                     onChange={() => setSelectedVariantId(v.id)}
-                    disabled={v.quantity <= 0}
+                    disabled={!sellable}
                     className="accent-teal-600 shrink-0"
                   />
                   <div className="min-w-0">
-                    <p className={`text-sm font-medium truncate ${v.quantity <= 0 ? 'text-gray-400' : ''}`} style={v.quantity > 0 ? { color: 'var(--charcoal)' } : {}} title={`${v.variantType}: ${v.variantLabel}`}>
+                    <p className={`text-sm font-medium truncate ${!sellable ? 'text-gray-400' : ''}`} style={sellable ? { color: 'var(--charcoal)' } : {}} title={`${v.variantType}: ${v.variantLabel}`}>
                       {v.variantType}: {v.variantLabel}
                     </p>
-                    <p className="text-xs" style={{ color: v.quantity > 0 ? 'var(--mid-gray)' : '#ef4444' }}>
-                      {v.quantity > 0 ? `${v.quantity} in stock` : 'Out of stock'}
+                    <p className="text-xs" style={{ color: v.quantity > 0 ? 'var(--mid-gray)' : sellable ? '#1e40af' : '#ef4444' }}>
+                      {v.quantity > 0 ? `${v.quantity} in stock` : sellable ? 'Pre-order' : 'Out of stock'}
                     </p>
                   </div>
                 </label>
-              ))}
+                )
+              })}
             </div>
           </div>
           {/* Footer (fixed, always visible) */}
@@ -7613,7 +7629,7 @@ function ProductsSection({
             </button>
             <button
               onClick={confirmVariantPicker}
-              disabled={!selectedVariantId || (variantPickerProduct.variants ?? []).find(v => v.id === selectedVariantId)?.quantity === 0}
+              disabled={!selectedVariantId || (((variantPickerProduct.variants ?? []).find(v => v.id === selectedVariantId)?.quantity ?? 0) <= 0 && !variantPickerProduct.isPreOrder)}
               className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
               style={{ background: 'var(--teal)' }}>
               Add to Cart
