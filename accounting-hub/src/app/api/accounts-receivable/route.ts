@@ -85,7 +85,11 @@ export async function GET(req: Request) {
           select: { paymentId: true },
         },
       },
-      take: 500,
+      // The unscoped list backs the page grid, where 500 newest is plenty. A
+      // wallet-scoped request backs the Record Payment tag list, which must
+      // reach years back (imported QB orders) — one wallet stays small enough
+      // to return whole.
+      take: walletId ? 5000 : 500,
     })
 
     // ── Compute outstanding balance per wallet from actual unpaid orders ──

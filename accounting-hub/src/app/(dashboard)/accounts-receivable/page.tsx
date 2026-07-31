@@ -390,6 +390,10 @@ export default function AccountsReceivablePage() {
   const [paySalesInvoice, setPaySalesInvoice] = useState('')
   const [payProofUrls, setPayProofUrls] = useState<string[]>([])
   const [paySelectedOrders, setPaySelectedOrders] = useState<string[]>([])
+  // The page's `orders` list is capped to the 500 newest, so old (e.g. imported
+  // QB 2025) orders never reach it. The tag list instead uses a wallet-scoped
+  // fetch, which the API returns uncapped-in-practice.
+  const [payWalletOrders, setPayWalletOrders] = useState<AROrder[]>([])
   const [payError, setPayError] = useState('')
   const [paySaving, setPaySaving] = useState(false)
   const [discountAccounts, setDiscountAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
@@ -452,6 +456,19 @@ export default function AccountsReceivablePage() {
   }, [tab, branch, dateFrom, dateTo, walletFilter, sortField, sortDir])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Wallet-scoped orders for the Record Payment tag list — reaches past the
+  // page list's 500-newest cap so old imported (QB) orders are taggable too.
+  useEffect(() => {
+    setPayWalletOrders([])
+    if (!showPaymentModal || tab === 'GL' || !payWalletId) return
+    const ctl = new AbortController()
+    fetch(`/api/accounts-receivable?type=${tab}&walletId=${payWalletId}`, { signal: ctl.signal })
+      .then(r => r.json())
+      .then(d => setPayWalletOrders(d.orders || []))
+      .catch(() => {})
+    return () => ctl.abort()
+  }, [showPaymentModal, tab, payWalletId])
 
   // Fetch aging dashboard data whenever tab / branch / period changes
   useEffect(() => {
@@ -2090,11 +2107,14 @@ export default function AccountsReceivablePage() {
 
               {/* Tag transactions — HMO only; not needed for GL (payment tracked at wallet level) */}
               {tab !== 'GL' && (payWalletId || payWalletIds.length > 0) && (() => {
-                // When editing, show all orders for this wallet (paid or unpaid); when creating, show only unpaid
+                // When editing, show all orders for this wallet (paid or unpaid); when creating, show only unpaid.
+                // Prefer the wallet-scoped fetch (uncapped, includes old imported orders);
+                // fall back to the page list while it loads.
                 const selectedIds: string[] = payWalletId ? [payWalletId] : []
+                const source = payWalletOrders.length ? payWalletOrders : orders
                 const eligibleOrders = editingPaymentId
-                  ? orders.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
-                  : unpaidOrders.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
+                  ? source.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
+                  : source.filter(o => o.arPaymentItems.length === 0 && o.payments.some(p => selectedIds.includes(p.walletId || '')))
                 return eligibleOrders.length > 0 ? (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Tag Transactions Included</label>
