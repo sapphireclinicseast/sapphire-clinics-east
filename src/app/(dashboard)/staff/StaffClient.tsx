@@ -40,8 +40,8 @@ type SortCol = 'name' | 'department' | 'branch' | 'email' | 'phone' | 'jobTitle'
 type SortDir = 'asc' | 'desc'
 
 function branchFromRole(role: string): string | null {
-  if (role.startsWith('SBEA_')) return 'SBEA'
-  if (role.startsWith('SBGH_')) return 'SBGH'
+  if (role.startsWith('SBEA_') || role.startsWith('AHEA_')) return 'SBEA'
+  if (role.startsWith('SBGH_') || role.startsWith('AHGH_')) return 'SBGH'
   return null
 }
 
@@ -224,7 +224,7 @@ export default function StaffClient({ role }: { role: string }) {
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null)
   // Roles allowed to view the full HR profile (TIN, SSS, banking, etc.).
   // Excludes FRONT_DESK and MARKETING_ADMIN by design.
-  const canViewStaffDetails = ['ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN'].includes(role)
+  const canViewStaffDetails = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN'].includes(role)
 
   // Pagination
   const [page,     setPage]     = useState(1)
@@ -683,7 +683,7 @@ export default function StaffClient({ role }: { role: string }) {
       </div>
 
       {/* Staff Details Modal — surfaces every field synced from HR Hub.
-          Visible ONLY to ADMIN / SBEA_ADMIN / SBGH_ADMIN. Defense-in-depth:
+          Visible ONLY to ADMIN / AHEA_ADMIN / AHGH_ADMIN. Defense-in-depth:
           even if a non-admin somehow set selectedStaff, the modal won't render. */}
       {selectedStaff && canViewStaffDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
