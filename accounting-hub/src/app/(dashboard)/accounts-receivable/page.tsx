@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { useSearchParams } from 'next/navigation'
@@ -22,6 +22,13 @@ interface ARWallet {
   totalGlAmount?: number | string | null
   // Consumption-based outstanding (sum of unpaid orders)
   consumedOutstanding?: number
+  // An agency that bills per session and settles afterwards (no approved SOA to
+  // draw down against) — the Municipality of Cainta works this way, like an HMO.
+  perSession?: boolean
+  // Lifetime settled by this agency (cash + tax withheld), and how long it took.
+  paidTotal?: number
+  lastPaymentDate?: string | null
+  monthsToPay?: number | null
   // Total consumed (paid + unpaid, GL only)
   totalConsumedAmount?: number
   accountId?: string | null
@@ -744,10 +751,16 @@ export default function AccountsReceivablePage() {
 
       {/* ── GL Summary: % consumed, % paid, department pie chart ── */}
       {tab === 'GL' && (() => {
-        const totalApproved = wallets.reduce((s, w) => s + toNum(w.totalGlAmount), 0)
+        // Per-session agencies have no approved amount, so they are left out of the
+        // approved-basis percentages — including them would divide a consumed figure
+        // by a denominator that does not contain it.
+        const approvedWallets = wallets.filter(w => !w.perSession)
+        const perSessionWallets = wallets.filter(w => w.perSession)
+        const perSessionOutstanding = perSessionWallets.reduce((s, w) => s + toNum(w.balance), 0)
+        const totalApproved = approvedWallets.reduce((s, w) => s + toNum(w.totalGlAmount), 0)
         // Use consumedOutstanding (= totalGlAmount − remaining balance) so that
         // zero-balance wallets and partially-consumed wallets are included correctly.
-        const totalConsumed = wallets.reduce((s, w) => s + (w.consumedOutstanding ?? 0), 0)
+        const totalConsumed = approvedWallets.reduce((s, w) => s + (w.consumedOutstanding ?? 0), 0)
         const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
@@ -759,7 +772,7 @@ export default function AccountsReceivablePage() {
         // server-side from the actual DB balance field before the substitution.
         // A wallet is "active" when it still has remaining balance (whether or not any amount
         // has been consumed yet — untouched wallets with full balance are also active).
-        const activeGlCount = wallets.filter(w => {
+        const activeGlCount = approvedWallets.filter(w => {
           const consumed = w.consumedOutstanding ?? 0
           return toNum(w.totalGlAmount) > consumed + 0.005
         }).length
@@ -1292,7 +1305,16 @@ export default function AccountsReceivablePage() {
         </div>
       </div>
 
-      {/* Utilization summary table (replaces cards) */}
+      {/* Consumption — what each agency approved, how much of it has been used, and
+          what they have settled so far. */}
+      <div className="flex items-baseline justify-between mt-4 mb-2">
+        <h3 className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Consumption</h3>
+        {tab === 'GL' && (
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Months to pay counts from the letter being recorded to its latest payment, in 30-day months.
+          </p>
+        )}
+      </div>
       <div id="ar-utilization" className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
         <table className="w-full text-sm">
           <thead>
@@ -1304,18 +1326,32 @@ export default function AccountsReceivablePage() {
                 {tab === 'GL' ? 'Approved SOA' : 'Outstanding'}
               </th>
               {tab === 'GL' && <>
+                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Paid</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Months to pay</th>
                 <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Consumed</th>
                 <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>% Consumed</th>
               </>}
             </tr>
           </thead>
           <tbody>
-            {wallets.map((w, i) => {
+            {/* Approved-SOA agencies first, then the per-session ones under their own
+                heading: they are read differently, so they are not mixed in. */}
+            {[...wallets.filter(w => !w.perSession), ...wallets.filter(w => w.perSession)].map((w, i, arr) => {
               const approved = toNum(w.balance)
               const consumed = typeof w.consumedOutstanding === 'number' ? w.consumedOutstanding : 0
+              const paid = toNum(w.paidTotal)
               const pct = approved > 0 ? (consumed / approved) * 100 : 0
               const isSelected = walletFilter === w.id
+              const startsPerSession = tab === 'GL' && !!w.perSession && !arr[i - 1]?.perSession
               return (
+                <Fragment key={`grp-${w.id}`}>
+                {startsPerSession && (
+                  <tr style={{ background: 'var(--pale-teal, #f0f7f6)' }}>
+                    <td colSpan={6} className="px-3 py-2 text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                      Billed per session, settled afterwards — no approved SOA
+                    </td>
+                  </tr>
+                )}
                 <tr key={w.id}
                   className="cursor-pointer hover:bg-gray-50 transition-colors"
                   style={{ borderTop: i > 0 ? '1px solid var(--light-gray)' : undefined, background: isSelected ? '#f0fdfa' : undefined }}
@@ -1328,21 +1364,43 @@ export default function AccountsReceivablePage() {
                     {formatCurrency(approved)}
                   </td>
                   {tab === 'GL' && <>
+                    <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: paid > 0 ? '#166534' : 'var(--light-gray)' }}>
+                      {paid > 0 ? formatCurrency(paid) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                      {typeof w.monthsToPay === 'number'
+                        ? `${w.monthsToPay.toFixed(1)} mo`
+                        : <span style={{ color: 'var(--light-gray)' }}>unpaid</span>}
+                    </td>
                     <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
                       {consumed > 0 ? formatCurrency(consumed) : <span style={{ color: 'var(--light-gray)' }}>—</span>}
                     </td>
                     <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: pct > 80 ? '#dc2626' : pct > 50 ? '#c44b00' : '#166534' }}>
-                      {consumed > 0 ? `${pct.toFixed(1)}%` : <span style={{ color: 'var(--light-gray)' }}>—</span>}
+                      {w.perSession
+                        ? <span style={{ color: 'var(--mid-gray)' }}>per session</span>
+                        : consumed > 0 ? `${pct.toFixed(1)}%` : <span style={{ color: 'var(--light-gray)' }}>—</span>}
                     </td>
                   </>}
                 </tr>
+                </Fragment>
               )
             })}
           </tbody>
         </table>
       </div>
 
-      {/* Transactions table — hidden on HMO Overview (use Per HMO sub-tab instead) */}
+      {/* Session Tagging — the sessions themselves, and which of them a payment has
+          been applied to. Pick an agency above to see only that patient's sessions. */}
+      {!(tab === 'HMO' && hmoSubTab === 'overview') && (
+        <div className="flex items-baseline justify-between mt-4 mb-2">
+          <h3 className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Session Tagging</h3>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            {walletFilter
+              ? 'Tagging records which sessions a payment covered — it does not change the AR balance.'
+              : 'Choose an agency above to tag that patient\u2019s sessions.'}
+          </p>
+        </div>
+      )}
       {!(tab === 'HMO' && hmoSubTab === 'overview') && <div id="ar-transactions" data-ar-transactions-table className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '400px' }}>
         <table className="w-full text-sm">
           <thead>

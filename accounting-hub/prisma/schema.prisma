@@ -2865,3 +2865,39 @@ model StaffDirectory {
   @@index([branch])
   @@index([resignedAt])
 }
+
+// ── Statutory benefit availments ───────────────────────────────
+// When a staff member claims maternity, sickness or ECC benefits, the company
+// pays her up front and SSS reimburses months later. The money is therefore not
+// an expense but a receivable from the agency, and only the portion the company
+// grants on top of the statutory amount is a real cost.
+//
+// This is a monitoring record, not a second posting path: the cash still moves
+// through the RFP that paid it, and `advanceRfpId` / `reimbursementRfpId` point
+// at those entries. Recording it here as well would double the amounts.
+model BenefitAvailment {
+  id                  String    @id @default(cuid())
+  branch              String
+  employeeId          String?
+  employeeName        String
+  benefitType         String    // MATERNITY | SICKNESS | ECC | OTHER
+  periodFrom          DateTime?
+  periodTo            DateTime?
+  // Advanced on the agency's behalf — the receivable (1165).
+  amountAdvanced      Decimal   @default(0)
+  // Granted by the company on top of the statutory benefit — a real expense (8340).
+  companyShare        Decimal   @default(0)
+  datePaidToEmployee  DateTime?
+  advanceRfpId        String?
+  reimbursedAmount    Decimal   @default(0)
+  reimbursedDate      DateTime?
+  reimbursementRfpId  String?
+  notes               String?
+  createdById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([branch])
+  @@index([employeeName])
+  @@index([reimbursedDate])
+}
