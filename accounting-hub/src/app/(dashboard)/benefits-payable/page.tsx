@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Shield, Loader2, X, Plus, Trash2, BadgeDollarSign, CheckCircle2, Save } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import Availments from './Availments'
 
 const BRANCHES = [
   { value: 'SBEA', label: 'East Branch' },
@@ -37,6 +38,9 @@ const emptyFee = (): Fee => ({ accountTitle: '', description: '', requestor: '',
 export default function BenefitsPayablePage() {
   const [branch, setBranch] = useState('SBEA')
   const [agencyKey, setAgencyKey] = useState<typeof AGENCIES[number]['key']>('SSS')
+  // Availments sit beside the remittance tabs but are the opposite flow: SSS owes
+  // us, rather than us owing SSS, so the view is separate rather than a filter.
+  const [showAvailments, setShowAvailments] = useState(false)
   const agency = AGENCIES.find(a => a.key === agencyKey)!
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -184,10 +188,17 @@ export default function BenefitsPayablePage() {
       {/* Agency subtabs */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
         {AGENCIES.map(a => (
-          <button key={a.key} onClick={() => setAgencyKey(a.key)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
-            style={{ borderColor: agencyKey === a.key ? 'var(--teal)' : 'transparent', color: agencyKey === a.key ? 'var(--teal)' : 'var(--mid-gray)' }}>{a.label}</button>
+          <button key={a.key} onClick={() => { setAgencyKey(a.key); setShowAvailments(false) }} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style={{ borderColor: !showAvailments && agencyKey === a.key ? 'var(--teal)' : 'transparent', color: !showAvailments && agencyKey === a.key ? 'var(--teal)' : 'var(--mid-gray)' }}>{a.label}</button>
         ))}
+        <button onClick={() => setShowAvailments(true)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+          style={{ borderColor: showAvailments ? 'var(--teal)' : 'transparent', color: showAvailments ? 'var(--teal)' : 'var(--mid-gray)' }}>
+          Benefit Availments
+        </button>
       </div>
+
+      {showAvailments && <Availments branch={branch} />}
+      {!showAvailments && (<>
 
       {/* Filters */}
       <div className="flex items-end gap-2 flex-wrap">
@@ -384,6 +395,7 @@ export default function BenefitsPayablePage() {
           </div>
         </div>
       )}
+      </>)}
     </div>
   )
 }
