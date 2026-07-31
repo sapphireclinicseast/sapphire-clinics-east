@@ -402,6 +402,7 @@ interface InventoryItem {
   variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null }[]
   isBundle?: boolean
   issuedOfficialInvoice?: boolean
+  isPreOrder?: boolean
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
   dimensionLength?: number | null
   dimensionWidth?: number | null
@@ -771,6 +772,7 @@ export default function InventoryPage() {
   const [pdfReceivedDate, setPdfReceivedDate] = useState('')
   const [pdfReceivedContact, setPdfReceivedContact] = useState('')
   const [issuedOfficialInvoice, setIssuedOfficialInvoice] = useState(false)
+  const [isPreOrder, setIsPreOrder] = useState(false)
   // Bundle state
   const [isBundle, setIsBundle] = useState(false)
   const [bundleComponents, setBundleComponents] = useState<{ id?: string; componentId: string; quantity: number; name?: string; sku?: string; unitCost?: number }[]>([])
@@ -1158,6 +1160,7 @@ export default function InventoryPage() {
     setFFromPettyCash(false); setPcfSourceEntryId(null)
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(false)
+    setIsPreOrder(false)
     setFDimL(''); setFDimW(''); setFDimH('')
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
@@ -1196,6 +1199,7 @@ export default function InventoryPage() {
     })))
     setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(item.issuedOfficialInvoice || false)
+    setIsPreOrder(item.isPreOrder || false)
     setIsBundle(item.isBundle || false)
     setBundleComponents((item.bundleComponents || []).map((bc: { id: string; quantity: number; component: { id: string; name: string; sku: string; unitCost?: number } }) => ({
       id: bc.id, componentId: bc.component.id, quantity: bc.quantity, name: bc.component.name, sku: bc.component.sku, unitCost: Number(bc.component.unitCost) || 0,
@@ -1332,6 +1336,7 @@ export default function InventoryPage() {
       sourceAccountId: fSourceAccountId || null,
       expenseAccountId: fExpenseAccountId || null,
       issuedOfficialInvoice,
+      isPreOrder,
       fromPettyCash: fFromPettyCash,
     }
     if (editingItem) body.id = editingItem.id
@@ -2061,6 +2066,7 @@ setTimeout(()=>window.print(),500);
                         {item.name}
                         {item.isBundle && <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Bundle</span>}
                         {item.issuedOfficialInvoice && <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Invoice</span>}
+                        {item.isPreOrder && <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#dbeafe', color: '#1e40af' }}>Pre-order</span>}
                         {item.revenueAccount && (
                           <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>Rev: {item.revenueAccount.accountNumber} {item.revenueAccount.accountTitle}</p>
                         )}
@@ -2104,7 +2110,7 @@ setTimeout(()=>window.print(),500);
                           style={{ color: item.reorderLevel && item.quantity <= item.reorderLevel ? '#dc2626' : 'var(--teal)' }}
                           title="Combined stock across branches — click for the base item's movement history"
                         >
-                          {(() => { const bd = branchBreakdown.get(item.sku); return bd ? bd.total : item.quantity })()}
+                          {(() => { const bd = branchBreakdown.get(item.sku); const q = bd ? bd.total : item.quantity; return q < 0 && item.isPreOrder ? `${q} (pre-sold)` : q })()}
                           <History size={11} className="opacity-50" />
                         </button>
                       </td>
@@ -2928,6 +2934,21 @@ setTimeout(()=>window.print(),500);
                         className="rounded" />
                       Issued Official Sales Invoice
                     </label>
+                  </div>
+
+                  {/* For Pre-order — deliberately 0-stock items (e.g. swings) stay buyable on verdanarehab.com */}
+                  <div className="rounded-xl border p-3" style={{ borderColor: isPreOrder ? '#93c5fd' : 'var(--light-gray)', background: isPreOrder ? '#eff6ff' : 'transparent' }}>
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer" style={{ color: isPreOrder ? '#1e40af' : 'var(--charcoal)' }}>
+                      <input type="checkbox" checked={isPreOrder}
+                        onChange={(e) => setIsPreOrder(e.target.checked)}
+                        className="rounded" />
+                      For Pre-order
+                    </label>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      Item is intentionally kept at 0 stock. It stays sellable at 0 — each sale takes the quantity
+                      negative (that’s the pre-order backlog), and the backlog is netted off automatically when you
+                      record the shipment’s arrival under Adjustments.
+                    </p>
                   </div>
 
                   {/* Bundle Components */}

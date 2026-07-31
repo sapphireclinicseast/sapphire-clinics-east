@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { recalcWeightedUnitCost } from '@/lib/fifo'
+import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -193,6 +193,13 @@ export async function POST(req: Request) {
           where: { id: row.itemId },
           data: { quantity: newQty },
         })
+
+        // Pre-order backlog: sales made at 0/negative stock already deducted quantity,
+        // so their units come out of this arrival — consume them from the new lot now
+        // to keep lot remainingQuantity in line with physical stock.
+        if (prevQty < 0) {
+          await consumeFifoLots(tx, row.itemId, Math.min(-prevQty, row.qty))
+        }
 
         // Persist dimensions on the item if provided in the row
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

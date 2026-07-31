@@ -125,6 +125,14 @@ export async function POST(req: Request) {
         await consumeFifoLots(tx, itemId, change)
       }
 
+      // Pre-order backlog: sales made while quantity was 0/negative already deducted
+      // stock (quantity went negative) and expensed COGS at the then-current unitCost.
+      // The units they sold come out of THIS arrival, so consume them from the new lot
+      // immediately — otherwise the lot's remainingQuantity would exceed physical stock.
+      if (type === 'INCREASE' && previousQuantity < 0) {
+        await consumeFifoLots(tx, itemId, Math.min(-previousQuantity, change))
+      }
+
       // Recalculate weighted-average unit cost from remaining lots
       const newUnitCost = await recalcWeightedUnitCost(tx, itemId)
       if (newUnitCost > 0) {
