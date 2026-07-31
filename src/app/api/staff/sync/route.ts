@@ -65,7 +65,7 @@ export async function POST() {
 
   const role = (session.user as { role?: string }).role ?? ''
   console.log('[staff-sync] User role:', role)
-  if (!['ADMIN', 'MARKETING_ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN', 'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK'].includes(role)) {
+  if (!['ADMIN', 'MARKETING_ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK'].includes(role)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
