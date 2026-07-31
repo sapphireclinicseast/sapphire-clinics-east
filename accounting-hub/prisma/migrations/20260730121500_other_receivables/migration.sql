@@ -48,3 +48,11 @@ ALTER TABLE "OtherReceivable" ADD CONSTRAINT "OtherReceivable_orderId_fkey"
   FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "OtherReceivablePayment" ADD CONSTRAINT "OtherReceivablePayment_receivableId_fkey"
   FOREIGN KEY ("receivableId") REFERENCES "OtherReceivable"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- A sale to a company is billed to the company rather than to whoever collected
+-- it, and an official sales invoice carries the buyer's TIN. Walk-in customers
+-- have neither, so these stay null.
+ALTER TABLE "OtherReceivable" ADD COLUMN IF NOT EXISTS "isBusiness" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "OtherReceivable" ADD COLUMN IF NOT EXISTS "businessName" TEXT;
+ALTER TABLE "OtherReceivable" ADD COLUMN IF NOT EXISTS "businessTin" TEXT;
+ALTER TABLE "OtherReceivable" ADD COLUMN IF NOT EXISTS "issuedSalesInvoice" BOOLEAN NOT NULL DEFAULT false;

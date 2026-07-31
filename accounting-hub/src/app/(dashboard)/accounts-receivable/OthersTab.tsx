@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/utils'
 interface ORPayment { id: string; date: string; amount: number; method: string | null; reference: string | null; proofUrl: string | null; notes: string | null }
 interface OtherRec {
   id: string; branch: string; customerName: string; orderId: string | null; orderNumber: number | null
+  isBusiness?: boolean; businessName?: string | null; businessTin?: string | null; issuedSalesInvoice?: boolean
   principal: number; totalDue: number; months: number | null; interestType: string | null; interestValue: number | null
   monthlyAmount: number | null; startDate: string | null; notes: string | null; status: string; createdAt: string
   paid: number; balance: number; payments: ORPayment[]
@@ -105,7 +106,10 @@ export default function OthersTab({ branch, canWrite }: { branch: string; canWri
                   <td className="px-3 py-2.5">
                     <button onClick={() => toggle(r.id)} title="Payments">{expanded.has(r.id) ? <ChevronDown size={14} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={14} style={{ color: 'var(--mid-gray)' }} />}</button>
                   </td>
-                  <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.customerName}{r.notes && <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{r.notes}</div>}</td>
+                  <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.isBusiness && r.businessName ? r.businessName : r.customerName}
+                    {r.isBusiness && r.businessName && <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>c/o {r.customerName}</div>}
+                    {r.isBusiness && r.businessTin && <div className="text-[11px]" style={{ color: 'var(--teal)' }}>TIN {r.businessTin}{r.issuedSalesInvoice ? ' · SI issued' : ''}</div>}
+                    {r.notes && <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{r.notes}</div>}</td>
                   <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABEL[r.branch] || r.branch}</td>
                   <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{r.orderNumber ?? '—'}</td>
                   <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>

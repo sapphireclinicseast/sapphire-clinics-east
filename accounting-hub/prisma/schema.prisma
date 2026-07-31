@@ -1036,6 +1036,13 @@ model OtherReceivable {
   id            String   @id @default(cuid())
   branch        String
   customerName  String
+  // Sales to a company are billed to the company, not the person who collected,
+  // and an official sales invoice needs the buyer's TIN. A walk-in customer has
+  // neither, so both stay null rather than being faked.
+  isBusiness    Boolean  @default(false)
+  businessName  String?
+  businessTin   String?
+  issuedSalesInvoice Boolean @default(false)
   orderId       String?  @unique
   order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   principal     Decimal

@@ -725,7 +725,7 @@ export default function AccountsReceivablePage() {
             style={tab === t
               ? { background: 'var(--teal)', color: 'white' }
               : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-            {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : 'Others'}
+            {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : 'Other Customers'}
           </button>
         ))}
       </div>

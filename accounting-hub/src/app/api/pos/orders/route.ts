@@ -162,6 +162,7 @@ export async function POST(req: Request) {
       platform,
       unpaid,
       soldTo,
+      isBusiness, businessName, businessTin, issuedSalesInvoice,
     } = body
 
     if (!orderType || !branch || !items?.length) {
@@ -191,6 +192,15 @@ export async function POST(req: Request) {
     const hasReceivable = receivableLines.length > 0
     if (hasReceivable && !String(soldTo || '').trim()) {
       return NextResponse.json({ error: 'soldTo is required for Receivable payments' }, { status: 400 })
+    }
+    // A company sale is billed to the company, so the name is what the receivable
+    // is raised against — without it there is nobody to collect from.
+    if (hasReceivable && isBusiness && !String(businessName || '').trim()) {
+      return NextResponse.json({ error: 'businessName is required when the buyer is a business' }, { status: 400 })
+    }
+    // An official sales invoice to a company must carry the buyer's TIN.
+    if (hasReceivable && isBusiness && issuedSalesInvoice && !String(businessTin || '').trim()) {
+      return NextResponse.json({ error: 'businessTin is required for an official sales invoice' }, { status: 400 })
     }
 
     // Unpaid: the session is recorded now (correct transactionDate) but no cash is
@@ -292,6 +302,11 @@ export async function POST(req: Request) {
         data: {
           branch,
           customerName: String(soldTo).trim(),
+          isBusiness: !!isBusiness,
+          businessName: isBusiness ? String(businessName).trim() : null,
+          // The TIN only means anything on an official invoice to a company.
+          businessTin: isBusiness && issuedSalesInvoice ? String(businessTin).trim() : null,
+          issuedSalesInvoice: !!issuedSalesInvoice,
           orderId: order.id,
           principal: recvTotal,
           totalDue: recvTotal,
