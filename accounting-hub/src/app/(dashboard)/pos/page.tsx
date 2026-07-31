@@ -6683,9 +6683,13 @@ function ProductsSection({
   const [soldToResults, setSoldToResults] = useState<{ id: string; name: string }[]>([])
   const [showSoldToDrop, setShowSoldToDrop] = useState(false)
   const soldToTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  // Who the sale is to. Asked on every checkout, not just credit sales, because an
+  // official invoice needs the buyer whatever the payment mode was.
+  const [buyerIsPatient, setBuyerIsPatient] = useState(false)
   const [isBusiness, setIsBusiness] = useState(false)
   const [businessName, setBusinessName] = useState('')
   const [businessTin, setBusinessTin] = useState('')
+  const [buyerAddress, setBuyerAddress] = useState('')
   useEffect(() => {
     if (soldTo.trim().length < 2) { setSoldToResults([]); return }
     clearTimeout(soldToTimer.current)
@@ -6886,6 +6890,7 @@ function ProductsSection({
       if (!soldTo.trim()) { setError('Enter who this is sold to (e.g. SANDBOX CLARK) for the Receivable payment'); return }
       if (isBusiness && !businessName.trim()) { setError('Enter the business name — a company sale is billed to the company'); return }
       if (isBusiness && prodIssuedInvoice && !businessTin.trim()) { setError('An official sales invoice to a business needs its TIN'); return }
+      if (isBusiness && prodIssuedInvoice && !buyerAddress.trim()) { setError('An official sales invoice to a business needs the business address'); return }
       if (payments.some(p => p.method !== 'RECEIVABLE' && toNum(p.amount) > 0)) {
         setError('Receivable cannot be mixed with other payment methods — record cash portions as a separate order')
         return
@@ -6933,6 +6938,13 @@ function ProductsSection({
         businessName: hasReceivablePayment && isBusiness ? businessName.trim() : null,
         issuedSalesInvoice: hasReceivablePayment && isBusiness && prodIssuedInvoice,
         businessTin: hasReceivablePayment && isBusiness && prodIssuedInvoice ? businessTin.trim() : null,
+        // Buyer details ride with every order, not just credit sales.
+        buyerIsPatient,
+        buyerName: soldTo.trim() || null,
+        buyerIsBusiness: isBusiness,
+        buyerBusinessName: isBusiness ? businessName.trim() || null : null,
+        buyerTin: isBusiness && prodIssuedInvoice ? businessTin.trim() || null : null,
+        buyerAddress: prodIssuedInvoice && !buyerIsPatient ? buyerAddress.trim() || null : null,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -7317,50 +7329,65 @@ function ProductsSection({
             </button>
           </div>
 
-          {/* Receivable sale: who is this sold to? Creates an entry under
-              Accounts Receivable → Others; no cash is recorded now. */}
-          {hasReceivablePayment && (
-            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
-              <h4 className="text-xs font-semibold" style={{ color: '#1e40af' }}>Receivable — Sold to</h4>
-              <div className="relative">
-                <input value={soldTo}
-                  onChange={e => { setSoldTo(e.target.value); setShowSoldToDrop(true) }}
-                  onFocus={() => setShowSoldToDrop(true)}
-                  placeholder="Name — searches the patient CRM, or type a new one"
-                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
-                {showSoldToDrop && soldToResults.length > 0 && (
-                  <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg max-h-52 overflow-y-auto"
-                    style={{ borderColor: 'var(--light-gray)' }}>
-                    {soldToResults.map(pt => (
-                      <button key={pt.id} type="button"
-                        onClick={() => { setSoldTo(pt.name); setShowSoldToDrop(false) }}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50">{pt.name}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
+          {/* Who is buying. Asked on every checkout, not only credit sales: an
+              official sales invoice needs the buyer whatever the payment mode was.
+              A patient is matched from the CRM; anyone else is typed in. */}
+          <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+            <h4 className="text-xs font-semibold" style={{ color: '#1e40af' }}>Buyer</h4>
 
-              <label className="flex items-center gap-2 text-xs" style={{ color: '#1e40af' }}>
-                <input type="checkbox" checked={isBusiness}
-                  onChange={e => { setIsBusiness(e.target.checked); if (!e.target.checked) { setBusinessName(''); setBusinessTin('') } }} />
-                Business
-              </label>
+            <label className="flex items-center gap-2 text-xs" style={{ color: '#1e40af' }}>
+              <input type="checkbox" checked={buyerIsPatient}
+                onChange={e => {
+                  setBuyerIsPatient(e.target.checked)
+                  setSoldTo('')
+                  // A patient cannot also be a company account, so the business
+                  // question disappears rather than sitting there contradicting it.
+                  if (e.target.checked) { setIsBusiness(false); setBusinessName(''); setBusinessTin('') }
+                }} />
+              Patient in clinic
+            </label>
 
-              {/* A company sale is billed to the company, so the invoice and the
-                  receivable are raised against the business, not the collector. */}
-              {isBusiness && (
-                <div className="space-y-2 pl-1">
+            <div className="relative">
+              <input value={soldTo}
+                onChange={e => { setSoldTo(e.target.value); setShowSoldToDrop(true) }}
+                onFocus={() => setShowSoldToDrop(true)}
+                placeholder={buyerIsPatient ? 'Search the patient CRM…' : 'Name of buyer (optional)'}
+                className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
+              {buyerIsPatient && showSoldToDrop && soldToResults.length > 0 && (
+                <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg max-h-52 overflow-y-auto"
+                  style={{ borderColor: 'var(--light-gray)' }}>
+                  {soldToResults.map(pt => (
+                    <button key={pt.id} type="button"
+                      onClick={() => { setSoldTo(pt.name); setShowSoldToDrop(false) }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50">{pt.name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Only someone who is not a patient can be buying for a company. */}
+            {!buyerIsPatient && (
+              <>
+                <label className="flex items-center gap-2 text-xs" style={{ color: '#1e40af' }}>
+                  <input type="checkbox" checked={isBusiness}
+                    onChange={e => { setIsBusiness(e.target.checked); if (!e.target.checked) { setBusinessName(''); setBusinessTin('') } }} />
+                  Business
+                </label>
+                {isBusiness && (
                   <input value={businessName} onChange={e => setBusinessName(e.target.value)}
                     placeholder="Business name"
                     className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
-                </div>
-              )}
+                )}
+              </>
+            )}
+
+            {hasReceivablePayment && (
               <p className="text-[11px]" style={{ color: '#1e40af' }}>
                 No cash is collected now. The order is saved as Unpaid and a receivable is created under
                 {' '}<strong>Accounts Receivable → Other Customers</strong>, where you can set a staggered payment plan and record collections.
               </p>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Reward Points Wallet Selection */}
           {hasRewardPointsPayment && (
@@ -7457,14 +7484,32 @@ function ProductsSection({
             </label>
             {prodIssuedInvoice && (
               <div className="mt-2 space-y-2">
+                <label className="block text-[11px] font-medium" style={{ color: 'var(--mid-gray)' }}>Sales Invoice Number</label>
                 <input type="text" value={prodInvoiceNumber} onChange={e => setProdInvoiceNumber(e.target.value.replace(/\D/g, ""))}
                   placeholder="e.g. 0001" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                {/* An official invoice to a company carries the buyer's TIN. Asked
-                    only when the sale is to a business, since a walk-in has none. */}
+
+                {/* A company invoice carries the buyer's TIN and address. An
+                    outside individual needs an address only. A patient needs
+                    neither — the clinic already holds their record. */}
                 {isBusiness && (
-                  <input value={businessTin} onChange={e => setBusinessTin(e.target.value)}
-                    placeholder="Business TIN (e.g. 010-817-642-00000)"
-                    className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  <>
+                    <label className="block text-[11px] font-medium" style={{ color: 'var(--mid-gray)' }}>Business TIN Number</label>
+                    <input value={businessTin} onChange={e => setBusinessTin(e.target.value)}
+                      placeholder="e.g. 010-817-642-00000"
+                      className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    <label className="block text-[11px] font-medium" style={{ color: 'var(--mid-gray)' }}>Business Address</label>
+                    <input value={buyerAddress} onChange={e => setBuyerAddress(e.target.value)}
+                      placeholder="Registered business address"
+                      className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </>
+                )}
+                {!isBusiness && !buyerIsPatient && (
+                  <>
+                    <label className="block text-[11px] font-medium" style={{ color: 'var(--mid-gray)' }}>Address</label>
+                    <input value={buyerAddress} onChange={e => setBuyerAddress(e.target.value)}
+                      placeholder="Buyer's address"
+                      className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </>
                 )}
               </div>
             )}

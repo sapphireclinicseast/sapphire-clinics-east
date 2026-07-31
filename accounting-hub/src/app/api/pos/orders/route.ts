@@ -163,6 +163,7 @@ export async function POST(req: Request) {
       unpaid,
       soldTo,
       isBusiness, businessName, businessTin, issuedSalesInvoice,
+      buyerIsPatient, buyerName, buyerIsBusiness, buyerBusinessName, buyerTin, buyerAddress,
     } = body
 
     if (!orderType || !branch || !items?.length) {
@@ -218,6 +219,12 @@ export async function POST(req: Request) {
 
     const order = await prisma.order.create({
       data: {
+        buyerIsPatient: !!buyerIsPatient,
+        buyerName: buyerName ? String(buyerName).trim() : null,
+        buyerIsBusiness: !!buyerIsBusiness,
+        buyerBusinessName: buyerBusinessName ? String(buyerBusinessName).trim() : null,
+        buyerTin: buyerTin ? String(buyerTin).trim() : null,
+        buyerAddress: buyerAddress ? String(buyerAddress).trim() : null,
         orderType,
         branch,
         patientId: patientId || null,
@@ -306,6 +313,7 @@ export async function POST(req: Request) {
           businessName: isBusiness ? String(businessName).trim() : null,
           // The TIN only means anything on an official invoice to a company.
           businessTin: isBusiness && issuedSalesInvoice ? String(businessTin).trim() : null,
+          buyerAddress: buyerAddress ? String(buyerAddress).trim() : null,
           issuedSalesInvoice: !!issuedSalesInvoice,
           orderId: order.id,
           principal: recvTotal,
