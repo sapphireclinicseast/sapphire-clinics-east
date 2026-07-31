@@ -161,6 +161,8 @@ export async function POST(req: Request) {
       referenceNumber,
       platform,
       unpaid,
+      soldTo,
+      isBusiness, businessName, businessTin, issuedSalesInvoice,
     } = body
 
     if (!orderType || !branch || !items?.length) {
@@ -183,9 +185,27 @@ export async function POST(req: Request) {
 
     const netAmount = subtotal - Number(discountAmount) - totalRefund
 
+    // Receivable sale (charge to an outside customer, e.g. Sandbox Clark): no cash
+    // now — the order is saved Unpaid and an AR → Others receivable is created.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const receivableLines = (payments || []).filter((p: any) => p.method === 'RECEIVABLE')
+    const hasReceivable = receivableLines.length > 0
+    if (hasReceivable && !String(soldTo || '').trim()) {
+      return NextResponse.json({ error: 'soldTo is required for Receivable payments' }, { status: 400 })
+    }
+    // A company sale is billed to the company, so the name is what the receivable
+    // is raised against — without it there is nobody to collect from.
+    if (hasReceivable && isBusiness && !String(businessName || '').trim()) {
+      return NextResponse.json({ error: 'businessName is required when the buyer is a business' }, { status: 400 })
+    }
+    // An official sales invoice to a company must carry the buyer's TIN.
+    if (hasReceivable && isBusiness && issuedSalesInvoice && !String(businessTin || '').trim()) {
+      return NextResponse.json({ error: 'businessTin is required for an official sales invoice' }, { status: 400 })
+    }
+
     // Unpaid: the session is recorded now (correct transactionDate) but no cash is
     // collected yet — payment (and its collection date) come later via recordPayment.
-    const isUnpaid = !!unpaid
+    const isUnpaid = !!unpaid || hasReceivable
     // Payments required only when there's something to pay (e.g., 100% discount → net 0
     // is allowed with no payments) and the order isn't explicitly saved as Unpaid.
     if (!isUnpaid && netAmount > 0 && !payments?.length) {
@@ -273,6 +293,28 @@ export async function POST(req: Request) {
         referrer: true,
       },
     })
+
+    // Receivable sale → create the AR → Others entry the collections live on.
+    if (hasReceivable) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const recvTotal = receivableLines.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) || netAmount
+      await prisma.otherReceivable.create({
+        data: {
+          branch,
+          customerName: String(soldTo).trim(),
+          isBusiness: !!isBusiness,
+          businessName: isBusiness ? String(businessName).trim() : null,
+          // The TIN only means anything on an official invoice to a company.
+          businessTin: isBusiness && issuedSalesInvoice ? String(businessTin).trim() : null,
+          issuedSalesInvoice: !!issuedSalesInvoice,
+          orderId: order.id,
+          principal: recvTotal,
+          totalDue: recvTotal,
+          notes: `POS order #${order.orderNumber}`,
+          createdById: session.user.id ?? null,
+        },
+      })
+    }
 
     // Mirror the order's referrer into ReferredPatient so the Referral section
     // (Referred Patients tab + Dashboard) reflects front-desk entries.

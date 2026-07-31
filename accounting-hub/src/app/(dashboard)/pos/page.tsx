@@ -336,6 +336,9 @@ const PAYMENT_METHODS_PRODUCT = [
   { value: 'LAZADA', label: 'Lazada' },
   { value: 'TIKTOK', label: 'TikTok Shop' },
   { value: 'REWARD_POINTS', label: 'Reward Points' },
+  // Credit/bulk sale to an outside customer (e.g. Sandbox Clark): no cash now —
+  // creates an entry under Accounts Receivable → Others, collected there later.
+  { value: 'RECEIVABLE', label: 'Receivable (charge to customer)' },
 ]
 
 const ORDER_STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -6672,6 +6675,30 @@ function ProductsSection({
   // Check if any payment is reward points
   const hasRewardPointsPayment = payments.some(p => p.method === 'REWARD_POINTS')
 
+  // Receivable sale (charge to an outside customer, e.g. Sandbox Clark)
+  const hasReceivablePayment = payments.some(p => p.method === 'RECEIVABLE')
+  const [soldTo, setSoldTo] = useState('')
+  // The buyer is looked up in the CRM so a receivable ties to a real record, but
+  // a company that has never been a patient can still be typed in free-hand.
+  const [soldToResults, setSoldToResults] = useState<{ id: string; name: string }[]>([])
+  const [showSoldToDrop, setShowSoldToDrop] = useState(false)
+  const soldToTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [isBusiness, setIsBusiness] = useState(false)
+  const [businessName, setBusinessName] = useState('')
+  const [issuedSalesInvoice, setIssuedSalesInvoice] = useState(false)
+  const [businessTin, setBusinessTin] = useState('')
+  useEffect(() => {
+    if (soldTo.trim().length < 2) { setSoldToResults([]); return }
+    clearTimeout(soldToTimer.current)
+    soldToTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(soldTo)}`)
+        const d = await r.json()
+        setSoldToResults(Array.isArray(d) ? d.slice(0, 8) : [])
+      } catch { setSoldToResults([]) }
+    }, 300)
+  }, [soldTo])
+
   useEffect(() => {
     fetch(`/api/pos/payment-modes?branch=${prodBranch}`).then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
   }, [prodBranch])
@@ -6856,6 +6883,15 @@ function ProductsSection({
     }
     const allFreeSamples = cart.every(c => c.isFreeSample)
     if (!allFreeSamples && !hasRewardPointsPayment && productPaymentShort) { setError('Payments do not cover the net amount'); return }
+    if (hasReceivablePayment) {
+      if (!soldTo.trim()) { setError('Enter who this is sold to (e.g. SANDBOX CLARK) for the Receivable payment'); return }
+      if (isBusiness && !businessName.trim()) { setError('Enter the business name — a company sale is billed to the company'); return }
+      if (isBusiness && issuedSalesInvoice && !businessTin.trim()) { setError('An official sales invoice needs the business TIN'); return }
+      if (payments.some(p => p.method !== 'RECEIVABLE' && toNum(p.amount) > 0)) {
+        setError('Receivable cannot be mixed with other payment methods — record cash portions as a separate order')
+        return
+      }
+    }
     // Re-entrancy guard — block duplicate submissions while one is in flight.
     if (submittingRef.current) return
     submittingRef.current = true
@@ -6893,6 +6929,11 @@ function ProductsSection({
         salesInvoiceNumber: prodIssuedInvoice ? normalizeSI(prodInvoiceNumber) : null,
         referenceNumber: prodReferenceNumber.trim() || null,
         notes: prodNotes.trim() || null,
+        soldTo: hasReceivablePayment ? soldTo.trim() : null,
+        isBusiness: hasReceivablePayment && isBusiness,
+        businessName: hasReceivablePayment && isBusiness ? businessName.trim() : null,
+        issuedSalesInvoice: hasReceivablePayment && isBusiness && issuedSalesInvoice,
+        businessTin: hasReceivablePayment && isBusiness && issuedSalesInvoice ? businessTin.trim() : null,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -6922,6 +6963,7 @@ function ProductsSection({
       setAppliedDiscounts([])
       setRpSelectedWallet(null)
       setRpWalletSearch('')
+      setSoldTo('')
       setError('')
       alert(`Order ${data.orderNumber} created successfully!`)
     } catch {
@@ -7248,6 +7290,7 @@ function ProductsSection({
                     <>
                       {configuredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                       <option value="REWARD_POINTS">Reward Points</option>
+                      <option value="RECEIVABLE">Receivable (charge to customer)</option>
                     </>
                   ) : (
                     PAYMENT_METHODS_PRODUCT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)
@@ -7274,6 +7317,62 @@ function ProductsSection({
               + Add Payment
             </button>
           </div>
+
+          {/* Receivable sale: who is this sold to? Creates an entry under
+              Accounts Receivable → Others; no cash is recorded now. */}
+          {hasReceivablePayment && (
+            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+              <h4 className="text-xs font-semibold" style={{ color: '#1e40af' }}>Receivable — Sold to</h4>
+              <div className="relative">
+                <input value={soldTo}
+                  onChange={e => { setSoldTo(e.target.value); setShowSoldToDrop(true) }}
+                  onFocus={() => setShowSoldToDrop(true)}
+                  placeholder="Name — searches the patient CRM, or type a new one"
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
+                {showSoldToDrop && soldToResults.length > 0 && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg max-h-52 overflow-y-auto"
+                    style={{ borderColor: 'var(--light-gray)' }}>
+                    {soldToResults.map(pt => (
+                      <button key={pt.id} type="button"
+                        onClick={() => { setSoldTo(pt.name); setShowSoldToDrop(false) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50">{pt.name}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <label className="flex items-center gap-2 text-xs" style={{ color: '#1e40af' }}>
+                <input type="checkbox" checked={isBusiness}
+                  onChange={e => { setIsBusiness(e.target.checked); if (!e.target.checked) { setBusinessName(''); setIssuedSalesInvoice(false); setBusinessTin('') } }} />
+                Business
+              </label>
+
+              {/* A company sale is billed to the company, so the invoice and the
+                  receivable are raised against the business, not the collector. */}
+              {isBusiness && (
+                <div className="space-y-2 pl-1">
+                  <input value={businessName} onChange={e => setBusinessName(e.target.value)}
+                    placeholder="Business name"
+                    className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
+                  <label className="flex items-center gap-2 text-xs" style={{ color: '#1e40af' }}>
+                    <input type="checkbox" checked={issuedSalesInvoice}
+                      onChange={e => { setIssuedSalesInvoice(e.target.checked); if (!e.target.checked) setBusinessTin('') }} />
+                    Issued official sales invoice
+                  </label>
+                  {/* Only an official invoice needs the buyer's TIN. */}
+                  {issuedSalesInvoice && (
+                    <input value={businessTin} onChange={e => setBusinessTin(e.target.value)}
+                      placeholder="Business TIN (e.g. 010-817-642-00000)"
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
+                  )}
+                </div>
+              )}
+              <p className="text-[11px]" style={{ color: '#1e40af' }}>
+                No cash is collected now. The order is saved as Unpaid and a receivable is created under
+                {' '}<strong>Accounts Receivable → Other Customers</strong>, where you can set a staggered payment plan and record collections.
+              </p>
+            </div>
+          )}
 
           {/* Reward Points Wallet Selection */}
           {hasRewardPointsPayment && (
