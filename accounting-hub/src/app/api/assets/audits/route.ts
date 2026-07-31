@@ -5,9 +5,13 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 // Assets in scope for an audit: branch match (or ALL) + department intersection
-// (or all departments when none are selected).
+// (or all departments when none are selected) — and auditable, because a
+// downpayment or part-payment has no object to inspect and would sit in every
+// count as a permanent unresolved line.
 async function scopedAssets(branch: string, departments: string[]) {
-  const where = branch && branch !== 'ALL' ? { branch: branch as never } : {}
+  const where = branch && branch !== 'ALL'
+    ? { branch: branch as never, auditable: true }
+    : { auditable: true }
   const assets = await prisma.asset.findMany({ where, orderBy: { controlNumber: 'asc' } })
   if (!departments.length) return assets
   const sel = new Set(departments)
