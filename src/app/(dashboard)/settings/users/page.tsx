@@ -38,15 +38,23 @@ export default function UsersPage() {
   const [editForm, setEditForm] = useState({ name: '', email: '', role: '', password: '' })
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
+  // Server/network failure loading the list — distinct from "0 users exist".
+  // Without this, a transient DB outage (e.g. postgres restarting mid-deploy)
+  // rendered "No users found." and looked like the team members were deleted.
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => { fetchUsers() }, [])
 
   async function fetchUsers() {
     setLoading(true)
+    setLoadError('')
     try {
       const res = await fetch('/api/users')
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Server error (HTTP ${res.status})`)
       setUsers(data.users || [])
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Could not load users')
     } finally {
       setLoading(false)
     }
@@ -233,6 +241,17 @@ export default function UsersPage() {
         {/* Users list */}
         {loading ? (
           <div className="text-sm text-center py-10" style={{ color: 'var(--mid-gray)' }}>Loading…</div>
+        ) : loadError ? (
+          <div className="text-sm text-center py-10">
+            <p className="mb-3" style={{ color: '#DC2626' }}>Could not load team members: {loadError}</p>
+            <p className="mb-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Your accounts are safe — this is a connection problem, not deleted data.
+            </p>
+            <button onClick={fetchUsers} className="px-4 py-2 rounded-lg text-sm font-medium"
+              style={{ background: 'var(--teal)', color: '#fff' }}>
+              Retry
+            </button>
+          </div>
         ) : users.length === 0 ? (
           <div className="text-sm text-center py-10" style={{ color: 'var(--mid-gray)' }}>No users found.</div>
         ) : (

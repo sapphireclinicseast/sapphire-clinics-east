@@ -511,9 +511,14 @@ jobs:
           # see "Building teletherapy Next.js app". A second in-place build here
           # only risked corrupting the live .next, so it was removed.)
 
-          echo "→ Updating docker-compose and restarting postgres with port exposed..."
+          echo "→ Updating docker-compose and ensuring postgres is up..."
           cp /var/www/sapphireclinicseast.org/docker/docker-compose.yml /opt/sapphire/docker/docker-compose.yml 2>/dev/null || true
-          cd /opt/sapphire/docker && docker compose --env-file .env.production up -d --force-recreate postgres 2>&1 | tail -3 || true
+          # Plain `up -d` (no --force-recreate): compose only recreates postgres
+          # when its config actually changed. Force-recreating on EVERY deploy
+          # restarted the DB mid-deploy while the app was already serving,
+          # causing a window of P1001 "Can't reach database server" errors —
+          # pages like Settings → Team Members rendered as if all data was gone.
+          cd /opt/sapphire/docker && docker compose --env-file .env.production up -d postgres 2>&1 | tail -3 || true
           sleep 5
           echo "→ Verifying postgres port..."
           pg_isready -h localhost -p 5432 2>&1 || echo "⚠ pg_isready not available, checking with docker..."
