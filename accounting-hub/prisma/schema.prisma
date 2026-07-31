@@ -1836,6 +1836,10 @@ model Asset {
   photoUrl            String?   // main photo (shown in the list)
   photoUrls           Json?     // all photos (gallery)
   isDefective         Boolean   @default(false)
+  // A downpayment or part-payment is not a thing anyone can stand in front of and
+  // check, so it is carried on the books but kept out of the audit. Only auditable
+  // assets can be counted.
+  auditable           Boolean   @default(true)
   departments         Json      @default("[]")  // string[] of dept names
   utilized            Boolean   @default(true)
   controlNumber       String?

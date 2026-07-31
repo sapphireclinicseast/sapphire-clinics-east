@@ -55,6 +55,7 @@ interface Asset {
   photoUrl: string | null
   photoUrls: string[] | null
   isDefective: boolean
+  auditable?: boolean
   departments: string[]
   utilized: boolean
   controlNumber: string | null
@@ -162,6 +163,7 @@ function emptyForm(branch: string) {
     photoUrl: '',
     photoUrls: [] as string[],
     isDefective: false,
+    auditable: true,
     departments: [] as string[],
     utilized: true,
     controlNumber: '',
@@ -284,7 +286,7 @@ export default function AssetManagementPage() {
   // Lightbox + photo gallery
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [galleryAsset, setGalleryAsset] = useState<Asset | null>(null)
-  const [tab, setTab] = useState<'assets' | 'audit' | 'flowchart'>('assets')
+  const [tab, setTab] = useState<'assets' | 'auditable' | 'audit' | 'flowchart'>('assets')
   const photosOf = (a: Asset): string[] => {
     const arr = Array.isArray(a.photoUrls) ? a.photoUrls : []
     if (arr.length) return arr
@@ -417,6 +419,7 @@ export default function AssetManagementPage() {
       photoUrl: asset.photoUrl ?? '',
       photoUrls: Array.isArray(asset.photoUrls) ? asset.photoUrls : (asset.photoUrl ? [asset.photoUrl] : []),
       isDefective: !!asset.isDefective,
+      auditable: asset.auditable !== false,
       departments: Array.isArray(asset.departments) ? (asset.departments as string[]) : [],
       utilized: asset.utilized,
       controlNumber: asset.controlNumber ?? '',
@@ -550,6 +553,7 @@ export default function AssetManagementPage() {
         photoUrl: form.photoUrls[0] || form.photoUrl || null,
         photoUrls: form.photoUrls,
         isDefective: form.isDefective,
+        auditable: form.auditable !== false,
         departments: form.departments,
         utilized: form.utilized,
         accountableName: form.accountableName.trim() || null,
@@ -686,6 +690,7 @@ export default function AssetManagementPage() {
             photoUrl: acProofUrls[0] || null,
             photoUrls: acProofUrls,
             isDefective: false,
+            auditable: true,
             departments: [],
             utilized: true,
             remarks: acRemarks.trim() ? `${acRemarks.trim()} · ${calcNote}` : calcNote,
@@ -728,6 +733,9 @@ export default function AssetManagementPage() {
 
   const displayedAssets = assets
     .filter((a) => {
+      // The Auditable Assets view is the register minus what cannot be counted —
+      // downpayments and part-payments, which are balances rather than objects.
+      if (tab === 'auditable' && a.auditable === false) return false
       const q = search.toLowerCase()
       if (q && ![a.name, a.classification, classificationLabel(a.classification), branchLabel(a.branch), a.controlNumber ?? '', a.remarks ?? ''].some((v) => v.toLowerCase().includes(q))) return false
       if (colFilters.name && !a.name.toLowerCase().includes(colFilters.name.toLowerCase())) return false
@@ -773,7 +781,7 @@ export default function AssetManagementPage() {
           <Building2 size={24} className="text-teal-600" />
           <h1 className="text-2xl font-semibold text-gray-900">Asset Management</h1>
         </div>
-        {tab === 'assets' && (
+        {(tab === 'assets' || tab === 'auditable') && (
           <div className="flex items-center gap-2">
             <button
               onClick={() => exportAssets('xlsx')}
@@ -824,7 +832,7 @@ export default function AssetManagementPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['assets', 'Assets'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
+        {([['assets', 'Assets'], ['auditable', 'Auditable Assets'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
             style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
@@ -842,7 +850,7 @@ export default function AssetManagementPage() {
         </div>
       )}
 
-      {tab === 'assets' && (<>
+      {(tab === 'assets' || tab === 'auditable') && (<>
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Global search */}
@@ -1448,6 +1456,14 @@ export default function AssetManagementPage() {
                 <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
                   <input type="checkbox" checked={form.isDefective} onChange={(e) => setForm(f => ({ ...f, isDefective: e.target.checked }))} />
                   Mark as defective
+                </label>
+                {/* A downpayment or part-payment is a balance, not an object anyone
+                    can stand in front of, so it is carried here but left out of the
+                    count — otherwise every audit ends with it unresolved. */}
+                <label className="flex items-center gap-2 text-sm mt-2">
+                  <input type="checkbox" checked={form.auditable !== false}
+                    onChange={(e) => setForm(f => ({ ...f, auditable: e.target.checked }))} />
+                  Auditable — there is a physical item to inspect
                 </label>
               </div>
 
