@@ -33,6 +33,7 @@ import {
   TrendingDown,
   Gift,
 } from 'lucide-react'
+import { WEBSITE_CLASSIFICATIONS } from '@/lib/website-classification'
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -403,6 +404,7 @@ interface InventoryItem {
   isBundle?: boolean
   issuedOfficialInvoice?: boolean
   isPreOrder?: boolean
+  websiteClassification?: string | null
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
   dimensionLength?: number | null
   dimensionWidth?: number | null
@@ -531,6 +533,7 @@ export default function InventoryPage() {
   const [itemSearch, setItemSearch] = useState('')
   const [itemBranchFilter, setItemBranchFilter] = useState('')
   const [itemDeptFilter, setItemDeptFilter] = useState('')
+  const [itemWebClassFilter, setItemWebClassFilter] = useState('')
   const [showDisabledItems, setShowDisabledItems] = useState(false)
   const [downloadWithPhotos, setDownloadWithPhotos] = useState(false)
   const [itemModalOpen, setItemModalOpen] = useState(false)
@@ -551,6 +554,7 @@ export default function InventoryPage() {
   const [bulkSellingPrice, setBulkSellingPrice] = useState('')
   const [bulkRewardPoints, setBulkRewardPoints] = useState('')
   const [bulkReorderLevel, setBulkReorderLevel] = useState('')
+  const [bulkWebClass, setBulkWebClass] = useState('')
   const [bulkSubType, setBulkSubType] = useState('')
   const [bulkSaving, setBulkSaving] = useState(false)
 
@@ -773,6 +777,7 @@ export default function InventoryPage() {
   const [pdfReceivedContact, setPdfReceivedContact] = useState('')
   const [issuedOfficialInvoice, setIssuedOfficialInvoice] = useState(false)
   const [isPreOrder, setIsPreOrder] = useState(false)
+  const [fWebsiteClass, setFWebsiteClass] = useState('')
   // Bundle state
   const [isBundle, setIsBundle] = useState(false)
   const [bundleComponents, setBundleComponents] = useState<{ id?: string; componentId: string; quantity: number; name?: string; sku?: string; unitCost?: number }[]>([])
@@ -910,12 +915,13 @@ export default function InventoryPage() {
       if (itemSearch) params.set('search', itemSearch)
       if (itemBranchFilter) params.set('branch', itemBranchFilter)
       if (itemDeptFilter) params.set('department', itemDeptFilter)
+      if (itemWebClassFilter) params.set('websiteClassification', itemWebClassFilter)
       if (showDisabledItems) params.set('includeDisabled', 'true')
       const res = await fetch(`/api/inventory?${params}`)
       const data = await res.json()
       setItems(data.data || [])
     } catch { /* ignore */ }
-  }, [itemSearch, itemBranchFilter, itemDeptFilter, showDisabledItems])
+  }, [itemSearch, itemBranchFilter, itemDeptFilter, itemWebClassFilter, showDisabledItems])
 
   const fetchAllItems = useCallback(async () => {
     try {
@@ -1053,7 +1059,7 @@ export default function InventoryPage() {
     const timeout = setTimeout(() => { fetchItems() }, 300)
     return () => clearTimeout(timeout)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemSearch, itemBranchFilter, itemDeptFilter])
+  }, [itemSearch, itemBranchFilter, itemDeptFilter, itemWebClassFilter])
 
   /* ── SKU Generation ────────────────────────────────────── */
 
@@ -1161,6 +1167,7 @@ export default function InventoryPage() {
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(false)
     setIsPreOrder(false)
+    setFWebsiteClass('')
     setFDimL(''); setFDimW(''); setFDimH('')
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
@@ -1200,6 +1207,7 @@ export default function InventoryPage() {
     setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(item.issuedOfficialInvoice || false)
     setIsPreOrder(item.isPreOrder || false)
+    setFWebsiteClass(item.websiteClassification || '')
     setIsBundle(item.isBundle || false)
     setBundleComponents((item.bundleComponents || []).map((bc: { id: string; quantity: number; component: { id: string; name: string; sku: string; unitCost?: number } }) => ({
       id: bc.id, componentId: bc.component.id, quantity: bc.quantity, name: bc.component.name, sku: bc.component.sku, unitCost: Number(bc.component.unitCost) || 0,
@@ -1337,6 +1345,7 @@ export default function InventoryPage() {
       expenseAccountId: fExpenseAccountId || null,
       issuedOfficialInvoice,
       isPreOrder,
+      websiteClassification: fWebsiteClass || null,
       fromPettyCash: fFromPettyCash,
     }
     if (editingItem) body.id = editingItem.id
@@ -1415,7 +1424,7 @@ export default function InventoryPage() {
     setBulkSourceAccountId(''); setBulkSourceSearch('')
     setBulkSupplierId(''); setBulkBranch(''); setBulkUnitCost('')
     setBulkSellingPrice(''); setBulkRewardPoints(''); setBulkReorderLevel('')
-    setBulkSubType(''); setError('')
+    setBulkSubType(''); setBulkWebClass(''); setError('')
     setBulkEditOpen(true)
   }
 
@@ -1435,6 +1444,7 @@ export default function InventoryPage() {
       else if (bulkField === 'rewardPointsPrice') body.rewardPointsPrice = bulkRewardPoints
       else if (bulkField === 'reorderLevel') body.reorderLevel = bulkReorderLevel
       else if (bulkField === 'accountSubType') body.accountSubType = bulkSubType
+      else if (bulkField === 'websiteClassification') body.websiteClassification = bulkWebClass
 
       const res = await fetch('/api/inventory', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await res.json()
@@ -1965,6 +1975,19 @@ setTimeout(()=>window.print(),500);
                 <option key={d} value={d}>{SKU_HIERARCHY[d].label}</option>
               ))}
             </select>
+            <select
+              value={itemWebClassFilter}
+              onChange={(e) => setItemWebClassFilter(e.target.value)}
+              className="px-3 py-2.5 rounded-xl border text-sm outline-none"
+              style={{ borderColor: 'var(--light-gray)', background: 'white' }}
+              title="Filter by the customer-facing category used on verdanarehab.com"
+            >
+              <option value="">All Website Classes</option>
+              {WEBSITE_CLASSIFICATIONS.map((c) => (
+                <option key={c.slug} value={c.label}>{c.label}</option>
+              ))}
+              <option value="__none__">— Not classified —</option>
+            </select>
             <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }} title="Show items that have been disabled / retired">
               <input type="checkbox" checked={showDisabledItems} onChange={(e) => setShowDisabledItems(e.target.checked)} className="w-4 h-4 accent-teal-600" />
               Show disabled items
@@ -2067,6 +2090,7 @@ setTimeout(()=>window.print(),500);
                         {item.isBundle && <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Bundle</span>}
                         {item.issuedOfficialInvoice && <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Invoice</span>}
                         {item.isPreOrder && <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#dbeafe', color: '#1e40af' }}>Pre-order</span>}
+                        {item.websiteClassification && <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#f5f3ff', color: '#5b21b6' }} title="Customer-facing category on verdanarehab.com">{item.websiteClassification}</span>}
                         {item.revenueAccount && (
                           <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>Rev: {item.revenueAccount.accountNumber} {item.revenueAccount.accountTitle}</p>
                         )}
@@ -2404,6 +2428,7 @@ setTimeout(()=>window.print(),500);
                       <option value="rewardPointsPrice">Reward Points Price</option>
                       <option value="reorderLevel">Reorder Level</option>
                       <option value="accountSubType">Account Sub Type</option>
+                      <option value="websiteClassification">Website Classification</option>
                     </select>
                   </div>
 
@@ -2530,6 +2555,21 @@ setTimeout(()=>window.print(),500);
                         <option value="">— None —</option>
                         {INV_SUB_TYPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
+                    </div>
+                  )}
+
+                  {bulkField === 'websiteClassification' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Website Classification</label>
+                      <select value={bulkWebClass} onChange={(e) => setBulkWebClass(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— Not classified —</option>
+                        {WEBSITE_CLASSIFICATIONS.map(c => <option key={c.slug} value={c.label}>{c.label}</option>)}
+                      </select>
+                      <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                        Sets the customer-facing category on verdanarehab.com for every selected item.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -2934,6 +2974,30 @@ setTimeout(()=>window.print(),500);
                         className="rounded" />
                       Issued Official Sales Invoice
                     </label>
+                  </div>
+
+                  {/* Website Classification — how shoppers browse this item on verdanarehab.com.
+                      Kept separate from the SKU department/category so merchandising can be
+                      re-grouped without renumbering SKUs. */}
+                  <div className="rounded-xl border p-3" style={{ borderColor: fWebsiteClass ? '#c4b5fd' : 'var(--light-gray)', background: fWebsiteClass ? '#f5f3ff' : 'transparent' }}>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: fWebsiteClass ? '#5b21b6' : 'var(--charcoal)' }}>
+                      Website Classification <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(customer-facing category on verdanarehab.com)</span>
+                    </label>
+                    <select
+                      value={fWebsiteClass}
+                      onChange={(e) => setFWebsiteClass(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white"
+                      style={{ borderColor: 'var(--light-gray)' }}
+                    >
+                      <option value="">— Not classified —</option>
+                      {WEBSITE_CLASSIFICATIONS.map((c) => (
+                        <option key={c.slug} value={c.label}>{c.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      Shoppers browse by this, not by the SKU hierarchy. Leave unset for items that
+                      aren’t sold on the website.
+                    </p>
                   </div>
 
                   {/* For Pre-order — deliberately 0-stock items (e.g. swings) stay buyable on verdanarehab.com */}

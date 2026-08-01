@@ -335,6 +335,7 @@ model InventoryItem {
   fromPettyCash        Boolean   @default(false)  // bought via petty cash / expense — cash handled by replenishment, so NOT counted as an inventory cash outflow on the BS (avoids double-count)
   issuedOfficialInvoice Boolean  @default(false)
   isPreOrder           Boolean   @default(false)  // deliberately kept at 0 stock (e.g. swings) — stays sellable at 0; negative qty is the backlog, netted off when the arrival is recorded
+  websiteClassification String?                   // customer-facing category on verdanarehab.com (Merch & Resources, Pretend Play & Learning Toys, Sensory Therapeutic Tools, Active & Sensory Play, Furniture & Room Pieces). Internal SKU dept/category stays unchanged.
   isActive             Boolean   @default(true)
   createdById          String
   createdBy            User      @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
