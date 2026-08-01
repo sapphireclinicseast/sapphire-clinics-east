@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import { taxRfpLines, type BVLine } from '@/lib/billing-voucher'
+import { useRfpOtherFees, RfpOtherFeesSection, type CleanRfpFee } from '@/components/RfpOtherFees'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // VAT is filed as one corporation → default to All Branches (combined).
@@ -17,7 +18,7 @@ const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)
 
 interface Summary { outputGross: number; outputVat: number; orderCount: number; inputGross: number; inputVat: number; expenseCount: number; computedPayable: number }
-interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; meta: { taxType: string; period?: { from: string; to: string } | null; vatAmount?: number } | null; createdAt: string }
+interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; meta: { taxType: string; period?: { from: string; to: string } | null; vatAmount?: number; otherFees?: CleanRfpFee[]; feesTotal?: number } | null; createdAt: string }
 
 // Default to the current calendar quarter.
 function currentQuarter() {
@@ -42,6 +43,7 @@ export default function BusinessTax() {
   const [busy, setBusy] = useState(false)
   const [manualSeq, setManualSeq] = useState('')
   const [showRfpModal, setShowRfpModal] = useState(false)
+  const otherFees = useRfpOtherFees()
   const [payTarget, setPayTarget] = useState<TaxRfp | null>(null)
   const [bv, setBv] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string } | null>(null)
 
@@ -81,10 +83,15 @@ export default function BusinessTax() {
     doc.text(`Ref No: ${r.refNumber}`, 120, 21)
     doc.text(`Date: ${new Date(r.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, 120, 25)
     if (r.meta?.period) doc.text(`Period: ${r.meta.period.from} to ${r.meta.period.to}`, 14, 29)
+    const fees = r.meta?.otherFees || []
+    const feesTotal = fees.reduce((s, f) => s + f.grossAmount, 0)
     autoTable(doc, {
       startY: 33,
       head: [['Description', 'Amount']],
-      body: [['VAT Payable (Output VAT less creditable Input VAT)', peso(num(r.grossTotal))]],
+      body: [
+        ['VAT Payable (Output VAT less creditable Input VAT)', peso(r.meta?.vatAmount ?? (num(r.grossTotal) - feesTotal))],
+        ...fees.map(f => [`Other fee — ${f.description || f.requestor || 'Fee'}`, peso(f.grossAmount)]),
+      ],
       foot: [['TOTAL PAYABLE', peso(num(r.grossTotal))]],
       styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
       footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
@@ -100,12 +107,12 @@ export default function BusinessTax() {
     try {
       const res = await fetch('/api/taxes/rfp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taxType: 'VAT', payrollBranch: branch === 'ALL' ? 'SBEA' : branch, amount: amt, period: { from, to }, manualSeq: manualSeq.trim() || undefined }),
+        body: JSON.stringify({ taxType: 'VAT', payrollBranch: branch === 'ALL' ? 'SBEA' : branch, amount: amt, period: { from, to }, manualSeq: manualSeq.trim() || undefined, otherFees: otherFees.cleaned() }),
       })
       const data = await res.json()
       if (!res.ok) { alert(data.error || 'Failed to create RFP'); return }
       try {
-        const created: TaxRfp = { id: data.id, refNumber: data.refNumber, grossTotal: data.grossTotal, status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, proofUrl: null, createdAt: new Date().toISOString(), meta: { taxType: 'VAT', period: { from, to }, vatAmount: amt } }
+        const created: TaxRfp = { id: data.id, refNumber: data.refNumber, grossTotal: data.grossTotal, status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, proofUrl: null, createdAt: new Date().toISOString(), meta: { taxType: 'VAT', period: { from, to }, vatAmount: amt, otherFees: otherFees.cleaned(), feesTotal: otherFees.feesTotal } }
         await fetch('/api/taxes/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: data.id, pdfData: buildPdf(created).output('datauristring') }) })
       } catch { /* best effort */ }
       setShowRfpModal(false); setManualSeq('')
@@ -158,7 +165,7 @@ export default function BusinessTax() {
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Final VAT payable (keyed by accountant)</label>
                 <input value={manual} onChange={e => setManual(e.target.value)} inputMode="decimal" className="px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)', minWidth: 180 }} />
               </div>
-              <button onClick={() => setShowRfpModal(true)} disabled={!num(manual)} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#c44b00' }}>Generate VAT RFP</button>
+              <button onClick={() => { otherFees.loadTemplate(branch === 'ALL' ? 'SBEA' : branch); setShowRfpModal(true) }} disabled={!num(manual)} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#c44b00' }}>Generate VAT RFP</button>
             </div>
           )}
         </>
@@ -195,13 +202,14 @@ export default function BusinessTax() {
 
       {showRfpModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowRfpModal(false)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate VAT RFP</h2><button onClick={() => setShowRfpModal(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>VAT payable <strong>₱{peso(num(manual))}</strong> for {from} – {to} (BIR 2550Q).</p>
+            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>VAT payable <strong>₱{peso(num(manual))}</strong>{otherFees.feesTotal > 0 && <> · fees <strong>₱{peso(otherFees.feesTotal)}</strong> · total <strong>₱{peso(num(manual) + otherFees.feesTotal)}</strong></>} for {from} – {to} (BIR 2550Q).</p>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>RFP Number (optional)</label>
             <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>From your pre-printed form. Leave blank to auto-number. Keep leading zeros.</p>
             <input value={manualSeq} onChange={e => setManualSeq(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 000007" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
-            <button onClick={generateRfp} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Generate RFP'}</button>
+            <RfpOtherFeesSection state={otherFees} branch={branch === 'ALL' ? 'SBEA' : branch} />
+            <button onClick={generateRfp} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 mt-1" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : `Generate RFP · ₱${peso(num(manual) + otherFees.feesTotal)}`}</button>
           </div>
         </div>
       )}

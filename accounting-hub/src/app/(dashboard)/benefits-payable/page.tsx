@@ -1,9 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Shield, Loader2, X, Plus, Trash2, BadgeDollarSign, CheckCircle2, Save } from 'lucide-react'
+import { Shield, Loader2, X, BadgeDollarSign } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import Availments from './Availments'
+import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
 
 const BRANCHES = [
   { value: 'SBEA', label: 'East Branch' },
@@ -26,14 +27,10 @@ interface Row {
   totalBenefitsPayable: number; benefitsRemitted: boolean; benefitRfpId: string | null
   sssRfpId: string | null; philhealthRfpId: string | null; pagibigRfpId: string | null
 }
-interface CoaAccount { id: string; accountNumber: string; accountTitle: string; accountType: string }
-interface Fee { accountTitle: string; description: string; requestor: string; grossAmount: string; vatable: string; hasEwt: boolean; ewtRate: string }
-
 // Branch column display codes (Aura Health branding): SBEA→AHEA, SBGH→AHGH, etc.
 const BRANCH_DISPLAY: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VERD', AHI: 'AHI' }
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
-const emptyFee = (): Fee => ({ accountTitle: '', description: '', requestor: '', grossAmount: '', vatable: 'NV', hasEwt: false, ewtRate: '' })
 
 export default function BenefitsPayablePage() {
   const [branch, setBranch] = useState('SBEA')
@@ -61,10 +58,7 @@ export default function BenefitsPayablePage() {
   const [rfpOpen, setRfpOpen] = useState(false)
   const [rfpSeq, setRfpSeq] = useState('')
   const [creating, setCreating] = useState(false)
-  const [withFees, setWithFees] = useState(false)
-  const [fees, setFees] = useState<Fee[]>([emptyFee()])
-  const [coa, setCoa] = useState<CoaAccount[]>([])
-  const [savedTpl, setSavedTpl] = useState(false)
+  const otherFees = useRfpOtherFees()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -78,12 +72,6 @@ export default function BenefitsPayablePage() {
   }, [branch])
   useEffect(() => { load() }, [load])
   useEffect(() => { setSelected(new Set()) }, [branch, agencyKey, fType, fYear, fMonth, fCutoff, hideRemitted])
-  useEffect(() => {
-    fetch('/api/chart-of-accounts?accountType=EXPENSE&pageSize=1000')
-      .then(r => r.ok ? r.json() : { data: [] })
-      .then(d => setCoa(Array.isArray(d) ? d : (d.data || [])))
-      .catch(() => setCoa([]))
-  }, [])
 
   const ee = (r: Row) => r[agency.eeField] as number
   const er = (r: Row) => r[agency.erField] as number
@@ -111,33 +99,21 @@ export default function BenefitsPayablePage() {
   const toggle = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const toggleAll = (on: boolean) => setSelected(on ? new Set(selectable.map(r => r.id)) : new Set())
 
-  const feesTotal = fees.reduce((s, f) => s + (parseFloat(f.grossAmount) || 0), 0)
-  const rfpTotal = selTotal + (withFees ? feesTotal : 0)
+  const feesTotal = otherFees.feesTotal
+  const rfpTotal = selTotal + feesTotal
 
   const openRfp = async () => {
     if (selRows.length === 0) return
-    setRfpSeq(''); setWithFees(false); setSavedTpl(false)
+    setRfpSeq('')
     // Preload the branch's saved "Other Fees" template.
-    try {
-      const r = await fetch(`/api/payroll/benefit-fee-template?branch=${branch}`)
-      const d = r.ok ? await r.json() : { fees: [] }
-      const tpl = Array.isArray(d.fees) ? d.fees : []
-      if (tpl.length) {
-        setFees(tpl.map((f: Partial<Fee>) => ({ ...emptyFee(), ...f, grossAmount: String(f.grossAmount ?? ''), ewtRate: String(f.ewtRate ?? '') })))
-        setWithFees(true)
-      } else setFees([emptyFee()])
-    } catch { setFees([emptyFee()]) }
+    await otherFees.loadTemplate(branch)
     setRfpOpen(true)
   }
-
-  const cleanFees = () => fees
-    .map(f => ({ accountTitle: f.accountTitle.trim(), description: f.description.trim(), requestor: f.requestor.trim(), grossAmount: parseFloat(f.grossAmount) || 0, vatable: f.vatable, hasEwt: f.hasEwt, ewtRate: f.ewtRate ? parseFloat(f.ewtRate) : null }))
-    .filter(f => f.grossAmount > 0)
 
   const generate = async () => {
     setCreating(true); setError('')
     try {
-      const otherFees = withFees ? cleanFees() : []
+      const cleanedFees = otherFees.cleaned()
       // A selection may span both employee and consultant rows; payable-rfp takes one
       // payableType per call, so create one RFP per type present. Fees attach to the first.
       const byType: Record<string, string[]> = {}
@@ -151,7 +127,7 @@ export default function BenefitsPayablePage() {
           payableType: t === 'consultant' ? 'CONSULTANT' : 'EMPLOYEE',
           ids: byType[t], branch,
           manualSeq: types.length === 1 && rfpSeq.trim() ? rfpSeq.trim() : undefined,
-          otherFees: i === 0 ? otherFees : [],
+          otherFees: i === 0 ? cleanedFees : [],
         }
         const res = await fetch('/api/payroll/payable-rfp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to create RFP') }
@@ -162,13 +138,6 @@ export default function BenefitsPayablePage() {
       alert(`${made} RFP${made === 1 ? '' : 's'} created in Expenses.`)
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to create RFP') }
     finally { setCreating(false) }
-  }
-
-  const saveTemplate = async () => {
-    try {
-      await fetch('/api/payroll/benefit-fee-template', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, fees: cleanFees() }) })
-      setSavedTpl(true); setTimeout(() => setSavedTpl(false), 2500)
-    } catch { setError('Failed to save template') }
   }
 
   return (
@@ -322,7 +291,7 @@ export default function BenefitsPayablePage() {
             </div>
             <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
               {selRows.length} entr{selRows.length === 1 ? 'y' : 'ies'} · benefits <strong>{formatCurrency(selTotal)}</strong>
-              {withFees && feesTotal > 0 && <> · fees <strong>{formatCurrency(feesTotal)}</strong></>}
+              {feesTotal > 0 && <> · fees <strong>{formatCurrency(feesTotal)}</strong></>}
               {' '}· total <strong>{formatCurrency(rfpTotal)}</strong>. Creates an RFP in Expenses and locks these rows until paid (or the RFP is deleted).
             </p>
 
@@ -330,64 +299,7 @@ export default function BenefitsPayablePage() {
             <input value={rfpSeq} onChange={e => setRfpSeq(e.target.value)} placeholder="e.g. 000007" className="w-full px-3 py-2.5 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
             <p className="text-[11px] -mt-2 mb-3" style={{ color: 'var(--mid-gray)' }}>From your pre-printed form. Leave blank to auto-number. (Ignored when the selection spans both employees and consultants — those become separate RFPs.)</p>
 
-            <label className="flex items-center gap-2 text-sm font-medium mb-2" style={{ color: 'var(--charcoal)' }}>
-              <input type="checkbox" checked={withFees} onChange={e => setWithFees(e.target.checked)} /> Other Fees (e.g. for online transfers)
-            </label>
-
-            {withFees && (
-              <div className="space-y-2 mb-3">
-                {fees.map((f, i) => (
-                  <div key={i} className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>Fee {i + 1}</span>
-                      {fees.length > 1 && <button onClick={() => setFees(fees.filter((_, j) => j !== i))}><Trash2 size={13} className="text-red-500" /></button>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="col-span-2">
-                        <label className="block text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>Account / Item</label>
-                        <select value={f.accountTitle} onChange={e => setFees(fees.map((x, j) => j === i ? { ...x, accountTitle: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                          <option value="">Select expense account…</option>
-                          {coa.map(a => <option key={a.id} value={a.accountTitle}>{a.accountNumber} · {a.accountTitle}</option>)}
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        <label className="block text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>Description</label>
-                        <input value={f.description} onChange={e => setFees(fees.map((x, j) => j === i ? { ...x, description: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. Online transfer fee" />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>Payee</label>
-                        <input value={f.requestor} onChange={e => setFees(fees.map((x, j) => j === i ? { ...x, requestor: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} placeholder="Bank / provider" />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>Amount (gross)</label>
-                        <input type="number" value={f.grossAmount} onChange={e => setFees(fees.map((x, j) => j === i ? { ...x, grossAmount: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} placeholder="0.00" />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>VAT</label>
-                        <select value={f.vatable} onChange={e => setFees(fees.map((x, j) => j === i ? { ...x, vatable: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                          <option value="NV">Non-VAT</option><option value="VAT">VAT (12%)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>EWT %</label>
-                        <div className="flex items-center gap-1">
-                          <input type="checkbox" checked={f.hasEwt} onChange={e => setFees(fees.map((x, j) => j === i ? { ...x, hasEwt: e.target.checked } : x))} />
-                          <input type="number" disabled={!f.hasEwt} value={f.ewtRate} onChange={e => setFees(fees.map((x, j) => j === i ? { ...x, ewtRate: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs disabled:opacity-40" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. 2" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setFees([...fees, emptyFee()])} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
-                    <Plus size={13} /> Add another fee
-                  </button>
-                  <button onClick={saveTemplate} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                    {savedTpl ? <><CheckCircle2 size={13} className="text-green-600" /> Template saved</> : <><Save size={13} /> Save template</>}
-                  </button>
-                </div>
-              </div>
-            )}
+            <RfpOtherFeesSection state={otherFees} branch={branch} />
 
             <button onClick={generate} disabled={creating} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 mt-1" style={{ background: 'var(--deep-teal)' }}>
               {creating ? <Loader2 size={15} className="inline animate-spin" /> : `Generate RFP · ${formatCurrency(rfpTotal)}`}
