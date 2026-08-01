@@ -77,6 +77,16 @@ export interface V2Statements {
     aEqualsLE: boolean
     aLEDiff: number
     cfTies: boolean
+    /** Ledger cash vs imported bank statements — the honesty check. The ledger
+        only knows recorded transactions; the statements know the truth. */
+    cashRecon?: {
+      rows: { number: string; title: string; ledgerClosing: number; statementBalance: number | null; statementAsOf: string | null }[]
+      ledgerCash: number
+      statementCash: number
+      pendingOut: number
+      pendingIn: number
+      pendingCount: number
+    }
   }
   /** Present only when a drill-down was requested (account [+ month]). */
   collected?: V2CollectedLine[]
@@ -772,6 +782,75 @@ export async function computeLedgerStatements(
   const cashNumbers = new Set(cashRows.map(r => r.number))
   const beginningCash = round2(cashRows.reduce((s, r) => s + r.opening, 0))
   const endingCash = round2(cashRows.reduce((s, r) => s + r.closing, 0))
+
+  /* ── Cash honesty check: ledger cash vs imported bank statements ──
+     The ledger can only see recorded transactions. Bank Rec imports carry the
+     bank's own running balance, so comparing the two per account shows exactly
+     how far the books have drifted from the bank — and the pending
+     (uncategorized) imports are the drift's cause, quantified. */
+  // All-Branches only: a branch view excludes opening balances, so comparing its
+  // ledger cash against full bank statements would manufacture a false gap.
+  try {
+    if (branch !== 'ALL') throw new Error('skip')
+    const bankTx = await prisma.bankTransaction.groupBy({
+      by: ['bankAccountId'],
+      where: { date: { lt: end }, status: 'PENDING' },
+      _sum: { spent: true, received: true },
+      _count: { _all: true },
+    })
+    const pendingOut = round2(bankTx.reduce((s, t) => s + Number(t._sum.spent || 0), 0))
+    const pendingIn = round2(bankTx.reduce((s, t) => s + Number(t._sum.received || 0), 0))
+    const pendingCount = bankTx.reduce((s, t) => s + t._count._all, 0)
+    // Latest statement balance per bank account, as of the report period's end.
+    const latest = await prisma.bankTransaction.findMany({
+      where: { date: { lt: end }, statementBalance: { not: null } },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      select: { bankAccountId: true, date: true, statementBalance: true },
+    })
+    const latestByAcct = new Map<string, { bal: number; asOf: string }>()
+    for (const t of latest) {
+      if (!latestByAcct.has(t.bankAccountId)) {
+        latestByAcct.set(t.bankAccountId, { bal: Number(t.statementBalance), asOf: t.date.toISOString().slice(0, 10) })
+      }
+    }
+    if (latestByAcct.size || pendingCount) {
+      const reconRows = cashRows
+        .filter(r => !r.virtual)
+        .map(r => {
+          const acctId = byNumber.get(r.number)?.id
+          const stmt = acctId ? latestByAcct.get(acctId) : undefined
+          return {
+            number: r.number, title: r.title, ledgerClosing: round2(r.closing),
+            statementBalance: stmt ? round2(stmt.bal) : null,
+            statementAsOf: stmt ? stmt.asOf : null,
+          }
+        })
+        .filter(r => r.statementBalance !== null || Math.abs(r.ledgerClosing) >= 0.005)
+      const statementCash = round2(reconRows.reduce((s, r) => s + (r.statementBalance ?? 0), 0))
+      validation.cashRecon = {
+        rows: reconRows, ledgerCash: endingCash, statementCash,
+        pendingOut, pendingIn, pendingCount,
+      }
+    }
+  } catch { /* bank-rec tables may not exist in older deploys — the recon is optional */ }
+
+  /* ── Module coverage: say plainly what the ledger cannot know ── */
+  try {
+    const firstPayroll = await prisma.payrollEntry.findFirst({
+      where: { status: { not: 'DRAFT' } }, orderBy: { cutoffPeriod: 'asc' }, select: { cutoffPeriod: true },
+    })
+    if (firstPayroll) {
+      const [py, pm] = firstPayroll.cutoffPeriod.split('-').map(Number)
+      if (py > year || (py === year && pm > 1)) {
+        validation.notes.push(
+          `Payroll in the Hub starts with the ${firstPayroll.cutoffPeriod} cutoff — salaries and professional fees ` +
+          `before that were never recorded here, so they are absent from these statements (and cash was never reduced by them).`,
+        )
+      }
+    } else if (year <= new Date().getFullYear()) {
+      validation.notes.push('No payroll cutoffs exist in the Hub for this period — salaries and professional fees are absent from these statements.')
+    }
+  } catch { /* optional */ }
   // Debit-signed period change: the cash effect of ANY non-cash account is
   // exactly −(its debit-signed change), from double entry — contra-safe.
   const drDelta = (r: V2AccountRow) =>

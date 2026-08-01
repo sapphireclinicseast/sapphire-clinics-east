@@ -420,8 +420,44 @@ export default function LedgerStatements({ year, branch, tab, view }: {
         )}
       </div>
       {v.notes.map((n, i) => (
-        <div key={i} className="px-3 pb-2" style={{ color: '#64748b' }}>{n}</div>
+        <div key={i} className="px-3 pb-2" style={{ color: '#b45309' }}>{n}</div>
       ))}
+      {v.cashRecon && Math.abs(v.cashRecon.ledgerCash - v.cashRecon.statementCash) >= 1 && (
+        <div className="px-3 pb-3">
+          <div className="font-semibold mb-1" style={{ color: '#b45309' }}>
+            <AlertTriangle size={13} className="inline mr-1" />
+            Cash check: the ledger says {formatCurrency(v.cashRecon.ledgerCash)}, the bank statements say {formatCurrency(v.cashRecon.statementCash)}
+          </div>
+          <div style={{ color: '#64748b' }}>
+            The ledger only knows recorded transactions.{' '}
+            {v.cashRecon.pendingCount > 0 && (
+              <>
+                <strong>{formatCurrency(v.cashRecon.pendingOut)}</strong> of imported bank outflows
+                ({v.cashRecon.pendingCount.toLocaleString()} transactions) are still uncategorized in{' '}
+                <a href="/bank-reconciliation" className="underline">Bank Reconciliation</a> — salaries paid, suppliers,
+                rent and the rest. Until they are categorized and posted, this sheet cannot subtract them, so the cash
+                line reads high by roughly that amount.{' '}
+              </>
+            )}
+            Per account (statement balance as of its latest imported line):
+          </div>
+          <table className="mt-1 tabular-nums" style={{ color: '#64748b' }}>
+            <tbody>
+              {v.cashRecon.rows.filter(r => r.statementBalance !== null || Math.abs(r.ledgerClosing) >= 1).map(r => (
+                <tr key={r.number}>
+                  <td className="pr-3">{r.title}</td>
+                  <td className="pr-3 text-right">ledger {formatCurrency(r.ledgerClosing)}</td>
+                  <td className="text-right">
+                    {r.statementBalance !== null
+                      ? <>bank {formatCurrency(r.statementBalance)} <span style={{ color: '#94a3b8' }}>as of {r.statementAsOf}</span></>
+                      : <span style={{ color: '#94a3b8' }}>no statement imported</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 
