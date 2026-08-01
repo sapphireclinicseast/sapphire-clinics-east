@@ -1933,7 +1933,7 @@ export default function ReportsPage() {
         {/* View Mode */}
         {!isMedrep && (
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-          {((engine === 'ledger' && year >= 2026 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
+          {((engine === 'ledger' && year >= 2024 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
@@ -1967,8 +1967,10 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* Engine (derived years only) */}
-        {!isMedrep && year >= 2026 && (
+        {/* Engine. From 2024 on: 2026+ derives both ways; 2024-25 default to the
+            audited manual statements, with the Ledger beta deriving from the
+            imported transaction history for those who need to drill in. */}
+        {!isMedrep && year >= 2024 && (
           <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
             {([['standard', 'Standard'], ['ledger', 'Ledger (beta)']] as const).map(([mode, label]) => (
               <button
@@ -2021,14 +2023,18 @@ export default function ReportsPage() {
         )}
 
         {/* Report content */}
-        {!loading && data?.historical && (
+        {!loading && data?.historical && engine === 'standard' && (
           <div className="mx-4 mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}>
-            {year} figures come from the audited / manually entered historical statements, not from transactions
-            recorded in the Hub — there is nothing underneath them to drill into, which is why the numbers are not
-            clickable. Transaction-backed reporting (and the Ledger beta) starts with 2026.
+            {year} figures are the audited / manually entered historical statements — fixed numbers with nothing
+            underneath to click. To drill into the {year} transaction history that has been imported into the Hub
+            (orders, equity, asset purchases…), switch the engine to <strong>Ledger (beta)</strong>; its integrity
+            card will say plainly which modules are missing for {year}.
           </div>
         )}
-        {!loading && data?.historical && (
+        {!loading && data?.historical && engine === 'ledger' && !isMedrep && (
+          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
+        )}
+        {!loading && data?.historical && engine === 'standard' && (
           <HistoricalReport
             hist={data.historical}
             tab={effTab}
