@@ -20,6 +20,9 @@ export async function GET(req: Request) {
           orderBy: { createdAt: 'asc' },
           include: { item: { select: { name: true, sku: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true } } },
         },
+        fxSourceAccount: { select: { id: true, accountNumber: true, accountTitle: true, currency: true } },
+        manufacturerRfp: { select: { id: true, refNumber: true, grossTotal: true, status: true, payableTo: true } },
+        freightRfp: { select: { id: true, refNumber: true, grossTotal: true, status: true, payableTo: true } },
       },
     })
     if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
@@ -38,6 +41,9 @@ export async function GET(req: Request) {
         adjustments: {
           include: { item: { select: { name: true, sku: true } } },
         },
+        fxSourceAccount: { select: { accountNumber: true, accountTitle: true, currency: true } },
+        manufacturerRfp: { select: { refNumber: true, grossTotal: true, status: true } },
+        freightRfp: { select: { refNumber: true, grossTotal: true, status: true } },
       },
     }),
     prisma.inventoryAdjustmentBatch.count(),
@@ -64,6 +70,9 @@ export async function POST(req: Request) {
       freight2IsForeign = false,
       freight3Amount,
       freight3IsForeign = false,
+      fxSourceAccountId,
+      manufacturerRfpId,
+      freightRfpId,
       proofUrls,
       remarks,
       rows,
@@ -143,6 +152,9 @@ export async function POST(req: Request) {
           freight3Amount: f3 > 0 ? f3 : null,
           freight3IsForeign,
           totalFreightPHP,
+          fxSourceAccountId: fxSourceAccountId || null,
+          manufacturerRfpId: manufacturerRfpId || null,
+          freightRfpId: freightRfpId || null,
           proofUrls: Array.isArray(proofUrls) && proofUrls.length > 0 ? proofUrls : undefined,
           remarks: remarks?.trim() || null,
           createdById: session.user.id,
@@ -259,7 +271,8 @@ export async function PATCH(req: Request) {
     const {
       id, adjustmentDate, hasForeignPurchase = true, foreignCurrency = 'CNY', exchangeRate,
       freight1Amount, freight1IsForeign = false, freight2Amount, freight2IsForeign = false,
-      freight3Amount, freight3IsForeign = false, proofUrls, remarks, rows,
+      freight3Amount, freight3IsForeign = false, fxSourceAccountId, manufacturerRfpId, freightRfpId,
+      proofUrls, remarks, rows,
     } = await req.json()
     if (!id) return NextResponse.json({ error: 'Batch id is required' }, { status: 400 })
 
@@ -316,6 +329,9 @@ export async function PATCH(req: Request) {
           freight2Amount: f2 > 0 ? f2 : null, freight2IsForeign,
           freight3Amount: f3 > 0 ? f3 : null, freight3IsForeign,
           totalFreightPHP,
+          fxSourceAccountId: fxSourceAccountId || null,
+          manufacturerRfpId: manufacturerRfpId || null,
+          freightRfpId: freightRfpId || null,
           proofUrls: Array.isArray(proofUrls) && proofUrls.length > 0 ? proofUrls : undefined,
           remarks: remarks?.trim() || null,
         },

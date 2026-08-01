@@ -451,6 +451,33 @@ interface FbRow {
   quantity: string
 }
 
+// Foreign-currency bank account offered as the FX source of a freight purchase,
+// with the weighted rate its money was actually bought at (from Fund Transfer /
+// Bank Recon forex history).
+interface FxAccount {
+  id: string
+  accountNumber: string
+  accountTitle: string
+  currency: string
+  balance: number
+  weightedRate: number | null
+  phpTotal: number
+  fxTotal: number
+  purchases: { refNumber: string; date: string; php: number; foreign: number; rate: number | null }[]
+  fallbackRate: { phpPerUnit: number; date: string; source: string } | null
+}
+
+interface RfpOption {
+  id: string
+  refNumber: string
+  grossTotal: number
+  status: string
+  module: string
+  branch: string
+  payableTo: string | null
+  paidAt: string | null
+}
+
 interface Consignment {
   id: string
   referenceNumber?: string | null
@@ -721,6 +748,12 @@ export default function InventoryPage() {
   const [fbProofUrls, setFbProofUrls] = useState<string[]>([])
   const [fbUploading, setFbUploading] = useState(false)
   const [fbSaving, setFbSaving] = useState(false)
+  // FX source account (auto-computes the exchange rate) + linked payment RFPs
+  const [fbFxAccounts, setFbFxAccounts] = useState<FxAccount[]>([])
+  const [fbFxAccountId, setFbFxAccountId] = useState('')
+  const [fbRfpOptions, setFbRfpOptions] = useState<RfpOption[]>([])
+  const [fbManuRfpId, setFbManuRfpId] = useState('')
+  const [fbFreightRfpId, setFbFreightRfpId] = useState('')
   const fbFileRef = useRef<HTMLInputElement>(null)
 
   // ── Consignment state
@@ -873,6 +906,20 @@ export default function InventoryPage() {
     const f3 = (parseFloat(fbFreight3) || 0) * (fbFreight3Foreign ? exRate : 1)
     return f1 + f2 + f3
   }, [fbHasForeign, fbExRate, fbFreight1, fbFreight1Foreign, fbFreight2, fbFreight2Foreign, fbFreight3, fbFreight3Foreign])
+
+  // Freight batch: total paid to the manufacturer (goods only), PHP + foreign.
+  const fbGoodsTotals = useMemo(() => {
+    let php = 0, foreign = 0
+    const exRate = fbHasForeign && fbExRate ? parseFloat(fbExRate) : 1
+    fbRows.forEach(r => {
+      const qty = parseInt(r.quantity) || 0
+      const manPrice = parseFloat(r.manPrice) || 0
+      if (!r.itemId || qty <= 0 || manPrice <= 0) return
+      if (r.manPriceIsForeign && fbHasForeign) { foreign += manPrice * qty; php += manPrice * exRate * qty }
+      else php += manPrice * qty
+    })
+    return { php, foreign }
+  }, [fbRows, fbHasForeign, fbExRate])
 
   // Freight batch: per-row computed values (CBM, unit cost)
   const fbComputedRows = useMemo(() => {
@@ -1584,6 +1631,30 @@ export default function InventoryPage() {
     finally { setCapSaving(false) }
   }
 
+  // Load the FX-source bank accounts for a currency + the RFP list for linking.
+  async function loadFbFxAndRfps(currency: string) {
+    try {
+      const [fxRes, rfpRes] = await Promise.all([
+        fetch(`/api/inventory/adjustments/fx-source?currency=${currency}`),
+        fetch('/api/inventory/adjustments/rfp-options'),
+      ])
+      const fx = fxRes.ok ? await fxRes.json() : { accounts: [] }
+      setFbFxAccounts(Array.isArray(fx.accounts) ? fx.accounts : [])
+      const rfps = rfpRes.ok ? await rfpRes.json() : []
+      setFbRfpOptions(Array.isArray(rfps) ? rfps : [])
+    } catch { setFbFxAccounts([]); setFbRfpOptions([]) }
+  }
+
+  // Selecting the FX source auto-fills the exchange rate with that account's
+  // weighted forex purchase rate (the accountant can still overtype it).
+  function applyFxAccount(accountId: string) {
+    setFbFxAccountId(accountId)
+    const acct = fbFxAccounts.find(a => a.id === accountId)
+    if (!acct) return
+    const rate = acct.weightedRate ?? acct.fallbackRate?.phpPerUnit ?? null
+    if (rate != null && rate > 0) setFbExRate(String(Number(rate.toFixed(4))))
+  }
+
   function openFbModal() {
     setFbEditId(null)
     setFbDate(new Date().toISOString().split('T')[0])
@@ -1593,6 +1664,8 @@ export default function InventoryPage() {
     setFbFreight3(''); setFbFreight3Foreign(false)
     setFbRows([{ itemId: '', itemName: '', itemSku: '', dimL: '', dimW: '', dimH: '', manPrice: '', manPriceIsForeign: true, quantity: '' }])
     setFbProofUrls([]); setError('')
+    setFbFxAccountId(''); setFbManuRfpId(''); setFbFreightRfpId('')
+    loadFbFxAndRfps('CNY')
     setFbOpen(true)
   }
 
@@ -1613,6 +1686,10 @@ export default function InventoryPage() {
       setFbFreight1(b.freight1Amount != null ? String(b.freight1Amount) : ''); setFbFreight1Foreign(!!b.freight1IsForeign)
       setFbFreight2(b.freight2Amount != null ? String(b.freight2Amount) : ''); setFbFreight2Foreign(!!b.freight2IsForeign)
       setFbFreight3(b.freight3Amount != null ? String(b.freight3Amount) : ''); setFbFreight3Foreign(!!b.freight3IsForeign)
+      setFbFxAccountId(b.fxSourceAccountId || '')
+      setFbManuRfpId(b.manufacturerRfpId || '')
+      setFbFreightRfpId(b.freightRfpId || '')
+      loadFbFxAndRfps(b.foreignCurrency || 'CNY')
       setFbProofUrls(Array.isArray(b.proofUrls) ? b.proofUrls : [])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setFbRows((b.adjustments || []).map((a: any) => {
@@ -1669,6 +1746,9 @@ export default function InventoryPage() {
           freight2IsForeign: fbFreight2Foreign,
           freight3Amount: fbFreight3 || undefined,
           freight3IsForeign: fbFreight3Foreign,
+          fxSourceAccountId: fbFxAccountId || undefined,
+          manufacturerRfpId: fbManuRfpId || undefined,
+          freightRfpId: fbFreightRfpId || undefined,
           proofUrls: fbProofUrls.length > 0 ? fbProofUrls : undefined,
           remarks: fbRemarks || undefined,
           rows: fbRows.filter(r => r.itemId && r.quantity),
@@ -3976,12 +4056,21 @@ setTimeout(()=>window.print(),500);
                         </label>
                       </div>
                       {fbHasForeign && (
-                        <div className="grid grid-cols-2 gap-3">
+                        <>
+                        <div className="grid grid-cols-3 gap-3">
                           <div>
                             <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Foreign Currency</label>
-                            <select value={fbCurrency} onChange={e => setFbCurrency(e.target.value)}
+                            <select value={fbCurrency} onChange={e => { setFbCurrency(e.target.value); setFbFxAccountId(''); loadFbFxAndRfps(e.target.value) }}
                               className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                               {['CNY','USD','EUR','JPY','KRW','SGD','HKD'].map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>{fbCurrency} funds from (bank account)</label>
+                            <select value={fbFxAccountId} onChange={e => applyFxAccount(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                              <option value="">— Select {fbCurrency} account —</option>
+                              {fbFxAccounts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} · {a.accountTitle}</option>)}
                             </select>
                           </div>
                           <div>
@@ -3990,6 +4079,32 @@ setTimeout(()=>window.print(),500);
                               className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                           </div>
                         </div>
+                        {(() => {
+                          const acct = fbFxAccounts.find(a => a.id === fbFxAccountId)
+                          if (!acct) return fbFxAccounts.length === 0 ? (
+                            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>No {fbCurrency} bank account found in the Chart of Accounts — the rate must be keyed by hand.</p>
+                          ) : null
+                          const peso2 = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          return (
+                            <div className="text-[11px] space-y-0.5" style={{ color: 'var(--mid-gray)' }}>
+                              {acct.weightedRate != null ? (
+                                <p>
+                                  Auto rate <strong style={{ color: 'var(--teal)' }}>₱{acct.weightedRate.toFixed(4)}</strong> per 1 {fbCurrency} — weighted from {acct.purchases.length} forex purchase{acct.purchases.length === 1 ? '' : 's'} in Bank Recon
+                                  {' '}(₱{peso2(acct.phpTotal)} paid for {fbCurrency} {peso2(acct.fxTotal)}).
+                                  {' '}Available balance ≈ {fbCurrency} {peso2(acct.balance)}.
+                                  {fbExRate && Math.abs(parseFloat(fbExRate) - acct.weightedRate) > 0.0001 && (
+                                    <button type="button" onClick={() => setFbExRate(String(Number(acct.weightedRate!.toFixed(4))))} className="ml-1 underline" style={{ color: 'var(--teal)' }}>Use auto rate</button>
+                                  )}
+                                </p>
+                              ) : acct.fallbackRate ? (
+                                <p>No forex purchase recorded for this account — using the latest Bank-Recon rate ₱{acct.fallbackRate.phpPerUnit} ({acct.fallbackRate.date}). Available balance ≈ {fbCurrency} {peso2(acct.balance)}.</p>
+                              ) : (
+                                <p>No forex purchase or Bank-Recon rate on file for this account — key the rate by hand. Available balance ≈ {fbCurrency} {peso2(acct.balance)}.</p>
+                              )}
+                            </div>
+                          )
+                        })()}
+                        </>
                       )}
                     </div>
 
@@ -4024,6 +4139,56 @@ setTimeout(()=>window.print(),500);
                         <span className="text-sm font-bold" style={{ color: 'var(--teal)' }}>
                           ₱{fbTotalFreightPHP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Linked Payments — the RFPs that actually paid the manufacturer and the
+                        freight forwarder (often recorded separately in Expenses). */}
+                    <div className="p-4 rounded-xl border space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--charcoal)' }}>Linked Payments (RFPs)</span>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          { label: 'Manufacturer payment RFP', val: fbManuRfpId, set: setFbManuRfpId },
+                          { label: 'Freight forwarder RFP', val: fbFreightRfpId, set: setFbFreightRfpId },
+                        ].map(({ label, val, set }) => (
+                          <div key={label}>
+                            <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
+                            <select value={val} onChange={e => set(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                              <option value="">— Not linked —</option>
+                              {fbRfpOptions.map(r => (
+                                <option key={r.id} value={r.id}>
+                                  {r.refNumber}{r.payableTo ? ` — ${r.payableTo}` : ''} · ₱{r.grossTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {r.status === 'PAID' ? 'Paid' : 'For Payment'}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Overall totals of what this shipment cost */}
+                      <div className="pt-2 border-t space-y-1" style={{ borderColor: 'var(--light-gray)' }}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                            Paid to manufacturer (goods)
+                            {fbHasForeign && fbGoodsTotals.foreign > 0 && <> · {fbCurrency} {fbGoodsTotals.foreign.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>}
+                          </span>
+                          <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>₱{fbGoodsTotals.php.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Freight costs</span>
+                          <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>₱{fbTotalFreightPHP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Total shipment cost (PHP)</span>
+                          <span className="text-sm font-bold" style={{ color: 'var(--teal)' }}>₱{(fbGoodsTotals.php + fbTotalFreightPHP).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                        {(fbManuRfpId || fbFreightRfpId) && (
+                          <p className="text-[11px] pt-1" style={{ color: 'var(--mid-gray)' }}>
+                            {[fbManuRfpId && `Manufacturer: ${fbRfpOptions.find(r => r.id === fbManuRfpId)?.refNumber || '—'}`,
+                              fbFreightRfpId && `Freight: ${fbRfpOptions.find(r => r.id === fbFreightRfpId)?.refNumber || '—'}`]
+                              .filter(Boolean).join(' · ')}
+                          </p>
+                        )}
                       </div>
                     </div>
 
