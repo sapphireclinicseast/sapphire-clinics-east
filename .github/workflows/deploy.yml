@@ -482,10 +482,26 @@ jobs:
           mkdir -p uploads/session-notes
 
           echo "→ Installing dependencies..."
-          npm ci --production=false 2>&1 | tail -3
+          # `| tail -3` truncates the log but also hides the real exit code from
+          # `set -e` (a pipeline's status is the last command's, i.e. tail's,
+          # which always succeeds). Check PIPESTATUS explicitly instead — a
+          # broken/partial `npm ci` here was slipping through to the Prisma
+          # generate + migration steps below, only surfacing minutes later as
+          # a confusing "no exported member 'PrismaClient'" build failure.
+          npm ci --production=false 2>&1 | tail -20
+          NPM_CI_RC=${PIPESTATUS[0]}
+          if [ "$NPM_CI_RC" != "0" ]; then
+            echo "❌ npm ci failed (exit $NPM_CI_RC) — aborting before migrations run against a broken install."
+            exit 1
+          fi
 
           echo "→ Generating Prisma client..."
-          npx prisma generate 2>&1 | tail -2
+          npx prisma generate 2>&1 | tail -20
+          PRISMA_GEN_RC=${PIPESTATUS[0]}
+          if [ "$PRISMA_GEN_RC" != "0" ]; then
+            echo "❌ prisma generate failed (exit $PRISMA_GEN_RC) — aborting before migrations run against a broken Prisma client."
+            exit 1
+          fi
 
           echo "→ Creating teletherapy tables..."
           cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 || true
