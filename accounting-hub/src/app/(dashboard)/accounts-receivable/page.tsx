@@ -53,6 +53,13 @@ interface AROrder {
   arPaymentItems: { paymentId: string }[]
 }
 
+interface ARSummary {
+  orderCount: number
+  totalBilled: number
+  byDepartment: { label: string; amount: number }[]
+  byProvider: { label: string; amount: number }[]
+}
+
 interface InvoiceSetting {
   branch: string
   companyName?: string | null
@@ -367,6 +374,9 @@ export default function AccountsReceivablePage() {
   const [wallets, setWallets] = useState<ARWallet[]>([])
   const [orders, setOrders] = useState<AROrder[]>([])
   const [arPayments, setArPayments] = useState<ARPaymentRecord[]>([])
+  // Full-history totals from the API. The `orders` list is capped at 500, so
+  // summary figures must come from here or older years drop out silently.
+  const [summary, setSummary] = useState<ARSummary | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Aging dashboard state
@@ -462,8 +472,10 @@ export default function AccountsReceivablePage() {
       setWallets(data.wallets || [])
       setOrders(data.orders || [])
       setArPayments(data.arPayments || [])
+      setSummary(data.summary || null)
     } catch {
       setOrders([])
+      setSummary(null)
     } finally {
       setLoading(false)
     }
@@ -1074,7 +1086,11 @@ export default function AccountsReceivablePage() {
       {/* ── HMO Summary ── */}
       {tab === 'HMO' && hmoSubTab === 'overview' && (() => {
         const totalProviders = wallets.length
-        const totalHmoOrders = orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
+        // Billed comes from the API's full-history aggregate, not the capped
+        // `orders` list — otherwise 2024/2025 orders are excluded from the total.
+        const totalHmoOrders = summary
+          ? summary.totalBilled
+          : orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
         const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
         const pctPaid = totalHmoOrders > 0 ? Math.min(100, (totalPaid / totalHmoOrders) * 100) : 0
 
@@ -1101,21 +1117,27 @@ export default function AccountsReceivablePage() {
           })
         }
 
-        // Department breakdown — split each order's payment proportionally across departments
+        // Department breakdown — split each order's payment proportionally across
+        // departments. Served by the API across all orders; the local pass is the
+        // fallback for an older API response that carries no summary.
         const deptMap = new Map<string, number>()
-        for (const o of orders) {
-          const pay = o.payments[0]
-          const amt = pay ? toNum(pay.amount) : 0
-          if (amt === 0) continue
-          // Count items per department within this order
-          const itemsByDept = new Map<string, number>()
-          for (const it of o.items) {
-            const dept = it.service?.department || 'Other'
-            itemsByDept.set(dept, (itemsByDept.get(dept) || 0) + 1)
-          }
-          const totalItems = o.items.length || 1
-          for (const [dept, count] of itemsByDept) {
-            deptMap.set(dept, (deptMap.get(dept) || 0) + (count / totalItems) * amt)
+        if (summary) {
+          for (const d of summary.byDepartment) deptMap.set(d.label, d.amount)
+        } else {
+          for (const o of orders) {
+            const pay = o.payments[0]
+            const amt = pay ? toNum(pay.amount) : 0
+            if (amt === 0) continue
+            // Count items per department within this order
+            const itemsByDept = new Map<string, number>()
+            for (const it of o.items) {
+              const dept = it.service?.department || 'Other'
+              itemsByDept.set(dept, (itemsByDept.get(dept) || 0) + 1)
+            }
+            const totalItems = o.items.length || 1
+            for (const [dept, count] of itemsByDept) {
+              deptMap.set(dept, (deptMap.get(dept) || 0) + (count / totalItems) * amt)
+            }
           }
         }
         const deptEntries = Array.from(deptMap.entries()).sort((a, b) => b[1] - a[1])
@@ -1124,11 +1146,15 @@ export default function AccountsReceivablePage() {
 
         // Provider breakdown (HMO orders by wallet/provider)
         const provMap = new Map<string, number>()
-        for (const o of orders) {
-          for (const p of o.payments) {
-            const wallet = wallets.find(w => w.id === p.walletId)
-            const name = wallet?.patientName || 'Unknown'
-            provMap.set(name, (provMap.get(name) || 0) + toNum(p.amount))
+        if (summary) {
+          for (const p of summary.byProvider) provMap.set(p.label, p.amount)
+        } else {
+          for (const o of orders) {
+            for (const p of o.payments) {
+              const wallet = wallets.find(w => w.id === p.walletId)
+              const name = wallet?.patientName || 'Unknown'
+              provMap.set(name, (provMap.get(name) || 0) + toNum(p.amount))
+            }
           }
         }
         const provEntries = Array.from(provMap.entries()).sort((a, b) => b[1] - a[1])
