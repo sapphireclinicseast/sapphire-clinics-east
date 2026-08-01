@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Repeat, Plus, Settings, Loader2, X, Eye, Pencil, Trash2, ListChecks, Info } from 'lucide-react'
+import { Repeat, Plus, Settings, Loader2, X, Eye, Pencil, Trash2, ListChecks, Info, ArrowLeftRight } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { ScanUpload } from '@/components/ScanUpload'
+import ForexPanel from './ForexPanel'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -22,7 +23,7 @@ export default function FundTransferPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Transfer | null>(null)
   const [showSettings, setShowSettings] = useState(false)
-  const [view, setView] = useState<'transfers' | 'checks'>('transfers')
+  const [view, setView] = useState<'transfers' | 'forex' | 'checks'>('transfers')
 
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
   const [filters, setFilters] = useState<Record<string, string>>({})
@@ -62,7 +63,7 @@ export default function FundTransferPage() {
 
       {/* Sub-section tabs */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['transfers', 'Fund Transfers', Repeat], ['checks', 'Check Release Monitoring', ListChecks]] as const).map(([v, label, Icon]) => (
+        {([['transfers', 'Fund Transfers', Repeat], ['forex', 'Foreign Exchange', ArrowLeftRight], ['checks', 'Check Release Monitoring', ListChecks]] as const).map(([v, label, Icon]) => (
           <button key={v} onClick={() => setView(v)}
             className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
             style={{ borderColor: view === v ? 'var(--teal)' : 'transparent', color: view === v ? 'var(--teal)' : 'var(--mid-gray)' }}>
@@ -71,7 +72,8 @@ export default function FundTransferPage() {
         ))}
       </div>
 
-      {view === 'checks' ? <CheckReleaseMonitoring canWrite={canWrite} /> : (<>
+      {view === 'checks' ? <CheckReleaseMonitoring canWrite={canWrite} />
+        : view === 'forex' ? <ForexPanel banks={banks} canWrite={canWrite} /> : (<>
 
       <div className="rounded-xl border px-4 py-2.5 text-sm flex items-start gap-2" style={{ borderColor: '#bfdbfe', background: '#eff6ff', color: '#1e3a8a' }}>
         <Info size={16} className="mt-0.5 flex-shrink-0" />

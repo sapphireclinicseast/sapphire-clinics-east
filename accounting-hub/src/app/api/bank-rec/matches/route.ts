@@ -4,8 +4,12 @@ import { prisma } from '@/lib/prisma'
 import { candidates, forDirection } from '@/lib/bank-rec-candidates'
 
 const WINDOW_DAYS = 7
-const FOREX_WINDOW_DAYS = 7
+// A currency exchange settles within a few days of being keyed, so both the
+// line-to-line pairing and a recorded exchange's legs are held to this window.
+const FOREX_WINDOW_DAYS = 5
 const near = (a: number, b: number) => Math.abs(a - b) < 0.01
+const withinFxWindow = (a: Date, b: Date) =>
+  Math.abs(+new Date(a) - +new Date(b)) <= FOREX_WINDOW_DAYS * 86_400_000
 
 // Buying foreign currency shows up as two bank lines that can never match on
 // amount — money out of one account in one currency, money in to another in a
@@ -96,7 +100,7 @@ export async function GET(req: Request) {
   // orders — a payment missing from this list simply looks unmatchable.
   const all = await candidates(txn.bankAccountId, lo, hi)
   const out = forDirection(all, isSpent)
-    .filter(c => near(c.amount, amount) && gte(c.date))
+    .filter(c => near(c.amount, amount) && gte(c.date) && (!c.fx || withinFxWindow(c.date, txn.date)))
     .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount }))
 
   // Closest dates first.

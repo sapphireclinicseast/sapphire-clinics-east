@@ -15,6 +15,12 @@ export interface Candidate {
   amount: number
   /** 'out' leaves the bank account, 'in' arrives, 'either' can be both */
   dir: 'in' | 'out' | 'either'
+  /**
+   * A leg of a recorded currency exchange. The two legs carry different amounts
+   * (one per currency), so each is offered against its own account only, and
+   * callers hold them to a tighter date window than ordinary candidates.
+   */
+  fx?: boolean
 }
 
 const num = (v: unknown) => Number(v ?? 0)
@@ -41,7 +47,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
-      select: { id: true, refNumber: true, amount: true, date: true, fromAccountId: true },
+      select: { id: true, refNumber: true, amount: true, date: true, fromAccountId: true, toAccountId: true, toAmount: true, exchangeRate: true },
     }),
     // Petty cash, expenses, refunds and taxes all raise a Reimbursement Report;
     // `module` says which. It carries no bank account, so it is offered against
@@ -91,6 +97,26 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   const out: Candidate[] = []
 
   for (const t of transfers) {
+    // A currency exchange moves a different number in than out, so it cannot be
+    // offered as one amount. Each leg is emitted against its own account: the
+    // money that left the source, and the foreign amount that landed.
+    if (t.toAmount != null && num(t.toAmount) > 0) {
+      const rate = num(t.exchangeRate)
+      const suffix = rate > 0 ? ` @ ${rate.toFixed(4)}` : ''
+      if (!bankAccountId || t.fromAccountId === bankAccountId) {
+        out.push({
+          type: 'FUND_TRANSFER', id: t.id, label: `${t.refNumber} · Currency exchange (paid out)${suffix}`,
+          date: t.date, amount: num(t.amount), dir: 'out', fx: true,
+        })
+      }
+      if (!bankAccountId || t.toAccountId === bankAccountId) {
+        out.push({
+          type: 'FUND_TRANSFER', id: t.id, label: `${t.refNumber} · Currency exchange (received)${suffix}`,
+          date: t.date, amount: num(t.toAmount), dir: 'in', fx: true,
+        })
+      }
+      continue
+    }
     out.push({
       type: 'FUND_TRANSFER', id: t.id, label: `${t.refNumber} · Fund Transfer`,
       date: t.date, amount: num(t.amount),
