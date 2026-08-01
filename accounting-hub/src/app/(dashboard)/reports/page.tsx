@@ -2022,6 +2022,13 @@ export default function ReportsPage() {
 
         {/* Report content */}
         {!loading && data?.historical && (
+          <div className="mx-4 mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}>
+            {year} figures come from the audited / manually entered historical statements, not from transactions
+            recorded in the Hub — there is nothing underneath them to drill into, which is why the numbers are not
+            clickable. Transaction-backed reporting (and the Ledger beta) starts with 2026.
+          </div>
+        )}
+        {!loading && data?.historical && (
           <HistoricalReport
             hist={data.historical}
             tab={effTab}
