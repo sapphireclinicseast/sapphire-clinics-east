@@ -33,11 +33,15 @@ export async function GET(req: Request) {
 
   if (branch) where.branch = branch
   if (department) where.skuDepartment = department
+  // '__none__' finds items not yet given a customer-facing category.
+  const webClass = searchParams.get('websiteClassification')
+  if (webClass === '__none__') where.websiteClassification = null
+  else if (webClass) where.websiteClassification = webClass
 
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where: { ...where, isActive: true },
-      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, quantity: true }, orderBy: { variantLabel: 'asc' } } },
+      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, quantity: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
@@ -131,6 +135,7 @@ export async function POST(req: Request) {
         expenseAccountId: expenseAccountId || null,
         issuedOfficialInvoice: body.issuedOfficialInvoice || false,
         isPreOrder: body.isPreOrder || false,
+        websiteClassification: body.websiteClassification || null,
         dimensionLength: dimensionLength ? parseFloat(dimensionLength) : null,
         dimensionWidth: dimensionWidth ? parseFloat(dimensionWidth) : null,
         dimensionHeight: dimensionHeight ? parseFloat(dimensionHeight) : null,
@@ -164,7 +169,7 @@ export async function PUT(req: Request) {
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
             reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
-            issuedOfficialInvoice, isPreOrder, imageUrl, isActive,
+            issuedOfficialInvoice, isPreOrder, websiteClassification, imageUrl, isActive,
             dimensionLength, dimensionWidth, dimensionHeight } = await req.json()
 
     if (!id) {
@@ -188,6 +193,7 @@ export async function PUT(req: Request) {
     if (expenseAccountId !== undefined) data.expenseAccountId = expenseAccountId || null
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
     if (isPreOrder !== undefined) data.isPreOrder = !!isPreOrder
+    if (websiteClassification !== undefined) data.websiteClassification = websiteClassification || null
     if (isActive !== undefined) data.isActive = !!isActive  // disable (retire) / restore
     if (imageUrl !== undefined) data.imageUrl = imageUrl || null
     if (dimensionLength !== undefined) data.dimensionLength = dimensionLength !== '' && dimensionLength !== null ? parseFloat(dimensionLength) : null
@@ -220,7 +226,7 @@ export async function PATCH(req: Request) {
 
   try {
     const { ids, revenueAccountId, sourceAccountId, expenseAccountId, supplierId, branch, unitCost,
-            sellingPrice, rewardPointsPrice, reorderLevel, accountSubType } = await req.json()
+            sellingPrice, rewardPointsPrice, reorderLevel, accountSubType, websiteClassification: bulkWebClass } = await req.json()
 
     if (!Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'At least one item ID is required' }, { status: 400 })
@@ -238,6 +244,7 @@ export async function PATCH(req: Request) {
     if (rewardPointsPrice !== undefined) data.rewardPointsPrice = rewardPointsPrice ? parseInt(rewardPointsPrice) : null
     if (reorderLevel !== undefined) data.reorderLevel = reorderLevel ? parseInt(reorderLevel) : null
     if (accountSubType !== undefined) data.accountSubType = accountSubType || null
+    if (bulkWebClass !== undefined) data.websiteClassification = bulkWebClass || null
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
