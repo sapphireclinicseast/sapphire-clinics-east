@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { itemId, variantType, variantLabel, color, quantity } = await req.json()
+    const { itemId, variantType, variantLabel, color, quantity, unitCost, sellingPrice } = await req.json()
     const label = variantLabel || color // backward compat
     const type = variantType || 'Color'
 
@@ -68,6 +68,9 @@ export async function POST(req: Request) {
         variantSku: finalSku,
         barcode: finalSku,
         quantity: quantity ? parseInt(quantity) : 0,
+        // blank = inherit the parent item's figure
+        unitCost: unitCost !== undefined && unitCost !== '' && unitCost !== null ? parseFloat(unitCost) : null,
+        sellingPrice: sellingPrice !== undefined && sellingPrice !== '' && sellingPrice !== null ? parseFloat(sellingPrice) : null,
       },
     })
 
@@ -106,7 +109,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, quantity, color, variantLabel, variantType } = await req.json()
+    const { id, quantity, color, variantLabel, variantType, unitCost, sellingPrice } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Variant ID is required' }, { status: 400 })
@@ -118,6 +121,9 @@ export async function PUT(req: Request) {
     if (variantLabel !== undefined) data.variantLabel = variantLabel.trim().toUpperCase()
     else if (color !== undefined) data.variantLabel = color.trim().toUpperCase()
     if (variantType !== undefined) data.variantType = variantType.trim()
+    // '' clears the override and falls back to the parent item
+    if (unitCost !== undefined) data.unitCost = unitCost === '' || unitCost === null ? null : parseFloat(unitCost)
+    if (sellingPrice !== undefined) data.sellingPrice = sellingPrice === '' || sellingPrice === null ? null : parseFloat(sellingPrice)
 
     const variant = await prisma.inventoryVariant.update({ where: { id }, data })
 

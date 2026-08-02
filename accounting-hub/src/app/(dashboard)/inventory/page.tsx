@@ -400,7 +400,7 @@ interface InventoryItem {
   sourceAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   expenseAccountId?: string | null
   expenseAccount?: { id: string; accountNumber: string; accountTitle: string } | null
-  variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null }[]
+  variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null; unitCost?: string | number | null; sellingPrice?: string | number | null }[]
   isBundle?: boolean
   issuedOfficialInvoice?: boolean
   isPreOrder?: boolean
@@ -644,7 +644,8 @@ export default function InventoryPage() {
   const [editAdj, setEditAdj] = useState<Adjustment | null>(null)
   const [deletingAdj, setDeletingAdj] = useState(false)
   // Variants (color, size, material, etc.)
-  const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string }[]>([])
+  const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string; unitCost?: string | number | null; sellingPrice?: string | number | null }[]>([])
+  const [variantSaved, setVariantSaved] = useState<string | null>(null)
   const [newVariantType, setNewVariantType] = useState('Color')
   const [newVariantLabel, setNewVariantLabel] = useState('')
   const [newVariantQty, setNewVariantQty] = useState(0)
@@ -1252,6 +1253,7 @@ export default function InventoryPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setVariants((item.variants || []).map((v: any) => ({
       id: v.id, variantType: v.variantType || 'Color', variantLabel: v.variantLabel || v.color || '', quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode || undefined,
+      unitCost: v.unitCost ?? null, sellingPrice: v.sellingPrice ?? null,
     })))
     setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(item.issuedOfficialInvoice || false)
@@ -1330,6 +1332,24 @@ export default function InventoryPage() {
         setError(d.error || 'Failed to add variant')
       }
     } catch { setError('Failed to add variant') }
+  }
+
+  // Per-variant cost / price. Empty clears the override so the variant inherits the parent.
+  async function saveVariantPricing(variantId: string, field: 'unitCost' | 'sellingPrice', raw: string) {
+    const value = raw.trim() === '' ? '' : raw.trim()
+    const current = variants.find(v => v.id === variantId)
+    const existing = current ? (field === 'unitCost' ? current.unitCost : current.sellingPrice) : null
+    if (String(existing ?? '') === String(value)) return   // unchanged — don't spam the API
+    try {
+      const res = await fetch('/api/inventory/variants', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: variantId, [field]: value }),
+      })
+      if (!res.ok) { setError('Could not save variant pricing'); return }
+      setVariants(prev => prev.map(v => v.id === variantId ? { ...v, [field]: value === '' ? null : value } : v))
+      setVariantSaved(variantId)
+      setTimeout(() => setVariantSaved(null), 1500)
+    } catch { setError('Network error saving variant pricing') }
   }
 
   async function deleteVariant(variantId: string) {
@@ -2995,17 +3015,37 @@ setTimeout(()=>window.print(),500);
                       {variants.length > 0 && (
                         <div className="space-y-1">
                           {variants.map(v => (
-                            <div key={v.id || v.variantLabel} className="flex items-center justify-between p-2 rounded-lg text-xs" style={{ background: 'var(--off-white)' }}>
-                              <div>
-                                <span className="px-1.5 py-0.5 rounded text-xs font-semibold mr-1" style={{ background: '#e0e7ff', color: '#3730a3' }}>{v.variantType}</span>
-                                <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{v.variantLabel}</span>
-                                <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>SKU: {v.variantSku || '—'}</span>
-                                <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>Qty: {v.quantity}</span>
+                            <div key={v.id || v.variantLabel} className="p-2 rounded-lg text-xs space-y-1.5" style={{ background: 'var(--off-white)' }}>
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <span className="px-1.5 py-0.5 rounded text-xs font-semibold mr-1" style={{ background: '#e0e7ff', color: '#3730a3' }}>{v.variantType}</span>
+                                  <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{v.variantLabel}</span>
+                                  <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>SKU: {v.variantSku || '—'}</span>
+                                  <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>Qty: {v.quantity}</span>
+                                </div>
+                                {v.id && (
+                                  <button type="button" onClick={() => deleteVariant(v.id!)} className="p-1 rounded hover:bg-red-50">
+                                    <Trash2 size={12} className="text-red-500" />
+                                  </button>
+                                )}
                               </div>
+                              {/* Per-variant cost + price. Blank inherits the parent item's figure. */}
                               {v.id && (
-                                <button type="button" onClick={() => deleteVariant(v.id!)} className="p-1 rounded hover:bg-red-50">
-                                  <Trash2 size={12} className="text-red-500" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <label className="shrink-0" style={{ color: 'var(--mid-gray)' }}>Unit Cost ₱</label>
+                                  <input type="number" step="0.01" min={0}
+                                    defaultValue={v.unitCost != null ? String(v.unitCost) : ''}
+                                    placeholder={`inherits ${fUnitCost || 0}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'unitCost', e.target.value)}
+                                    className="w-24 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                  <label className="shrink-0 ml-2" style={{ color: 'var(--mid-gray)' }}>Selling ₱</label>
+                                  <input type="number" step="0.01" min={0}
+                                    defaultValue={v.sellingPrice != null ? String(v.sellingPrice) : ''}
+                                    placeholder={`inherits ${fSellingPrice || 0}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'sellingPrice', e.target.value)}
+                                    className="w-24 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                  {variantSaved === v.id && <span style={{ color: 'var(--teal)' }}>saved</span>}
+                                </div>
                               )}
                             </div>
                           ))}
