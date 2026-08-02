@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { walletId, walletIds, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch, salesInvoiceNumber } = await req.json()
+    const { walletId, walletIds, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch, salesInvoiceNumber, overpayment, overpaymentAccountId } = await req.json()
 
     // Support multi-wallet GL payments: walletIds is an array of wallet IDs
     const effectiveWalletIds: string[] = walletIds?.length ? walletIds : walletId ? [walletId] : []
@@ -23,7 +23,17 @@ export async function POST(req: Request) {
 
     const paymentAmount = Number(amount)
     const discountAmount = Number(discount) || 0
-    const totalSettled = paymentAmount + discountAmount
+    // Overpayment: the payer remitted more than the AR being settled. The excess
+    // is booked to an income account, NOT against AR — single-wallet only.
+    const overpayAmount = effectiveWalletIds.length === 1 ? Math.max(0, Number(overpayment) || 0) : 0
+    if (overpayAmount > 0 && !overpaymentAccountId) {
+      return NextResponse.json({ error: 'Choose an income account for the overpayment' }, { status: 400 })
+    }
+    if (overpayAmount > paymentAmount) {
+      return NextResponse.json({ error: 'Overpayment cannot exceed the payment amount' }, { status: 400 })
+    }
+    // AR actually settled excludes the overpaid excess.
+    const totalSettled = paymentAmount + discountAmount - overpayAmount
 
     // For multi-wallet: split total evenly across wallets, then create one ARPayment per wallet
     const perWalletAmount = paymentAmount / effectiveWalletIds.length
@@ -56,6 +66,8 @@ export async function POST(req: Request) {
           discount: thisDiscount,
           discountAccountId: discountAccountId || null,
           cashAccountId: cashAccountId || null,
+          overpayment: overpayAmount,
+          overpaymentAccountId: overpayAmount > 0 ? overpaymentAccountId : null,
           proofUrl: proofUrl || null,
           notes: effectiveWalletIds.length > 1
             ? `${notes?.trim() || ''} [Bulk payment across ${effectiveWalletIds.length} GL wallets]`.trim()
@@ -91,7 +103,7 @@ export async function POST(req: Request) {
         data: {
           walletId: wId,
           action: 'AR_PAYMENT',
-          description: `Payment received: ${thisAmount}${thisDiscount > 0 ? ` + discount: ${thisDiscount}` : ''}${effectiveWalletIds.length > 1 ? ' (bulk)' : ''}`,
+          description: `Payment received: ${thisAmount}${thisDiscount > 0 ? ` + discount: ${thisDiscount}` : ''}${overpayAmount > 0 ? ` (includes overpayment: ${overpayAmount})` : ''}${effectiveWalletIds.length > 1 ? ' (bulk)' : ''}`,
           createdById: session.user.id,
         },
       })
@@ -121,6 +133,7 @@ export async function POST(req: Request) {
             walletType: wallet.walletType,
             amount: thisAmount,
             discount: thisDiscount,
+            overpayment: overpayAmount,
             orderCount: walletOrderIds.length,
             bulkPayment: effectiveWalletIds.length > 1,
             glPosted: arPostResult?.posted ?? false,
@@ -144,7 +157,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, walletId, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch, salesInvoiceNumber } = await req.json()
+    const { id, walletId, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch, salesInvoiceNumber, overpayment, overpaymentAccountId } = await req.json()
 
     if (!id) return NextResponse.json({ error: 'Payment ID is required' }, { status: 400 })
     if (!walletId || !paymentDate || amount == null) {
@@ -158,10 +171,18 @@ export async function PUT(req: Request) {
     })
     if (!existing) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
 
-    const oldTotal = Number(existing.amount) + Number(existing.discount)
     const newAmount = Number(amount)
     const newDiscount = Number(discount) || 0
-    const newTotal = newAmount + newDiscount
+    const newOverpay = Math.max(0, Number(overpayment) || 0)
+    if (newOverpay > 0 && !overpaymentAccountId) {
+      return NextResponse.json({ error: 'Choose an income account for the overpayment' }, { status: 400 })
+    }
+    if (newOverpay > newAmount) {
+      return NextResponse.json({ error: 'Overpayment cannot exceed the payment amount' }, { status: 400 })
+    }
+    // Settled totals exclude any overpaid excess (booked to income, not AR).
+    const oldTotal = Number(existing.amount) + Number(existing.discount) - Number(existing.overpayment || 0)
+    const newTotal = newAmount + newDiscount - newOverpay
     const balanceDiff = newTotal - oldTotal // positive = more settled, negative = less settled
 
     // Replace linked orders
@@ -177,6 +198,8 @@ export async function PUT(req: Request) {
         discount: newDiscount,
         discountAccountId: discountAccountId || null,
         cashAccountId: cashAccountId || null,
+        overpayment: newOverpay,
+        overpaymentAccountId: newOverpay > 0 ? overpaymentAccountId : null,
         proofUrl: proofUrl || null,
         notes: notes?.trim() || null,
         salesInvoiceNumber: salesInvoiceNumber?.trim() || null,
@@ -240,6 +263,7 @@ export async function PUT(req: Request) {
           walletId,
           amount: newAmount,
           discount: newDiscount,
+          overpayment: newOverpay,
           balanceDiff,
           orderCount: orderIds?.length || 0,
           glPosted: updatePostResult?.posted ?? false,
@@ -280,7 +304,8 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
     }
 
-    const totalSettled = Number(payment.amount) + Number(payment.discount)
+    // Restore only the AR-settled portion — the overpaid excess never reduced the balance.
+    const totalSettled = Number(payment.amount) + Number(payment.discount) - Number(payment.overpayment || 0)
 
     // Tier 3 Step 4: Reverse the JE BEFORE deleting the payment row so the
     // referenceId is still valid when we look up the original entry. The

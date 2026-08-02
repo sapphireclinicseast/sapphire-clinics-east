@@ -3,7 +3,8 @@
  *
  *   DR Cash (cashAccount on the payment)         actual cash collected
  *   DR Discount/Write-off (discountAccount)      discount given
- *     CR AR (wallet.account, fall back to 1010)  total settled
+ *     CR AR (wallet.account, fall back to 1010)  AR settled (excl. overpayment)
+ *     CR Other income (overpaymentAccount)       excess the payer remitted
  *
  * Gated by ENABLE_GL_POSTING. Non-fatal: returns { posted, reason } so the
  * AR payment row is created either way.
@@ -45,16 +46,20 @@ export async function postARPaymentJournal(
           account: { select: { id: true, accountNumber: true, accountTitle: true } },
         },
       },
-      cashAccount:     { select: { id: true, accountNumber: true, accountTitle: true } },
-      discountAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
+      cashAccount:        { select: { id: true, accountNumber: true, accountTitle: true } },
+      discountAccount:    { select: { id: true, accountNumber: true, accountTitle: true } },
+      overpaymentAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
     },
   })
   if (!payment) return { posted: false, reason: 'AR payment not found' }
 
   const cashAmt     = Number(payment.amount)
   const discountAmt = Number(payment.discount || 0)
+  const overpayAmt  = Number(payment.overpayment || 0)
   const total       = cashAmt + discountAmt
+  const arSettled   = total - overpayAmt
   if (total <= 0) return { posted: false, reason: 'zero-amount AR payment — nothing to post' }
+  if (arSettled < 0) return { posted: false, reason: 'overpayment exceeds payment + discount' }
 
   // Resolve AR account (CR side)
   let arAccount = payment.wallet?.account
@@ -78,6 +83,11 @@ export async function postARPaymentJournal(
     return { posted: false, reason: `AR payment ${paymentId} has discount ${discountAmt} but no discountAccountId set` }
   }
 
+  // Overpayment side (only required if an overpayment was recorded)
+  if (overpayAmt > 0 && !payment.overpaymentAccount) {
+    return { posted: false, reason: `AR payment ${paymentId} has overpayment ${overpayAmt} but no overpaymentAccountId set` }
+  }
+
   const lines: PostingLine[] = []
   if (cashAmt > 0 && payment.cashAccount) {
     lines.push({
@@ -93,11 +103,20 @@ export async function postARPaymentJournal(
       description: `AR write-off / discount`,
     })
   }
-  lines.push({
-    accountId: arAccount.id,
-    credit: total,
-    description: `AR settled — ${payment.wallet?.patientName || ''} ${payment.wallet?.walletType || ''}`.trim(),
-  })
+  if (arSettled > 0) {
+    lines.push({
+      accountId: arAccount.id,
+      credit: arSettled,
+      description: `AR settled — ${payment.wallet?.patientName || ''} ${payment.wallet?.walletType || ''}`.trim(),
+    })
+  }
+  if (overpayAmt > 0 && payment.overpaymentAccount) {
+    lines.push({
+      accountId: payment.overpaymentAccount.id,
+      credit: overpayAmt,
+      description: `Overpayment by ${payment.wallet?.patientName || 'payer'} — other income`,
+    })
+  }
 
   try {
     const je = await postJournalEntry(prisma, {
