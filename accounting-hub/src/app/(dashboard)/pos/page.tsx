@@ -222,6 +222,8 @@ interface InventoryVariant {
   variantType: string
   variantLabel: string
   quantity: number
+  unitCost?: string | number | null
+  sellingPrice?: string | number | null
 }
 
 interface InventoryProduct {
@@ -6727,6 +6729,10 @@ function ProductsSection({
   )
 
   const addToCart = (p: InventoryProduct, variantId?: string, variantLabel?: string) => {
+    // A variant may carry its own price (e.g. Petite Pouf cotton vs polyester);
+    // fall back to the parent item's price when it doesn't.
+    const variant = variantId ? (p.variants ?? []).find(v => v.id === variantId) : undefined
+    const variantPrice = variant && variant.sellingPrice != null ? toNum(variant.sellingPrice) : null
     const existing = cart.findIndex(c =>
       c.inventoryItemId === p.id && c.variantId === (variantId ?? undefined)
     )
@@ -6736,7 +6742,7 @@ function ProductsSection({
         lineTotal: c.isFreeSample ? 0 : c.unitPrice * (c.quantity + 1),
       } : c))
     } else {
-      const price = toNum(p.sellingPrice)
+      const price = variantPrice ?? toNum(p.sellingPrice)
       setCart(prev => [...prev, {
         inventoryItemId: p.id,
         name: p.name,
@@ -7659,6 +7665,9 @@ function ProductsSection({
                     </p>
                     <p className="text-xs" style={{ color: v.quantity > 0 ? 'var(--mid-gray)' : sellable ? '#1e40af' : '#ef4444' }}>
                       {v.quantity > 0 ? `${v.quantity} in stock` : sellable ? 'Pre-order' : 'Out of stock'}
+                      {v.sellingPrice != null && (
+                        <span className="ml-1 font-semibold" style={{ color: 'var(--teal)' }}>· {formatCurrency(toNum(v.sellingPrice))}</span>
+                      )}
                     </p>
                   </div>
                 </label>

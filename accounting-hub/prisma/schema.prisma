@@ -384,6 +384,11 @@ model InventoryVariant {
   variantSku   String        @unique  // e.g. "OT-TOY-THE-001-RED"
   barcode      String?       @unique
   quantity     Int           @default(0)
+  // Per-variant cost and price. NULL = inherit the parent item's figure, so existing
+  // variants keep behaving exactly as before. Set these when variants genuinely differ
+  // (e.g. The Petite Pouf in polyester vs cotton — different landed cost and price).
+  unitCost     Decimal?      @db.Decimal(12, 2)
+  sellingPrice Decimal?      @db.Decimal(12, 2)
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

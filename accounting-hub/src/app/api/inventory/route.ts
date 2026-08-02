@@ -41,7 +41,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where: { ...where, isActive: true },
-      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, quantity: true }, orderBy: { variantLabel: 'asc' } } },
+      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
