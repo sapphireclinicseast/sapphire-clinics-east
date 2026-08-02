@@ -12,6 +12,7 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
+import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
 
 interface ARWallet {
@@ -432,7 +433,7 @@ export default function AccountsReceivablePage() {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
   // HMO sub-tab state
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report'>('overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report' | 'submitted-soa'>('overview')
   // Per HMO sub-tab state
   const [perHmoWallet, setPerHmoWallet] = useState('')
   const [perHmoFrom, setPerHmoFrom] = useState('')
@@ -856,6 +857,7 @@ export default function AccountsReceivablePage() {
             { key: 'overview', label: 'Overview' },
             { key: 'per-hmo', label: 'Per HMO' },
             { key: 'soa-report', label: 'SOA Report' },
+            { key: 'submitted-soa', label: 'Submitted for SOA' },
           ] as const).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
@@ -1527,7 +1529,7 @@ export default function AccountsReceivablePage() {
 
       {/* Session Tagging — the sessions themselves, and which of them a payment has
           been applied to. Pick an agency above to see only that patient's sessions. */}
-      {!(tab === 'HMO' && hmoSubTab === 'overview') && (
+      {!(tab === 'HMO' && (hmoSubTab === 'overview' || hmoSubTab === 'submitted-soa')) && (
         <div className="flex items-baseline justify-between mt-4 mb-2">
           <h3 className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Session Tagging</h3>
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
@@ -1537,7 +1539,7 @@ export default function AccountsReceivablePage() {
           </p>
         </div>
       )}
-      {!(tab === 'HMO' && hmoSubTab === 'overview') && <div id="ar-transactions" data-ar-transactions-table className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '400px' }}>
+      {!(tab === 'HMO' && (hmoSubTab === 'overview' || hmoSubTab === 'submitted-soa')) && <div id="ar-transactions" data-ar-transactions-table className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '400px' }}>
         <table className="w-full text-sm">
           <thead>
             <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
@@ -2048,6 +2050,13 @@ export default function AccountsReceivablePage() {
         <SoaReport
           wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName, branch: w.branch }))}
           isAdmin={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes((session?.user as { role?: string })?.role || '')}
+        />
+      )}
+
+      {tab === 'HMO' && hmoSubTab === 'submitted-soa' && (
+        <SubmittedForSoa
+          wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName }))}
+          canWrite={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER'].includes((session?.user as { role?: string })?.role || '')}
         />
       )}
 

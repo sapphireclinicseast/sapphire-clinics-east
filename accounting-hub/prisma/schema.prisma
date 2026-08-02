@@ -79,6 +79,7 @@ model User {
   ordersCreated         Order[]                 @relation("OrderCreatedBy")
   discountSettings      DiscountSetting[]       @relation("DiscountCreatedBy")
   arPayments            ARPayment[]             @relation("ARPaymentCreatedBy")
+  soaSubmissions        SoaSubmission[]         @relation("SoaSubmissionCreatedBy")
   payrollEntries        PayrollEntry[]          @relation("PayrollCreatedBy")
   incentiveRules        IncentiveRule[]         @relation("IncentiveCreatedBy")
   assets                Asset[]                 @relation("AssetCreatedBy")
@@ -652,6 +653,7 @@ model DigitalWallet {
   logs        WalletLog[]
   payments    OrderPayment[]
   arPayments  ARPayment[]
+  soaSubmissions SoaSubmission[]
 
   @@index([patientId, walletType])
   @@index([patientName])
@@ -741,6 +743,7 @@ model Order {
   items          OrderItem[]
   payments       OrderPayment[]
   arPaymentItems ARPaymentItem[]
+  soaSubmissionItems SoaSubmissionItem[]
   otherReceivable OtherReceivable?
 
   @@index([orderType])
@@ -1132,6 +1135,47 @@ model ARPaymentItem {
   createdAt DateTime  @default(now())
 
   @@index([paymentId])
+  @@index([orderId])
+}
+
+// A batch of sessions the HMO officer has physically submitted to a provider
+// for evaluation. This is the step before a payment exists: it records what
+// went out, when, and the paper trail proving it was transmitted — so an
+// unpaid session can be told apart from one nobody has billed yet.
+model SoaSubmission {
+  id             String        @id @default(cuid())
+  walletId       String
+  wallet         DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  submittedDate  DateTime
+  // Proof the batch was handed over (courier receipt, email screenshot) and the
+  // scanned claim documents themselves. Both hold a JSON array of file URLs.
+  transmittalUrls Json?
+  documentUrls    Json?
+  notes          String?
+  branch         String?
+  createdById    String
+  createdBy      User          @relation("SoaSubmissionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  items SoaSubmissionItem[]
+
+  @@index([walletId])
+  @@index([submittedDate])
+}
+
+model SoaSubmissionItem {
+  id           String        @id @default(cuid())
+  submissionId String
+  submission   SoaSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  orderId      String
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  createdAt    DateTime      @default(now())
+
+  // One session can only be in a given submission once; re-submitting the same
+  // session to the same provider is a data-entry slip, not a second claim.
+  @@unique([submissionId, orderId])
+  @@index([submissionId])
   @@index([orderId])
 }
 
