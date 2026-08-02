@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
   try {
     const { itemId, type, quantityChange, adjustmentDate, remarks,
-            foreignCost, foreignCurrency, localCost, exchangeRate, skipGl } = await req.json()
+            foreignCost, foreignCurrency, localCost, exchangeRate, skipGl, variantId } = await req.json()
 
     if (!itemId || !type || !quantityChange || !remarks?.trim()) {
       return NextResponse.json({ error: 'Item, type, quantity change, and remarks are required' }, { status: 400 })
@@ -71,6 +71,20 @@ export async function POST(req: Request) {
     const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } })
     if (!item) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+    }
+
+    // A movement may target one variant (e.g. 20 of the pink arrived) rather than the
+    // product as a whole. Validate it really belongs to this item before touching stock.
+    let variant = null as { id: string; quantity: number; variantLabel: string } | null
+    if (variantId) {
+      const v = await prisma.inventoryVariant.findUnique({
+        where: { id: variantId },
+        select: { id: true, itemId: true, quantity: true, variantLabel: true, isActive: true },
+      })
+      if (!v || v.itemId !== itemId || !v.isActive) {
+        return NextResponse.json({ error: 'That variant does not belong to this item' }, { status: 400 })
+      }
+      variant = { id: v.id, quantity: v.quantity, variantLabel: v.variantLabel }
     }
 
     const previousQuantity = item.quantity
@@ -99,13 +113,14 @@ export async function POST(req: Request) {
       const adj = await tx.inventoryAdjustment.create({
         data: {
           itemId,
+          variantId: variant?.id ?? null,
           type,
           quantityChange: change,
           remainingQuantity: type === 'INCREASE' ? change : null,
           previousQuantity,
           newQuantity,
           adjustmentDate: adjustmentDate ? new Date(adjustmentDate) : new Date(),
-          remarks: remarks.trim(),
+          remarks: variant ? `${remarks.trim()} [${variant.variantLabel}]` : remarks.trim(),
           adjustedById: session.user.id,
           ...costData,
         },
@@ -119,6 +134,14 @@ export async function POST(req: Request) {
         where: { id: itemId },
         data: { quantity: newQuantity },
       })
+
+      // Keep the variant's own count in step, so per-colour/size stock stays truthful.
+      if (variant) {
+        await tx.inventoryVariant.update({
+          where: { id: variant.id },
+          data: { quantity: type === 'INCREASE' ? { increment: change } : { decrement: change } },
+        })
+      }
 
       // For SHRINKAGE, consume from oldest FIFO lots
       if (type === 'SHRINKAGE') {

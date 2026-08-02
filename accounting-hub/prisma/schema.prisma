@@ -385,6 +385,7 @@ model InventoryVariant {
   variantSku   String        @unique  // e.g. "OT-TOY-THE-001-RED"
   barcode      String?       @unique
   quantity     Int           @default(0)
+  adjustments  InventoryAdjustment[]
   // Per-variant cost and price. NULL = inherit the parent item's figure, so existing
   // variants keep behaving exactly as before. Set these when variants genuinely differ
   // (e.g. The Petite Pouf in polyester vs cotton — different landed cost and price).
@@ -403,6 +404,10 @@ model InventoryAdjustment {
   id                String         @id @default(cuid())
   itemId            String
   item              InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  // Which variant this movement applies to. NULL = the product as a whole (how every
+  // adjustment before 2026-08 was recorded, and still correct for items without variants).
+  variantId         String?
+  variant           InventoryVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
   type              AdjustmentType
   quantityChange    Int
   remainingQuantity Int?           // FIFO: units still available (INCREASE lots only)

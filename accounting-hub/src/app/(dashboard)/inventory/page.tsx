@@ -714,6 +714,7 @@ export default function InventoryPage() {
   const itemFileRef = useRef<HTMLInputElement>(null)
   const [adjItemId, setAdjItemId] = useState('')
   const [adjType, setAdjType] = useState<'SHRINKAGE' | 'INCREASE'>('SHRINKAGE')
+  const [adjVariantId, setAdjVariantId] = useState('')
   const [adjQty, setAdjQty] = useState('')
   const [adjDate, setAdjDate] = useState(new Date().toISOString().split('T')[0])
   const [adjRemarks, setAdjRemarks] = useState('')
@@ -1190,7 +1191,10 @@ export default function InventoryPage() {
   /* ── Helpers ───────────────────────────────────────────── */
 
   const selectedAdjItem = allItems.find((i) => i.id === adjItemId)
-  const adjPrevQty = selectedAdjItem?.quantity ?? 0
+  const adjVariants = selectedAdjItem?.variants ?? []
+  const adjVariant = adjVariants.find((v) => v.id === adjVariantId)
+  // When a variant is chosen, the before/after figures describe that variant's own stock.
+  const adjPrevQty = adjVariant ? adjVariant.quantity : (selectedAdjItem?.quantity ?? 0)
   const adjNewQty = adjType === 'SHRINKAGE'
     ? adjPrevQty - (parseInt(adjQty) || 0)
     : adjPrevQty + (parseInt(adjQty) || 0)
@@ -1580,20 +1584,25 @@ export default function InventoryPage() {
      ═══════════════════════════════════════════════════════ */
 
   function openAdjCreate() {
-    setAdjItemId(''); setAdjType('SHRINKAGE'); setAdjQty(''); setAdjRemarks('')
+    setAdjItemId(''); setAdjVariantId(''); setAdjType('SHRINKAGE'); setAdjQty(''); setAdjRemarks('')
     setAdjDate(new Date().toISOString().split('T')[0]); setError('')
     setAdjModalOpen(true)
   }
 
   async function handleAdjSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // An item with variants must say which one moved, or the per-variant counts drift.
+    if (adjVariants.length > 0 && !adjVariantId) {
+      setError('Select which variant this stock movement applies to')
+      return
+    }
     setSaving(true); setError('')
     try {
       const res = await fetch('/api/inventory/adjustments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          itemId: adjItemId, type: adjType,
+          itemId: adjItemId, variantId: adjVariantId || null, type: adjType,
           quantityChange: parseInt(adjQty) || 0,
           adjustmentDate: adjDate, remarks: adjRemarks,
           // Replenishment sourced from a petty-cash / expense entry → skip GL so
@@ -3715,6 +3724,28 @@ setTimeout(()=>window.print(),500);
                       <option value="">— Select item —</option>
                       {allItems.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
                     </select>
+                    {/* Which variant is arriving / being written off — so per-colour and
+                        per-size stock stays truthful instead of only the product total. */}
+                    {adjVariants.length > 0 && (
+                      <div className="mt-2">
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>
+                          Variant <span style={{ color: '#b91c1c' }}>*</span>
+                        </label>
+                        <select value={adjVariantId} onChange={(e) => setAdjVariantId(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                          style={{ borderColor: adjVariantId ? 'var(--light-gray)' : '#fca5a5' }}>
+                          <option value="">— Select variant —</option>
+                          {adjVariants.map((v) => (
+                            <option key={v.id} value={v.id}>{v.variantType}: {v.variantLabel} ({v.quantity} on hand)</option>
+                          ))}
+                        </select>
+                        {!adjVariantId && (
+                          <p className="text-xs mt-1" style={{ color: '#b91c1c' }}>
+                            This item has variants — pick the one this movement applies to.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Stock batch (INCREASE lot)</label>
@@ -3757,7 +3788,7 @@ setTimeout(()=>window.print(),500);
                 <form onSubmit={handleAdjSubmit} className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item</label>
-                    <select value={adjItemId} onChange={(e) => setAdjItemId(e.target.value)} required
+                    <select value={adjItemId} onChange={(e) => { setAdjItemId(e.target.value); setAdjVariantId('') }} required
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">— Select item —</option>
                       {allItems.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
