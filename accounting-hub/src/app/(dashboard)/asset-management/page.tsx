@@ -29,6 +29,7 @@ import {
   Upload,
 } from 'lucide-react'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
+import AssetCalculator from './AssetCalculator'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -212,6 +213,7 @@ export default function AssetManagementPage() {
   const [error, setError] = useState('')
 
   const [branchFilter, setBranchFilter] = useState(isBranchRestricted ? userBranch : '')
+  const [showCalculator, setShowCalculator] = useState(false)
 
   const [showModal, setShowModal] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
@@ -814,6 +816,17 @@ export default function AssetManagementPage() {
             >
               <Calculator size={16} />
               Freight Calculator
+            </button>
+            )}
+            {canWrite && (
+            <button
+              onClick={() => setShowCalculator(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border"
+              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
+              title="Land freight and foreign-currency costs onto several assets at once"
+            >
+              <Calculator size={16} />
+              Asset Calculator
             </button>
             )}
             {canWrite && (
@@ -1942,6 +1955,13 @@ export default function AssetManagementPage() {
             />
           </div>
         </div>
+      )}
+      {showCalculator && (
+        <AssetCalculator
+          branch={branchFilter || (isBranchRestricted ? userBranch : 'SANDBOX_EAST')}
+          onClose={() => setShowCalculator(false)}
+          onSaved={() => { setShowCalculator(false); fetchAssets() }}
+        />
       )}
     </div>
   )

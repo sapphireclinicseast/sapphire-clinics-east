@@ -244,3 +244,75 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+// PATCH { id, adjustmentDate?, remarks?, quantityChange? } — correct a single
+// (non-batch) adjustment. Freight batches are edited through
+// /api/inventory/adjustments/batch, which re-applies the whole shipment.
+//
+// Changing the quantity is only allowed while the lot is untouched: once units
+// have been sold out of an INCREASE lot, its cost is already embedded in the
+// COGS of those sales, so re-writing it would silently restate them.
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  try {
+    const { id, adjustmentDate, remarks, quantityChange } = await req.json()
+    if (!id) return NextResponse.json({ error: 'Adjustment ID is required' }, { status: 400 })
+
+    const adj = await prisma.inventoryAdjustment.findUnique({ where: { id } })
+    if (!adj) return NextResponse.json({ error: 'Adjustment not found' }, { status: 404 })
+    if (adj.batchRefId) {
+      return NextResponse.json({ error: 'This row belongs to a freight batch — edit the batch instead.' }, { status: 409 })
+    }
+
+    const newQty = quantityChange == null || quantityChange === '' ? null : parseInt(String(quantityChange), 10)
+    const qtyChanged = newQty != null && newQty !== adj.quantityChange
+    if (qtyChanged) {
+      if (!(newQty > 0)) return NextResponse.json({ error: 'Quantity must be greater than zero' }, { status: 400 })
+      if (adj.type === 'INCREASE' && (adj.remainingQuantity ?? adj.quantityChange) !== adj.quantityChange) {
+        return NextResponse.json({ error: 'Cannot change the quantity: units from this batch have already been sold. Reverse those sales first.' }, { status: 409 })
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (qtyChanged) {
+        const delta = newQty - adj.quantityChange
+        const item = await tx.inventoryItem.findUnique({ where: { id: adj.itemId } })
+        if (!item) throw new Error('Item not found')
+        // An INCREASE adds the extra units, a DECREASE removes them.
+        const signed = adj.type === 'INCREASE' ? delta : -delta
+        await tx.inventoryItem.update({
+          where: { id: adj.itemId },
+          data: { quantity: Math.max(0, item.quantity + signed) },
+        })
+      }
+      await tx.inventoryAdjustment.update({
+        where: { id },
+        data: {
+          ...(adjustmentDate ? { adjustmentDate: new Date(adjustmentDate) } : {}),
+          ...(remarks !== undefined ? { remarks: String(remarks).trim() || adj.remarks } : {}),
+          ...(qtyChanged ? {
+            quantityChange: newQty,
+            remainingQuantity: adj.type === 'INCREASE' ? newQty : adj.remainingQuantity,
+            newQuantity: adj.type === 'INCREASE' ? adj.previousQuantity + newQty : adj.previousQuantity - newQty,
+          } : {}),
+        },
+      })
+      const cost = await recalcWeightedUnitCost(tx, adj.itemId)
+      if (cost > 0) await tx.inventoryItem.update({ where: { id: adj.itemId }, data: { unitCost: cost } })
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id, action: 'EDIT_ADJUSTMENT', entity: 'inventoryItem', entityId: adj.itemId,
+        details: { adjustmentId: id, from: adj.quantityChange, to: qtyChanged ? newQty : adj.quantityChange },
+      },
+    })
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    console.error('[Adjustment] Edit error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Internal server error' }, { status: 500 })
+  }
+}
