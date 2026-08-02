@@ -842,10 +842,23 @@ export async function computeLedgerStatements(
     if (firstPayroll) {
       const [py, pm] = firstPayroll.cutoffPeriod.split('-').map(Number)
       if (py > year || (py === year && pm > 1)) {
-        validation.notes.push(
-          `Payroll in the Hub starts with the ${firstPayroll.cutoffPeriod} cutoff — salaries and professional fees ` +
-          `before that were never recorded here, so they are absent from these statements (and cash was never reduced by them).`,
-        )
+        // Imported QB payroll JEs can cover the months before the first cutoff —
+        // if they exist in this period, the gap is filled, and saying otherwise
+        // would send someone hunting for a problem that has been fixed.
+        const qbImported = await prisma.journalEntry.count({
+          where: { referenceType: 'QB_PAYROLL_IMPORT', entryDate: { gte: start, lt: end } },
+        })
+        if (qbImported > 0) {
+          validation.notes.push(
+            `Payroll cutoffs in the Hub start at ${firstPayroll.cutoffPeriod}; the months before that are covered by ` +
+            `${qbImported} journal entries imported from the QuickBooks transaction history.`,
+          )
+        } else {
+          validation.notes.push(
+            `Payroll in the Hub starts with the ${firstPayroll.cutoffPeriod} cutoff — salaries and professional fees ` +
+            `before that were never recorded here, so they are absent from these statements (and cash was never reduced by them).`,
+          )
+        }
       }
     } else if (year <= new Date().getFullYear()) {
       validation.notes.push('No payroll cutoffs exist in the Hub for this period — salaries and professional fees are absent from these statements.')

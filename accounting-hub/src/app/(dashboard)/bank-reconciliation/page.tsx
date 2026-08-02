@@ -70,6 +70,7 @@ export default function BankReconciliationPage() {
   const [showImports, setShowImports] = useState(false)
   const [rates, setRates] = useState<FxRate[]>([])
   const [showForexCfg, setShowForexCfg] = useState(false)
+  const [showRules, setShowRules] = useState(false)
   const [catFor, setCatFor] = useState<Txn | null>(null)
   const [sortKey, setSortKey] = useState('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -185,6 +186,7 @@ export default function BankReconciliationPage() {
             {account?.startDate && (account?.pendingCount ?? 0) > 0 && (
               <button onClick={lockOlder} title={`Lock untagged lines dated before ${account.startDate}`} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Lock size={14} /> Lock pre-{account.startDate.slice(0, 7)}</button>
             )}
+            <button onClick={() => setShowRules(true)} title="Auto-categorize recurring lines by description pattern" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Wand2 size={14} /> Auto-rules</button>
             <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
             <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Upload size={14} /> Upload from file</button>
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add transaction</button>
@@ -416,12 +418,140 @@ export default function BankReconciliationPage() {
         </>
       )}
 
+      {showRules && <RulesModal coa={coa} accounts={accounts} onClose={() => setShowRules(false)} onDone={refreshAll} />}
       {showForexCfg && <ForexAccountsModal onClose={() => setShowForexCfg(false)} onSaved={async () => { setShowForexCfg(false); await refreshAll() }} />}
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
       {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
       {matchFor && <MatchModal txn={matchFor} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
     </div>
+  )
+}
+
+interface BankRule { id: string; pattern: string; direction: string; bankAccountId: string | null; categoryAccountId: string; fromToName: string | null; active: boolean; pendingMatches: number; categoryLabel: string }
+
+function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: BankAcct[]; onClose: () => void; onDone: () => Promise<void> }) {
+  const [rules, setRules] = useState<BankRule[]>([])
+  const [pendingTotal, setPendingTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  // new-rule form
+  const [pattern, setPattern] = useState('')
+  const [direction, setDirection] = useState<'OUT' | 'IN' | 'ANY'>('OUT')
+  const [scopeAcct, setScopeAcct] = useState('')
+  const [catQ, setCatQ] = useState('')
+  const [categoryAccountId, setCategoryAccountId] = useState('')
+  const [fromToName, setFromToName] = useState('')
+  const load = async () => {
+    setLoading(true)
+    try { const r = await fetch('/api/bank-rec/rules'); const d = await r.json(); setRules(d.rules || []); setPendingTotal(d.pendingTotal || 0) }
+    finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  const filteredCoa = coa.filter(c => catQ && `${c.accountNumber} ${c.accountTitle}`.toLowerCase().includes(catQ.toLowerCase())).slice(0, 8)
+  const create = async () => {
+    if (!pattern.trim() || !categoryAccountId) { alert('A rule needs a pattern and a category account.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/bank-rec/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pattern, direction, bankAccountId: scopeAcct || null, categoryAccountId, fromToName: fromToName || null }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setPattern(''); setCatQ(''); setCategoryAccountId(''); setFromToName('')
+      await load()
+    } finally { setBusy(false) }
+  }
+  const toggle = async (rule: BankRule) => {
+    await fetch('/api/bank-rec/rules', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rule.id, active: !rule.active }) })
+    await load()
+  }
+  const remove = async (rule: BankRule) => {
+    if (!confirm(`Delete the rule "${rule.pattern}"? Lines it already posted stay posted.`)) return
+    await fetch(`/api/bank-rec/rules?id=${rule.id}`, { method: 'DELETE' })
+    await load()
+  }
+  const apply = async () => {
+    const reach = rules.filter(r => r.active).reduce((s, r) => s + r.pendingMatches, 0)
+    if (!reach) { alert('No active rule matches any pending line.'); return }
+    if (!confirm(`Post ${reach.toLocaleString()} pending line(s) using the active rules?\n\nEach gets the same journal entry a manual categorise would post. This can be undone per line with Unpost.`)) return
+    setBusy(true)
+    try {
+      // The server caps each run; loop until the backlog is done.
+      let total = 0
+      for (let i = 0; i < 20; i++) {
+        const r = await fetch('/api/bank-rec/rules/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+        const d = await r.json()
+        if (!r.ok) { alert(d.error || 'Failed'); break }
+        total += d.posted
+        if (d.errors?.length) { alert(`Posted ${total.toLocaleString()} so far, then hit errors:\n${d.errors.join('\n')}`); break }
+        if (!d.capped) { alert(`Posted ${total.toLocaleString()} line(s).${d.skippedFx ? ` Skipped ${d.skippedFx} on foreign-currency accounts (they need a rate — categorise those by hand).` : ''}`); break }
+      }
+      await load(); await onDone()
+    } finally { setBusy(false) }
+  }
+  const activeReach = rules.filter(r => r.active).reduce((s, r) => s + r.pendingMatches, 0)
+  return (
+    <Modal title="Auto-categorize rules" onClose={onClose} wide>
+      <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+        A rule matches pending lines whose description or payee contains the pattern (case doesn&apos;t matter), then posts
+        the same entry a manual categorise would — spent lines debit the category, received lines credit it. The first rule
+        that matches a line wins, so put specific patterns above broad ones. {pendingTotal.toLocaleString()} line(s) are pending.
+      </p>
+
+      {/* New rule */}
+      <div className="rounded-xl border p-3 mb-3 space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap gap-2">
+          <input value={pattern} onChange={e => setPattern(e.target.value)} placeholder='Pattern, e.g. "ROBINSONS LAND" or "GCASH"' className="flex-1 min-w-[220px] px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+          <select value={direction} onChange={e => setDirection(e.target.value as 'OUT' | 'IN' | 'ANY')} className="px-2 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+            <option value="OUT">Money out</option><option value="IN">Money in</option><option value="ANY">Either</option>
+          </select>
+          <select value={scopeAcct} onChange={e => setScopeAcct(e.target.value)} className="px-2 py-2 rounded-xl border text-sm max-w-[210px]" style={{ borderColor: 'var(--light-gray)' }}>
+            <option value="">Any bank account</option>
+            {accounts.map(a => <option key={a.id} value={a.id}>{a.accountTitle}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-wrap gap-2 items-start">
+          <div className="relative flex-1 min-w-[220px]">
+            <input value={categoryAccountId ? (coa.find(c => c.id === categoryAccountId) ? `${coa.find(c => c.id === categoryAccountId)!.accountNumber} ${coa.find(c => c.id === categoryAccountId)!.accountTitle}` : catQ) : catQ}
+              onChange={e => { setCatQ(e.target.value); setCategoryAccountId('') }}
+              placeholder="Category account — search the chart" className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            {!categoryAccountId && filteredCoa.length > 0 && (
+              <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border bg-white shadow-lg max-h-44 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                {filteredCoa.map(c => (
+                  <button key={c.id} type="button" onClick={() => { setCategoryAccountId(c.id); setCatQ('') }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">{c.accountNumber} {c.accountTitle}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <input value={fromToName} onChange={e => setFromToName(e.target.value)} placeholder="Payee to stamp (optional)" className="px-3 py-2 rounded-xl border text-sm outline-none min-w-[180px]" style={{ borderColor: 'var(--light-gray)' }} />
+          <button onClick={create} disabled={busy} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Add rule</button>
+        </div>
+      </div>
+
+      {/* Rules list */}
+      {loading ? <div className="py-6 text-center"><Loader2 className="animate-spin inline" size={18} /></div> : rules.length === 0 ? (
+        <p className="text-sm py-4 text-center" style={{ color: 'var(--mid-gray)' }}>No rules yet. Add one above — e.g. pattern &quot;ROBINSONS&quot;, money out, category 8110 Rent Expense.</p>
+      ) : (
+        <div className="space-y-1 mb-3 max-h-72 overflow-y-auto">
+          {rules.map(r => (
+            <div key={r.id} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--light-gray)', opacity: r.active ? 1 : 0.5 }}>
+              <span className="font-mono font-semibold">&quot;{r.pattern}&quot;</span>
+              <span style={{ color: 'var(--mid-gray)' }}>{r.direction === 'OUT' ? 'out' : r.direction === 'IN' ? 'in' : 'any'}</span>
+              <span>→ {r.categoryLabel}</span>
+              {r.fromToName && <span style={{ color: 'var(--mid-gray)' }}>payee: {r.fromToName}</span>}
+              <span className="ml-auto px-2 py-0.5 rounded-full font-bold" style={{ background: r.pendingMatches ? 'var(--teal)' : 'var(--light-gray)', color: r.pendingMatches ? '#fff' : 'var(--mid-gray)' }}>{r.pendingMatches} pending</span>
+              <button onClick={() => toggle(r)} title={r.active ? 'Pause' : 'Resume'} className="underline">{r.active ? 'pause' : 'resume'}</button>
+              <button onClick={() => remove(r)} title="Delete rule"><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Close</button>
+        <button onClick={apply} disabled={busy || !activeReach} className="px-4 py-2 rounded-xl text-sm font-semibold text-white flex items-center gap-1.5" style={{ background: activeReach ? 'var(--teal)' : 'var(--light-gray)' }}>
+          {busy ? <Loader2 className="animate-spin" size={14} /> : <Wand2 size={14} />} Apply rules to {activeReach.toLocaleString()} pending
+        </button>
+      </div>
+    </Modal>
   )
 }
 
