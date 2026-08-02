@@ -417,6 +417,7 @@ interface Adjustment {
   item?: { sku: string; name: string }
   type: string
   quantityChange: number
+  remainingQuantity?: number | null
   previousQuantity: number
   newQuantity: number
   remarks: string | null
@@ -640,6 +641,7 @@ export default function InventoryPage() {
   const [invSortDir, setInvSortDir] = useState<'asc' | 'desc'>('asc')
   // Adjustment delete
   const [deleteAdjConfirm, setDeleteAdjConfirm] = useState<string | null>(null)
+  const [editAdj, setEditAdj] = useState<Adjustment | null>(null)
   const [deletingAdj, setDeletingAdj] = useState(false)
   // Variants (color, size, material, etc.)
   const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string }[]>([])
@@ -3565,6 +3567,9 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{adj.adjustedBy?.name || '—'}</td>
                       {canWrite && (
                         <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <button onClick={() => setEditAdj(adj)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit Adjustment">
+                            <Pencil size={15} style={{ color: 'var(--mid-gray)' }} />
+                          </button>
                           <button onClick={() => setDeleteAdjConfirm(adj.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete Adjustment">
                             <Trash2 size={15} className="text-red-500" />
                           </button>
@@ -3625,6 +3630,12 @@ setTimeout(()=>window.print(),500);
                 onPageChange={setAdjPage} onPageSizeChange={setAdjPageSize} />
             )}
           </div>
+
+          {/* Edit a single (non-batch) adjustment */}
+          {editAdj && (
+            <EditAdjustmentModal adj={editAdj} onClose={() => setEditAdj(null)}
+              onSaved={() => { setEditAdj(null); fetchAdjustments(); fetchItems(); fetchAllItems() }} />
+          )}
 
           {/* Delete Adjustment Confirm */}
           {deleteAdjConfirm && (
@@ -5515,6 +5526,64 @@ function BulkShrinkageCountModal({ items, onClose, onDone }: {
             {busy ? 'Saving…' : 'Save Audit'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Correct a single (non-batch) adjustment: its date, remarks, and — while none
+// of its units have been sold — the quantity. Freight batches keep their own
+// editor, which re-applies the whole shipment.
+function EditAdjustmentModal({ adj, onClose, onSaved }: { adj: Adjustment; onClose: () => void; onSaved: () => void }) {
+  const [date, setDate] = useState(String(adj.adjustmentDate).slice(0, 10))
+  const [qty, setQty] = useState(String(adj.quantityChange))
+  const [remarks, setRemarks] = useState(adj.remarks || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const consumed = adj.type === 'INCREASE' && (adj.remainingQuantity ?? adj.quantityChange) !== adj.quantityChange
+
+  const save = async () => {
+    setBusy(true); setErr('')
+    try {
+      const res = await fetch('/api/inventory/adjustments', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: adj.id, adjustmentDate: date, remarks, quantityChange: consumed ? undefined : parseInt(qty) }),
+      })
+      if (!res.ok) { setErr((await res.json()).error || 'Failed to save'); return }
+      onSaved()
+    } catch { setErr('Network error') } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Edit Adjustment</h3>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+          {adj.item?.sku} — {adj.item?.name} · {adj.type === 'INCREASE' ? 'Increase' : 'Decrease'} of {adj.quantityChange}
+        </p>
+        {err && <p className="text-xs text-red-600 mb-2">{err}</p>}
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date</label>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Quantity</label>
+        <input type="number" min={1} value={qty} disabled={consumed} onChange={e => setQty(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }} />
+        <p className="text-[11px] mt-1 mb-3" style={{ color: 'var(--mid-gray)' }}>
+          {consumed
+            ? 'Locked: units from this batch have already been sold, so changing the quantity would restate their cost of sales. Reverse those sales first.'
+            : 'Changing this adjusts the item’s stock by the difference.'}
+        </p>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
+        <input value={remarks} onChange={e => setRemarks(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-4" style={{ borderColor: 'var(--light-gray)' }} />
+
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+          {busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Save changes'}
+        </button>
       </div>
     </div>
   )
