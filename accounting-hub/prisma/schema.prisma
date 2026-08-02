@@ -2993,3 +2993,21 @@ model BenefitAvailment {
   @@index([employeeName])
   @@index([reimbursedDate])
 }
+
+// Auto-categorization rules for bank reconciliation. A rule maps a description
+// pattern (case-insensitive substring) to a category account; applying rules
+// posts the same JE the manual categorise action posts. 2,019 pending imports
+// motivated this — recurring payees should be categorized once, not 2,019 times.
+model BankCategoryRule {
+  id                String   @id @default(cuid())
+  pattern           String   // case-insensitive substring matched against description + fromToName
+  direction         String   @default("ANY") // OUT | IN | ANY
+  bankAccountId     String?  // limit to one bank account; null = all
+  categoryAccountId String
+  fromToName        String?  // stamp a payee on matched lines
+  active            Boolean  @default(true)
+  createdById       String
+  createdAt         DateTime @default(now())
+
+  @@index([active])
+}
