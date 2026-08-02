@@ -101,6 +101,8 @@ ALTER TABLE "Loan" ADD COLUMN IF NOT EXISTS "principalPerPeriod" DECIMAL(65,30);
 ALTER TABLE "Loan" ADD COLUMN IF NOT EXISTS "paymentBankAccountId" TEXT;
 ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "principalPerPeriod" DECIMAL(65,30);
 ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "paymentBankAccountId" TEXT;
+ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpayment" DECIMAL(65,30) NOT NULL DEFAULT 0;
+ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpaymentAccountId" TEXT;
 
 -- PayMongo checkout/payment tracking (Phase 1)
 CREATE TABLE IF NOT EXISTS "PaymongoCheckout" (

@@ -125,11 +125,12 @@ export async function GET(req: Request) {
     if (isGL) {
       const glArPayments = await prisma.aRPayment.findMany({
         where: { walletId: { in: walletIds } },
-        select: { walletId: true, amount: true, discount: true },
+        select: { walletId: true, amount: true, discount: true, overpayment: true },
       })
       for (const p of glArPayments) {
         if (!p.walletId) continue
-        const settled = Number(p.amount) + Number(p.discount || 0)
+        // Overpaid excess is income, not AR settlement.
+        const settled = Number(p.amount) + Number(p.discount || 0) - Number(p.overpayment || 0)
         arPaidByWallet.set(p.walletId, (arPaidByWallet.get(p.walletId) || 0) + settled)
       }
       // Collect all unpaid order IDs per wallet (shown on drill-down click)

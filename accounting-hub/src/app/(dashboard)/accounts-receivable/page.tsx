@@ -74,6 +74,9 @@ interface ARPaymentRecord {
   branch?: string | null
   cashAccountId?: string | null
   cashAccount?: { accountNumber: string; accountTitle: string } | null
+  overpayment?: number | string | null
+  overpaymentAccountId?: string | null
+  overpaymentAccount?: { accountNumber: string; accountTitle: string } | null
   createdBy: { name: string }
   items: { orderId: string }[]
 }
@@ -413,6 +416,9 @@ export default function AccountsReceivablePage() {
   const [cashAccounts, setCashAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [payCashAccountId, setPayCashAccountId] = useState('')
   const [payCashAccountSearch, setPayCashAccountSearch] = useState('')
+  // HMO overpayment: income accounts (REVENUE, credit balance) the excess can be classified to
+  const [incomeAccounts, setIncomeAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [payOverpayAccountId, setPayOverpayAccountId] = useState('')
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
   // HMO sub-tab state
@@ -502,17 +508,17 @@ export default function AccountsReceivablePage() {
     return () => ctl.abort()
   }, [tab, branch, agingPeriodDays])
 
-  // Fetch discount COA accounts (REVENUE with DEBIT balance)
+  // Fetch REVENUE COA accounts once: DEBIT-balance ones are discount/write-off
+  // targets; CREDIT-balance ones are income accounts an overpayment can go to.
   useEffect(() => {
     fetch('/api/chart-of-accounts?accountType=REVENUE&pageSize=500')
       .then(r => r.json())
-      .then(d => setDiscountAccounts(
-        (d.data || [])
-          .filter((a: { normalBalance: string }) => a.normalBalance === 'DEBIT')
-          .map((a: { id: string; accountNumber: string; accountTitle: string }) => ({
-            id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle,
-          }))
-      ))
+      .then(d => {
+        const rows = (d.data || []) as { id: string; accountNumber: string; accountTitle: string; normalBalance: string }[]
+        const slim = (a: typeof rows[number]) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle })
+        setDiscountAccounts(rows.filter(a => a.normalBalance === 'DEBIT').map(slim))
+        setIncomeAccounts(rows.filter(a => a.normalBalance === 'CREDIT').map(slim))
+      })
       .catch(() => {})
   }, [])
 
@@ -611,6 +617,7 @@ export default function AccountsReceivablePage() {
     setPayDiscountSearch('')
     setPayCashAccountId('')
     setPayCashAccountSearch('')
+    setPayOverpayAccountId('')
     setPayNotes('')
     setPaySalesInvoice('')
     setPayProofUrls([])
@@ -634,6 +641,7 @@ export default function AccountsReceivablePage() {
     setPayDiscountSearch('')
     setPayCashAccountId(p.cashAccountId || '')
     setPayCashAccountSearch(p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '')
+    setPayOverpayAccountId(p.overpaymentAccountId || '')
     setPayNotes(p.notes || '')
     setPaySalesInvoice(p.salesInvoiceNumber || '')
     setPayProofUrls(parseProofUrls(p.proofUrl))
@@ -646,11 +654,27 @@ export default function AccountsReceivablePage() {
     setShowPaymentModal(true)
   }
 
+  // HMO overpayment: how much of the payment (+discount) exceeds the tagged
+  // transactions. Only derivable when transactions are tagged — the tag list is
+  // what proves the payer sent a few pesos extra.
+  const payTaggedTotal = (() => {
+    if (tab === 'GL' || !payWalletId || paySelectedOrders.length === 0) return 0
+    const source = payWalletOrders.length ? payWalletOrders : orders
+    return paySelectedOrders.reduce((s, oid) => {
+      const o = source.find(x => x.id === oid)
+      return s + toNum(o?.payments.find(p => p.walletId === payWalletId)?.amount)
+    }, 0)
+  })()
+  const payOverpay = paySelectedOrders.length > 0 && payTaggedTotal > 0
+    ? Math.max(0, +(toNum(payAmount) + toNum(payDiscount) - payTaggedTotal).toFixed(2))
+    : 0
+
   const savePayment = async () => {
     // For GL multi-select, use payWalletIds; for HMO use payWalletId
     const effectiveWalletIds = tab === 'GL' && !editingPaymentId ? payWalletIds : (payWalletId ? [payWalletId] : [])
     if (effectiveWalletIds.length === 0) { setPayError('Select an HMO/Agency'); return }
     if (!payAmount || toNum(payAmount) <= 0) { setPayError('Amount is required'); return }
+    if (payOverpay > 0 && !payOverpayAccountId) { setPayError(`Choose an income account for the ${formatCurrency(payOverpay)} overpayment`); return }
     setPaySaving(true)
     setPayError('')
     try {
@@ -668,6 +692,8 @@ export default function AccountsReceivablePage() {
           discount: toNum(payDiscount),
           discountAccountId: payDiscountAccountId || null,
           cashAccountId: payCashAccountId || null,
+          overpayment: payOverpay,
+          overpaymentAccountId: payOverpay > 0 ? payOverpayAccountId : null,
           orderIds: paySelectedOrders,
           proofUrl: payProofUrls.length > 0 ? JSON.stringify(payProofUrls) : null,
           notes: payNotes || null,
@@ -1577,7 +1603,15 @@ export default function AccountsReceivablePage() {
                       <td className="px-3 py-2">{formatDate(p.paymentDate)}</td>
                       <td className="px-3 py-2 font-mono" style={{ color: 'var(--charcoal)' }}>{p.salesInvoiceNumber || '—'}</td>
                       <td className="px-3 py-2">{wallet?.patientName || '—'}</td>
-                      <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>{formatCurrency(toNum(p.amount))}</td>
+                      <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>
+                        {formatCurrency(toNum(p.amount))}
+                        {toNum(p.overpayment) > 0 && (
+                          <span className="block text-[10px] font-normal" style={{ color: '#92400e' }}
+                            title={p.overpaymentAccount ? `Booked to ${p.overpaymentAccount.accountNumber} ${p.overpaymentAccount.accountTitle}` : undefined}>
+                            incl. {formatCurrency(toNum(p.overpayment))} overpayment
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">{toNum(p.discount) > 0 ? formatCurrency(toNum(p.discount)) : '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--teal)' }}>{p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—'}</td>
                       <td className="px-3 py-2">{p.items.length} orders</td>
@@ -2302,9 +2336,31 @@ export default function AccountsReceivablePage() {
                       Showing {visibleOrders.length} of {eligibleOrders.length} transactions{paySelectedOrders.length > 0 ? ` · ${paySelectedOrders.length} tagged` : ''}
                     </p>
                   )}
+                  {paySelectedOrders.length > 0 && (
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      Tagged total: <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(payTaggedTotal)}</span>
+                      {' · '}Payment{toNum(payDiscount) > 0 ? ' + discount' : ''}: <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(payAmount) + toNum(payDiscount))}</span>
+                    </p>
+                  )}
                 </div>
                 ) : null
               })()}
+
+              {/* Overpayment: payer remitted more than the tagged AR — classify the excess as income */}
+              {payOverpay > 0 && (
+                <div className="rounded-xl border p-3" style={{ borderColor: '#fcd34d', background: '#fffbeb' }}>
+                  <p className="text-xs font-semibold mb-2" style={{ color: '#92400e' }}>
+                    Overpayment of {formatCurrency(payOverpay)} — the payment exceeds the tagged transactions.
+                    Only {formatCurrency(payTaggedTotal)} settles AR; classify the excess as income:
+                  </p>
+                  <select value={payOverpayAccountId} onChange={e => setPayOverpayAccountId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white"
+                    style={{ borderColor: payOverpayAccountId ? 'var(--teal)' : '#fcd34d' }}>
+                    <option value="">— Select income account —</option>
+                    {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                  </select>
+                </div>
+              )}
 
               {/* Proof of payment — multi-file upload */}
               <div>

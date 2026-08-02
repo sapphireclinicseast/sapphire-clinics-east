@@ -138,6 +138,7 @@ model Account {
   wallets               DigitalWallet[] @relation("WalletAccount")
   arPaymentDiscounts    ARPayment[]     @relation("ARPaymentDiscountAccount")
   arPaymentCashAccounts ARPayment[]     @relation("ARPaymentCashAccount")
+  arPaymentOverpayments ARPayment[]     @relation("ARPaymentOverpaymentAccount")
   unitPaysExpense       UnitPay[]         @relation("UnitPayExpense")
   taxPaymentsFrom       TaxPayment[]      @relation("TaxPaymentFrom")
   taxSettings           PayrollTaxSettings[] @relation("TaxLiability")
@@ -1043,6 +1044,12 @@ model ARPayment {
   discountAccount   Account?      @relation("ARPaymentDiscountAccount", fields: [discountAccountId], references: [id], onDelete: SetNull)
   cashAccountId     String?       // COA account to debit (cash/bank account)
   cashAccount       Account?      @relation("ARPaymentCashAccount", fields: [cashAccountId], references: [id], onDelete: SetNull)
+  // HMO overpayment: the payer remitted a few pesos more than the AR being
+  // settled. amount holds the real cash received; overpayment is the excess,
+  // credited to overpaymentAccount (an income account) instead of AR.
+  overpayment          Decimal  @default(0)
+  overpaymentAccountId String?
+  overpaymentAccount   Account? @relation("ARPaymentOverpaymentAccount", fields: [overpaymentAccountId], references: [id], onDelete: SetNull)
   proofUrl          String?       // URL or file path to payment proof
   notes             String?
   salesInvoiceNumber String?      // SI issued for this HMO/GL collection → Sales Summary (With SI)
