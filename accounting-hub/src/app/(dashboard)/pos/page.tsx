@@ -236,6 +236,7 @@ interface InventoryProduct {
   unitCost?: string | number
   quantity?: number
   isPreOrder?: boolean
+  imageUrl?: string | null
   variants?: InventoryVariant[]
   [key: string]: unknown
 }
@@ -7133,8 +7134,19 @@ function ProductsSection({
                 const inStock = hasVariants ? (p.variants ?? []).some(v => v.quantity > 0) : (p.quantity ?? 0) > 0
                 return (
                 <button key={p.id} onClick={() => handleProductClick(p)}
-                  className="text-left p-3 rounded-xl border hover:shadow-md transition-shadow"
+                  className="text-left p-3 rounded-xl border hover:shadow-md transition-shadow flex gap-3"
                   style={{ borderColor: 'var(--light-gray)' }}>
+                  {/* Product photo — lets the cashier confirm they picked the right item */}
+                  <div className="shrink-0 w-14 h-14 rounded-lg overflow-hidden flex items-center justify-center"
+                    style={{ background: 'var(--off-white)', border: '1px solid var(--light-gray)' }}>
+                    {p.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <Package size={18} style={{ color: 'var(--light-gray)' }} />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium leading-snug" style={{ color: 'var(--charcoal)' }}>
                     {p.name}
                     {!inStock && p.isPreOrder && <span className="ml-1.5 px-1.5 py-0.5 rounded text-xs font-semibold align-middle" style={{ background: '#dbeafe', color: '#1e40af' }}>Pre-order</span>}
@@ -7152,6 +7164,7 @@ function ProductsSection({
                       <Star size={10} /> {p.rewardPointsPrice.toLocaleString()} pts
                     </p>
                   )}
+                  </div>
                 </button>
                 )
               })}
@@ -7632,9 +7645,16 @@ function ProductsSection({
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
           {/* Header (fixed) */}
           <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <div>
+            <div className="flex items-center gap-3">
+              {variantPickerProduct.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={variantPickerProduct.imageUrl} alt="" className="w-11 h-11 rounded-lg object-cover shrink-0"
+                  style={{ border: '1px solid var(--light-gray)' }} />
+              )}
+              <div>
               <h3 className="text-base font-semibold" style={{ color: 'var(--charcoal)' }}>Select Variant</h3>
               <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>{variantPickerProduct.name} · {(variantPickerProduct.variants ?? []).length} option{(variantPickerProduct.variants ?? []).length !== 1 ? 's' : ''}</p>
+              </div>
             </div>
             <button onClick={() => setVariantPickerProduct(null)} className="p-1 rounded hover:bg-gray-100">
               <X size={16} />
