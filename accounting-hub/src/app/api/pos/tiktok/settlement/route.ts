@@ -47,7 +47,7 @@ export async function POST(req: Request) {
       const orderId = String(r.orderId || '').trim()
       if (!orderId) continue
       const settlement = Number(r.settlement) || 0
-      const fees = Number(r.totalFees) || 0     // positive magnitude
+      const fees = Number(r.totalFees) || 0     // signed: positive = net fee charge, negative = net fee refund
       const cwt = Number(r.cwt) || 0            // positive magnitude
       const gross = settlement + fees + cwt
       if (gross <= 0) { skipped++; continue }
@@ -59,7 +59,9 @@ export async function POST(req: Request) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const lines: any[] = [
           { accountId: bankAccountId, debit: settlement, credit: 0, description: 'TikTok settlement deposit' },
-          { accountId: feesAccountId, debit: fees, credit: 0, description: 'TikTok marketplace fees' },
+          fees >= 0
+            ? { accountId: feesAccountId, debit: fees, credit: 0, description: 'TikTok marketplace fees' }
+            : { accountId: feesAccountId, debit: 0, credit: -fees, description: 'TikTok marketplace fee refund' },
         ]
         if (cwt > 0) lines.push({ accountId: cwtAccountId, debit: cwt, credit: 0, description: 'Creditable withholding tax (TikTok)' })
         lines.push({ accountId: clearingAccountId, debit: 0, credit: gross, description: 'TikTok clearing (order proceeds)' })

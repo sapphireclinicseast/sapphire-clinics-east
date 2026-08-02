@@ -199,14 +199,31 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
       const cwtKey = hdrs.find(h => /withhold|cwt/i.test(h)) || ''
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const isType = (r: any, t: string) => String(r['Transaction type'] || '').toLowerCase() === t
+      // TikTok can split one order across several rows (e.g. a fee-adjustment leg plus
+      // the main payout). The server is idempotent per order ID, so unmerged extra rows
+      // would be dropped as "already recorded" — sum them per order before sending.
+      // Fees stay SIGNED while summing (TikTok charges are negative, refunds positive);
+      // totalFees is sent as positive-when-net-charge, negative-when-net-refund.
+      const merged = new Map<string, { settlement: number; fees: number; cwt: number; settledDate: string; rowCount: number }>()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload = rows.filter((r: any) => isType(r, 'order') && r['Order/Adjustment ID']).map((r: any) => ({
-        orderId: String(r['Order/Adjustment ID']).trim(),
-        settlement: numAt(r, 'Total settlement amount'),
-        totalFees: Math.abs(numAt(r, 'Total Fees')),
-        cwt: cwtKey ? Math.abs(numAt(r, cwtKey)) : 0,
-        settledDate: toYmd(r['Order settled time']),
+      for (const r of rows.filter((r: any) => isType(r, 'order') && r['Order/Adjustment ID'])) {
+        const id = String(r['Order/Adjustment ID']).trim()
+        const m = merged.get(id) || { settlement: 0, fees: 0, cwt: 0, settledDate: '', rowCount: 0 }
+        m.settlement += numAt(r, 'Total settlement amount')
+        m.fees += numAt(r, 'Total Fees')
+        m.cwt += cwtKey ? Math.abs(numAt(r, cwtKey)) : 0
+        m.settledDate = m.settledDate || toYmd(r['Order settled time'])
+        m.rowCount++
+        merged.set(id, m)
+      }
+      const payload = [...merged.entries()].map(([orderId, m]) => ({
+        orderId,
+        settlement: +m.settlement.toFixed(2),
+        totalFees: +(-m.fees).toFixed(2),
+        cwt: +m.cwt.toFixed(2),
+        settledDate: m.settledDate,
       }))
+      const splitCount = [...merged.values()].filter(m => m.rowCount > 1).length
       // TikTok posts creditable withholding tax as its own "Withholding tax" adjustment rows.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cwtPayload = rows.filter((r: any) => isType(r, 'withholding tax') && r['Order/Adjustment ID']).map((r: any) => ({
@@ -214,7 +231,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         amount: Math.abs(numAt(r, 'Adjustment amount') || numAt(r, 'Total settlement amount')),
         settledDate: toYmd(r['Order settled time'] || r['Order created time']),
       }))
-      say(`Found ${payload.length} order settlement(s) and ${cwtPayload.length} withholding-tax adjustment(s).`)
+      say(`Found ${payload.length} order settlement(s) and ${cwtPayload.length} withholding-tax adjustment(s).${splitCount ? ` Merged ${splitCount} split settlement(s) with multiple rows.` : ''}`)
       if (cwtPayload.length && !cwtAcct) { say('⚠ Withholding-tax rows found but no CWT account selected — pick one to record them.'); return }
       const res = await fetch('/api/pos/tiktok/settlement', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -257,7 +274,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
                 {modes.map(m => <option key={m.id} value={m.id}>{m.name}{m.account ? ` → ${m.account.accountNumber}` : ' (no account!)'}</option>)}
               </select>
             </div>
-            <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--charcoal)' }}>Marketplace Fees (expense)</label><AcctSelect value={feesAcct} onChange={setFeesAcct} list={coa.filter(c => c.accountType === 'EXPENSE')} placeholder="Select account…" /></div>
+            <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--charcoal)' }}>Marketplace Fees (expense or contra-revenue)</label><AcctSelect value={feesAcct} onChange={setFeesAcct} list={coa.filter(c => c.accountType === 'EXPENSE' || c.accountType === 'REVENUE')} placeholder="Select account…" /></div>
             <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--charcoal)' }}>Creditable Withholding Tax (asset, optional)</label><AcctSelect value={cwtAcct} onChange={setCwtAcct} list={banks} placeholder="Select account…" /></div>
             <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--charcoal)' }}>Settlement bank account</label><AcctSelect value={bankAcct} onChange={setBankAcct} list={banks} placeholder="Select account…" /></div>
           </div>
