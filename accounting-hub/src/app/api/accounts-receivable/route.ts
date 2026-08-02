@@ -189,6 +189,63 @@ export async function GET(req: Request) {
       }
     })
 
+    // ── Summary aggregates over the FULL history ──
+    // The `orders` list above is capped at 500 for payload size. Every summary
+    // figure used to be derived from that capped array, so once the clinic had
+    // more than 500 HMO orders the older years (2024, 2025) silently dropped out
+    // of Total Billed, the paid %, and both pie charts — the dashboard quietly
+    // described only the most recent slice while looking like an all-time total.
+    // These aggregates run over every matching order instead, selecting only the
+    // few fields the totals need so the uncapped scan stays cheap.
+    const aggOrders = await prisma.order.findMany({
+      where: orderWhere,
+      select: {
+        payments: {
+          where: { method: type as 'HMO' | 'GL' },
+          select: { amount: true, walletId: true },
+        },
+        items: { select: { service: { select: { department: true } } } },
+      },
+    })
+
+    const walletNameById = new Map(wallets.map(w => [w.id, w.patientName]))
+    const deptTotals = new Map<string, number>()
+    const providerTotals = new Map<string, number>()
+    let totalBilled = 0
+
+    for (const o of aggOrders) {
+      for (const p of o.payments) {
+        const amt = Number(p.amount) || 0
+        totalBilled += amt
+        const name = (p.walletId && walletNameById.get(p.walletId)) || 'Unknown'
+        providerTotals.set(name, (providerTotals.get(name) || 0) + amt)
+      }
+      // Department split mirrors the client: an order's payment is apportioned
+      // across departments by how many of its items belong to each.
+      const amt = Number(o.payments[0]?.amount) || 0
+      if (amt === 0) continue
+      const itemsByDept = new Map<string, number>()
+      for (const it of o.items) {
+        const dept = it.service?.department || 'Other'
+        itemsByDept.set(dept, (itemsByDept.get(dept) || 0) + 1)
+      }
+      const totalItems = o.items.length || 1
+      for (const [dept, count] of itemsByDept) {
+        deptTotals.set(dept, (deptTotals.get(dept) || 0) + (count / totalItems) * amt)
+      }
+    }
+
+    const summary = {
+      orderCount: aggOrders.length,
+      totalBilled,
+      byDepartment: Array.from(deptTotals.entries())
+        .map(([label, amount]) => ({ label, amount }))
+        .sort((a, b) => b.amount - a.amount),
+      byProvider: Array.from(providerTotals.entries())
+        .map(([label, amount]) => ({ label, amount }))
+        .sort((a, b) => b.amount - a.amount),
+    }
+
     // Get AR payments for these wallets
     const arPayments = await prisma.aRPayment.findMany({
       where: {
@@ -219,7 +276,7 @@ export async function GET(req: Request) {
       },
     })
 
-    return NextResponse.json({ wallets: walletsOut, orders, arPayments })
+    return NextResponse.json({ wallets: walletsOut, orders, arPayments, summary })
   } catch (err) {
     console.error('AR API error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
