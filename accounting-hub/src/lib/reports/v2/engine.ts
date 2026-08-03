@@ -391,7 +391,16 @@ export async function computeLedgerStatements(
       if (!glRefIds.has(je.referenceType || '')) glRefIds.set(je.referenceType || '', new Set())
       glRefIds.get(je.referenceType || '')!.add(je.referenceId)
     }
-    postBalanced(`journal:${je.referenceType || 'manual'}`, monthOf(je.entryDate), je.description || `Journal entry ${je.id.slice(-6)}`, je.lines.map(l => ({
+    // A payroll journal belongs to its CUTOFF month, not the day it was
+    // finalized: the 2026-06-2 cutoff posted on July 3 is June's salary, and
+    // dating it by entry would starve June and fatten July on the statement.
+    // referenceId carries the cutoff as "YYYY-MM-N|BRANCH".
+    let jeMonth = monthOf(je.entryDate)
+    if (je.referenceType === 'PAYROLL_CONSULTANT' || je.referenceType === 'PAYROLL_EMPLOYEE') {
+      const cm = parseInt(je.referenceId?.split('-')[1] ?? '', 10)
+      if (je.referenceId?.startsWith(`${year}-`) && cm >= 1 && cm <= 12) jeMonth = cm
+    }
+    postBalanced(`journal:${je.referenceType || 'manual'}`, jeMonth, je.description || `Journal entry ${je.id.slice(-6)}`, je.lines.map(l => ({
       acct: l.account ? (byNumber.get(l.account.accountNumber) || virt(l.account.accountNumber, 'Unknown account', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT')) : virt('9998', 'Unmapped journal line', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT'),
       debit: Number(l.debit), credit: Number(l.credit),
     })))
