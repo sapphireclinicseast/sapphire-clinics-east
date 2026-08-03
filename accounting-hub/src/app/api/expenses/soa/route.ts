@@ -142,15 +142,28 @@ export async function PATCH(req: Request) {
         if (entries.length === 0) throw new Error('SOA has no entries to request')
         const grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
 
+        // The RFP's VAL / INV label must describe the entries it actually contains.
+        // This used to be hard-coded to VALID, so a statement made up entirely of
+        // invalid entries still printed as "-VAL".
+        const nInvalid = entries.filter(e => e.validity === 'Invalid').length
+        const nValid = entries.filter(e => e.validity === 'Valid').length
+        if (nInvalid > 0 && nValid > 0) {
+          throw new Error(
+            `This statement mixes ${nValid} valid and ${nInvalid} invalid ${nValid + nInvalid === 1 ? 'entry' : 'entries'}. ` +
+            'A single RFP can only be one or the other — set the validity consistently, or file the two groups separately.'
+          )
+        }
+        const kind = nInvalid > 0 ? 'INVALID' : 'VALID'
+
         let settings = await tx.pettyCashSettings.findUnique({ where: { branch: soa.branch } })
         if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch: soa.branch, nextPcvSeq: 1 } })
         const seq = settings.nextReimbSeq
         await tx.pettyCashSettings.update({ where: { branch: soa.branch }, data: { nextReimbSeq: seq + 1 } })
         const yy = new Date().getFullYear() % 100
-        const refNumber = `${BRANCH_CODE[soa.branch]}-RFP${yy}-${String(seq).padStart(6, '0')}-VAL`
+        const refNumber = `${BRANCH_CODE[soa.branch]}-RFP${yy}-${String(seq).padStart(6, '0')}-${kind === 'VALID' ? 'VAL' : 'INV'}`
 
         const created = await tx.reimbursementReport.create({
-          data: { branch: soa.branch, refNumber, refSeq: seq, grossTotal, kind: 'VALID', module: 'EXPENSE', payableTo: soa.bankCode, meta: { soaId: id, soaRef: soa.refNumber } as object, createdById: session.user!.id ?? null },
+          data: { branch: soa.branch, refNumber, refSeq: seq, grossTotal, kind, module: 'EXPENSE', payableTo: soa.bankCode, meta: { soaId: id, soaRef: soa.refNumber } as object, createdById: session.user!.id ?? null },
         })
         await tx.pettyCashEntry.updateMany({ where: { id: { in: entries.map(e => e.id) } }, data: { reimbursementId: created.id } })
         await tx.creditCardSOA.update({ where: { id }, data: { status: 'IN_RFP', reimbursementId: created.id } })
