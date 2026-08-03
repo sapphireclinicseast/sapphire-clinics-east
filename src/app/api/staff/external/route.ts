@@ -38,16 +38,22 @@ export async function GET(req: NextRequest) {
   try {
     const staff = await prisma.staff.findMany({
       where: {
-        ...(includeInactive ? {} : { active: true }),
-        ...(branch ? { branch } : {}),
-        ...(search
-          ? {
-              OR: [
-                { firstName: { contains: search, mode: 'insensitive' } },
-                { lastName: { contains: search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+        AND: [
+          includeInactive ? {} : { active: true },
+          // A branch filter must also match interbranch staff: someone whose
+          // primary branch is SBGH but who also works at SBEA (extraBranches)
+          // belongs in SBEA's clinician list too — e.g. the POS Edit Order
+          // clinician search.
+          branch ? { OR: [{ branch }, { extraBranches: { has: branch } }] } : {},
+          search
+            ? {
+                OR: [
+                  { firstName: { contains: search, mode: 'insensitive' } },
+                  { lastName: { contains: search, mode: 'insensitive' } },
+                ],
+              }
+            : {},
+        ],
       },
       select: {
         id: true,
