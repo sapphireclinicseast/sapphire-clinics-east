@@ -117,11 +117,14 @@ export async function GET(req: Request) {
   // Every recorded source the Hub knows about, not just transfers, RFPs and
   // orders — a payment missing from this list simply looks unmatchable.
   const all = await candidates(txn.bankAccountId, lo, hi)
+  // The beginning-balance cutoff protects the SUGGESTER from offering records
+  // the statement can't contain — an explicit search is the user reaching for
+  // exactly such a record (e.g. a 2025 supplier entry on an account whose
+  // opening balance starts 2026), so the cutoff doesn't apply there.
   const out = forDirection(all, isSpent)
-    .filter(c => gte(c.date)
-      && (searching
-        ? (!q || c.label.toLowerCase().includes(q))
-        : (near(c.amount, amount) && (!c.fx || withinFxWindow(c.date, txn.date)))))
+    .filter(c => searching
+      ? (!q || c.label.toLowerCase().includes(q))
+      : (gte(c.date) && near(c.amount, amount) && (!c.fx || withinFxWindow(c.date, txn.date))))
     .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount }))
 
   // Closest dates first.
