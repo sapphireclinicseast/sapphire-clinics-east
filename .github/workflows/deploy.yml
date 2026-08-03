@@ -482,7 +482,16 @@ jobs:
           mkdir -p uploads/session-notes
 
           echo "→ Installing dependencies..."
-          npm ci --production=false 2>&1 | tail -3
+          # No pipefail in this script, so `npm ci | tail -3` used to swallow
+          # a failed/partial install and let the deploy continue on a broken
+          # node_modules. Log to a file and check the exit code instead,
+          # matching the later `npm install --include=dev` block.
+          if ! npm ci --production=false > /tmp/tt-ci.log 2>&1; then
+            echo "❌ npm ci failed — last 20 lines:"
+            tail -20 /tmp/tt-ci.log
+            exit 1
+          fi
+          echo "   ✓ npm ci OK ($(wc -l < /tmp/tt-ci.log) log lines)"
 
           echo "→ Generating Prisma client..."
           npx prisma generate 2>&1 | tail -2
@@ -623,16 +632,61 @@ jobs:
             exit 1
           fi
 
+          # Sanity check + self-heal: an install can exit 0 and still leave a
+          # broken/partial node_modules (transient VPS npm state — run
+          # 30818464332 failed with "Can't resolve 'lucide-react'" across
+          # ~15 teletherapy files on a commit that never touched teletherapy).
+          # Verify key deps actually resolve before spending minutes on a
+          # build; if they don't, rebuild node_modules from scratch.
+          tt_self_heal() {
+            echo "⚠ node_modules unhealthy — self-healing (cache verify + fresh install)..."
+            npm cache verify > /tmp/tt-cache.log 2>&1 || npm cache clean --force > /tmp/tt-cache.log 2>&1 || true
+            rm -rf node_modules
+            if ! npm install --include=dev --no-audit --no-fund > /tmp/tt-reinstall.log 2>&1; then
+              echo "❌ recovery npm install failed — last 20 lines:"
+              tail -20 /tmp/tt-reinstall.log
+              exit 1
+            fi
+            echo "   ✓ recovery install OK"
+          }
+          echo "→ Sanity-checking key deps resolve..."
+          node -e "require.resolve('lucide-react'); require.resolve('next')" 2>/dev/null || tt_self_heal
+          if ! node -e "require.resolve('lucide-react'); require.resolve('next')"; then
+            echo "❌ FATAL: key deps still unresolvable after fresh install"
+            exit 1
+          fi
+          echo "   ✓ deps resolve"
+
           # ATOMIC BUILD — build into a staging dir (.next.new) and swap it in
           # only once it's complete. The running app keeps serving the live
           # .next throughout, so a concurrent or cancelled CI build can no
           # longer leave the portal with a half-written .next (the cause of the
           # intermittent 500 "Internal Server Error" / 502 during deploy storms).
+          # If the build fails on missing modules anyway, self-heal and retry once.
           echo "→ Building teletherapy Next.js app (atomic → .next.new)..."
-          rm -rf .next.new
-          if ! NEXT_DIST_DIR=.next.new NEXT_TELEMETRY_DISABLED=1 npm run build > /tmp/tt-build.log 2>&1; then
-            echo "❌ npm run build failed — last 30 lines:"
-            tail -30 /tmp/tt-build.log
+          tt_build_ok=false
+          for tt_attempt in 1 2; do
+            rm -rf .next.new
+            if NEXT_DIST_DIR=.next.new NEXT_TELEMETRY_DISABLED=1 npm run build > /tmp/tt-build.log 2>&1; then
+              tt_build_ok=true
+              break
+            fi
+            if [ "$tt_attempt" = "1" ] && grep -q "Module not found" /tmp/tt-build.log; then
+              echo "⚠ build failed with missing modules — self-healing and retrying once..."
+              grep "Module not found" /tmp/tt-build.log | sort -u | head -10
+              tt_self_heal
+              continue
+            fi
+            break
+          done
+          if [ "$tt_build_ok" != "true" ]; then
+            # tail -30 used to cut off the "Module not found: Can't resolve 'X'"
+            # lines, leaving only the trailing stack frames — surface them
+            # explicitly and keep a longer tail.
+            echo "❌ npm run build failed — 'Module not found' lines (if any):"
+            grep -n "Module not found" /tmp/tt-build.log | head -20 || true
+            echo "❌ last 80 lines of build log:"
+            tail -80 /tmp/tt-build.log
             rm -rf .next.new
             exit 1
           fi
