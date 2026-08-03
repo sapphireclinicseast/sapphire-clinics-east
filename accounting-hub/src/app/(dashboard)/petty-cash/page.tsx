@@ -11,6 +11,7 @@ import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import type { RfpMemoParts } from '@/lib/billing-voucher'
 import type { BVLine } from '@/lib/billing-voucher'
 
 // ── Constants ──────────────────────────────────────────────────
@@ -175,7 +176,7 @@ export default function PettyCashPage() {
   const [generating, setGenerating] = useState(false)
   const [bankOptions, setBankOptions] = useState<string[]>([])
   const [payTarget, setPayTarget] = useState<Reimb | null>(null)
-  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch?: string; defaultBilledTo?: string } | null>(null)
+  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch?: string; defaultBilledTo?: string ; payment?: RfpMemoParts } | null>(null)
   const [supplierNames, setSupplierNames] = useState<Set<string>>(new Set())
   const [suppliers, setSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
@@ -562,7 +563,17 @@ export default function PettyCashPage() {
     try {
       const res = await fetch(`/api/petty-cash/reimbursements?id=${rep.id}&items=1`)
       const d = res.ok ? await res.json() : { lines: [] }
-      setBvTarget({ refNumber: rep.refNumber, date: new Date(rep.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }), lines: d.lines || [], branch, defaultBilledTo: rep.payableTo || '' })
+      setBvTarget({
+        refNumber: rep.refNumber, date: new Date(rep.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }),
+        lines: d.lines || [], branch, defaultBilledTo: rep.payableTo || '',
+        payment: {
+          payee: rep.payableTo || ((d.lines || [])[0]?.payee ?? ''),
+          purpose: (d.lines || [])[0]?.memo || (d.lines || [])[0]?.description || '',
+          bankAccount: rep.debitAccount || '',
+          paymentMode: rep.paymentMethod || '',
+          reference: rep.transferRef || rep.checkNumber || '',
+        },
+      })
     } catch { alert('Could not load RFP line items.') }
   }
 
@@ -1339,7 +1350,7 @@ export default function PettyCashPage() {
           onClose={() => setShowReimbModal(false)} onGenerate={generateReimbursement} />
       )}
 
-      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} payment={bvTarget.payment} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
 
       {payTarget && (
         <RecordPaidModal report={payTarget} bankOptions={bankOptions}

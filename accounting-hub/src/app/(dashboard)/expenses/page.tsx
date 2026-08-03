@@ -8,6 +8,7 @@ import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciatingClassification, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import type { RfpMemoParts } from '@/lib/billing-voucher'
 import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
@@ -98,7 +99,7 @@ interface SupTxn { date: string | null; pcvNumber: string; description: string; 
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
   module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
-  paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; debitAccount: string | null
+  paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
 }
 
@@ -241,7 +242,7 @@ export default function ExpensesPage() {
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
   const [payrollPayTarget, setPayrollPayTarget] = useState<Rfp | null>(null)
-  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string; defaultBilledTo?: string; defaultMemo?: string } | null>(null)
+  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string; defaultBilledTo?: string; defaultMemo?: string; payment?: RfpMemoParts } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -569,6 +570,14 @@ export default function ExpensesPage() {
         // Autofill from the first journal entry: Billed To ← its Payee, Memo ← its Description.
         defaultBilledTo: first?.payee || rfp.payableTo || '',
         defaultMemo: first?.memo || '',
+        // Standard memo: Paid to <payee> due to <purpose> credited to <bank acct> ; <mode> ; <ref>
+        payment: {
+          payee: first?.payee || rfp.payableTo || '',
+          purpose: first?.memo || first?.description || '',
+          bankAccount: rfp.debitAccount || '',
+          paymentMode: rfp.paymentMethod || '',
+          reference: rfp.transferRef || rfp.checkNumber || '',
+        },
       })
     } catch { alert('Could not load RFP line items.') }
   }
@@ -1592,7 +1601,7 @@ export default function ExpensesPage() {
           onDone={async () => { setPayrollPayTarget(null); await loadRfps(branch) }} />
       )}
 
-      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} defaultMemo={bvTarget.defaultMemo} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} defaultMemo={bvTarget.defaultMemo} payment={bvTarget.payment} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
 
       {newSupplierPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>

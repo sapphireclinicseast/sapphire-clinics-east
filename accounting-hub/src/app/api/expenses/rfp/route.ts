@@ -69,7 +69,7 @@ export async function GET(req: Request) {
     where: { branch, module: { in: ['EXPENSE', 'PAYROLL_SALARY', 'PAYROLL_BENEFIT'] } },
     select: {
       id: true, refNumber: true, grossTotal: true, status: true, kind: true, module: true, meta: true, paidAt: true, paymentMethod: true,
-      checkNumber: true, debitAccount: true, creditCardId: true, proofUrl: true, payableTo: true, createdAt: true,
+      checkNumber: true, transferRef: true, debitAccount: true, creditCardId: true, proofUrl: true, payableTo: true, createdAt: true,
       _count: { select: { entries: true } },
       entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
     },
