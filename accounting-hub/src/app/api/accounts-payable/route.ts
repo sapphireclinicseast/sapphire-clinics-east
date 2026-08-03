@@ -66,6 +66,17 @@ export async function PATCH(req: Request) {
 
   if (b.action === 'close') {
     if (item.status === 'CLOSED') return NextResponse.json({ error: 'Already closed' }, { status: 409 })
+    // Some listed payables were already settled long ago (e.g. QuickBooks bills
+    // whose payments were recorded separately) — the ledger never carried them,
+    // so closing them must NOT post: marking them closed is a bookkeeping note,
+    // not a transaction.
+    if (b.noJournal) {
+      const closed = await prisma.aPItem.update({
+        where: { id: item.id },
+        data: { status: 'CLOSED', closedAt: b.closedOn ? new Date(b.closedOn) : new Date(), closeAccountId: null, closeNote: (b.note?.trim() || 'Already settled — closed without posting'), closeJournalEntryId: null },
+      })
+      return NextResponse.json({ item: closed })
+    }
     if (!b.closeAccountId) return NextResponse.json({ error: 'Choose the account that settles it — the bank it was paid from, or an income/equity account for a write-off' }, { status: 400 })
     const apId = await apAccount()
     if (b.closeAccountId === apId) return NextResponse.json({ error: 'That is 4010 itself — the entry would cancel out' }, { status: 400 })

@@ -137,9 +137,21 @@ export async function GET(req: Request) {
     }
   })
 
+  // Opening balance for single-account views (e.g. the Unearned Revenue page):
+  // the year's BeginningBalance rows for the matched accounts, so a movement
+  // view can show opening + received − released = balance.
+  let opening = 0
+  if (accountIds.length) {
+    const ob = await prisma.beginningBalance.aggregate({
+      where: { accountId: { in: accountIds }, periodYear: year }, _sum: { amount: true },
+    })
+    opening = Number(ob._sum.amount || 0)
+  }
+
   return NextResponse.json({
     lines: out,
     total: { dr, cr, net: dr - cr },
+    opening,
     label,
     range: { year, month, branch, includeClosing },
   })
