@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
 import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
+import { applyBankRules } from '@/lib/bank-rec-rules'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -108,7 +109,15 @@ export async function POST(req: Request) {
       await prisma.bankImportBatch.update({ where: { id: batch }, data: { rowCount: res.count } })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const archived = fresh.filter((r: any) => r.status === ARCHIVED).length
-      return NextResponse.json({ imported: res.count, skipped, archived })
+      // Recurring payees are a decision made once: the active auto-rules run
+      // over the batch that was just imported, so a fresh statement arrives
+      // already categorized as far as the rules can carry it.
+      let autoPosted = 0
+      try {
+        const auto = await applyBankRules(prisma, session.user.id as string, { importBatch: batch })
+        autoPosted = auto.posted
+      } catch { /* rules must never break an upload */ }
+      return NextResponse.json({ imported: res.count, skipped, archived, autoPosted })
     }
 
     if (!body.date || !body.description) return NextResponse.json({ error: 'Date and description are required' }, { status: 400 })

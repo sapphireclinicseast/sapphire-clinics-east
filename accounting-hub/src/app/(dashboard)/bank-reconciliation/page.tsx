@@ -428,7 +428,7 @@ export default function BankReconciliationPage() {
   )
 }
 
-interface BankRule { id: string; pattern: string; direction: string; bankAccountId: string | null; categoryAccountId: string; fromToName: string | null; active: boolean; pendingMatches: number; categoryLabel: string }
+interface BankRule { id: string; pattern: string; direction: string; bankAccountId: string | null; categoryAccountId: string; fromToName: string | null; effectiveFrom: string | null; active: boolean; pendingMatches: number; categoryLabel: string }
 
 function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: BankAcct[]; onClose: () => void; onDone: () => Promise<void> }) {
   const [rules, setRules] = useState<BankRule[]>([])
@@ -442,6 +442,7 @@ function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: 
   const [catQ, setCatQ] = useState('')
   const [categoryAccountId, setCategoryAccountId] = useState('')
   const [fromToName, setFromToName] = useState('')
+  const [effectiveFrom, setEffectiveFrom] = useState('')
   const load = async () => {
     setLoading(true)
     try { const r = await fetch('/api/bank-rec/rules'); const d = await r.json(); setRules(d.rules || []); setPendingTotal(d.pendingTotal || 0) }
@@ -453,7 +454,7 @@ function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: 
     if (!pattern.trim() || !categoryAccountId) { alert('A rule needs a pattern and a category account.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/bank-rec/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pattern, direction, bankAccountId: scopeAcct || null, categoryAccountId, fromToName: fromToName || null }) })
+      const r = await fetch('/api/bank-rec/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pattern, direction, bankAccountId: scopeAcct || null, categoryAccountId, fromToName: fromToName || null, effectiveFrom: effectiveFrom || null }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       setPattern(''); setCatQ(''); setCategoryAccountId(''); setFromToName('')
       await load()
@@ -522,6 +523,9 @@ function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: 
             )}
           </div>
           <input value={fromToName} onChange={e => setFromToName(e.target.value)} placeholder="Payee to stamp (optional)" className="px-3 py-2 rounded-xl border text-sm outline-none min-w-[180px]" style={{ borderColor: 'var(--light-gray)' }} />
+          <label className="flex items-center gap-1 text-xs" style={{ color: 'var(--mid-gray)' }} title="Lines dated before this stay untouched — expenses before it were recorded through other channels, and a rule reaching back would count them twice.">
+            from <input type="date" value={effectiveFrom} onChange={e => setEffectiveFrom(e.target.value)} className="px-2 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+          </label>
           <button onClick={create} disabled={busy} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Add rule</button>
         </div>
       </div>
@@ -537,6 +541,7 @@ function RulesModal({ coa, accounts, onClose, onDone }: { coa: Coa[]; accounts: 
               <span style={{ color: 'var(--mid-gray)' }}>{r.direction === 'OUT' ? 'out' : r.direction === 'IN' ? 'in' : 'any'}</span>
               <span>→ {r.categoryLabel}</span>
               {r.fromToName && <span style={{ color: 'var(--mid-gray)' }}>payee: {r.fromToName}</span>}
+              {r.effectiveFrom && <span style={{ color: 'var(--mid-gray)' }}>from {String(r.effectiveFrom).slice(0, 10)}</span>}
               <span className="ml-auto px-2 py-0.5 rounded-full font-bold" style={{ background: r.pendingMatches ? 'var(--teal)' : 'var(--light-gray)', color: r.pendingMatches ? '#fff' : 'var(--mid-gray)' }}>{r.pendingMatches} pending</span>
               <button onClick={() => toggle(r)} title={r.active ? 'Pause' : 'Resume'} className="underline">{r.active ? 'pause' : 'resume'}</button>
               <button onClick={() => remove(r)} title="Delete rule"><Trash2 size={13} /></button>
@@ -632,6 +637,7 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
       const d = await r.json()
       if (!r.ok) { alert(d.error || 'Import failed'); return }
       const bits = [`Imported ${d.imported} transaction(s).`]
+      if (d.autoPosted) bits.push(`Auto-rules categorized ${d.autoPosted} of them.`)
       if (d.archived) bits.push(`${d.archived} pre-date the reconciliation start date and were filed as Archived (locked from tagging).`)
       // "Skipped" means this account already held an identical line from an
       // earlier upload, so it was not added a second time. It does not mean the
