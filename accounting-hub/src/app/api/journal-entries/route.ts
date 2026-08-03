@@ -89,13 +89,21 @@ export async function GET(req: Request) {
   const branch = searchParams.get('branch') || 'ALL'
   const includeClosing = searchParams.get('includeClosing') === 'true'
 
+  // Explicit date range (?from=YYYY-MM-DD&to=YYYY-MM-DD) overrides year/month —
+  // used by the Unearned Revenue page to reach back across years (2024 onwards).
+  const fromStr = searchParams.get('from')
+  const toStr   = searchParams.get('to')
+  const limit   = Math.min(50_000, Math.max(1, parseInt(searchParams.get('limit') || '1000')))
+
   const { accountIds, label } = await resolveAccountIds(searchParams)
   if (accountIds.length === 0) {
     return NextResponse.json({ lines: [], total: { dr: 0, cr: 0, net: 0 }, label, note: 'No matching accounts.' })
   }
 
-  const start = month ? new Date(Date.UTC(year, month - 1, 1)) : new Date(Date.UTC(year, 0, 1))
-  const end   = month ? new Date(Date.UTC(year, month, 1))     : new Date(Date.UTC(year + 1, 0, 1))
+  let start = month ? new Date(Date.UTC(year, month - 1, 1)) : new Date(Date.UTC(year, 0, 1))
+  let end   = month ? new Date(Date.UTC(year, month, 1))     : new Date(Date.UTC(year + 1, 0, 1))
+  if (fromStr && /^\d{4}-\d{2}-\d{2}$/.test(fromStr)) start = new Date(fromStr + 'T00:00:00.000Z')
+  if (toStr && /^\d{4}-\d{2}-\d{2}$/.test(toStr)) { end = new Date(toStr + 'T00:00:00.000Z'); end.setUTCDate(end.getUTCDate() + 1) }
 
   const lines = await prisma.journalEntryLine.findMany({
     where: {
@@ -114,7 +122,7 @@ export async function GET(req: Request) {
       },
     },
     orderBy: [{ journalEntry: { entryDate: 'asc' } }, { journalEntry: { createdAt: 'asc' } }],
-    take: 1000,
+    take: limit,
   })
 
   let dr = 0, cr = 0
@@ -138,14 +146,32 @@ export async function GET(req: Request) {
   })
 
   // Opening balance for single-account views (e.g. the Unearned Revenue page):
-  // the year's BeginningBalance rows for the matched accounts, so a movement
-  // view can show opening + received − released = balance.
+  // the BeginningBalance rows for the window's starting year, plus any movement
+  // between that year's Jan 1 and the window start, so a movement view can show
+  // opening + received − released = balance for ANY from-date.
   let opening = 0
   if (accountIds.length) {
+    const startYear = start.getUTCFullYear()
     const ob = await prisma.beginningBalance.aggregate({
-      where: { accountId: { in: accountIds }, periodYear: year }, _sum: { amount: true },
+      where: { accountId: { in: accountIds }, periodYear: startYear }, _sum: { amount: true },
     })
     opening = Number(ob._sum.amount || 0)
+    const yearStart = new Date(Date.UTC(startYear, 0, 1))
+    if (start > yearStart) {
+      const pre = await prisma.journalEntryLine.aggregate({
+        where: {
+          accountId: { in: accountIds },
+          journalEntry: {
+            entryDate: { gte: yearStart, lt: start },
+            ...(branch !== 'ALL' ? { branch } : {}),
+            ...(includeClosing ? {} : { referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] } }),
+          },
+        },
+        _sum: { debit: true, credit: true },
+      })
+      // Liability-style movement view: credits grow the balance, debits release it.
+      opening += Number(pre._sum.credit || 0) - Number(pre._sum.debit || 0)
+    }
   }
 
   return NextResponse.json({
@@ -153,7 +179,7 @@ export async function GET(req: Request) {
     total: { dr, cr, net: dr - cr },
     opening,
     label,
-    range: { year, month, branch, includeClosing },
+    range: { year, month, branch, includeClosing, from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10), limit },
   })
 }
 
