@@ -706,7 +706,53 @@ export async function computeLedgerStatements(
   }
   if (synthesizedAssets) validation.synthesized.push(`asset-purchases (${synthesizedAssets})`)
 
-  /* ── 8. Income tax provision (Phase-1 chain, balanced against ITP / DTA) ── */
+  /* ── 8. Bank-statement true-up: cash on the sheet = cash at the bank ──
+     The ledger only subtracts what has been categorized, so while Bank Rec has
+     a backlog, ledger cash floats above reality. Each bank account with an
+     imported statement is trued to the bank's own running balance as of its
+     latest line in the period; the difference sits on ONE visible equity line,
+     "Cash Pending Reconciliation", which shrinks toward zero as pending lines
+     get categorized — at which point the true-up posts nothing at all.
+     All-Branches only: statements are whole-account and cannot be split. */
+  if (branch === 'ALL') {
+    try {
+      const latest = await prisma.bankTransaction.findMany({
+        where: { date: { lt: end }, statementBalance: { not: null } },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        select: { bankAccountId: true, date: true, statementBalance: true },
+      })
+      const latestByAcct = new Map<string, { bal: number; date: Date }>()
+      for (const t of latest) if (!latestByAcct.has(t.bankAccountId)) latestByAcct.set(t.bankAccountId, { bal: Number(t.statementBalance), date: t.date })
+      const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
+      let trueups = 0
+      for (const n of bankFlagged) {
+        const acct = byNumber.get(n)
+        if (!acct?.id) continue
+        const stmt = latestByAcct.get(acct.id)
+        if (!stmt) continue
+        const m = mov.get(n) || { debit: 0, credit: 0 }
+        const ledgerClosing = (opening.get(n) || 0) + m.debit - m.credit // cash is debit-normal
+        const adj = round2(stmt.bal - ledgerClosing)
+        if (Math.abs(adj) < 0.01) continue
+        const month = monthOf(stmt.date)
+        postBalanced('bank-trueup', month, `True-up to bank statement as of ${stmt.date.toISOString().slice(0, 10)} — ${acct.title}`, [
+          adj < 0 ? { acct, credit: -adj } : { acct, debit: adj },
+          adj < 0 ? { acct: pendReconcile, debit: -adj } : { acct: pendReconcile, credit: adj },
+        ])
+        trueups++
+      }
+      if (trueups) {
+        validation.synthesized.push(`bank-statement-trueup (${trueups})`)
+        validation.notes.push(
+          `Cash is trued to the imported bank statements: ${trueups} bank account(s) are stated at the bank's own ` +
+          `running balance as of their latest imported line. The difference vs the ledger sits on the visible equity ` +
+          `line "3990 Cash Pending Reconciliation" and shrinks as pending Bank Reconciliation lines are categorized.`,
+        )
+      }
+    } catch { /* statements are optional */ }
+  }
+
+  /* ── 9. Income tax provision (Phase-1 chain, balanced against ITP / DTA) ── */
   // computed after the trial balance below — placeholder filled later.
 
   /* ── Build account rows ── */
