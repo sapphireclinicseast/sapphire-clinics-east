@@ -12,7 +12,7 @@ export async function GET() {
   // Count what each rule would catch today, so the list shows live reach.
   const pending = await prisma.bankTransaction.findMany({
     where: { status: 'PENDING' },
-    select: { description: true, fromToName: true, spent: true, received: true, bankAccountId: true },
+    select: { description: true, fromToName: true, spent: true, received: true, bankAccountId: true, date: true },
   })
   const catIds = [...new Set(rules.map(r => r.categoryAccountId))]
   const accts = catIds.length ? await prisma.account.findMany({ where: { id: { in: catIds } }, select: { id: true, accountNumber: true, accountTitle: true } }) : []
@@ -21,7 +21,7 @@ export async function GET() {
   const withCounts = rules.map(r => {
     let n = 0
     pending.forEach((t, i) => {
-      if (!claimed.has(i) && r.active && ruleMatches(r, t)) { claimed.add(i); n++ }
+      if (!claimed.has(i) && r.active && ruleMatches(r, t) && (!r.effectiveFrom || t.date >= r.effectiveFrom)) { claimed.add(i); n++ }
     })
     return { ...r, pendingMatches: n, categoryLabel: byId.get(r.categoryAccountId) || r.categoryAccountId }
   })
@@ -44,6 +44,7 @@ export async function POST(req: Request) {
       bankAccountId: body.bankAccountId || null,
       categoryAccountId: body.categoryAccountId,
       fromToName: body.fromToName?.trim() || null,
+      effectiveFrom: body.effectiveFrom ? new Date(body.effectiveFrom) : null,
       createdById: session.user.id as string,
     },
   })
@@ -65,6 +66,7 @@ export async function PATCH(req: Request) {
       ...(body.active !== undefined ? { active: !!body.active } : {}),
       ...(body.categoryAccountId !== undefined ? { categoryAccountId: body.categoryAccountId } : {}),
       ...(body.fromToName !== undefined ? { fromToName: body.fromToName?.trim() || null } : {}),
+      ...(body.effectiveFrom !== undefined ? { effectiveFrom: body.effectiveFrom ? new Date(body.effectiveFrom) : null } : {}),
     },
   })
   return NextResponse.json({ rule })

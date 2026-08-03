@@ -3020,6 +3020,10 @@ model BankCategoryRule {
   bankAccountId     String?  // limit to one bank account; null = all
   categoryAccountId String
   fromToName        String?  // stamp a payee on matched lines
+  // Rules only touch lines dated on/after this. Expenses before it were
+  // recorded through other channels (QB imports, the petty module), and a rule
+  // reaching back would count them twice.
+  effectiveFrom     DateTime?
   active            Boolean  @default(true)
   createdById       String
   createdAt         DateTime @default(now())
