@@ -491,7 +491,10 @@ model DeckingClinicHours {
 
 model DeckingTherapistConfig {
   id         String   @id @default(cuid())
-  staffId    String   @unique
+  // Interbranch staff need one config PER branch — staffId alone used to be
+  // the unique key, so saving a secondary-branch schedule silently overwrote
+  // the primary-branch one. (staffId, branch) is now the unique key instead.
+  staffId    String
   staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
   workDays   Json     // ["MON", "TUE", "WED", "THU", "FRI"]
   startTime  String   // "10:00"
@@ -501,6 +504,8 @@ model DeckingTherapistConfig {
   department String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@unique([staffId, branch])
 }
 
 model DeckingSlot {
