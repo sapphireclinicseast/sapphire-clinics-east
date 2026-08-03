@@ -1198,7 +1198,10 @@ model ConsultantUnitPay {
   consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   unitPayId    String
   unitPay      UnitPay    @relation(fields: [unitPayId], references: [id], onDelete: Cascade)
-  amount           Decimal    // Per-unit amount for this consultant
+  amount           Decimal    // Per-unit amount for this consultant (default across branches)
+  // Per-branch override of `amount`, e.g. { "SBGH": 1050 } for a consultant paid
+  // 1,000 at East but 1,050 at Greenhills. Branches not listed use `amount`.
+  branchAmounts    Json?
   disabled         Boolean    @default(false) // When true, this unit pay is not applicable for this clinician
   thresholdEnabled Boolean    @default(false)
   thresholdAmount  Decimal?   // Min order netAmount to qualify for full rate

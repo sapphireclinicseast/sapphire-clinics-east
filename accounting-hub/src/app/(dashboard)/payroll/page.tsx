@@ -47,7 +47,7 @@ interface Consultant {
   bankName?: string | null
   bankAccountNo?: string | null
   isActive: boolean
-  unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
+  unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; branchAmounts?: Record<string, number | string> | null; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
   benefits?: { id: string; benefitType: string; employeeShare: number | string; employerShare: number | string; isActive: boolean }[]
   extraBranches?: string[]
   affiliatedBranches?: string[]
@@ -819,7 +819,7 @@ export default function PayrollPage() {
   const [cSortField, setCSortField] = useState('name')
   const [cSortDir, setCSortDir] = useState<'asc' | 'desc'>('asc')
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null)
-  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null }>>({})
+  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null; branchAmounts: Record<string, string> }>>({})
   const [editingTax, setEditingTax] = useState('')
   const [editingRetainer, setEditingRetainer] = useState('')
   // Per-branch retainer amounts while editing, keyed by branch code. A branch present here is
@@ -1615,13 +1615,16 @@ export default function PayrollPage() {
   const expandConsultant = (c: Consultant) => {
     if (expandedConsultant === c.id) { setExpandedConsultant(null); return }
     setExpandedConsultant(c.id)
-    const rateMap: Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null }> = {}
+    const rateMap: Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null; branchAmounts: Record<string, string> }> = {}
     for (const r of c.unitPayRates) rateMap[r.unitPayId] = {
       amount: toNum(r.amount),
       disabled: r.disabled || false,
       thresholdEnabled: r.thresholdEnabled || false,
       thresholdAmount: r.thresholdAmount != null ? toNum(r.thresholdAmount) : null,
       reducedAmount: r.reducedAmount != null ? toNum(r.reducedAmount) : null,
+      branchAmounts: Object.fromEntries(
+        Object.entries(r.branchAmounts || {}).map(([b, v]) => [b, String(toNum(v))]),
+      ),
     }
     setEditingRates(rateMap)
     setEditingTax(c.taxDeduction)
@@ -1649,14 +1652,20 @@ export default function PayrollPage() {
     try {
       const unitPayRates = Object.entries(editingRates)
         .filter(([, r]) => r.amount > 0 || r.disabled)
-        .map(([unitPayId, r]) => ({
-          unitPayId,
-          amount: r.amount,
-          disabled: r.disabled,
-          thresholdEnabled: r.thresholdEnabled || false,
-          thresholdAmount: r.thresholdAmount ?? null,
-          reducedAmount: r.reducedAmount ?? null,
-        }))
+        .map(([unitPayId, r]) => {
+          const branchEntries = Object.entries(r.branchAmounts || {})
+            .map(([b, v]) => [b, parseFloat(v) || 0] as const)
+            .filter(([, amt]) => amt > 0)
+          return {
+            unitPayId,
+            amount: r.amount,
+            disabled: r.disabled,
+            thresholdEnabled: r.thresholdEnabled || false,
+            thresholdAmount: r.thresholdAmount ?? null,
+            reducedAmount: r.reducedAmount ?? null,
+            branchAmounts: branchEntries.length > 0 ? Object.fromEntries(branchEntries) : null,
+          }
+        })
       // A per-branch split, when set, is what payroll uses and the total follows from it.
       const splitEntries = Object.entries(editingRetainerBranches)
         .map(([b, v]) => [b, parseFloat(v) || 0] as const)
@@ -3239,29 +3248,67 @@ export default function PayrollPage() {
                                       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No unit pay types assigned to the {DEPT_LABELS[c.department] || c.department} department.</p>
                                     ) : (
                                       <div className="space-y-2">
-                                        {applicableUPs.map(up => {
-                                          const r = editingRates[up.id] || { amount: 0, disabled: false, thresholdEnabled: false, thresholdAmount: null, reducedAmount: null }
+                                        {(() => {
+                                          // Interbranch consultants may earn a different rate per branch
+                                          // (e.g. 1,000/session at East but 1,050 at Greenhills).
+                                          const rateBranches = (c.affiliatedBranches && c.affiliatedBranches.length ? c.affiliatedBranches : [c.branch]).filter(Boolean)
+                                          const interbranch = rateBranches.length > 1
+                                          return applicableUPs.map(up => {
+                                          const r = editingRates[up.id] || { amount: 0, disabled: false, thresholdEnabled: false, thresholdAmount: null, reducedAmount: null, branchAmounts: {} }
+                                          const overrides = Object.entries(r.branchAmounts || {}).filter(([, v]) => (parseFloat(v) || 0) > 0)
+                                          const setBranchRate = (b: string, v: string | null) => {
+                                            const next = { ...(r.branchAmounts || {}) }
+                                            if (v === null) delete next[b]; else next[b] = v
+                                            setEditingRates({ ...editingRates, [up.id]: { ...r, branchAmounts: next } })
+                                          }
                                           return (
-                                            <div key={up.id} className="flex items-center gap-3">
-                                              <label className="flex items-center gap-1.5 w-40 cursor-pointer">
-                                                <input type="checkbox" checked={!r.disabled}
-                                                  onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, disabled: !e.target.checked } })}
-                                                  className="rounded" />
-                                                <span className="text-xs font-medium" style={{ color: r.disabled ? 'var(--mid-gray)' : 'var(--charcoal)', textDecoration: r.disabled ? 'line-through' : 'none' }}>{up.name}</span>
-                                              </label>
-                                              {r.disabled ? (
-                                                <span className="text-xs px-2 py-1 rounded-lg" style={{ color: '#dc2626', background: '#fef2f2' }}>Disabled</span>
-                                              ) : (
-                                                <>
-                                                  <input type="number" min={0} step="0.01" value={r.amount || ''}
-                                                    onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, amount: parseFloat(e.target.value) || 0 } })}
-                                                    placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
-                                                  <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
-                                                </>
+                                            <div key={up.id}>
+                                              <div className="flex items-center gap-3">
+                                                <label className="flex items-center gap-1.5 w-40 cursor-pointer">
+                                                  <input type="checkbox" checked={!r.disabled}
+                                                    onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, disabled: !e.target.checked } })}
+                                                    className="rounded" />
+                                                  <span className="text-xs font-medium" style={{ color: r.disabled ? 'var(--mid-gray)' : 'var(--charcoal)', textDecoration: r.disabled ? 'line-through' : 'none' }}>{up.name}</span>
+                                                </label>
+                                                {r.disabled ? (
+                                                  <span className="text-xs px-2 py-1 rounded-lg" style={{ color: '#dc2626', background: '#fef2f2' }}>Disabled</span>
+                                                ) : (
+                                                  <>
+                                                    <input type="number" min={0} step="0.01" value={r.amount || ''}
+                                                      onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, amount: parseFloat(e.target.value) || 0 } })}
+                                                      placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
+                                                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit{interbranch && overrides.length > 0 ? ' (default)' : ''}</span>
+                                                  </>
+                                                )}
+                                              </div>
+                                              {/* Per-branch rate overrides — only offered to interbranch consultants */}
+                                              {!r.disabled && interbranch && (
+                                                <div className="mt-1 ml-6 flex flex-wrap items-center gap-3">
+                                                  {rateBranches.map(b => {
+                                                    const ticked = (r.branchAmounts || {})[b] !== undefined
+                                                    return (
+                                                      <div key={b} className="flex items-center gap-1.5">
+                                                        <label className="flex items-center gap-1 text-[11px] cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
+                                                          <input type="checkbox" checked={ticked}
+                                                            onChange={e => setBranchRate(b, e.target.checked ? String(r.amount || '') : null)} />
+                                                          {branchLabel(b)}
+                                                        </label>
+                                                        <input type="number" min={0} step="0.01" disabled={!ticked}
+                                                          value={(r.branchAmounts || {})[b] ?? ''}
+                                                          onChange={e => setBranchRate(b, e.target.value)}
+                                                          placeholder="same"
+                                                          className="px-2 py-1 rounded-lg border text-xs outline-none w-24 disabled:bg-gray-100"
+                                                          style={{ borderColor: ticked ? 'var(--teal)' : 'var(--light-gray)' }} />
+                                                      </div>
+                                                    )
+                                                  })}
+                                                  <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>unticked branches use the default rate</span>
+                                                </div>
                                               )}
                                             </div>
                                           )
-                                        })}
+                                          })
+                                        })()}
                                       </div>
                                     )
                                   })()}

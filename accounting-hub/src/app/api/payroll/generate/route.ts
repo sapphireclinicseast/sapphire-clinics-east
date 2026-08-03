@@ -294,7 +294,10 @@ export async function GET(req: Request) {
           consultantId: c.id,
           consultantName: c.name,
           department: c.department,
-          branch: c.branch,
+          // The payslip belongs to the branch being generated, not the consultant's
+          // primary branch — an interbranch consultant's Greenhills payslip must
+          // carry the Greenhills letterhead/TIN, not East's.
+          branch: branch || c.branch,
           taxDeduction: c.taxDeduction,
           items: storedItems,
           unitPayTotal: storedItems.reduce((s, b) => s + b.lineTotal, 0),
@@ -352,7 +355,14 @@ export async function GET(req: Request) {
 
           // Determine effective rate: check threshold rule using adjusted basis
           // Use toFloat() to safely convert Prisma Decimal objects to plain JS numbers
-          const fullAmount = toFloat(rate.amount)
+          // A per-branch override (e.g. { SBGH: 1050 }) beats the base amount when
+          // generating that branch's payroll.
+          const branchOverride = branch
+            ? (rate.branchAmounts as Record<string, unknown> | null)?.[branch]
+            : undefined
+          const fullAmount = branchOverride != null && Number.isFinite(Number(branchOverride))
+            ? Number(branchOverride)
+            : toFloat(rate.amount)
           let effectiveAmount = fullAmount
           let isReduced = false
 
@@ -485,7 +495,8 @@ export async function GET(req: Request) {
         consultantId: c.id,
         consultantName: c.name,
         department: c.department,
-        branch: c.branch,
+        // Branch being generated, not the consultant's primary (see above).
+        branch: branch || c.branch,
         taxDeduction: c.taxDeduction,
         items: unitPayBreakdown,
         unitPayTotal,
