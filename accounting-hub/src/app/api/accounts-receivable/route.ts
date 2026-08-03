@@ -39,7 +39,11 @@ export async function GET(req: Request) {
       _max: { paymentDate: true },
     })
     const paidByWallet = new Map(paidAgg.map(p => [p.walletId, {
-      paid: Number(p._sum.amount || 0) + Number(p._sum.discount || 0),
+      // Paid means the checks received — it must match the agency's SOA. The
+      // processor commission (recorded in the discount field) is a balance-
+      // sheet arrangement, shown separately, never added into Paid.
+      paid: Number(p._sum.amount || 0),
+      commission: Number(p._sum.discount || 0),
       lastPaymentDate: p._max.paymentDate,
     }]))
 
@@ -172,6 +176,7 @@ export async function GET(req: Request) {
       // latest payment, in months of 30 days.
       const pay = paidByWallet.get(w.id)
       const paidTotal = pay?.paid ?? 0
+      const commissionTotal = pay?.commission ?? 0
       const lastPaymentDate = pay?.lastPaymentDate ?? null
       const monthsToPay = lastPaymentDate
         ? (lastPaymentDate.getTime() - new Date(w.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 30)
@@ -184,6 +189,7 @@ export async function GET(req: Request) {
         totalGlAmount: approved,
         totalConsumedAmount,
         paidTotal,
+        commissionTotal,
         lastPaymentDate,
         monthsToPay,
       }

@@ -28,6 +28,7 @@ interface ARWallet {
   perSession?: boolean
   // Lifetime settled by this agency (cash + tax withheld), and how long it took.
   paidTotal?: number
+  commissionTotal?: number
   lastPaymentDate?: string | null
   monthsToPay?: number | null
   // Total consumed (paid + unpaid, GL only)
@@ -1462,7 +1463,8 @@ export default function AccountsReceivablePage() {
                 {tab === 'GL' ? 'Approved SOA' : 'Outstanding'}
               </th>
               {tab === 'GL' && <>
-                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Paid</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }} title="Checks received — matches the agency's SOA">Paid</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }} title="Processor commission (20-25% arrangement) — carried on the balance sheet in 1190, never deducted on the income statement">Commission</th>
                 <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Months to pay</th>
                 <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Consumed</th>
                 <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>% Consumed</th>
@@ -1483,7 +1485,7 @@ export default function AccountsReceivablePage() {
                 <Fragment key={`grp-${w.id}`}>
                 {startsPerSession && (
                   <tr style={{ background: 'var(--pale-teal, #f0f7f6)' }}>
-                    <td colSpan={6} className="px-3 py-2 text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                    <td colSpan={7} className="px-3 py-2 text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
                       Billed per session, settled afterwards — no approved SOA
                     </td>
                   </tr>
@@ -1502,6 +1504,9 @@ export default function AccountsReceivablePage() {
                   {tab === 'GL' && <>
                     <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: paid > 0 ? '#166534' : 'var(--light-gray)' }}>
                       {paid > 0 ? formatCurrency(paid) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: toNum(w.commissionTotal) > 0 ? 'var(--mid-gray)' : 'var(--light-gray)' }}>
+                      {toNum(w.commissionTotal) > 0 ? formatCurrency(toNum(w.commissionTotal)) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
                       {typeof w.monthsToPay === 'number'
