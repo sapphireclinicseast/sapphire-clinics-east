@@ -33,6 +33,11 @@ const num = (v: unknown) => Number(v ?? 0)
  */
 export async function candidates(bankAccountId: string | null, lo: Date, hi: Date): Promise<Candidate[]> {
   const range = { gte: lo, lte: hi }
+  // RFPs store the paying bank account as "<accountNumber> <accountTitle>" text,
+  // so scoping them to the reconciled account needs its number.
+  const reconAcct = bankAccountId
+    ? await prisma.account.findUnique({ where: { id: bankAccountId }, select: { accountNumber: true } })
+    : null
   // An account filter that matches everything when no account is given. Only
   // for NULLABLE columns: the `null` branch also offers rows that never had an
   // account set. On a required column Prisma rejects `{ field: null }` outright
@@ -50,11 +55,12 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       select: { id: true, refNumber: true, amount: true, date: true, fromAccountId: true, toAccountId: true, toAmount: true, exchangeRate: true },
     }),
     // Petty cash, expenses, refunds and taxes all raise a Reimbursement Report;
-    // `module` says which. It carries no bank account, so it is offered against
-    // any account and settled on amount and date.
+    // `module` says which. When Record-as-Paid captured the paying bank account
+    // (debitAccount, "<number> <title>"), the RFP is offered only against that
+    // account; RFPs paid before that field existed stay offered everywhere.
     prisma.reimbursementReport.findMany({
       where: { status: 'PAID', paidAt: range },
-      select: { id: true, refNumber: true, grossTotal: true, paidAt: true, module: true, payableTo: true },
+      select: { id: true, refNumber: true, grossTotal: true, paidAt: true, module: true, payableTo: true, debitAccount: true },
     }),
     prisma.order.findMany({
       where: { status: 'COMPLETED', transactionDate: range },
@@ -132,6 +138,8 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   }
   for (const r of rfps) {
     if (!r.paidAt) continue
+    // Paid via a known bank account → only eligible against that account.
+    if (reconAcct?.accountNumber && r.debitAccount && !r.debitAccount.startsWith(reconAcct.accountNumber)) continue
     const kind = (r.module || 'RFP').replace(/_/g, ' ').toLowerCase()
     out.push({ type: 'RFP', id: r.id, label: `${r.refNumber} · ${kind}${r.payableTo ? ` · ${r.payableTo}` : ''}`, date: r.paidAt, amount: num(r.grossTotal), dir: 'out' })
   }
