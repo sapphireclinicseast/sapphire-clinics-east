@@ -144,3 +144,75 @@ export async function GET(req: Request) {
     range: { year, month, branch, includeClosing },
   })
 }
+
+/* ── Manual general journal ─────────────────────────────────────────────
+   POST creates a MANUAL journal entry — the QuickBooks-style catch-all for
+   anything without a module of its own. It posts to the same JournalEntry
+   table every ledger, statement and drill-down already reads, so a manual
+   entry flows everywhere the moment it saves. Entries must balance;
+   imbalance is refused, not plugged.
+   DELETE removes MANUAL entries only — module-generated entries belong to
+   their modules and are corrected there, not here. */
+
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+
+export async function POST(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  const b = await req.json()
+  if (!b.entryDate) return NextResponse.json({ error: 'Journal date is required' }, { status: 400 })
+  const lines = Array.isArray(b.lines) ? b.lines
+    .map((l: { accountId?: string; debit?: unknown; credit?: unknown; description?: string }) => ({
+      accountId: l.accountId, debit: Math.round((Number(l.debit) || 0) * 100) / 100,
+      credit: Math.round((Number(l.credit) || 0) * 100) / 100, description: (l.description || '').slice(0, 300) || null,
+    }))
+    .filter((l: { accountId?: string; debit: number; credit: number }) => l.accountId && (l.debit > 0 || l.credit > 0)) : []
+  if (lines.length < 2) return NextResponse.json({ error: 'A journal entry needs at least two lines' }, { status: 400 })
+  if (lines.some((l: { debit: number; credit: number }) => l.debit > 0 && l.credit > 0)) {
+    return NextResponse.json({ error: 'A line is either a debit or a credit, not both' }, { status: 400 })
+  }
+  const dr = lines.reduce((s: number, l: { debit: number }) => s + l.debit, 0)
+  const cr = lines.reduce((s: number, l: { credit: number }) => s + l.credit, 0)
+  if (Math.abs(dr - cr) >= 0.01) {
+    return NextResponse.json({ error: `Debits (${dr.toFixed(2)}) and credits (${cr.toFixed(2)}) must balance` }, { status: 400 })
+  }
+  const ids = [...new Set(lines.map((l: { accountId: string }) => l.accountId))]
+  const found = await prisma.account.count({ where: { id: { in: ids as string[] } } })
+  if (found !== ids.length) return NextResponse.json({ error: 'A line references an account that does not exist' }, { status: 400 })
+
+  // Sequential journal number, QuickBooks-style: MJE-<year>-<seq>.
+  const year = new Date(b.entryDate).getUTCFullYear()
+  const count = await prisma.journalEntry.count({ where: { referenceType: 'MANUAL', referenceId: { startsWith: `MJE-${year}-` } } })
+  const refId = `MJE-${year}-${String(count + 1).padStart(4, '0')}`
+
+  const je = await prisma.journalEntry.create({
+    data: {
+      entryDate: new Date(b.entryDate),
+      description: (b.memo || '').trim().slice(0, 400) || `Manual journal ${refId}`,
+      referenceType: 'MANUAL', referenceId: refId,
+      totalAmount: Math.round(dr * 100) / 100,
+      createdById: session.user.id as string,
+      branch: ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA', 'VERDANA_STORE', 'ALL'].includes(b.branch) ? b.branch : 'ALL',
+      lines: { create: lines },
+    },
+  })
+  return NextResponse.json({ id: je.id, refId })
+}
+
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  const id = new URL(req.url).searchParams.get('id') || ''
+  const je = await prisma.journalEntry.findUnique({ where: { id }, select: { referenceType: true } })
+  if (!je) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (je.referenceType !== 'MANUAL') {
+    return NextResponse.json({ error: 'Only manual entries can be deleted here — module-generated entries are corrected in their own module' }, { status: 409 })
+  }
+  await prisma.journalEntryLine.deleteMany({ where: { journalEntryId: id } })
+  await prisma.journalEntry.delete({ where: { id } })
+  return NextResponse.json({ success: true })
+}
