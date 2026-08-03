@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       lastName: true,
       sex: true,
       jobTitle: true,
-      deckingConfig: { select: { workDays: true } },
+      deckingConfigs: { where: { branch }, select: { workDays: true } },
     },
   })
 
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
   const therapists = staff.map((s) => {
     const raw = (s.sex ?? '').trim().toUpperCase()
     const sex: 'M' | 'F' | null = raw === 'M' ? 'M' : raw === 'F' ? 'F' : null
-    const days = (s.deckingConfig?.workDays as string[] | null) ?? []
+    const days = (s.deckingConfigs[0]?.workDays as string[] | null) ?? []
     return {
       id: s.id,
       initials: `${s.firstName?.[0] ?? '?'}${s.lastName?.[0] ?? '?'}`.toUpperCase(),
