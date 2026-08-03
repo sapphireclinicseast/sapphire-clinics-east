@@ -3030,3 +3030,27 @@ model BankCategoryRule {
 
   @@index([active])
 }
+
+// An itemized register for 4010 Accounts Payable. The balance-sheet figure is
+// one lump; these rows name what it is made of, and closing one posts the
+// settling entry (Dr 4010 / Cr the chosen account) so the lump and the list
+// walk down together. Salaries and taxes clear through RFPs; this is for
+// everything else, which previously had no way to close at all.
+model APItem {
+  id                    String    @id @default(cuid())
+  vendor                String
+  description           String?
+  amount                Decimal
+  dateIncurred          DateTime
+  branch                String    @default("ALL")
+  status                String    @default("OPEN")   // OPEN | CLOSED
+  closedAt              DateTime?
+  closeAccountId        String?   // what settled it: a bank account, petty cash, or an income/equity account for write-offs
+  closeNote             String?
+  closeJournalEntryId   String?
+  createdById           String
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([status])
+}

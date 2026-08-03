@@ -29,6 +29,7 @@ import {
   Repeat,
   ScrollText,
   X,
+  FileText,
 } from 'lucide-react'
 
 // Roles that see all accounting modules (excludes front desk and HMO Officer).
@@ -97,6 +98,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/paymongo', icon: CreditCard, label: 'PayMongo', roles: SERVICES_POS_ACCESS },
       { href: '/referral', icon: Users, label: 'Referral', roles: REFERRAL_ACCESS },
       { href: '/accounts-receivable', icon: FileCheck, label: 'Accounts Receivable', roles: AR_ACCESS },
+      { href: '/accounts-payable', icon: FileText, label: 'Accounts Payable', roles: TAX_ACCESS },
       { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll', roles: PAYROLL_ACCESS },
       { href: '/benefits-payable', icon: Shield, label: 'Benefits Payable', roles: PAYROLL_ACCESS },
       { href: '/taxes', icon: Landmark, label: 'Taxes', roles: TAX_ACCESS },
