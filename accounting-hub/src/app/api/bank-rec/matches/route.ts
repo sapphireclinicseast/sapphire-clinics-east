@@ -89,8 +89,26 @@ export async function GET(req: Request) {
 
   const isSpent = Number(txn.spent) > 0
   const amount = isSpent ? Number(txn.spent) : Number(txn.received)
-  const lo = new Date(txn.date); lo.setUTCDate(lo.getUTCDate() - WINDOW_DAYS)
-  const hi = new Date(txn.date); hi.setUTCDate(hi.getUTCDate() + WINDOW_DAYS + 1)
+
+  // Explicit search: ?q= filters candidate labels, ?from/?to= widen the date
+  // window. Either one switches off the same-amount requirement — the point is
+  // to tag a bank line to a record the suggester can't pair on amount (e.g. a
+  // CNY bank debit against a PHP-converted expense entry).
+  const sp = new URL(req.url).searchParams
+  const q = (sp.get('q') || '').trim().toLowerCase()
+  const fromStr = sp.get('from') || ''
+  const toStr = sp.get('to') || ''
+  const searching = !!(q || fromStr || toStr)
+
+  let lo = new Date(txn.date); lo.setUTCDate(lo.getUTCDate() - WINDOW_DAYS)
+  let hi = new Date(txn.date); hi.setUTCDate(hi.getUTCDate() + WINDOW_DAYS + 1)
+  if (searching) {
+    // Default the searched window wide (2024 onwards) unless narrowed explicitly.
+    lo = /^\d{4}-\d{2}-\d{2}$/.test(fromStr) ? new Date(fromStr + 'T00:00:00.000Z') : new Date(Date.UTC(2024, 0, 1))
+    hi = /^\d{4}-\d{2}-\d{2}$/.test(toStr) ? new Date(toStr + 'T00:00:00.000Z') : new Date()
+    hi.setUTCDate(hi.getUTCDate() + 1)
+  }
+
   // Cut-off: bank's beginning-balance start date (only consider entries on/after).
   const beg = await prisma.beginningBalance.findFirst({ where: { accountId: txn.bankAccountId, startDate: { not: null } }, orderBy: { periodYear: 'desc' } })
   const cutoff = beg?.startDate ? new Date(beg.startDate) : null
@@ -100,10 +118,13 @@ export async function GET(req: Request) {
   // orders — a payment missing from this list simply looks unmatchable.
   const all = await candidates(txn.bankAccountId, lo, hi)
   const out = forDirection(all, isSpent)
-    .filter(c => near(c.amount, amount) && gte(c.date) && (!c.fx || withinFxWindow(c.date, txn.date)))
+    .filter(c => gte(c.date)
+      && (searching
+        ? (!q || c.label.toLowerCase().includes(q))
+        : (near(c.amount, amount) && (!c.fx || withinFxWindow(c.date, txn.date)))))
     .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount }))
 
   // Closest dates first.
   out.sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
-  return NextResponse.json({ matches: out.slice(0, 20) })
+  return NextResponse.json({ matches: out.slice(0, searching ? 50 : 20), searching })
 }

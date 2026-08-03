@@ -43,7 +43,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   const onRequired = <T extends string>(field: T, id: string | null) =>
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
-    transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred,
+    transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -91,6 +91,13 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     prisma.preferredShare.findMany({
       where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
       select: { id: true, dateAcquired: true, numberOfShares: true, pricePerShare: true, shareholder: { select: { name: true } } },
+    }),
+    // One-time / petty-cash expense entries paid straight from a bank account
+    // (e.g. supplier TT payments recorded in Expenses). Entries already rolled
+    // into an RFP are excluded — the paid RFP is the payment record there.
+    prisma.pettyCashEntry.findMany({
+      where: { date: range, reimbursementId: null, grossAmount: { gt: 0 } },
+      select: { id: true, pcvNumber: true, grossAmount: true, date: true, requestor: true, description: true },
     }),
   ])
 
@@ -151,6 +158,15 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   }
   for (const a of advances) {
     out.push({ type: 'CASH_ADVANCE', id: a.id, label: `${a.refNumber} · Cash advance${a.accountableName ? ` · ${a.accountableName}` : ''}`, date: a.dateReleased, amount: num(a.amount), dir: 'out' })
+  }
+  for (const e of expenseEntries) {
+    if (!e.date) continue
+    const desc = (e.description || '').slice(0, 80)
+    out.push({
+      type: 'EXPENSE_ENTRY', id: e.id,
+      label: `${e.pcvNumber || 'Expense'} · ${e.requestor || 'Expense entry'}${desc ? ` · ${desc}` : ''}`,
+      date: e.date, amount: num(e.grossAmount), dir: 'out',
+    })
   }
   for (const [rows, kind] of [[common, 'Common'], [preferred, 'Preferred']] as const) {
     for (const s of rows) {
