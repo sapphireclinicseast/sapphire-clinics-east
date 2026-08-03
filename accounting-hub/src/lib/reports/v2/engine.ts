@@ -316,7 +316,45 @@ export async function computeLedgerStatements(
       validation.openingPlug = openDiff
     }
   } else {
-    validation.notes.push('Opening balances are not branch-split, so this branch view shows period movements only (openings excluded). Use All Branches for the full position.')
+    /* Company-wide opening balances cannot be split by branch, but the branch's
+       own journal history can be carried forward: prior-year entries tagged to
+       this branch become opening balances, so share capital raised in 2024 still
+       stands in a 2026 branch view instead of the sheet starting from zero.
+       Prior-year revenue and expense collapse into one retained-earnings line —
+       their detail belongs to their own year, but their net is this branch's
+       accumulated result and the sheet cannot balance without it. */
+    const priorLines = await prisma.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          entryDate: { lt: start },
+          referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
+          branch: { in: branchValues! as never[] },
+        },
+      },
+      select: { debit: true, credit: true, account: { select: { accountNumber: true } } },
+    })
+    let priorPL = 0, carried = 0
+    for (const l of priorLines) {
+      if (!l.account) continue
+      const acct = byNumber.get(l.account.accountNumber)
+      if (!acct) continue
+      const d = Number(l.debit) || 0, c = Number(l.credit) || 0
+      if (acct.type === 'REVENUE' || acct.type === 'EXPENSE') {
+        priorPL += c - d // credit-positive: net income of prior years
+      } else {
+        const move = acct.normalBalance === 'DEBIT' ? d - c : c - d
+        if (move) { opening.set(acct.number, (opening.get(acct.number) || 0) + move); carried++ }
+      }
+    }
+    if (Math.abs(priorPL) >= 0.01) {
+      const re = virt('3995', 'Retained Earnings — prior years (this branch)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
+      opening.set(re.number, (opening.get(re.number) || 0) + round2(priorPL))
+    }
+    validation.notes.push(
+      'Branch view: company-wide opening balances cannot be split by branch, so openings here are rebuilt from this ' +
+      'branch\'s own prior-year entries (capital, buybacks, and a single retained-earnings line for prior-year results). ' +
+      'Amounts that exist only as unsplit openings — e.g. 5030 Bonds Payable — appear in the All Branches view.',
+    )
   }
 
   /* ── 2. Real journal entries (with the payroll cutoff window rule) ── */
