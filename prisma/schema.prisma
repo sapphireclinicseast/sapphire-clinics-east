@@ -387,7 +387,7 @@ model Staff {
   surveyAssignments SurveyAssignment[]
   surveyResponses   SurveyResponse[]
   assessmentTargets AssessmentTarget[]
-  deckingConfig   DeckingTherapistConfig?
+  deckingConfigs  DeckingTherapistConfig[]
   deckingSlots    DeckingSlot[]
   peerEvalAssor       PeerEvalAssignment[] @relation("PeerEvalAssor")
   peerEvalAssee       PeerEvalAssignment[] @relation("PeerEvalAssee")
