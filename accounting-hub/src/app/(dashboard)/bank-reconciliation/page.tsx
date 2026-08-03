@@ -770,7 +770,24 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [fx, setFx] = useState<FxMatch[]>([])
   const [busy, setBusy] = useState(false)
-  useEffect(() => { fetch(`/api/bank-rec/matches?txnId=${txn.id}`).then(r => r.ok ? r.json() : { matches: [] }).then(d => setMatches(d.matches || [])).catch(() => setMatches([])) }, [txn.id])
+  // Manual search: any of these switches from same-amount suggestions to a
+  // label search over every recorded transaction in the range — needed when the
+  // amounts can never agree (e.g. a CNY bank debit vs a PHP expense entry).
+  const [q, setQ] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const searching = !!(q.trim() || from || to)
+  useEffect(() => {
+    setMatches(null)
+    const t = setTimeout(() => {
+      const p = new URLSearchParams({ txnId: txn.id })
+      if (q.trim()) p.set('q', q.trim())
+      if (from) p.set('from', from)
+      if (to) p.set('to', to)
+      fetch(`/api/bank-rec/matches?${p}`).then(r => r.ok ? r.json() : { matches: [] }).then(d => setMatches(d.matches || [])).catch(() => setMatches([]))
+    }, q.trim() ? 350 : 0)
+    return () => clearTimeout(t)
+  }, [txn.id, q, from, to])
   useEffect(() => { fetch(`/api/bank-rec/matches?txnId=${txn.id}&mode=forex`).then(r => r.ok ? r.json() : { matches: [] }).then(d => setFx(d.matches || [])).catch(() => setFx([])) }, [txn.id])
   const pick = async (m: Match) => { setBusy(true); try { await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: m.label }) }); onDone() } finally { setBusy(false) } }
   const pickFx = async (m: FxMatch) => {
@@ -788,6 +805,21 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
   return (
     <Modal title="Match to a recorded transaction" onClose={onClose}>
       <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>₱{peso(txn.spent > 0 ? txn.spent : txn.received)}</strong></p>
+
+      {/* Search any recorded transaction — bypasses the same-amount suggester */}
+      <div className="mb-3 space-y-1.5">
+        <input value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Search recorded transactions (ref no, payee, description)…"
+          className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: searching ? 'var(--teal)' : 'var(--light-gray)' }} />
+        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+          <span>From</span>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+          <span>to</span>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+          {searching && <button onClick={() => { setQ(''); setFrom(''); setTo('') }} className="underline" style={{ color: 'var(--teal)' }}>Clear — back to suggestions</button>}
+        </div>
+        {searching && <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Searching all recorded transactions in the range (amounts may differ — e.g. a foreign-currency bank line against its PHP entry). Pick the record this bank line settles.</p>}
+      </div>
 
       {fx.length > 0 && (
         <div className="mb-4">
@@ -813,8 +845,12 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
       {matches === null ? <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={15} className="inline animate-spin" /> Finding matches…</p>
         : matches.length === 0 ? (
           <div className="text-center py-4">
-            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>No suggested matches (by amount within 7 days). You can categorise it instead.</p>
-            <button onClick={onCategorise} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Categorise instead</button>
+            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
+              {searching
+                ? 'Nothing found in that range — adjust the search or dates.'
+                : 'No suggested matches (by amount within 7 days). Search above to find any recorded transaction, or categorise it instead.'}
+            </p>
+            {!searching && <button onClick={onCategorise} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Categorise instead</button>}
           </div>
         ) : (
           <div className="space-y-2">
