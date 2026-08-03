@@ -104,6 +104,28 @@ ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "paymentBankAccountId" TEXT;
 ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpayment" DECIMAL(65,30) NOT NULL DEFAULT 0;
 ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpaymentAccountId" TEXT;
 ALTER TABLE "ConsultantUnitPay" ADD COLUMN IF NOT EXISTS "branchAmounts" JSONB;
+CREATE TABLE IF NOT EXISTS "PosSettlementBatch" (
+    "id"                TEXT NOT NULL,
+    "bankTransactionId" TEXT NOT NULL,
+    "paymentModeId"     TEXT,
+    "label"             TEXT NOT NULL,
+    "grossTotal"        DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "netTotal"          DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "createdById"       TEXT,
+    "createdAt"         TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PosSettlementBatch_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "PosSettlementBatch_bankTransactionId_key" ON "PosSettlementBatch"("bankTransactionId");
+CREATE TABLE IF NOT EXISTS "PosSettlementPayment" (
+    "id"             TEXT NOT NULL,
+    "batchId"        TEXT NOT NULL,
+    "orderPaymentId" TEXT NOT NULL,
+    "amount"         DECIMAL(65,30) NOT NULL DEFAULT 0,
+    CONSTRAINT "PosSettlementPayment_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "PosSettlementPayment_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "PosSettlementBatch"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "PosSettlementPayment_orderPaymentId_key" ON "PosSettlementPayment"("orderPaymentId");
+CREATE INDEX IF NOT EXISTS "PosSettlementPayment_batchId_idx" ON "PosSettlementPayment"("batchId");
 
 -- PayMongo checkout/payment tracking (Phase 1)
 CREATE TABLE IF NOT EXISTS "PaymongoCheckout" (

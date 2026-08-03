@@ -297,11 +297,15 @@ export async function PATCH(req: Request) {
     }
     if (action === 'exclude') {
       if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+      // A POS settlement batch holds its order payments captive — release them.
+      if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
       await prisma.bankTransaction.update({ where: { id }, data: { status: 'EXCLUDED', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null } })
       return NextResponse.json({ success: true })
     }
     if (action === 'unpost') {
       if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+      // Undoing a POS settlement frees its order payments for a new batch.
+      if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
       // A currency exchange is one transfer spanning two bank lines, so undoing
       // either side must release both and drop the transfer they created —
       // otherwise the other line stays posted against a record that is gone.

@@ -2833,6 +2833,34 @@ model CreditLine {
   updatedAt     DateTime @updatedAt
 }
 
+// ── POS settlement batches (bank rec) ────────────────────
+// A bank deposit that settles a set of POS order payments: a day's cash count
+// deposited 1-3 days later, or a card/GCash/PayMaya batch credited net of the
+// payment mode's deductions. The batch records exactly which order payments a
+// deposit covered; an order payment can settle into at most one deposit.
+model PosSettlementBatch {
+  id                String   @id @default(cuid())
+  bankTransactionId String   @unique  // the bank line this batch settles
+  paymentModeId     String?           // mode the payments were made through
+  label             String
+  grossTotal        Decimal  @default(0)
+  netTotal          Decimal  @default(0)  // gross minus mode deductions (what the bank shows)
+  createdById       String?
+  createdAt         DateTime @default(now())
+
+  payments PosSettlementPayment[]
+}
+
+model PosSettlementPayment {
+  id             String             @id @default(cuid())
+  batchId        String
+  batch          PosSettlementBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  orderPaymentId String             @unique // settles into at most one deposit
+  amount         Decimal            @default(0)
+
+  @@index([batchId])
+}
+
 model BankTransaction {
   id                String   @id @default(cuid())
   bankAccountId     String   // Account.id (a Chart-of-Accounts bank account)

@@ -766,6 +766,116 @@ function CategoriseModal({ txn, coa: allCoa, account, onClose, onDone }: { txn: 
   )
 }
 
+// POS settlement picker — a bank deposit that settles a batch of POS order
+// payments (a day's cash deposited 1-3 days later, or a card/GCash batch
+// credited net of the mode's deductions). The user picks the mode, adjusts the
+// sale-date window, ticks the payments the deposit covers (whole days or a
+// separately-deposited subset), and confirms; the running net total shows how
+// far the selection is from the bank amount.
+interface PosMode { id: string; name: string; method: string | null; branch: string | null; settlesHere: boolean; deductions: string[] }
+interface PosPay { id: string; date: string; orderNumber: number; name: string; branch: string; gross: number; net: number; settledBy: string | null }
+function PosSettlementPicker({ txn, onDone }: { txn: Txn; onDone: () => void }) {
+  const [modes, setModes] = useState<PosMode[] | null>(null)
+  const [modeId, setModeId] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [pays, setPays] = useState<PosPay[] | null>(null)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+  const bankAmt = txn.received
+
+  useEffect(() => {
+    fetch(`/api/bank-rec/pos-settlement?txnId=${txn.id}`).then(r => r.ok ? r.json() : null).then(d => {
+      if (!d) return
+      setModes(d.modes || [])
+      setFrom(d.suggestedFrom || ''); setTo(d.suggestedTo || '')
+      const here = (d.modes || []).filter((m: PosMode) => m.settlesHere)
+      if (here.length === 1) setModeId(here[0].id)
+    }).catch(() => setModes([]))
+  }, [txn.id])
+
+  useEffect(() => {
+    if (!modeId) { setPays(null); return }
+    setPays(null); setSel(new Set())
+    const p = new URLSearchParams({ txnId: txn.id, modeId })
+    if (from) p.set('from', from)
+    if (to) p.set('to', to)
+    fetch(`/api/bank-rec/pos-settlement?${p}`).then(r => r.ok ? r.json() : null).then(d => setPays(d?.payments || [])).catch(() => setPays([]))
+  }, [txn.id, modeId, from, to])
+
+  const days = useMemo(() => {
+    const m = new Map<string, PosPay[]>()
+    for (const p of pays || []) { const arr = m.get(p.date) || []; arr.push(p); m.set(p.date, arr) }
+    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b))
+  }, [pays])
+  const selNet = (pays || []).filter(p => sel.has(p.id)).reduce((s, p) => s + p.net, 0)
+  const diff = Math.round((selNet - bankAmt) * 100) / 100
+  const toggle = (id: string) => setSel(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const toggleDay = (d: string) => {
+    const ids = (pays || []).filter(p => p.date === d && !p.settledBy).map(p => p.id)
+    const allOn = ids.every(id => sel.has(id))
+    setSel(prev => { const n = new Set(prev); for (const id of ids) { if (allOn) n.delete(id); else n.add(id) } return n })
+  }
+  const confirm = async () => {
+    setBusy(true)
+    try {
+      const r = await fetch('/api/bank-rec/pos-settlement', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txnId: txn.id, modeId, orderPaymentIds: [...sel] }) })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error || 'Failed'); return }
+      onDone()
+    } finally { setBusy(false) }
+  }
+
+  if (modes === null) return <p className="text-xs py-2" style={{ color: 'var(--mid-gray)' }}><Loader2 size={13} className="inline animate-spin" /> Loading POS modes…</p>
+  return (
+    <div className="rounded-xl border p-3 mb-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <select value={modeId} onChange={e => setModeId(e.target.value)} className="px-2 py-1.5 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="">— Payment mode —</option>
+          {modes.map(m => <option key={m.id} value={m.id}>{m.name}{m.settlesHere ? ' ★ settles here' : ''}{m.deductions.length ? ` (less ${m.deductions.join(', ')})` : ''}</option>)}
+        </select>
+        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Sales from</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>to</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+      </div>
+      {modeId && (pays === null ? (
+        <p className="text-xs py-2" style={{ color: 'var(--mid-gray)' }}><Loader2 size={13} className="inline animate-spin" /> Loading payments…</p>
+      ) : pays.length === 0 ? (
+        <p className="text-xs py-1" style={{ color: 'var(--mid-gray)' }}>No completed-order payments in this window for that mode.</p>
+      ) : (
+        <>
+          <div className="rounded-lg border overflow-y-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: 230 }}>
+            {days.map(([d, rows]) => (
+              <div key={d}>
+                <button type="button" onClick={() => toggleDay(d)} className="w-full text-left px-2.5 py-1 text-[11px] font-semibold sticky top-0" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                  {d} — {rows.length} payment(s) · net ₱{peso(rows.reduce((s, p) => s + p.net, 0))} <span className="font-normal" style={{ color: 'var(--teal)' }}>(toggle day)</span>
+                </button>
+                {rows.map(p => (
+                  <label key={p.id} className={`flex items-center gap-2 px-2.5 py-1 text-xs border-t ${p.settledBy ? 'opacity-50' : 'cursor-pointer'}`} style={{ borderColor: 'var(--light-gray)' }} title={p.settledBy ? `Already settled: ${p.settledBy}` : undefined}>
+                    <input type="checkbox" disabled={!!p.settledBy} checked={sel.has(p.id)} onChange={() => toggle(p.id)} />
+                    <span className="w-14 font-mono">#{p.orderNumber}</span>
+                    <span className="flex-1 truncate">{p.name}{p.settledBy ? ' · settled ✓' : ''}</span>
+                    <span className="tabular-nums">₱{peso(p.net)}</span>
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between mt-2 text-xs">
+            <span style={{ color: 'var(--mid-gray)' }}>{sel.size} selected · net <strong style={{ color: 'var(--charcoal)' }}>₱{peso(selNet)}</strong> vs bank ₱{peso(bankAmt)}
+              {sel.size > 0 && <span className="ml-1 font-semibold" style={{ color: Math.abs(diff) < 0.01 ? '#166534' : '#b45309' }}>{Math.abs(diff) < 0.01 ? '· exact match' : `· off by ₱${peso(Math.abs(diff))}`}</span>}
+            </span>
+            <button onClick={confirm} disabled={busy || sel.size === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+              {busy ? <Loader2 size={13} className="inline animate-spin" /> : `Settle ${sel.size} payment(s)`}
+            </button>
+          </div>
+        </>
+      ))}
+    </div>
+  )
+}
+
 function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose: () => void; onDone: () => void; onCategorise: () => void }) {
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [fx, setFx] = useState<FxMatch[]>([])
@@ -776,6 +886,7 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
   const [q, setQ] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [showPos, setShowPos] = useState(false)
   const searching = !!(q.trim() || from || to)
   useEffect(() => {
     setMatches(null)
@@ -805,6 +916,17 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
   return (
     <Modal title="Match to a recorded transaction" onClose={onClose}>
       <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>₱{peso(txn.spent > 0 ? txn.spent : txn.received)}</strong></p>
+
+      {/* Money in: offer settling a batch of POS order payments (daily cash
+          deposit / card-GCash settlement, net of mode deductions). */}
+      {txn.received > 0 && (
+        <div className="mb-3">
+          <button type="button" onClick={() => setShowPos(v => !v)} className="text-xs font-semibold underline" style={{ color: 'var(--teal)' }}>
+            {showPos ? 'Hide POS settlement' : 'Settle POS orders (daily cash / card / GCash batch)…'}
+          </button>
+          {showPos && <div className="mt-2"><PosSettlementPicker txn={txn} onDone={onDone} /></div>}
+        </div>
+      )}
 
       {/* Search any recorded transaction — bypasses the same-amount suggester */}
       <div className="mb-3 space-y-1.5">
