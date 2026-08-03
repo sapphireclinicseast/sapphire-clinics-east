@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Upload, QrCode, Loader2, X, Check } from 'lucide-react'
+import { compressImageFile } from '@/lib/client-image-compress'
 
 /**
  * Section-aware uploader. Two ways in:
@@ -34,18 +35,29 @@ export function ScanUpload({
     setUploading(true)
     try {
       let n = existingCount
-      for (const file of Array.from(files)) {
+      for (const raw of Array.from(files)) {
         n += 1
+        // Large photos are downscaled client-side so slow office uplinks can
+        // finish inside the proxy's body timeout (raw phone photos caused 408s).
+        const file = await compressImageFile(raw)
         const fd = new FormData(); fd.append('file', file); fd.append('prefix', prefix || section); fd.append('seq', String(n))
-        const r = await fetch('/api/upload', { method: 'POST', body: fd })
+        // Never spin forever: give the transfer 4 minutes, then surface a real error.
+        const ctl = new AbortController()
+        const timer = setTimeout(() => ctl.abort(), 240_000)
+        let r: Response
+        try {
+          r = await fetch('/api/upload', { method: 'POST', body: fd, signal: ctl.signal })
+        } finally { clearTimeout(timer) }
         if (r.ok) { const u = (await r.json()).url; if (u) onUploaded(u) }
         else {
           const msg = await r.json().then(d => d?.error as string | undefined).catch(() => undefined)
-          alert(`Upload of "${file.name}" failed${msg ? `: ${msg}` : ` (HTTP ${r.status})`}. Please try again.`)
+          alert(`Upload of "${raw.name}" failed${msg ? `: ${msg}` : ` (HTTP ${r.status})`}. Please try again.`)
         }
       }
-    } catch {
-      alert('Upload failed — the connection dropped before the file finished sending. Check your internet connection and try again.')
+    } catch (e) {
+      alert(e instanceof DOMException && e.name === 'AbortError'
+        ? 'Upload timed out — the connection is too slow to send this file. Try again, or use a smaller photo.'
+        : 'Upload failed — the connection dropped before the file finished sending. Check your internet connection and try again.')
     } finally { setUploading(false) }
   }
 

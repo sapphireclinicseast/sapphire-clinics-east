@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { compressImageFile } from '@/lib/client-image-compress'
 import { useParams } from 'next/navigation'
 
 export default function MobileUploadPage() {
@@ -13,7 +14,9 @@ export default function MobileUploadPage() {
   const onFiles = async (files: FileList | null) => {
     if (!files || !files.length) return
     setBusy(true)
-    for (const file of Array.from(files)) {
+    for (const raw of Array.from(files)) {
+      // Downscale big photos so slow mobile data finishes inside the proxy timeout.
+      const file = await compressImageFile(raw)
       const preview = URL.createObjectURL(file)
       setItems(prev => [...prev, { preview, done: false }])
       const mark = (patch: { done: boolean; error?: boolean }) =>
