@@ -343,7 +343,7 @@ export default function BankReconciliationPage() {
             </div>
             <div className="relative">
               <Search size={14} style={{ color: 'var(--mid-gray)', position: 'absolute', left: 10, top: 9 }} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search description…" className="pl-8 pr-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)', minWidth: 220 }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search description, payee, match, FT ref…" className="pl-8 pr-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)', minWidth: 220 }} />
             </div>
             {hintCount > 0 && (
               <button onClick={() => setOnlyHinted(v => !v)}

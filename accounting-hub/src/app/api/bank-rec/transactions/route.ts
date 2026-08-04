@@ -19,7 +19,41 @@ export async function GET(req: Request) {
   const from = sp.get('from'), to = sp.get('to')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { bankAccountId, status }
-  if (search) where.description = { contains: search, mode: 'insensitive' }
+  if (search) {
+    // Search reaches everything a line shows on screen — description, payee,
+    // and the match label — not just the statement text.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const or: any[] = [
+      { description: { contains: search, mode: 'insensitive' } },
+      { fromToName: { contains: search, mode: 'insensitive' } },
+      { matchLabel: { contains: search, mode: 'insensitive' } },
+    ]
+    // A fund-transfer reference (FT25-000345) names a recorded transfer, not
+    // any text on the bank line, so searching it used to return nothing even
+    // while the grid hinted the transfer. Resolve the ref to the transfer and
+    // surface its lines: anything already matched to it, plus same-amount
+    // lines within the settlement window that could be its legs.
+    if (/^ft\d{2}/i.test(search)) {
+      const fts = await prisma.fundTransfer.findMany({
+        where: { refNumber: { contains: search, mode: 'insensitive' } },
+        select: { id: true, amount: true, toAmount: true, date: true },
+        take: 5,
+      })
+      for (const ft of fts) {
+        const lo = new Date(ft.date); lo.setUTCDate(lo.getUTCDate() - 5)
+        const hi = new Date(ft.date); hi.setUTCDate(hi.getUTCDate() + 6)
+        or.push({ matchId: ft.id })
+        or.push({
+          date: { gte: lo, lt: hi },
+          OR: [
+            { spent: ft.amount }, { received: ft.amount },
+            ...(ft.toAmount != null ? [{ received: ft.toAmount }] : []),
+          ],
+        })
+      }
+    }
+    where.OR = or
+  }
   if (from || to) {
     where.date = {}
     if (from) where.date.gte = new Date(from)
