@@ -2455,9 +2455,21 @@ model CommonShare {
   apic             Decimal? // additional paid-in capital per share (PHP)
   pricePerShare    Decimal  // = truePar + apic (issue price per share)
   soldFromTreasury Boolean  @default(false) // shares reissued from treasury (bought-back) stock
+  // Single bank account the equity was debited into. Kept for back-compat and
+  // still used when the holding has no EquityDeposit rows — one deposit, one
+  // bank, the common case. When deposits exist they take over entirely.
   bankAccountId    String?  // COA bank account the equity was debited into
   equityAccountId  String?  // COA equity account credited on issuance (chosen from CoA)
+  // Debited for any part of the subscription not yet paid, when itemised
+  // deposits fall short of the full capitalization. Without it a short-paid
+  // holding cannot post a balanced entry, so the JE is withheld instead.
+  receivableAccountId String?
   journalEntryId   String?
+  // Consideration actually received for the shares, itemised. A subscription can
+  // be paid across several deposits, into different bank accounts, on different
+  // dates — and some consideration is not cash at all (e.g. equipment bought for
+  // the company). See EquityDeposit.
+  deposits         EquityDeposit[]
   // Buyback → Treasury Shares. Legacy single-buyback columns kept for back-compat;
   // buybacks are now recorded as ShareBuyback rows (multiple per shareholder).
   boughtBack       Boolean  @default(false)
@@ -2477,6 +2489,33 @@ model CommonShare {
 
 // A single buyback event against a common shareholding. A shareholder may have
 // several. Each posts its own DR Treasury / CR Bank journal entry.
+// One item of consideration received for a common shareholding. A holding may
+// have many: several cash deposits (possibly into different bank accounts, on
+// different dates), and/or non-cash consideration such as equipment purchased
+// on the company's behalf, which never appears on a bank statement.
+//
+// When a holding has deposits, the issuance journal entry debits one line per
+// deposit instead of a single line to CommonShare.bankAccountId. Deposits need
+// not sum to the full capitalization — any shortfall is debited to the
+// subscription-receivable account chosen on the holding, which is the correct
+// treatment for a partially paid subscription.
+model EquityDeposit {
+  id             String      @id @default(cuid())
+  commonShareId  String
+  commonShare    CommonShare @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
+  date           DateTime
+  amount         Decimal
+  kind           String      @default("CASH") // CASH | NON_CASH
+  bankAccountId  String?     // COA bank account debited — CASH only
+  assetAccountId String?     // COA asset/expense account debited — NON_CASH only
+  note           String?     // e.g. "Equipment purchased for the company"
+  proofUrls      Json?
+  createdById    String?
+  createdAt      DateTime    @default(now())
+
+  @@index([commonShareId])
+}
+
 model ShareBuyback {
   id                String      @id @default(cuid())
   commonShareId     String
