@@ -72,7 +72,9 @@ export async function POST(req: Request) {
       const maxSeq = (await tx.fundTransfer.aggregate({ _max: { refSeq: true } }))._max.refSeq ?? 0
       const seq = Math.max(s.nextSeq, maxSeq + 1)
       await tx.fundTransferSettings.update({ where: { id: 'singleton' }, data: { nextSeq: seq + 1 } })
-      const yy = new Date().getFullYear() % 100
+      // Year comes from the transfer's own date, not today's — back-entering a 2025
+      // transfer in 2026 was numbering it FT26.
+      const yy = new Date(date).getFullYear() % 100
       const refNumber = `FT${yy}-${String(seq).padStart(6, '0')}`
       return tx.fundTransfer.create({
         data: {
