@@ -7753,6 +7753,20 @@ function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBr
 /* ══════════════════════════════════════════════════════════════
    SALES CHECKING PANEL
    ══════════════════════════════════════════════════════════════ */
+interface SettlementRow {
+  orderPaymentId: string
+  date: string
+  orderNumber: number
+  name: string
+  branch: string
+  method: string
+  modeName: string
+  amount: number
+  label?: string
+  bankDate?: string | null
+  bankAmount?: number | null
+}
+
 function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
   // Always default to a specific branch — Sales Checking is per-branch only
   const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? 'SANDBOX_EAST' : branch)
@@ -7768,6 +7782,12 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [clearedDays, setClearedDays] = useState<Record<string, { clearedAt: string; clearedById: string }>>({})
   const [clearingInProgress, setClearingInProgress] = useState(false)
   const [clearingError, setClearingError] = useState<string | null>(null)
+  // Which order payments a bank deposit has actually confirmed, and which none
+  // has. Read from PosSettlementPayment — the same link the bank-rec Match
+  // modal writes for a BDO cash deposit or an AUB card/e-wallet settlement — so
+  // "cleared" means one thing across the hub.
+  const [settled, setSettled] = useState<SettlementRow[]>([])
+  const [untagged, setUntagged] = useState<SettlementRow[]>([])
   const [savingDay, setSavingDay] = useState<Record<string, boolean>>({})
   const [savedDayFeedback, setSavedDayFeedback] = useState<Record<string, boolean>>({})
   // Calendar month for summary
@@ -7873,8 +7893,21 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     } catch { /* ignore */ }
   }, [selectedBranch, dateFrom, dateTo, calYear, calMonth])
 
+  const fetchSettlement = useCallback(async () => {
+    if (!dateFrom || !dateTo) return
+    try {
+      const params = new URLSearchParams({ dateFrom, dateTo })
+      if (selectedBranch) params.set('branch', selectedBranch)
+      const r = await fetch(`/api/pos/settlement-status?${params}`)
+      const d = await r.json()
+      setSettled(Array.isArray(d?.settled) ? d.settled : [])
+      setUntagged(Array.isArray(d?.untagged) ? d.untagged : [])
+    } catch { setSettled([]); setUntagged([]) }
+  }, [selectedBranch, dateFrom, dateTo])
+
   useEffect(() => { fetchOrders() }, [fetchOrders])
   useEffect(() => { fetchClearing() }, [fetchClearing])
+  useEffect(() => { fetchSettlement() }, [fetchSettlement])
 
   // Group orders by date and payment method
   const activeOrders = orders.filter(o => o.status !== 'VOIDED')
@@ -7927,6 +7960,31 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   }
 
   const isClearedInDB = (day: string, br: string) => !!clearedDays[`${day}|${br}`]
+
+  // Deposit tallies per day × payment method. A method is green once every
+  // payment taken that day through it is tied to a deposit; amber while some
+  // are. Methods with no payments at all in the settlement feed (HMO, wallet)
+  // never show a deposit state — they do not reach the bank as a deposit.
+  const deposits = new Map<string, { settled: number; settledAmt: number; open: number; openAmt: number }>()
+  const bump = (r: SettlementRow, isSettled: boolean) => {
+    const k = `${r.date}|${r.method}`
+    const cur = deposits.get(k) || { settled: 0, settledAmt: 0, open: 0, openAmt: 0 }
+    if (isSettled) { cur.settled++; cur.settledAmt += r.amount } else { cur.open++; cur.openAmt += r.amount }
+    deposits.set(k, cur)
+  }
+  for (const r of settled) bump(r, true)
+  for (const r of untagged) bump(r, false)
+
+  const depositState = (day: string, method: string) => {
+    const d = deposits.get(`${day}|${method}`)
+    if (!d || (d.settled === 0 && d.open === 0)) return null
+    return { ...d, all: d.open === 0 }
+  }
+  // A day is settled when every method that reached the bank is fully deposited.
+  const isDaySettled = (day: string) => {
+    const present = sortedMethods.filter(m => byDate.get(day)?.has(m)).map(m => depositState(day, m)).filter(Boolean)
+    return present.length > 0 && present.every(d => d!.all)
+  }
 
   const saveDay = async (day: string) => {
     const br = selectedBranch || branch
@@ -8048,12 +8106,17 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
             const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
             const br = selectedBranch || branch
             const cleared = br ? isClearedInDB(day, br) : false
+            const daySettled = isDaySettled(day)
+            const green = cleared || daySettled
             return (
-              <div key={day} className="rounded-2xl border overflow-hidden" style={{ borderColor: cleared ? '#16a34a' : 'var(--light-gray)' }}>
+              <div key={day} className="rounded-2xl border overflow-hidden" style={{ borderColor: green ? '#16a34a' : 'var(--light-gray)' }}>
                 <div className="px-4 py-2.5 flex items-center justify-between"
-                  style={{ background: cleared ? '#dcfce7' : 'var(--pale-teal)', color: cleared ? '#166534' : 'var(--deep-teal)' }}>
+                  style={{ background: green ? '#dcfce7' : 'var(--pale-teal)', color: green ? '#166534' : 'var(--deep-teal)' }}>
                   <span className="font-semibold text-xs">{dayLabel}</span>
-                  {cleared && <span className="text-xs font-semibold flex items-center gap-1"><CheckCircle size={12} /> Cleared</span>}
+                  <span className="flex items-center gap-3">
+                    {daySettled && <span className="text-xs font-semibold flex items-center gap-1" title="Every payment this day is tied to a bank deposit"><CheckCircle size={12} /> Deposited</span>}
+                    {cleared && <span className="text-xs font-semibold flex items-center gap-1"><CheckCircle size={12} /> Cleared</span>}
+                  </span>
                 </div>
                 <table className="w-full text-xs">
                   <thead>
@@ -8062,6 +8125,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                       <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>System Amount</th>
                       <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Actual Amount</th>
                       <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Difference</th>
+                      <th className="px-4 py-2 text-center font-semibold" style={{ color: 'var(--charcoal)' }}>Deposit</th>
                       <th className="px-4 py-2 text-center font-semibold" style={{ color: 'var(--charcoal)' }}>OK</th>
                       <th className="px-4 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Remarks</th>
                     </tr>
@@ -8085,6 +8149,24 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                           </td>
                           <td className="px-4 py-2 text-right font-mono font-medium" style={{ color: actualAmt ? diffColor : 'var(--mid-gray)' }}>
                             {actualAmt ? (diff >= 0 ? '+' : '') + formatCurrency(diff) : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-center">
+                            {(() => {
+                              const dep = depositState(day, method)
+                              if (!dep) return <span className="text-xs" style={{ color: 'var(--light-gray)' }}>—</span>
+                              if (dep.all) return (
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}
+                                  title={`${dep.settled} payment(s), ${formatCurrency(dep.settledAmt)}, matched to a bank deposit`}>
+                                  <CheckCircle size={12} /> Deposited
+                                </span>
+                              )
+                              return (
+                                <span className="text-xs font-medium" style={{ color: dep.settled ? 'var(--gold)' : '#dc2626' }}
+                                  title={`${formatCurrency(dep.openAmt)} has no identified deposit`}>
+                                  {dep.settled}/{dep.settled + dep.open} deposited
+                                </span>
+                              )
+                            })()}
                           </td>
                           <td className="px-4 py-2 text-center">
                             {diff === 0 && actualAmt > 0 ? (
@@ -8218,6 +8300,97 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           })}
         </div>
       </div>
+
+      <UntaggedOrders rows={untagged} settledCount={settled.length} />
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   UNTAGGED ORDERS
+   Orders whose money no bank deposit accounts for. Not the same as
+   "not yet reconciled": every deposit that has been matched, in bank rec or
+   by the day-settlement matcher, already claims its payments. What is left
+   is revenue that may never have reached the bank at all, which is the
+   question this section exists to raise.
+   ══════════════════════════════════════════════════════════════ */
+function UntaggedOrders({ rows, settledCount }: { rows: SettlementRow[]; settledCount: number }) {
+  const [open, setOpen] = useState(true)
+  const [mode, setMode] = useState('')
+
+  const modes = Array.from(new Set(rows.map(r => r.modeName).filter(Boolean))).sort()
+  const shown = mode ? rows.filter(r => r.modeName === mode) : rows
+  const total = shown.reduce((s, r) => s + r.amount, 0)
+  const byMode = new Map<string, { n: number; amt: number }>()
+  for (const r of rows) {
+    const k = r.modeName || r.method
+    const cur = byMode.get(k) || { n: 0, amt: 0 }
+    cur.n++; cur.amt += r.amount
+    byMode.set(k, cur)
+  }
+
+  return (
+    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: rows.length ? '#fca5a5' : 'var(--light-gray)' }}>
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full px-4 py-3 border-b flex items-center justify-between text-left"
+        style={{ borderColor: 'var(--light-gray)', background: rows.length ? '#fef2f2' : 'var(--off-white)' }}>
+        <span>
+          <span className="text-sm font-semibold" style={{ color: rows.length ? '#991b1b' : 'var(--charcoal)' }}>
+            Untagged orders {rows.length > 0 && `— ${rows.length}`}
+          </span>
+          <span className="block text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+            {rows.length === 0
+              ? `Every payment in this period is matched to a deposit${settledCount ? ` (${settledCount})` : ''}.`
+              : `No deposit has been identified for these — check whether the money was actually received. ${formatCurrency(rows.reduce((s, r) => s + r.amount, 0))} across ${rows.length} payment(s).`}
+          </span>
+        </span>
+        <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>{open ? '▾' : '▸'}</span>
+      </button>
+
+      {open && rows.length > 0 && (
+        <>
+          <div className="px-4 py-3 flex items-center gap-3 flex-wrap border-b" style={{ borderColor: 'var(--light-gray)' }}>
+            <select value={mode} onChange={e => setMode(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">All payment modes</option>
+              {modes.map(m => <option key={m} value={m}>{m} — {byMode.get(m)?.n ?? 0}</option>)}
+            </select>
+            <span className="text-xs font-mono font-semibold" style={{ color: '#991b1b' }}>{formatCurrency(total)}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: 'var(--off-white)' }}>
+                  <th className="px-4 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
+                  <th className="px-4 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Order</th>
+                  <th className="px-4 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
+                  <th className="px-4 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Payment Mode</th>
+                  <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map(r => (
+                  <tr key={r.orderPaymentId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className="px-4 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.date}</td>
+                    <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>#{r.orderNumber}</td>
+                    <td className="px-4 py-2" style={{ color: 'var(--charcoal)' }}>{r.name || '—'}</td>
+                    <td className="px-4 py-2" style={{ color: 'var(--mid-gray)' }}>{r.modeName || r.method}</td>
+                    <td className="px-4 py-2 text-right font-mono font-medium" style={{ color: '#991b1b' }}>{formatCurrency(r.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <td className="px-4 py-2 font-semibold" colSpan={4} style={{ color: 'var(--charcoal)' }}>
+                    Total{mode ? ` — ${mode}` : ''} ({shown.length})
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono font-bold" style={{ color: '#991b1b' }}>{formatCurrency(total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }
