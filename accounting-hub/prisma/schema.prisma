@@ -2729,6 +2729,10 @@ model Advance {
   bankAccountId     String?  // debited (money in)
   creditAccountId   String?  // Advances liability account (CR on release)
   interestExpenseAccountId String? // interest expense account
+  // Which branch(es) this advance funds, as [{branch, amount}]. Drives where the
+  // interest expense lands on the branch income statements — same shape and meaning
+  // as Loan.branchAllocations. Null/empty = company-wide (All Branches view only).
+  branchAllocations Json?
   payoutSchedule    String?  // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
   payoutStartMonth  Int?
   payoutStartYear   Int?

@@ -409,7 +409,7 @@ export async function computeLedgerStatements(
   const hasRef = (type: string, id: string) => glRefIds.get(type)?.has(id) || false
 
   /* ── 2b. Company-wide loan payments split by the loan's branch allocation ──
-     A loan payment JE posted with branch='ALL' (multi-branch or unallocated loan)
+     A loan or advance payment JE posted with branch='ALL' (multi-branch or unallocated)
      is invisible to a branch view under the filter above. When the loan carries
      branchAllocations, this branch's share of the interest (and fee) expense is
      included here, balanced against the paying bank — so the interest lands on
@@ -418,7 +418,7 @@ export async function computeLedgerStatements(
      the normal journal fold instead. The ALL view is untouched (no double count). */
   if (branchValues) {
     const allocJes = await prisma.journalEntry.findMany({
-      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: 'LOAN_PAYMENT' },
+      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: { in: ['LOAN_PAYMENT', 'ADVANCE_PAYMENT'] } },
       select: {
         referenceId: true, entryDate: true, description: true,
         lines: { select: { debit: true, credit: true, account: { select: { accountNumber: true, accountType: true } } } },
@@ -426,9 +426,13 @@ export async function computeLedgerStatements(
     })
     const allocLoanIds = Array.from(new Set(allocJes.map(j => j.referenceId).filter((x): x is string => !!x)))
     if (allocLoanIds.length) {
-      const allocLoans = await prisma.loan.findMany({ where: { id: { in: allocLoanIds } }, select: { id: true, branchAllocations: true } })
+      // Advances allocate to branches exactly as loans do, so both are resolved here.
+      const [allocLoans, allocAdvances] = await Promise.all([
+        prisma.loan.findMany({ where: { id: { in: allocLoanIds } }, select: { id: true, branchAllocations: true } }),
+        prisma.advance.findMany({ where: { id: { in: allocLoanIds } }, select: { id: true, branchAllocations: true } }),
+      ])
       const shareByLoan = new Map<string, number>()
-      for (const l of allocLoans) {
+      for (const l of [...allocLoans, ...allocAdvances]) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const allocs = Array.isArray(l.branchAllocations) ? (l.branchAllocations as any[]) : []
         const total = allocs.reduce((s, a) => s + (Number(a?.amount) || 0), 0)

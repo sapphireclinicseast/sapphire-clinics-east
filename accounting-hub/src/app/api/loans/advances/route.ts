@@ -2,7 +2,28 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postJournalEntry } from '@/lib/accounting/posting'
+import { Prisma } from '@prisma/client'
 import { fromAnnualPct, fromMonthlyAmort } from '@/lib/amortization'
+
+// Branch allocation: which branch(es) the advance funds. The interest expense follows
+// this split on the branch income statements. One branch → the full principal;
+// several branches → the entered amounts must add up to the principal.
+const ALLOC_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function allocationRows(b: any, principal: number): { rows: { branch: string; amount: number }[] | null; error?: string } {
+  const raw = Array.isArray(b.branchAllocations) ? b.branchAllocations : []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = raw.filter((a: any) => a && ALLOC_BRANCHES.includes(a.branch)).map((a: any) => ({ branch: String(a.branch), amount: Math.round(num(a.amount) * 100) / 100 }))
+  if (!rows.length) return { rows: null }
+  const seen = new Set<string>()
+  for (const r of rows) { if (seen.has(r.branch)) return { rows: null, error: 'Each branch can only appear once in the allocation.' }; seen.add(r.branch) }
+  if (rows.length === 1) return { rows: [{ branch: rows[0].branch, amount: principal }] }
+  if (rows.some((r: { amount: number }) => !(r.amount > 0))) return { rows: null, error: 'Enter an amount for every allocated branch.' }
+  const sum = rows.reduce((s: number, r: { amount: number }) => s + r.amount, 0)
+  if (Math.abs(sum - principal) > 0.01) return { rows: null, error: `Branch allocations (₱${sum.toLocaleString()}) must add up to the principal (₱${principal.toLocaleString()}).` }
+  return { rows }
+}
+
 
 const ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const num = (v: unknown) => Number(v || 0)
@@ -61,6 +82,8 @@ export async function POST(req: Request) {
     const userId = session.user.id as string
     const principal = num(b.principalAmount)
     if (!b.name?.trim() || !(principal > 0) || !b.dateAcquired) return NextResponse.json({ error: 'Name, principal amount and date are required' }, { status: 400 })
+    const alloc = allocationRows(b, principal)
+    if (alloc.error) return NextResponse.json({ error: alloc.error }, { status: 400 })
     const interest = computeInterest({ ...b, principalAmount: principal })
     const created = await prisma.$transaction(async (tx) => {
       const a = await tx.advance.create({ data: {
@@ -70,6 +93,7 @@ export async function POST(req: Request) {
         annualPct: b.hasInterest && b.annualPct != null ? num(b.annualPct) : null, termMonths: b.hasInterest ? (b.termMonths || null) : null,
         monthlyAmortization: interest.monthlyAmortization, computedAnnualPct: interest.computedAnnualPct, totalInterest: interest.totalInterest,
         proofOfDepositUrls: Array.isArray(b.proofOfDepositUrls) ? b.proofOfDepositUrls : undefined,
+        branchAllocations: alloc.rows ?? Prisma.JsonNull,
         bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, interestExpenseAccountId: b.interestExpenseAccountId || null,
         payoutSchedule: b.payoutSchedule || null, payoutStartMonth: b.payoutStartMonth || null, payoutStartYear: b.payoutStartYear || null, payoutDay: b.payoutDay || null,
         payoutAmountPerPeriod: b.payoutAmountPerPeriod != null && b.payoutAmountPerPeriod !== '' ? num(b.payoutAmountPerPeriod) : null,
@@ -97,6 +121,8 @@ export async function PUT(req: Request) {
     const userId = session.user.id as string
     if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
     const principal = num(b.principalAmount)
+    const alloc = allocationRows(b, principal)
+    if (alloc.error) return NextResponse.json({ error: alloc.error }, { status: 400 })
     const interest = computeInterest({ ...b, principalAmount: principal })
     await prisma.$transaction(async (tx) => {
       await tx.journalEntry.deleteMany({ where: { referenceType: 'ADVANCE', referenceId: b.id } })
@@ -114,6 +140,7 @@ export async function PUT(req: Request) {
         principalPerPeriod: b.principalPerPeriod != null && b.principalPerPeriod !== '' ? num(b.principalPerPeriod) : null,
         paymentBankAccountId: b.paymentBankAccountId || null,
         pdcUrls: Array.isArray(b.pdcUrls) ? b.pdcUrls : undefined, remarks: b.remarks?.trim() || null,
+        branchAllocations: alloc.rows ?? Prisma.JsonNull,
       } })
       const jeId = await releaseJE(tx, { id: b.id, name: b.name.trim(), principalAmount: principal, bankAccountId: b.bankAccountId || null, creditAccountId: b.creditAccountId || null, date: new Date(b.dateAcquired), createdById: userId })
       await tx.advance.update({ where: { id: b.id }, data: { journalEntryId: jeId } })

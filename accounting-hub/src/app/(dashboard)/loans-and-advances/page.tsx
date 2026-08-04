@@ -21,6 +21,7 @@ interface AdvanceRow {
   proofOfDepositUrls: string[] | null; bankAccountId: string | null; creditAccountId: string | null; interestExpenseAccountId: string | null
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null; principalPerPeriod: number | null; paymentBankAccountId: string | null
   pdcUrls: string[] | null; remarks: string | null
+  branchAllocations: BranchAlloc[] | null
 }
 
 export default function LoansAndAdvancesPage() {
@@ -76,10 +77,10 @@ export default function LoansAndAdvancesPage() {
             <table ref={advTableRef} className="w-full text-xs" style={advRz.tableStyle}>
               <ResizableColgroup rz={advRz} />
               <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
+                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Branch', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={10} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                {loading ? <tr><td colSpan={11} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 : rows.map(r => {
                   const sh = shareholders.find(s => s.id === r.shareholderId)
                   return (
@@ -89,6 +90,9 @@ export default function LoansAndAdvancesPage() {
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                       <td className="px-3 py-2">{r.advanceType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
                       <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{(r.branchAllocations || []).length
+                        ? (r.branchAllocations || []).map(a => (r.branchAllocations || []).length === 1 ? allocLabel(a.branch) : `${allocLabel(a.branch)} ${peso(a.amount)}`).join(' · ')
+                        : 'Company-wide'}</td>
                       <td className="px-3 py-2 text-right">{r.hasInterest ? `${(r.computedAnnualPct || 0).toFixed(2)}% · ${peso(r.totalInterest || 0)}` : '—'}</td>
                       <td className="px-3 py-2">{r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{acctLabel(r.bankAccountId)}</td>
@@ -161,20 +165,29 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
   const [pdcUrls, setPdcUrls] = useState<string[]>(row?.pdcUrls || [])
   const [busy, setBusy] = useState(false)
+  // Branch allocation: ticked branches → entered amount (a single tick takes the whole principal)
+  const [allocs, setAllocs] = useState<Record<string, string>>(() => Object.fromEntries((row?.branchAllocations || []).map(a => [a.branch, String(a.amount)])))
+  const toggleAlloc = (code: string) => setAllocs(p => { const q = { ...p }; if (code in q) delete q[code]; else q[code] = ''; return q })
   const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
   const n = (v: string) => Number(v) || 0
   const prefix = (f.name || 'ADVANCE').replace(/\s+/g, '_')
   const prev = f.hasInterest ? amortPreview(n(f.principalAmount), f.interestMode, n(f.annualPct), n(f.monthlyAmortization), n(f.termMonths), stepMonths(f.payoutSchedule)) : null
 
   const pickSh = (id: string) => { const sh = shareholders.find(s => s.id === id); setF(p => ({ ...p, shareholderId: id, name: sh ? sh.name : p.name })) }
+  const allocBranches = Object.keys(allocs)
+  const allocSum = allocBranches.reduce((sm, b2) => sm + n(allocs[b2]), 0)
+  const allocBalanced = allocBranches.length <= 1 || Math.abs(allocSum - n(f.principalAmount)) <= 0.01
+
   const save = async () => {
     if (!f.name.trim() || !(n(f.principalAmount) > 0)) { alert('Enter name and principal amount.'); return }
+    if (allocBranches.length > 1 && !allocBalanced) { alert('The branch allocation amounts must add up to the principal.'); return }
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, principalAmount: n(f.principalAmount),
         annualPct: f.annualPct ? n(f.annualPct) : null, termMonths: f.termMonths ? Number(f.termMonths) * stepMonths(f.payoutSchedule) : null, monthlyAmortization: f.monthlyAmortization ? n(f.monthlyAmortization) : null,
         payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null,
-        proofOfDepositUrls: proofUrls, pdcUrls }
+        proofOfDepositUrls: proofUrls, pdcUrls,
+        branchAllocations: allocBranches.map(b2 => ({ branch: b2, amount: allocBranches.length === 1 ? n(f.principalAmount) : n(allocs[b2]) })) }
       const r = await fetch('/api/loans/advances', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
@@ -257,6 +270,33 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>PDCs</label>
             <div className="flex flex-wrap items-center gap-2">{pdcUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="advance" prefix={`${prefix}-PDC`} existingCount={pdcUrls.length} label="Add" onUploaded={u => setPdcUrls(p => [...p, u])} /></div>
           </div>
+        </div>
+        {/* Branch allocation — where the interest expense is booked */}
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-sm font-semibold text-gray-700">For which branch? <span className="font-normal text-gray-400">(the interest expense follows this on the branch income statements)</span></p>
+          <div className="flex flex-wrap gap-4 mt-2">
+            {ALLOC_BRANCHES.map(([code, label]) => (
+              <label key={code} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={code in allocs} onChange={() => toggleAlloc(code)} /> {label}
+              </label>
+            ))}
+          </div>
+          {allocBranches.length === 0 && <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>None ticked — the advance stays company-wide (interest shows only in the All Branches view).</p>}
+          {allocBranches.length === 1 && <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>Whole advance on <strong>{allocLabel(allocBranches[0])}</strong> — its payments and interest are booked on that branch.</p>}
+          {allocBranches.length > 1 && (
+            <div className="mt-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {allocBranches.map(code => (
+                  <div key={code}><label className="block text-[10px] font-semibold" style={{ color: 'var(--mid-gray)' }}>{allocLabel(code)} amount</label>
+                    <input value={allocs[code]} onChange={e => setAllocs(pr => ({ ...pr, [code]: e.target.value }))} inputMode="decimal" placeholder="0.00" className="w-full px-2 py-1.5 rounded-lg border text-xs font-mono" style={bc} />
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] mt-2 font-mono" style={{ color: allocBalanced ? '#334155' : '#b91c1c' }}>
+                Allocated {peso(allocSum)} of {peso(n(f.principalAmount))}{allocBalanced ? ' \u2713' : ` — ${allocSum > n(f.principalAmount) ? 'over' : 'short'} by ${peso(Math.abs(n(f.principalAmount) - allocSum))}`}
+              </p>
+            </div>
+          )}
         </div>
         <div className="mt-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Remarks</label><input value={f.remarks} onChange={e => set('remarks', e.target.value)} className={inp} style={bc} /></div>
 
