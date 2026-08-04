@@ -11,7 +11,7 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface Bank { id: string; accountNumber: string; accountTitle: string; currency: string; isCheckingAccount?: boolean }
-interface Transfer { id: string; refNumber: string; date: string; fromAccountId: string; toAccountId: string; fromLabel: string; toLabel: string; amount: number; checkNumber: string | null; description: string | null; proofUrl: string | null; proofUrls?: string[] | null }
+interface Transfer { id: string; matchedLegs?: number; refNumber: string; date: string; fromAccountId: string; toAccountId: string; fromLabel: string; toLabel: string; amount: number; checkNumber: string | null; description: string | null; proofUrl: string | null; proofUrls?: string[] | null }
 
 export default function FundTransferPage() {
   const { data: session } = useSession()
@@ -94,7 +94,13 @@ export default function FundTransferPage() {
               <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
             ) : shown.map(t => (
               <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{t.refNumber}</td>
+                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                  {(t.matchedLegs ?? 0) > 0 && (
+                    <span title={t.matchedLegs === 2 ? 'Both bank legs matched in Bank Reconciliation' : 'One of two bank legs matched in Bank Reconciliation'}
+                      style={{ color: t.matchedLegs === 2 ? '#eab308' : 'var(--light-gray)', marginRight: 4 }}>★</span>
+                  )}
+                  {t.refNumber}
+                </td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date}</td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{t.fromLabel}</td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{t.toLabel}</td>
