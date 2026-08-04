@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { postEquityIssuance, reverseEquityJournal } from '@/lib/accounting/equity'
+import { postEquityIssuance, reverseEquityJournal, repostCommonIssuance } from '@/lib/accounting/equity'
 
 const ADMIN = ['ADMIN']
 const num = (v: unknown) => Number(v || 0)
@@ -34,7 +34,7 @@ export async function GET() {
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
 
   const [commons, preferreds, shareholders, settings] = await Promise.all([
-    prisma.commonShare.findMany({ include: { shareholder: true, buybacks: { orderBy: { date: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
+    prisma.commonShare.findMany({ include: { shareholder: true, buybacks: { orderBy: { date: 'asc' } }, deposits: { orderBy: { date: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
     prisma.preferredShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, address: true } }),
     prisma.equitySettings.findUnique({ where: { id: 'singleton' } }),
@@ -74,6 +74,8 @@ export async function GET() {
     }))
     const buybackShares = buybacks.reduce((s, b) => s + b.shares, 0)
     const netShares = num(c.numberOfShares) - buybackShares
+    const deposits = c.deposits
+    const depositedAmount = deposits.reduce((s, d) => s + num(d.amount), 0)
     return {
       id: c.id, shareholderId: c.shareholderId, shNumber: c.shareholder.shNumber, name: c.shareholder.name,
       tin: c.shareholder.tin, birthdate: c.shareholder.birthdate, email: c.shareholder.email, address: c.shareholder.address,
@@ -86,8 +88,16 @@ export async function GET() {
       equityStakeCurrent: totalShares > 0 ? (netShares / totalShares) * 100 : 0,
       equityStakeTotal: authorizedShares > 0 ? (netShares / authorizedShares) * 100 : 0,
       equityStake: totalShares > 0 ? (netShares / totalShares) * 100 : 0,
-      bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId,
+      bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId, receivableAccountId: c.receivableAccountId,
       boughtBack: buybacks.length > 0, buybackShares, buybacks,
+      deposits: deposits.map(d => ({
+        id: d.id, date: d.date, amount: num(d.amount), kind: d.kind,
+        bankAccountId: d.bankAccountId, assetAccountId: d.assetAccountId, note: d.note, proofUrls: d.proofUrls,
+      })),
+      // How much of the subscription is actually accounted for. With no itemised
+      // deposits the legacy single-bank entry covers it in full.
+      depositedAmount: deposits.length ? depositedAmount : cap,
+      unaccountedAmount: deposits.length ? Math.max(0, cap - depositedAmount) : 0,
     }
   })
 
@@ -122,6 +132,7 @@ export async function POST(req: Request) {
           validIdUrls: Array.isArray(body.validIdUrls) ? body.validIdUrls : undefined,
           shareClass: body.shareClass?.trim() || null,
           numberOfShares: shares, truePar, apic, pricePerShare: price, soldFromTreasury: !!body.soldFromTreasury, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
+          receivableAccountId: body.receivableAccountId || null,
           createdById: userId,
         },
       })
@@ -158,7 +169,6 @@ export async function PUT(req: Request) {
       } })
       // Reverse + re-post the issuance JE. Buybacks are managed separately (ShareBuyback
       // rows via /api/equity/buybacks) and are intentionally left untouched here.
-      await reverseEquityJournal(tx, 'EQUITY_COMMON', id)
       await tx.commonShare.update({ where: { id }, data: {
         dateAcquired: new Date(body.dateAcquired), agreementType: body.agreementType || 'SUBSCRIPTION',
         assignedToShareholderId: body.assignedToShareholderId || null,
@@ -168,9 +178,11 @@ export async function PUT(req: Request) {
         validIdUrls: Array.isArray(body.validIdUrls) ? body.validIdUrls : undefined,
         shareClass: body.shareClass?.trim() || null,
         numberOfShares: shares, truePar, apic, pricePerShare: price, soldFromTreasury: !!body.soldFromTreasury, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
+        receivableAccountId: body.receivableAccountId || null,
       } })
-      const jeId = await postEquityIssuance(tx, { kind: 'COMMON', refId: id, date: new Date(body.dateAcquired), amount: shares * price, bankAccountId: body.bankAccountId, equityAccountId: body.equityAccountId, investor: (body.name || existing.shareholder.name), createdById: userId })
-      await tx.commonShare.update({ where: { id }, data: { journalEntryId: jeId } })
+      // Re-posts from the stored deposits when the holding has any, else from the
+      // single bank account — and reverses the old entry either way.
+      await repostCommonIssuance(tx, id, userId)
     })
     return NextResponse.json({ success: true })
   } catch (e) {

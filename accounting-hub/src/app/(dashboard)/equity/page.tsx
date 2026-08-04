@@ -58,6 +58,10 @@ const PREFERRED_SHARE_CLASSES = [
 ]
 
 interface Buyback { id: string; date: string; shares: number; price: number; amount: number; bankAccountId: string | null; treasuryAccountId: string | null; proofUrls: string[] | null }
+// Consideration received for a holding — a cash deposit into a bank account, or
+// non-cash consideration (e.g. equipment bought for the company) debited to an
+// asset account. A holding may have many.
+interface Deposit { id: string; date: string; amount: number; kind: 'CASH' | 'NON_CASH'; bankAccountId: string | null; assetAccountId: string | null; note: string | null; proofUrls: string[] | null }
 interface CommonRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
@@ -65,6 +69,7 @@ interface CommonRow {
   totalCapitalization: number; equityStake: number; equityStakeCurrent: number; equityStakeTotal: number; bankAccountId: string | null; equityAccountId: string | null
   soldFromTreasury: boolean
   boughtBack: boolean; buybackShares: number; buybacks: Buyback[]
+  receivableAccountId: string | null; deposits: Deposit[]; depositedAmount: number; unaccountedAmount: number
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
 interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null }
@@ -81,6 +86,7 @@ export default function EquityPage() {
   const [data, setData] = useState<{ rows: CommonRow[]; shareholders: Shareholder[]; figures: Figures } | null>(null)
   const [banks, setBanks] = useState<Bank[]>([])
   const [equityAccts, setEquityAccts] = useState<EquityAcct[]>([])
+  const [assetAccts, setAssetAccts] = useState<EquityAcct[]>([])
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<CommonRow | null>(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -103,6 +109,13 @@ export default function EquityPage() {
     fetch('/api/chart-of-accounts?accountType=EQUITY&pageSize=1000').then(r => r.ok ? r.json() : { data: [] })
       .then(j => setEquityAccts(((j.data || j.items || j || []) as EquityAcct[]).map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
       .catch(() => setEquityAccts([]))
+  }, [])
+  // Assets serve two jobs here: what non-cash consideration is debited to (e.g.
+  // equipment), and where an unpaid subscription balance sits (a receivable).
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=1000').then(r => r.ok ? r.json() : { data: [] })
+      .then(j => setAssetAccts(((j.data || j.items || j || []) as EquityAcct[]).map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
+      .catch(() => setAssetAccts([]))
   }, [])
 
   if (status === 'unauthenticated') redirect('/login')
@@ -369,18 +382,18 @@ export default function EquityPage() {
       {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} canWrite />}
       {effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} isAdmin={isAdmin} />}
 
-      {(showAdd || edit) && <CommonModal row={edit} rows={data?.rows || []} authCommon={authCommon} authFounder={authFounder} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
+      {(showAdd || edit) && <CommonModal row={edit} rows={data?.rows || []} authCommon={authCommon} authFounder={authFounder} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
   )
 }
 
-function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, equityAccts, onClose, onReload, onSaved }: { row: CommonRow | null; rows: CommonRow[]; authCommon: number | null; authFounder: number | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onReload: () => void; onSaved: () => void }) {
+function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, equityAccts, assetAccts, onClose, onReload, onSaved }: { row: CommonRow | null; rows: CommonRow[]; authCommon: number | null; authFounder: number | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; assetAccts: EquityAcct[]; onClose: () => void; onReload: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '',
     email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '', shareClass: row?.shareClass || '',
     stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '',
-    bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '', soldFromTreasury: row?.soldFromTreasury || false,
+    bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '', receivableAccountId: row?.receivableAccountId || '', soldFromTreasury: row?.soldFromTreasury || false,
   })
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.agreementUrls || [])
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
@@ -401,6 +414,13 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
   const projectedClass = existingClass + n(f.numberOfShares)
   const overLimit = classLimit != null && projectedClass > classLimit
   const limitLabel = classGroup === 'founders' ? 'Founders' : 'Common'
+
+  // A holding with itemised deposits drives its own journal entry: the single
+  // bank field no longer applies, and any shortfall needs a receivable account.
+  const hasDeposits = !!row?.deposits?.length
+  const depositTotal = (row?.deposits || []).reduce((s, d) => s + d.amount, 0)
+  const unaccounted = hasDeposits ? Math.max(0, cap - depositTotal) : 0
+  const receivableAccts = assetAccts
 
   const pickShareholder = (id: string) => {
     const sh = shareholders.find(s => s.id === id)
@@ -479,17 +499,47 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price/Share (PHP) <span className="font-normal text-gray-400">(par + APIC)</span></label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(pricePerShare)}</div></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Total Capitalization</label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(cap)}</div></div>
           <div className="col-span-2 sm:col-span-1"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account where the equity was debited</label>
-            <select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
+            <select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} disabled={hasDeposits} className={inp} style={{ borderColor: 'var(--light-gray)', background: hasDeposits ? 'var(--off-white)' : undefined }}>
               <option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
             </select>
+            {hasDeposits && <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Superseded by the itemised deposits below.</p>}
           </div>
           <div className="col-span-2 sm:col-span-2"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Equity account to credit <span className="font-normal text-gray-400">(from Chart of Accounts)</span></label>
             <select value={f.equityAccountId} onChange={e => set('equityAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
               <option value="">— Select equity account —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
             </select>
           </div>
-          {f.bankAccountId && f.equityAccountId && (
+          {/* Unpaid balance needs somewhere to sit, or the entry cannot balance. */}
+          {hasDeposits && unaccounted > 0.005 && (
+            <div className="col-span-2 sm:col-span-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Subscription receivable account <span className="font-normal text-gray-400">(debited for the {peso(unaccounted)} not yet received)</span></label>
+              <select value={f.receivableAccountId} onChange={e => set('receivableAccountId', e.target.value)} className={inp} style={{ borderColor: f.receivableAccountId ? 'var(--light-gray)' : '#fecaca' }}>
+                <option value="">— Select —</option>{receivableAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+              </select>
+              {!f.receivableAccountId && <p className="text-[10px] mt-1" style={{ color: '#b91c1c' }}>Without this the issuance entry cannot balance, so none is posted.</p>}
+            </div>
+          )}
+          {!hasDeposits && f.bankAccountId && f.equityAccountId && (
             <div className="col-span-2 sm:col-span-3"><p className="text-[11px] font-mono px-2 py-1.5 rounded" style={{ background: '#f8fafc', color: '#334155' }}>DR {banks.find(b => b.id === f.bankAccountId)?.accountTitle} {peso(cap)} &nbsp;/&nbsp; CR {equityAccts.find(a => a.id === f.equityAccountId)?.accountTitle} {peso(cap)}</p></div>
+          )}
+          {hasDeposits && f.equityAccountId && (
+            <div className="col-span-2 sm:col-span-3"><div className="text-[11px] font-mono px-2 py-1.5 rounded" style={{ background: '#f8fafc', color: '#334155' }}>
+              {(row!.deposits).map(d => {
+                const acct = d.kind === 'NON_CASH' ? equityAccts.concat(receivableAccts).concat(assetAccts).find(a => a.id === d.assetAccountId) : banks.find(b => b.id === d.bankAccountId)
+                return <div key={d.id}>DR {acct?.accountTitle || '(account not set)'} {peso(d.amount)}{d.note ? ` — ${d.note}` : ''}</div>
+              })}
+              {unaccounted > 0.005 && <div>DR {receivableAccts.find(a => a.id === f.receivableAccountId)?.accountTitle || '(receivable not set)'} {peso(unaccounted)}</div>}
+              <div>CR {equityAccts.find(a => a.id === f.equityAccountId)?.accountTitle} {peso(cap)}</div>
+            </div></div>
+          )}
+        </div>
+
+        {/* Deposits (consideration received — may be several, cash or not) */}
+        <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+          <p className="text-sm font-semibold text-gray-700 mb-1">Deposits received <span className="font-normal text-gray-400">(itemise when the subscription was paid across several deposits, or partly in kind)</span></p>
+          {row ? (
+            <DepositManager share={row} banks={banks} assetAccts={assetAccts} capitalization={cap} onChanged={onReload} />
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Save the shareholder first, then reopen this record to itemise deposits.</p>
           )}
         </div>
 
@@ -539,6 +589,131 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
 
         <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add shareholder'}</button>
       </div>
+    </div>
+  )
+}
+
+// Manages the deposits (consideration received) for one common shareholding:
+// list existing with delete, plus an inline "add deposit" form. Unlike buybacks
+// a deposit has no journal entry of its own — /api/equity/deposits re-posts the
+// holding's single issuance entry, itemised one debit line per deposit.
+function DepositManager({ share, banks, assetAccts, capitalization, onChanged }: { share: CommonRow; banks: Bank[]; assetAccts: EquityAcct[]; capitalization: number; onChanged: () => void }) {
+  const [list, setList] = useState<Deposit[]>(share.deposits || [])
+  const blank = { date: new Date().toISOString().slice(0, 10), amount: '', kind: 'CASH' as 'CASH' | 'NON_CASH', bankAccountId: '', assetAccountId: '', note: '' }
+  const [d, setD] = useState(blank)
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const n = (v: string) => Number(v) || 0
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm outline-none'
+  const lbl = 'block text-xs font-semibold mb-1'
+  const set = (k: keyof typeof blank, v: string) => setD(p => ({ ...p, [k]: v }))
+
+  const recorded = list.reduce((s, x) => s + x.amount, 0)
+  const remaining = capitalization - recorded
+
+  const refresh = async () => {
+    try { const r = await fetch(`/api/equity/deposits?commonShareId=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
+  }
+
+  const add = async () => {
+    if (!(n(d.amount) > 0)) { alert('Enter the deposit amount.'); return }
+    if (d.kind === 'CASH' && !d.bankAccountId) { alert('Choose the bank account the deposit landed in.'); return }
+    if (d.kind === 'NON_CASH' && !d.assetAccountId) { alert('Choose the account the non-cash consideration is debited to.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/equity/deposits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commonShareId: share.id, date: d.date, amount: n(d.amount), kind: d.kind, bankAccountId: d.bankAccountId || null, assetAccountId: d.assetAccountId || null, note: d.note || null, proofUrls }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setD(blank); setProofUrls([]); setAdding(false)
+      await refresh(); onChanged()
+    } finally { setBusy(false) }
+  }
+
+  const del = async (x: Deposit) => {
+    if (!confirm(`Remove the ${String(x.date).slice(0, 10)} deposit of ${peso(x.amount)}? The issuance entry is re-posted without it.`)) return
+    await fetch(`/api/equity/deposits?id=${x.id}`, { method: 'DELETE' })
+    await refresh(); onChanged()
+  }
+
+  const acctLabel = (x: Deposit) => x.kind === 'NON_CASH'
+    ? (assetAccts.find(a => a.id === x.assetAccountId)?.accountTitle || '(account not set)')
+    : (banks.find(b => b.id === x.bankAccountId)?.accountTitle || '(bank not set)')
+
+  return (
+    <div>
+      {list.length > 0 && (
+        <div className="mb-2 rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-xs">
+            <thead><tr style={{ background: 'var(--off-white)' }}>
+              <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>Date</th>
+              <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>Debited to</th>
+              <th className="px-2 py-1.5 text-right font-semibold" style={{ color: 'var(--mid-gray)' }}>Amount</th>
+              <th className="px-2 py-1.5" />
+            </tr></thead>
+            <tbody>
+              {list.map(x => (
+                <tr key={x.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-2 py-1.5 whitespace-nowrap">{String(x.date).slice(0, 10)}</td>
+                  <td className="px-2 py-1.5">
+                    {acctLabel(x)}
+                    {x.kind === 'NON_CASH' && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>non-cash</span>}
+                    {x.note && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>{x.note}</span>}
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-mono">{peso(x.amount)}</td>
+                  <td className="px-2 py-1.5 text-right"><button type="button" onClick={() => del(x)} title="Remove" style={{ color: '#b91c1c' }}><Trash2 size={13} /></button></td>
+                </tr>
+              ))}
+              <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <td className="px-2 py-1.5" colSpan={2}>Recorded of {peso(capitalization)}</td>
+                <td className="px-2 py-1.5 text-right font-mono" style={{ color: Math.abs(remaining) < 0.005 ? 'var(--teal)' : '#b45309' }}>{peso(recorded)}</td>
+                <td />
+              </tr>
+              {Math.abs(remaining) >= 0.005 && (
+                <tr style={{ background: '#fffbeb' }}>
+                  <td className="px-2 py-1.5 text-[11px]" colSpan={2} style={{ color: '#92400e' }}>Not yet accounted for</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-[11px]" style={{ color: '#92400e' }}>{peso(remaining)}</td>
+                  <td />
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!adding ? (
+        <button type="button" onClick={() => setAdding(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>+ Add deposit</button>
+      ) : (
+        <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Date</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Amount</label><input value={d.amount} onChange={e => set('amount', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Kind</label>
+              <select value={d.kind} onChange={e => set('kind', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
+                <option value="CASH">Cash deposit</option><option value="NON_CASH">Non-cash (e.g. equipment)</option>
+              </select>
+            </div>
+            {d.kind === 'CASH' ? (
+              <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account</label>
+                <select value={d.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select>
+              </div>
+            ) : (
+              <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Debit to</label>
+                <select value={d.assetAccountId} onChange={e => set('assetAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{assetAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select>
+              </div>
+            )}
+            <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Note <span className="font-normal text-gray-400">(optional — shows on the journal line)</span></label><input value={d.note} onChange={e => set('note', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of deposit</label>
+              <div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
+                <ScanUpload compact section="equity" prefix={`${share.stockCertNumber || share.name}-DEPOSIT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div>
+            </div>
+          </div>
+          {n(d.amount) > 0 && <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>DR {(d.kind === 'NON_CASH' ? assetAccts.find(a => a.id === d.assetAccountId)?.accountTitle : banks.find(b => b.id === d.bankAccountId)?.accountTitle) || '(select an account)'} {peso(n(d.amount))}</p>}
+          <div className="flex gap-2 mt-2">
+            <button type="button" onClick={add} disabled={busy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={13} className="animate-spin" />} Record deposit</button>
+            <button type="button" onClick={() => { setAdding(false); setD(blank); setProofUrls([]) }} className="px-4 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
