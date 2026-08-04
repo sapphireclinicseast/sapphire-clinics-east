@@ -1129,7 +1129,23 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
             {/* The bank rarely agrees to the centavo — interest lands on top of a
                 deposit, a charge comes off a payment. Naming the account for the
                 remainder settles the line in full instead of leaving it open. */}
-            {selList.length > 0 && selDiff !== 0 && (
+            {/* One ticked record bigger than the line is almost never a
+                difference to expense — it is an instalment. Offering a ₱990,000
+                "difference" against a ₱10,000 deposit invites a serious
+                misposting, so that case gets the part-payment route instead. */}
+            {selList.length === 1 && selDiff > 0 && (
+              <div className="rounded-xl border px-3 py-2 space-y-1.5" style={{ borderColor: 'var(--gold)', background: '#fffbeb' }}>
+                <p className="text-[11px]" style={{ color: '#92400e' }}>
+                  <strong>{selList[0].label}</strong> is bigger than this line. If this deposit paid only part of it, record it as a part payment — ₱{peso(Math.abs(selDiff))} stays open for the other bank lines that made it up.
+                </p>
+                <button onClick={() => pick(selList[0])} disabled={busy}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+                  style={{ background: 'var(--teal)' }}>
+                  Record ₱{peso(target)} as part payment
+                </button>
+              </div>
+            )}
+            {selList.length > 0 && selDiff !== 0 && !(selList.length === 1 && selDiff > 0) && (
               <div className="rounded-xl border px-3 py-2 space-y-1.5" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <label className="block text-[11px] font-semibold" style={{ color: 'var(--charcoal)' }}>
                   Record the ₱{peso(Math.abs(selDiff))} {selDiff < 0 ? 'the bank has on top' : 'the records have on top'} as
