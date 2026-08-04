@@ -14,6 +14,7 @@ const LABELS: Record<string, string> = {
   FUND_TRANSFER: 'Fund transfers', RFP: 'Paid RFPs', ORDER: 'POS orders',
   AR_PAYMENT: 'AR receipts', SALARY: 'Salaries payable', BENEFIT: 'Benefits payable',
   TAX: 'Tax payments', CASH_ADVANCE: 'Cash advances', EQUITY: 'Equity deposits',
+  ADVANCE: 'Advances received',
 }
 
 export async function GET(req: Request) {

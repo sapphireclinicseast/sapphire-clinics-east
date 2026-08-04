@@ -49,6 +49,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
     transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
+    shareholderAdvances,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -104,6 +105,14 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     prisma.pettyCashEntry.findMany({
       where: { date: range, reimbursementId: null, grossAmount: { gt: 0 } },
       select: { id: true, pcvNumber: true, grossAmount: true, date: true, requestor: true, description: true },
+    }),
+    // Money lent to the company by a shareholder or director — a different
+    // thing from the staff cash advances above, and the only inbound source
+    // that was not offerable here. Like equity, an advance names the account it
+    // was debited into, so it is offered against that account only.
+    prisma.advance.findMany({
+      where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, name: true, dateAcquired: true, principalAmount: true, advanceType: true },
     }),
   ])
 
@@ -174,6 +183,13 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       type: 'EXPENSE_ENTRY', id: e.id,
       label: `${e.pcvNumber || 'Expense'} · ${e.requestor || 'Expense entry'}${desc ? ` · ${desc}` : ''}`,
       date: e.date, amount: num(e.grossAmount), dir: 'out',
+    })
+  }
+  for (const ad of shareholderAdvances) {
+    out.push({
+      type: 'ADVANCE', id: ad.id,
+      label: `Advance received · ${ad.name}${ad.advanceType === 'KIND' ? ' · in kind' : ''}`,
+      date: ad.dateAcquired, amount: num(ad.principalAmount), dir: 'in',
     })
   }
   for (const [rows, kind] of [[common, 'Common'], [preferred, 'Preferred']] as const) {
