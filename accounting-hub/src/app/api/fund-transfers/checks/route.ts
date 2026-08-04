@@ -7,6 +7,11 @@ import { prisma } from '@/lib/prisma'
  *
  * Aggregates every check drawn from a CHECKING account (Account.isCheckingAccount)
  * across the four payment sources, enumerated by check number:
+ * Only genuine cheques are listed. Petty cash / RFP rows also store a reference in
+ * checkNumber for other payment methods — a Telegraphic Transfer keeps its bank
+ * reference there (e.g. "PAYROLL BOB Reference # 1-00762002") — so those are excluded
+ * by payment method rather than by guessing at the shape of the number.
+ *
  *   - Petty Cash / Expenses (PettyCashEntry.paymentBankAccount)
  *   - RFP / Tax payments     (ReimbursementReport.debitAccount | depositAccount)
  *   - Fund Transfers         (FundTransfer.fromAccountId)
@@ -17,6 +22,9 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const accountId = new URL(req.url).searchParams.get('accountId') || 'all'
+
+  // Payment method that actually means a cheque was written.
+  const CHECK_METHOD = 'Check deposit'
 
   // The dropdown must always list ALL checking accounts. Only the check ROWS are
   // scoped to the selected account — filtering the account list itself made the
@@ -45,7 +53,7 @@ export async function GET(req: Request) {
 
   // 1. Petty Cash + Expenses
   const pce = await prisma.pettyCashEntry.findMany({
-    where: { checkNumber: { not: null }, paymentBankAccount: { in: strKeys } },
+    where: { checkNumber: { not: null }, paymentBankAccount: { in: strKeys }, paymentMethod: CHECK_METHOD },
     select: { checkNumber: true, paidAt: true, date: true, grossAmount: true, requestor: true, registeredName: true, accountTitle: true, pcvNumber: true, recordType: true, paymentBankAccount: true },
   })
   for (const e of pce) {
@@ -62,7 +70,7 @@ export async function GET(req: Request) {
 
   // 2. RFP / Tax payments (amount = sum of linked entries)
   const rfps = await prisma.reimbursementReport.findMany({
-    where: { checkNumber: { not: null }, OR: [{ debitAccount: { in: strKeys } }, { depositAccount: { in: strKeys } }] },
+    where: { checkNumber: { not: null }, paymentMethod: CHECK_METHOD, OR: [{ debitAccount: { in: strKeys } }, { depositAccount: { in: strKeys } }] },
     select: { checkNumber: true, paidAt: true, refNumber: true, debitAccount: true, depositAccount: true, entries: { select: { grossAmount: true } } },
   })
   for (const r of rfps) {
