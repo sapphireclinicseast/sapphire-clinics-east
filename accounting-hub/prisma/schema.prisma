@@ -3088,3 +3088,25 @@ model APItem {
 
   @@index([status])
 }
+
+// The CEO petty cash fund before it lived in the Hub: amounts were advanced to
+// the CEO's personal account, spent across branches, and replenished — not to
+// the peso, so the RFP model cannot hold it. This register carries that history
+// verbatim from the interbranch monitoring workbook: display-only, ledger-
+// neutral, because QuickBooks already recorded the expense side.
+model CeoPcfHistory {
+  id          String   @id @default(cuid())
+  branch      String
+  date        DateTime
+  particulars String
+  receivedBy  String?
+  cashIn      Decimal  @default(0)
+  cashOut     Decimal  @default(0)
+  fileName    String?
+  remarks     String?
+  qbRecorded  Boolean  @default(false)
+  qbRef       String?
+  createdAt   DateTime @default(now())
+
+  @@index([branch, date])
+}
