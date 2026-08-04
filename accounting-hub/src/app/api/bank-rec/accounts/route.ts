@@ -17,13 +17,29 @@ export async function GET() {
   if (accounts.length === 0) return NextResponse.json([])
 
   const ids = accounts.map(a => a.id)
-  const [counts, postedAgg, balances] = await Promise.all([
+  const balances = await prisma.beginningBalance.findMany({ where: { accountId: { in: ids } }, orderBy: { periodYear: 'desc' } })
+  const begOf = (id: string) => balances.find(b => b.accountId === id) // latest year
+
+  // Movement counts only from the beginning-balance date onwards — the opening
+  // figure already contains everything before it. Summing every POSTED line
+  // regardless of date stacked the whole of 2024-25 on top of a 2026-01-01
+  // opening balance, so the card overstated by millions and grew further every
+  // time a historical line was matched.
+  const [counts, postedAgg] = await Promise.all([
     prisma.bankTransaction.groupBy({ by: ['bankAccountId', 'status'], where: { bankAccountId: { in: ids } }, _count: { _all: true } }),
-    prisma.bankTransaction.groupBy({ by: ['bankAccountId'], where: { bankAccountId: { in: ids }, status: 'POSTED' }, _sum: { spent: true, received: true } }),
-    prisma.beginningBalance.findMany({ where: { accountId: { in: ids } }, orderBy: { periodYear: 'desc' } }),
+    prisma.bankTransaction.groupBy({
+      by: ['bankAccountId'],
+      where: {
+        status: 'POSTED',
+        OR: accounts.map(a => {
+          const start = begOf(a.id)?.startDate
+          return start ? { bankAccountId: a.id, date: { gte: new Date(start) } } : { bankAccountId: a.id }
+        }),
+      },
+      _sum: { spent: true, received: true },
+    }),
   ])
   const countOf = (id: string, st: string) => counts.find(c => c.bankAccountId === id && c.status === st)?._count._all || 0
-  const begOf = (id: string) => balances.find(b => b.accountId === id) // latest year
   const postOf = (id: string) => postedAgg.find(p => p.bankAccountId === id)
 
   // Foreign accounts are also shown in PHP, at the latest rate on file, so the
