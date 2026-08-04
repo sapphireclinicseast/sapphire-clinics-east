@@ -67,6 +67,8 @@ export default function BankReconciliationPage() {
   const [matchFor, setMatchFor] = useState<Txn | null>(null)
   const [imports, setImports] = useState<ImportBatch[]>([])
   const [hints, setHints] = useState<Record<string, Hint>>({})
+  const [autoRules, setAutoRules] = useState<Record<string, { ruleId: string; label: string }>>({})
+  const [autoPosting, setAutoPosting] = useState<string | null>(null)
   const [showImports, setShowImports] = useState(false)
   const [rates, setRates] = useState<FxRate[]>([])
   const [showForexCfg, setShowForexCfg] = useState(false)
@@ -124,7 +126,9 @@ export default function BankReconciliationPage() {
     if (!sel) { setHints({}); return }
     try {
       const r = await fetch(`/api/bank-rec/match-hints?bankAccountId=${sel}&status=${tab}`)
-      setHints(r.ok ? (await r.json()).hints || {} : {})
+      const d = r.ok ? await r.json() : {}
+      setHints(d.hints || {})
+      setAutoRules(d.autoRules || {})
     } catch { setHints({}) }
   }, [sel, tab])
   useEffect(() => { loadHints() }, [loadHints])
@@ -183,9 +187,15 @@ export default function BankReconciliationPage() {
         </h1>
         {canWrite && sel && (
           <div className="flex items-center gap-2">
-            {account?.startDate && (account?.pendingCount ?? 0) > 0 && (
-              <button onClick={lockOlder} title={`Lock untagged lines dated before ${account.startDate}`} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Lock size={14} /> Lock pre-{account.startDate.slice(0, 7)}</button>
-            )}
+
+            <button onClick={async () => {
+              if (!confirm('Match pending money-in lines against day settlement batches (per payment mode, net of fees, T+0..5 banking days)?')) return
+              const r = await fetch('/api/bank-rec/settle-match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+              const d = await r.json()
+              if (!r.ok) { alert(d.error || 'Failed'); return }
+              alert(`Matched ${d.matched} settlement line(s). ${d.remainingPending.toLocaleString()} still pending.`)
+              await refreshAll()
+            }} title="Bulk-match card/e-wallet day settlements to their order batches" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Check size={14} /> Match settlements</button>
             <button onClick={() => setShowRules(true)} title="Auto-categorize recurring lines by description pattern" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Wand2 size={14} /> Auto-rules</button>
             <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
             <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Upload size={14} /> Upload from file</button>
@@ -392,6 +402,21 @@ export default function BankReconciliationPage() {
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       {canWrite && t.status === 'PENDING' && (
                         <>
+                          {autoRules[t.id] && (
+                            <button onClick={async () => {
+                              setAutoPosting(t.id)
+                              try {
+                                const r = await fetch('/api/bank-rec/rules/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transactionId: t.id }) })
+                                const d = await r.json().catch(() => ({}))
+                                if (!r.ok || !d.posted) alert(d.errors?.[0] || d.error || 'The rule did not post this line')
+                                await refreshAll()
+                              } finally { setAutoPosting(null) }
+                            }} disabled={autoPosting === t.id}
+                              title={`Auto-rule: ${autoRules[t.id].label}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1 disabled:opacity-50" style={{ background: 'var(--deep-teal)' }}>
+                              {autoPosting === t.id ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Auto-post
+                            </button>
+                          )}
                           <button onClick={() => setMatchFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Link2 size={13} /> Match</button>
                           <button onClick={() => setCatFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}><Check size={13} /> Categorise</button>
                           <button onClick={() => act({ id: t.id, action: 'exclude' })} title="Exclude" className="inline-flex items-center px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Ban size={13} /></button>

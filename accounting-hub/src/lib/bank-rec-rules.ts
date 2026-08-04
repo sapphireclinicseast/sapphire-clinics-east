@@ -27,7 +27,7 @@ export function ruleMatches(
    a per-line judgment), as are self-categorisations and lines dated
    before a rule's effectiveFrom. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function applyBankRules(prisma: any, userId: string, opts: { ruleId?: string; importBatch?: string; dryRun?: boolean; cap?: number } = {}) {
+export async function applyBankRules(prisma: any, userId: string, opts: { ruleId?: string; importBatch?: string; transactionId?: string; dryRun?: boolean; cap?: number } = {}) {
   const cap = opts.cap ?? 500
   const rules = await prisma.bankCategoryRule.findMany({
     where: { active: true, ...(opts.ruleId ? { id: opts.ruleId } : {}) },
@@ -35,7 +35,12 @@ export async function applyBankRules(prisma: any, userId: string, opts: { ruleId
   })
   if (!rules.length) return { posted: 0, skippedFx: 0, skippedSelf: 0, capped: false, perRule: {}, errors: [] as string[] }
   const pending = await prisma.bankTransaction.findMany({
-    where: { status: 'PENDING', ...(opts.importBatch ? { importBatch: opts.importBatch } : {}) },
+    where: {
+      status: 'PENDING',
+      ...(opts.importBatch ? { importBatch: opts.importBatch } : {}),
+      // The per-row "Auto-post" button applies the rules to exactly one line.
+      ...(opts.transactionId ? { id: opts.transactionId } : {}),
+    },
     orderBy: { date: 'asc' },
   })
   const currencies = new Map<string, string>(

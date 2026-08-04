@@ -65,7 +65,9 @@ export async function POST(req: Request) {
           spent: Number(r.spent) || 0, received: Number(r.received) || 0,
           statementBalance: r.balance === '' || r.balance == null || isNaN(Number(r.balance)) ? null : Number(r.balance),
           // Pre-Hub periods come in for the record only — locked from tagging.
-          status: isLocked(date, cutoff) ? ARCHIVED : 'PENDING',
+          // Every line is matchable — the archive era ended when the historical
+          // transactions entered the system.
+          status: 'PENDING',
           importBatch: batch, createdById: session.user.id ?? null,
         }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -127,7 +129,7 @@ export async function POST(req: Request) {
     const t = await prisma.bankTransaction.create({
       data: {
         bankAccountId, date, description: body.description, spent, received,
-        status: isLocked(date, await tagCutoff(bankAccountId)) ? ARCHIVED : 'PENDING',
+        status: 'PENDING',
         fromToName: body.fromToName || null, createdById: session.user.id ?? null,
       },
     })
@@ -151,6 +153,9 @@ export async function PATCH(req: Request) {
     // Bulk: archive every still-untagged line that pre-dates the account's
     // reconciliation start date. Never touches POSTED lines.
     if (action === 'lock-older') {
+      return NextResponse.json({ error: 'Archiving is retired — all historical transactions are in the system and every line is matchable.' }, { status: 410 })
+    }
+    if (action === '__lock-older-retired') {
       const bankAccountId = body.bankAccountId
       if (!bankAccountId) return NextResponse.json({ error: 'bankAccountId is required' }, { status: 400 })
       const cutoff = await tagCutoff(bankAccountId)
