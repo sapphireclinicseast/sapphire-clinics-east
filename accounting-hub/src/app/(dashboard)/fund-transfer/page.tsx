@@ -134,7 +134,7 @@ export default function FundTransferPage() {
   )
 }
 
-interface CheckRow { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
+interface CheckRow { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
 
 function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [accounts, setAccounts] = useState<{ id: string; label: string }[]>([])
@@ -144,6 +144,29 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [showCancel, setShowCancel] = useState(false)
 
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'checkNumber', dir: 'asc' })
+  // Correcting a mistyped cheque number writes back to whichever record produced the
+  // row, so the source, its RFP and the ledger all read the same number.
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const [savingChk, setSavingChk] = useState(false)
+
+  const startEdit = (c: CheckRow) => { setEditing(`${c.kind}:${c.id}`); setDraft(c.checkNumber) }
+  const saveCheckNumber = async (c: CheckRow) => {
+    const next = draft.trim()
+    if (!next || next === c.checkNumber) { setEditing(null); return }
+    setSavingChk(true)
+    try {
+      const r = await fetch('/api/fund-transfers/checks', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: c.kind, id: c.id, checkNumber: next }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error || 'Could not update the cheque number'); return }
+      setEditing(null)
+      await load()
+    } catch { alert('Network error') }
+    finally { setSavingChk(false) }
+  }
   const [filters, setFilters] = useState<Record<string, string>>({})
   const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const cols = [
@@ -206,7 +229,17 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
               const isCancelled = c.source === 'Cancelled'
               return (
               <tr key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isCancelled ? '#fef2f2' : undefined }}>
-                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', textDecoration: isCancelled ? 'line-through' : undefined }}>{c.checkNumber}</td>
+                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', textDecoration: isCancelled ? 'line-through' : undefined }}>
+                  {editing === `${c.kind}:${c.id}` ? (
+                    <span className="inline-flex items-center gap-1">
+                      <input autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveCheckNumber(c); if (e.key === 'Escape') setEditing(null) }}
+                        className="px-2 py-1 rounded border text-xs font-mono w-44 outline-none" style={{ borderColor: 'var(--teal)' }} />
+                      <button onClick={() => saveCheckNumber(c)} disabled={savingChk} className="text-[11px] font-semibold px-1.5 py-1 rounded disabled:opacity-50" style={{ color: 'var(--teal)' }}>Save</button>
+                      <button onClick={() => setEditing(null)} className="text-[11px] px-1 py-1 rounded" style={{ color: 'var(--mid-gray)' }}>Cancel</button>
+                    </span>
+                  ) : c.checkNumber}
+                </td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c.date || ''}</td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: (srcColor[c.source] || '#64748b') + '1a', color: srcColor[c.source] || '#64748b' }}>{c.source}</span></td>
                 <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{c.reference}</td>
@@ -222,7 +255,14 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                 </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankAccount}</td>
                 <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(c.amount)}</td>
-                {canWrite && <td className="px-3 py-2.5 text-right whitespace-nowrap">{isCancelled && c.id && <button onClick={() => removeCancelled(c.id!)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}</td>}
+                {canWrite && <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                  {c.id && c.kind && editing !== `${c.kind}:${c.id}` && (
+                    <button onClick={() => startEdit(c)} className="p-1 rounded hover:bg-gray-100" title="Correct the cheque number — updates the source record and everything that reads from it">
+                      <Pencil size={13} style={{ color: 'var(--teal)' }} />
+                    </button>
+                  )}
+                  {isCancelled && c.id && <button onClick={() => removeCancelled(c.id!)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}
+                </td>}
               </tr>
             )})}
             {!loading && shown.length === 0 && accounts.length > 0 && <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{checks.length === 0 ? 'No checks recorded for the selected checking account(s).' : 'No checks match the current filters.'}</td></tr>}

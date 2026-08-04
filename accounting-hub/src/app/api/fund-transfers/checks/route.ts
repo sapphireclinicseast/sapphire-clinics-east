@@ -48,16 +48,17 @@ export async function GET(req: Request) {
   const strKeys = [...strMap.keys()]
   const labelFor = (s: string | null) => (s && strMap.has(s) ? strMap.get(s)!.label : s || '')
 
-  type Row = { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
+  type Row = { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
   const rows: Row[] = []
 
   // 1. Petty Cash + Expenses
   const pce = await prisma.pettyCashEntry.findMany({
     where: { checkNumber: { not: null }, paymentBankAccount: { in: strKeys }, paymentMethod: CHECK_METHOD },
-    select: { checkNumber: true, paidAt: true, date: true, grossAmount: true, requestor: true, registeredName: true, accountTitle: true, pcvNumber: true, recordType: true, paymentBankAccount: true },
+    select: { id: true, checkNumber: true, paidAt: true, date: true, grossAmount: true, requestor: true, registeredName: true, accountTitle: true, pcvNumber: true, recordType: true, paymentBankAccount: true },
   })
   for (const e of pce) {
     rows.push({
+      id: e.id, kind: 'PETTY_CASH',
       source: e.recordType === 'PETTY_CASH' ? 'Petty Cash' : 'Expense',
       checkNumber: e.checkNumber || '',
       date: (e.paidAt || e.date)?.toISOString().slice(0, 10) || null,
@@ -71,11 +72,12 @@ export async function GET(req: Request) {
   // 2. RFP / Tax payments (amount = sum of linked entries)
   const rfps = await prisma.reimbursementReport.findMany({
     where: { checkNumber: { not: null }, paymentMethod: CHECK_METHOD, OR: [{ debitAccount: { in: strKeys } }, { depositAccount: { in: strKeys } }] },
-    select: { checkNumber: true, paidAt: true, refNumber: true, debitAccount: true, depositAccount: true, entries: { select: { grossAmount: true } } },
+    select: { id: true, checkNumber: true, paidAt: true, refNumber: true, debitAccount: true, depositAccount: true, entries: { select: { grossAmount: true } } },
   })
   for (const r of rfps) {
     const bank = strMap.has(r.debitAccount || '') ? r.debitAccount : r.depositAccount
     rows.push({
+      id: r.id, kind: 'RFP',
       source: 'RFP / Tax',
       checkNumber: r.checkNumber || '',
       date: r.paidAt?.toISOString().slice(0, 10) || null,
@@ -89,11 +91,12 @@ export async function GET(req: Request) {
   // 3. Fund Transfers (drawn from the checking account)
   const fts = await prisma.fundTransfer.findMany({
     where: { checkNumber: { not: null }, fromAccountId: { in: [...idSet] } },
-    select: { checkNumber: true, date: true, amount: true, description: true, refNumber: true, fromAccountId: true },
+    select: { id: true, checkNumber: true, date: true, amount: true, description: true, refNumber: true, fromAccountId: true },
   })
   const acctById = new Map(checking.map(a => [a.id, `${a.accountNumber} ${a.accountTitle}`]))
   for (const f of fts) {
     rows.push({
+      id: f.id, kind: 'FUND_TRANSFER',
       source: 'Fund Transfer',
       checkNumber: f.checkNumber || '',
       date: f.date?.toISOString().slice(0, 10) || null,
@@ -177,4 +180,67 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   await prisma.cancelledCheck.deleteMany({ where: { id } })
   return NextResponse.json({ ok: true })
+}
+
+
+/**
+ * PATCH — correct a cheque number at its source.
+ *
+ * The number lives on the originating record (petty cash / expense entry, RFP, fund
+ * transfer or cancelled cheque); the journal entry does not hold a copy — it points at
+ * the source through referenceType/referenceId — so fixing the source is the whole job
+ * and the ledger follows automatically.
+ */
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+  if (!WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const { kind, id, checkNumber } = await req.json()
+    const next = typeof checkNumber === 'string' ? checkNumber.trim() : ''
+    if (!kind || !id) return NextResponse.json({ error: 'kind and id are required' }, { status: 400 })
+    if (!next) return NextResponse.json({ error: 'Enter the corrected cheque number' }, { status: 400 })
+
+    let before: string | null = null
+    let entity = ''
+    if (kind === 'PETTY_CASH') {
+      const row = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { checkNumber: true } })
+      if (!row) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+      before = row.checkNumber; entity = 'pettyCashEntry'
+      await prisma.pettyCashEntry.update({ where: { id }, data: { checkNumber: next } })
+    } else if (kind === 'RFP') {
+      const row = await prisma.reimbursementReport.findUnique({ where: { id }, select: { checkNumber: true } })
+      if (!row) return NextResponse.json({ error: 'RFP not found' }, { status: 404 })
+      before = row.checkNumber; entity = 'reimbursementReport'
+      await prisma.reimbursementReport.update({ where: { id }, data: { checkNumber: next } })
+    } else if (kind === 'FUND_TRANSFER') {
+      const row = await prisma.fundTransfer.findUnique({ where: { id }, select: { checkNumber: true } })
+      if (!row) return NextResponse.json({ error: 'Transfer not found' }, { status: 404 })
+      before = row.checkNumber; entity = 'fundTransfer'
+      await prisma.fundTransfer.update({ where: { id }, data: { checkNumber: next } })
+    } else if (kind === 'CANCELLED') {
+      const row = await prisma.cancelledCheck.findUnique({ where: { id }, select: { checkNumber: true } })
+      if (!row) return NextResponse.json({ error: 'Cancelled cheque not found' }, { status: 404 })
+      before = row.checkNumber; entity = 'cancelledCheck'
+      await prisma.cancelledCheck.update({ where: { id }, data: { checkNumber: next } })
+    } else {
+      return NextResponse.json({ error: `Unknown source: ${kind}` }, { status: 400 })
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id, action: 'UPDATE', entity, entityId: id,
+        details: { field: 'checkNumber', from: before, to: next, via: 'Check Release Monitoring' },
+      },
+    })
+
+    return NextResponse.json({ ok: true, checkNumber: next, previous: before })
+  } catch (e) {
+    console.error('Check number update failed:', e)
+    return NextResponse.json({ error: 'Failed to update the cheque number' }, { status: 500 })
+  }
 }
