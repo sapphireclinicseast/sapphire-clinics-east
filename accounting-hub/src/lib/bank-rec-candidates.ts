@@ -49,7 +49,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
     transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
-    shareholderAdvances,
+    shareholderAdvances, loans,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -113,6 +113,14 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     prisma.advance.findMany({
       where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
       select: { id: true, name: true, dateAcquired: true, principalAmount: true, advanceType: true },
+    }),
+    // Loan and corporate-bond releases. Money borrowed lands in the account the
+    // loan names, exactly as an advance or an equity deposit does, but was the
+    // one inbound source never offered here — so a ₱1,000,000 bond subscription
+    // could not be tied to the deposits that paid it.
+    prisma.loan.findMany({
+      where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, name: true, dateAcquired: true, principalAmount: true, netAmountToDebit: true, loanType: true, loanEntity: true },
     }),
   ])
 
@@ -190,6 +198,17 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       type: 'ADVANCE', id: ad.id,
       label: `Advance received · ${ad.name}${ad.advanceType === 'KIND' ? ' · in kind' : ''}`,
       date: ad.dateAcquired, amount: num(ad.principalAmount), dir: 'in',
+    })
+  }
+  for (const l of loans) {
+    // Charges deducted at source mean the bank receives the net, so that is the
+    // figure offered when one is recorded; the gross still shows in the label.
+    const net = num(l.netAmountToDebit) > 0 ? num(l.netAmountToDebit) : num(l.principalAmount)
+    const kind = l.loanType === 'CORPORATE_BOND' ? 'Corporate bond' : l.loanType === 'KIND' ? 'Loan in kind' : 'Loan'
+    out.push({
+      type: 'LOAN', id: l.id,
+      label: `${kind} received · ${l.name}${net !== num(l.principalAmount) ? ` · net of charges (₱${num(l.principalAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })} gross)` : ''}`,
+      date: l.dateAcquired, amount: net, dir: 'in',
     })
   }
   for (const [rows, kind] of [[common, 'Common'], [preferred, 'Preferred']] as const) {
