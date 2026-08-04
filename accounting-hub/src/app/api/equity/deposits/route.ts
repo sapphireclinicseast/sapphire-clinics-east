@@ -13,7 +13,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { repostCommonIssuance } from '@/lib/accounting/equity'
+import { repostCommonIssuance, repostPreferredIssuance } from '@/lib/accounting/equity'
 
 const ADMIN = ['ADMIN']
 const num = (v: unknown) => Number(v || 0)
@@ -28,9 +28,14 @@ const shape = (d: any) => ({
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  const commonShareId = new URL(req.url).searchParams.get('commonShareId') || ''
-  if (!commonShareId) return NextResponse.json({ error: 'commonShareId required' }, { status: 400 })
-  const deposits = await prisma.equityDeposit.findMany({ where: { commonShareId }, orderBy: { date: 'asc' } })
+  const sp = new URL(req.url).searchParams
+  const commonShareId = sp.get('commonShareId') || ''
+  const preferredShareId = sp.get('preferredShareId') || ''
+  if (!commonShareId && !preferredShareId) return NextResponse.json({ error: 'commonShareId or preferredShareId required' }, { status: 400 })
+  const deposits = await prisma.equityDeposit.findMany({
+    where: commonShareId ? { commonShareId } : { preferredShareId },
+    orderBy: { date: 'asc' },
+  })
   return NextResponse.json(deposits.map(shape))
 }
 
@@ -40,17 +45,19 @@ export async function POST(req: Request) {
   try {
     const b = await req.json()
     const commonShareId = String(b.commonShareId || '')
+    const preferredShareId = String(b.preferredShareId || '')
     const amount = num(b.amount)
     const kind = b.kind === 'NON_CASH' ? 'NON_CASH' : 'CASH'
-    if (!commonShareId) return NextResponse.json({ error: 'commonShareId is required' }, { status: 400 })
+    // Exactly one holding — a deposit cannot belong to both, or to neither.
+    if (!commonShareId && !preferredShareId) return NextResponse.json({ error: 'commonShareId or preferredShareId is required' }, { status: 400 })
+    if (commonShareId && preferredShareId) return NextResponse.json({ error: 'A deposit belongs to one holding, not both' }, { status: 400 })
     if (!(amount > 0)) return NextResponse.json({ error: 'Deposit amount must be greater than zero' }, { status: 400 })
     if (kind === 'CASH' && !b.bankAccountId) return NextResponse.json({ error: 'Choose the bank account the deposit landed in' }, { status: 400 })
     if (kind === 'NON_CASH' && !b.assetAccountId) return NextResponse.json({ error: 'Choose the account the non-cash consideration is debited to' }, { status: 400 })
 
-    const share = await prisma.commonShare.findUnique({
-      where: { id: commonShareId },
-      select: { numberOfShares: true, pricePerShare: true, deposits: { select: { amount: true } } },
-    })
+    const share = commonShareId
+      ? await prisma.commonShare.findUnique({ where: { id: commonShareId }, select: { numberOfShares: true, pricePerShare: true, deposits: { select: { amount: true } } } })
+      : await prisma.preferredShare.findUnique({ where: { id: preferredShareId }, select: { numberOfShares: true, pricePerShare: true, deposits: { select: { amount: true } } } })
     if (!share) return NextResponse.json({ error: 'Shareholding not found' }, { status: 404 })
 
     // Consideration can never exceed what the shares were issued for.
@@ -64,14 +71,16 @@ export async function POST(req: Request) {
 
     const created = await prisma.$transaction(async (tx) => {
       const dep = await tx.equityDeposit.create({ data: {
-        commonShareId, date: b.date ? new Date(b.date) : new Date(), amount, kind,
+        commonShareId: commonShareId || null, preferredShareId: preferredShareId || null,
+        date: b.date ? new Date(b.date) : new Date(), amount, kind,
         bankAccountId: kind === 'CASH' ? (b.bankAccountId || null) : null,
         assetAccountId: kind === 'NON_CASH' ? (b.assetAccountId || null) : null,
         note: b.note?.trim() || null,
         proofUrls: Array.isArray(b.proofUrls) ? b.proofUrls : undefined,
         createdById: session.user!.id ?? null,
       } })
-      await repostCommonIssuance(tx, commonShareId, session.user!.id as string)
+      if (commonShareId) await repostCommonIssuance(tx, commonShareId, session.user!.id as string)
+      else await repostPreferredIssuance(tx, preferredShareId, session.user!.id as string)
       return dep
     })
     return NextResponse.json({ id: created.id })
@@ -90,7 +99,9 @@ export async function DELETE(req: Request) {
   if (!dep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   await prisma.$transaction(async (tx) => {
     await tx.equityDeposit.delete({ where: { id } })
-    await repostCommonIssuance(tx, dep.commonShareId, session.user!.id as string)
+    // Repost whichever holding this deposit belonged to.
+    if (dep.commonShareId) await repostCommonIssuance(tx, dep.commonShareId, session.user!.id as string)
+    else if (dep.preferredShareId) await repostPreferredIssuance(tx, dep.preferredShareId, session.user!.id as string)
   })
   return NextResponse.json({ success: true })
 }

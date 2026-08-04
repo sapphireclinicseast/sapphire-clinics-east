@@ -120,6 +120,43 @@ export async function repostCommonIssuance(db: Db, commonShareId: string, create
   return jeId
 }
 
+/** Same as repostCommonIssuance, for a preferred holding. Preferred shares are paid
+ *  for the same way, so their deposits drive the issuance entry identically. */
+export async function repostPreferredIssuance(db: Db, preferredShareId: string, createdById: string): Promise<string | null> {
+  const share = await db.preferredShare.findUnique({
+    where: { id: preferredShareId },
+    include: { shareholder: { select: { name: true } }, deposits: { orderBy: { date: 'asc' } } },
+  })
+  if (!share) return null
+
+  const n = (v: unknown) => Number(v || 0)
+  const considerations: EquityConsideration[] = (share.deposits || [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((d: any) => ({
+      accountId: (d.kind === 'NON_CASH' ? d.assetAccountId : d.bankAccountId) || '',
+      amount: n(d.amount),
+      date: d.date,
+      note: d.note,
+    }))
+    .filter((c: EquityConsideration) => c.accountId && c.amount > 0)
+
+  await reverseEquityJournal(db, 'EQUITY_PREFERRED', preferredShareId)
+  const jeId = await postEquityIssuance(db, {
+    kind: 'PREFERRED',
+    refId: share.id,
+    date: share.dateAcquired,
+    amount: n(share.numberOfShares) * n(share.pricePerShare),
+    bankAccountId: share.bankAccountId,
+    equityAccountId: share.equityAccountId,
+    considerations: considerations.length ? considerations : null,
+    receivableAccountId: share.receivableAccountId,
+    investor: share.shareholder.name,
+    createdById,
+  })
+  await db.preferredShare.update({ where: { id: preferredShareId }, data: { journalEntryId: jeId } })
+  return jeId
+}
+
 // Buyback → Treasury: DR the chosen treasury/equity account / CR bank (money out).
 export async function postEquityBuyback(db: Db, opts: {
   refId: string; date: Date; amount: number; bankAccountId?: string | null; treasuryAccountId?: string | null; investor: string; createdById: string
