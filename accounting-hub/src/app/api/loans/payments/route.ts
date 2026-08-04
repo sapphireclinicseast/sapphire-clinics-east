@@ -117,10 +117,10 @@ export async function POST(req: Request) {
     if (parent.interestExpenseAccountId && interestPortion > 0) lines.push({ accountId: parent.interestExpenseAccountId, debit: interestPortion, description: 'Interest expense' })
     for (const e of otherExpenses) lines.push({ accountId: e.accountId, debit: num(e.amount), description: (e.description || 'Other expense').trim() })
     lines.push({ accountId: b.bankAccountId, credit: amount + otherTotal, description: `${isLoan ? 'Loan' : 'Advance'} payment — ${parent.name}` })
-    // A loan dedicated to a single branch books its payment JE (and so its interest)
-    // on that branch; multi-branch loans stay 'ALL' and the report engine splits the
-    // interest by the loan's branch allocation.
-    const allocs = isLoan && Array.isArray(parent.branchAllocations)
+    // A loan or advance dedicated to a single branch books its payment JE (and so its
+    // interest) on that branch; multi-branch ones stay 'ALL' and the report engine
+    // splits the interest by the branch allocation.
+    const allocs = Array.isArray(parent.branchAllocations)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? (parent.branchAllocations as any[]).filter(a => a?.branch && Number(a?.amount) > 0)
       : []
