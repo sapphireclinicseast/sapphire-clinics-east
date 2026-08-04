@@ -12,7 +12,14 @@ export async function GET() {
   const ids = [...new Set(transfers.flatMap(t => [t.fromAccountId, t.toAccountId]))]
   const accounts = ids.length ? await prisma.account.findMany({ where: { id: { in: ids } }, select: { id: true, accountNumber: true, accountTitle: true } }) : []
   const label = (id: string) => { const a = accounts.find(x => x.id === id); return a ? `${a.accountNumber} — ${a.accountTitle}` : '—' }
+  // How many of this transfer's two bank legs are matched in Bank Reconciliation
+  // (0, 1 or 2) — the star on the list.
+  const legAgg = await prisma.bankTransaction.groupBy({
+    by: ['matchId'], where: { matchType: 'FUND_TRANSFER', matchId: { in: transfers.map(t => t.id) } }, _count: { _all: true },
+  })
+  const legs = new Map(legAgg.map(l => [l.matchId as string, l._count._all]))
   return NextResponse.json(transfers.map(t => ({
+    matchedLegs: legs.get(t.id) || 0,
     id: t.id, refNumber: t.refNumber, date: t.date.toISOString().slice(0, 10),
     fromAccountId: t.fromAccountId, toAccountId: t.toAccountId, fromLabel: label(t.fromAccountId), toLabel: label(t.toAccountId),
     amount: Number(t.amount), checkNumber: t.checkNumber, description: t.description, proofUrl: t.proofUrl,
