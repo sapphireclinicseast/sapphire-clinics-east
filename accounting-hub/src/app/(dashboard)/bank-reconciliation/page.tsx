@@ -42,7 +42,7 @@ const cellText = (t: Txn, key: string): string => {
 interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
 interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
-interface Match { type: string; id: string; label: string; date: string; amount: number }
+interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[] }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
 interface Hint { kind: string; label: string; amount: number; date: string; n: number }
 interface UntaggedGroup { type: string; label: string; count: number; total: number; truncated: boolean; items: { id: string; label: string; date: string; amount: number; dir: string }[] }
@@ -905,6 +905,13 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
     try {
       // An interbank candidate is the OTHER bank line of an internal transfer —
       // confirming records one FundTransfer and posts both legs together.
+      // POS sale / day settlement suggestions confirm through the settlement
+      // batch endpoint so the covered order payments get locked to this deposit.
+      if (m.type === 'POS_SALE' || m.type === 'POS_DAY') {
+        const r = await fetch('/api/bank-rec/pos-settlement', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txnId: txn.id, modeId: m.modeId, orderPaymentIds: m.posPaymentIds || [] }) })
+        if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
+        onDone(); return
+      }
       const body = m.type === 'INTERBANK'
         ? { id: txn.id, action: 'match-interbank', counterpartId: m.id }
         : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: m.label }
@@ -989,9 +996,17 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
         ) : (
           <div className="space-y-2">
             {matches.map(m => (
-              <button key={`${m.type}-${m.id}`} onClick={() => pick(m)} disabled={busy} className="w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }}>
-                <div><p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{m.label}</p><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.date}</p></div>
-                <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+              <button key={`${m.type}-${m.id}`} onClick={() => pick(m)} disabled={busy} className="w-full rounded-xl border px-3 py-2 text-left disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div><p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{m.label}</p><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.date}</p></div>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+                </div>
+                {/* Day settlements list what the total is made of, so one click confirms an informed tag. */}
+                {m.details && m.details.length > 0 && (
+                  <ul className="mt-1.5 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'var(--light-gray)' }}>
+                    {m.details.map((d, i) => <li key={i} className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{d}</li>)}
+                  </ul>
+                )}
               </button>
             ))}
           </div>
