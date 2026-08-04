@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { candidates, forDirection } from '@/lib/bank-rec-candidates'
+import { posSettlementShapes } from '@/lib/pos-settlement-shapes'
 
 const WINDOW_DAYS = 7
 // A currency exchange settles within a few days of being keyed, so both the
@@ -178,5 +179,36 @@ export async function GET(req: Request) {
   const interbank = (await interbankCandidates(txn))
     .filter(c => !searching || !q || c.label.toLowerCase().includes(q))
 
-  return NextResponse.json({ matches: [...interbank, ...out].slice(0, searching ? 50 : 20), searching })
+  // POS settlements — the same shapes the grid's yellow hint announces, offered
+  // here as one-click confirms: a single card/e-wallet sale, or a whole day's
+  // takings on one mode, both net of the mode's deductions. Confirming creates
+  // the settlement batch (the pick handler posts to /api/bank-rec/pos-settlement).
+  const money = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pos: any[] = []
+  if (!isSpent && amount > 0) {
+    const shapes = await posSettlementShapes(txn.bankAccountId, lo, hi)
+    const closeAmt = (v: number) => Math.abs(v - amount) <= Math.min(1, Math.max(0.05, 0.02 * Math.max(v, amount)))
+    for (const s of shapes.singles) {
+      if (searching ? !(!q || `order #${s.orderNumber} ${s.name} ${s.modeName}`.toLowerCase().includes(q)) : !closeAmt(s.net)) continue
+      pos.push({
+        type: 'POS_SALE', id: s.paymentId, modeId: s.modeId, posPaymentIds: [s.paymentId],
+        label: `Order #${s.orderNumber}${s.name ? ` · ${s.name}` : ''} · ${s.modeName} · net ₱${money(s.net)}`,
+        date: s.date.toISOString().slice(0, 10), amount: s.net,
+      })
+    }
+    for (const d of shapes.days) {
+      if (d.n < 2) continue // a lone sale already surfaced above
+      if (searching ? !(!q || `${d.modeName} day settlement`.toLowerCase().includes(q)) : !closeAmt(d.net)) continue
+      pos.push({
+        type: 'POS_DAY', id: d.key, modeId: d.modeId, posPaymentIds: d.paymentIds,
+        label: `Day settlement · ${d.n} × ${d.modeName} on ${d.date.toISOString().slice(0, 10)} · ₱${money(d.gross)} gross less ₱${money(Math.round((d.gross - d.net) * 100) / 100)} fees = net ₱${money(d.net)}`,
+        date: d.date.toISOString().slice(0, 10), amount: d.net,
+        details: d.items.map(i => `#${i.orderNumber}${i.name ? ` · ${i.name}` : ''} · ₱${money(i.net)}`),
+      })
+    }
+    pos.sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
+  }
+
+  return NextResponse.json({ matches: [...interbank, ...pos, ...out].slice(0, searching ? 50 : 20), searching })
 }
