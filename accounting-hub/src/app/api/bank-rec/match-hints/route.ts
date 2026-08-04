@@ -22,7 +22,7 @@ type Hint = { kind: string; label: string; amount: number; date: string; n: numb
 const KIND: Record<string, string> = {
   FUND_TRANSFER: 'Fund transfer', RFP: 'Paid RFP', ORDER: 'Sale', AR_PAYMENT: 'AR receipt',
   SALARY: 'Salaries payable', BENEFIT: 'Benefits payable', TAX: 'Tax payment',
-  CASH_ADVANCE: 'Cash advance', EQUITY: 'Equity deposit',
+  CASH_ADVANCE: 'Cash advance', EQUITY: 'Equity deposit', LOAN: 'Loan proceeds',
 }
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10)

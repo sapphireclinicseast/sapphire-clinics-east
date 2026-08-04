@@ -48,7 +48,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   const onRequired = <T extends string>(field: T, id: string | null) =>
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
-    transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
+    transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, loans, expenseEntries,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -97,6 +97,13 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     prisma.preferredShare.findMany({
       where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
       select: { id: true, dateAcquired: true, numberOfShares: true, pricePerShare: true, shareholder: { select: { name: true } } },
+    }),
+    // Loan proceeds land in the account named on the loan, and repayments are
+    // drawn from the payment account — both are scoped to their own account so a
+    // loan is never offered against a bank it never touched.
+    prisma.loan.findMany({
+      where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, dateAcquired: true, principalAmount: true, netAmountToDebit: true, name: true, entityName: true },
     }),
     // One-time / petty-cash expense entries paid straight from a bank account
     // (e.g. supplier TT payments recorded in Expenses). Entries already rolled
@@ -174,6 +181,17 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       type: 'EXPENSE_ENTRY', id: e.id,
       label: `${e.pcvNumber || 'Expense'} · ${e.requestor || 'Expense entry'}${desc ? ` · ${desc}` : ''}`,
       date: e.date, amount: num(e.grossAmount), dir: 'out',
+    })
+  }
+  for (const l of loans) {
+    // Net proceeds are what actually hits the bank when a loan is booked with
+    // deductions; fall back to the principal when no net figure was recorded.
+    const proceeds = num(l.netAmountToDebit) || num(l.principalAmount)
+    if (!proceeds) continue
+    out.push({
+      type: 'LOAN', id: l.id,
+      label: `Loan proceeds${l.name ? ` · ${l.name}` : ''}${l.entityName ? ` · ${l.entityName}` : ''}`,
+      date: l.dateAcquired, amount: proceeds, dir: 'in',
     })
   }
   for (const [rows, kind] of [[common, 'Common'], [preferred, 'Preferred']] as const) {
