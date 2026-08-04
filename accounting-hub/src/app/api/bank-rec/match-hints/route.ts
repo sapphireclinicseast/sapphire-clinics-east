@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { rateFor } from '@/lib/fx'
 import { prisma } from '@/lib/prisma'
 import { candidates, forDirection } from '@/lib/bank-rec-candidates'
+import { ruleMatches } from '@/lib/bank-rec-rules'
 
 // Which bank lines look like they correspond to something already recorded in
 // the Hub, so the grid can flag them instead of the user opening every row.
@@ -284,5 +285,21 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ hints, windowDays: WINDOW_DAYS })
+  // Which active auto-rule would post each line — powers the per-row
+  // "Auto-post" button so a matching line is one click, not a dialog.
+  const activeRules = await prisma.bankCategoryRule.findMany({ where: { active: true }, orderBy: { createdAt: 'asc' } })
+  const ruleAccts = new Map(
+    (await prisma.account.findMany({ where: { id: { in: [...new Set(activeRules.map(r => r.categoryAccountId))] } }, select: { id: true, accountNumber: true, accountTitle: true } }))
+      .map(a => [a.id, `${a.accountNumber} ${a.accountTitle}`]),
+  )
+  const autoRules: Record<string, { ruleId: string; label: string }> = {}
+  if (status === 'PENDING') {
+    for (const t of txns) {
+      const full = { description: t.description || '', fromToName: null, spent: t.spent, received: t.received, bankAccountId }
+      const rule = activeRules.find(r => ruleMatches(r, full) && (!r.effectiveFrom || t.date >= r.effectiveFrom) && r.categoryAccountId !== bankAccountId)
+      if (rule) autoRules[t.id] = { ruleId: rule.id, label: `"${rule.pattern}" → ${ruleAccts.get(rule.categoryAccountId) || 'account'}` }
+    }
+  }
+
+  return NextResponse.json({ hints, autoRules, windowDays: WINDOW_DAYS })
 }

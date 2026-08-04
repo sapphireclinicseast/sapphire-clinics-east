@@ -67,6 +67,8 @@ export default function BankReconciliationPage() {
   const [matchFor, setMatchFor] = useState<Txn | null>(null)
   const [imports, setImports] = useState<ImportBatch[]>([])
   const [hints, setHints] = useState<Record<string, Hint>>({})
+  const [autoRules, setAutoRules] = useState<Record<string, { ruleId: string; label: string }>>({})
+  const [autoPosting, setAutoPosting] = useState<string | null>(null)
   const [showImports, setShowImports] = useState(false)
   const [rates, setRates] = useState<FxRate[]>([])
   const [showForexCfg, setShowForexCfg] = useState(false)
@@ -124,7 +126,9 @@ export default function BankReconciliationPage() {
     if (!sel) { setHints({}); return }
     try {
       const r = await fetch(`/api/bank-rec/match-hints?bankAccountId=${sel}&status=${tab}`)
-      setHints(r.ok ? (await r.json()).hints || {} : {})
+      const d = r.ok ? await r.json() : {}
+      setHints(d.hints || {})
+      setAutoRules(d.autoRules || {})
     } catch { setHints({}) }
   }, [sel, tab])
   useEffect(() => { loadHints() }, [loadHints])
@@ -398,6 +402,21 @@ export default function BankReconciliationPage() {
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       {canWrite && t.status === 'PENDING' && (
                         <>
+                          {autoRules[t.id] && (
+                            <button onClick={async () => {
+                              setAutoPosting(t.id)
+                              try {
+                                const r = await fetch('/api/bank-rec/rules/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transactionId: t.id }) })
+                                const d = await r.json().catch(() => ({}))
+                                if (!r.ok || !d.posted) alert(d.errors?.[0] || d.error || 'The rule did not post this line')
+                                await refreshAll()
+                              } finally { setAutoPosting(null) }
+                            }} disabled={autoPosting === t.id}
+                              title={`Auto-rule: ${autoRules[t.id].label}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1 disabled:opacity-50" style={{ background: 'var(--deep-teal)' }}>
+                              {autoPosting === t.id ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Auto-post
+                            </button>
+                          )}
                           <button onClick={() => setMatchFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Link2 size={13} /> Match</button>
                           <button onClick={() => setCatFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}><Check size={13} /> Categorise</button>
                           <button onClick={() => act({ id: t.id, action: 'exclude' })} title="Exclude" className="inline-flex items-center px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Ban size={13} /></button>

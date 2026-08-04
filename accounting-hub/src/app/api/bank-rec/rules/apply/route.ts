@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   }
   const body = await req.json().catch(() => ({}))
   const res = await applyBankRules(prisma, session.user.id as string, {
-    ruleId: body.ruleId || undefined, dryRun: !!body.dryRun,
+    ruleId: body.ruleId || undefined, transactionId: body.transactionId || undefined, dryRun: !!body.dryRun,
   })
   const pendingLeft = await prisma.bankTransaction.count({ where: { status: 'PENDING' } })
   return NextResponse.json({ success: true, dryRun: !!body.dryRun, ...res, remainingPending: pendingLeft })
