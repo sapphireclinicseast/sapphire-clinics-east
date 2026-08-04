@@ -261,16 +261,54 @@ function getMonthlyArray(data: Record<number, MonthData>, getter: (m: MonthData)
   return Array.from({ length: 12 }, (_, i) => getter(data[i + 1]))
 }
 
+/* ── Display currency ──────────────────────────────────────────────────────
+   The ledger is, and stays, PHP. This is presentation only: every figure is
+   divided by one rate so the statements can be read in USD or EUR — useful for
+   a foreign reader, but it is NOT a restatement into a functional currency
+   (which would need closing rates for the balance sheet, average rates for the
+   income statement, and a translation reserve). The rate in force is printed
+   above the report and carried into the Excel export so a downloaded copy can
+   never be mistaken for pesos. */
+export const DISPLAY_CURRENCIES = [
+  { code: 'PHP', symbol: '₱', label: 'Philippine peso' },
+  { code: 'USD', symbol: '$', label: 'US dollar' },
+  { code: 'EUR', symbol: '€', label: 'Euro' },
+] as const
+export type DisplayCurrency = (typeof DISPLAY_CURRENCIES)[number]['code']
+
+// Set once per render by the page component, before any fmt() call.
+let DISPLAY: { code: DisplayCurrency; symbol: string; phpPerUnit: number } = { code: 'PHP', symbol: '₱', phpPerUnit: 1 }
+function setDisplay(code: DisplayCurrency, phpPerUnit: number) {
+  // Without a usable rate we stay in pesos entirely — symbol included. Showing a
+  // dollar sign against an untranslated peso figure would be worse than useless.
+  if (code === 'PHP' || !(phpPerUnit > 0)) {
+    DISPLAY = { code: 'PHP', symbol: '₱', phpPerUnit: 1 }
+    return
+  }
+  const c = DISPLAY_CURRENCIES.find(x => x.code === code) || DISPLAY_CURRENCIES[0]
+  DISPLAY = { code: c.code, symbol: c.symbol, phpPerUnit }
+}
+
+/** PHP figure → the amount shown, in whatever currency is selected. */
+function inDisplay(n: number): number {
+  return DISPLAY.phpPerUnit === 1 ? n : n / DISPLAY.phpPerUnit
+}
+
+function formatDisplay(n: number): string {
+  if (DISPLAY.code === 'PHP') return formatCurrency(n)
+  return DISPLAY.symbol + inDisplay(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 function fmt(n: number): string {
   if (n === 0) return '—'
-  return formatCurrency(n)
+  return formatDisplay(n)
 }
 
 function fmtSigned(n: number): string {
   if (n === 0) return '—'
   const prefix = n < 0 ? '(' : ''
   const suffix = n < 0 ? ')' : ''
-  return prefix + formatCurrency(Math.abs(n)) + suffix
+  return prefix + formatDisplay(Math.abs(n)) + suffix
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1607,6 +1645,45 @@ export default function ReportsPage() {
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const [activeTab, setActiveTab] = useState<ReportTab>('income-statement')
   const [year, setYear] = useState(new Date().getFullYear())
+  // Presentation currency. The rate is entered by hand because the hub holds no
+  // USD/EUR rates — only CNY — and an invented rate would be worse than an explicit one.
+  const [dispCcy, setDispCcy] = useState<DisplayCurrency>('PHP')
+  const [dispRate, setDispRate] = useState('')
+  const dispRateNum = parseFloat(dispRate) || 0
+  const dispReady = dispCcy === 'PHP' || dispRateNum > 0
+  const [dispRateMeta, setDispRateMeta] = useState<{ rateDate: string; onOrBefore: boolean } | null>(null)
+  const [savingRate, setSavingRate] = useState(false)
+  setDisplay(dispCcy, dispRateNum)
+
+  // Default to the rate in force for the period being viewed, so the same report
+  // shows the same figures for everyone rather than depending on who typed what.
+  useEffect(() => {
+    if (dispCcy === 'PHP') { setDispRateMeta(null); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/reports/fx-rate?currency=${dispCcy}&asOf=${year}-12-31`)
+        if (!r.ok) return
+        const d = await r.json()
+        if (cancelled) return
+        if (d.phpPerUnit) { setDispRate(String(d.phpPerUnit)); setDispRateMeta({ rateDate: d.rateDate, onOrBefore: d.onOrBefore }) }
+        else setDispRateMeta(null)
+      } catch { /* leave whatever was typed */ }
+    })()
+    return () => { cancelled = true }
+  }, [dispCcy, year])
+
+  const saveDispRate = async () => {
+    if (!(dispRateNum > 0)) return
+    setSavingRate(true)
+    try {
+      const r = await fetch('/api/reports/fx-rate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currency: dispCcy, date: `${year}-12-31`, phpPerUnit: dispRateNum }),
+      })
+      if (r.ok) { const d = await r.json(); setDispRateMeta({ rateDate: d.rateDate, onOrBefore: true }) }
+    } finally { setSavingRate(false) }
+  }
   const [viewMode, setViewMode] = useState<ViewMode>('annual')
   const [branch, setBranch] = useState(scope.short || 'ALL')
   useEffect(() => { if (scope.short && branch !== scope.short) setBranch(scope.short) }, [scope.short]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1677,7 +1754,8 @@ export default function ReportsPage() {
       const withMonths = activeTab !== 'balance-sheet' && viewMode === 'monthly'
       const rows: string[][] = []
       const title = 'title' in stmt ? stmt.title : ''
-      rows.push([`${title} — ${year}`, ...(withMonths ? FULL_MONTHS : []), activeTab === 'balance-sheet' ? 'Amount (PHP)' : 'FY Total'])
+      rows.push([`${title} — ${year}`, ...(withMonths ? FULL_MONTHS : []), activeTab === 'balance-sheet' ? `Amount (${dispCcy})` : 'FY Total'])
+      if (dispCcy !== 'PHP') rows.push([`Shown in ${dispCcy} at ₱${dispRateNum.toLocaleString('en-PH')} = 1 ${dispCcy}. Books are maintained in Philippine pesos.`])
       for (const r of stmt.rows) {
         if (r.kind === 'header') {
           rows.push([r.label, ...(withMonths ? Array(12).fill('') : []), r.total !== null ? r.total.toFixed(2) : ''])
@@ -1728,7 +1806,8 @@ export default function ReportsPage() {
 
     if (activeTab === 'income-statement') {
       if (viewMode === 'annual') {
-        rows.push([`Income Statement — ${year} — ${branchLbl}`, 'Amount (PHP)'])
+        rows.push([`Income Statement — ${year} — ${branchLbl}`, `Amount (${dispCcy})`])
+        if (dispCcy !== 'PHP') rows.push([`Shown in ${dispCcy} at ₱${dispRateNum.toLocaleString('en-PH')} = 1 ${dispCcy}. Books are maintained in Philippine pesos.`])
         rows.push(['7000 GROSS REVENUE', ''])
         grossRevAccts.forEach(a => {
           const amt = acctAmt(a.accountNumber, a.accountTitle)
@@ -1912,6 +1991,41 @@ export default function ReportsPage() {
 
       {/* ── Filters ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-5 print:hidden">
+        {/* Presentation currency — display only, the ledger stays in pesos */}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <select
+              value={dispCcy}
+              onChange={(e) => setDispCcy(e.target.value as DisplayCurrency)}
+              title="Show every figure in this currency. The ledger itself stays in pesos."
+              className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
+              style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
+            >
+              {DISPLAY_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+            </select>
+            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+          </div>
+          {dispCcy !== 'PHP' && (
+            <input
+              value={dispRate}
+              onChange={(e) => setDispRate(e.target.value)}
+              inputMode="decimal"
+              placeholder={`₱ per 1 ${dispCcy}`}
+              title={`How many pesos to one ${dispCcy}. Every figure is divided by this.`}
+              className="w-32 px-3 py-2 rounded-lg text-sm font-mono outline-none"
+              style={{ border: `1px solid ${dispReady ? 'var(--light-gray)' : '#fca5a5'}`, background: 'white' }}
+            />
+          )}
+          {dispCcy !== 'PHP' && dispRateNum > 0 && (
+            <button onClick={saveDispRate} disabled={savingRate}
+              title={`Remember ${dispRateNum} as the ${dispCcy} rate for ${year}, so this report opens with it next time`}
+              className="px-2.5 py-2 rounded-lg text-xs font-semibold disabled:opacity-50"
+              style={{ border: '1px solid var(--light-gray)', color: 'var(--teal)', background: 'white' }}>
+              {savingRate ? 'Saving…' : 'Save rate'}
+            </button>
+          )}
+        </div>
+
         {/* Year */}
         <div className="flex items-center gap-2">
           <Calendar size={16} style={{ color: 'var(--mid-gray)' }} />
@@ -1989,6 +2103,15 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+
+      {/* A translated statement must never be mistaken for pesos. */}
+      {dispCcy !== 'PHP' && (
+        <div className="mb-4 px-3 py-2 rounded-lg text-xs" style={{ background: dispReady ? '#eff6ff' : '#fef2f2', color: dispReady ? '#1e40af' : '#b91c1c', border: `1px solid ${dispReady ? '#bfdbfe' : '#fecaca'}` }}>
+          {dispReady
+            ? <>Figures shown in <strong>{dispCcy}</strong> at <strong>₱{dispRateNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong> = 1 {dispCcy}. Books are maintained in Philippine pesos.{dispRateMeta ? <span style={{ opacity: 0.75 }}> Rate recorded {dispRateMeta.rateDate}{dispRateMeta.onOrBefore ? '' : ' (the earliest on file — none yet for this period)'}.</span> : null}</>
+            : <>Enter how many pesos make one {dispCcy} to see the statements in {dispCcy}. Until then the figures below are still pesos.</>}
+        </div>
+      )}
 
       {/* ── Report Container ───────────────────────────────────── */}
       <div
