@@ -197,6 +197,14 @@ export default function BankReconciliationPage() {
               alert(`Matched ${d.matched} settlement line(s). ${d.remainingPending.toLocaleString()} still pending.`)
               await refreshAll()
             }} title="Bulk-match card/e-wallet day settlements to their order batches" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Check size={14} /> Match settlements</button>
+            <button onClick={async () => {
+              if (!confirm('Pair internal transfers across ALL bank accounts? A spent and an equal received (≥₱5,000) on two of our own accounts within 3 banking days, with exactly one possible counterpart each, are recorded as one Fund Transfer and both posted. Ambiguous pairs are left for the Match dialog.')) return
+              const r = await fetch('/api/bank-rec/transfer-match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+              const d = await r.json()
+              if (!r.ok) { alert(d.error || 'Failed'); return }
+              alert(`Paired ${d.matched} internal transfer(s)${d.matched ? ':\n' + d.pairs.slice(0, 12).map((p: { refNumber: string; amount: number; from: string; to: string; date: string }) => `${p.refNumber} · ${p.date} · ₱${p.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${p.from} → ${p.to}`).join('\n') + (d.pairs.length > 12 ? `\n…and ${d.pairs.length - 12} more` : '') : ''}`)
+              await refreshAll()
+            }} title="Bulk-pair internal transfers between our own accounts (equal amount, both pending, ≤3 banking days, unambiguous)" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Match transfers</button>
             <button onClick={() => setShowRules(true)} title="Auto-categorize recurring lines by description pattern" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Wand2 size={14} /> Auto-rules</button>
             <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
             <button onClick={() => setShowFT(true)} title="Record a transfer between two bank accounts, or from a bank account to a petty cash box" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Record Fund Transfer</button>
