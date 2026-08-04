@@ -1168,6 +1168,8 @@ export default function PettyCashPage() {
             )}
           </div>
 
+          {isCeo && <CeoPcfHistoryPanel />}
+
           {canWrite && (
             <div className="flex items-center gap-2">
               <button onClick={() => setShowAddPopup(true)} disabled={adding}
@@ -1681,6 +1683,81 @@ function SettingsModal({ branch, requestors, nextPcvSeq, canWrite, onClose, onSa
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+
+/* ── Past PCF (CEO) — the fund before it lived in the Hub ──────────────
+   Amounts were advanced to the CEO, spent across branches, and replenished
+   not-to-the-peso, so the RFP model cannot hold it. This register shows that
+   history verbatim from the interbranch monitoring workbook: read-only and
+   ledger-neutral, because QuickBooks already carried the expense side. */
+function CeoPcfHistoryPanel() {
+  const [rows, setRows] = useState<{ id: string; branch: string; date: string; particulars: string; receivedBy: string | null; cashIn: number; cashOut: number; remarks: string | null; qbRecorded: boolean; qbRef: string | null; running: number }[]>([])
+  const [totals, setTotals] = useState<{ inn: number; out: number; rows: number; unrecorded: number } | null>(null)
+  const [histBranch, setHistBranch] = useState('')
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    fetch(`/api/petty-cash/ceo-history?branch=${encodeURIComponent(histBranch)}`)
+      .then(r => r.ok ? r.json() : { rows: [], totals: null })
+      .then(d => { setRows(d.rows || []); setTotals(d.totals || null) })
+      .finally(() => setLoading(false))
+  }, [open, histBranch])
+  const peso = (v: number) => v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return (
+    <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3 text-left">
+        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+          Past PCF (historical fund) {totals ? `— ₱${peso(totals.inn)} received · ₱${peso(totals.out)} spent · ${totals.rows.toLocaleString()} entries` : ''}
+        </span>
+        <span className="text-xs" style={{ color: 'var(--teal)' }}>{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            The CEO fund before it lived in the Hub: advances in, spending out, replenished not-to-the-peso.
+            Read-only and ledger-neutral — QuickBooks already carried these expenses; this is the fund&apos;s own story.
+            {totals && totals.unrecorded > 0 && <> <strong style={{ color: '#b45309' }}>{totals.unrecorded} spend entr{totals.unrecorded === 1 ? 'y' : 'ies'} were never marked as recorded in QB</strong> — worth a look.</>}
+          </p>
+          <div className="flex gap-2">
+            {['', 'East', 'Greenhills', 'Verdana'].map(b => (
+              <button key={b || 'all'} onClick={() => setHistBranch(b)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
+                style={histBranch === b ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                {b || 'All branches'}
+              </button>
+            ))}
+          </div>
+          {loading ? <div className="py-6 text-center"><Loader2 size={18} className="animate-spin inline" /></div> : (
+            <div className="rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)', maxHeight: 420 }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="sticky top-0" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                    {['Date', 'Branch', 'Particulars', 'Received by', 'In', 'Out', 'Running', 'QB'].map(h => <th key={h} className="text-left px-3 py-2 font-semibold">{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{r.date}</td>
+                      <td className="px-3 py-1.5">{r.branch}</td>
+                      <td className="px-3 py-1.5 max-w-md truncate" style={{ color: 'var(--charcoal)' }} title={r.particulars}>{r.particulars}</td>
+                      <td className="px-3 py-1.5">{r.receivedBy}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: r.cashIn ? '#166534' : 'var(--light-gray)' }}>{r.cashIn ? peso(r.cashIn) : ''}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{r.cashOut ? peso(r.cashOut) : ''}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.running)}</td>
+                      <td className="px-3 py-1.5">{r.qbRecorded ? <span title={r.qbRef || 'Recorded in QuickBooks'} style={{ color: '#166534' }}>✓</span> : <span title="Not marked as recorded" style={{ color: '#b45309' }}>—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
