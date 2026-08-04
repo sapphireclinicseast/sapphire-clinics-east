@@ -969,7 +969,12 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
       }
       // Settling part of a bigger record: the label carries the portion so the
       // grid shows what this line covered and what the record still awaits.
-      const partLabel = m.partOf
+      // Judged on the amounts, not on which list the record came from — the
+      // record is often months from the deposit (a subscription recorded at
+      // year end, paid in June) and is then reached by search rather than by
+      // the suggestions.
+      const isPart = m.type !== 'INTERBANK' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > target + 0.01
+      const partLabel = isPart
         ? `Part payment ₱${peso(target)} of ₱${peso(m.amount)} · ${m.label}`.slice(0, 500)
         : m.label
       const body = m.type === 'INTERBANK'
