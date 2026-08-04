@@ -126,6 +126,8 @@ CREATE TABLE IF NOT EXISTS "PosSettlementPayment" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "PosSettlementPayment_orderPaymentId_key" ON "PosSettlementPayment"("orderPaymentId");
 CREATE INDEX IF NOT EXISTS "PosSettlementPayment_batchId_idx" ON "PosSettlementPayment"("batchId");
+ALTER TABLE "PaymentModeDeduction" ADD COLUMN IF NOT EXISTS "effectiveFrom" TIMESTAMP(3);
+ALTER TABLE "PaymentModeDeduction" ADD COLUMN IF NOT EXISTS "effectiveTo" TIMESTAMP(3);
 
 -- PayMongo checkout/payment tracking (Phase 1)
 CREATE TABLE IF NOT EXISTS "PaymongoCheckout" (

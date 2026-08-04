@@ -175,6 +175,8 @@ interface PaymentModeDeductionType {
   name: string
   rate: number
   valueType?: string  // 'PERCENTAGE' | 'FIXED'
+  effectiveFrom?: string | null
+  effectiveTo?: string | null
   accountId?: string | null
   account?: { id: string; accountNumber: string; accountTitle: string } | null
 }
@@ -8569,7 +8571,7 @@ function PaymentModeSettingsPanel() {
   const [form, setForm] = useState({ name: '', paymentMethod: '', branch: '', accountId: '', isActive: true })
   const [accountSearch, setAccountSearch] = useState('')
   const [allAccounts, setAllAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; accountType: string }[]>([])
-  const [deductions, setDeductions] = useState<{ name: string; rate: number; valueType: string; accountId: string; accountSearch: string }[]>([])
+  const [deductions, setDeductions] = useState<{ name: string; rate: number; valueType: string; accountId: string; accountSearch: string; effectiveFrom: string; effectiveTo: string }[]>([])
   const [error, setError] = useState('')
 
   const fetchModes = useCallback(async () => {
@@ -8616,12 +8618,14 @@ function PaymentModeSettingsPanel() {
       valueType: d.valueType === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
       accountId: d.accountId || '',
       accountSearch: d.account ? `${d.account.accountNumber} ${d.account.accountTitle}` : '',
+      effectiveFrom: d.effectiveFrom ? String(d.effectiveFrom).slice(0, 10) : '',
+      effectiveTo: d.effectiveTo ? String(d.effectiveTo).slice(0, 10) : '',
     })))
     setError('')
     setShowForm(true)
   }
 
-  const addDeduction = () => setDeductions(prev => [...prev, { name: '', rate: 0, valueType: 'PERCENTAGE', accountId: '', accountSearch: '' }])
+  const addDeduction = () => setDeductions(prev => [...prev, { name: '', rate: 0, valueType: 'PERCENTAGE', accountId: '', accountSearch: '', effectiveFrom: '', effectiveTo: '' }])
   const removeDeduction = (i: number) => setDeductions(prev => prev.filter((_, idx) => idx !== i))
   const updateDeduction = (i: number, updates: Record<string, string | number>) =>
     setDeductions(prev => prev.map((d, idx) => idx === i ? { ...d, ...updates } : d))
@@ -8641,6 +8645,8 @@ function PaymentModeSettingsPanel() {
         rate: d.rate,
         valueType: d.valueType || 'PERCENTAGE',
         accountId: d.accountId || null,
+        effectiveFrom: d.effectiveFrom || null,
+        effectiveTo: d.effectiveTo || null,
       })),
     }
     const res = await fetch('/api/pos/payment-modes', {
@@ -8854,6 +8860,18 @@ function PaymentModeSettingsPanel() {
                         <button type="button" onClick={() => removeDeduction(i)} className="p-1 rounded hover:bg-red-50">
                           <X size={13} className="text-red-400" />
                         </button>
+                      </div>
+                      {/* Rate era: this deduction applies only to sales dated inside the
+                          window (blank = open-ended). Lets an old MDR (2.5%) end Sep 2025
+                          and the new one (2.2%) start Oct 2025 on the same mode. */}
+                      <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                        <span>Applies to sales from</span>
+                        <input type="date" value={d.effectiveFrom} onChange={e => updateDeduction(i, { effectiveFrom: e.target.value })}
+                          className="px-2 py-1 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        <span>to</span>
+                        <input type="date" value={d.effectiveTo} onChange={e => updateDeduction(i, { effectiveTo: e.target.value })}
+                          className="px-2 py-1 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        <span>(blank = always)</span>
                       </div>
                       {/* Deduction COA */}
                       <div className="relative">

@@ -873,6 +873,12 @@ model PaymentModeDeduction {
   name          String      // "Merchant Discount Rate", "Creditable Withholding Tax"
   rate          Decimal     // value — interpreted by valueType: PERCENTAGE → % of gross; FIXED → peso amount
   valueType     String      @default("PERCENTAGE") // "PERCENTAGE" | "FIXED"
+  // Rate eras: banks reprice MDR (e.g. AUB credit card 2.5% → 2.2%, QRPH 1% → 0%
+  // around Oct 2025). A deduction applies to a sale only when the SALE date falls
+  // inside [effectiveFrom, effectiveTo]; null = open-ended on that side. Undated
+  // rows apply forever, so existing configs behave unchanged.
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
   accountId     String?     // COA where this deduction is lodged (expense or liability)
   account       Account?    @relation("DeductionAccount", fields: [accountId], references: [id], onDelete: SetNull)
   createdAt     DateTime    @default(now())

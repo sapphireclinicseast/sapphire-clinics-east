@@ -70,13 +70,18 @@ export async function GET(req: Request) {
   // ── money in: settlements expected to land in this bank account ───────────
   const modes = await prisma.paymentMode.findMany({
     where: { accountId: bankAccountId },
-    select: { id: true, name: true, deductions: { select: { rate: true, valueType: true } } },
+    select: { id: true, name: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } },
   })
-  const netOf = (modeId: string, gross: number) => {
+  // Rate eras: the deduction in force on the SALE date applies (see
+  // netOfDeductions in pos-settlement-shapes).
+  const netOf = (modeId: string, gross: number, onDate?: Date) => {
     const m = modes.find(x => x.id === modeId)
     if (!m) return gross
-    const cut = m.deductions.reduce((s, d) =>
-      s + (d.valueType === 'PERCENTAGE' ? gross * Number(d.rate) / 100 : Number(d.rate)), 0)
+    const cut = m.deductions.reduce((s, d) => {
+      if (onDate && d.effectiveFrom && onDate < d.effectiveFrom) return s
+      if (onDate && d.effectiveTo && onDate > d.effectiveTo) return s
+      return s + (d.valueType === 'PERCENTAGE' ? gross * Number(d.rate) / 100 : Number(d.rate))
+    }, 0)
     return Math.round((gross - cut) * 100) / 100
   }
 
@@ -95,7 +100,7 @@ export async function GET(req: Request) {
     })
     for (const p of payments) {
       if (!p.order || !p.paymentModeId) continue
-      const net = netOf(p.paymentModeId, Number(p.amount))
+      const net = netOf(p.paymentModeId, Number(p.amount), p.order.transactionDate)
       const mode = modes.find(m => m.id === p.paymentModeId)!
       singles.push({
         date: p.order.transactionDate, amount: net,

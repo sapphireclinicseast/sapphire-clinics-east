@@ -199,10 +199,18 @@ export async function GET(req: Request) {
     }
     for (const d of shapes.days) {
       if (d.n < 2) continue // a lone sale already surfaced above
-      if (searching ? !(!q || `${d.modeName} day settlement`.toLowerCase().includes(q)) : !closeAmt(d.net)) continue
+      const exact = closeAmt(d.net)
+      // A batch that is merely CLOSE is still worth offering with the gap named:
+      // the bank sometimes charges a different MDR than the mode's configured
+      // rate (e.g. a GCash payment keyed outside QRPH billed at 2% instead of
+      // 1%), and the deposit is the day's batch regardless.
+      const nearMiss = !exact && Math.abs(d.net - amount) <= Math.max(50, amount * 0.02)
+      if (searching ? !(!q || `${d.modeName} day settlement`.toLowerCase().includes(q)) : !(exact || nearMiss)) continue
+      const gap = Math.round((amount - d.net) * 100) / 100
       pos.push({
         type: 'POS_DAY', id: d.key, modeId: d.modeId, posPaymentIds: d.paymentIds,
-        label: `Day settlement · ${d.n} × ${d.modeName} on ${d.date.toISOString().slice(0, 10)} · ₱${money(d.gross)} gross less ₱${money(Math.round((d.gross - d.net) * 100) / 100)} fees = net ₱${money(d.net)}`,
+        label: `Day settlement · ${d.n} × ${d.modeName} on ${d.date.toISOString().slice(0, 10)} · ₱${money(d.gross)} gross less ₱${money(Math.round((d.gross - d.net) * 100) / 100)} fees = net ₱${money(d.net)}`
+          + (exact ? '' : ` — bank is ${gap >= 0 ? 'higher' : 'lower'} by ₱${money(Math.abs(gap))} (fees may differ, e.g. misrouted e-wallet MDR)`),
         date: d.date.toISOString().slice(0, 10), amount: d.net,
         details: d.items.map(i => `#${i.orderNumber}${i.name ? ` · ${i.name}` : ''} · ₱${money(i.net)}`),
       })

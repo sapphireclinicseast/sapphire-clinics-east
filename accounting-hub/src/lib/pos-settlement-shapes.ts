@@ -21,17 +21,24 @@ export interface PosDay {
   items: { orderNumber: number; name: string; net: number }[]
 }
 
+// A deduction applies only when the SALE date falls inside its effective
+// window — banks reprice MDR over time (AUB: credit card 2.5% → 2.2%, QRPH
+// 1% → 0% around Oct 2025), and a settlement must be computed at the rate
+// that was in force when the sale happened. Undated rows apply forever.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function netOfDeductions(gross: number, deductions: { rate: any; valueType: string }[]): number {
-  const cut = (deductions || []).reduce((s, d) =>
-    s + (d.valueType === 'PERCENTAGE' ? gross * Number(d.rate) / 100 : Number(d.rate)), 0)
+export function netOfDeductions(gross: number, deductions: { rate: any; valueType: string; effectiveFrom?: Date | null; effectiveTo?: Date | null }[], onDate?: Date): number {
+  const cut = (deductions || []).reduce((s, d) => {
+    if (onDate && d.effectiveFrom && onDate < d.effectiveFrom) return s
+    if (onDate && d.effectiveTo && onDate > d.effectiveTo) return s
+    return s + (d.valueType === 'PERCENTAGE' ? gross * Number(d.rate) / 100 : Number(d.rate))
+  }, 0)
   return Math.round((gross - cut) * 100) / 100
 }
 
 export async function posSettlementShapes(bankAccountId: string, lo: Date, hi: Date): Promise<{ singles: PosSingle[]; days: PosDay[] }> {
   const modes = await prisma.paymentMode.findMany({
     where: { accountId: bankAccountId },
-    select: { id: true, name: true, deductions: { select: { rate: true, valueType: true } } },
+    select: { id: true, name: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } },
   })
   if (!modes.length) return { singles: [], days: [] }
 
@@ -57,7 +64,7 @@ export async function posSettlementShapes(bankAccountId: string, lo: Date, hi: D
   for (const p of payments) {
     if (!p.order || !p.paymentModeId || settled.has(p.id)) continue
     const mode = modes.find(m => m.id === p.paymentModeId)!
-    const net = netOfDeductions(Number(p.amount), mode.deductions)
+    const net = netOfDeductions(Number(p.amount), mode.deductions, p.order.transactionDate)
     const name = p.order.patientName || p.order.buyerName || ''
     singles.push({ paymentId: p.id, modeId: mode.id, modeName: mode.name, date: p.order.transactionDate, gross: Number(p.amount), net, orderNumber: p.order.orderNumber, name })
     const key = `${p.order.transactionDate.toISOString().slice(0, 10)}|${mode.id}`
