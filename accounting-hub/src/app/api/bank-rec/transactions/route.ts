@@ -329,8 +329,11 @@ export async function PATCH(req: Request) {
             refNumber: `FT${new Date().getFullYear() % 100}-${String(seq).padStart(6, '0')}`, refSeq: seq,
             date: out.date, fromAccountId: out.bankAccountId, toAccountId: inn.bankAccountId,
             amount,
+            // Carry the bank memos so the Fund Transfer section shows where the
+            // record came from (e.g. "Check Issued Debit / 00468 LCK").
             description: body.description
-              || `Internal transfer · ${fromAcct?.accountTitle || ''} → ${toAcct?.accountTitle || ''}`,
+              || `Internal transfer · ${fromAcct?.accountTitle || ''} → ${toAcct?.accountTitle || ''}`
+                + ([out.description, inn.description].filter(Boolean).length ? ` · ${[out.description, inn.description].filter(Boolean).join(' / ')}` : ''),
             createdById: session.user!.id ?? null,
           },
         })
