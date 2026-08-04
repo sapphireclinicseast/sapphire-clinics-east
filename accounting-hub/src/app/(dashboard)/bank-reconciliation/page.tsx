@@ -56,6 +56,7 @@ export default function BankReconciliationPage() {
   const isAdmin = (session?.user?.role as string) === 'ADMIN'
 
   const [accounts, setAccounts] = useState<BankAcct[]>([])
+  const [showFT, setShowFT] = useState(false)
   const [sel, setSel] = useState('')
   const [tab, setTab] = useState<'PENDING' | 'POSTED' | 'EXCLUDED' | 'ARCHIVED'>('PENDING')
   const [txns, setTxns] = useState<Txn[]>([])
@@ -198,6 +199,7 @@ export default function BankReconciliationPage() {
             }} title="Bulk-match card/e-wallet day settlements to their order batches" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Check size={14} /> Match settlements</button>
             <button onClick={() => setShowRules(true)} title="Auto-categorize recurring lines by description pattern" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Wand2 size={14} /> Auto-rules</button>
             <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
+            <button onClick={() => setShowFT(true)} title="Record a transfer between two bank accounts, or from a bank account to a petty cash box" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Record Fund Transfer</button>
             <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Upload size={14} /> Upload from file</button>
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add transaction</button>
           </div>
@@ -445,6 +447,7 @@ export default function BankReconciliationPage() {
 
       {showRules && <RulesModal coa={coa} accounts={accounts} onClose={() => setShowRules(false)} onDone={refreshAll} />}
       {showForexCfg && <ForexAccountsModal onClose={() => setShowForexCfg(false)} onSaved={async () => { setShowForexCfg(false); await refreshAll() }} />}
+      {showFT && <RecordFundTransferModal accounts={accounts} defaultFromId={account?.id || ''} onClose={() => setShowFT(false)} onDone={async () => { setShowFT(false); await refreshAll() }} />}
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
       {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
@@ -1036,6 +1039,105 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
             ))}
           </div>
         )}
+    </Modal>
+  )
+}
+
+/** Record a transfer between two accounts without leaving Bank Reconciliation.
+ *  The account list is the same one shown in the strip above, so petty-cash-on-hand
+ *  accounts are selectable as a destination — that is how a cash withdrawal to the
+ *  physical box gets recorded and later matched against the bank line. */
+function RecordFundTransferModal({ accounts, defaultFromId, onClose, onDone }: {
+  accounts: BankAcct[]; defaultFromId: string; onClose: () => void; onDone: () => void
+}) {
+  const [fromId, setFromId] = useState(defaultFromId)
+  const [toId, setToId] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [amount, setAmount] = useState('')
+  const [checkNumber, setCheckNumber] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const label = (a: BankAcct) => `${a.accountNumber} — ${a.accountTitle}`
+  const from = accounts.find(a => a.id === fromId)
+  const to = accounts.find(a => a.id === toId)
+  const crossCurrency = !!from && !!to && from.currency !== to.currency
+
+  const save = async () => {
+    setErr('')
+    const amt = parseFloat(amount)
+    if (!fromId || !toId) { setErr('Choose both accounts'); return }
+    if (fromId === toId) { setErr('The two accounts must be different'); return }
+    if (!amt || amt <= 0) { setErr('Enter an amount'); return }
+    if (crossCurrency) { setErr('These accounts hold different currencies — use Currency exchange in Fund Transfer instead'); return }
+    setSaving(true)
+    try {
+      const r = await fetch('/api/fund-transfers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, fromAccountId: fromId, toAccountId: toId, amount: amt, checkNumber: checkNumber || null, description: description || null, proofUrls: [] }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setErr(d.error || 'Failed to record the transfer'); return }
+      onDone()
+    } catch { setErr('Network error') }
+    finally { setSaving(false) }
+  }
+
+  const field = { borderColor: 'var(--light-gray)' }
+  return (
+    <Modal title="Record Fund Transfer" onClose={onClose}>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
+          <select value={fromId} onChange={e => setFromId(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field}>
+            <option value="">— Select account —</option>
+            {accounts.map(a => <option key={a.id} value={a.id}>{label(a)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>To <span className="font-normal">(another bank account, or a petty cash box)</span></label>
+          <select value={toId} onChange={e => setToId(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field}>
+            <option value="">— Select account —</option>
+            {accounts.filter(a => a.id !== fromId).map(a => <option key={a.id} value={a.id}>{label(a)}</option>)}
+          </select>
+        </div>
+        {crossCurrency && (
+          <p className="text-xs px-3 py-2 rounded-lg" style={{ background: '#fff7ed', color: '#9a3412' }}>
+            {from!.currency} → {to!.currency}: record this under Fund Transfer › Currency exchange so the rate is captured.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Amount</label>
+            <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Cheque no. <span className="font-normal">(optional)</span></label>
+            <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Description <span className="font-normal">(optional)</span></label>
+            <input value={description} onChange={e => setDescription(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field} />
+          </div>
+        </div>
+        {err && <p className="text-xs" style={{ color: '#b91c1c' }}>{err}</p>}
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+          Recorded as a fund transfer, so both sides become matchable against their bank lines.
+        </p>
+        <div className="flex gap-2 justify-end pt-1">
+          <button onClick={onClose} className="px-4 py-2.5 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          <button onClick={save} disabled={saving} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+            {saving ? 'Saving…' : 'Record transfer'}
+          </button>
+        </div>
+      </div>
     </Modal>
   )
 }
