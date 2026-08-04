@@ -291,6 +291,61 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, refNumber: transfer.refNumber, rate })
     }
 
+    // Internal transfer between two of our own same-currency accounts (e.g.
+    // AUB → BDO): one line pays out, the counterpart receives the same amount
+    // the same banking day or the next. Record one FundTransfer and post both
+    // legs together — mirrors the forex pairing, minus the exchange rate.
+    if (action === 'match-interbank') {
+      const other = await prisma.bankTransaction.findUnique({ where: { id: body.counterpartId || '' } })
+      if (!other) return NextResponse.json({ error: 'Choose the matching line on the other account' }, { status: 400 })
+      if (other.bankAccountId === txn.bankAccountId) return NextResponse.json({ error: 'Both lines are on the same bank account' }, { status: 400 })
+      if (other.status !== 'PENDING') return NextResponse.json({ error: 'That line is not pending' }, { status: 409 })
+
+      const out = Number(txn.spent) > 0 ? txn : (Number(other.spent) > 0 ? other : null)
+      const inn = out && out.id === txn.id ? other : txn
+      if (!out || !(Number(out.spent) > 0) || !(Number(inn.received) > 0)) {
+        return NextResponse.json({ error: 'An internal transfer needs one line paying out and one receiving' }, { status: 400 })
+      }
+      if (Math.abs(Number(out.spent) - Number(inn.received)) > 0.01) {
+        return NextResponse.json({ error: 'The two legs must be for the same amount' }, { status: 400 })
+      }
+      const [fromAcct, toAcct] = await Promise.all([
+        prisma.account.findUnique({ where: { id: out.bankAccountId }, select: { currency: true, accountNumber: true, accountTitle: true } }),
+        prisma.account.findUnique({ where: { id: inn.bankAccountId }, select: { currency: true, accountNumber: true, accountTitle: true } }),
+      ])
+      if ((fromAcct?.currency || 'PHP') !== (toAcct?.currency || 'PHP')) {
+        return NextResponse.json({ error: 'The accounts are in different currencies — use the currency-exchange match' }, { status: 400 })
+      }
+      const amount = Number(out.spent)
+
+      const transfer = await prisma.$transaction(async (tx) => {
+        let s = await tx.fundTransferSettings.findUnique({ where: { id: 'singleton' } })
+        if (!s) s = await tx.fundTransferSettings.create({ data: { id: 'singleton', nextSeq: 1 } })
+        const maxSeq = (await tx.fundTransfer.aggregate({ _max: { refSeq: true } }))._max.refSeq ?? 0
+        const seq = Math.max(s.nextSeq, maxSeq + 1)
+        await tx.fundTransferSettings.update({ where: { id: 'singleton' }, data: { nextSeq: seq + 1 } })
+        const created = await tx.fundTransfer.create({
+          data: {
+            refNumber: `FT${new Date().getFullYear() % 100}-${String(seq).padStart(6, '0')}`, refSeq: seq,
+            date: out.date, fromAccountId: out.bankAccountId, toAccountId: inn.bankAccountId,
+            amount,
+            description: body.description
+              || `Internal transfer · ${fromAcct?.accountTitle || ''} → ${toAcct?.accountTitle || ''}`,
+            createdById: session.user!.id ?? null,
+          },
+        })
+        const label = `${created.refNumber} · transfer ${fromAcct?.accountNumber || ''} → ${toAcct?.accountNumber || ''}`
+        for (const t of [out, inn]) {
+          await tx.bankTransaction.update({
+            where: { id: t.id },
+            data: { status: 'POSTED', matchType: 'INTERBANK', matchId: created.id, matchLabel: label, categoryAccountId: null },
+          })
+        }
+        return created
+      })
+      return NextResponse.json({ success: true, refNumber: transfer.refNumber })
+    }
+
     if (action === 'match') {
       await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null } })
       return NextResponse.json({ success: true })
@@ -306,11 +361,12 @@ export async function PATCH(req: Request) {
       if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
       // Undoing a POS settlement frees its order payments for a new batch.
       if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
-      // A currency exchange is one transfer spanning two bank lines, so undoing
-      // either side must release both and drop the transfer they created —
-      // otherwise the other line stays posted against a record that is gone.
-      if (txn.matchType === 'FOREX' && txn.matchId) {
-        const both = await prisma.bankTransaction.findMany({ where: { matchType: 'FOREX', matchId: txn.matchId } })
+      // A currency exchange or internal transfer is one FundTransfer spanning
+      // two bank lines, so undoing either side must release both and drop the
+      // transfer they created — otherwise the other line stays posted against
+      // a record that is gone.
+      if ((txn.matchType === 'FOREX' || txn.matchType === 'INTERBANK') && txn.matchId) {
+        const both = await prisma.bankTransaction.findMany({ where: { matchType: txn.matchType, matchId: txn.matchId } })
         await prisma.$transaction(async (tx) => {
           await tx.bankTransaction.updateMany({
             where: { id: { in: both.map(b => b.id) } },
