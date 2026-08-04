@@ -141,6 +141,20 @@ export async function GET(req: Request) {
       })
     : []
 
+  // ── the other leg of an internal transfer ─────────────────────────────────
+  // Money moved between two of our own same-currency accounts (AUB → BDO,
+  // checking → petty cash): a SPENT here and an equal RECEIVED there, landing
+  // the same banking day or the next.
+  const sameCcyIds = otherCurrencyAccounts
+    .filter(a => (a.currency || 'PHP') === (thisAccount?.currency || 'PHP'))
+    .map(a => a.id)
+  const sameCcyLines = sameCcyIds.length
+    ? await prisma.bankTransaction.findMany({
+        where: { bankAccountId: { in: sameCcyIds }, date: { gte: lo, lte: hi }, status: 'PENDING' },
+        select: { bankAccountId: true, date: true, spent: true, received: true, description: true },
+      })
+    : []
+
   // ── everything else the Hub has recorded ──────────────────────────────────
   // Fund transfers, RFPs from petty cash / expenses / refunds / taxes, POS
   // orders, AR receipts, salaries and benefits, cash advances and equity
@@ -210,6 +224,30 @@ export async function GET(req: Request) {
         label: `${near.n} × ${near.label} on ${dayKey(near.date)} nets ${money(near.amount)} — this line is ${diff >= 0 ? 'higher' : 'lower'} by ${money(Math.abs(diff))}`,
         amount: near.amount, date: dayKey(near.date), n: near.n,
       }
+    }
+  }
+
+  // Internal-transfer legs: an equal-amount pending line on another of our own
+  // same-currency accounts within the settlement day (spend first, received the
+  // same day or next). Exact amount + tight window is strong evidence, so this
+  // outranks the currency-exchange guess below.
+  for (const t of txns) {
+    if (hints[t.id]) continue
+    const out = Number(t.spent) > 0
+    const amount = out ? Number(t.spent) : Number(t.received)
+    if (!amount) continue
+    const legs = sameCcyLines.filter(l => {
+      const opp = out ? Number(l.received) : Number(l.spent)
+      if (Math.abs(opp - amount) > 0.01) return false
+      const days = (out ? +new Date(l.date) - +new Date(t.date) : +new Date(t.date) - +new Date(l.date)) / 86400000
+      return days >= 0 && days <= 1
+    })
+    if (legs.length !== 1) continue      // ambiguous, so say nothing
+    const acct = otherCurrencyAccounts.find(a => a.id === legs[0].bankAccountId)!
+    hints[t.id] = {
+      kind: 'Internal transfer',
+      label: `${out ? '→' : '←'} ${acct.accountNumber} ${acct.accountTitle} · ${legs[0].description || ''} — use Match to pair both legs`,
+      amount, date: dayKey(legs[0].date), n: 1,
     }
   }
 
