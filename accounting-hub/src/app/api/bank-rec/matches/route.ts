@@ -73,6 +73,49 @@ async function forexCandidates(txn: Txn) {
   return out.slice(0, 20)
 }
 
+// Interbank transfer pairing: money moved between the company's own accounts
+// (e.g. AUB → BDO) shows as a SPENT on one statement and a RECEIVED for the
+// same amount on another, landing the same banking day or the next. Offer the
+// opposite leg on every other same-currency account; confirming records one
+// FundTransfer and posts both lines together (mirrors the forex pairing).
+async function interbankCandidates(txn: Txn) {
+  const isSpent = Number(txn.spent) > 0
+  const amount = isSpent ? Number(txn.spent) : Number(txn.received)
+  if (!amount) return []
+  const account = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true } })
+
+  // The receiving leg lands the same day as the spend or the next day.
+  const lo = new Date(txn.date); if (!isSpent) lo.setUTCDate(lo.getUTCDate() - 1)
+  const hi = new Date(txn.date); hi.setUTCDate(hi.getUTCDate() + (isSpent ? 2 : 1))
+
+  const others = await prisma.account.findMany({
+    where: { isBankAccount: true, isActive: true, id: { not: txn.bankAccountId } },
+    select: { id: true, accountNumber: true, accountTitle: true, currency: true },
+  })
+  const sameCcy = others.filter(a => (a.currency || 'PHP') === (account?.currency || 'PHP'))
+  if (sameCcy.length === 0) return []
+
+  const lines = await prisma.bankTransaction.findMany({
+    where: {
+      bankAccountId: { in: sameCcy.map(a => a.id) },
+      date: { gte: lo, lt: hi },
+      status: 'PENDING',
+      ...(isSpent ? { received: amount } : { spent: amount }),
+    },
+    orderBy: { date: 'asc' },
+    take: 20,
+  })
+  return lines.map(l => {
+    const acct = sameCcy.find(a => a.id === l.bankAccountId)!
+    return {
+      type: 'INTERBANK', id: l.id,
+      label: `Internal transfer ${isSpent ? '→' : '←'} ${acct.accountNumber} ${acct.accountTitle} · ${l.description}`,
+      date: l.date.toISOString().slice(0, 10),
+      amount,
+    }
+  })
+}
+
 // GET ?txnId=... → suggested matches (already-recorded Hub records) for a bank line.
 // Money-out (spent) → Fund Transfers out, paid RFPs. Money-in (received) → Fund Transfers in, sales/AR.
 export async function GET(req: Request) {
@@ -129,5 +172,11 @@ export async function GET(req: Request) {
 
   // Closest dates first.
   out.sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
-  return NextResponse.json({ matches: out.slice(0, searching ? 50 : 20), searching })
+
+  // Interbank counterpart legs surface FIRST — an equal-amount pending line on
+  // another own account within the settlement day is almost always the answer.
+  const interbank = (await interbankCandidates(txn))
+    .filter(c => !searching || !q || c.label.toLowerCase().includes(q))
+
+  return NextResponse.json({ matches: [...interbank, ...out].slice(0, searching ? 50 : 20), searching })
 }

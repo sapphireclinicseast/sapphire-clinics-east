@@ -900,7 +900,19 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
     return () => clearTimeout(t)
   }, [txn.id, q, from, to])
   useEffect(() => { fetch(`/api/bank-rec/matches?txnId=${txn.id}&mode=forex`).then(r => r.ok ? r.json() : { matches: [] }).then(d => setFx(d.matches || [])).catch(() => setFx([])) }, [txn.id])
-  const pick = async (m: Match) => { setBusy(true); try { await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: m.label }) }); onDone() } finally { setBusy(false) } }
+  const pick = async (m: Match) => {
+    setBusy(true)
+    try {
+      // An interbank candidate is the OTHER bank line of an internal transfer —
+      // confirming records one FundTransfer and posts both legs together.
+      const body = m.type === 'INTERBANK'
+        ? { id: txn.id, action: 'match-interbank', counterpartId: m.id }
+        : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: m.label }
+      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
+      onDone()
+    } finally { setBusy(false) }
+  }
   const pickFx = async (m: FxMatch) => {
     const mine = txn.spent > 0 ? txn.spent : txn.received
     if (!confirm(`Record a currency exchange?\n\n₱${peso(txn.spent > 0 ? mine : m.amount)} ⇄ ${peso(txn.spent > 0 ? m.amount : mine)} ${m.currency}\nRate: 1 ${m.currency} = ${m.rate} PHP\n\nBoth bank lines will be posted against one fund transfer.`)) return
