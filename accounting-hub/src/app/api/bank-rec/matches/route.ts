@@ -76,18 +76,20 @@ async function forexCandidates(txn: Txn) {
 
 // Interbank transfer pairing: money moved between the company's own accounts
 // (e.g. AUB → BDO) shows as a SPENT on one statement and a RECEIVED for the
-// same amount on another, landing the same banking day or the next. Offer the
-// opposite leg on every other same-currency account; confirming records one
-// FundTransfer and posts both lines together (mirrors the forex pairing).
+// same amount on another. Electronic transfers land the same banking day, but
+// the LCK/DEPN check transfers are deposited at the receiving bank first and
+// only clear at the source 1–2 banking days later (more over a weekend), so
+// the counterpart is offered from up to 3 banking days (5 calendar) away on
+// either side. Confirming records one FundTransfer and posts both lines
+// together (mirrors the forex pairing).
 async function interbankCandidates(txn: Txn) {
   const isSpent = Number(txn.spent) > 0
   const amount = isSpent ? Number(txn.spent) : Number(txn.received)
   if (!amount) return []
   const account = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true } })
 
-  // The receiving leg lands the same day as the spend or the next day.
-  const lo = new Date(txn.date); if (!isSpent) lo.setUTCDate(lo.getUTCDate() - 1)
-  const hi = new Date(txn.date); hi.setUTCDate(hi.getUTCDate() + (isSpent ? 2 : 1))
+  const lo = new Date(txn.date); lo.setUTCDate(lo.getUTCDate() - 5)
+  const hi = new Date(txn.date); hi.setUTCDate(hi.getUTCDate() + 6)
 
   const others = await prisma.account.findMany({
     where: { isBankAccount: true, isActive: true, id: { not: txn.bankAccountId } },
@@ -106,6 +108,8 @@ async function interbankCandidates(txn: Txn) {
     orderBy: { date: 'asc' },
     take: 20,
   })
+  // Nearest date first — with a multi-day window the same-day leg should lead.
+  lines.sort((a, b) => Math.abs(+a.date - +txn.date) - Math.abs(+b.date - +txn.date))
   return lines.map(l => {
     const acct = sameCcy.find(a => a.id === l.bankAccountId)!
     return {

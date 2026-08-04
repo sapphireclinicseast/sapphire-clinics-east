@@ -234,9 +234,11 @@ export async function GET(req: Request) {
   }
 
   // Internal-transfer legs: an equal-amount pending line on another of our own
-  // same-currency accounts within the settlement day (spend first, received the
-  // same day or next). Exact amount + tight window is strong evidence, so this
-  // outranks the currency-exchange guess below.
+  // same-currency accounts within 3 banking days, either direction. Electronic
+  // transfers land same-day, but the LCK/DEPN check transfers are deposited at
+  // the receiving bank first and only clear at the source 1–2 banking days
+  // later (more over a weekend) — so the window is symmetric and counted in
+  // banking days. Exact amount + a unique counterpart is the evidence.
   for (const t of txns) {
     if (hints[t.id]) continue
     const out = Number(t.spent) > 0
@@ -245,8 +247,7 @@ export async function GET(req: Request) {
     const legs = sameCcyLines.filter(l => {
       const opp = out ? Number(l.received) : Number(l.spent)
       if (Math.abs(opp - amount) > 0.01) return false
-      const days = (out ? +new Date(l.date) - +new Date(t.date) : +new Date(t.date) - +new Date(l.date)) / 86400000
-      return days >= 0 && days <= 1
+      return Math.abs(bankingDaysBetween(new Date(l.date), new Date(t.date))) <= 3
     })
     if (legs.length !== 1) continue      // ambiguous, so say nothing
     const acct = otherCurrencyAccounts.find(a => a.id === legs[0].bankAccountId)!
