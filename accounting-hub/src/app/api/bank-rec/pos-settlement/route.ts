@@ -38,13 +38,13 @@ export async function GET(req: Request) {
     // offered too — just unflagged.
     const modes = await prisma.paymentMode.findMany({
       where: { isActive: true },
-      select: { id: true, name: true, paymentMethod: true, branch: true, accountId: true, deductions: { select: { name: true, rate: true, valueType: true } } },
+      select: { id: true, name: true, paymentMethod: true, branch: true, accountId: true, settlementBankAccountId: true, deductions: { select: { name: true, rate: true, valueType: true } } },
       orderBy: { name: 'asc' },
     })
     return NextResponse.json({
       modes: modes.map(m => ({
         id: m.id, name: m.name, method: m.paymentMethod, branch: m.branch,
-        settlesHere: m.accountId === txn.bankAccountId,
+        settlesHere: m.accountId === txn.bankAccountId || m.settlementBankAccountId === txn.bankAccountId,
         deductions: m.deductions.map(d => `${d.name} ${d.valueType === 'FIXED' ? '₱' : ''}${Number(d.rate)}${d.valueType === 'FIXED' ? '' : '%'}`),
       })),
       // POS money reaches the bank 0-3 days after the sale.

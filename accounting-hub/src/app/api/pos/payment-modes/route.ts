@@ -20,6 +20,7 @@ export async function GET(req: Request) {
       orderBy: { name: 'asc' },
       include: {
         account: { select: { id: true, accountNumber: true, accountTitle: true } },
+        settlementBankAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         deductions: {
           orderBy: { createdAt: 'asc' },
           include: {
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, paymentMethod, branch, accountId, deductions = [] } = await req.json()
+    const { name, paymentMethod, branch, accountId, settlementBankAccountId, deductions = [] } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Payment mode name is required' }, { status: 400 })
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
         paymentMethod: paymentMethod || null,
         branch: branch || null,
         accountId: accountId || null,
+        settlementBankAccountId: settlementBankAccountId || null,
         deductions: {
           create: deductions
             .filter((d: { name: string; rate: number; accountId?: string }) => d.name && d.rate > 0)
@@ -72,6 +74,7 @@ export async function POST(req: Request) {
       },
       include: {
         account: { select: { id: true, accountNumber: true, accountTitle: true } },
+        settlementBankAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         deductions: {
           include: {
             account: { select: { id: true, accountNumber: true, accountTitle: true } },
@@ -95,7 +98,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, paymentMethod, branch, accountId, isActive, deductions = [] } = await req.json()
+    const { id, name, paymentMethod, branch, accountId, settlementBankAccountId, isActive, deductions = [] } = await req.json()
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
     if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
@@ -110,6 +113,7 @@ export async function PUT(req: Request) {
         paymentMethod: paymentMethod || null,
         branch: branch !== undefined ? (branch || null) : undefined,
         accountId: accountId || null,
+        settlementBankAccountId: settlementBankAccountId !== undefined ? (settlementBankAccountId || null) : undefined,
         isActive: isActive !== undefined ? Boolean(isActive) : undefined,
         deductions: {
           create: deductions
@@ -128,6 +132,7 @@ export async function PUT(req: Request) {
       },
       include: {
         account: { select: { id: true, accountNumber: true, accountTitle: true } },
+        settlementBankAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         deductions: {
           include: {
             account: { select: { id: true, accountNumber: true, accountTitle: true } },

@@ -48,7 +48,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   const onRequired = <T extends string>(field: T, id: string | null) =>
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
-    transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
+    transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries, onHandAccts,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -105,7 +105,15 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       where: { date: range, reimbursementId: null, grossAmount: { gt: 0 } },
       select: { id: true, pcvNumber: true, grossAmount: true, date: true, requestor: true, description: true },
     }),
+    // "Petty Cash on Hand" accounts stand for the physical cash box. A transfer
+    // whose destination is one of them is a replenishment withdrawal — labelled
+    // as such so the bank's withdrawal line reads like what it is.
+    prisma.account.findMany({
+      where: { accountTitle: { contains: 'Petty Cash on Hand', mode: 'insensitive' } },
+      select: { id: true },
+    }),
   ])
+  const onHand = new Set(onHandAccts.map(a => a.id))
 
   const out: Candidate[] = []
 
@@ -131,7 +139,8 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       continue
     }
     out.push({
-      type: 'FUND_TRANSFER', id: t.id, label: `${t.refNumber} · Fund Transfer`,
+      type: 'FUND_TRANSFER', id: t.id,
+      label: `${t.refNumber} · ${onHand.has(t.toAccountId) ? 'Petty cash replenishment' : 'Fund Transfer'}`,
       date: t.date, amount: num(t.amount),
       dir: !bankAccountId ? 'either' : (t.fromAccountId === bankAccountId ? 'out' : 'in'),
     })

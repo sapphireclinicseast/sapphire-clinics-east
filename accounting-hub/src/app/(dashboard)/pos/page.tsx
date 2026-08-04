@@ -189,6 +189,8 @@ interface PaymentModeType {
   isActive: boolean
   accountId?: string | null
   account?: { id: string; accountNumber: string; accountTitle: string } | null
+  settlementBankAccountId?: string | null
+  settlementBankAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   deductions: PaymentModeDeductionType[]
 }
 
@@ -8568,8 +8570,9 @@ function PaymentModeSettingsPanel() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', paymentMethod: '', branch: '', accountId: '', isActive: true })
+  const [form, setForm] = useState({ name: '', paymentMethod: '', branch: '', accountId: '', settlementBankAccountId: '', isActive: true })
   const [accountSearch, setAccountSearch] = useState('')
+  const [settleSearch, setSettleSearch] = useState('')
   const [allAccounts, setAllAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; accountType: string }[]>([])
   const [deductions, setDeductions] = useState<{ name: string; rate: number; valueType: string; accountId: string; accountSearch: string; effectiveFrom: string; effectiveTo: string }[]>([])
   const [error, setError] = useState('')
@@ -8601,8 +8604,9 @@ function PaymentModeSettingsPanel() {
 
   const openCreate = () => {
     setEditingId(null)
-    setForm({ name: '', paymentMethod: '', branch: '', accountId: '', isActive: true })
+    setForm({ name: '', paymentMethod: '', branch: '', accountId: '', settlementBankAccountId: '', isActive: true })
     setAccountSearch('')
+    setSettleSearch('')
     setDeductions([])
     setError('')
     setShowForm(true)
@@ -8610,8 +8614,9 @@ function PaymentModeSettingsPanel() {
 
   const openEdit = (m: PaymentModeType) => {
     setEditingId(m.id)
-    setForm({ name: m.name, paymentMethod: m.paymentMethod || '', branch: m.branch || '', accountId: m.accountId || '', isActive: m.isActive })
+    setForm({ name: m.name, paymentMethod: m.paymentMethod || '', branch: m.branch || '', accountId: m.accountId || '', settlementBankAccountId: m.settlementBankAccountId || '', isActive: m.isActive })
     setAccountSearch(m.account ? `${m.account.accountNumber} ${m.account.accountTitle}` : '')
+    setSettleSearch(m.settlementBankAccount ? `${m.settlementBankAccount.accountNumber} ${m.settlementBankAccount.accountTitle}` : '')
     setDeductions((m.deductions || []).map(d => ({
       name: d.name,
       rate: Number(d.rate),
@@ -8639,6 +8644,7 @@ function PaymentModeSettingsPanel() {
       paymentMethod: form.paymentMethod || null,
       branch: form.branch || null,
       accountId: form.accountId || null,
+      settlementBankAccountId: form.settlementBankAccountId || null,
       isActive: form.isActive,
       deductions: deductions.filter(d => d.name.trim() && d.rate > 0).map(d => ({
         name: d.name.trim(),
@@ -8818,6 +8824,37 @@ function PaymentModeSettingsPanel() {
                     {filteredAccounts(accountSearch).map(a => (
                       <button key={a.id} type="button"
                         onClick={() => { setForm({ ...form, accountId: a.id }); setAccountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50">
+                        <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                        <span className="ml-1 text-gray-400">({a.accountType})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Settlement bank account — where the processor's payout actually lands
+                  when that is NOT the net-proceeds account (e.g. TikTok lodges into a
+                  clearing account but pays out into VER BDO Checking). Bank recon
+                  offers this mode's sales when reconciling this account too. */}
+              <div className="relative">
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Settlement Deposited To <span className="font-normal">(optional — bank account the payout lands in, if different; used by bank recon)</span>
+                </label>
+                <input type="text" value={settleSearch}
+                  onChange={e => { setSettleSearch(e.target.value); if (!e.target.value) setForm({ ...form, settlementBankAccountId: '' }) }}
+                  placeholder="Search bank account..."
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: form.settlementBankAccountId ? 'var(--teal)' : 'var(--light-gray)', background: form.settlementBankAccountId ? '#f0fdfa' : 'white' }} />
+                {form.settlementBankAccountId && (
+                  <button type="button" onClick={() => { setForm({ ...form, settlementBankAccountId: '' }); setSettleSearch('') }}
+                    className="absolute right-2 top-7 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                )}
+                {settleSearch && !form.settlementBankAccountId && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-36 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                    {filteredAccounts(settleSearch).map(a => (
+                      <button key={a.id} type="button"
+                        onClick={() => { setForm({ ...form, settlementBankAccountId: a.id }); setSettleSearch(`${a.accountNumber} ${a.accountTitle}`) }}
                         className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50">
                         <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
                         <span className="ml-1 text-gray-400">({a.accountType})</span>
