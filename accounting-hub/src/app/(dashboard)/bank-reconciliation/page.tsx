@@ -42,7 +42,7 @@ const cellText = (t: Txn, key: string): string => {
 interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
 interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
-interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[] }
+interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[]; partial?: boolean }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
 interface Hint { kind: string; label: string; amount: number; date: string; n: number }
 interface UntaggedGroup { type: string; label: string; count: number; total: number; truncated: boolean; items: { id: string; label: string; date: string; amount: number; dir: string }[] }
@@ -915,6 +915,8 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [showPos, setShowPos] = useState(false)
+  const [sel, setSel] = useState<Record<string, Match>>({})
+  const [partials, setPartials] = useState<Match[]>([])
   const searching = !!(q.trim() || from || to)
   useEffect(() => {
     setMatches(null)
@@ -923,7 +925,9 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
       if (q.trim()) p.set('q', q.trim())
       if (from) p.set('from', from)
       if (to) p.set('to', to)
-      fetch(`/api/bank-rec/matches?${p}`).then(r => r.ok ? r.json() : { matches: [] }).then(d => setMatches(d.matches || [])).catch(() => setMatches([]))
+      fetch(`/api/bank-rec/matches?${p}`).then(r => r.ok ? r.json() : { matches: [] })
+        .then(d => { setMatches(d.matches || []); setPartials(d.partials || []) })
+        .catch(() => { setMatches([]); setPartials([]) })
     }, q.trim() ? 350 : 0)
     return () => clearTimeout(t)
   }, [txn.id, q, from, to])
@@ -948,6 +952,42 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
       onDone()
     } finally { setBusy(false) }
   }
+  // One deposit often settles several records at once — Scott So and Sofia Tan
+  // paying ₱250,000 each into a single ₱500,000 line, or two cash loans arriving
+  // as one cheque. Ticking them accumulates a running total against the bank
+  // amount so the combination can be confirmed only once it actually adds up.
+  const key = (m: Match) => `${m.type}-${m.id}`
+  const combinable = (m: Match) => m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.type !== 'INTERBANK'
+  const toggle = (m: Match) => setSel(prev => {
+    const next = { ...prev }
+    if (next[key(m)]) delete next[key(m)]; else next[key(m)] = m
+    return next
+  })
+  const selList = Object.values(sel)
+  const target = txn.spent > 0 ? txn.spent : txn.received
+  const selTotal = Math.round(selList.reduce((s, m) => s + m.amount, 0) * 100) / 100
+  const selDiff = Math.round((selTotal - target) * 100) / 100
+
+  const pickMany = async () => {
+    if (selList.length < 2) return
+    setBusy(true)
+    try {
+      const types = [...new Set(selList.map(m => m.type))]
+      // A bank line carries one matchId, so a combination is stored as the ids
+      // joined; the label is what makes it legible afterwards.
+      const label = `${selList.length} records · ${selList.map(m => `${m.label} ₱${peso(m.amount)}`).join(' + ')}`
+      const body = {
+        id: txn.id, action: 'match',
+        matchType: types.length === 1 ? types[0] : 'MULTI',
+        matchId: selList.map(m => m.id).join(','),
+        matchLabel: label.slice(0, 500),
+      }
+      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
+      onDone()
+    } finally { setBusy(false) }
+  }
+
   const pickFx = async (m: FxMatch) => {
     const mine = txn.spent > 0 ? txn.spent : txn.received
     if (!confirm(`Record a currency exchange?\n\n₱${peso(txn.spent > 0 ? mine : m.amount)} ⇄ ${peso(txn.spent > 0 ? m.amount : mine)} ${m.currency}\nRate: 1 ${m.currency} = ${m.rate} PHP\n\nBoth bank lines will be posted against one fund transfer.`)) return
@@ -1012,7 +1052,7 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
         </div>
       )}
       {matches === null ? <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={15} className="inline animate-spin" /> Finding matches…</p>
-        : matches.length === 0 ? (
+        : matches.length === 0 && partials.length === 0 ? (
           <div className="text-center py-4">
             <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
               {searching
@@ -1023,20 +1063,81 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
           </div>
         ) : (
           <div className="space-y-2">
-            {matches.map(m => (
-              <button key={`${m.type}-${m.id}`} onClick={() => pick(m)} disabled={busy} className="w-full rounded-xl border px-3 py-2 text-left disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }}>
-                <div className="flex items-center justify-between gap-2">
-                  <div><p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{m.label}</p><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.date}</p></div>
-                  <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              {matches.length > 0
+                ? 'Click a record to match it on its own, or tick several to combine them when one deposit covered more than one.'
+                : 'Nothing matches this amount on its own. Tick the records that together make up this deposit.'}
+            </p>
+            {selList.length > 0 && (
+              <div className="rounded-xl border px-3 py-2 flex items-center justify-between gap-3 flex-wrap"
+                style={{ borderColor: selDiff === 0 ? '#16a34a' : 'var(--gold)', background: selDiff === 0 ? '#dcfce7' : '#fefce8' }}>
+                <div className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                  <strong>{selList.length} selected</strong> · ₱{peso(selTotal)} of ₱{peso(target)}
+                  <span className="ml-2 font-semibold" style={{ color: selDiff === 0 ? '#166534' : '#b45309' }}>
+                    {selDiff === 0 ? 'adds up exactly' : `${selDiff > 0 ? 'over' : 'short'} by ₱${peso(Math.abs(selDiff))}`}
+                  </span>
                 </div>
-                {/* Day settlements list what the total is made of, so one click confirms an informed tag. */}
-                {m.details && m.details.length > 0 && (
-                  <ul className="mt-1.5 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'var(--light-gray)' }}>
-                    {m.details.map((d, i) => <li key={i} className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{d}</li>)}
-                  </ul>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setSel({})} className="text-xs underline" style={{ color: 'var(--mid-gray)' }}>Clear</button>
+                  <button onClick={pickMany} disabled={busy || selList.length < 2 || selDiff !== 0}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+                    style={{ background: '#16a34a', cursor: (selList.length < 2 || selDiff !== 0) ? 'not-allowed' : 'pointer' }}
+                    title={selDiff !== 0 ? 'The ticked records must add up to the bank amount' : 'Match these records to this bank line'}>
+                    Match {selList.length} together
+                  </button>
+                </div>
+              </div>
+            )}
+            {matches.map(m => (
+              <div key={`${m.type}-${m.id}`} className="w-full rounded-xl border px-3 py-2 flex items-start gap-2.5"
+                style={{ borderColor: sel[key(m)] ? 'var(--teal)' : 'var(--light-gray)', background: sel[key(m)] ? 'var(--pale-teal)' : 'transparent' }}>
+                {combinable(m) && (
+                  <input type="checkbox" checked={!!sel[key(m)]} onChange={() => toggle(m)} disabled={busy}
+                    className="mt-1 shrink-0 cursor-pointer" title="Combine with other records to make up this bank line" />
                 )}
-              </button>
+                <button onClick={() => pick(m)} disabled={busy} className="flex-1 min-w-0 text-left disabled:opacity-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <div><p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{m.label}</p><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.date}</p></div>
+                    <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+                  </div>
+                  {/* Day settlements list what the total is made of, so one click confirms an informed tag. */}
+                  {m.details && m.details.length > 0 && (
+                    <ul className="mt-1.5 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'var(--light-gray)' }}>
+                      {m.details.map((d, i) => <li key={i} className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{d}</li>)}
+                    </ul>
+                  )}
+                </button>
+              </div>
             ))}
+
+            {/* Records smaller than the bank line. They can never match on their
+                own, so they are tick-only — a deposit that covered two or three
+                of them is confirmed from the running total above. */}
+            {partials.length > 0 && (
+              <div className="pt-1">
+                <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  Or combine several records
+                </p>
+                <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                  Smaller records in the same period — tick the ones this deposit paid for until they add up to ₱{peso(target)}.
+                </p>
+                <div className="space-y-1.5">
+                  {partials.map(m => (
+                    <label key={`${m.type}-${m.id}`} className="w-full rounded-xl border px-3 py-2 flex items-start gap-2.5 cursor-pointer"
+                      style={{ borderColor: sel[key(m)] ? 'var(--teal)' : 'var(--light-gray)', background: sel[key(m)] ? 'var(--pale-teal)' : 'transparent' }}>
+                      <input type="checkbox" checked={!!sel[key(m)]} onChange={() => toggle(m)} disabled={busy} className="mt-1 shrink-0 cursor-pointer" />
+                      <span className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{m.label}</span>
+                          <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.date}</span>
+                        </span>
+                        <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
     </Modal>

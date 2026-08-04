@@ -186,6 +186,18 @@ export async function GET(req: Request) {
   // Closest dates first.
   out.sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
 
+  // One deposit often covers several records — two shareholders paying ₱250,000
+  // each into a single ₱500,000 line. Those parts never match on amount, so
+  // they would never be suggested; offer anything smaller than the bank amount
+  // in the same window as a combinable part, for the picker to tick and total.
+  const chosen = new Set(out.map(c => `${c.type}-${c.id}`))
+  const partials = searching ? [] : forDirection(all, isSpent)
+    .filter(c => gte(c.date) && !c.fx && c.amount > 0 && c.amount < amount - 0.01
+      && !chosen.has(`${c.type}-${c.id}`))
+    .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount, partial: true }))
+    .sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
+    .slice(0, 25)
+
   // Interbank counterpart legs surface FIRST — an equal-amount pending line on
   // another own account within the settlement day is almost always the answer.
   const interbank = (await interbankCandidates(txn))
@@ -230,5 +242,11 @@ export async function GET(req: Request) {
     pos.sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
   }
 
-  return NextResponse.json({ matches: [...interbank, ...pos, ...out].slice(0, searching ? 50 : 20), searching })
+  // Exact suggestions first and capped as before; combinable parts ride along
+  // separately so a long tail of small records can never crowd them out.
+  return NextResponse.json({
+    matches: [...interbank, ...pos, ...out].slice(0, searching ? 50 : 20),
+    partials,
+    searching,
+  })
 }
