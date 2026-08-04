@@ -157,10 +157,18 @@ export async function GET(req: Request) {
     hi.setUTCDate(hi.getUTCDate() + 1)
   }
 
-  // Cut-off: bank's beginning-balance start date (only consider entries on/after).
+  // Cut-off: bank's beginning-balance start date. It exists so that reconciling
+  // a statement which opens at a beginning balance is not offered records that
+  // balance already absorbed — but it has nothing to say about a bank line that
+  // predates the cutoff itself. Those are historical statements being
+  // reconciled after the fact, and applying the cutoff to them suppressed every
+  // candidate the picker could have offered: with a 2026-01-01 opening balance
+  // on an account whose statements run from 2024, the modal came up empty while
+  // the grid went on announcing the very same match as "likely".
   const beg = await prisma.beginningBalance.findFirst({ where: { accountId: txn.bankAccountId, startDate: { not: null } }, orderBy: { periodYear: 'desc' } })
   const cutoff = beg?.startDate ? new Date(beg.startDate) : null
-  const gte = (d: Date) => (!cutoff || d >= cutoff)
+  const cutoffApplies = !!cutoff && new Date(txn.date) >= cutoff
+  const gte = (d: Date) => (!cutoffApplies || d >= (cutoff as Date))
 
   // Every recorded source the Hub knows about, not just transfers, RFPs and
   // orders — a payment missing from this list simply looks unmatchable.
