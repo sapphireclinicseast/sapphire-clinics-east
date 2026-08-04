@@ -408,6 +408,53 @@ export async function computeLedgerStatements(
   validation.fromLedger = Array.from(glRefTypes).sort()
   const hasRef = (type: string, id: string) => glRefIds.get(type)?.has(id) || false
 
+  /* ── 2b. Company-wide loan payments split by the loan's branch allocation ──
+     A loan payment JE posted with branch='ALL' (multi-branch or unallocated loan)
+     is invisible to a branch view under the filter above. When the loan carries
+     branchAllocations, this branch's share of the interest (and fee) expense is
+     included here, balanced against the paying bank — so the interest lands on
+     the branch income statements the loan actually funds. Loans dedicated to a
+     single branch post their payment JE directly on that branch and flow through
+     the normal journal fold instead. The ALL view is untouched (no double count). */
+  if (branchValues) {
+    const allocJes = await prisma.journalEntry.findMany({
+      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: 'LOAN_PAYMENT' },
+      select: {
+        referenceId: true, entryDate: true, description: true,
+        lines: { select: { debit: true, credit: true, account: { select: { accountNumber: true, accountType: true } } } },
+      },
+    })
+    const allocLoanIds = Array.from(new Set(allocJes.map(j => j.referenceId).filter((x): x is string => !!x)))
+    if (allocLoanIds.length) {
+      const allocLoans = await prisma.loan.findMany({ where: { id: { in: allocLoanIds } }, select: { id: true, branchAllocations: true } })
+      const shareByLoan = new Map<string, number>()
+      for (const l of allocLoans) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const allocs = Array.isArray(l.branchAllocations) ? (l.branchAllocations as any[]) : []
+        const total = allocs.reduce((s, a) => s + (Number(a?.amount) || 0), 0)
+        const mine = allocs.filter(a => a?.branch === orderBranch || a?.branch === branch).reduce((s, a) => s + (Number(a?.amount) || 0), 0)
+        if (total > 0 && mine > 0) shareByLoan.set(l.id, mine / total)
+      }
+      for (const je of allocJes) {
+        const share = shareByLoan.get(je.referenceId || '') || 0
+        if (!share) continue
+        const expLines = je.lines.filter(l => Number(l.debit) > 0 && l.account?.accountType === 'EXPENSE')
+        if (!expLines.length) continue
+        const bankLine = je.lines.find(l => Number(l.credit) > 0 && l.account)
+        const bankAcct = bankLine?.account ? (byNumber.get(bankLine.account.accountNumber) || defaultCash()) : defaultCash()
+        const items = expLines.map(l => ({
+          acct: l.account ? (byNumber.get(l.account.accountNumber) || virt(l.account.accountNumber, 'Unknown account', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT')) : virt('9998', 'Unmapped journal line', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT'),
+          debit: round2(Number(l.debit) * share),
+        })).filter(i => i.debit > 0)
+        const totalShare = round2(items.reduce((s, i) => s + i.debit, 0))
+        if (!totalShare) continue
+        postBalanced('journal:LOAN_PAYMENT', monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
+          ...items, { acct: bankAcct, credit: totalShare },
+        ])
+      }
+    }
+  }
+
   /* ── 3. Orders (synthesized when no POS_ORDER journal entry exists) ── */
   const orders = await prisma.order.findMany({
     where: {

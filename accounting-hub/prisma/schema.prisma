@@ -2767,6 +2767,9 @@ model Loan {
   loanAgreementUrls Json?
   pdcUrls           Json?
   netAmountToDebit  Decimal? // principal − charges deducted from disbursement
+  // [{branch: 'SANDBOX_EAST'|…, amount}] — which branch(es) this loan funds; interest
+  // expense follows this split on the branch income statements (null = company-wide)
+  branchAllocations Json?
   remarks           String?
   fromCreditLineId  String?  // set when this loan is a credit-line drawdown
   journalEntryId    String?
