@@ -58,11 +58,15 @@ export async function POST(req: Request) {
         deductions: {
           create: deductions
             .filter((d: { name: string; rate: number; accountId?: string }) => d.name && d.rate > 0)
-            .map((d: { name: string; rate: number; valueType?: string; accountId?: string }) => ({
+            .map((d: { name: string; rate: number; valueType?: string; accountId?: string; effectiveFrom?: string | null; effectiveTo?: string | null }) => ({
               name: d.name.trim(),
               rate: d.rate,
               valueType: d.valueType === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
               accountId: d.accountId || null,
+              // Rate eras (see PaymentModeDeduction) — round-tripped so a save
+              // never silently wipes them.
+              effectiveFrom: d.effectiveFrom ? new Date(d.effectiveFrom) : null,
+              effectiveTo: d.effectiveTo ? new Date(d.effectiveTo + 'T23:59:59.999Z') : null,
             })),
         },
       },
@@ -110,11 +114,15 @@ export async function PUT(req: Request) {
         deductions: {
           create: deductions
             .filter((d: { name: string; rate: number; accountId?: string }) => d.name && d.rate > 0)
-            .map((d: { name: string; rate: number; valueType?: string; accountId?: string }) => ({
+            .map((d: { name: string; rate: number; valueType?: string; accountId?: string; effectiveFrom?: string | null; effectiveTo?: string | null }) => ({
               name: d.name.trim(),
               rate: d.rate,
               valueType: d.valueType === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
               accountId: d.accountId || null,
+              // Rate eras (see PaymentModeDeduction) — round-tripped so a save
+              // never silently wipes them.
+              effectiveFrom: d.effectiveFrom ? new Date(d.effectiveFrom) : null,
+              effectiveTo: d.effectiveTo ? new Date(d.effectiveTo + 'T23:59:59.999Z') : null,
             })),
         },
       },

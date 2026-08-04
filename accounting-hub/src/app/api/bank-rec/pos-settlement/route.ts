@@ -19,16 +19,7 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_AD
 //
 // Net per payment: gross − Σ(percentage deductions × gross) − Σ(fixed).
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function netOf(amount: number, deductions: any[]): number {
-  let net = amount
-  for (const d of deductions || []) {
-    const rate = Number(d.rate) || 0
-    if (d.valueType === 'FIXED') net -= rate
-    else net -= amount * (rate / 100)
-  }
-  return Math.round(net * 100) / 100
-}
+import { netOfDeductions as netOf } from '@/lib/pos-settlement-shapes'
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -96,7 +87,7 @@ export async function GET(req: Request) {
       name: p.order.patientName || p.order.buyerName || '',
       branch: p.order.branch,
       gross: Number(p.amount),
-      net: netOf(Number(p.amount), mode.deductions),
+      net: netOf(Number(p.amount), mode.deductions, p.order.transactionDate),
       settledBy: settledBy.get(p.id) || null,
     })),
   })
@@ -130,7 +121,7 @@ export async function POST(req: Request) {
     if (already.length) return NextResponse.json({ error: `${already.length} of the selected payments are already settled by another deposit` }, { status: 409 })
 
     const gross = payments.reduce((s, p) => s + Number(p.amount), 0)
-    const net = mode ? payments.reduce((s, p) => s + netOf(Number(p.amount), mode.deductions), 0) : gross
+    const net = mode ? payments.reduce((s, p) => s + netOf(Number(p.amount), mode.deductions, p.order.transactionDate), 0) : gross
     const dates = [...new Set(payments.map(p => p.order.transactionDate.toISOString().slice(0, 10)))].sort()
     const dateLabel = dates.length === 1 ? dates[0] : `${dates[0]}…${dates[dates.length - 1]}`
     const label = `POS settlement · ${mode?.name || 'POS'} · ${dateLabel} · ${payments.length} payment(s) · net ₱${net.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
