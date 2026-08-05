@@ -8,6 +8,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Loader2, X, Download, ChevronDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { formatDisplay, displayCode, displayRate, inDisplay } from './display-currency'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import type { V2Statements, V2AccountRow, V2CollectedLine } from '@/lib/reports/v2/engine'
 
@@ -75,7 +76,9 @@ const sourceLabel = (s: string) => SOURCE_LABELS[s]
 /** Historical ledger labels/descriptions were stored with the pre-rebrand branch codes — sanitize at display time only. */
 const rebrand = (s: string) => s.replace(/\bSBEA\b/g, 'AHEA').replace(/\bSBGH\b/g, 'AHGH')
 
-const fmtAmt = (v: number) => (v < 0 ? `(${formatCurrency(Math.abs(v))})` : formatCurrency(v))
+// Statement figures follow the reports-wide presentation currency; the integrity
+// checks below deliberately stay in pesos (they reconcile to peso bank records).
+const fmtAmt = (v: number) => (v < 0 ? `(${formatDisplay(Math.abs(v))})` : formatDisplay(v))
 const fmtPct = (v: number, base: number) => (Math.abs(base) < 0.005 ? '—' : `${(v / base * 100).toFixed(1)}%`)
 
 function Amt({ v, bold, onClick, pctBase }: { v: number; bold?: boolean; onClick?: () => void; pctBase?: number | null }) {
@@ -205,19 +208,23 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
 
   const downloadExcel = () => {
     if (!lines) return
+    // The file matches what's on screen: same currency, and it says which one it is.
+    const ccy = displayCode()
+    const amt = (n: number) => inDisplay(n).toFixed(2)
     const rows: string[][] = [
       [title, month ? MONTHS[month - 1] : 'Whole year', String(year), branch],
+      ...(ccy === 'PHP' ? [] : [[`Amounts in ${ccy} at ₱${displayRate().toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} = 1 ${ccy}. Books are maintained in Philippine pesos.`]]),
       [],
-      ['Month', 'Source', 'Detail', 'Debit', 'Credit'],
+      ['Month', 'Source', 'Detail', `Debit (${ccy})`, `Credit (${ccy})`],
       ...lines.map(l => [
         l.month === 0 ? 'Opening' : MONTHS[l.month - 1],
         sourceLabel(l.source),
         rebrand(l.label),
-        l.debit ? l.debit.toFixed(2) : '',
-        l.credit ? l.credit.toFixed(2) : '',
+        l.debit ? amt(l.debit) : '',
+        l.credit ? amt(l.credit) : '',
       ]),
-      ['Totals', '', '', sumDebit.toFixed(2), sumCredit.toFixed(2)],
-      ['Net (debits − credits)', '', '', '', net.toFixed(2)],
+      ['Totals', '', '', amt(sumDebit), amt(sumCredit)],
+      ['Net (debits − credits)', '', '', '', amt(net)],
       ...(truncated ? [[`Note: list shows the first ${lines.length} entries — totals cover every entry.`]] : []),
     ]
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -279,8 +286,8 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
                     <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#6b7280' }}>{l.month === 0 ? 'Opening' : MONTHS[l.month - 1]}</td>
                     <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#374151' }}>{sourceLabel(l.source)}</td>
                     <td className="px-3 py-1" style={{ color: '#111827' }}>{rebrand(l.label)}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{l.debit ? formatCurrency(l.debit) : ''}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{l.credit ? formatCurrency(l.credit) : ''}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{l.debit ? formatDisplay(l.debit) : ''}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{l.credit ? formatDisplay(l.credit) : ''}</td>
                   </tr>
                 ))}
               </tbody>
@@ -294,8 +301,8 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
                 )}
                 <tr style={{ borderTop: '1px solid #d1d5db' }}>
                   <td colSpan={3} className="px-3 py-1.5 font-semibold" style={{ color: '#111827' }}>Totals</td>
-                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums" style={{ color: '#111827' }}>{sumDebit ? formatCurrency(sumDebit) : ''}</td>
-                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums" style={{ color: '#111827' }}>{sumCredit ? formatCurrency(sumCredit) : ''}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums" style={{ color: '#111827' }}>{sumDebit ? formatDisplay(sumDebit) : ''}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums" style={{ color: '#111827' }}>{sumCredit ? formatDisplay(sumCredit) : ''}</td>
                 </tr>
                 {sumDebit > 0.005 && sumCredit > 0.005 && (
                   <tr>
@@ -382,6 +389,11 @@ export default function LedgerStatements({ year, branch, tab, view }: {
             {c.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}{c.label}
           </span>
         ))}
+        {displayCode() !== 'PHP' && (
+          <span style={{ color: '#64748b' }}>
+            (these checks stay in pesos — they reconcile against peso bank records)
+          </span>
+        )}
       </div>
       {v.imbalancePlugs.length > 0 && (
         <div className="px-3 pb-2" style={{ color: '#b45309' }}>
