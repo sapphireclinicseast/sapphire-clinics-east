@@ -8,6 +8,7 @@ import {
   Calendar, Building2, LayoutList, BarChart3, X,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { DISPLAY_CURRENCIES, type DisplayCurrency, setDisplay, inDisplay, fmt, fmtSigned } from './display-currency'
 import { computeIncomeStatementTotals, INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
 import HistoricalReport from './HistoricalReport'
@@ -269,47 +270,7 @@ function getMonthlyArray(data: Record<number, MonthData>, getter: (m: MonthData)
    income statement, and a translation reserve). The rate in force is printed
    above the report and carried into the Excel export so a downloaded copy can
    never be mistaken for pesos. */
-export const DISPLAY_CURRENCIES = [
-  { code: 'PHP', symbol: '₱', label: 'Philippine peso' },
-  { code: 'USD', symbol: '$', label: 'US dollar' },
-  { code: 'EUR', symbol: '€', label: 'Euro' },
-] as const
-export type DisplayCurrency = (typeof DISPLAY_CURRENCIES)[number]['code']
 
-// Set once per render by the page component, before any fmt() call.
-let DISPLAY: { code: DisplayCurrency; symbol: string; phpPerUnit: number } = { code: 'PHP', symbol: '₱', phpPerUnit: 1 }
-function setDisplay(code: DisplayCurrency, phpPerUnit: number) {
-  // Without a usable rate we stay in pesos entirely — symbol included. Showing a
-  // dollar sign against an untranslated peso figure would be worse than useless.
-  if (code === 'PHP' || !(phpPerUnit > 0)) {
-    DISPLAY = { code: 'PHP', symbol: '₱', phpPerUnit: 1 }
-    return
-  }
-  const c = DISPLAY_CURRENCIES.find(x => x.code === code) || DISPLAY_CURRENCIES[0]
-  DISPLAY = { code: c.code, symbol: c.symbol, phpPerUnit }
-}
-
-/** PHP figure → the amount shown, in whatever currency is selected. */
-function inDisplay(n: number): number {
-  return DISPLAY.phpPerUnit === 1 ? n : n / DISPLAY.phpPerUnit
-}
-
-function formatDisplay(n: number): string {
-  if (DISPLAY.code === 'PHP') return formatCurrency(n)
-  return DISPLAY.symbol + inDisplay(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function fmt(n: number): string {
-  if (n === 0) return '—'
-  return formatDisplay(n)
-}
-
-function fmtSigned(n: number): string {
-  if (n === 0) return '—'
-  const prefix = n < 0 ? '(' : ''
-  const suffix = n < 0 ? ')' : ''
-  return prefix + formatDisplay(Math.abs(n)) + suffix
-}
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED ROW COMPONENTS  (QuickBooks-style clean design)
