@@ -982,6 +982,13 @@ export default function PayrollPage() {
   const [loadingEmpSalPayable, setLoadingEmpSalPayable] = useState(false)
   const [showSalRemitted, setShowSalRemitted] = useState(false)
   const [showEmpSalRemitted, setShowEmpSalRemitted] = useState(false)
+  // One search box per subsection of Salaries Payable, so a term typed while
+  // looking at employees doesn't silently filter the consultants list too.
+  const [empSalSearch, setEmpSalSearch] = useState('')
+  const [conSalSearch, setConSalSearch] = useState('')
+  const [salHistorySearch, setSalHistorySearch] = useState('')
+  // Off = show only the cutoff picked at the top of the page (what the selector implies).
+  const [salAllCutoffs, setSalAllCutoffs] = useState(false)
 
   // Benefits Payable tab state
   const [benefitsPayables, setBenefitsPayables] = useState<BenefitEmployeeEntry[]>([])
@@ -5197,11 +5204,31 @@ export default function PayrollPage() {
          ═══════════════════════════════════════════════════════════ */}
       {mainTab === 'salaries-payable' && (() => {
         const isEmpTab = salPayableSubTab === 'employees'
-        const activePayables = isEmpTab ? empSalPayables : salariesPayables
+        const loadedPayables = isEmpTab ? empSalPayables : salariesPayables
         const activeSelected = isEmpTab ? selectedEmpSalPayableIds : selectedSalaryPayableIds
         const setActiveSelected = isEmpTab ? setSelectedEmpSalPayableIds : setSelectedSalaryPayableIds
+        const salSearch = isEmpTab ? empSalSearch : conSalSearch
+        const setSalSearch = isEmpTab ? setEmpSalSearch : setConSalSearch
+        // The Cutoff selector at the top of the page now scopes this list too — it
+        // used to be ignored here, so a 2nd-cutoff view still listed 1st-cutoff rows.
+        // Anything outstanding in another cutoff is counted below rather than dropped.
+        const allPayables = salAllCutoffs ? loadedPayables : loadedPayables.filter(p => p.cutoffPeriod === cutoffPeriod)
+        const otherCutoffCount = loadedPayables.length - allPayables.length
+        const sq = salSearch.trim().toLowerCase()
+        const activePayables = sq
+          ? allPayables.filter(p => [
+              isEmpTab ? p.employeeName : p.consultantName,
+              p.department, DEPT_LABELS[p.department || ''] || '',
+              getCutoffLabel(p.cutoffPeriod), p.cutoffPeriod,
+              branchLabel(p.branch), p.branch,
+              p.salariesRemitted ? 'remitted' : p.salaryRfpId ? 'in rfp' : 'pending',
+            ].some(v => (v || '').toString().toLowerCase().includes(sq)))
+          : allPayables
         const unremitted = activePayables.filter(p => !p.salariesRemitted && !p.salaryRfpId)
-        const selectedTotal = activePayables.filter(p => activeSelected.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
+        // Totals follow the selection itself, not the filtered view — a row selected
+        // before searching is still going into the RFP even if it's hidden now.
+        const selectedTotal = allPayables.filter(p => activeSelected.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
+        const hiddenSelected = activeSelected.filter(id => !activePayables.some(p => p.id === id)).length
         const isLoading = isEmpTab ? loadingEmpSalPayable : loadingSalPayable
         return (
         <div className="space-y-4">
@@ -5212,7 +5239,7 @@ export default function PayrollPage() {
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Salaries Payable</h2>
             <div className="flex items-center gap-3">
               {activeSelected.length > 0 && (
-                <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', activePayables, activeSelected)}
+                <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', allPayables, activeSelected)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
                   <BadgeDollarSign size={14} /> RFP ({activeSelected.length})
@@ -5238,13 +5265,64 @@ export default function PayrollPage() {
             ))}
           </div>
 
+          {/* Cutoff scope — the list follows the Cutoff selector at the top of the page */}
+          {!isLoading && loadedPayables.length > 0 && (
+            <div className="flex items-center justify-between gap-3 flex-wrap rounded-xl border px-4 py-2.5"
+              style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                {salAllCutoffs
+                  ? <>Showing <strong style={{ color: 'var(--charcoal)' }}>all cutoffs</strong> with unremitted salaries.</>
+                  : <>Showing <strong style={{ color: 'var(--charcoal)' }}>{getCutoffLabel(cutoffPeriod)}</strong>.
+                      {otherCutoffCount > 0
+                        ? ` ${otherCutoffCount} unremitted payslip${otherCutoffCount === 1 ? '' : 's'} in other cutoffs — not shown.`
+                        : ' No unremitted payslips in other cutoffs.'}</>}
+              </span>
+              <label className="flex items-center gap-2 text-xs cursor-pointer whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                <input type="checkbox" checked={salAllCutoffs} onChange={e => setSalAllCutoffs(e.target.checked)} />
+                Show all cutoffs
+              </label>
+            </div>
+          )}
+
+          {/* Search for this subsection */}
+          {!isLoading && allPayables.length > 0 && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[240px] max-w-md">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                <input value={salSearch} onChange={e => setSalSearch(e.target.value)}
+                  placeholder={`Search ${isEmpTab ? 'employee' : 'consultant'}, department, cutoff, branch, status…`}
+                  className="w-full pl-9 pr-8 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                {salSearch && (
+                  <button onClick={() => setSalSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <X size={15} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                )}
+              </div>
+              {sq && (
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  {activePayables.length} of {allPayables.length}
+                  {hiddenSelected > 0 && (
+                    <span style={{ color: '#b45309' }}> · {hiddenSelected} selected row{hiddenSelected === 1 ? '' : 's'} hidden by this search (still included in the RFP)</span>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
+
           {isLoading ? (
             <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
           ) : activePayables.length === 0 ? (
             <p className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>
-              {isEmpTab
-                ? 'No employee salary records. Lock employee payslips to see them here.'
-                : 'No consultant salary records. Finalize consultant payroll to create entries.'}
+              {sq
+                ? `No ${isEmpTab ? 'employees' : 'consultants'} match “${salSearch.trim()}”.`
+                : otherCutoffCount > 0
+                  ? <>Nothing unremitted for <strong style={{ color: 'var(--charcoal)' }}>{getCutoffLabel(cutoffPeriod)}</strong>.{' '}
+                      <button onClick={() => setSalAllCutoffs(true)} className="underline font-semibold" style={{ color: 'var(--teal)' }}>
+                        Show all {otherCutoffCount} from other cutoffs
+                      </button></>
+                  : isEmpTab
+                    ? 'No employee salary records. Lock employee payslips to see them here.'
+                    : 'No consultant salary records. Finalize consultant payroll to create entries.'}
             </p>
           ) : (
             <div className="space-y-3">
@@ -5311,7 +5389,7 @@ export default function PayrollPage() {
                   {activeSelected.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
                 </span>
                 {activeSelected.length > 0 && (
-                  <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', activePayables, activeSelected)}
+                  <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', allPayables, activeSelected)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
                     <BadgeDollarSign size={14} /> RFP ({activeSelected.length} payslips)
@@ -5323,11 +5401,40 @@ export default function PayrollPage() {
           )}
 
           {/* Salary Payment History — only on Consultants tab */}
-          {salPayableSubTab === 'consultants' && salaryPayments.length > 0 && (
+          {salPayableSubTab === 'consultants' && salaryPayments.length > 0 && (() => {
+            const hq = salHistorySearch.trim().toLowerCase()
+            // A payment matches on its own details, or on any consultant paid in it.
+            const shownPayments = hq
+              ? salaryPayments.filter(sp => [
+                  new Date(sp.paymentDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }),
+                  sp.paymentDate.slice(0, 10), sp.cutoffPeriod, getCutoffLabel(sp.cutoffPeriod),
+                  branchLabel(sp.branch), sp.branch, sp.notes,
+                  sp.fromAccount.accountNumber, sp.fromAccount.accountTitle,
+                  ...(sp.consultants || []).flatMap(c => [c.name, c.department, DEPT_LABELS[c.department || ''] || '', getCutoffLabel(c.cutoffPeriod)]),
+                ].some(v => (v || '').toString().toLowerCase().includes(hq)))
+              : salaryPayments
+            return (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Payment History</p>
+              <div className="flex items-center gap-3 flex-wrap mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Payment History</p>
+                <div className="relative flex-1 min-w-[220px] max-w-sm">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                  <input value={salHistorySearch} onChange={e => setSalHistorySearch(e.target.value)}
+                    placeholder="Search consultant, date, cutoff, account…"
+                    className="w-full pl-9 pr-8 py-1.5 rounded-xl border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  {salHistorySearch && (
+                    <button onClick={() => setSalHistorySearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <X size={14} style={{ color: 'var(--mid-gray)' }} />
+                    </button>
+                  )}
+                </div>
+                {hq && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{shownPayments.length} of {salaryPayments.length}</span>}
+              </div>
+              {shownPayments.length === 0 && (
+                <p className="text-xs py-6 text-center" style={{ color: 'var(--mid-gray)' }}>No payments match “{salHistorySearch.trim()}”.</p>
+              )}
               <div className="space-y-3">
-                {salaryPayments.map(sp => (
+                {shownPayments.map(sp => (
                   <div key={sp.id} className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <div className="flex flex-wrap items-center gap-4">
@@ -5376,7 +5483,8 @@ export default function PayrollPage() {
                 ))}
               </div>
             </div>
-          )}
+            )
+          })()}
         </div>
         )
       })()}

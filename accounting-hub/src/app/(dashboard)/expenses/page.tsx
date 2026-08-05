@@ -137,6 +137,25 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
     })
   } catch { return null }
 }
+// One-time expenses accumulate into the thousands per branch — more editable rows
+// than a browser will render. The grid loads a recent window by default; searching
+// still reaches the whole history (the server does that part), and the Excel/PDF
+// export pulls its own From/To range, so neither is limited by what's on screen.
+const PERIODS = [
+  { key: '3m', label: 'Last 3 months', months: 3 },
+  { key: '6m', label: 'Last 6 months', months: 6 },
+  { key: '12m', label: 'Last 12 months', months: 12 },
+  { key: 'all', label: 'All time', months: 0 },
+] as const
+type PeriodKey = typeof PERIODS[number]['key']
+const periodFrom = (key: PeriodKey): string => {
+  const m = PERIODS.find(p => p.key === key)?.months || 0
+  if (!m) return ''
+  const d = new Date()
+  d.setMonth(d.getMonth() - m)
+  return d.toISOString().slice(0, 10)
+}
+
 const monthInput = (d: string | null) => (d ? String(d).slice(0, 7) : '')
 const monthsInWindow = (startISO: string | null, endISO: string | null) => {
   if (!startISO || !endISO) return 0
@@ -168,6 +187,9 @@ export default function ExpensesPage() {
   const entriesRef = useRef<Entry[]>([])
   useEffect(() => { entriesRef.current = entries }, [entries])
   const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState<PeriodKey>('3m')
+  const [totalCount, setTotalCount] = useState(0)      // all rows in this tab, ignoring the window
+  const [searchCapped, setSearchCapped] = useState(false)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
   const [bankOptions, setBankOptions] = useState<string[]>([])
@@ -253,15 +275,33 @@ export default function ExpensesPage() {
   const isRecording = recordType === 'RECURRING' || recordType === 'ONE_TIME'
   const isRecurringTab = recordType === 'RECURRING'
 
-  const loadEntries = useCallback(async (br: string, rt: string) => {
+  const loadEntries = useCallback(async (br: string, rt: string, per: PeriodKey, term: string) => {
     if (!rt) { setEntries([]); setLoading(false); return }
     setLoading(true)
     try {
-      const r = await fetch(`/api/petty-cash/entries?branch=${br}&recordType=${rt}`)
+      const qs = new URLSearchParams({ branch: br, recordType: rt })
+      // Only one-time expenses are big enough to need a window; recurring setups
+      // and petty cash are a handful of rows and always load whole.
+      const t = term.trim()
+      if (t) qs.set('q', t)
+      else if (rt === 'ONE_TIME') {
+        const w = periodFrom(per)
+        if (w) qs.set('from', w)
+      }
+      const r = await fetch(`/api/petty-cash/entries?${qs}`)
       setEntries(r.ok ? await r.json() : [])
-    } catch { setEntries([]) }
+      setTotalCount(r.ok ? Number(r.headers.get('X-Total-Count') || 0) : 0)
+      setSearchCapped(r.ok && r.headers.get('X-Search-Capped') === '1')
+    } catch { setEntries([]); setTotalCount(0); setSearchCapped(false) }
     setLoading(false)
   }, [])
+
+  // Refs so the many `reload(...)` call sites below keep a stable identity while
+  // still picking up the current window / search term.
+  const periodRef = useRef<PeriodKey>(period)
+  const searchRef = useRef('')
+  useEffect(() => { periodRef.current = period }, [period])
+  const reload = useCallback((br: string, rt: string) => loadEntries(br, rt, periodRef.current, searchRef.current), [loadEntries])
 
   const loadSettings = useCallback(async (br: string) => {
     try {
@@ -302,8 +342,15 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     setSelected(new Set()); setRfpMode(null)
-    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch); loadRecurringDue(branch)
-  }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers, loadRfps, loadRecurringDue])
+    loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch); loadRecurringDue(branch)
+  }, [branch, recordType, loadSettings, loadCards, loadSuppliers, loadRfps, loadRecurringDue])
+
+  // Entries reload on their own so changing the window or the search term refetches.
+  // The term is debounced — a search runs against the whole history server-side.
+  useEffect(() => {
+    const t = setTimeout(() => { searchRef.current = search; loadEntries(branch, recordType, period, search) }, search ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [branch, recordType, period, search, loadEntries])
 
   const generateFromRecurring = async (recurringId: string) => {
     setGenFromRecurring(recurringId)
@@ -314,7 +361,7 @@ export default function ExpensesPage() {
       })
       if (r.ok) {
         if (tab !== 'onetime') setTab('onetime')
-        await loadEntries(branch, 'ONE_TIME')
+        await reload(branch, 'ONE_TIME')
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 80)
       } else alert((await r.json()).error || 'Failed to generate entry')
     } catch { alert('Failed to generate entry') }
@@ -478,7 +525,7 @@ export default function ExpensesPage() {
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to create SOA'); setCreatingSoa(false); return }
       setShowCcPick(false); setCcMode(false); setSelected(new Set())
-      await loadEntries(branch, 'ONE_TIME')
+      await reload(branch, 'ONE_TIME')
       setTab('cc-soa')
     } catch { alert('Failed to create SOA') }
     setCreatingSoa(false)
@@ -500,7 +547,7 @@ export default function ExpensesPage() {
         await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdfData }) })
       } catch { /* pdf best-effort */ }
       setShowRfpModal(false); setRfpMode(null); setSelected(new Set()); setRfpManualSeq('')
-      await loadEntries(branch, recordType); await loadRfps(branch)
+      await reload(branch, recordType); await loadRfps(branch)
       setTab('rfp')
     } catch { alert('Failed to generate RFP') }
     setGeneratingRfp(false)
@@ -515,7 +562,7 @@ export default function ExpensesPage() {
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to record payment'); setPaying(false); return }
       setPayTarget(null)
-      await loadRfps(branch); await loadEntries(branch, recordType)
+      await loadRfps(branch); await reload(branch, recordType)
     } catch { alert('Failed to record payment') }
     setPaying(false)
   }
@@ -531,9 +578,22 @@ export default function ExpensesPage() {
   // ── Downloads (Excel / PDF) with the From/To range ──
   const brLabel = BRANCHES.find(b => b.value === branch)?.label || branch
   const rangeNote = `${dlFrom || 'start'} → ${dlTo || 'end'}`
-  const exportEntries = (fmt: ExportFormat) => {
+  // The export covers the whole From/To range, not just the rows currently loaded
+  // in the grid — otherwise narrowing the window would silently shrink the report.
+  const exportEntries = async (fmt: ExportFormat) => {
     const isRecurring = recordType === 'RECURRING'
-    const rows = entries.filter(e => inDateRange(e.date, dlFrom, dlTo))
+    let source = entries
+    if (recordType === 'ONE_TIME') {
+      const qs = new URLSearchParams({ branch, recordType })
+      if (dlFrom) qs.set('from', dlFrom)
+      if (dlTo) qs.set('to', dlTo)
+      try {
+        const r = await fetch(`/api/petty-cash/entries?${qs}`)
+        if (!r.ok) { alert('Could not load the entries for that range.'); return }
+        source = await r.json()
+      } catch { alert('Could not load the entries for that range.'); return }
+    }
+    const rows = source.filter(e => inDateRange(e.date, dlFrom, dlTo))
     const headers = isRecurring
       ? ['Reference', 'Payee', 'Department', 'Description', 'Account Title', 'Frequency', 'Vatable', 'Gross Amount']
       : ['Reference', 'Payee', 'Department', 'Date', 'Description', 'Account Title', 'Vatable', 'Validity', 'Audited', 'Gross Amount', 'Payment']
@@ -596,7 +656,7 @@ export default function ExpensesPage() {
     try {
       if (isPayrollRfp(rfp)) await reversePayrollPayment(rfp)
       await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'unpay' }) })
-      await loadRfps(branch); await loadEntries(branch, recordType)
+      await loadRfps(branch); await reload(branch, recordType)
     } catch { /* ignore */ }
   }
 
@@ -606,7 +666,7 @@ export default function ExpensesPage() {
     try {
       if (isPayrollRfp(rfp) && rfp.status === 'PAID') await reversePayrollPayment(rfp)
       setRfps(prev => prev.filter(r => r.id !== rfp.id))
-      await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await loadEntries(branch, recordType)
+      await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await reload(branch, recordType)
     } catch { /* ignore */ }
   }
 
@@ -743,8 +803,13 @@ export default function ExpensesPage() {
   const locked = (e: Entry) => !!e.reimbursementId || !!e.soaId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
 
+  // Only the one-time tab is loaded through a date window (it's the only one that
+  // grows into the thousands); everything else behaves exactly as before.
+  const isWindowed = recordType === 'ONE_TIME'
   const q = search.trim().toLowerCase()
-  const shown = q
+  // On the windowed tab the server has already applied the search across all
+  // history; re-filtering here would only drop rows while the fetch is in flight.
+  const shown = q && !isWindowed
     ? entries.filter(e => [e.pcvNumber, e.requestor, e.description, e.accountTitle, e.siNumber, e.registeredName, e.tinNumber, e.paymentMethod]
         .some(v => (v || '').toString().toLowerCase().includes(q)))
     : entries
@@ -937,16 +1002,26 @@ export default function ExpensesPage() {
       {isRecording && (
         <>
           <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportEntries}
-            dateLabel="Expense date" note={`${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
+            dateLabel="Expense date"
+            note={isWindowed ? 'exports the full range' : `${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
           {/* Search + scroll controls */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="relative flex-1 min-w-[240px] max-w-md">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search payee, description, PCV, account…"
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder={isWindowed ? 'Search all entries — payee, description, PCV, account…' : 'Search payee, description, PCV, account…'}
                 className="w-full pl-9 pr-8 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2"><X size={15} style={{ color: 'var(--mid-gray)' }} /></button>}
             </div>
             <div className="flex items-center gap-2">
+              {isWindowed && (
+                <select value={period} onChange={e => setPeriod(e.target.value as PeriodKey)} disabled={!!q}
+                  title={q ? 'Search covers every entry, so the period does not apply' : 'How far back to load into the grid'}
+                  className="px-3 py-2 rounded-xl border text-xs font-semibold outline-none disabled:opacity-50"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                  {PERIODS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              )}
               <button onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
                 className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                 <ArrowUp size={14} /> Top
@@ -959,9 +1034,19 @@ export default function ExpensesPage() {
           </div>
 
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            {shown.length}{q ? ` of ${entries.length}` : ''} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
+            {shown.length}{isWindowed && totalCount > shown.length ? ` of ${totalCount}` : q ? ` of ${entries.length}` : ''} entries
+            {' · '}{selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
             {' · '}Next PCV #{nextPcvSeq}
           </p>
+          {isWindowed && (
+            <p className="text-[11px] -mt-2" style={{ color: 'var(--mid-gray)' }}>
+              {q
+                ? searchCapped
+                  ? 'Showing the first 500 matches from every entry on record — narrow the search to see fewer.'
+                  : 'Searching every entry on record, not just the period above.'
+                : `Showing ${PERIODS.find(p => p.key === period)?.label.toLowerCase()} — Total Gross covers these rows only. Search to reach older entries, or widen the period. The Excel/PDF export always covers its full From/To range.`}
+            </p>
+          )}
 
           <div ref={scrollRef} className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 260px)' : '66vh' }}>
             {loading ? (
@@ -1351,7 +1436,7 @@ export default function ExpensesPage() {
       )}
 
       {tab === 'cc-soa' && (
-        <CreditCardSoaTab branch={branch} canWrite={canWrite} onChanged={() => { loadRfps(branch); loadEntries(branch, 'ONE_TIME') }} />
+        <CreditCardSoaTab branch={branch} canWrite={canWrite} onChanged={() => { loadRfps(branch); reload(branch, 'ONE_TIME') }} />
       )}
 
       {tab === 'cc-report' && (
