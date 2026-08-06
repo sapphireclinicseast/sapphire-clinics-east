@@ -58,6 +58,8 @@ export default function BankReconciliationPage() {
 
   const [accounts, setAccounts] = useState<BankAcct[]>([])
   const [showFT, setShowFT] = useState(false)
+  // Set when the transfer modal is opened from a single line rather than the toolbar.
+  const [ftFor, setFtFor] = useState<Txn | null>(null)
   const [sel, setSel] = useState('')
   const [tab, setTab] = useState<'PENDING' | 'POSTED' | 'EXCLUDED' | 'ARCHIVED'>('PENDING')
   const [txns, setTxns] = useState<Txn[]>([])
@@ -440,6 +442,7 @@ export default function BankReconciliationPage() {
                           )}
                           <button onClick={() => setMatchFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Link2 size={13} /> Match</button>
                           <button onClick={() => setCatFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}><Check size={13} /> Categorise</button>
+                          <button onClick={() => setFtFor(t)} title="Record this line as a transfer to another of our accounts, or to a petty cash box" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><ArrowLeftRight size={13} /> Transfer</button>
                           <button onClick={() => act({ id: t.id, action: 'exclude' })} title="Exclude" className="inline-flex items-center px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Ban size={13} /></button>
                         </>
                       )}
@@ -467,6 +470,7 @@ export default function BankReconciliationPage() {
       {showRules && <RulesModal coa={coa} accounts={accounts} onClose={() => setShowRules(false)} onDone={refreshAll} />}
       {showForexCfg && <ForexAccountsModal onClose={() => setShowForexCfg(false)} onSaved={async () => { setShowForexCfg(false); await refreshAll() }} />}
       {showFT && <RecordFundTransferModal accounts={accounts} defaultFromId={account?.id || ''} onClose={() => setShowFT(false)} onDone={async () => { setShowFT(false); await refreshAll() }} />}
+      {ftFor && <RecordFundTransferModal accounts={accounts} defaultFromId={account?.id || ''} line={ftFor} onClose={() => setFtFor(null)} onDone={async () => { setFtFor(null); await refreshAll() }} />}
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
       {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
@@ -1270,15 +1274,22 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
  *  The account list is the same one shown in the strip above, so petty-cash-on-hand
  *  accounts are selectable as a destination — that is how a cash withdrawal to the
  *  physical box gets recorded and later matched against the bank line. */
-function RecordFundTransferModal({ accounts, defaultFromId, onClose, onDone }: {
-  accounts: BankAcct[]; defaultFromId: string; onClose: () => void; onDone: () => void
+// Records a transfer between two of our own accounts. Opened either from the
+// toolbar (blank) or from a single bank line via `line`, in which case the date,
+// amount and this line's own side are taken from the statement — a line that
+// went out makes this account the "from", one that came in makes it the "to" —
+// and the line is matched to the new transfer on save, so it does not have to be
+// hunted down in the Match dialog afterwards.
+function RecordFundTransferModal({ accounts, defaultFromId, line, onClose, onDone }: {
+  accounts: BankAcct[]; defaultFromId: string; line?: Txn | null; onClose: () => void; onDone: () => void
 }) {
-  const [fromId, setFromId] = useState(defaultFromId)
-  const [toId, setToId] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [amount, setAmount] = useState('')
+  const lineIsSpent = !!line && line.spent > 0
+  const [fromId, setFromId] = useState(lineIsSpent || !line ? defaultFromId : '')
+  const [toId, setToId] = useState(line && !lineIsSpent ? defaultFromId : '')
+  const [date, setDate] = useState(line ? line.date : new Date().toISOString().slice(0, 10))
+  const [amount, setAmount] = useState(line ? String(line.spent > 0 ? line.spent : line.received) : '')
   const [checkNumber, setCheckNumber] = useState('')
-  const [description, setDescription] = useState('')
+  const [description, setDescription] = useState(line ? line.description : '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -1302,6 +1313,22 @@ function RecordFundTransferModal({ accounts, defaultFromId, onClose, onDone }: {
       })
       const d = await r.json()
       if (!r.ok) { setErr(d.error || 'Failed to record the transfer'); return }
+      // Opened from a bank line: tie that line to the transfer we just made, so
+      // it leaves the pending list here rather than waiting to be found again in
+      // the Match dialog. The label matches what the Match dialog would write.
+      // The transfer itself is already recorded, so a failure here is reported
+      // without discarding it — the line can still be matched by hand.
+      if (line) {
+        const m = await fetch('/api/bank-rec/transactions', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: line.id, action: 'match', matchType: 'FUND_TRANSFER', matchId: d.id, matchLabel: `${d.refNumber} · Fund Transfer` }),
+        })
+        if (!m.ok) {
+          const md = await m.json().catch(() => ({}))
+          setErr(`Transfer ${d.refNumber} was recorded, but this line could not be matched to it (${md.error || 'failed'}). Match it by hand.`)
+          return
+        }
+      }
       onDone()
     } catch { setErr('Network error') }
     finally { setSaving(false) }
@@ -1311,16 +1338,23 @@ function RecordFundTransferModal({ accounts, defaultFromId, onClose, onDone }: {
   return (
     <Modal title="Record Fund Transfer" onClose={onClose}>
       <div className="space-y-3">
+        {line && (
+          <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+            {line.date} · {line.description} · <strong>₱{peso(line.spent > 0 ? line.spent : line.received)}</strong> {line.spent > 0 ? 'out' : 'in'} — so this account is the {lineIsSpent ? 'source' : 'destination'}. Choose the {lineIsSpent ? 'destination' : 'source'} below.
+          </p>
+        )}
         <div>
           <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
-          <select value={fromId} onChange={e => setFromId(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field}>
+          {/* The statement already says which way this line went, so its own side
+              is fixed — only the far side is a choice. */}
+          <select value={fromId} onChange={e => setFromId(e.target.value)} disabled={lineIsSpent} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ ...field, background: lineIsSpent ? 'var(--off-white)' : undefined }}>
             <option value="">— Select account —</option>
-            {accounts.map(a => <option key={a.id} value={a.id}>{label(a)}</option>)}
+            {accounts.filter(a => lineIsSpent || a.id !== toId).map(a => <option key={a.id} value={a.id}>{label(a)}</option>)}
           </select>
         </div>
         <div>
           <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>To <span className="font-normal">(another bank account, or a petty cash box)</span></label>
-          <select value={toId} onChange={e => setToId(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field}>
+          <select value={toId} onChange={e => setToId(e.target.value)} disabled={!!line && !lineIsSpent} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ ...field, background: (!!line && !lineIsSpent) ? 'var(--off-white)' : undefined }}>
             <option value="">— Select account —</option>
             {accounts.filter(a => a.id !== fromId).map(a => <option key={a.id} value={a.id}>{label(a)}</option>)}
           </select>
