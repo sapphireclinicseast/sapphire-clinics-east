@@ -5,6 +5,7 @@ import { postFundTransferJE, removeFundTransferJE } from '@/lib/fund-transfer-je
 import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
 import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 import { applyBankRules } from '@/lib/bank-rec-rules'
+import { branchForBankAccount, isPostableBranch } from '@/lib/branch'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -234,9 +235,16 @@ export async function PATCH(req: Request) {
       // The ledger is kept in PHP, so a line on an account held in another
       // currency is translated at the rate for its date before it is posted.
       const bankAcct = await prisma.account.findUnique({
-        where: { id: txn.bankAccountId }, select: { currency: true },
+        where: { id: txn.bankAccountId }, select: { currency: true, accountTitle: true },
       })
       const cur = bankAcct?.currency || 'PHP'
+      // The reports engine filters journal entries by branch, so an entry left on
+      // the 'ALL' default never appears on a per-branch statement. Take the branch
+      // from the bank account that holds the line, unless the caller names one —
+      // which is how a company-wide account (SCEI/SCI) gets attributed.
+      const branch = isPostableBranch(body.branch)
+        ? String(body.branch)
+        : branchForBankAccount(bankAcct?.accountTitle)
       let amount = native, usedRate: number | null = null
       if (isForeign(cur)) {
         const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate), rateDate: '', onOrBefore: true } : await rateFor(cur, txn.date)
@@ -261,7 +269,7 @@ export async function PATCH(req: Request) {
             description: usedRate
               ? `Bank: ${txn.description} (${native.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${bankAcct?.currency} @ ${usedRate})`
               : `Bank: ${txn.description}`,
-            referenceType: 'BANK_REC', referenceId: txn.id,
+            referenceType: 'BANK_REC', referenceId: txn.id, branch,
             totalAmount: amount, createdById: session.user!.id as string,
             lines: { create: lines.map(l => ({ accountId: l.accountId, debit: l.debit, credit: l.credit, description: txn.description })) },
           },
@@ -409,8 +417,9 @@ export async function PATCH(req: Request) {
         // bank − records: positive means the bank moved more than the records explain.
         const raw = Math.round((bankAmt - Number(body.recordsTotal ?? bankAmt)) * 100) / 100
         if (Math.abs(raw) >= 0.005) {
-          const bankAcct = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true } })
+          const bankAcct = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true, accountTitle: true } })
           const cur = bankAcct?.currency || 'PHP'
+          const diffBranch = branchForBankAccount(bankAcct?.accountTitle)
           let amount = Math.abs(raw), usedRate: number | null = null
           if (isForeign(cur)) {
             const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate) } : await rateFor(cur, txn.date)
@@ -432,7 +441,7 @@ export async function PATCH(req: Request) {
             data: {
               entryDate: txn.date,
               description: `Bank: ${txn.description} — difference on match`,
-              referenceType: 'BANK_REC', referenceId: txn.id,
+              referenceType: 'BANK_REC', referenceId: txn.id, branch: diffBranch,
               totalAmount: amount, createdById: session.user!.id as string,
               lines: { create: lines.map(l => ({ ...l, description: `Match difference — ${txn.description}`.slice(0, 250) })) },
             },
