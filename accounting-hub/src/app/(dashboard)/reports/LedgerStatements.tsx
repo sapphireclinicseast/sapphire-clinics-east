@@ -473,16 +473,26 @@ export default function LedgerStatements({ year, branch, tab, view }: {
     </div>
   )
 
+  // A month that has not happened yet has no position to report. The balance
+  // sheet carries the last balance forward, so without this the current year
+  // showed September–December repeating August to the centavo, which reads as
+  // real data. Past years keep all twelve columns.
+  const nowD = new Date()
+  const lastRealMonth = year === nowD.getFullYear() ? nowD.getMonth() + 1 : 12
+  const cutM = <T,>(arr: T[]) => (view === 'monthly' ? arr.slice(0, lastRealMonth) : arr)
+  const cutQ = <T,>(arr: T[]) => (view === 'quarterly' ? arr.slice(0, Math.ceil(lastRealMonth / 3)) : arr)
+  const cutCols = <T,>(arr: T[]) => (view === 'quarterly' ? cutQ(arr) : cutM(arr))
+
   let body: React.ReactNode = null
   if (tab === 'income-statement') {
     const is = data.incomeStatement
     const sec = (key: string) => is.sections.find(s => s.key === key)
     const multiCol = view !== 'annual'
-    const colLabels = view === 'quarterly' ? QUARTERS : MONTHS
+    const colLabels = cutCols(view === 'quarterly' ? QUARTERS : MONTHS)
     // Fold Jan..Dec into the selected column granularity.
-    const toCols = (m12: number[]) => view === 'quarterly'
+    const toCols = (m12: number[]) => cutCols(view === 'quarterly'
       ? [0, 1, 2, 3].map(q => (m12[q * 3] || 0) + (m12[q * 3 + 1] || 0) + (m12[q * 3 + 2] || 0))
-      : m12
+      : m12)
     // Column click → month filter (monthly view only; a quarter spans months,
     // so quarterly cells drill to the whole year).
     const cellMonth = (i: number | null): number | null => (view === 'monthly' ? i : null)
@@ -652,7 +662,7 @@ export default function LedgerStatements({ year, branch, tab, view }: {
     if (view !== 'annual') {
       // Month-end (or quarter-end) POSITIONS: engine sends cumulative
       // statement-signed balances in `monthly` for balance-sheet rows.
-      const colLabels = view === 'quarterly' ? QUARTERS : MONTHS
+      const colLabels = cutCols(view === 'quarterly' ? QUARTERS : MONTHS)
       const colIdx = view === 'quarterly' ? [2, 5, 8, 11] : Array.from({ length: 12 }, (_, i) => i)
       const pick = (m12: number[]) => colIdx.map(i => m12[i] || 0)
       // cumulative EBT per month → monthly NI / ITP / DTA (statement-signed)
@@ -774,11 +784,21 @@ export default function LedgerStatements({ year, branch, tab, view }: {
   } else {
     const cf = data.cashFlow
     if (view !== 'annual' && cf.monthly) {
-      const colLabels = view === 'quarterly' ? QUARTERS : MONTHS
-      const fold = (m12: number[]) => view === 'quarterly'
+      const colLabels = cutCols(view === 'quarterly' ? QUARTERS : MONTHS)
+      const fold = (m12: number[]) => cutCols(view === 'quarterly'
         ? [0, 1, 2, 3].map(q => (m12[q * 3] || 0) + (m12[q * 3 + 1] || 0) + (m12[q * 3 + 2] || 0))
-        : m12
+        : m12)
       const zero = Array(12).fill(0)
+      // Cash-flow lines are labelled "<account number> <title>", so the ones
+      // that stand for a single account can drill to their entries exactly
+      // like the balance sheet and income statement rows do. Aggregates
+      // (Net Income, the section totals) have no single account, so they stay
+      // plain rather than pretending to be clickable.
+      const cfCellMonth = (i: number | null): number | null => (view === 'monthly' ? i : null)
+      const cfDrill = (label: string) => {
+        const m = /^(\d{3,6})\s+(.+)$/.exec(label.trim())
+        return m ? (mo: number | null) => openDrill({ number: m[1], title: m[2] }, cfCellMonth(mo)) : undefined
+      }
       const niM = fold(cf.monthly.netIncome), depMv = fold(cf.monthly.depreciation), provM = fold(cf.monthly.taxProvision)
       const wcM = colLabels.map((_, i) => cf.workingCapital.reduce((s, w) => s + (fold(w.monthly || zero)[i] || 0), 0))
       const invM = colLabels.map((_, i) => cf.investing.reduce((s, w) => s + (fold(w.monthly || zero)[i] || 0), 0))
@@ -809,17 +829,17 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                 <MultiRow label="Add: Depreciation (non-cash)" indent={1} values={depMv} total={cf.depreciation} />
                 <MultiRow label="Add: Income tax provision (accrued)" indent={1} values={provM} total={cf.taxProvision} />
                 {cf.workingCapital.map((w, i) => (
-                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
+                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} onClickCell={cfDrill(w.label)} />
                 ))}
                 <MultiRow label="Net Cash from Operating Activities" values={opsM} total={cf.netOperating} bold rule />
                 <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Investing Activities</span></td></tr>
                 {cf.investing.map((w, i) => (
-                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
+                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} onClickCell={cfDrill(w.label)} />
                 ))}
                 <MultiRow label="Net Cash from Investing Activities" values={invM} total={cf.netInvesting} bold rule />
                 <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Financing Activities</span></td></tr>
                 {cf.financing.map((w, i) => (
-                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} />
+                  <MultiRow key={i} label={w.label} indent={1} values={fold(w.monthly || zero)} total={w.amount} onClickCell={cfDrill(w.label)} />
                 ))}
                 <MultiRow label="Net Cash from Financing Activities" values={finM} total={cf.netFinancing} bold rule />
                 <MultiRow label="NET CHANGE IN CASH" values={cashDeltaM} total={cf.netChange} bold doubleRule />
@@ -837,7 +857,11 @@ export default function LedgerStatements({ year, branch, tab, view }: {
         <Row label="Net Income" amount={cf.netIncome} indent={1} bold />
         {cf.depreciation !== 0 && <Row label="Add: Depreciation (non-cash)" amount={cf.depreciation} indent={1} />}
         {cf.taxProvision !== 0 && <Row label="Add: Income tax provision (accrued, non-cash)" amount={cf.taxProvision} indent={1} />}
-        {cf.workingCapital.map((w, i) => <Row key={i} label={w.label} amount={w.amount} indent={1} />)}
+        {cf.workingCapital.map((w, i) => {
+          const m = /^(\d{3,6})\s+(.+)$/.exec(w.label.trim())
+          return <Row key={i} label={w.label} amount={w.amount} indent={1}
+            onClick={m ? () => openDrill({ number: m[1], title: m[2] }) : undefined} />
+        })}
         <Row label="Net Cash from Operating Activities" amount={cf.netOperating} bold rule />
         <Row label="Cash Flows from Investing Activities" bold />
         {cf.investing.length === 0 && <Row label="(No investing activity)" amount={0} indent={1} />}
