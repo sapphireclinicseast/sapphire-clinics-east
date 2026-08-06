@@ -5,6 +5,12 @@ import { netOfDeductions } from '@/lib/pos-settlement-shapes'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const AUTO_PREFIX = 'Bank rec:'
+// The only methods Sales Checking reconciles — the ones that reach a bank
+// account. Must stay in step with CHECKING_METHODS in the POS page: the rest
+// (HMO, GL, PREPAID_CARD, PACKAGE, VIP_CARD, DOWNPAYMENT, ADVANCE…) are
+// receivables or drawdowns of money already banked, are not shown in the
+// panel, and must not hold a day open.
+const CHECKING_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT', 'GCASH', 'PAYMAYA', 'PAYMONGO']
 
 // Auto-tag Sales Checking from what bank reconciliation already accounts for.
 //
@@ -109,6 +115,7 @@ export async function POST(req: Request) {
       if (!methods) { methods = new Map(); byDay.set(day, methods) }
       for (const p of o.payments) {
         const method = String(p.method)
+        if (!CHECKING_METHODS.includes(method)) continue
         let m = methods.get(method)
         if (!m) {
           m = { method, system: 0, settledGross: 0, settledNet: 0, payments: 0, settledPayments: 0, full: false, depositDates: [] }
