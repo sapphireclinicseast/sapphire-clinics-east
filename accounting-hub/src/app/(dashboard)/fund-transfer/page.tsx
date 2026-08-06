@@ -93,12 +93,19 @@ export default function FundTransferPage() {
           <tbody>
             {loading ? (
               <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-            ) : shown.map(t => (
-              <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+            ) : shown.map(t => {
+              // A star was too easy to miss, so the whole row carries the state:
+              // solid yellow when both bank legs are matched, a paler wash when
+              // only one is, nothing at all when the transfer is untagged.
+              const legs = t.matchedLegs ?? 0
+              const rowBg = legs === 2 ? '#fef9c3' : legs === 1 ? '#fefce8' : undefined
+              return (
+              <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: rowBg }}
+                title={legs === 2 ? 'Both bank legs matched in Bank Reconciliation'
+                  : legs === 1 ? 'One of two bank legs matched in Bank Reconciliation' : undefined}>
                 <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
-                  {(t.matchedLegs ?? 0) > 0 && (
-                    <span title={t.matchedLegs === 2 ? 'Both bank legs matched in Bank Reconciliation' : 'One of two bank legs matched in Bank Reconciliation'}
-                      style={{ color: t.matchedLegs === 2 ? '#eab308' : 'var(--light-gray)', marginRight: 4 }}>★</span>
+                  {legs > 0 && (
+                    <span style={{ color: legs === 2 ? '#ca8a04' : '#d4d4d8', marginRight: 4 }}>★</span>
                   )}
                   {t.refNumber}
                 </td>
@@ -122,7 +129,7 @@ export default function FundTransferPage() {
                   </td>
                 )}
               </tr>
-            ))}
+            )})}
             {!loading && shown.length === 0 && <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{transfers.length === 0 ? 'No fund transfers yet.' : 'No transfers match the current filters.'}</td></tr>}
           </tbody>
         </table>
@@ -137,7 +144,12 @@ export default function FundTransferPage() {
 
 interface CheckRow { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[]
   /** The expense lines that made up this cheque. Empty when the cheque is one record. */
-  items?: CheckRow[] }
+  items?: CheckRow[]
+  /** Sum of those lines, when the cheque also exists in the chequebook register. */
+  recordedTotal?: number
+  /** True when the recorded lines do not add up to the cheque as written. */
+  mismatch?: boolean
+  registerStatus?: string }
 
 function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [accounts, setAccounts] = useState<{ id: string; label: string }[]>([])
@@ -232,13 +244,14 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
             {loading ? (
               <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
             ) : shown.map((c, i) => {
-              const isCancelled = c.source === 'Cancelled'
+              const isCancelled = c.source === 'Cancelled' || c.registerStatus === 'CANCELLED'
+              const isUnused = c.registerStatus === 'UNUSED'
               const parts = c.items || []
               const key = `${c.checkNumber}|${c.bankAccount}`
               const isOpen = openCheque.has(key)
               return (
               <Fragment key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`}>
-              <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: isCancelled ? '#fef2f2' : undefined }}>
+              <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: isCancelled ? '#fef2f2' : isUnused ? '#f8fafc' : c.mismatch ? '#fffbeb' : undefined }}>
                 <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', textDecoration: isCancelled ? 'line-through' : undefined }}>
                   {parts.length > 1 && (
                     <button onClick={() => toggleCheque(key)} className="mr-1.5 align-middle" title={isOpen ? 'Hide the lines under this cheque' : `Show the ${parts.length} lines under this cheque`}>
@@ -269,7 +282,15 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankAccount}</td>
-                <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(c.amount)}</td>
+                <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: isUnused ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
+                  {isUnused ? '—' : `₱${peso(c.amount)}`}
+                  {c.mismatch && c.recordedTotal !== undefined && (
+                    <span className="block text-[10px] font-normal" style={{ color: '#b45309' }}
+                      title="What the cheque was written for, against what the recorded expenses add up to">
+                      recorded ₱{peso(c.recordedTotal)}
+                    </span>
+                  )}
+                </td>
                 {canWrite && <td className="px-3 py-2.5 text-right whitespace-nowrap">
                   {c.id && c.kind && editing !== `${c.kind}:${c.id}` && (
                     <button onClick={() => startEdit(c)} className="p-1 rounded hover:bg-gray-100" title="Correct the cheque number — updates the source record and everything that reads from it">

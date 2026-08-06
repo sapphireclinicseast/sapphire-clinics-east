@@ -159,6 +159,7 @@ model Account {
   coaTaxPayable         PayrollCOAMapping[]        @relation("COATaxPayable")
   beginningBalances     BeginningBalance[]
   adjBatchFxSources     InventoryAdjustmentBatch[] @relation("AdjBatchFxSource")
+  issuedCheques         IssuedCheque[]
 
   @@index([accountType])
   @@index([isActive])
@@ -288,8 +289,8 @@ model Supplier {
   // Who to actually speak to, and where. Foreign suppliers are usually reached on
   // a messaging app rather than by phone, so the channel is worth recording.
   contactPerson       String?
-  contactMethod       String?  // WeChat | WhatsApp | Viber | Facebook | SMS | Email | Call | Other
-  contactHandle       String?  // the id/number on that channel, when not the phone number
+  contactMethod       String? // WeChat | WhatsApp | Viber | Facebook | SMS | Email | Call | Other
+  contactHandle       String? // the id/number on that channel, when not the phone number
   isForeign           Boolean  @default(false)
   currency            String   @default("PHP")
   defaultExchangeRate Decimal?
@@ -2518,23 +2519,23 @@ model CommonShare {
 // subscription-receivable account chosen on the holding, which is the correct
 // treatment for a partially paid subscription.
 model EquityDeposit {
-  id             String      @id @default(cuid())
+  id               String          @id @default(cuid())
   // A deposit belongs to exactly one holding — common OR preferred. Preferred shares
   // are paid for the same way and need the same bank-rec tagging, so both are allowed
   // and exactly one is set (enforced in the API).
-  commonShareId  String?
-  commonShare    CommonShare? @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
+  commonShareId    String?
+  commonShare      CommonShare?    @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
   preferredShareId String?
-  preferredShare PreferredShare? @relation(fields: [preferredShareId], references: [id], onDelete: Cascade)
-  date           DateTime
-  amount         Decimal
-  kind           String      @default("CASH") // CASH | NON_CASH
-  bankAccountId  String? // COA bank account debited — CASH only
-  assetAccountId String? // COA asset/expense account debited — NON_CASH only
-  note           String? // e.g. "Equipment purchased for the company"
-  proofUrls      Json?
-  createdById    String?
-  createdAt      DateTime    @default(now())
+  preferredShare   PreferredShare? @relation(fields: [preferredShareId], references: [id], onDelete: Cascade)
+  date             DateTime
+  amount           Decimal
+  kind             String          @default("CASH") // CASH | NON_CASH
+  bankAccountId    String? // COA bank account debited — CASH only
+  assetAccountId   String? // COA asset/expense account debited — NON_CASH only
+  note             String? // e.g. "Equipment purchased for the company"
+  proofUrls        Json?
+  createdById      String?
+  createdAt        DateTime        @default(now())
 
   @@index([commonShareId])
   @@index([preferredShareId])
@@ -2588,10 +2589,10 @@ model PreferredShare {
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
-  payouts PreferredPayout[]
+  payouts  PreferredPayout[]
+  deposits EquityDeposit[]
 
   @@index([shareholderId])
-  deposits       EquityDeposit[]
 }
 
 // Preferred dividend payout history / schedule occurrences.
@@ -3222,4 +3223,35 @@ model SalaryPayableSplit {
   @@index([salaryRfpId])
   @@index([salariesRemitted])
   @@index([salaryPaymentId])
+}
+
+/// A cheque as written in the physical chequebook — the issuance itself, before
+/// and regardless of what expense it paid for. Check Release Monitoring is built
+/// on this: the register is the spine, and the petty-cash / RFP / fund-transfer
+/// records that reference the same number hang off it as the breakdown of what
+/// the cheque covered. Cancelled and unused leaves are kept, because a chequebook
+/// that skips numbers cannot be reconciled.
+model IssuedCheque {
+  id          String    @id @default(cuid())
+  accountId   String
+  /// Digits only, exactly as printed (leading zeros preserved).
+  checkNumber String
+  date        DateTime?
+  payee       String?
+  amount      Decimal   @default(0)
+  /// ISSUED | CANCELLED | UNUSED
+  status      String    @default("ISSUED")
+  note        String?
+  /// Where the row came from, e.g. "chequebook 2024-2026".
+  source      String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, checkNumber])
+  @@index([accountId])
+  @@index([date])
+  @@index([status])
 }
