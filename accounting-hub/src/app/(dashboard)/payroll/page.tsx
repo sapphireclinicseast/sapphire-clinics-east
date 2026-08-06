@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { Fragment, useState, useEffect, useCallback } from 'react'
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 import { useSession } from 'next-auth/react'
 import {
@@ -196,6 +196,18 @@ interface SalaryPayableEntry {
   isEmployeePayslip?: boolean
   employeeId?: string
   employeeName?: string | null
+  /// Net pay paid in instalments. When present, the splits — not this row —
+  /// are what goes into an RFP and gets marked remitted.
+  splits?: SalarySplit[]
+}
+
+interface SalarySplit {
+  id: string
+  seq: number
+  amount: number
+  note: string | null
+  salariesRemitted: boolean
+  salaryRfpId: string | null
 }
 
 interface BenefitEmployeeEntry {
@@ -989,6 +1001,52 @@ export default function PayrollPage() {
   const [salHistorySearch, setSalHistorySearch] = useState('')
   // Off = show only the cutoff picked at the top of the page (what the selector implies).
   const [salAllCutoffs, setSalAllCutoffs] = useState(false)
+  // "Split salary" — divide one net pay into instalments that are paid separately.
+  const [splitTarget, setSplitTarget] = useState<null | { row: SalaryPayableEntry; payableType: 'EMPLOYEE' | 'CONSULTANT' }>(null)
+  const [splitAmounts, setSplitAmounts] = useState<string[]>(['', ''])
+  const [splitBusy, setSplitBusy] = useState(false)
+  const [splitError, setSplitError] = useState('')
+
+  const openSplit = (row: SalaryPayableEntry, payableType: 'EMPLOYEE' | 'CONSULTANT') => {
+    setSplitError('')
+    const existing = (row.splits || []).map(sp => sp.amount.toFixed(2))
+    // Re-opening shows what's there; a fresh split starts as an even halving,
+    // with the remainder on the first part so the total always lands exactly.
+    if (existing.length >= 2) setSplitAmounts(existing)
+    else {
+      const half = Math.floor((row.netPay / 2) * 100) / 100
+      setSplitAmounts([(row.netPay - half).toFixed(2), half.toFixed(2)])
+    }
+    setSplitTarget({ row, payableType })
+  }
+
+  const saveSplit = async () => {
+    if (!splitTarget) return
+    setSplitBusy(true); setSplitError('')
+    try {
+      const amounts = splitAmounts.map(a => Number(a)).filter(a => Number.isFinite(a))
+      const res = await fetch('/api/payroll/salary-splits', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payableType: splitTarget.payableType, id: splitTarget.row.id, amounts }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setSplitError(data.error || 'Failed to save the splits'); return }
+      setSplitTarget(null)
+      fetchSalariesPayable(); fetchEmpSalPayable()
+    } catch (e) { setSplitError(String(e)) } finally { setSplitBusy(false) }
+  }
+
+  const removeSplit = async () => {
+    if (!splitTarget) return
+    setSplitBusy(true); setSplitError('')
+    try {
+      const res = await fetch(`/api/payroll/salary-splits?payableType=${splitTarget.payableType}&id=${splitTarget.row.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) { setSplitError(data.error || 'Failed to remove the splits'); return }
+      setSplitTarget(null)
+      fetchSalariesPayable(); fetchEmpSalPayable()
+    } catch (e) { setSplitError(String(e)) } finally { setSplitBusy(false) }
+  }
 
   // Benefits Payable tab state
   const [benefitsPayables, setBenefitsPayables] = useState<BenefitEmployeeEntry[]>([])
@@ -5224,11 +5282,18 @@ export default function PayrollPage() {
               p.salariesRemitted ? 'remitted' : p.salaryRfpId ? 'in rfp' : 'pending',
             ].some(v => (v || '').toString().toLowerCase().includes(sq)))
           : allPayables
-        const unremitted = activePayables.filter(p => !p.salariesRemitted && !p.salaryRfpId)
+        // What can be ticked: a whole salary, or — once split — each instalment.
+        // Never both, so the same peso can't be put into two RFPs.
+        const unitsOf = (p: SalaryPayableEntry) => (p.splits && p.splits.length)
+          ? p.splits.map(sp => ({ id: sp.id, row: p, seq: sp.seq, amount: sp.amount, remitted: sp.salariesRemitted, rfpId: sp.salaryRfpId }))
+          : [{ id: p.id, row: p, seq: null as number | null, amount: p.netPay, remitted: p.salariesRemitted, rfpId: p.salaryRfpId ?? null }]
+        const units = activePayables.flatMap(unitsOf)
+        const allUnits = allPayables.flatMap(unitsOf)
+        const unremitted = units.filter(u => !u.remitted && !u.rfpId)
         // Totals follow the selection itself, not the filtered view — a row selected
         // before searching is still going into the RFP even if it's hidden now.
-        const selectedTotal = allPayables.filter(p => activeSelected.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
-        const hiddenSelected = activeSelected.filter(id => !activePayables.some(p => p.id === id)).length
+        const selectedTotal = allUnits.filter(u => activeSelected.includes(u.id)).reduce((s, u) => s + u.amount, 0)
+        const hiddenSelected = activeSelected.filter(id => !units.some(u => u.id === id)).length
         const isLoading = isEmpTab ? loadingEmpSalPayable : loadingSalPayable
         return (
         <div className="space-y-4">
@@ -5350,15 +5415,21 @@ export default function PayrollPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activePayables.map(p => (
-                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: p.salariesRemitted ? '#f0fdf4' : p.salaryRfpId ? '#fff7ed' : undefined }}>
+                  {activePayables.map(p => {
+                    const hasSplits = !!(p.splits && p.splits.length)
+                    const tick = (id: string, on: boolean) =>
+                      setActiveSelected(prev => on ? [...prev, id] : prev.filter(x => x !== id))
+                    const canSplit = !p.salariesRemitted && !p.salaryRfpId
+                      && !(p.splits || []).some(sp => sp.salariesRemitted || sp.salaryRfpId)
+                    return (
+                    <Fragment key={p.id}>
+                    <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: p.salariesRemitted ? '#f0fdf4' : p.salaryRfpId ? '#fff7ed' : undefined }}>
                       <td className="px-3 py-2.5">
-                        {!p.salariesRemitted && !p.salaryRfpId && (
+                        {/* Once split, the instalments below are what gets ticked. */}
+                        {!hasSplits && !p.salariesRemitted && !p.salaryRfpId && (
                           <input type="checkbox"
                             checked={activeSelected.includes(p.id)}
-                            onChange={e => setActiveSelected(prev =>
-                              e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id)
-                            )} />
+                            onChange={e => tick(p.id, e.target.checked)} />
                         )}
                       </td>
                       <td className="px-3 py-2.5">
@@ -5372,27 +5443,58 @@ export default function PayrollPage() {
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.grossPay != null ? formatCurrency(p.grossPay) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#c44b00' }}>{p.taxAmount != null && p.taxAmount > 0 ? formatCurrency(p.taxAmount) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(p.netPay)}</td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-3 py-2.5 text-center whitespace-nowrap">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.salariesRemitted ? { background: '#dcfce7', color: '#16a34a' } : p.salaryRfpId ? { background: '#ffedd5', color: '#c2410c' } : { background: '#fef3c7', color: '#d97706' }}>
-                          {p.salariesRemitted ? 'REMITTED' : p.salaryRfpId ? 'IN RFP' : 'PENDING'}
+                          {p.salariesRemitted ? 'REMITTED' : p.salaryRfpId ? 'IN RFP' : hasSplits ? 'SPLIT' : 'PENDING'}
                         </span>
+                        {canWrite && canSplit && (
+                          <button onClick={() => openSplit(p, isEmpTab ? 'EMPLOYEE' : 'CONSULTANT')}
+                            title={hasSplits ? 'Change how this salary is split' : 'Pay this salary in more than one instalment'}
+                            className="ml-2 px-2 py-0.5 rounded-lg text-[10px] font-semibold border"
+                            style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }}>
+                            {hasSplits ? 'Edit split' : 'Split salary'}
+                          </button>
+                        )}
                       </td>
                     </tr>
-                  ))}
+                    {hasSplits && p.splits!.map(sp => (
+                      <tr key={sp.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: sp.salariesRemitted ? '#f0fdf4' : sp.salaryRfpId ? '#fff7ed' : '#fbfbfa' }}>
+                        <td className="px-3 py-1.5 text-right">
+                          {!sp.salariesRemitted && !sp.salaryRfpId && (
+                            <input type="checkbox"
+                              checked={activeSelected.includes(sp.id)}
+                              onChange={e => tick(sp.id, e.target.checked)} />
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--mid-gray)', paddingLeft: '2rem' }}>
+                          ↳ Part {sp.seq} of {p.splits!.length}{sp.note ? ` · ${sp.note}` : ''}
+                        </td>
+                        <td colSpan={4}></td>
+                        <td className="px-3 py-1.5 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(sp.amount)}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={sp.salariesRemitted ? { background: '#dcfce7', color: '#16a34a' } : sp.salaryRfpId ? { background: '#ffedd5', color: '#c2410c' } : { background: '#fef3c7', color: '#d97706' }}>
+                            {sp.salariesRemitted ? 'PAID' : sp.salaryRfpId ? 'IN RFP' : 'PENDING'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    </Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
             {unremitted.length > 0 && (
               <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
                 <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
-                  Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(unremitted.reduce((s, p) => s + p.netPay, 0))}</span>
+                  Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(unremitted.reduce((s, u) => s + u.amount, 0))}</span>
                   {activeSelected.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
                 </span>
                 {activeSelected.length > 0 && (
                   <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', allPayables, activeSelected)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
-                    <BadgeDollarSign size={14} /> RFP ({activeSelected.length} payslips)
+                    <BadgeDollarSign size={14} /> RFP ({activeSelected.length} item{activeSelected.length === 1 ? '' : 's'})
                   </button>
                 )}
               </div>
@@ -5683,6 +5785,83 @@ export default function PayrollPage() {
       {/* ═══════════════════════════════════════════════════════════
          REMIT PAYMENT MODAL
          ═══════════════════════════════════════════════════════════ */}
+      {/* ── Split salary ── divide one net pay into instalments paid separately ── */}
+      {splitTarget && (() => {
+        const row = splitTarget.row
+        const nums = splitAmounts.map(a => Number(a)).map(a => Number.isFinite(a) ? a : 0)
+        const sum = Math.round(nums.reduce((s, a) => s + a, 0) * 100) / 100
+        const net = Math.round(row.netPay * 100) / 100
+        const diff = Math.round((sum - net) * 100) / 100
+        const balanced = diff === 0 && nums.every(a => a > 0) && nums.length >= 2
+        const who = splitTarget.payableType === 'EMPLOYEE' ? (row.employeeName || '—') : (row.consultantName || '—')
+        const setAt = (i: number, v: string) => setSplitAmounts(a => a.map((x, j) => j === i ? v : x))
+        // Put whatever is missing on this line, so the total lands exactly.
+        const balanceAt = (i: number) => setSplitAmounts(a => {
+          const others = a.reduce((s, x, j) => j === i ? s : s + (Number(x) || 0), 0)
+          return a.map((x, j) => j === i ? Math.max(0, Math.round((row.netPay - others) * 100) / 100).toFixed(2) : x)
+        })
+        return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setSplitTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Split salary</h2>
+              <button onClick={() => setSplitTarget(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+              <strong style={{ color: 'var(--charcoal)' }}>{who}</strong> · {getCutoffLabel(row.cutoffPeriod)} · net pay <strong style={{ color: 'var(--charcoal)' }}>{formatCurrency(row.netPay)}</strong>
+            </p>
+            <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+              Pay this salary in more than one go. Each part is put in an RFP and ticked off on its own,
+              so it matches a single bank line. The parts must add up to the net pay — splitting changes
+              when the money leaves, never how much is owed.
+            </p>
+
+            <div className="space-y-2 mb-3">
+              {splitAmounts.map((a, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs font-semibold w-14" style={{ color: 'var(--mid-gray)' }}>Part {i + 1}</span>
+                  <input value={a} onChange={e => setAt(i, e.target.value)} inputMode="decimal" placeholder="0.00"
+                    className="flex-1 px-3 py-2 rounded-lg border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                  <button onClick={() => balanceAt(i)} title="Put the remaining balance on this part"
+                    className="px-2 py-1.5 rounded-lg text-[11px] font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }}>
+                    Balance
+                  </button>
+                  <button onClick={() => setSplitAmounts(x => x.filter((_, j) => j !== i))} disabled={splitAmounts.length <= 2}
+                    title={splitAmounts.length <= 2 ? 'A split needs at least two parts' : 'Remove this part'}
+                    className="p-1.5 rounded-lg disabled:opacity-30"><Trash2 size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setSplitAmounts(a => [...a, ''])}
+              className="text-xs font-semibold mb-4" style={{ color: 'var(--teal)' }}>+ Add another part</button>
+
+            <div className="rounded-xl px-4 py-2.5 mb-4 text-sm font-semibold flex items-center justify-between"
+              style={balanced ? { background: '#f0fdf4', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+              <span>Total of parts: {formatCurrency(sum)}</span>
+              <span>{balanced ? 'Matches net pay' : diff > 0 ? `Over by ${formatCurrency(diff)}` : `Short by ${formatCurrency(Math.abs(diff))}`}</span>
+            </div>
+
+            {splitError && <p className="text-xs mb-3" style={{ color: '#b91c1c' }}>{splitError}</p>}
+
+            <div className="flex items-center gap-2">
+              <button onClick={saveSplit} disabled={!balanced || splitBusy}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                {splitBusy ? <Loader2 size={15} className="inline animate-spin" /> : `Save ${splitAmounts.length} parts`}
+              </button>
+              {(row.splits && row.splits.length > 0) && (
+                <button onClick={removeSplit} disabled={splitBusy}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold border disabled:opacity-50"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Remove split
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        )
+      })()}
+
       {payableRfp && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setPayableRfp(null)}>
           <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>

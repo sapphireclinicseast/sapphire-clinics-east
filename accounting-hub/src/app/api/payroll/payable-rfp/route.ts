@@ -59,12 +59,46 @@ export async function POST(req: Request) {
     const report = await prisma.$transaction(async (tx) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let items: { id: string; name: string; amount: number }[] = []
-      if (idKind === 'payrollEntry') {
-        const rows = await tx.payrollEntry.findMany({ where: { id: { in: ids }, status: 'LOCKED', ...(source === 'salary' ? { salariesRemitted: false, salaryRfpId: null } : { benefitsRemitted: false, ...benefitEligible }) }, include: { consultant: { select: { name: true } } } })
-        items = rows.map(r => ({ id: r.id, name: r.consultant?.name || '—', amount: source === 'salary' ? Number(r.netPay) : benefitAmount(r) }))
+      let splitIds: string[] = []
+      let rowIds: string[] = []
+      if (source === 'salary') {
+        // A selection can mix whole salaries with instalments of split ones, so
+        // resolve the ids against both and keep whatever each turns out to be.
+        // Anything that resolves to neither is left out and caught by the count
+        // check below rather than being quietly dropped from the total.
+        const splits = await tx.salaryPayableSplit.findMany({
+          where: { id: { in: ids }, salariesRemitted: false, salaryRfpId: null },
+          include: {
+            employeePayslip: { include: { employee: { select: { firstName: true, lastName: true } } } },
+            payrollEntry: { include: { consultant: { select: { name: true } } } },
+          },
+          orderBy: { seq: 'asc' },
+        })
+        splitIds = splits.map(x => x.id)
+        for (const x of splits) {
+          const who = x.employeePayslip
+            ? `${x.employeePayslip.employee.firstName} ${x.employeePayslip.employee.lastName}`
+            : (x.payrollEntry?.consultant?.name || '—')
+          items.push({ id: x.id, name: `${who} (part ${x.seq})`, amount: Number(x.amount) })
+        }
+        const rest = ids.filter((i: string) => !splitIds.includes(i))
+        if (rest.length && idKind === 'payrollEntry') {
+          const rows = await tx.payrollEntry.findMany({ where: { id: { in: rest }, status: 'LOCKED', salariesRemitted: false, salaryRfpId: null }, include: { consultant: { select: { name: true } } } })
+          rowIds = rows.map(r => r.id)
+          items.push(...rows.map(r => ({ id: r.id, name: r.consultant?.name || '—', amount: Number(r.netPay) })))
+        } else if (rest.length) {
+          const rows = await tx.employeePayslip.findMany({ where: { id: { in: rest }, status: 'LOCKED', salariesRemitted: false, salaryRfpId: null }, include: { employee: { select: { firstName: true, lastName: true } } } })
+          rowIds = rows.map(r => r.id)
+          items.push(...rows.map(r => ({ id: r.id, name: `${r.employee.firstName} ${r.employee.lastName}`, amount: Number(r.netPay) })))
+        }
+      } else if (idKind === 'payrollEntry') {
+        const rows = await tx.payrollEntry.findMany({ where: { id: { in: ids }, status: 'LOCKED', benefitsRemitted: false, ...benefitEligible }, include: { consultant: { select: { name: true } } } })
+        rowIds = rows.map(r => r.id)
+        items = rows.map(r => ({ id: r.id, name: r.consultant?.name || '—', amount: benefitAmount(r) }))
       } else {
-        const rows = await tx.employeePayslip.findMany({ where: { id: { in: ids }, status: 'LOCKED', ...(source === 'salary' ? { salariesRemitted: false, salaryRfpId: null } : { benefitsRemitted: false, ...benefitEligible }) }, include: { employee: { select: { firstName: true, lastName: true } } } })
-        items = rows.map(r => ({ id: r.id, name: `${r.employee.firstName} ${r.employee.lastName}`, amount: source === 'salary' ? Number(r.netPay) : benefitAmount(r) }))
+        const rows = await tx.employeePayslip.findMany({ where: { id: { in: ids }, status: 'LOCKED', benefitsRemitted: false, ...benefitEligible }, include: { employee: { select: { firstName: true, lastName: true } } } })
+        rowIds = rows.map(r => r.id)
+        items = rows.map(r => ({ id: r.id, name: `${r.employee.firstName} ${r.employee.lastName}`, amount: benefitAmount(r) }))
       }
       items = items.filter(i => source === 'salary' || i.amount > 0)
       if (items.length === 0) throw new Error('No eligible entries (already in an RFP or remitted?)')
@@ -81,15 +115,19 @@ export async function POST(req: Request) {
       const created = await tx.reimbursementReport.create({
         data: {
           branch: pcBranch, refNumber, refSeq: seq, grossTotal: netTotal, module: moduleName,
-          meta: { source, payableType: payableType || 'EMPLOYEE', benefitType: agency ? benefitType : null, payrollBranch: branch, cutoffPeriod: cutoffPeriod || null, idKind, ids: items.map(i => i.id), items, otherFees: fees, feesTotal, netTotal },
+          meta: { source, payableType: payableType || 'EMPLOYEE', benefitType: agency ? benefitType : null, payrollBranch: branch, cutoffPeriod: cutoffPeriod || null, idKind, splitIds, rowIds, ids: items.map(i => i.id), items, otherFees: fees, feesTotal, netTotal },
           createdById: session.user.id ?? null,
         },
       })
       const lockData = source === 'salary'
         ? { salaryRfpId: created.id }
         : (agency ? { [agency.lock]: created.id } : { benefitRfpId: created.id })
-      if (idKind === 'payrollEntry') await tx.payrollEntry.updateMany({ where: { id: { in: items.map(i => i.id) } }, data: lockData })
-      else await tx.employeePayslip.updateMany({ where: { id: { in: items.map(i => i.id) } }, data: lockData })
+      // Lock each kind in its own table so neither can be pulled into a second RFP.
+      if (splitIds.length) await tx.salaryPayableSplit.updateMany({ where: { id: { in: splitIds } }, data: { salaryRfpId: created.id } })
+      if (rowIds.length) {
+        if (idKind === 'payrollEntry') await tx.payrollEntry.updateMany({ where: { id: { in: rowIds } }, data: lockData })
+        else await tx.employeePayslip.updateMany({ where: { id: { in: rowIds } }, data: lockData })
+      }
       return created
     })
     return NextResponse.json({ id: report.id, refNumber: report.refNumber, grossTotal: report.grossTotal })

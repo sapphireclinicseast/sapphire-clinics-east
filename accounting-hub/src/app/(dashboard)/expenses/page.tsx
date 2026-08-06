@@ -103,7 +103,7 @@ interface Supplier { id: string | null; registeredName: string; registeredAddres
 interface SupTxn { date: string | null; pcvNumber: string; description: string; validity: string; gross: number; vat: number; netVat: number }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
-  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
+  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
 }
@@ -3008,7 +3008,15 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
     try {
       const ids = rfp.meta?.ids || []
       const useEmployee = isSalary ? (rfp.meta?.payableType === 'EMPLOYEE') : true
-      const idBody = useEmployee ? { employeePayslipIds: ids } : { payrollEntryIds: ids }
+      // A salaries RFP can hold whole payslips, instalments of split ones, or
+      // both. Each kind is paid through its own list so the ledger posts the
+      // instalment amount rather than the whole net pay.
+      const splitIds = (isSalary && rfp.meta?.splitIds) ? rfp.meta.splitIds : []
+      const rowIds = (isSalary && rfp.meta?.rowIds) ? rfp.meta.rowIds : (splitIds.length ? [] : ids)
+      const idBody = {
+        ...(splitIds.length ? { salarySplitIds: splitIds } : {}),
+        ...(rowIds.length ? (useEmployee ? { employeePayslipIds: rowIds } : { payrollEntryIds: rowIds }) : {}),
+      }
       const hasFee = isSalary && Number(feeAmount) > 0 && feeExpenseAccountId
       const endpoint = isSalary ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
       const res = await fetch(endpoint, {
