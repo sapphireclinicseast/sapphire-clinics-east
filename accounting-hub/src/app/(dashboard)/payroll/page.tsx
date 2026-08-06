@@ -1514,11 +1514,16 @@ export default function PayrollPage() {
 
   // Open the "Generate RFP" dialog for selected payable rows (one branch only).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const openPayableRfp = (source: 'salary' | 'benefit', payableType: 'CONSULTANT' | 'EMPLOYEE', rows: any[], ids: string[]) => {
-    const chosen = rows.filter(r => ids.includes(r.id))
+  // Takes the selected payable units directly rather than rows + ids: a unit may
+  // be a whole payslip or one instalment of a split salary, and the two live in
+  // different tables, so the caller resolves them and passes the amounts.
+  const openPayableRfp = (source: 'salary' | 'benefit', payableType: 'CONSULTANT' | 'EMPLOYEE',
+                          chosen: { id: string; branch: string; cutoffPeriod: string; amount: number }[]) => {
+    if (!chosen.length) { setError('Nothing selected for this RFP.'); return }
+    const ids = chosen.map(c => c.id)
     const branches = [...new Set(chosen.map(r => r.branch))]
     if (branches.length !== 1) { setError('Select entries from a single branch for one RFP.'); return }
-    const total = chosen.reduce((s, r) => s + (source === 'benefit' ? (r.totalBenefitsPayable || 0) : r.netPay), 0)
+    const total = chosen.reduce((s, r) => s + r.amount, 0)
     const cutoffPeriod = [...new Set(chosen.map(r => r.cutoffPeriod))].join(', ')
     setRfpManualSeq('')
     // Preload the branch's saved "Other Fees" template (e.g. online-transfer fees).
@@ -5288,11 +5293,18 @@ export default function PayrollPage() {
           ? p.splits.map(sp => ({ id: sp.id, row: p, seq: sp.seq, amount: sp.amount, remitted: sp.salariesRemitted, rfpId: sp.salaryRfpId }))
           : [{ id: p.id, row: p, seq: null as number | null, amount: p.netPay, remitted: p.salariesRemitted, rfpId: p.salaryRfpId ?? null }]
         const units = activePayables.flatMap(unitsOf)
-        const allUnits = allPayables.flatMap(unitsOf)
         const unremitted = units.filter(u => !u.remitted && !u.rfpId)
+        // A single bank transfer often covers both employees and consultants, so
+        // the RFP is built from what is ticked across BOTH subsections, not just
+        // the one on screen. Ticks on the other tab stay put while you switch.
+        const bothSelected = [...selectedEmpSalPayableIds, ...selectedSalaryPayableIds]
+        const rfpUnits = [...empSalPayables.flatMap(unitsOf), ...salariesPayables.flatMap(unitsOf)]
+          .filter(u => bothSelected.includes(u.id))
+        const rfpChosen = rfpUnits.map(u => ({ id: u.id, branch: u.row.branch, cutoffPeriod: u.row.cutoffPeriod, amount: u.amount }))
         // Totals follow the selection itself, not the filtered view — a row selected
         // before searching is still going into the RFP even if it's hidden now.
-        const selectedTotal = allUnits.filter(u => activeSelected.includes(u.id)).reduce((s, u) => s + u.amount, 0)
+        const selectedTotal = rfpUnits.reduce((s, u) => s + u.amount, 0)
+        const otherTabCount = bothSelected.length - activeSelected.length
         const hiddenSelected = activeSelected.filter(id => !units.some(u => u.id === id)).length
         const isLoading = isEmpTab ? loadingEmpSalPayable : loadingSalPayable
         return (
@@ -5303,11 +5315,12 @@ export default function PayrollPage() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Salaries Payable</h2>
             <div className="flex items-center gap-3">
-              {activeSelected.length > 0 && (
-                <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', allPayables, activeSelected)}
+              {bothSelected.length > 0 && (
+                <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', rfpChosen)}
+                  title={otherTabCount > 0 ? `Includes ${otherTabCount} from the ${isEmpTab ? 'Consultants' : 'Employees'} tab` : undefined}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
-                  <BadgeDollarSign size={14} /> RFP ({activeSelected.length})
+                  <BadgeDollarSign size={14} /> RFP ({bothSelected.length})
                 </button>
               )}
               <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
@@ -5321,13 +5334,21 @@ export default function PayrollPage() {
 
           {/* Subtabs */}
           <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'var(--off-white)', width: 'fit-content' }}>
-            {(['employees', 'consultants'] as const).map(t => (
+            {(['employees', 'consultants'] as const).map(t => {
+              // Ticks survive switching tabs, so each tab carries its own count —
+              // otherwise a selection on the other side would be invisible.
+              const n = (t === 'employees' ? selectedEmpSalPayableIds : selectedSalaryPayableIds).length
+              return (
               <button key={t} onClick={() => setSalPayableSubTab(t)}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                 style={salPayableSubTab === t ? { background: 'white', color: 'var(--deep-teal)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { color: 'var(--mid-gray)' }}>
                 {t === 'employees' ? 'Employees' : 'Consultants'}
+                {n > 0 && (
+                  <span className="px-1.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--teal)', color: 'white' }}>{n}</span>
+                )}
               </button>
-            ))}
+              )
+            })}
           </div>
 
           {/* Cutoff scope — the list follows the Cutoff selector at the top of the page */}
@@ -5488,13 +5509,18 @@ export default function PayrollPage() {
               <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
                 <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
                   Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(unremitted.reduce((s, u) => s + u.amount, 0))}</span>
-                  {activeSelected.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
+                  {bothSelected.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
+                  {otherTabCount > 0 && (
+                    <span className="ml-3" style={{ color: '#b45309' }}>
+                      includes {otherTabCount} from {isEmpTab ? 'Consultants' : 'Employees'}
+                    </span>
+                  )}
                 </span>
-                {activeSelected.length > 0 && (
-                  <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', allPayables, activeSelected)}
+                {bothSelected.length > 0 && (
+                  <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', rfpChosen)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
-                    <BadgeDollarSign size={14} /> RFP ({activeSelected.length} item{activeSelected.length === 1 ? '' : 's'})
+                    <BadgeDollarSign size={14} /> RFP ({bothSelected.length} item{bothSelected.length === 1 ? '' : 's'})
                   </button>
                 )}
               </div>
@@ -5603,7 +5629,9 @@ export default function PayrollPage() {
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Benefits Payable (SSS, PHIC, HDMF)</h2>
             <div className="flex items-center gap-3">
               {selectedBenefitPayableIds.length > 0 && (
-                <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables, selectedBenefitPayableIds)}
+                <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables
+                  .filter(r => selectedBenefitPayableIds.includes(r.id))
+                  .map(r => ({ id: r.id, branch: r.branch, cutoffPeriod: r.cutoffPeriod, amount: r.totalBenefitsPayable || 0 })))}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
                   <BadgeDollarSign size={14} /> RFP ({selectedBenefitPayableIds.length})
@@ -5688,7 +5716,9 @@ export default function PayrollPage() {
                   {selectedBenefitPayableIds.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(benSelectedTotal)}</span></span>}
                 </span>
                 {selectedBenefitPayableIds.length > 0 && (
-                  <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables, selectedBenefitPayableIds)}
+                  <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables
+                  .filter(r => selectedBenefitPayableIds.includes(r.id))
+                  .map(r => ({ id: r.id, branch: r.branch, cutoffPeriod: r.cutoffPeriod, amount: r.totalBenefitsPayable || 0 })))}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
                     <BadgeDollarSign size={14} /> RFP ({selectedBenefitPayableIds.length} employees)

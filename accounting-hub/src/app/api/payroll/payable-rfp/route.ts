@@ -60,6 +60,8 @@ export async function POST(req: Request) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let items: { id: string; name: string; amount: number }[] = []
       let splitIds: string[] = []
+      let entryIds: string[] = []
+      let payslipIds: string[] = []
       let rowIds: string[] = []
       if (source === 'salary') {
         // A selection can mix whole salaries with instalments of split ones, so
@@ -81,15 +83,19 @@ export async function POST(req: Request) {
             : (x.payrollEntry?.consultant?.name || '—')
           items.push({ id: x.id, name: `${who} (part ${x.seq})`, amount: Number(x.amount) })
         }
+        // One bank transfer can cover both employees and consultants, so resolve
+        // the remaining ids against both tables rather than assuming the tab
+        // they were ticked on.
         const rest = ids.filter((i: string) => !splitIds.includes(i))
-        if (rest.length && idKind === 'payrollEntry') {
-          const rows = await tx.payrollEntry.findMany({ where: { id: { in: rest }, status: 'LOCKED', salariesRemitted: false, salaryRfpId: null }, include: { consultant: { select: { name: true } } } })
-          rowIds = rows.map(r => r.id)
-          items.push(...rows.map(r => ({ id: r.id, name: r.consultant?.name || '—', amount: Number(r.netPay) })))
-        } else if (rest.length) {
-          const rows = await tx.employeePayslip.findMany({ where: { id: { in: rest }, status: 'LOCKED', salariesRemitted: false, salaryRfpId: null }, include: { employee: { select: { firstName: true, lastName: true } } } })
-          rowIds = rows.map(r => r.id)
-          items.push(...rows.map(r => ({ id: r.id, name: `${r.employee.firstName} ${r.employee.lastName}`, amount: Number(r.netPay) })))
+        if (rest.length) {
+          const [cons, emps] = await Promise.all([
+            tx.payrollEntry.findMany({ where: { id: { in: rest }, status: 'LOCKED', salariesRemitted: false, salaryRfpId: null }, include: { consultant: { select: { name: true } } } }),
+            tx.employeePayslip.findMany({ where: { id: { in: rest }, status: 'LOCKED', salariesRemitted: false, salaryRfpId: null }, include: { employee: { select: { firstName: true, lastName: true } } } }),
+          ])
+          entryIds = cons.map(r => r.id)
+          payslipIds = emps.map(r => r.id)
+          items.push(...cons.map(r => ({ id: r.id, name: r.consultant?.name || '—', amount: Number(r.netPay) })))
+          items.push(...emps.map(r => ({ id: r.id, name: `${r.employee.firstName} ${r.employee.lastName}`, amount: Number(r.netPay) })))
         }
       } else if (idKind === 'payrollEntry') {
         const rows = await tx.payrollEntry.findMany({ where: { id: { in: ids }, status: 'LOCKED', benefitsRemitted: false, ...benefitEligible }, include: { consultant: { select: { name: true } } } })
@@ -115,7 +121,7 @@ export async function POST(req: Request) {
       const created = await tx.reimbursementReport.create({
         data: {
           branch: pcBranch, refNumber, refSeq: seq, grossTotal: netTotal, module: moduleName,
-          meta: { source, payableType: payableType || 'EMPLOYEE', benefitType: agency ? benefitType : null, payrollBranch: branch, cutoffPeriod: cutoffPeriod || null, idKind, splitIds, rowIds, ids: items.map(i => i.id), items, otherFees: fees, feesTotal, netTotal },
+          meta: { source, payableType: payableType || 'EMPLOYEE', benefitType: agency ? benefitType : null, payrollBranch: branch, cutoffPeriod: cutoffPeriod || null, idKind, splitIds, entryIds, payslipIds, rowIds, ids: items.map(i => i.id), items, otherFees: fees, feesTotal, netTotal },
           createdById: session.user.id ?? null,
         },
       })
@@ -124,7 +130,10 @@ export async function POST(req: Request) {
         : (agency ? { [agency.lock]: created.id } : { benefitRfpId: created.id })
       // Lock each kind in its own table so neither can be pulled into a second RFP.
       if (splitIds.length) await tx.salaryPayableSplit.updateMany({ where: { id: { in: splitIds } }, data: { salaryRfpId: created.id } })
+      if (entryIds.length) await tx.payrollEntry.updateMany({ where: { id: { in: entryIds } }, data: lockData })
+      if (payslipIds.length) await tx.employeePayslip.updateMany({ where: { id: { in: payslipIds } }, data: lockData })
       if (rowIds.length) {
+        // Benefits still lock in the single table their tab implies.
         if (idKind === 'payrollEntry') await tx.payrollEntry.updateMany({ where: { id: { in: rowIds } }, data: lockData })
         else await tx.employeePayslip.updateMany({ where: { id: { in: rowIds } }, data: lockData })
       }
