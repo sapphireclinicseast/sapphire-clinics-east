@@ -59,7 +59,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
     transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
-    shareholderAdvances, loans,
+    shareholderAdvances, loans, equityDeposits, itemisedHoldings,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -135,6 +135,24 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
       select: { id: true, name: true, dateAcquired: true, principalAmount: true, netAmountToDebit: true, loanType: true, loanEntity: true },
     }),
+    // Itemised equity consideration. A holding is offered above at its full
+    // issuance value on one date, which never matches a subscription paid in
+    // several transfers — these are the individual deposits, each on its own
+    // date and for its own amount, so each can be tied to one bank line.
+    // Non-cash consideration never touched a bank account, so it is excluded.
+    prisma.equityDeposit.findMany({
+      where: { date: range, kind: 'CASH', ...on('bankAccountId', bankAccountId) },
+      select: {
+        id: true, date: true, amount: true, note: true, commonShareId: true, preferredShareId: true,
+        commonShare: { select: { shareholder: { select: { name: true } } } },
+        preferredShare: { select: { shareholder: { select: { name: true } } } },
+      },
+    }),
+    // Which holdings have itemised consideration at all — deliberately NOT
+    // scoped to this bank account or date range. A holding must be suppressed
+    // wherever it is offered, or it would still appear at full value in the
+    // account it names while its deposits are offered in another.
+    prisma.equityDeposit.findMany({ select: { commonShareId: true, preferredShareId: true } }),
   ])
 
   const out: Candidate[] = []
@@ -233,8 +251,14 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       date: l.dateAcquired, amount: net, dir: 'in',
     })
   }
+  // A holding whose consideration is itemised is represented by its deposits
+  // below, not by its own full issuance value — offering both would invite the
+  // same subscription being tagged twice.
+  const itemisedCommon = new Set(itemisedHoldings.map(d => d.commonShareId).filter(Boolean) as string[])
+  const itemisedPreferred = new Set(itemisedHoldings.map(d => d.preferredShareId).filter(Boolean) as string[])
   for (const [rows, kind] of [[common, 'Common'], [preferred, 'Preferred']] as const) {
     for (const s of rows) {
+      if (kind === 'Common' ? itemisedCommon.has(s.id) : itemisedPreferred.has(s.id)) continue
       out.push({
         type: 'EQUITY', id: s.id,
         label: `Equity deposit · ${kind}${s.shareholder?.name ? ` · ${s.shareholder.name}` : ''}`,
@@ -242,6 +266,16 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
         dir: 'in',
       })
     }
+  }
+  for (const d of equityDeposits) {
+    const who = d.commonShare?.shareholder?.name || d.preferredShare?.shareholder?.name || ''
+    const kind = d.commonShare ? 'Common' : 'Preferred'
+    out.push({
+      type: 'EQUITY_DEPOSIT', id: d.id,
+      label: `Equity deposit · ${kind}${who ? ` · ${who}` : ''}${d.note ? ` · ${d.note}` : ''}`,
+      date: d.date, amount: Math.round(num(d.amount) * 100) / 100,
+      dir: 'in',
+    })
   }
   return out
 }

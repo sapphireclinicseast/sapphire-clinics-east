@@ -24,7 +24,7 @@ export async function GET() {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   const [prefs, commons, shareholders] = await Promise.all([
-    prisma.preferredShare.findMany({ include: { shareholder: true }, orderBy: { createdAt: 'asc' } }),
+    prisma.preferredShare.findMany({ include: { shareholder: true, deposits: { orderBy: { date: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
     prisma.commonShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, address: true } }),
   ])
@@ -45,6 +45,11 @@ export async function GET() {
       equityStake: totalShares > 0 ? (num(p.numberOfShares) / totalShares) * 100 : 0, bankAccountId: p.bankAccountId, equityAccountId: p.equityAccountId,
       annualInterest: p.annualInterest != null ? num(p.annualInterest) : null, maturityYears: p.maturityYears, buybackPrice: p.buybackPrice != null ? num(p.buybackPrice) : null,
       payoutSchedule: p.payoutSchedule, payoutStartMonth: p.payoutStartMonth, payoutStartYear: p.payoutStartYear, payoutDay: p.payoutDay, pdcUrls: p.pdcUrls,
+      // Itemised consideration, so the editor can list what has been received.
+      deposits: (p.deposits || []).map(d => ({
+        id: d.id, date: d.date, amount: num(d.amount), kind: d.kind,
+        bankAccountId: d.bankAccountId, assetAccountId: d.assetAccountId, note: d.note, proofUrls: d.proofUrls,
+      })),
     }
   })
   return NextResponse.json({ rows, shareholders, figures: { totalCapitalization: total, preferredCapitalization: prefCap, preferredShares, retiredPreferredShares } })
