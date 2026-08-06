@@ -284,6 +284,11 @@ model Supplier {
   supplierName        String
   email               String?
   contactNumber       String?
+  // Who to actually speak to, and where. Foreign suppliers are usually reached on
+  // a messaging app rather than by phone, so the channel is worth recording.
+  contactPerson       String?
+  contactMethod       String?  // WeChat | WhatsApp | Viber | Facebook | SMS | Email | Call | Other
+  contactHandle       String?  // the id/number on that channel, when not the phone number
   isForeign           Boolean  @default(false)
   currency            String   @default("PHP")
   defaultExchangeRate Decimal?
