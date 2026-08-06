@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
@@ -174,6 +176,10 @@ const monthlyAmt = (e: Entry) => {
 
 // Upload via XHR so we can report upload progress (0–100%).
 export default function ExpensesPage() {
+  return <Suspense fallback={null}><ExpensesInner /></Suspense>
+}
+
+function ExpensesInner() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
   const canWrite = WRITE_ROLES.includes(role)
@@ -271,6 +277,22 @@ export default function ExpensesPage() {
   const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string; defaultBilledTo?: string; defaultMemo?: string; payment?: RfpMemoParts } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
+  // Deep link from global search: /expenses?tab=<key>&focus=<PCV or reference>.
+  // On the recording grids the search box now queries the server across all
+  // history, so seeding it finds the entry however old it is; on the RFP and
+  // Credit Card tabs it seeds that list's own reference filter instead.
+  const { focus, done } = useFocusTarget()
+  const urlParams = useSearchParams()
+  const urlTab = urlParams.get('tab') || ''
+  useEffect(() => {
+    if (!focus) return
+    const t = TABS.find(x => x.key === urlTab)
+    if (t) setTab(t.key)
+    if (t?.key === 'rfp') setRfpFilters(f => ({ ...f, refNumber: focus }))
+    else if (t?.key === 'suppliers' || t?.key === 'cc-soa') setSearch(focus)
+    else setSearch(focus)
+    done()
+  }, [focus, urlTab, done])
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridTableRef = useRef<HTMLTableElement>(null)
   const gridRz = useResizableColumns(`expenses-entries-grid-${tab}`, gridTableRef)

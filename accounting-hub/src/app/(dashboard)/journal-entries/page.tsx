@@ -4,7 +4,9 @@
 // module of its own (or you are not yet sure how to classify it), enter it
 // here as balanced debits and credits; it posts to the same ledger every
 // report, drill-down and statement reads, so it flows everywhere at once.
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useFocusTarget, revealRow } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { BookOpen, Plus, Loader2, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
 
@@ -25,6 +27,10 @@ const SOURCE_LABEL: Record<string, string> = {
 }
 
 export default function JournalEntriesPage() {
+  return <Suspense fallback={null}><JournalEntriesInner /></Suspense>
+}
+
+function JournalEntriesInner() {
   const { data: session } = useSession()
   const canWrite = WRITE_ROLES.includes((session?.user as { role?: string })?.role || '')
   const [entries, setEntries] = useState<JE[]>([])
@@ -34,6 +40,11 @@ export default function JournalEntriesPage() {
   const [coa, setCoa] = useState<Coa[]>([])
   const [showNew, setShowNew] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  // Deep link from global search: /journal-entries?focus=<id>&q=<description>
+  const { focus, done } = useFocusTarget()
+  const searchParams = useSearchParams()
+  const focusQ = searchParams.get('q') || ''
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
 
   const load = async () => {
     setLoading(true)
@@ -44,6 +55,31 @@ export default function JournalEntriesPage() {
     } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [onlyManual])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Arriving from search: the target is usually a system-generated entry, so drop
+  // the "manual only" filter and seed the search box before loading.
+  useEffect(() => {
+    if (!focus) return
+    setQ(focusQ)
+    setOnlyManual(false)
+    ;(async () => {
+      setLoading(true)
+      try {
+        const r = await fetch(`/api/journal-entries/recent?manual=false&q=${encodeURIComponent(focusQ)}`)
+        const d = await r.json()
+        setEntries(d.entries || [])
+      } finally { setLoading(false) }
+    })()
+  }, [focus, focusQ])
+
+  // Once it's on screen, expand it and jump to it.
+  useEffect(() => {
+    if (!focus || loading) return
+    if (!entries.some(e => e.id === focus)) return
+    setExpanded(x => ({ ...x, [focus]: true }))
+    const t = setTimeout(() => { revealRow(rowRefs.current[focus]); done() }, 60)
+    return () => clearTimeout(t)
+  }, [focus, loading, entries, done])
   useEffect(() => {
     fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] })
       .then(d => setCoa((d.data || []).map((a: Coa) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
@@ -101,7 +137,8 @@ export default function JournalEntriesPage() {
             <tbody>
               {entries.map(e => (
                 <>
-                  <tr key={e.id} className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}
+                  <tr key={e.id} ref={el => { rowRefs.current[e.id] = el }}
+                    className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}
                     onClick={() => setExpanded(x => ({ ...x, [e.id]: !x[e.id] }))}>
                     <td className="px-3 py-2">{expanded[e.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                     <td className="px-3 py-2 tabular-nums">{e.entryDate}</td>

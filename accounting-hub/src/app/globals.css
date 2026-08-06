@@ -54,3 +54,15 @@ h1, h2, h3, h4, h5, h6 {
 ::-webkit-scrollbar-track { background: var(--light-gray); }
 ::-webkit-scrollbar-thumb { background: var(--mid-gray); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--teal); }
+
+/* Deep-link from global search: briefly mark the row that was jumped to. */
+@keyframes focus-flash-fade {
+  0%, 55% { background-color: rgba(250, 204, 21, 0.38); box-shadow: inset 3px 0 0 var(--teal); }
+  100%    { background-color: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
+.focus-flash, .focus-flash > td, .focus-flash > th {
+  animation: focus-flash-fade 2.6s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-flash, .focus-flash > td, .focus-flash > th { animation-duration: 0.01s; background-color: rgba(250, 204, 21, 0.38); }
+}
