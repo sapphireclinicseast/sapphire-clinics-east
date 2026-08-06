@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import React, { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import {
@@ -536,6 +537,10 @@ function BarcodeDisplay({ value }: { value: string }) {
    ═══════════════════════════════════════════════════════════ */
 
 export default function InventoryPage() {
+  return <Suspense fallback={null}><InventoryInner /></Suspense>
+}
+
+function InventoryInner() {
   const { data: session } = useSession()
   const sessionUserId = session?.user?.id as string | undefined
   const [activeTab, setActiveTab] = useState<Tab>('Inventory')
@@ -559,6 +564,9 @@ export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [allItems, setAllItems] = useState<InventoryItem[]>([])
   const [itemSearch, setItemSearch] = useState('')
+  // Deep link from global search — narrow the list to the item that was clicked.
+  const { focus, done } = useFocusTarget()
+  useEffect(() => { if (focus) { setItemSearch(focus); done() } }, [focus, done])
   const [itemBranchFilter, setItemBranchFilter] = useState('')
   const [itemDeptFilter, setItemDeptFilter] = useState('')
   const [itemWebClassFilter, setItemWebClassFilter] = useState('')
