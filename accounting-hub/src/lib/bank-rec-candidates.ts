@@ -38,6 +38,16 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   const reconAcct = bankAccountId
     ? await prisma.account.findUnique({ where: { id: bankAccountId }, select: { accountNumber: true } })
     : null
+  // POS proceeds only ever land in an account named as a "Net Proceeds Account"
+  // in POS → Payment Mode Settings. Petty cash accounts are funded by transfer,
+  // never by sales, so orders must not be offered against them. Inactive modes
+  // still count: an account that used to take proceeds holds real old deposits.
+  const proceedsAccounts = new Set(
+    (await prisma.paymentMode.findMany({
+      where: { accountId: { not: null } },
+      select: { accountId: true },
+    })).map(m => m.accountId as string)
+  )
   // An account filter that matches everything when no account is given. Only
   // for NULLABLE columns: the `null` branch also offers rows that never had an
   // account set. On a required column Prisma rejects `{ field: null }` outright
@@ -65,7 +75,10 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     }),
     prisma.order.findMany({
       where: { status: 'COMPLETED', transactionDate: range },
-      select: { id: true, orderNumber: true, netAmount: true, transactionDate: true, patientName: true },
+      select: {
+        id: true, orderNumber: true, netAmount: true, transactionDate: true, patientName: true,
+        payments: { select: { paymentMode: { select: { accountId: true } } } },
+      },
     }),
     // The rest name the bank account they moved through. Rows that never had one
     // set are still offered, so nothing is hidden by an unfilled field.
@@ -161,6 +174,15 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     out.push({ type: 'RFP', id: r.id, label: `${r.refNumber} · ${kind}${r.payableTo ? ` · ${r.payableTo}` : ''}`, date: r.paidAt, amount: num(r.grossTotal), dir: 'out' })
   }
   for (const o of orders) {
+    if (bankAccountId) {
+      // Not a proceeds account at all (petty cash, loan accounts …) → no sales.
+      if (!proceedsAccounts.has(bankAccountId)) continue
+      // Otherwise offer the order only where its own payment modes lodge it.
+      // Orders whose modes were never set stay offered against any proceeds
+      // account, so nothing is hidden by an unfilled field.
+      const lodgedIn = o.payments.map(p => p.paymentMode?.accountId).filter(Boolean) as string[]
+      if (lodgedIn.length && !lodgedIn.includes(bankAccountId)) continue
+    }
     out.push({
       type: 'ORDER', id: o.id, label: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}`,
       date: o.transactionDate, amount: num(o.netAmount), dir: 'in',

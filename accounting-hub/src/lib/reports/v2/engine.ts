@@ -769,29 +769,39 @@ export async function computeLedgerStatements(
   /* ── 8. Bank-statement true-up: cash on the sheet = cash at the bank ──
      The ledger only subtracts what has been categorized, so while Bank Rec has
      a backlog, ledger cash floats above reality. Each bank account with an
-     imported statement is trued to the bank's own running balance as of its
-     latest line in the period; the difference sits on ONE visible equity line,
+     imported statement is trued MONTH BY MONTH to the bank's own running
+     balance at that month end; the difference sits on ONE visible equity line,
      "Cash Pending Reconciliation", which shrinks toward zero as pending lines
      get categorized — at which point the true-up posts nothing at all.
+     Only the change in that gap is posted each month, so the cash flow reads as
+     "movement in the uncategorized backlog" rather than a whole year's gap
+     landing in whichever month happened to hold the last statement line.
+     Months with no statement hold the previous month's true-up steady, so real
+     ledger movement after the statements run out flows through untouched.
      All-Branches only: statements are whole-account and cannot be split. */
   if (branch === 'ALL') {
     try {
-      // Every statement line that carries a running balance, so each month can
-      // be trued to the bank's own closing balance for THAT month rather than
-      // the whole year's difference landing in one column.
+      // Every statement line IN THIS PERIOD that carries a running balance, so
+      // each month can be trued to the bank's own closing balance for THAT
+      // month rather than the whole year's difference landing in one column.
+      // Scoped to the period on purpose: a balance from an earlier year says
+      // nothing about this year's month ends, and monthOf would clamp it to
+      // January, freezing cash at a stale figure for the whole year.
       const stmtLines = await prisma.bankTransaction.findMany({
-        where: { date: { lt: end }, statementBalance: { not: null } },
+        where: { date: { gte: start, lt: end }, statementBalance: { not: null } },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
         select: { bankAccountId: true, date: true, statementBalance: true },
       })
       // last statement balance seen in each month, per account
       const byAcctMonth = new Map<string, Map<number, number>>()
       const firstMonth = new Map<string, number>()
+      const lastMonth = new Map<string, number>()
       for (const t of stmtLines) {
-        const m = monthOf(t.date)
+        const m = t.date.getUTCMonth() + 1
         if (!byAcctMonth.has(t.bankAccountId)) byAcctMonth.set(t.bankAccountId, new Map())
         byAcctMonth.get(t.bankAccountId)!.set(m, Number(t.statementBalance))
         if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
+        lastMonth.set(t.bankAccountId, m)
       }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
       let trueups = 0
@@ -801,7 +811,8 @@ export async function computeLedgerStatements(
         const months = byAcctMonth.get(acct.id)
         if (!months) continue
         const mm = movMonthly.get(n)
-        const start = firstMonth.get(acct.id) ?? 1
+        const firstM = firstMonth.get(acct.id) ?? 1
+        const lastM = lastMonth.get(acct.id) ?? 12
         // Walk the year: at each month end the sheet should read what the bank
         // read. Only the CHANGE in the required adjustment is posted, so each
         // month carries its own correction and none carries the whole year's.
@@ -813,9 +824,11 @@ export async function computeLedgerStatements(
           const stmt = months.get(m)
           if (stmt !== undefined) lastKnown = stmt
           // Before the account's first statement line there is nothing to true
-          // to; after the last one, hold the last correction rather than
-          // inventing a new one.
-          if (m < start || lastKnown === null) continue
+          // to. After the LAST one, hold the correction already carried and stop
+          // truing: the bank has simply not told us about those months yet, and
+          // re-truing to a stale balance would cancel genuine ledger movement
+          // instead of reconciling it.
+          if (m < firstM || m > lastM || lastKnown === null) continue
           const want = round2(lastKnown - (ledger + carried))
           if (Math.abs(want) < 0.01) continue
           postBalanced('bank-trueup', m, `True-up to bank statement — ${acct.title}`, [
@@ -832,7 +845,8 @@ export async function computeLedgerStatements(
           `Cash is trued to the imported bank statements month by month: each bank account is stated at the bank's own ` +
           `closing balance for every month that has statement lines, so no single month absorbs the whole year's ` +
           `difference. The offset sits on the visible equity line "3990 Cash Pending Reconciliation" and shrinks as ` +
-          `pending Bank Reconciliation lines are categorized.`,
+          `pending Bank Reconciliation lines are categorized. Months before an account's first statement line, and ` +
+          `after its last, are left untrued.`,
         )
       }
     } catch { /* statements are optional */ }
