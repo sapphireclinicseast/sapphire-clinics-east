@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useSearchParams } from 'next/navigation'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
@@ -201,6 +202,7 @@ function ExpensesInner() {
   const [searchCapped, setSearchCapped] = useState(false)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
+  const [coaAccounts, setCoaAccounts] = useState<PickableAccount[]>([])
   const [bankOptions, setBankOptions] = useState<string[]>([])
   const [cards, setCards] = useState<Card[]>([])
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
@@ -405,6 +407,8 @@ function ExpensesInner() {
         const list = Array.isArray(d) ? d : (d.accounts || d.data || [])
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setCoaOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setCoaAccounts(list.map((a: any) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle, accountType: a.accountType })))
       })
       .catch(() => setCoaOptions([]))
     fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=1000')
@@ -1236,12 +1240,10 @@ function ExpensesInner() {
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.accountTitle || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { accountTitle: ev.target.value }, false)} style={{ minWidth: 200 }}>
-                            <option value=""></option>
-                            {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                            {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
-                          </select>
+                          <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
+                            disabled={lk} className={cellCls} placeholder="Type a number or a name…"
+                            clearLabel="— Clear —"
+                            onChange={v => saveField(e.id, { accountTitle: v }, false)} />
                           {/* Only tangible (depreciating PPE) one-time entries — not intangibles. */}
                           {(() => {
                             const ac = assetClassFromAccountTitle(e.accountTitle)
@@ -2971,8 +2973,6 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
   const count = rfp.meta?.ids?.length || 0
   const [assets, setAssets] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [expenseAccts, setExpenseAccts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
-  const [q, setQ] = useState('')
-  const [feeQ, setFeeQ] = useState('')
   const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
   const [fromAccountId, setFromAccountId] = useState('')
   const [payMethod, setPayMethod] = useState<string>('Telegraphic Transfer')
@@ -2992,9 +2992,8 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
       setExpenseAccts(rows.filter(a => a.accountType === 'EXPENSE').map(pick))
     }).catch(() => {})
   }, [])
-  // Pay-from source is a cash/bank (ASSET) account; the fee DEBIT is an EXPENSE account.
-  const filtered = assets.filter(a => !q || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(q.toLowerCase()))
-  const feeFiltered = expenseAccts.filter(a => !feeQ || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(feeQ.toLowerCase()))
+  // Pay-from source is a cash/bank (ASSET) account; the fee DEBIT is an EXPENSE
+  // account. Both fields search their own list as you type.
 
   const upload = async (file: File | null) => {
     if (!file) return
@@ -3056,10 +3055,12 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payment Date</label>
         <input type="date" value={datePaid} onChange={e => setDatePaid(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Source Account (Cash/Bank)</label>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search asset accounts…" className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
-        <select value={fromAccountId} onChange={e => setFromAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
-          <option value="">— Select Account —</option>{filtered.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-        </select>
+        <div className="mb-3">
+          <AccountPicker accounts={assets} value={fromAccountId} valueKey="id"
+            className="w-full px-3 py-2 rounded-xl border text-sm"
+            placeholder="Type a bank/cash account number or name…"
+            onChange={v => setFromAccountId(v)} />
+        </div>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payment Method</label>
         <div className="flex gap-2 mb-3">
           {PAYROLL_PAYMENT_METHODS.map(m => (
@@ -3095,10 +3096,10 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
             <input value={feeAmount} onChange={e => setFeeAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm mb-2 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             {Number(feeAmount) > 0 && (<>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Fee Expense Account</label>
-              <input value={feeQ} onChange={e => setFeeQ(e.target.value)} placeholder="Search accounts…" className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
-              <select value={feeExpenseAccountId} onChange={e => setFeeExpenseAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
-                <option value="">— Select Account —</option>{feeFiltered.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-              </select>
+              <AccountPicker accounts={expenseAccts} value={feeExpenseAccountId} valueKey="id"
+                className="w-full px-3 py-2 rounded-xl border text-sm"
+                placeholder="Type an expense account number or name…"
+                onChange={v => setFeeExpenseAccountId(v)} />
             </>)}
           </div>
         )}

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { Fragment, useState, useEffect, useCallback } from 'react'
+import { AccountPicker } from '@/components/AccountPicker'
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 import { useSession } from 'next-auth/react'
 import {
@@ -5765,11 +5766,10 @@ export default function PayrollPage() {
                 return (
                   <div key={key}>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
-                    <select value={coaEdits[key] ?? coaMapping[key] ?? ''} onChange={e => setCoaEdits(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— Select Account —</option>
-                      {filteredAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-                    </select>
+                    <AccountPicker accounts={filteredAccts} value={coaEdits[key] ?? coaMapping[key] ?? ''} valueKey="id"
+                      className="w-full px-3 py-2 rounded-lg border text-xs"
+                      placeholder="Type a number or a name…"
+                      onChange={v => setCoaEdits(prev => ({ ...prev, [key]: v }))} />
                     {current && !coaEdits[key] && <p className="text-[10px] mt-0.5" style={{ color: 'var(--teal)' }}>Current: {current.accountNumber} — {current.accountTitle}</p>}
                   </div>
                 )
@@ -5791,11 +5791,10 @@ export default function PayrollPage() {
                 return (
                   <div key={key}>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
-                    <select value={coaEdits[key] ?? coaMapping[key] ?? ''} onChange={e => setCoaEdits(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— Select Account —</option>
-                      {filteredAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-                    </select>
+                    <AccountPicker accounts={filteredAccts} value={coaEdits[key] ?? coaMapping[key] ?? ''} valueKey="id"
+                      className="w-full px-3 py-2 rounded-lg border text-xs"
+                      placeholder="Type a number or a name…"
+                      onChange={v => setCoaEdits(prev => ({ ...prev, [key]: v }))} />
                     {current && !coaEdits[key] && <p className="text-[10px] mt-0.5" style={{ color: 'var(--teal)' }}>Current: {current.accountNumber} — {current.accountTitle}</p>}
                   </div>
                 )
@@ -5940,15 +5939,11 @@ export default function PayrollPage() {
 
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Source Account (Cash/Bank)</label>
-                <input value={remitFromSearch} onChange={e => setRemitFromSearch(e.target.value)} placeholder="Search asset accounts..."
-                  className="w-full px-3 py-2 rounded-lg border text-xs mb-1" style={{ borderColor: 'var(--light-gray)' }} />
-                <select value={remitFromAccountId} onChange={e => setRemitFromAccountId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                  <option value="">— Select Account —</option>
-                  {allAccounts
-                    .filter(a => a.accountType === 'ASSET' && (!remitFromSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(remitFromSearch.toLowerCase())))
-                    .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-                </select>
+                <AccountPicker accounts={allAccounts.filter(a => a.accountType === 'ASSET')}
+                  value={remitFromAccountId} valueKey="id"
+                  className="w-full px-3 py-2 rounded-lg border text-xs"
+                  placeholder="Type a bank/cash account number or name…"
+                  onChange={v => setRemitFromAccountId(v)} />
               </div>
 
               <div>
@@ -5981,27 +5976,20 @@ export default function PayrollPage() {
                   <>
                     <div>
                       <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Fee Expense Account (Debit)</label>
-                      <input value={remitFeeExpenseSearch} onChange={e => setRemitFeeExpenseSearch(e.target.value)} placeholder="Search expense accounts..."
-                        className="w-full px-3 py-2 rounded-lg border text-xs mb-1" style={{ borderColor: 'var(--light-gray)' }} />
-                      <select value={remitFeeExpenseAccountId} onChange={e => setRemitFeeExpenseAccountId(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                        <option value="">— Select Expense Account —</option>
-                        {allAccounts
-                          .filter(a => a.accountType === 'EXPENSE' && (!remitFeeExpenseSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(remitFeeExpenseSearch.toLowerCase())))
-                          .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-                      </select>
+                      <AccountPicker accounts={allAccounts.filter(a => a.accountType === 'EXPENSE')}
+                        value={remitFeeExpenseAccountId} valueKey="id"
+                        className="w-full px-3 py-2 rounded-lg border text-xs"
+                        placeholder="Type an expense account number or name…"
+                        onChange={v => setRemitFeeExpenseAccountId(v)} />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Fee Cash Account (Credit — defaults to source above)</label>
-                      <input value={remitFeeCashSearch} onChange={e => setRemitFeeCashSearch(e.target.value)} placeholder="Search asset accounts (leave blank to use source account)..."
-                        className="w-full px-3 py-2 rounded-lg border text-xs mb-1" style={{ borderColor: 'var(--light-gray)' }} />
-                      <select value={remitFeeCashAccountId} onChange={e => setRemitFeeCashAccountId(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                        <option value="">— Same as Source Account —</option>
-                        {allAccounts
-                          .filter(a => a.accountType === 'ASSET' && (!remitFeeCashSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(remitFeeCashSearch.toLowerCase())))
-                          .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-                      </select>
+                      <AccountPicker accounts={allAccounts.filter(a => a.accountType === 'ASSET')}
+                        value={remitFeeCashAccountId} valueKey="id"
+                        className="w-full px-3 py-2 rounded-lg border text-xs"
+                        placeholder="Same as source account — or type another…"
+                        clearLabel="— Same as Source Account —"
+                        onChange={v => setRemitFeeCashAccountId(v)} />
                     </div>
                   </>
                 )}
