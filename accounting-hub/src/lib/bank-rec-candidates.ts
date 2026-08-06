@@ -38,6 +38,16 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   const reconAcct = bankAccountId
     ? await prisma.account.findUnique({ where: { id: bankAccountId }, select: { accountNumber: true } })
     : null
+  // POS proceeds only ever land in an account named as a "Net Proceeds Account"
+  // in POS → Payment Mode Settings. Petty cash accounts are funded by transfer,
+  // never by sales, so orders must not be offered against them. Inactive modes
+  // still count: an account that used to take proceeds holds real old deposits.
+  const proceedsAccounts = new Set(
+    (await prisma.paymentMode.findMany({
+      where: { accountId: { not: null } },
+      select: { accountId: true },
+    })).map(m => m.accountId as string)
+  )
   // An account filter that matches everything when no account is given. Only
   // for NULLABLE columns: the `null` branch also offers rows that never had an
   // account set. On a required column Prisma rejects `{ field: null }` outright
@@ -48,7 +58,8 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   const onRequired = <T extends string>(field: T, id: string | null) =>
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
-    transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries, onHandAccts,
+    transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
+    shareholderAdvances, loans, equityDeposits, itemisedHoldings, onHandAccts,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -64,7 +75,10 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     }),
     prisma.order.findMany({
       where: { status: 'COMPLETED', transactionDate: range },
-      select: { id: true, orderNumber: true, netAmount: true, transactionDate: true, patientName: true },
+      select: {
+        id: true, orderNumber: true, netAmount: true, transactionDate: true, patientName: true,
+        payments: { select: { paymentMode: { select: { accountId: true } } } },
+      },
     }),
     // The rest name the bank account they moved through. Rows that never had one
     // set are still offered, so nothing is hidden by an unfilled field.
@@ -105,6 +119,40 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       where: { date: range, reimbursementId: null, grossAmount: { gt: 0 } },
       select: { id: true, pcvNumber: true, grossAmount: true, date: true, requestor: true, description: true },
     }),
+    // Money lent to the company by a shareholder or director — a different
+    // thing from the staff cash advances above, and the only inbound source
+    // that was not offerable here. Like equity, an advance names the account it
+    // was debited into, so it is offered against that account only.
+    prisma.advance.findMany({
+      where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, name: true, dateAcquired: true, principalAmount: true, advanceType: true },
+    }),
+    // Loan and corporate-bond releases. Money borrowed lands in the account the
+    // loan names, exactly as an advance or an equity deposit does, but was the
+    // one inbound source never offered here — so a ₱1,000,000 bond subscription
+    // could not be tied to the deposits that paid it.
+    prisma.loan.findMany({
+      where: { dateAcquired: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, name: true, dateAcquired: true, principalAmount: true, netAmountToDebit: true, loanType: true, loanEntity: true },
+    }),
+    // Itemised equity consideration. A holding is offered above at its full
+    // issuance value on one date, which never matches a subscription paid in
+    // several transfers — these are the individual deposits, each on its own
+    // date and for its own amount, so each can be tied to one bank line.
+    // Non-cash consideration never touched a bank account, so it is excluded.
+    prisma.equityDeposit.findMany({
+      where: { date: range, kind: 'CASH', ...on('bankAccountId', bankAccountId) },
+      select: {
+        id: true, date: true, amount: true, note: true, commonShareId: true, preferredShareId: true,
+        commonShare: { select: { shareholder: { select: { name: true } } } },
+        preferredShare: { select: { shareholder: { select: { name: true } } } },
+      },
+    }),
+    // Which holdings have itemised consideration at all — deliberately NOT
+    // scoped to this bank account or date range. A holding must be suppressed
+    // wherever it is offered, or it would still appear at full value in the
+    // account it names while its deposits are offered in another.
+    prisma.equityDeposit.findMany({ select: { commonShareId: true, preferredShareId: true } }),
     // "Petty Cash on Hand" accounts stand for the physical cash box. A transfer
     // whose destination is one of them is a replenishment withdrawal — labelled
     // as such so the bank's withdrawal line reads like what it is.
@@ -153,6 +201,15 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     out.push({ type: 'RFP', id: r.id, label: `${r.refNumber} · ${kind}${r.payableTo ? ` · ${r.payableTo}` : ''}`, date: r.paidAt, amount: num(r.grossTotal), dir: 'out' })
   }
   for (const o of orders) {
+    if (bankAccountId) {
+      // Not a proceeds account at all (petty cash, loan accounts …) → no sales.
+      if (!proceedsAccounts.has(bankAccountId)) continue
+      // Otherwise offer the order only where its own payment modes lodge it.
+      // Orders whose modes were never set stay offered against any proceeds
+      // account, so nothing is hidden by an unfilled field.
+      const lodgedIn = o.payments.map(p => p.paymentMode?.accountId).filter(Boolean) as string[]
+      if (lodgedIn.length && !lodgedIn.includes(bankAccountId)) continue
+    }
     out.push({
       type: 'ORDER', id: o.id, label: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}`,
       date: o.transactionDate, amount: num(o.netAmount), dir: 'in',
@@ -185,8 +242,32 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       date: e.date, amount: num(e.grossAmount), dir: 'out',
     })
   }
+  for (const ad of shareholderAdvances) {
+    out.push({
+      type: 'ADVANCE', id: ad.id,
+      label: `Advance received · ${ad.name}${ad.advanceType === 'KIND' ? ' · in kind' : ''}`,
+      date: ad.dateAcquired, amount: num(ad.principalAmount), dir: 'in',
+    })
+  }
+  for (const l of loans) {
+    // Charges deducted at source mean the bank receives the net, so that is the
+    // figure offered when one is recorded; the gross still shows in the label.
+    const net = num(l.netAmountToDebit) > 0 ? num(l.netAmountToDebit) : num(l.principalAmount)
+    const kind = l.loanType === 'CORPORATE_BOND' ? 'Corporate bond' : l.loanType === 'KIND' ? 'Loan in kind' : 'Loan'
+    out.push({
+      type: 'LOAN', id: l.id,
+      label: `${kind} received · ${l.name}${net !== num(l.principalAmount) ? ` · net of charges (₱${num(l.principalAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })} gross)` : ''}`,
+      date: l.dateAcquired, amount: net, dir: 'in',
+    })
+  }
+  // A holding whose consideration is itemised is represented by its deposits
+  // below, not by its own full issuance value — offering both would invite the
+  // same subscription being tagged twice.
+  const itemisedCommon = new Set(itemisedHoldings.map(d => d.commonShareId).filter(Boolean) as string[])
+  const itemisedPreferred = new Set(itemisedHoldings.map(d => d.preferredShareId).filter(Boolean) as string[])
   for (const [rows, kind] of [[common, 'Common'], [preferred, 'Preferred']] as const) {
     for (const s of rows) {
+      if (kind === 'Common' ? itemisedCommon.has(s.id) : itemisedPreferred.has(s.id)) continue
       out.push({
         type: 'EQUITY', id: s.id,
         label: `Equity deposit · ${kind}${s.shareholder?.name ? ` · ${s.shareholder.name}` : ''}`,
@@ -194,6 +275,16 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
         dir: 'in',
       })
     }
+  }
+  for (const d of equityDeposits) {
+    const who = d.commonShare?.shareholder?.name || d.preferredShare?.shareholder?.name || ''
+    const kind = d.commonShare ? 'Common' : 'Preferred'
+    out.push({
+      type: 'EQUITY_DEPOSIT', id: d.id,
+      label: `Equity deposit · ${kind}${who ? ` · ${who}` : ''}${d.note ? ` · ${d.note}` : ''}`,
+      date: d.date, amount: Math.round(num(d.amount) * 100) / 100,
+      dir: 'in',
+    })
   }
   return out
 }

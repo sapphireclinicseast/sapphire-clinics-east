@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
+import { branchForBankAccount, branchLabel } from '@/lib/branch'
 import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -39,10 +40,10 @@ const cellText = (t: Txn, key: string): string => {
   }
 }
 
-interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
+interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; statementBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
 interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
-interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[] }
+interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[]; partial?: boolean; partOf?: boolean }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
 interface Hint { kind: string; label: string; amount: number; date: string; n: number }
 interface UntaggedGroup { type: string; label: string; count: number; total: number; truncated: boolean; items: { id: string; label: string; date: string; amount: number; dir: string }[] }
@@ -56,6 +57,9 @@ export default function BankReconciliationPage() {
   const isAdmin = (session?.user?.role as string) === 'ADMIN'
 
   const [accounts, setAccounts] = useState<BankAcct[]>([])
+  const [showFT, setShowFT] = useState(false)
+  // Set when the transfer modal is opened from a single line rather than the toolbar.
+  const [ftFor, setFtFor] = useState<Txn | null>(null)
   const [sel, setSel] = useState('')
   const [tab, setTab] = useState<'PENDING' | 'POSTED' | 'EXCLUDED' | 'ARCHIVED'>('PENDING')
   const [txns, setTxns] = useState<Txn[]>([])
@@ -196,8 +200,17 @@ export default function BankReconciliationPage() {
               alert(`Matched ${d.matched} settlement line(s). ${d.remainingPending.toLocaleString()} still pending.`)
               await refreshAll()
             }} title="Bulk-match card/e-wallet day settlements to their order batches" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Check size={14} /> Match settlements</button>
+            <button onClick={async () => {
+              if (!confirm('Pair internal transfers across ALL bank accounts? A spent and an equal received (≥₱5,000) on two of our own accounts within 3 banking days, with exactly one possible counterpart each, are recorded as one Fund Transfer and both posted. Ambiguous pairs are left for the Match dialog.')) return
+              const r = await fetch('/api/bank-rec/transfer-match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+              const d = await r.json()
+              if (!r.ok) { alert(d.error || 'Failed'); return }
+              alert(`Paired ${d.matched} internal transfer(s)${d.matched ? ':\n' + d.pairs.slice(0, 12).map((p: { refNumber: string; amount: number; from: string; to: string; date: string }) => `${p.refNumber} · ${p.date} · ₱${p.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${p.from} → ${p.to}`).join('\n') + (d.pairs.length > 12 ? `\n…and ${d.pairs.length - 12} more` : '') : ''}`)
+              await refreshAll()
+            }} title="Bulk-pair internal transfers between our own accounts (equal amount, both pending, ≤3 banking days, unambiguous)" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Match transfers</button>
             <button onClick={() => setShowRules(true)} title="Auto-categorize recurring lines by description pattern" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Wand2 size={14} /> Auto-rules</button>
             <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
+            <button onClick={() => setShowFT(true)} title="Record a transfer between two bank accounts, or from a bank account to a petty cash box" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Record Fund Transfer</button>
             <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Upload size={14} /> Upload from file</button>
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add transaction</button>
           </div>
@@ -229,6 +242,16 @@ export default function BankReconciliationPage() {
                   </p>
                 )}
                 <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Posted balance{a.startDate ? ` · since ${a.startDate}` : ''}</p>
+                {/* What the loaded statement lines themselves add up to, pending
+                    ones included — so adding or deleting a line moves a figure
+                    here even before it has been tagged. */}
+                {a.pendingCount > 0 && (
+                  <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                    With {a.pendingCount} pending: <strong style={{ color: 'var(--charcoal)' }}>
+                      {a.currency && a.currency !== 'PHP' ? `${a.currency} ` : '₱'}{peso(a.statementBalance)}
+                    </strong>
+                  </p>
+                )}
               </button>
             ))}
           </div>
@@ -341,7 +364,7 @@ export default function BankReconciliationPage() {
             </div>
             <div className="relative">
               <Search size={14} style={{ color: 'var(--mid-gray)', position: 'absolute', left: 10, top: 9 }} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search description…" className="pl-8 pr-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)', minWidth: 220 }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search description, payee, match, FT ref…" className="pl-8 pr-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)', minWidth: 220 }} />
             </div>
             {hintCount > 0 && (
               <button onClick={() => setOnlyHinted(v => !v)}
@@ -419,6 +442,7 @@ export default function BankReconciliationPage() {
                           )}
                           <button onClick={() => setMatchFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Link2 size={13} /> Match</button>
                           <button onClick={() => setCatFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}><Check size={13} /> Categorise</button>
+                          <button onClick={() => setFtFor(t)} title="Record this line as a transfer to another of our accounts, or to a petty cash box" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><ArrowLeftRight size={13} /> Transfer</button>
                           <button onClick={() => act({ id: t.id, action: 'exclude' })} title="Exclude" className="inline-flex items-center px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Ban size={13} /></button>
                         </>
                       )}
@@ -445,10 +469,12 @@ export default function BankReconciliationPage() {
 
       {showRules && <RulesModal coa={coa} accounts={accounts} onClose={() => setShowRules(false)} onDone={refreshAll} />}
       {showForexCfg && <ForexAccountsModal onClose={() => setShowForexCfg(false)} onSaved={async () => { setShowForexCfg(false); await refreshAll() }} />}
+      {showFT && <RecordFundTransferModal accounts={accounts} defaultFromId={account?.id || ''} onClose={() => setShowFT(false)} onDone={async () => { setShowFT(false); await refreshAll() }} />}
+      {ftFor && <RecordFundTransferModal accounts={accounts} defaultFromId={account?.id || ''} line={ftFor} onClose={() => setFtFor(null)} onDone={async () => { setFtFor(null); await refreshAll() }} />}
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
       {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
-      {matchFor && <MatchModal txn={matchFor} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
+      {matchFor && <MatchModal txn={matchFor} coa={coa} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
     </div>
   )
 }
@@ -728,6 +754,12 @@ function CategoriseModal({ txn, coa: allCoa, account, onClose, onDone }: { txn: 
   const [categoryAccountId, setCat] = useState('')
   const [fromToName, setFromTo] = useState(txn.fromToName || '')
   const [busy, setBusy] = useState(false)
+  // Reports are filtered by branch, so an entry left on "All Branches" shows up
+  // only in the consolidated view. Branch-held accounts (AHEA/AHGH/VER) answer
+  // this from their own name; the company-wide SCEI/SCI accounts cannot, so the
+  // picker is there to attribute those.
+  const derivedBranch = branchForBankAccount(account?.accountTitle)
+  const [branch, setBranch] = useState(derivedBranch)
   const filtered = coa.filter(c => !q || `${c.accountNumber} ${c.accountTitle}`.toLowerCase().includes(q.toLowerCase())).slice(0, 50)
   const foreign = !!account && account.currency !== 'PHP'
   const native = txn.spent > 0 ? txn.spent : txn.received
@@ -737,7 +769,7 @@ function CategoriseModal({ txn, coa: allCoa, account, onClose, onDone }: { txn: 
     if (!categoryAccountId) { alert('Choose a category account.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'categorise', categoryAccountId, fromToName, fxRate: withRate ?? (rate ? Number(rate) : undefined) }) })
+      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'categorise', categoryAccountId, fromToName, branch, fxRate: withRate ?? (rate ? Number(rate) : undefined) }) })
       const d = await r.json()
       if (!r.ok) {
         // No rate on file yet — take one here rather than sending the user away.
@@ -785,6 +817,19 @@ function CategoriseModal({ txn, coa: allCoa, account, onClose, onDone }: { txn: 
           <button key={c.id} onClick={() => setCat(c.id)} className="block w-full text-left px-3 py-1.5 text-xs" style={{ background: categoryAccountId === c.id ? 'var(--pale-teal)' : '#fff', color: 'var(--charcoal)' }}>{c.accountNumber} — {c.accountTitle}</button>
         ))}
       </div>
+      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Branch</label>
+      <select value={branch} onChange={e => setBranch(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }}>
+        <option value="SANDBOX_EAST">Aura Health East</option>
+        <option value="SANDBOX_GREENHILLS">Aura Health Greenhills</option>
+        <option value="VERDANA_STORE">Verdana</option>
+        <option value="AURA_INSTITUTE">Aura Health Institute</option>
+        <option value="ALL">All Branches (company-wide)</option>
+      </select>
+      <p className="text-[11px] mb-3" style={{ color: branch === 'ALL' ? '#b45309' : 'var(--mid-gray)' }}>
+        {branch === 'ALL'
+          ? 'On "All Branches" this entry appears only in the consolidated reports — it will not show on any per-branch statement. Pick a branch if it belongs to one.'
+          : `Reported under ${branchLabel(branch)}.${derivedBranch === 'ALL' ? ' This is a company-wide account, so the branch is your call.' : ''}`}
+      </p>
       <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Posts a journal entry: {txn.spent > 0 ? 'debit the category, credit this bank account.' : 'debit this bank account, credit the category.'}</p>
       <button onClick={() => save()} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Categorise & post'}</button>
     </Modal>
@@ -901,8 +946,11 @@ function PosSettlementPicker({ txn, onDone }: { txn: Txn; onDone: () => void }) 
   )
 }
 
-function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose: () => void; onDone: () => void; onCategorise: () => void }) {
+function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa: Coa[]; onClose: () => void; onDone: () => void; onCategorise: () => void }) {
   const [matches, setMatches] = useState<Match[] | null>(null)
+  // Where the sliver goes when the ticked records don't reach the bank amount
+  // to the centavo (bank interest, a charge, a rounding difference).
+  const [diffAcct, setDiffAcct] = useState('')
   const [fx, setFx] = useState<FxMatch[]>([])
   const [busy, setBusy] = useState(false)
   // Manual search: any of these switches from same-amount suggestions to a
@@ -912,6 +960,10 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [showPos, setShowPos] = useState(false)
+  const [sel, setSel] = useState<Record<string, Match>>({})
+  const [partials, setPartials] = useState<Match[]>([])
+  // Records BIGGER than this line — the deposit is one instalment of them.
+  const [bigger, setBigger] = useState<Match[]>([])
   const searching = !!(q.trim() || from || to)
   useEffect(() => {
     setMatches(null)
@@ -920,7 +972,9 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
       if (q.trim()) p.set('q', q.trim())
       if (from) p.set('from', from)
       if (to) p.set('to', to)
-      fetch(`/api/bank-rec/matches?${p}`).then(r => r.ok ? r.json() : { matches: [] }).then(d => setMatches(d.matches || [])).catch(() => setMatches([]))
+      fetch(`/api/bank-rec/matches?${p}`).then(r => r.ok ? r.json() : { matches: [] })
+        .then(d => { setMatches(d.matches || []); setPartials(d.partials || []); setBigger(d.bigger || []) })
+        .catch(() => { setMatches([]); setPartials([]) })
     }, q.trim() ? 350 : 0)
     return () => clearTimeout(t)
   }, [txn.id, q, from, to])
@@ -937,14 +991,65 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
         if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
         onDone(); return
       }
+      // Settling part of a bigger record: the label carries the portion so the
+      // grid shows what this line covered and what the record still awaits.
+      // Judged on the amounts, not on which list the record came from — the
+      // record is often months from the deposit (a subscription recorded at
+      // year end, paid in June) and is then reached by search rather than by
+      // the suggestions.
+      const isPart = m.type !== 'INTERBANK' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > target + 0.01
+      const partLabel = isPart
+        ? `Part payment ₱${peso(target)} of ₱${peso(m.amount)} · ${m.label}`.slice(0, 500)
+        : m.label
       const body = m.type === 'INTERBANK'
         ? { id: txn.id, action: 'match-interbank', counterpartId: m.id }
-        : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: m.label }
+        : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: partLabel }
       const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
       onDone()
     } finally { setBusy(false) }
   }
+  // One deposit often settles several records at once — Scott So and Sofia Tan
+  // paying ₱250,000 each into a single ₱500,000 line, or two cash loans arriving
+  // as one cheque. Ticking them accumulates a running total against the bank
+  // amount so the combination can be confirmed only once it actually adds up.
+  const key = (m: Match) => `${m.type}-${m.id}`
+  const combinable = (m: Match) => m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.type !== 'INTERBANK'
+  const toggle = (m: Match) => setSel(prev => {
+    const next = { ...prev }
+    if (next[key(m)]) delete next[key(m)]; else next[key(m)] = m
+    return next
+  })
+  const selList = Object.values(sel)
+  const target = txn.spent > 0 ? txn.spent : txn.received
+  const selTotal = Math.round(selList.reduce((s, m) => s + m.amount, 0) * 100) / 100
+  const selDiff = Math.round((selTotal - target) * 100) / 100
+
+  const pickMany = async () => {
+    if (selList.length < 1) return
+    if (selDiff !== 0 && !diffAcct) return
+    setBusy(true)
+    try {
+      const types = [...new Set(selList.map(m => m.type))]
+      // A bank line carries one matchId, so a combination is stored as the ids
+      // joined; the label is what makes it legible afterwards.
+      const diffNote = selDiff !== 0
+        ? ` + ₱${peso(Math.abs(selDiff))} to ${coa.find(c => c.id === diffAcct)?.accountNumber || 'difference'}`
+        : ''
+      const label = `${selList.length} record${selList.length === 1 ? '' : 's'} · ${selList.map(m => `${m.label} ₱${peso(m.amount)}`).join(' + ')}${diffNote}`
+      const body = {
+        id: txn.id, action: 'match',
+        matchType: types.length === 1 ? types[0] : 'MULTI',
+        matchId: selList.map(m => m.id).join(','),
+        matchLabel: label.slice(0, 500),
+        ...(selDiff !== 0 && diffAcct ? { differenceAccountId: diffAcct, recordsTotal: selTotal } : {}),
+      }
+      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
+      onDone()
+    } finally { setBusy(false) }
+  }
+
   const pickFx = async (m: FxMatch) => {
     const mine = txn.spent > 0 ? txn.spent : txn.received
     if (!confirm(`Record a currency exchange?\n\n₱${peso(txn.spent > 0 ? mine : m.amount)} ⇄ ${peso(txn.spent > 0 ? m.amount : mine)} ${m.currency}\nRate: 1 ${m.currency} = ${m.rate} PHP\n\nBoth bank lines will be posted against one fund transfer.`)) return
@@ -1009,7 +1114,7 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
         </div>
       )}
       {matches === null ? <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={15} className="inline animate-spin" /> Finding matches…</p>
-        : matches.length === 0 ? (
+        : matches.length === 0 && partials.length === 0 && bigger.length === 0 ? (
           <div className="text-center py-4">
             <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
               {searching
@@ -1020,22 +1125,276 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
           </div>
         ) : (
           <div className="space-y-2">
-            {matches.map(m => (
-              <button key={`${m.type}-${m.id}`} onClick={() => pick(m)} disabled={busy} className="w-full rounded-xl border px-3 py-2 text-left disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }}>
-                <div className="flex items-center justify-between gap-2">
-                  <div><p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{m.label}</p><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.date}</p></div>
-                  <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              {matches.length > 0
+                ? 'Click a record to match it on its own, or tick several to combine them when one deposit covered more than one.'
+                : 'Nothing matches this amount on its own. Tick the records that together make up this deposit.'}
+            </p>
+            {selList.length > 0 && (
+              <div className="rounded-xl border px-3 py-2 flex items-center justify-between gap-3 flex-wrap"
+                style={{ borderColor: selDiff === 0 ? '#16a34a' : 'var(--gold)', background: selDiff === 0 ? '#dcfce7' : '#fefce8' }}>
+                <div className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                  <strong>{selList.length} selected</strong> · ₱{peso(selTotal)} of ₱{peso(target)}
+                  <span className="ml-2 font-semibold" style={{ color: selDiff === 0 ? '#166534' : '#b45309' }}>
+                    {selDiff === 0 ? 'adds up exactly' : `${selDiff > 0 ? 'over' : 'short'} by ₱${peso(Math.abs(selDiff))}`}
+                  </span>
                 </div>
-                {/* Day settlements list what the total is made of, so one click confirms an informed tag. */}
-                {m.details && m.details.length > 0 && (
-                  <ul className="mt-1.5 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'var(--light-gray)' }}>
-                    {m.details.map((d, i) => <li key={i} className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{d}</li>)}
-                  </ul>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setSel({})} className="text-xs underline" style={{ color: 'var(--mid-gray)' }}>Clear</button>
+                  <button onClick={pickMany} disabled={busy || selList.length < 1 || (selDiff !== 0 && !diffAcct)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+                    style={{ background: '#16a34a', cursor: (selList.length < 1 || (selDiff !== 0 && !diffAcct)) ? 'not-allowed' : 'pointer' }}
+                    title={selDiff !== 0 && !diffAcct ? 'Choose where the difference goes, or tick records that add up exactly' : 'Match these records to this bank line'}>
+                    {selDiff === 0 ? `Match ${selList.length} together` : `Match ${selList.length} + difference`}
+                  </button>
+                </div>
+              </div>
+            )}
+            {/* The bank rarely agrees to the centavo — interest lands on top of a
+                deposit, a charge comes off a payment. Naming the account for the
+                remainder settles the line in full instead of leaving it open. */}
+            {/* One ticked record bigger than the line is almost never a
+                difference to expense — it is an instalment. Offering a ₱990,000
+                "difference" against a ₱10,000 deposit invites a serious
+                misposting, so that case gets the part-payment route instead. */}
+            {selList.length === 1 && selDiff > 0 && (
+              <div className="rounded-xl border px-3 py-2 space-y-1.5" style={{ borderColor: 'var(--gold)', background: '#fffbeb' }}>
+                <p className="text-[11px]" style={{ color: '#92400e' }}>
+                  <strong>{selList[0].label}</strong> is bigger than this line. If this deposit paid only part of it, record it as a part payment — ₱{peso(Math.abs(selDiff))} stays open for the other bank lines that made it up.
+                </p>
+                <button onClick={() => pick(selList[0])} disabled={busy}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+                  style={{ background: 'var(--teal)' }}>
+                  Record ₱{peso(target)} as part payment
+                </button>
+              </div>
+            )}
+            {selList.length > 0 && selDiff !== 0 && !(selList.length === 1 && selDiff > 0) && (
+              <div className="rounded-xl border px-3 py-2 space-y-1.5" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <label className="block text-[11px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                  Record the ₱{peso(Math.abs(selDiff))} {selDiff < 0 ? 'the bank has on top' : 'the records have on top'} as
+                </label>
+                <select value={diffAcct} onChange={e => setDiffAcct(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">— leave unmatched (button stays off) —</option>
+                  {coa.map(c => (
+                    <option key={c.id} value={c.id}>{c.accountNumber} — {c.accountTitle}</option>
+                  ))}
+                </select>
+                <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                  A journal entry posts for the difference only; the ticked records keep their own accounting. Typical picks: interest income, bank charges, other income.
+                </p>
+              </div>
+            )}
+            {matches.map(m => (
+              <div key={`${m.type}-${m.id}`} className="w-full rounded-xl border px-3 py-2 flex items-start gap-2.5"
+                style={{ borderColor: sel[key(m)] ? 'var(--teal)' : 'var(--light-gray)', background: sel[key(m)] ? 'var(--pale-teal)' : 'transparent' }}>
+                {combinable(m) && (
+                  <input type="checkbox" checked={!!sel[key(m)]} onChange={() => toggle(m)} disabled={busy}
+                    className="mt-1 shrink-0 cursor-pointer" title="Combine with other records to make up this bank line" />
                 )}
-              </button>
+                <button onClick={() => pick(m)} disabled={busy} className="flex-1 min-w-0 text-left disabled:opacity-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <div><p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{m.label}</p><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.date}</p></div>
+                    <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+                  </div>
+                  {/* Day settlements list what the total is made of, so one click confirms an informed tag. */}
+                  {m.details && m.details.length > 0 && (
+                    <ul className="mt-1.5 pl-3 space-y-0.5 border-l-2" style={{ borderColor: 'var(--light-gray)' }}>
+                      {m.details.map((d, i) => <li key={i} className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{d}</li>)}
+                    </ul>
+                  )}
+                </button>
+              </div>
             ))}
+
+            {/* Records smaller than the bank line. They can never match on their
+                own, so they are tick-only — a deposit that covered two or three
+                of them is confirmed from the running total above. */}
+            {partials.length > 0 && (
+              <div className="pt-1">
+                <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  Or combine several records
+                </p>
+                <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                  Smaller records in the same period — tick the ones this deposit paid for until they add up to ₱{peso(target)}.
+                </p>
+                <div className="space-y-1.5">
+                  {partials.map(m => (
+                    <label key={`${m.type}-${m.id}`} className="w-full rounded-xl border px-3 py-2 flex items-start gap-2.5 cursor-pointer"
+                      style={{ borderColor: sel[key(m)] ? 'var(--teal)' : 'var(--light-gray)', background: sel[key(m)] ? 'var(--pale-teal)' : 'transparent' }}>
+                      <input type="checkbox" checked={!!sel[key(m)]} onChange={() => toggle(m)} disabled={busy} className="mt-1 shrink-0 cursor-pointer" />
+                      <span className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{m.label}</span>
+                          <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.date}</span>
+                        </span>
+                        <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* The mirror of combining: this deposit is one instalment of a
+                bigger record. A ₱1,000,000 subscription paid as ₱10,000 then
+                ₱990,000 — match each line to the same record. */}
+            {bigger.length > 0 && (
+              <div className="pt-1">
+                <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  Or this line is part of a bigger record
+                </p>
+                <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                  Records larger than ₱{peso(target)} in the same period. Pick one if this deposit paid only part of it — the rest stays open for the other bank lines that made it up.
+                </p>
+                <div className="space-y-1.5">
+                  {bigger.map(m => (
+                    <button key={`big-${m.type}-${m.id}`} onClick={() => pick(m)} disabled={busy}
+                      className="w-full text-left rounded-xl border px-3 py-2 flex items-start justify-between gap-2 disabled:opacity-50"
+                      style={{ borderColor: 'var(--light-gray)' }}>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{m.label}</span>
+                        <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                          {m.date} · this line covers ₱{peso(target)}, leaving ₱{peso(Math.round((m.amount - target) * 100) / 100)}
+                        </span>
+                      </span>
+                      <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
+    </Modal>
+  )
+}
+
+/** Record a transfer between two accounts without leaving Bank Reconciliation.
+ *  The account list is the same one shown in the strip above, so petty-cash-on-hand
+ *  accounts are selectable as a destination — that is how a cash withdrawal to the
+ *  physical box gets recorded and later matched against the bank line. */
+// Records a transfer between two of our own accounts. Opened either from the
+// toolbar (blank) or from a single bank line via `line`, in which case the date,
+// amount and this line's own side are taken from the statement — a line that
+// went out makes this account the "from", one that came in makes it the "to" —
+// and the line is matched to the new transfer on save, so it does not have to be
+// hunted down in the Match dialog afterwards.
+function RecordFundTransferModal({ accounts, defaultFromId, line, onClose, onDone }: {
+  accounts: BankAcct[]; defaultFromId: string; line?: Txn | null; onClose: () => void; onDone: () => void
+}) {
+  const lineIsSpent = !!line && line.spent > 0
+  const [fromId, setFromId] = useState(lineIsSpent || !line ? defaultFromId : '')
+  const [toId, setToId] = useState(line && !lineIsSpent ? defaultFromId : '')
+  const [date, setDate] = useState(line ? line.date : new Date().toISOString().slice(0, 10))
+  const [amount, setAmount] = useState(line ? String(line.spent > 0 ? line.spent : line.received) : '')
+  const [checkNumber, setCheckNumber] = useState('')
+  const [description, setDescription] = useState(line ? line.description : '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const label = (a: BankAcct) => `${a.accountNumber} — ${a.accountTitle}`
+  const from = accounts.find(a => a.id === fromId)
+  const to = accounts.find(a => a.id === toId)
+  const crossCurrency = !!from && !!to && from.currency !== to.currency
+
+  const save = async () => {
+    setErr('')
+    const amt = parseFloat(amount)
+    if (!fromId || !toId) { setErr('Choose both accounts'); return }
+    if (fromId === toId) { setErr('The two accounts must be different'); return }
+    if (!amt || amt <= 0) { setErr('Enter an amount'); return }
+    if (crossCurrency) { setErr('These accounts hold different currencies — use Currency exchange in Fund Transfer instead'); return }
+    setSaving(true)
+    try {
+      const r = await fetch('/api/fund-transfers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, fromAccountId: fromId, toAccountId: toId, amount: amt, checkNumber: checkNumber || null, description: description || null, proofUrls: [] }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setErr(d.error || 'Failed to record the transfer'); return }
+      // Opened from a bank line: tie that line to the transfer we just made, so
+      // it leaves the pending list here rather than waiting to be found again in
+      // the Match dialog. The label matches what the Match dialog would write.
+      // The transfer itself is already recorded, so a failure here is reported
+      // without discarding it — the line can still be matched by hand.
+      if (line) {
+        const m = await fetch('/api/bank-rec/transactions', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: line.id, action: 'match', matchType: 'FUND_TRANSFER', matchId: d.id, matchLabel: `${d.refNumber} · Fund Transfer` }),
+        })
+        if (!m.ok) {
+          const md = await m.json().catch(() => ({}))
+          setErr(`Transfer ${d.refNumber} was recorded, but this line could not be matched to it (${md.error || 'failed'}). Match it by hand.`)
+          return
+        }
+      }
+      onDone()
+    } catch { setErr('Network error') }
+    finally { setSaving(false) }
+  }
+
+  const field = { borderColor: 'var(--light-gray)' }
+  return (
+    <Modal title="Record Fund Transfer" onClose={onClose}>
+      <div className="space-y-3">
+        {line && (
+          <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+            {line.date} · {line.description} · <strong>₱{peso(line.spent > 0 ? line.spent : line.received)}</strong> {line.spent > 0 ? 'out' : 'in'} — so this account is the {lineIsSpent ? 'source' : 'destination'}. Choose the {lineIsSpent ? 'destination' : 'source'} below.
+          </p>
+        )}
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
+          {/* The statement already says which way this line went, so its own side
+              is fixed — only the far side is a choice. */}
+          <select value={fromId} onChange={e => setFromId(e.target.value)} disabled={lineIsSpent} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ ...field, background: lineIsSpent ? 'var(--off-white)' : undefined }}>
+            <option value="">— Select account —</option>
+            {accounts.filter(a => lineIsSpent || a.id !== toId).map(a => <option key={a.id} value={a.id}>{label(a)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>To <span className="font-normal">(another bank account, or a petty cash box)</span></label>
+          <select value={toId} onChange={e => setToId(e.target.value)} disabled={!!line && !lineIsSpent} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ ...field, background: (!!line && !lineIsSpent) ? 'var(--off-white)' : undefined }}>
+            <option value="">— Select account —</option>
+            {accounts.filter(a => a.id !== fromId).map(a => <option key={a.id} value={a.id}>{label(a)}</option>)}
+          </select>
+        </div>
+        {crossCurrency && (
+          <p className="text-xs px-3 py-2 rounded-lg" style={{ background: '#fff7ed', color: '#9a3412' }}>
+            {from!.currency} → {to!.currency}: record this under Fund Transfer › Currency exchange so the rate is captured.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Amount</label>
+            <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Cheque no. <span className="font-normal">(optional)</span></label>
+            <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Description <span className="font-normal">(optional)</span></label>
+            <input value={description} onChange={e => setDescription(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={field} />
+          </div>
+        </div>
+        {err && <p className="text-xs" style={{ color: '#b91c1c' }}>{err}</p>}
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+          Recorded as a fund transfer, so both sides become matchable against their bank lines.
+        </p>
+        <div className="flex gap-2 justify-end pt-1">
+          <button onClick={onClose} className="px-4 py-2.5 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          <button onClick={save} disabled={saving} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+            {saving ? 'Saving…' : 'Record transfer'}
+          </button>
+        </div>
+      </div>
     </Modal>
   )
 }
