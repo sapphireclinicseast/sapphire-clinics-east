@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
+import { branchForBankAccount, branchLabel } from '@/lib/branch'
 import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -749,6 +750,12 @@ function CategoriseModal({ txn, coa: allCoa, account, onClose, onDone }: { txn: 
   const [categoryAccountId, setCat] = useState('')
   const [fromToName, setFromTo] = useState(txn.fromToName || '')
   const [busy, setBusy] = useState(false)
+  // Reports are filtered by branch, so an entry left on "All Branches" shows up
+  // only in the consolidated view. Branch-held accounts (AHEA/AHGH/VER) answer
+  // this from their own name; the company-wide SCEI/SCI accounts cannot, so the
+  // picker is there to attribute those.
+  const derivedBranch = branchForBankAccount(account?.accountTitle)
+  const [branch, setBranch] = useState(derivedBranch)
   const filtered = coa.filter(c => !q || `${c.accountNumber} ${c.accountTitle}`.toLowerCase().includes(q.toLowerCase())).slice(0, 50)
   const foreign = !!account && account.currency !== 'PHP'
   const native = txn.spent > 0 ? txn.spent : txn.received
@@ -758,7 +765,7 @@ function CategoriseModal({ txn, coa: allCoa, account, onClose, onDone }: { txn: 
     if (!categoryAccountId) { alert('Choose a category account.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'categorise', categoryAccountId, fromToName, fxRate: withRate ?? (rate ? Number(rate) : undefined) }) })
+      const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: txn.id, action: 'categorise', categoryAccountId, fromToName, branch, fxRate: withRate ?? (rate ? Number(rate) : undefined) }) })
       const d = await r.json()
       if (!r.ok) {
         // No rate on file yet — take one here rather than sending the user away.
@@ -806,6 +813,19 @@ function CategoriseModal({ txn, coa: allCoa, account, onClose, onDone }: { txn: 
           <button key={c.id} onClick={() => setCat(c.id)} className="block w-full text-left px-3 py-1.5 text-xs" style={{ background: categoryAccountId === c.id ? 'var(--pale-teal)' : '#fff', color: 'var(--charcoal)' }}>{c.accountNumber} — {c.accountTitle}</button>
         ))}
       </div>
+      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Branch</label>
+      <select value={branch} onChange={e => setBranch(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }}>
+        <option value="SANDBOX_EAST">Aura Health East</option>
+        <option value="SANDBOX_GREENHILLS">Aura Health Greenhills</option>
+        <option value="VERDANA_STORE">Verdana</option>
+        <option value="AURA_INSTITUTE">Aura Health Institute</option>
+        <option value="ALL">All Branches (company-wide)</option>
+      </select>
+      <p className="text-[11px] mb-3" style={{ color: branch === 'ALL' ? '#b45309' : 'var(--mid-gray)' }}>
+        {branch === 'ALL'
+          ? 'On "All Branches" this entry appears only in the consolidated reports — it will not show on any per-branch statement. Pick a branch if it belongs to one.'
+          : `Reported under ${branchLabel(branch)}.${derivedBranch === 'ALL' ? ' This is a company-wide account, so the branch is your call.' : ''}`}
+      </p>
       <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Posts a journal entry: {txn.spent > 0 ? 'debit the category, credit this bank account.' : 'debit this bank account, credit the category.'}</p>
       <button onClick={() => save()} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Categorise & post'}</button>
     </Modal>
