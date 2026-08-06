@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import React, { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import {
@@ -366,6 +367,9 @@ interface Supplier {
   supplierName: string
   email: string | null
   contactNumber: string | null
+  contactPerson?: string | null
+  contactMethod?: string | null
+  contactHandle?: string | null
   isForeign: boolean
   currency: string | null
   defaultExchangeRate: number | null
@@ -536,6 +540,10 @@ function BarcodeDisplay({ value }: { value: string }) {
    ═══════════════════════════════════════════════════════════ */
 
 export default function InventoryPage() {
+  return <Suspense fallback={null}><InventoryInner /></Suspense>
+}
+
+function InventoryInner() {
   const { data: session } = useSession()
   const sessionUserId = session?.user?.id as string | undefined
   const [activeTab, setActiveTab] = useState<Tab>('Inventory')
@@ -549,6 +557,7 @@ export default function InventoryPage() {
   const [invPage, setInvPage] = useState(1)
   const [invPageSize, setInvPageSize] = useState(25)
   const [supPage, setSupPage] = useState(1)
+  const [supSearch, setSupSearch] = useState('')
   const [supPageSize, setSupPageSize] = useState(25)
   const [adjPage, setAdjPage] = useState(1)
   const [adjPageSize, setAdjPageSize] = useState(25)
@@ -559,6 +568,9 @@ export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [allItems, setAllItems] = useState<InventoryItem[]>([])
   const [itemSearch, setItemSearch] = useState('')
+  // Deep link from global search — narrow the list to the item that was clicked.
+  const { focus, done } = useFocusTarget()
+  useEffect(() => { if (focus) { setItemSearch(focus); done() } }, [focus, done])
   const [itemBranchFilter, setItemBranchFilter] = useState('')
   const [itemDeptFilter, setItemDeptFilter] = useState('')
   const [itemWebClassFilter, setItemWebClassFilter] = useState('')
@@ -667,6 +679,9 @@ export default function InventoryPage() {
 
   // Supplier form
   const [sName, setSName] = useState('')
+  const [sPerson, setSPerson] = useState('')
+  const [sMethod, setSMethod] = useState('')
+  const [sHandle, setSHandle] = useState('')
   const [sEmail, setSEmail] = useState('')
   const [sContact, setSContact] = useState('')
   const [sForeign, setSForeign] = useState(false)
@@ -988,6 +1003,14 @@ export default function InventoryPage() {
       setSuppliers(data.data || [])
     } catch { /* ignore */ }
   }, [])
+
+  // Client-side supplier search across the fields anyone would look one up by.
+  const shownSuppliers = useMemo(() => {
+    const q = supSearch.trim().toLowerCase()
+    if (!q) return suppliers
+    return suppliers.filter((s) => [s.supplierName, s.contactPerson, s.contactMethod, s.contactHandle, s.email, s.contactNumber, s.address]
+      .some((f) => (f || '').toLowerCase().includes(q)))
+  }, [suppliers, supSearch])
 
   const fetchAllSuppliers = useCallback(async () => {
     try {
@@ -1532,6 +1555,7 @@ export default function InventoryPage() {
   function openSupplierCreate() {
     setEditingSupplier(null)
     setSName(''); setSEmail(''); setSContact(''); setSForeign(false)
+    setSPerson(''); setSMethod(''); setSHandle('')
     setSCurrency('USD'); setSRate(''); setSAddress(''); setSNotes(''); setError('')
     setSupplierModalOpen(true)
   }
@@ -1539,6 +1563,7 @@ export default function InventoryPage() {
   function openSupplierEdit(s: Supplier) {
     setEditingSupplier(s)
     setSName(s.supplierName); setSEmail(s.email || ''); setSContact(s.contactNumber || '')
+    setSPerson(s.contactPerson || ''); setSMethod(s.contactMethod || ''); setSHandle(s.contactHandle || '')
     setSForeign(s.isForeign); setSCurrency(s.currency || 'USD')
     setSRate(s.defaultExchangeRate != null ? String(s.defaultExchangeRate) : '')
     setSAddress(s.address || ''); setSNotes(s.notes || ''); setError('')
@@ -1550,6 +1575,7 @@ export default function InventoryPage() {
     setSaving(true); setError('')
     const body: Record<string, unknown> = {
       supplierName: sName, email: sEmail || null, contactNumber: sContact || null,
+      contactPerson: sPerson || null, contactMethod: sMethod || null, contactHandle: sHandle || null,
       isForeign: sForeign, currency: sForeign ? sCurrency : 'PHP',
       address: sAddress || null, notes: sNotes || null,
     }
@@ -3352,7 +3378,16 @@ setTimeout(()=>window.print(),500);
       {activeTab === 'Suppliers' && (
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Manage supplier information</p>
+            <div className="flex items-center gap-3 flex-1">
+              <p className="text-sm shrink-0" style={{ color: 'var(--mid-gray)' }}>Manage supplier information</p>
+              <div className="relative flex-1 max-w-xs">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                <input value={supSearch} onChange={(e) => { setSupSearch(e.target.value); setSupPage(1) }}
+                  placeholder="Search name, contact person, email…"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <DownloadMenu onDownload={handleDownloadSuppliers} label="Download" />
               {canWrite && (
@@ -3374,24 +3409,32 @@ setTimeout(()=>window.print(),500);
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Email</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Contact</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Contact Person</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Reach via</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Foreign?</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Currency</th>
                     {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {suppliers.length === 0 ? (
+                  {shownSuppliers.length === 0 ? (
                     <tr>
                       <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <Truck size={32} className="mx-auto mb-2 opacity-40" />
                         <p>No suppliers</p>
                       </td>
                     </tr>
-                  ) : suppliers.slice((supPage - 1) * supPageSize, supPage * supPageSize).map((s) => (
+                  ) : shownSuppliers.slice((supPage - 1) * supPageSize, supPage * supPageSize).map((s) => (
                     <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{s.supplierName}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{s.email || '—'}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{s.contactNumber || '—'}</td>
+                      <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>{s.contactPerson || '—'}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        {s.contactMethod
+                          ? <span className="px-2 py-1 rounded-md font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{s.contactMethod}{s.contactHandle ? ` · ${s.contactHandle}` : ''}</span>
+                          : '—'}
+                      </td>
                       <td className="px-4 py-3">
                         {s.isForeign ? (
                           <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: '#e0e7ff', color: '#3730a3' }}>Foreign</span>
@@ -3418,7 +3461,7 @@ setTimeout(()=>window.print(),500);
               </table>
             </div>
             {suppliers.length > 0 && (
-              <Pagination totalItems={suppliers.length} page={supPage} pageSize={supPageSize}
+              <Pagination totalItems={shownSuppliers.length} page={supPage} pageSize={supPageSize}
                 onPageChange={setSupPage} onPageSizeChange={setSupPageSize} />
             )}
           </div>
@@ -3467,6 +3510,30 @@ setTimeout(()=>window.print(),500);
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Contact Number</label>
                     <input type="text" value={sContact} onChange={(e) => setSContact(e.target.value)}
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Contact Person</label>
+                    <input type="text" value={sPerson} onChange={(e) => setSPerson(e.target.value)}
+                      placeholder="e.g. Kimi"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Reach via</label>
+                      <select value={sMethod} onChange={(e) => setSMethod(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— Select —</option>
+                        {['WeChat', 'WhatsApp', 'Viber', 'Facebook', 'Telegram', 'SMS', 'Call', 'Email', 'Other'].map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>ID / handle on that app</label>
+                      <input type="text" value={sHandle} onChange={(e) => setSHandle(e.target.value)}
+                        placeholder="optional"
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
                   </div>
                   <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
                     <input type="checkbox" checked={sForeign} onChange={(e) => setSForeign(e.target.checked)} className="rounded" />

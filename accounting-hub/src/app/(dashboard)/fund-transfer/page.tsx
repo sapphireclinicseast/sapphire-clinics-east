@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
+import { toChequeInput } from '@/lib/cheque-number'
 import { useSession } from 'next-auth/react'
-import { Repeat, Plus, Settings, Loader2, X, Eye, Pencil, Trash2, ListChecks, Info, ArrowLeftRight } from 'lucide-react'
+import { Repeat, Plus, Settings, Loader2, X, Eye, Pencil, Trash2, ListChecks, Info, ArrowLeftRight, ChevronRight} from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { ScanUpload } from '@/components/ScanUpload'
 import ForexPanel from './ForexPanel'
@@ -134,7 +135,9 @@ export default function FundTransferPage() {
   )
 }
 
-interface CheckRow { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
+interface CheckRow { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[]
+  /** The expense lines that made up this cheque. Empty when the cheque is one record. */
+  items?: CheckRow[] }
 
 function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [accounts, setAccounts] = useState<{ id: string; label: string }[]>([])
@@ -142,8 +145,34 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [checks, setChecks] = useState<CheckRow[]>([])
   const [loading, setLoading] = useState(true)
   const [showCancel, setShowCancel] = useState(false)
+  // Which grouped cheques are opened to show the lines that make them up.
+  const [openCheque, setOpenCheque] = useState<Set<string>>(new Set())
+  const toggleCheque = (k: string) => setOpenCheque(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n })
 
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'checkNumber', dir: 'asc' })
+  // Correcting a mistyped cheque number writes back to whichever record produced the
+  // row, so the source, its RFP and the ledger all read the same number.
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const [savingChk, setSavingChk] = useState(false)
+
+  const startEdit = (c: CheckRow) => { setEditing(`${c.kind}:${c.id}`); setDraft(c.checkNumber) }
+  const saveCheckNumber = async (c: CheckRow) => {
+    const next = draft.trim()
+    if (!next || next === c.checkNumber) { setEditing(null); return }
+    setSavingChk(true)
+    try {
+      const r = await fetch('/api/fund-transfers/checks', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: c.kind, id: c.id, checkNumber: next }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error || 'Could not update the cheque number'); return }
+      setEditing(null)
+      await load()
+    } catch { alert('Network error') }
+    finally { setSavingChk(false) }
+  }
   const [filters, setFilters] = useState<Record<string, string>>({})
   const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const cols = [
@@ -204,9 +233,28 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
               <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
             ) : shown.map((c, i) => {
               const isCancelled = c.source === 'Cancelled'
+              const parts = c.items || []
+              const key = `${c.checkNumber}|${c.bankAccount}`
+              const isOpen = openCheque.has(key)
               return (
-              <tr key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isCancelled ? '#fef2f2' : undefined }}>
-                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', textDecoration: isCancelled ? 'line-through' : undefined }}>{c.checkNumber}</td>
+              <Fragment key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`}>
+              <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: isCancelled ? '#fef2f2' : undefined }}>
+                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', textDecoration: isCancelled ? 'line-through' : undefined }}>
+                  {parts.length > 1 && (
+                    <button onClick={() => toggleCheque(key)} className="mr-1.5 align-middle" title={isOpen ? 'Hide the lines under this cheque' : `Show the ${parts.length} lines under this cheque`}>
+                      <ChevronRight size={13} style={{ color: 'var(--mid-gray)', transform: isOpen ? 'rotate(90deg)' : undefined, transition: 'transform .12s' }} />
+                    </button>
+                  )}
+                  {editing === `${c.kind}:${c.id}` ? (
+                    <span className="inline-flex items-center gap-1">
+                      <input autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveCheckNumber(c); if (e.key === 'Escape') setEditing(null) }}
+                        className="px-2 py-1 rounded border text-xs font-mono w-44 outline-none" style={{ borderColor: 'var(--teal)' }} />
+                      <button onClick={() => saveCheckNumber(c)} disabled={savingChk} className="text-[11px] font-semibold px-1.5 py-1 rounded disabled:opacity-50" style={{ color: 'var(--teal)' }}>Save</button>
+                      <button onClick={() => setEditing(null)} className="text-[11px] px-1 py-1 rounded" style={{ color: 'var(--mid-gray)' }}>Cancel</button>
+                    </span>
+                  ) : c.checkNumber}
+                </td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c.date || ''}</td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: (srcColor[c.source] || '#64748b') + '1a', color: srcColor[c.source] || '#64748b' }}>{c.source}</span></td>
                 <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{c.reference}</td>
@@ -222,8 +270,28 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                 </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankAccount}</td>
                 <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(c.amount)}</td>
-                {canWrite && <td className="px-3 py-2.5 text-right whitespace-nowrap">{isCancelled && c.id && <button onClick={() => removeCancelled(c.id!)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}</td>}
+                {canWrite && <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                  {c.id && c.kind && editing !== `${c.kind}:${c.id}` && (
+                    <button onClick={() => startEdit(c)} className="p-1 rounded hover:bg-gray-100" title="Correct the cheque number — updates the source record and everything that reads from it">
+                      <Pencil size={13} style={{ color: 'var(--teal)' }} />
+                    </button>
+                  )}
+                  {isCancelled && c.id && <button onClick={() => removeCancelled(c.id!)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}
+                </td>}
               </tr>
+              {isOpen && parts.map((p, j) => (
+                <tr key={`${key}-part-${j}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: '#fbfbfa' }}>
+                  <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--mid-gray)', paddingLeft: '2.5rem' }}>↳ {j + 1} of {parts.length}</td>
+                  <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{p.date || ''}</td>
+                  <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{p.source}</td>
+                  <td className="px-3 py-1.5 text-[11px] font-mono" style={{ color: 'var(--charcoal)' }}>{p.reference}</td>
+                  <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--charcoal)' }}>{p.payee}</td>
+                  <td></td>
+                  <td className="px-3 py-1.5 text-right text-[11px] font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(p.amount)}</td>
+                  {canWrite && <td></td>}
+                </tr>
+              ))}
+              </Fragment>
             )})}
             {!loading && shown.length === 0 && accounts.length > 0 && <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{checks.length === 0 ? 'No checks recorded for the selected checking account(s).' : 'No checks match the current filters.'}</td></tr>}
           </tbody>
@@ -265,7 +333,7 @@ function CancelledCheckModal({ accounts, defaultAccountId, onClose, onSaved }: {
           <option value="">Select account…</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
         </select>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Check Number</label>
-        <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} placeholder="Leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <input value={checkNumber} onChange={e => setCheckNumber(toChequeInput(e.target.value))} inputMode="numeric" placeholder="Numbers only — leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date Cancelled</label>
         <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payee (optional)</label>
@@ -331,7 +399,7 @@ function TransferForm({ banks, editing, onClose, onSaved }: { banks: Bank[]; edi
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Amount</label>
         <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Check Number</label>
-        <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} placeholder="Leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <input value={checkNumber} onChange={e => setCheckNumber(toChequeInput(e.target.value))} inputMode="numeric" placeholder="Numbers only — leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Description / Purpose</label>
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof (you can add multiple)</label>

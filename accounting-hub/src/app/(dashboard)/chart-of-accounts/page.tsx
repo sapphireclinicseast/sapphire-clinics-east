@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import {
@@ -224,13 +226,22 @@ function parseCSV(text: string): string[][] {
   return rows
 }
 
+
 export default function ChartOfAccountsPage() {
+  return <Suspense fallback={null}><ChartOfAccountsInner /></Suspense>
+}
+
+function ChartOfAccountsInner() {
   const { data: session, status } = useSession()
   const sessionUserId = session?.user?.id as string | undefined
   const initialLoaded = useRef(false)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  // Deep link from global search — seed the search box so the list narrows to
+  // the record that was clicked, then drop ?focus= from the URL.
+  const { focus, done } = useFocusTarget()
+  useEffect(() => { if (focus) { setSearch(focus); done() } }, [focus, done])
   const [filterType, setFilterType] = useState('')
   const [filterSubType, setFilterSubType] = useState('')
   const [error, setError] = useState('')

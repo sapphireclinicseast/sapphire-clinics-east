@@ -117,9 +117,17 @@ export async function POST(req: Request) {
     if (parent.interestExpenseAccountId && interestPortion > 0) lines.push({ accountId: parent.interestExpenseAccountId, debit: interestPortion, description: 'Interest expense' })
     for (const e of otherExpenses) lines.push({ accountId: e.accountId, debit: num(e.amount), description: (e.description || 'Other expense').trim() })
     lines.push({ accountId: b.bankAccountId, credit: amount + otherTotal, description: `${isLoan ? 'Loan' : 'Advance'} payment — ${parent.name}` })
+    // A loan or advance dedicated to a single branch books its payment JE (and so its
+    // interest) on that branch; multi-branch ones stay 'ALL' and the report engine
+    // splits the interest by the branch allocation.
+    const allocs = Array.isArray(parent.branchAllocations)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (parent.branchAllocations as any[]).filter(a => a?.branch && Number(a?.amount) > 0)
+      : []
+    const jeBranch = allocs.length === 1 ? String(allocs[0].branch) : 'ALL'
     let jeId: string | null = null
     if (lines.length >= 2 && parent.creditAccountId) {
-      const je = await postJournalEntry(prisma as never, { entryDate: paidDate, description: `${isLoan ? 'Loan' : 'Advance'} amortization — ${parent.name}`, referenceType: isLoan ? 'LOAN_PAYMENT' : 'ADVANCE_PAYMENT', referenceId: b.parentId, branch: 'ALL', createdById: userId, lines })
+      const je = await postJournalEntry(prisma as never, { entryDate: paidDate, description: `${isLoan ? 'Loan' : 'Advance'} amortization — ${parent.name}`, referenceType: isLoan ? 'LOAN_PAYMENT' : 'ADVANCE_PAYMENT', referenceId: b.parentId, branch: jeBranch, createdById: userId, lines })
       jeId = je.id
     }
     const data = { dueDate: new Date(b.dueDate), principalPortion, interestPortion, amount, status: 'PAID', paidDate, bankAccountId: b.bankAccountId, proofUrls, journalEntryId: jeId, createdById: userId }

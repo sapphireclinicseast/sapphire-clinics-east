@@ -217,7 +217,14 @@ export async function PATCH(req: Request) {
       const meta = { ...((rep?.meta || {}) as any), paymentId: body.paymentId || null }
       await prisma.reimbursementReport.update({
         where: { id },
-        data: { status: 'PAID', paidAt: body.datePaid ? new Date(body.datePaid) : new Date(), paymentMethod: body.paymentMethod || null, proofUrl: body.proofUrl || null, meta },
+        data: { status: 'PAID', paidAt: body.datePaid ? new Date(body.datePaid) : new Date(),
+          paymentMethod: body.paymentMethod || null,
+          // Cheques go in checkNumber, wires in transferRef — same split the
+          // rest of the system uses, so cheque monitoring and bank rec see these.
+          checkNumber: body.checkNumber || null,
+          transferRef: body.transferRef || null,
+          debitAccount: body.debitAccount || null,
+          proofUrl: body.proofUrl || null, meta },
       })
       return NextResponse.json({ success: true })
     }
