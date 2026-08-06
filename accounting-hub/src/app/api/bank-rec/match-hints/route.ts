@@ -70,7 +70,10 @@ export async function GET(req: Request) {
 
   // ── money in: settlements expected to land in this bank account ───────────
   const modes = await prisma.paymentMode.findMany({
-    where: { accountId: bankAccountId },
+    // accountId: NET lodges here directly. settlementBankAccountId: sales post
+    // to a clearing account but the processor's payout lands here (e.g. TikTok
+    // settlements deposited into VER BDO Checking).
+    where: { OR: [{ accountId: bankAccountId }, { settlementBankAccountId: bankAccountId }] },
     select: { id: true, name: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } },
   })
   // Rate eras: the deduction in force on the SALE date applies (see

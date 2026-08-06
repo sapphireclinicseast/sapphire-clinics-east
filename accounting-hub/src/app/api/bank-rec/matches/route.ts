@@ -224,7 +224,12 @@ export async function GET(req: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pos: any[] = []
   if (!isSpent && amount > 0) {
-    const shapes = await posSettlementShapes(txn.bankAccountId, lo, hi)
+    // Processor payouts (TikTok → VER BDO Checking) bundle several WEEKS of
+    // sales into one deposit, so the shapes window reaches further back than
+    // the ordinary candidate window. Day/single candidates still only surface
+    // on an amount match, so the wider pull adds no noise.
+    const posLo = new Date(txn.date); posLo.setUTCDate(posLo.getUTCDate() - 45)
+    const shapes = await posSettlementShapes(txn.bankAccountId, posLo, hi)
     const closeAmt = (v: number) => Math.abs(v - amount) <= Math.min(1, Math.max(0.05, 0.02 * Math.max(v, amount)))
     for (const s of shapes.singles) {
       if (searching ? !(!q || `order #${s.orderNumber} ${s.name} ${s.modeName}`.toLowerCase().includes(q)) : !closeAmt(s.net)) continue
@@ -251,6 +256,35 @@ export async function GET(req: Request) {
         date: d.date.toISOString().slice(0, 10), amount: d.net,
         details: d.items.map(i => `#${i.orderNumber}${i.name ? ` · ${i.name}` : ''} · ₱${money(i.net)}`),
       })
+    }
+    // Payout-mode period settlements: a TikTok-style payout covers everything
+    // still unsettled from the oldest sale through some cutoff day, and the
+    // recorded per-order settlement amounts are exact — so walk the days in
+    // order and offer any prefix whose cumulative net equals the deposit.
+    const payoutDays = shapes.days.filter(d => d.payout)
+    const byMode = new Map<string, typeof payoutDays>()
+    for (const d of payoutDays) {
+      const arr = byMode.get(d.modeId) || []
+      arr.push(d); byMode.set(d.modeId, arr)
+    }
+    for (const [modeId, ds] of byMode) {
+      ds.sort((a, b) => +a.date - +b.date)
+      let net = 0, gross = 0, n = 0
+      const ids: string[] = []
+      for (let k = 0; k < ds.length; k++) {
+        const d = ds[k]
+        net = Math.round((net + d.net) * 100) / 100
+        gross = Math.round((gross + d.gross) * 100) / 100
+        n += d.n; ids.push(...d.paymentIds)
+        if (k === 0) continue // a single day already surfaced as POS_DAY
+        if (searching ? !(!q || `${d.modeName} payout settlement`.toLowerCase().includes(q)) : !closeAmt(net)) continue
+        pos.push({
+          type: 'POS_DAY', id: `${modeId}|payout|${k}`, modeId, posPaymentIds: [...ids],
+          label: `Payout settlement · ${n} × ${d.modeName} · ${ds[0].date.toISOString().slice(0, 10)} → ${d.date.toISOString().slice(0, 10)} · ₱${money(gross)} gross less ₱${money(Math.round((gross - net) * 100) / 100)} fees = net ₱${money(net)}`,
+          date: d.date.toISOString().slice(0, 10), amount: net,
+          details: ds.slice(0, k + 1).map(x => `${x.date.toISOString().slice(0, 10)} · ${x.n} sale(s) · net ₱${money(x.net)}`),
+        })
+      }
     }
     pos.sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
   }

@@ -143,6 +143,7 @@ model Account {
   taxPaymentsFrom       TaxPayment[]               @relation("TaxPaymentFrom")
   taxSettings           PayrollTaxSettings[]       @relation("TaxLiability")
   paymentModes          PaymentMode[]              @relation("PaymentModeAccount")
+  paymentModeSettlements PaymentMode[]             @relation("PaymentModeSettlementAccount")
   paymentModeDeductions PaymentModeDeduction[]     @relation("DeductionAccount")
   journalLines          JournalEntryLine[]
   salaryPaymentsFrom    SalaryPayment[]            @relation("SalaryPaymentFrom")
@@ -860,6 +861,12 @@ model PaymentMode {
   isActive      Boolean  @default(true)
   accountId     String? // COA where NET amount is lodged (usually an asset account)
   account       Account? @relation("PaymentModeAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  // Bank account the processor actually deposits settlements into, when that is
+  // NOT accountId (e.g. TikTok sales lodge into a clearing account, but the
+  // payout lands in VER BDO Checking). Bank rec offers this mode's payments
+  // when reconciling either account.
+  settlementBankAccountId String?
+  settlementBankAccount   Account? @relation("PaymentModeSettlementAccount", fields: [settlementBankAccountId], references: [id], onDelete: SetNull)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
