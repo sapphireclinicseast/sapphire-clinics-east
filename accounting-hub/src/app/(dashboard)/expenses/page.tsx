@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { toChequeInput } from '@/lib/cheque-number'
 import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useSearchParams } from 'next/navigation'
 import { useFocusTarget } from '@/lib/use-focus-target'
@@ -1907,7 +1908,7 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
         {isCheck && (
           <>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Check Number</label>
-            <input type="text" inputMode="numeric" value={checkNumber} onChange={e => setCheckNumber(e.target.value)}
+            <input type="text" inputMode="numeric" value={checkNumber} onChange={e => setCheckNumber(toChequeInput(e.target.value))}
               placeholder="e.g. 0001234" className="w-full px-3 py-2 rounded-xl border text-sm mb-1 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Leading zeros are preserved.</p>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Bank account</label>
