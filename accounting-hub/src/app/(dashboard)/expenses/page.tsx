@@ -259,7 +259,11 @@ export default function ExpensesPage() {
       : k === 'payableTotal' ? num(r.payableTotal)
       : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'For Payment')
       : ''
+  // The RFP date range filters the list itself, not just the export — it sits
+  // directly above the table with a "clear" link, so it reads as a table filter
+  // (and the Credit Card Report's identical control already behaves this way).
   const shownRfps = applySortFilter(rfps, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters)
+    .filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
   const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number; amountVaries?: boolean }[]>([])
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
@@ -606,7 +610,7 @@ export default function ExpensesPage() {
     else downloadPdf({ title, subtitle: `Range: ${rangeNote} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
   }
   const exportRfps = (fmt: ExportFormat) => {
-    const rows = shownRfps.filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
+    const rows = shownRfps   // already scoped to the From/To range
     const headers = ['Reference Number', 'Date', 'Kind', 'Payable to', 'Entries', 'Gross Total', 'Amount Payable', 'Status']
     const body = rows.map(r => [
       r.refNumber, new Date(r.createdAt).toISOString().slice(0, 10),
@@ -1446,7 +1450,7 @@ export default function ExpensesPage() {
       {tab === 'rfp' && (
         <>
         <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportRfps}
-          dateLabel="RFP date" note={`${shownRfps.filter(r => inDateRange(r.createdAt, dlFrom, dlTo)).length} in range`} />
+          dateLabel="RFP date" note={`${shownRfps.length} in range`} />
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
             <SortFilterHead cols={rfpCols} sortKey={rfpSort.key} sortDir={rfpSort.dir} filters={rfpFilters}
@@ -1520,7 +1524,11 @@ export default function ExpensesPage() {
               ))}
               {shownRfps.length === 0 && (
                 <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  {rfps.length === 0 ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.' : 'No RFPs match the current filters.'}
+                  {rfps.length === 0
+                    ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.'
+                    : (dlFrom || dlTo)
+                      ? `No RFPs dated ${dlFrom || 'start'} → ${dlTo || 'end'}. Clear the date range to see all ${rfps.length}.`
+                      : 'No RFPs match the current filters.'}
                 </td></tr>
               )}
             </tbody>
