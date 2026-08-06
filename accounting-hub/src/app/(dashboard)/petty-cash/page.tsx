@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
@@ -166,6 +167,7 @@ function PettyCashInner() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
+  const [coaAccounts, setCoaAccounts] = useState<PickableAccount[]>([])
   const [requestors, setRequestors] = useState<string[]>([])
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
   const [showSettings, setShowSettings] = useState(false)
@@ -284,6 +286,8 @@ function PettyCashInner() {
         const list = Array.isArray(d) ? d : (d.accounts || d.data || [])
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setCoaOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setCoaAccounts(list.map((a: any) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle, accountType: a.accountType })))
       })
       .catch(() => setCoaOptions([]))
   }, [])
@@ -1050,12 +1054,10 @@ function PettyCashInner() {
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.accountTitle || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { accountTitle: ev.target.value }, false)} style={{ minWidth: 200 }}>
-                            <option value=""></option>
-                            {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                            {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
-                          </select>
+                          <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
+                            disabled={lk} className={cellCls} placeholder="Type a number or a name…"
+                            clearLabel="— Clear —"
+                            onChange={v => saveField(e.id, { accountTitle: v }, false)} />
                           {/* Only tangible (depreciating PPE) classifications — not intangibles. */}
                           {(() => {
                             const ac = assetClassFromAccountTitle(e.accountTitle)
