@@ -1019,8 +1019,64 @@ export async function computeLedgerStatements(
   /* ── Cash flow (indirect, ties by construction) ── */
   const cashRows = rows.filter(r => r.cash)
   const cashNumbers = new Set(cashRows.map(r => r.number))
-  const beginningCash = round2(cashRows.reduce((s, r) => s + r.opening, 0))
-  const endingCash = round2(cashRows.reduce((s, r) => s + r.closing, 0))
+  const ledgerBeginningCash = round2(cashRows.reduce((s, r) => s + r.opening, 0))
+  const ledgerEndingCash = round2(cashRows.reduce((s, r) => s + r.closing, 0))
+
+  /* ── Anchor cash to the bank, not to the ledger ─────────────────────
+     Beginning and Ending Cash must be what the bank actually held, or the
+     statement is describing a company that does not exist. The ledger only
+     knows what has been categorized, so while Bank Rec has a backlog its cash
+     drifts — far enough at one point to report negative millions.
+
+     Each bank account carries the bank's OWN running balance on every imported
+     line, so the period's opening is the last balance before it starts and each
+     month's close is the last balance inside that month (carried forward when a
+     month has no lines). Accounts with no imported statement keep their ledger
+     figures. Whatever the ledger cannot yet explain is not hidden: it lands on
+     one visible reconciling line inside operating activities, so
+     Beginning + Net Change = Ending still holds exactly. */
+  const bankAnchor = { begin: 0, close: Array(13).fill(0) as number[], have: false, accounts: 0 }
+  try {
+    const cashAcctIds = cashRows.map(r => r.id).filter(Boolean) as string[]
+    if (cashAcctIds.length) {
+      const anchorLines = await prisma.bankTransaction.findMany({
+        where: { bankAccountId: { in: cashAcctIds }, statementBalance: { not: null }, date: { lt: end } },
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
+        select: { bankAccountId: true, date: true, statementBalance: true },
+      })
+      // per account: balance before the period, and the last balance in each month
+      const perAcct = new Map<string, { before: number | null; byMonth: Map<number, number> }>()
+      for (const t of anchorLines) {
+        let a = perAcct.get(t.bankAccountId)
+        if (!a) { a = { before: null, byMonth: new Map() }; perAcct.set(t.bankAccountId, a) }
+        if (t.date < start) a.before = Number(t.statementBalance)
+        else a.byMonth.set(monthOf(t.date), Number(t.statementBalance))
+      }
+      for (const r of cashRows) {
+        const a = r.id ? perAcct.get(r.id) : undefined
+        if (!a || (a.before === null && a.byMonth.size === 0)) {
+          // no statement for this account — keep what the ledger says
+          bankAnchor.begin += r.opening
+          let led = r.opening
+          for (let m = 1; m <= 12; m++) { led += r.monthly[m - 1] || 0; bankAnchor.close[m] += led }
+          continue
+        }
+        bankAnchor.have = true
+        bankAnchor.accounts++
+        const open = a.before ?? r.opening
+        bankAnchor.begin += open
+        let running = open
+        for (let m = 1; m <= 12; m++) {
+          const seen = a.byMonth.get(m)
+          if (seen !== undefined) running = seen        // the bank's own close for this month
+          bankAnchor.close[m] += running                 // otherwise hold the last known balance
+        }
+      }
+    }
+  } catch { /* bank-rec tables are optional */ }
+
+  const beginningCash = bankAnchor.have ? round2(bankAnchor.begin) : ledgerBeginningCash
+  const endingCash = bankAnchor.have ? round2(bankAnchor.close[12]) : ledgerEndingCash
 
   /* ── Cash honesty check: ledger cash vs imported bank statements ──
      The ledger can only see recorded transactions. Bank Rec imports carry the
@@ -1164,6 +1220,33 @@ export async function computeLedgerStatements(
     wcTotal += effect
   }
 
+  // Cash is stated at the bank (above). Anything the ledger cannot yet account
+  // for shows here by name rather than silently bending a section total, so
+  // Beginning + Net Change = Ending holds and the size of the gap stays visible.
+  if (bankAnchor.have) {
+    const bankChange = round2(endingCash - beginningCash)
+    const ledgerChange = round2(ledgerEndingCash - ledgerBeginningCash)
+    const unreconciled = round2(bankChange - ledgerChange)
+    if (Math.abs(unreconciled) >= 0.005) {
+      const bankMonthly = Array.from({ length: 12 }, (_, i) =>
+        round2(bankAnchor.close[i + 1] - (i === 0 ? beginningCash : bankAnchor.close[i])))
+      const ledgerMonthly = sumMonthlyOf(cashRows)
+      workingCapital.push({
+        label: 'Bank reconciliation — movement not yet in the ledger',
+        amount: unreconciled,
+        monthly: bankMonthly.map((b, i) => round2(b - (ledgerMonthly[i] || 0))),
+      })
+      wcTotal += unreconciled
+      validation.notes.push(
+        `Beginning and Ending Cash are stated at the bank's own balances from the imported statements ` +
+        `(${bankAnchor.accounts} account(s)). The ledger explains ${ledgerChange.toLocaleString('en-PH', { minimumFractionDigits: 2 })} of the ` +
+        `${bankChange.toLocaleString('en-PH', { minimumFractionDigits: 2 })} movement; the remaining ` +
+        `${unreconciled.toLocaleString('en-PH', { minimumFractionDigits: 2 })} sits on the ` +
+        `"Bank reconciliation" line and shrinks as pending Bank Reconciliation lines are categorized.`,
+      )
+    }
+  }
+
   const netOperating = round2(netIncome + depreciation + taxProvision + wcTotal)
   const netInvesting = round2(invTotal)
   const netFinancing = round2(finTotal)
@@ -1181,7 +1264,9 @@ export async function computeLedgerStatements(
     netIncome: ebtM.map(e => round2(e * (1 - INCOME_TAX_RATE))),
     depreciation: depM,
     taxProvision: ebtM.map(e => round2(e * INCOME_TAX_RATE)),
-    cashDelta: sumMonthlyOf(cashRows),
+    cashDelta: bankAnchor.have
+      ? Array.from({ length: 12 }, (_, i) => round2(bankAnchor.close[i + 1] - (i === 0 ? beginningCash : bankAnchor.close[i])))
+      : sumMonthlyOf(cashRows),
   }
 
   const isSections = [

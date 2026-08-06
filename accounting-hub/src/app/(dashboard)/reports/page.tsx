@@ -99,8 +99,8 @@ interface ReportData {
 }
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
-// 'quarterly' is offered on the Ledger engine only; the standard components
-// treat it as 'annual' if it ever reaches them.
+// 'quarterly' is offered on the full statements only; the med-rep revenue view
+// treats it as 'annual' if it ever reaches it.
 type ViewMode = 'annual' | 'quarterly' | 'monthly'
 type OnDrillDown = (label: string, category: string, month: number, accountKey?: string, opts?: { subtype?: string; portion?: string }) => void
 
@@ -1651,9 +1651,13 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
-  // 'standard' = current derivation engine; 'ledger' = v2 beta (one balanced
-  // dataset, statements interconnected). Only applies to derived years (2026+).
-  const [engine, setEngine] = useState<'standard' | 'ledger'>('standard')
+  // The Ledger engine is the only one. The old "Standard" engine derived each
+  // statement separately, so the three never had to agree and Assets = L + E
+  // was not guaranteed; it produced figures we could not stand behind. Ledger
+  // builds one balanced double-entry dataset and derives all three from it,
+  // which is why it is now the sole engine. Med-reps keep the restricted
+  // revenue-only components below — that is a permissions view, not a
+  // competing set of books.
 
   const handleDrillDown: OnDrillDown = (label, category, month, accountKey, opts) => {
     setDrillDown({ label, category, month, accountKey, subtype: opts?.subtype, portion: opts?.portion })
@@ -2008,7 +2012,7 @@ export default function ReportsPage() {
         {/* View Mode */}
         {!isMedrep && (
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-          {((engine === 'ledger' && year >= 2024 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
+          {((!isMedrep && year >= 2024 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
@@ -2042,27 +2046,6 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* Engine. From 2024 on: 2026+ derives both ways; 2024-25 default to the
-            audited manual statements, with the Ledger beta deriving from the
-            imported transaction history for those who need to drill in. */}
-        {!isMedrep && year >= 2024 && (
-          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-            {([['standard', 'Standard'], ['ledger', 'Ledger (beta)']] as const).map(([mode, label]) => (
-              <button
-                key={mode}
-                onClick={() => { setEngine(mode); if (mode === 'standard' && viewMode === 'quarterly') setViewMode('annual') }}
-                title={mode === 'ledger' ? 'Derive all three statements from one balanced double-entry dataset (A = L + E guaranteed)' : 'Current derivation engine'}
-                className="px-3 py-2 text-sm font-medium transition-colors"
-                style={{
-                  background: engine === mode ? 'var(--teal)' : 'white',
-                  color: engine === mode ? 'white' : 'var(--charcoal)',
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* A translated statement must never be mistaken for pesos. */}
@@ -2107,18 +2090,10 @@ export default function ReportsPage() {
         )}
 
         {/* Report content */}
-        {!loading && data?.historical && engine === 'standard' && (
-          <div className="mx-4 mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}>
-            {year} figures are the audited / manually entered historical statements — fixed numbers with nothing
-            underneath to click. To drill into the {year} transaction history that has been imported into the Hub
-            (orders, equity, asset purchases…), switch the engine to <strong>Ledger (beta)</strong>; its integrity
-            card will say plainly which modules are missing for {year}.
-          </div>
-        )}
-        {!loading && data?.historical && engine === 'ledger' && !isMedrep && (
+        {!loading && data?.historical && !isMedrep && (
           <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
         )}
-        {!loading && data?.historical && engine === 'standard' && (
+        {!loading && data?.historical && isMedrep && (
           <HistoricalReport
             hist={data.historical}
             tab={effTab}
@@ -2126,10 +2101,10 @@ export default function ReportsPage() {
             revenueOnly={isMedrep}
           />
         )}
-        {!loading && !data?.historical && engine === 'ledger' && year >= 2026 && !isMedrep && (
+        {!loading && !data?.historical && !isMedrep && (
           <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
         )}
-        {!loading && data && !data.historical && (engine === 'standard' || year < 2026 || isMedrep) && (
+        {!loading && data && !data.historical && isMedrep && (
           <div className="py-2">
             {effTab === 'balance-sheet' && (
               <BalanceSheet data={data} viewMode={effView} onDrillDown={effDrill} />
