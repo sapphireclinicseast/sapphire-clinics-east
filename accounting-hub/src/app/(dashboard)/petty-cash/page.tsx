@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
@@ -114,6 +115,10 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
 }
 
 export default function PettyCashPage() {
+  return <Suspense fallback={null}><PettyCashInner /></Suspense>
+}
+
+function PettyCashInner() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
   // Users assigned to a single branch only see that branch here.
@@ -648,6 +653,9 @@ export default function PettyCashPage() {
   // Per-column header sort/filter for the entries grid.
   const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
   const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
+  // Deep link from global search — filter the grid to the PCV that was clicked.
+  const { focus, done } = useFocusTarget()
+  useEffect(() => { if (focus) { setGridFilters(f => ({ ...f, refNumber: focus })); done() } }, [focus, done])
   const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const gridCols: { key: string; label: string; plain?: boolean }[] = [
     { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Requestor' }, { key: 'department', label: 'Department' },

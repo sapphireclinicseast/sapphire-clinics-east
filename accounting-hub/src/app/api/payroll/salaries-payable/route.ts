@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
     const entries = await prisma.payrollEntry.findMany({
       where,
-      include: { consultant: { select: { id: true, name: true, department: true } } },
+      include: { consultant: { select: { id: true, name: true, department: true } }, salarySplits: { orderBy: { seq: 'asc' } } },
       orderBy: [{ cutoffPeriod: 'desc' }, { branch: 'asc' }],
     })
 
@@ -41,6 +41,10 @@ export async function GET(req: Request) {
       salaryRfpId: e.salaryRfpId,
       status: e.status,
       isConsultantEntry: true,
+      splits: e.salarySplits.map(sp => ({
+        id: sp.id, seq: sp.seq, amount: Number(sp.amount), note: sp.note,
+        salariesRemitted: sp.salariesRemitted, salaryRfpId: sp.salaryRfpId,
+      })),
     })))
   }
 
@@ -52,7 +56,7 @@ export async function GET(req: Request) {
 
   const payslips = await prisma.employeePayslip.findMany({
     where,
-    include: { employee: { select: { id: true, firstName: true, lastName: true, department: true } } },
+    include: { employee: { select: { id: true, firstName: true, lastName: true, department: true } }, salarySplits: { orderBy: { seq: 'asc' } } },
     orderBy: [{ cutoffPeriod: 'desc' }, { branch: 'asc' }],
   })
 
@@ -69,5 +73,9 @@ export async function GET(req: Request) {
     salariesRemitted: p.salariesRemitted,
     salaryRfpId: p.salaryRfpId,
     isEmployeePayslip: true,
+    splits: p.salarySplits.map(sp => ({
+      id: sp.id, seq: sp.seq, amount: Number(sp.amount), note: sp.note,
+      salariesRemitted: sp.salariesRemitted, salaryRfpId: sp.salaryRfpId,
+    })),
   })))
 }

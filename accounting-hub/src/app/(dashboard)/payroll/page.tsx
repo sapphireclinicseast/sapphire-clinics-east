@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { Fragment, useState, useEffect, useCallback } from 'react'
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 import { useSession } from 'next-auth/react'
 import {
@@ -196,6 +196,18 @@ interface SalaryPayableEntry {
   isEmployeePayslip?: boolean
   employeeId?: string
   employeeName?: string | null
+  /// Net pay paid in instalments. When present, the splits — not this row —
+  /// are what goes into an RFP and gets marked remitted.
+  splits?: SalarySplit[]
+}
+
+interface SalarySplit {
+  id: string
+  seq: number
+  amount: number
+  note: string | null
+  salariesRemitted: boolean
+  salaryRfpId: string | null
 }
 
 interface BenefitEmployeeEntry {
@@ -982,6 +994,59 @@ export default function PayrollPage() {
   const [loadingEmpSalPayable, setLoadingEmpSalPayable] = useState(false)
   const [showSalRemitted, setShowSalRemitted] = useState(false)
   const [showEmpSalRemitted, setShowEmpSalRemitted] = useState(false)
+  // One search box per subsection of Salaries Payable, so a term typed while
+  // looking at employees doesn't silently filter the consultants list too.
+  const [empSalSearch, setEmpSalSearch] = useState('')
+  const [conSalSearch, setConSalSearch] = useState('')
+  const [salHistorySearch, setSalHistorySearch] = useState('')
+  // Off = show only the cutoff picked at the top of the page (what the selector implies).
+  const [salAllCutoffs, setSalAllCutoffs] = useState(false)
+  // "Split salary" — divide one net pay into instalments that are paid separately.
+  const [splitTarget, setSplitTarget] = useState<null | { row: SalaryPayableEntry; payableType: 'EMPLOYEE' | 'CONSULTANT' }>(null)
+  const [splitAmounts, setSplitAmounts] = useState<string[]>(['', ''])
+  const [splitBusy, setSplitBusy] = useState(false)
+  const [splitError, setSplitError] = useState('')
+
+  const openSplit = (row: SalaryPayableEntry, payableType: 'EMPLOYEE' | 'CONSULTANT') => {
+    setSplitError('')
+    const existing = (row.splits || []).map(sp => sp.amount.toFixed(2))
+    // Re-opening shows what's there; a fresh split starts as an even halving,
+    // with the remainder on the first part so the total always lands exactly.
+    if (existing.length >= 2) setSplitAmounts(existing)
+    else {
+      const half = Math.floor((row.netPay / 2) * 100) / 100
+      setSplitAmounts([(row.netPay - half).toFixed(2), half.toFixed(2)])
+    }
+    setSplitTarget({ row, payableType })
+  }
+
+  const saveSplit = async () => {
+    if (!splitTarget) return
+    setSplitBusy(true); setSplitError('')
+    try {
+      const amounts = splitAmounts.map(a => Number(a)).filter(a => Number.isFinite(a))
+      const res = await fetch('/api/payroll/salary-splits', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payableType: splitTarget.payableType, id: splitTarget.row.id, amounts }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setSplitError(data.error || 'Failed to save the splits'); return }
+      setSplitTarget(null)
+      fetchSalariesPayable(); fetchEmpSalPayable()
+    } catch (e) { setSplitError(String(e)) } finally { setSplitBusy(false) }
+  }
+
+  const removeSplit = async () => {
+    if (!splitTarget) return
+    setSplitBusy(true); setSplitError('')
+    try {
+      const res = await fetch(`/api/payroll/salary-splits?payableType=${splitTarget.payableType}&id=${splitTarget.row.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) { setSplitError(data.error || 'Failed to remove the splits'); return }
+      setSplitTarget(null)
+      fetchSalariesPayable(); fetchEmpSalPayable()
+    } catch (e) { setSplitError(String(e)) } finally { setSplitBusy(false) }
+  }
 
   // Benefits Payable tab state
   const [benefitsPayables, setBenefitsPayables] = useState<BenefitEmployeeEntry[]>([])
@@ -1449,11 +1514,16 @@ export default function PayrollPage() {
 
   // Open the "Generate RFP" dialog for selected payable rows (one branch only).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const openPayableRfp = (source: 'salary' | 'benefit', payableType: 'CONSULTANT' | 'EMPLOYEE', rows: any[], ids: string[]) => {
-    const chosen = rows.filter(r => ids.includes(r.id))
+  // Takes the selected payable units directly rather than rows + ids: a unit may
+  // be a whole payslip or one instalment of a split salary, and the two live in
+  // different tables, so the caller resolves them and passes the amounts.
+  const openPayableRfp = (source: 'salary' | 'benefit', payableType: 'CONSULTANT' | 'EMPLOYEE',
+                          chosen: { id: string; branch: string; cutoffPeriod: string; amount: number }[]) => {
+    if (!chosen.length) { setError('Nothing selected for this RFP.'); return }
+    const ids = chosen.map(c => c.id)
     const branches = [...new Set(chosen.map(r => r.branch))]
     if (branches.length !== 1) { setError('Select entries from a single branch for one RFP.'); return }
-    const total = chosen.reduce((s, r) => s + (source === 'benefit' ? (r.totalBenefitsPayable || 0) : r.netPay), 0)
+    const total = chosen.reduce((s, r) => s + r.amount, 0)
     const cutoffPeriod = [...new Set(chosen.map(r => r.cutoffPeriod))].join(', ')
     setRfpManualSeq('')
     // Preload the branch's saved "Other Fees" template (e.g. online-transfer fees).
@@ -5197,11 +5267,45 @@ export default function PayrollPage() {
          ═══════════════════════════════════════════════════════════ */}
       {mainTab === 'salaries-payable' && (() => {
         const isEmpTab = salPayableSubTab === 'employees'
-        const activePayables = isEmpTab ? empSalPayables : salariesPayables
+        const loadedPayables = isEmpTab ? empSalPayables : salariesPayables
         const activeSelected = isEmpTab ? selectedEmpSalPayableIds : selectedSalaryPayableIds
         const setActiveSelected = isEmpTab ? setSelectedEmpSalPayableIds : setSelectedSalaryPayableIds
-        const unremitted = activePayables.filter(p => !p.salariesRemitted && !p.salaryRfpId)
-        const selectedTotal = activePayables.filter(p => activeSelected.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
+        const salSearch = isEmpTab ? empSalSearch : conSalSearch
+        const setSalSearch = isEmpTab ? setEmpSalSearch : setConSalSearch
+        // The Cutoff selector at the top of the page now scopes this list too — it
+        // used to be ignored here, so a 2nd-cutoff view still listed 1st-cutoff rows.
+        // Anything outstanding in another cutoff is counted below rather than dropped.
+        const allPayables = salAllCutoffs ? loadedPayables : loadedPayables.filter(p => p.cutoffPeriod === cutoffPeriod)
+        const otherCutoffCount = loadedPayables.length - allPayables.length
+        const sq = salSearch.trim().toLowerCase()
+        const activePayables = sq
+          ? allPayables.filter(p => [
+              isEmpTab ? p.employeeName : p.consultantName,
+              p.department, DEPT_LABELS[p.department || ''] || '',
+              getCutoffLabel(p.cutoffPeriod), p.cutoffPeriod,
+              branchLabel(p.branch), p.branch,
+              p.salariesRemitted ? 'remitted' : p.salaryRfpId ? 'in rfp' : 'pending',
+            ].some(v => (v || '').toString().toLowerCase().includes(sq)))
+          : allPayables
+        // What can be ticked: a whole salary, or — once split — each instalment.
+        // Never both, so the same peso can't be put into two RFPs.
+        const unitsOf = (p: SalaryPayableEntry) => (p.splits && p.splits.length)
+          ? p.splits.map(sp => ({ id: sp.id, row: p, seq: sp.seq, amount: sp.amount, remitted: sp.salariesRemitted, rfpId: sp.salaryRfpId }))
+          : [{ id: p.id, row: p, seq: null as number | null, amount: p.netPay, remitted: p.salariesRemitted, rfpId: p.salaryRfpId ?? null }]
+        const units = activePayables.flatMap(unitsOf)
+        const unremitted = units.filter(u => !u.remitted && !u.rfpId)
+        // A single bank transfer often covers both employees and consultants, so
+        // the RFP is built from what is ticked across BOTH subsections, not just
+        // the one on screen. Ticks on the other tab stay put while you switch.
+        const bothSelected = [...selectedEmpSalPayableIds, ...selectedSalaryPayableIds]
+        const rfpUnits = [...empSalPayables.flatMap(unitsOf), ...salariesPayables.flatMap(unitsOf)]
+          .filter(u => bothSelected.includes(u.id))
+        const rfpChosen = rfpUnits.map(u => ({ id: u.id, branch: u.row.branch, cutoffPeriod: u.row.cutoffPeriod, amount: u.amount }))
+        // Totals follow the selection itself, not the filtered view — a row selected
+        // before searching is still going into the RFP even if it's hidden now.
+        const selectedTotal = rfpUnits.reduce((s, u) => s + u.amount, 0)
+        const otherTabCount = bothSelected.length - activeSelected.length
+        const hiddenSelected = activeSelected.filter(id => !units.some(u => u.id === id)).length
         const isLoading = isEmpTab ? loadingEmpSalPayable : loadingSalPayable
         return (
         <div className="space-y-4">
@@ -5211,11 +5315,12 @@ export default function PayrollPage() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Salaries Payable</h2>
             <div className="flex items-center gap-3">
-              {activeSelected.length > 0 && (
-                <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', activePayables, activeSelected)}
+              {bothSelected.length > 0 && (
+                <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', rfpChosen)}
+                  title={otherTabCount > 0 ? `Includes ${otherTabCount} from the ${isEmpTab ? 'Consultants' : 'Employees'} tab` : undefined}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
-                  <BadgeDollarSign size={14} /> RFP ({activeSelected.length})
+                  <BadgeDollarSign size={14} /> RFP ({bothSelected.length})
                 </button>
               )}
               <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
@@ -5229,22 +5334,81 @@ export default function PayrollPage() {
 
           {/* Subtabs */}
           <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'var(--off-white)', width: 'fit-content' }}>
-            {(['employees', 'consultants'] as const).map(t => (
+            {(['employees', 'consultants'] as const).map(t => {
+              // Ticks survive switching tabs, so each tab carries its own count —
+              // otherwise a selection on the other side would be invisible.
+              const n = (t === 'employees' ? selectedEmpSalPayableIds : selectedSalaryPayableIds).length
+              return (
               <button key={t} onClick={() => setSalPayableSubTab(t)}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                 style={salPayableSubTab === t ? { background: 'white', color: 'var(--deep-teal)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { color: 'var(--mid-gray)' }}>
                 {t === 'employees' ? 'Employees' : 'Consultants'}
+                {n > 0 && (
+                  <span className="px-1.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--teal)', color: 'white' }}>{n}</span>
+                )}
               </button>
-            ))}
+              )
+            })}
           </div>
+
+          {/* Cutoff scope — the list follows the Cutoff selector at the top of the page */}
+          {!isLoading && loadedPayables.length > 0 && (
+            <div className="flex items-center justify-between gap-3 flex-wrap rounded-xl border px-4 py-2.5"
+              style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                {salAllCutoffs
+                  ? <>Showing <strong style={{ color: 'var(--charcoal)' }}>all cutoffs</strong> with unremitted salaries.</>
+                  : <>Showing <strong style={{ color: 'var(--charcoal)' }}>{getCutoffLabel(cutoffPeriod)}</strong>.
+                      {otherCutoffCount > 0
+                        ? ` ${otherCutoffCount} unremitted payslip${otherCutoffCount === 1 ? '' : 's'} in other cutoffs — not shown.`
+                        : ' No unremitted payslips in other cutoffs.'}</>}
+              </span>
+              <label className="flex items-center gap-2 text-xs cursor-pointer whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                <input type="checkbox" checked={salAllCutoffs} onChange={e => setSalAllCutoffs(e.target.checked)} />
+                Show all cutoffs
+              </label>
+            </div>
+          )}
+
+          {/* Search for this subsection */}
+          {!isLoading && allPayables.length > 0 && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[240px] max-w-md">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                <input value={salSearch} onChange={e => setSalSearch(e.target.value)}
+                  placeholder={`Search ${isEmpTab ? 'employee' : 'consultant'}, department, cutoff, branch, status…`}
+                  className="w-full pl-9 pr-8 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                {salSearch && (
+                  <button onClick={() => setSalSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <X size={15} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                )}
+              </div>
+              {sq && (
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  {activePayables.length} of {allPayables.length}
+                  {hiddenSelected > 0 && (
+                    <span style={{ color: '#b45309' }}> · {hiddenSelected} selected row{hiddenSelected === 1 ? '' : 's'} hidden by this search (still included in the RFP)</span>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
 
           {isLoading ? (
             <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
           ) : activePayables.length === 0 ? (
             <p className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>
-              {isEmpTab
-                ? 'No employee salary records. Lock employee payslips to see them here.'
-                : 'No consultant salary records. Finalize consultant payroll to create entries.'}
+              {sq
+                ? `No ${isEmpTab ? 'employees' : 'consultants'} match “${salSearch.trim()}”.`
+                : otherCutoffCount > 0
+                  ? <>Nothing unremitted for <strong style={{ color: 'var(--charcoal)' }}>{getCutoffLabel(cutoffPeriod)}</strong>.{' '}
+                      <button onClick={() => setSalAllCutoffs(true)} className="underline font-semibold" style={{ color: 'var(--teal)' }}>
+                        Show all {otherCutoffCount} from other cutoffs
+                      </button></>
+                  : isEmpTab
+                    ? 'No employee salary records. Lock employee payslips to see them here.'
+                    : 'No consultant salary records. Finalize consultant payroll to create entries.'}
             </p>
           ) : (
             <div className="space-y-3">
@@ -5272,15 +5436,21 @@ export default function PayrollPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activePayables.map(p => (
-                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: p.salariesRemitted ? '#f0fdf4' : p.salaryRfpId ? '#fff7ed' : undefined }}>
+                  {activePayables.map(p => {
+                    const hasSplits = !!(p.splits && p.splits.length)
+                    const tick = (id: string, on: boolean) =>
+                      setActiveSelected(prev => on ? [...prev, id] : prev.filter(x => x !== id))
+                    const canSplit = !p.salariesRemitted && !p.salaryRfpId
+                      && !(p.splits || []).some(sp => sp.salariesRemitted || sp.salaryRfpId)
+                    return (
+                    <Fragment key={p.id}>
+                    <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: p.salariesRemitted ? '#f0fdf4' : p.salaryRfpId ? '#fff7ed' : undefined }}>
                       <td className="px-3 py-2.5">
-                        {!p.salariesRemitted && !p.salaryRfpId && (
+                        {/* Once split, the instalments below are what gets ticked. */}
+                        {!hasSplits && !p.salariesRemitted && !p.salaryRfpId && (
                           <input type="checkbox"
                             checked={activeSelected.includes(p.id)}
-                            onChange={e => setActiveSelected(prev =>
-                              e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id)
-                            )} />
+                            onChange={e => tick(p.id, e.target.checked)} />
                         )}
                       </td>
                       <td className="px-3 py-2.5">
@@ -5294,27 +5464,63 @@ export default function PayrollPage() {
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.grossPay != null ? formatCurrency(p.grossPay) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#c44b00' }}>{p.taxAmount != null && p.taxAmount > 0 ? formatCurrency(p.taxAmount) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(p.netPay)}</td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-3 py-2.5 text-center whitespace-nowrap">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.salariesRemitted ? { background: '#dcfce7', color: '#16a34a' } : p.salaryRfpId ? { background: '#ffedd5', color: '#c2410c' } : { background: '#fef3c7', color: '#d97706' }}>
-                          {p.salariesRemitted ? 'REMITTED' : p.salaryRfpId ? 'IN RFP' : 'PENDING'}
+                          {p.salariesRemitted ? 'REMITTED' : p.salaryRfpId ? 'IN RFP' : hasSplits ? 'SPLIT' : 'PENDING'}
                         </span>
+                        {canWrite && canSplit && (
+                          <button onClick={() => openSplit(p, isEmpTab ? 'EMPLOYEE' : 'CONSULTANT')}
+                            title={hasSplits ? 'Change how this salary is split' : 'Pay this salary in more than one instalment'}
+                            className="ml-2 px-2 py-0.5 rounded-lg text-[10px] font-semibold border"
+                            style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }}>
+                            {hasSplits ? 'Edit split' : 'Split salary'}
+                          </button>
+                        )}
                       </td>
                     </tr>
-                  ))}
+                    {hasSplits && p.splits!.map(sp => (
+                      <tr key={sp.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: sp.salariesRemitted ? '#f0fdf4' : sp.salaryRfpId ? '#fff7ed' : '#fbfbfa' }}>
+                        <td className="px-3 py-1.5 text-right">
+                          {!sp.salariesRemitted && !sp.salaryRfpId && (
+                            <input type="checkbox"
+                              checked={activeSelected.includes(sp.id)}
+                              onChange={e => tick(sp.id, e.target.checked)} />
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--mid-gray)', paddingLeft: '2rem' }}>
+                          ↳ Part {sp.seq} of {p.splits!.length}{sp.note ? ` · ${sp.note}` : ''}
+                        </td>
+                        <td colSpan={4}></td>
+                        <td className="px-3 py-1.5 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(sp.amount)}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={sp.salariesRemitted ? { background: '#dcfce7', color: '#16a34a' } : sp.salaryRfpId ? { background: '#ffedd5', color: '#c2410c' } : { background: '#fef3c7', color: '#d97706' }}>
+                            {sp.salariesRemitted ? 'PAID' : sp.salaryRfpId ? 'IN RFP' : 'PENDING'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    </Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
             {unremitted.length > 0 && (
               <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
                 <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
-                  Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(unremitted.reduce((s, p) => s + p.netPay, 0))}</span>
-                  {activeSelected.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
+                  Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(unremitted.reduce((s, u) => s + u.amount, 0))}</span>
+                  {bothSelected.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
+                  {otherTabCount > 0 && (
+                    <span className="ml-3" style={{ color: '#b45309' }}>
+                      includes {otherTabCount} from {isEmpTab ? 'Consultants' : 'Employees'}
+                    </span>
+                  )}
                 </span>
-                {activeSelected.length > 0 && (
-                  <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', activePayables, activeSelected)}
+                {bothSelected.length > 0 && (
+                  <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', rfpChosen)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
-                    <BadgeDollarSign size={14} /> RFP ({activeSelected.length} payslips)
+                    <BadgeDollarSign size={14} /> RFP ({bothSelected.length} item{bothSelected.length === 1 ? '' : 's'})
                   </button>
                 )}
               </div>
@@ -5323,11 +5529,40 @@ export default function PayrollPage() {
           )}
 
           {/* Salary Payment History — only on Consultants tab */}
-          {salPayableSubTab === 'consultants' && salaryPayments.length > 0 && (
+          {salPayableSubTab === 'consultants' && salaryPayments.length > 0 && (() => {
+            const hq = salHistorySearch.trim().toLowerCase()
+            // A payment matches on its own details, or on any consultant paid in it.
+            const shownPayments = hq
+              ? salaryPayments.filter(sp => [
+                  new Date(sp.paymentDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }),
+                  sp.paymentDate.slice(0, 10), sp.cutoffPeriod, getCutoffLabel(sp.cutoffPeriod),
+                  branchLabel(sp.branch), sp.branch, sp.notes,
+                  sp.fromAccount.accountNumber, sp.fromAccount.accountTitle,
+                  ...(sp.consultants || []).flatMap(c => [c.name, c.department, DEPT_LABELS[c.department || ''] || '', getCutoffLabel(c.cutoffPeriod)]),
+                ].some(v => (v || '').toString().toLowerCase().includes(hq)))
+              : salaryPayments
+            return (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Payment History</p>
+              <div className="flex items-center gap-3 flex-wrap mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Payment History</p>
+                <div className="relative flex-1 min-w-[220px] max-w-sm">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                  <input value={salHistorySearch} onChange={e => setSalHistorySearch(e.target.value)}
+                    placeholder="Search consultant, date, cutoff, account…"
+                    className="w-full pl-9 pr-8 py-1.5 rounded-xl border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  {salHistorySearch && (
+                    <button onClick={() => setSalHistorySearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <X size={14} style={{ color: 'var(--mid-gray)' }} />
+                    </button>
+                  )}
+                </div>
+                {hq && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{shownPayments.length} of {salaryPayments.length}</span>}
+              </div>
+              {shownPayments.length === 0 && (
+                <p className="text-xs py-6 text-center" style={{ color: 'var(--mid-gray)' }}>No payments match “{salHistorySearch.trim()}”.</p>
+              )}
               <div className="space-y-3">
-                {salaryPayments.map(sp => (
+                {shownPayments.map(sp => (
                   <div key={sp.id} className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <div className="flex flex-wrap items-center gap-4">
@@ -5376,7 +5611,8 @@ export default function PayrollPage() {
                 ))}
               </div>
             </div>
-          )}
+            )
+          })()}
         </div>
         )
       })()}
@@ -5393,7 +5629,9 @@ export default function PayrollPage() {
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Benefits Payable (SSS, PHIC, HDMF)</h2>
             <div className="flex items-center gap-3">
               {selectedBenefitPayableIds.length > 0 && (
-                <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables, selectedBenefitPayableIds)}
+                <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables
+                  .filter(r => selectedBenefitPayableIds.includes(r.id))
+                  .map(r => ({ id: r.id, branch: r.branch, cutoffPeriod: r.cutoffPeriod, amount: r.totalBenefitsPayable || 0 })))}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
                   <BadgeDollarSign size={14} /> RFP ({selectedBenefitPayableIds.length})
@@ -5478,7 +5716,9 @@ export default function PayrollPage() {
                   {selectedBenefitPayableIds.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(benSelectedTotal)}</span></span>}
                 </span>
                 {selectedBenefitPayableIds.length > 0 && (
-                  <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables, selectedBenefitPayableIds)}
+                  <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables
+                  .filter(r => selectedBenefitPayableIds.includes(r.id))
+                  .map(r => ({ id: r.id, branch: r.branch, cutoffPeriod: r.cutoffPeriod, amount: r.totalBenefitsPayable || 0 })))}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
                     <BadgeDollarSign size={14} /> RFP ({selectedBenefitPayableIds.length} employees)
@@ -5575,6 +5815,83 @@ export default function PayrollPage() {
       {/* ═══════════════════════════════════════════════════════════
          REMIT PAYMENT MODAL
          ═══════════════════════════════════════════════════════════ */}
+      {/* ── Split salary ── divide one net pay into instalments paid separately ── */}
+      {splitTarget && (() => {
+        const row = splitTarget.row
+        const nums = splitAmounts.map(a => Number(a)).map(a => Number.isFinite(a) ? a : 0)
+        const sum = Math.round(nums.reduce((s, a) => s + a, 0) * 100) / 100
+        const net = Math.round(row.netPay * 100) / 100
+        const diff = Math.round((sum - net) * 100) / 100
+        const balanced = diff === 0 && nums.every(a => a > 0) && nums.length >= 2
+        const who = splitTarget.payableType === 'EMPLOYEE' ? (row.employeeName || '—') : (row.consultantName || '—')
+        const setAt = (i: number, v: string) => setSplitAmounts(a => a.map((x, j) => j === i ? v : x))
+        // Put whatever is missing on this line, so the total lands exactly.
+        const balanceAt = (i: number) => setSplitAmounts(a => {
+          const others = a.reduce((s, x, j) => j === i ? s : s + (Number(x) || 0), 0)
+          return a.map((x, j) => j === i ? Math.max(0, Math.round((row.netPay - others) * 100) / 100).toFixed(2) : x)
+        })
+        return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setSplitTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Split salary</h2>
+              <button onClick={() => setSplitTarget(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+              <strong style={{ color: 'var(--charcoal)' }}>{who}</strong> · {getCutoffLabel(row.cutoffPeriod)} · net pay <strong style={{ color: 'var(--charcoal)' }}>{formatCurrency(row.netPay)}</strong>
+            </p>
+            <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+              Pay this salary in more than one go. Each part is put in an RFP and ticked off on its own,
+              so it matches a single bank line. The parts must add up to the net pay — splitting changes
+              when the money leaves, never how much is owed.
+            </p>
+
+            <div className="space-y-2 mb-3">
+              {splitAmounts.map((a, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs font-semibold w-14" style={{ color: 'var(--mid-gray)' }}>Part {i + 1}</span>
+                  <input value={a} onChange={e => setAt(i, e.target.value)} inputMode="decimal" placeholder="0.00"
+                    className="flex-1 px-3 py-2 rounded-lg border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                  <button onClick={() => balanceAt(i)} title="Put the remaining balance on this part"
+                    className="px-2 py-1.5 rounded-lg text-[11px] font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }}>
+                    Balance
+                  </button>
+                  <button onClick={() => setSplitAmounts(x => x.filter((_, j) => j !== i))} disabled={splitAmounts.length <= 2}
+                    title={splitAmounts.length <= 2 ? 'A split needs at least two parts' : 'Remove this part'}
+                    className="p-1.5 rounded-lg disabled:opacity-30"><Trash2 size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setSplitAmounts(a => [...a, ''])}
+              className="text-xs font-semibold mb-4" style={{ color: 'var(--teal)' }}>+ Add another part</button>
+
+            <div className="rounded-xl px-4 py-2.5 mb-4 text-sm font-semibold flex items-center justify-between"
+              style={balanced ? { background: '#f0fdf4', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+              <span>Total of parts: {formatCurrency(sum)}</span>
+              <span>{balanced ? 'Matches net pay' : diff > 0 ? `Over by ${formatCurrency(diff)}` : `Short by ${formatCurrency(Math.abs(diff))}`}</span>
+            </div>
+
+            {splitError && <p className="text-xs mb-3" style={{ color: '#b91c1c' }}>{splitError}</p>}
+
+            <div className="flex items-center gap-2">
+              <button onClick={saveSplit} disabled={!balanced || splitBusy}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                {splitBusy ? <Loader2 size={15} className="inline animate-spin" /> : `Save ${splitAmounts.length} parts`}
+              </button>
+              {(row.splits && row.splits.length > 0) && (
+                <button onClick={removeSplit} disabled={splitBusy}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold border disabled:opacity-50"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Remove split
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        )
+      })()}
+
       {payableRfp && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setPayableRfp(null)}>
           <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>

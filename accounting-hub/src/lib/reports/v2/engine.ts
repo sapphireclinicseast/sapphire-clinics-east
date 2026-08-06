@@ -781,57 +781,72 @@ export async function computeLedgerStatements(
      All-Branches only: statements are whole-account and cannot be split. */
   if (branch === 'ALL') {
     try {
+      // Every statement line IN THIS PERIOD that carries a running balance, so
+      // each month can be trued to the bank's own closing balance for THAT
+      // month rather than the whole year's difference landing in one column.
+      // Scoped to the period on purpose: a balance from an earlier year says
+      // nothing about this year's month ends, and monthOf would clamp it to
+      // January, freezing cash at a stale figure for the whole year.
       const stmtLines = await prisma.bankTransaction.findMany({
         where: { date: { gte: start, lt: end }, statementBalance: { not: null } },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
         select: { bankAccountId: true, date: true, statementBalance: true },
       })
-      // Per account, the LAST statement balance seen in each month (1–12).
-      const stmtByAcct = new Map<string, ({ bal: number; date: Date } | null)[]>()
+      // last statement balance seen in each month, per account
+      const byAcctMonth = new Map<string, Map<number, number>>()
+      const firstMonth = new Map<string, number>()
+      const lastMonth = new Map<string, number>()
       for (const t of stmtLines) {
-        if (!stmtByAcct.has(t.bankAccountId)) stmtByAcct.set(t.bankAccountId, Array(13).fill(null))
-        stmtByAcct.get(t.bankAccountId)![t.date.getUTCMonth() + 1] = { bal: Number(t.statementBalance), date: t.date }
+        const m = t.date.getUTCMonth() + 1
+        if (!byAcctMonth.has(t.bankAccountId)) byAcctMonth.set(t.bankAccountId, new Map())
+        byAcctMonth.get(t.bankAccountId)!.set(m, Number(t.statementBalance))
+        if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
+        lastMonth.set(t.bankAccountId, m)
       }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
       let trueups = 0
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
         if (!acct?.id) continue
-        const stmtMonths = stmtByAcct.get(acct.id)
-        if (!stmtMonths) continue
-        // Snapshot the ledger's own month-end balances FIRST: postBalanced below
-        // feeds straight back into movMonthly, so every delta must be measured
-        // against the pre-true-up path or each month would count the last again.
-        const mm = movMonthly.get(n) || { debit: Array(13).fill(0), credit: Array(13).fill(0) }
-        const ledgerClosing: number[] = Array(13).fill(0)
-        let running = opening.get(n) || 0
+        const months = byAcctMonth.get(acct.id)
+        if (!months) continue
+        const mm = movMonthly.get(n)
+        const firstM = firstMonth.get(acct.id) ?? 1
+        const lastM = lastMonth.get(acct.id) ?? 12
+        // Walk the year: at each month end the sheet should read what the bank
+        // read. Only the CHANGE in the required adjustment is posted, so each
+        // month carries its own correction and none carries the whole year's.
+        let ledger = opening.get(n) || 0
+        let carried = 0          // adjustment already posted in earlier months
+        let lastKnown: number | null = null
         for (let m = 1; m <= 12; m++) {
-          running += mm.debit[m] - mm.credit[m] // cash is debit-normal
-          ledgerClosing[m] = running
-        }
-        let prevAdj = 0
-        let posted = false
-        for (let m = 1; m <= 12; m++) {
-          const s = stmtMonths[m]
-          const adj = s ? round2(s.bal - ledgerClosing[m]) : prevAdj
-          const delta = round2(adj - prevAdj)
-          prevAdj = adj
-          if (!s || Math.abs(delta) < 0.01) continue
-          postBalanced('bank-trueup', m, `True-up to bank statement as of ${s.date.toISOString().slice(0, 10)} — ${acct.title}`, [
-            delta < 0 ? { acct, credit: -delta } : { acct, debit: delta },
-            delta < 0 ? { acct: pendReconcile, debit: -delta } : { acct: pendReconcile, credit: delta },
+          ledger += (mm?.debit[m] || 0) - (mm?.credit[m] || 0)   // cash is debit-normal
+          const stmt = months.get(m)
+          if (stmt !== undefined) lastKnown = stmt
+          // Before the account's first statement line there is nothing to true
+          // to. After the LAST one, hold the correction already carried and stop
+          // truing: the bank has simply not told us about those months yet, and
+          // re-truing to a stale balance would cancel genuine ledger movement
+          // instead of reconciling it.
+          if (m < firstM || m > lastM || lastKnown === null) continue
+          const want = round2(lastKnown - (ledger + carried))
+          if (Math.abs(want) < 0.01) continue
+          postBalanced('bank-trueup', m, `True-up to bank statement — ${acct.title}`, [
+            want < 0 ? { acct, credit: -want } : { acct, debit: want },
+            want < 0 ? { acct: pendReconcile, debit: -want } : { acct: pendReconcile, credit: want },
           ])
-          posted = true
+          carried = round2(carried + want)
+          trueups++
         }
-        if (posted) trueups++
       }
       if (trueups) {
         validation.synthesized.push(`bank-statement-trueup (${trueups})`)
         validation.notes.push(
-          `Cash is trued to the imported bank statements month by month: ${trueups} bank account(s) are stated at the ` +
-          `bank's own running balance at each month end that has a statement line. Only the change in the gap is posted ` +
-          `each month, to the visible equity line "3990 Cash Pending Reconciliation", which shrinks as pending Bank ` +
-          `Reconciliation lines are categorized. Months after the statements run out are left untrued.`,
+          `Cash is trued to the imported bank statements month by month: each bank account is stated at the bank's own ` +
+          `closing balance for every month that has statement lines, so no single month absorbs the whole year's ` +
+          `difference. The offset sits on the visible equity line "3990 Cash Pending Reconciliation" and shrinks as ` +
+          `pending Bank Reconciliation lines are categorized. Months before an account's first statement line, and ` +
+          `after its last, are left untrued.`,
         )
       }
     } catch { /* statements are optional */ }

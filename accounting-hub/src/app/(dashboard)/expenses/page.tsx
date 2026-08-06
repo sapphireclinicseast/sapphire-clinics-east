@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
@@ -28,6 +30,9 @@ const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
 // flow through the Credit Card SOA pipeline, and the RFP that settles an SOA is paid
 // to the bank via check / cash / transfer.
 const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', "Deposit to admin officer's bank account", 'Telegraphic Transfer']
+// How a payroll RFP was settled. The strings match the ones used elsewhere so
+// cheque monitoring ('Check deposit') and bank reconciliation recognise these.
+const PAYROLL_PAYMENT_METHODS = ['Cash', 'Check deposit', 'Telegraphic Transfer'] as const
 const RECUR_FREQ = [
   { v: 'MONTHLY', label: 'Monthly' },
   { v: 'QUARTERLY', label: 'Quarterly' },
@@ -98,7 +103,7 @@ interface Supplier { id: string | null; registeredName: string; registeredAddres
 interface SupTxn { date: string | null; pcvNumber: string; description: string; validity: string; gross: number; vat: number; netVat: number }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
-  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
+  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
 }
@@ -137,6 +142,25 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
     })
   } catch { return null }
 }
+// One-time expenses accumulate into the thousands per branch — more editable rows
+// than a browser will render. The grid loads a recent window by default; searching
+// still reaches the whole history (the server does that part), and the Excel/PDF
+// export pulls its own From/To range, so neither is limited by what's on screen.
+const PERIODS = [
+  { key: '3m', label: 'Last 3 months', months: 3 },
+  { key: '6m', label: 'Last 6 months', months: 6 },
+  { key: '12m', label: 'Last 12 months', months: 12 },
+  { key: 'all', label: 'All time', months: 0 },
+] as const
+type PeriodKey = typeof PERIODS[number]['key']
+const periodFrom = (key: PeriodKey): string => {
+  const m = PERIODS.find(p => p.key === key)?.months || 0
+  if (!m) return ''
+  const d = new Date()
+  d.setMonth(d.getMonth() - m)
+  return d.toISOString().slice(0, 10)
+}
+
 const monthInput = (d: string | null) => (d ? String(d).slice(0, 7) : '')
 const monthsInWindow = (startISO: string | null, endISO: string | null) => {
   if (!startISO || !endISO) return 0
@@ -155,6 +179,10 @@ const monthlyAmt = (e: Entry) => {
 
 // Upload via XHR so we can report upload progress (0–100%).
 export default function ExpensesPage() {
+  return <Suspense fallback={null}><ExpensesInner /></Suspense>
+}
+
+function ExpensesInner() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
   const canWrite = WRITE_ROLES.includes(role)
@@ -168,6 +196,9 @@ export default function ExpensesPage() {
   const entriesRef = useRef<Entry[]>([])
   useEffect(() => { entriesRef.current = entries }, [entries])
   const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState<PeriodKey>('3m')
+  const [totalCount, setTotalCount] = useState(0)      // all rows in this tab, ignoring the window
+  const [searchCapped, setSearchCapped] = useState(false)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
   const [bankOptions, setBankOptions] = useState<string[]>([])
@@ -237,7 +268,11 @@ export default function ExpensesPage() {
       : k === 'payableTotal' ? num(r.payableTotal)
       : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'For Payment')
       : ''
+  // The RFP date range filters the list itself, not just the export — it sits
+  // directly above the table with a "clear" link, so it reads as a table filter
+  // (and the Credit Card Report's identical control already behaves this way).
   const shownRfps = applySortFilter(rfps, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters)
+    .filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
   const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number; amountVaries?: boolean }[]>([])
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
@@ -245,6 +280,22 @@ export default function ExpensesPage() {
   const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string; defaultBilledTo?: string; defaultMemo?: string; payment?: RfpMemoParts } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
+  // Deep link from global search: /expenses?tab=<key>&focus=<PCV or reference>.
+  // On the recording grids the search box now queries the server across all
+  // history, so seeding it finds the entry however old it is; on the RFP and
+  // Credit Card tabs it seeds that list's own reference filter instead.
+  const { focus, done } = useFocusTarget()
+  const urlParams = useSearchParams()
+  const urlTab = urlParams.get('tab') || ''
+  useEffect(() => {
+    if (!focus) return
+    const t = TABS.find(x => x.key === urlTab)
+    if (t) setTab(t.key)
+    if (t?.key === 'rfp') setRfpFilters(f => ({ ...f, refNumber: focus }))
+    else if (t?.key === 'suppliers' || t?.key === 'cc-soa') setSearch(focus)
+    else setSearch(focus)
+    done()
+  }, [focus, urlTab, done])
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridTableRef = useRef<HTMLTableElement>(null)
   const gridRz = useResizableColumns(`expenses-entries-grid-${tab}`, gridTableRef)
@@ -253,15 +304,33 @@ export default function ExpensesPage() {
   const isRecording = recordType === 'RECURRING' || recordType === 'ONE_TIME'
   const isRecurringTab = recordType === 'RECURRING'
 
-  const loadEntries = useCallback(async (br: string, rt: string) => {
+  const loadEntries = useCallback(async (br: string, rt: string, per: PeriodKey, term: string) => {
     if (!rt) { setEntries([]); setLoading(false); return }
     setLoading(true)
     try {
-      const r = await fetch(`/api/petty-cash/entries?branch=${br}&recordType=${rt}`)
+      const qs = new URLSearchParams({ branch: br, recordType: rt })
+      // Only one-time expenses are big enough to need a window; recurring setups
+      // and petty cash are a handful of rows and always load whole.
+      const t = term.trim()
+      if (t) qs.set('q', t)
+      else if (rt === 'ONE_TIME') {
+        const w = periodFrom(per)
+        if (w) qs.set('from', w)
+      }
+      const r = await fetch(`/api/petty-cash/entries?${qs}`)
       setEntries(r.ok ? await r.json() : [])
-    } catch { setEntries([]) }
+      setTotalCount(r.ok ? Number(r.headers.get('X-Total-Count') || 0) : 0)
+      setSearchCapped(r.ok && r.headers.get('X-Search-Capped') === '1')
+    } catch { setEntries([]); setTotalCount(0); setSearchCapped(false) }
     setLoading(false)
   }, [])
+
+  // Refs so the many `reload(...)` call sites below keep a stable identity while
+  // still picking up the current window / search term.
+  const periodRef = useRef<PeriodKey>(period)
+  const searchRef = useRef('')
+  useEffect(() => { periodRef.current = period }, [period])
+  const reload = useCallback((br: string, rt: string) => loadEntries(br, rt, periodRef.current, searchRef.current), [loadEntries])
 
   const loadSettings = useCallback(async (br: string) => {
     try {
@@ -302,8 +371,15 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     setSelected(new Set()); setRfpMode(null)
-    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch); loadRecurringDue(branch)
-  }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers, loadRfps, loadRecurringDue])
+    loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch); loadRecurringDue(branch)
+  }, [branch, recordType, loadSettings, loadCards, loadSuppliers, loadRfps, loadRecurringDue])
+
+  // Entries reload on their own so changing the window or the search term refetches.
+  // The term is debounced — a search runs against the whole history server-side.
+  useEffect(() => {
+    const t = setTimeout(() => { searchRef.current = search; loadEntries(branch, recordType, period, search) }, search ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [branch, recordType, period, search, loadEntries])
 
   const generateFromRecurring = async (recurringId: string) => {
     setGenFromRecurring(recurringId)
@@ -314,7 +390,7 @@ export default function ExpensesPage() {
       })
       if (r.ok) {
         if (tab !== 'onetime') setTab('onetime')
-        await loadEntries(branch, 'ONE_TIME')
+        await reload(branch, 'ONE_TIME')
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 80)
       } else alert((await r.json()).error || 'Failed to generate entry')
     } catch { alert('Failed to generate entry') }
@@ -478,7 +554,7 @@ export default function ExpensesPage() {
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to create SOA'); setCreatingSoa(false); return }
       setShowCcPick(false); setCcMode(false); setSelected(new Set())
-      await loadEntries(branch, 'ONE_TIME')
+      await reload(branch, 'ONE_TIME')
       setTab('cc-soa')
     } catch { alert('Failed to create SOA') }
     setCreatingSoa(false)
@@ -500,7 +576,7 @@ export default function ExpensesPage() {
         await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdfData }) })
       } catch { /* pdf best-effort */ }
       setShowRfpModal(false); setRfpMode(null); setSelected(new Set()); setRfpManualSeq('')
-      await loadEntries(branch, recordType); await loadRfps(branch)
+      await reload(branch, recordType); await loadRfps(branch)
       setTab('rfp')
     } catch { alert('Failed to generate RFP') }
     setGeneratingRfp(false)
@@ -515,7 +591,7 @@ export default function ExpensesPage() {
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to record payment'); setPaying(false); return }
       setPayTarget(null)
-      await loadRfps(branch); await loadEntries(branch, recordType)
+      await loadRfps(branch); await reload(branch, recordType)
     } catch { alert('Failed to record payment') }
     setPaying(false)
   }
@@ -531,9 +607,22 @@ export default function ExpensesPage() {
   // ── Downloads (Excel / PDF) with the From/To range ──
   const brLabel = BRANCHES.find(b => b.value === branch)?.label || branch
   const rangeNote = `${dlFrom || 'start'} → ${dlTo || 'end'}`
-  const exportEntries = (fmt: ExportFormat) => {
+  // The export covers the whole From/To range, not just the rows currently loaded
+  // in the grid — otherwise narrowing the window would silently shrink the report.
+  const exportEntries = async (fmt: ExportFormat) => {
     const isRecurring = recordType === 'RECURRING'
-    const rows = entries.filter(e => inDateRange(e.date, dlFrom, dlTo))
+    let source = entries
+    if (recordType === 'ONE_TIME') {
+      const qs = new URLSearchParams({ branch, recordType })
+      if (dlFrom) qs.set('from', dlFrom)
+      if (dlTo) qs.set('to', dlTo)
+      try {
+        const r = await fetch(`/api/petty-cash/entries?${qs}`)
+        if (!r.ok) { alert('Could not load the entries for that range.'); return }
+        source = await r.json()
+      } catch { alert('Could not load the entries for that range.'); return }
+    }
+    const rows = source.filter(e => inDateRange(e.date, dlFrom, dlTo))
     const headers = isRecurring
       ? ['Reference', 'Payee', 'Department', 'Description', 'Account Title', 'Frequency', 'Vatable', 'Gross Amount']
       : ['Reference', 'Payee', 'Department', 'Date', 'Description', 'Account Title', 'Vatable', 'Validity', 'Audited', 'Gross Amount', 'Payment']
@@ -546,7 +635,7 @@ export default function ExpensesPage() {
     else downloadPdf({ title, subtitle: `Range: ${rangeNote} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
   }
   const exportRfps = (fmt: ExportFormat) => {
-    const rows = shownRfps.filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
+    const rows = shownRfps   // already scoped to the From/To range
     const headers = ['Reference Number', 'Date', 'Kind', 'Payable to', 'Entries', 'Gross Total', 'Amount Payable', 'Status']
     const body = rows.map(r => [
       r.refNumber, new Date(r.createdAt).toISOString().slice(0, 10),
@@ -596,7 +685,7 @@ export default function ExpensesPage() {
     try {
       if (isPayrollRfp(rfp)) await reversePayrollPayment(rfp)
       await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'unpay' }) })
-      await loadRfps(branch); await loadEntries(branch, recordType)
+      await loadRfps(branch); await reload(branch, recordType)
     } catch { /* ignore */ }
   }
 
@@ -606,7 +695,7 @@ export default function ExpensesPage() {
     try {
       if (isPayrollRfp(rfp) && rfp.status === 'PAID') await reversePayrollPayment(rfp)
       setRfps(prev => prev.filter(r => r.id !== rfp.id))
-      await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await loadEntries(branch, recordType)
+      await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await reload(branch, recordType)
     } catch { /* ignore */ }
   }
 
@@ -743,8 +832,13 @@ export default function ExpensesPage() {
   const locked = (e: Entry) => !!e.reimbursementId || !!e.soaId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
 
+  // Only the one-time tab is loaded through a date window (it's the only one that
+  // grows into the thousands); everything else behaves exactly as before.
+  const isWindowed = recordType === 'ONE_TIME'
   const q = search.trim().toLowerCase()
-  const shown = q
+  // On the windowed tab the server has already applied the search across all
+  // history; re-filtering here would only drop rows while the fetch is in flight.
+  const shown = q && !isWindowed
     ? entries.filter(e => [e.pcvNumber, e.requestor, e.description, e.accountTitle, e.siNumber, e.registeredName, e.tinNumber, e.paymentMethod]
         .some(v => (v || '').toString().toLowerCase().includes(q)))
     : entries
@@ -937,16 +1031,26 @@ export default function ExpensesPage() {
       {isRecording && (
         <>
           <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportEntries}
-            dateLabel="Expense date" note={`${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
+            dateLabel="Expense date"
+            note={isWindowed ? 'exports the full range' : `${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
           {/* Search + scroll controls */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="relative flex-1 min-w-[240px] max-w-md">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search payee, description, PCV, account…"
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder={isWindowed ? 'Search all entries — payee, description, PCV, account…' : 'Search payee, description, PCV, account…'}
                 className="w-full pl-9 pr-8 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2"><X size={15} style={{ color: 'var(--mid-gray)' }} /></button>}
             </div>
             <div className="flex items-center gap-2">
+              {isWindowed && (
+                <select value={period} onChange={e => setPeriod(e.target.value as PeriodKey)} disabled={!!q}
+                  title={q ? 'Search covers every entry, so the period does not apply' : 'How far back to load into the grid'}
+                  className="px-3 py-2 rounded-xl border text-xs font-semibold outline-none disabled:opacity-50"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                  {PERIODS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              )}
               <button onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
                 className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                 <ArrowUp size={14} /> Top
@@ -959,9 +1063,19 @@ export default function ExpensesPage() {
           </div>
 
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            {shown.length}{q ? ` of ${entries.length}` : ''} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
+            {shown.length}{isWindowed && totalCount > shown.length ? ` of ${totalCount}` : q ? ` of ${entries.length}` : ''} entries
+            {' · '}{selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
             {' · '}Next PCV #{nextPcvSeq}
           </p>
+          {isWindowed && (
+            <p className="text-[11px] -mt-2" style={{ color: 'var(--mid-gray)' }}>
+              {q
+                ? searchCapped
+                  ? 'Showing the first 500 matches from every entry on record — narrow the search to see fewer.'
+                  : 'Searching every entry on record, not just the period above.'
+                : `Showing ${PERIODS.find(p => p.key === period)?.label.toLowerCase()} — Total Gross covers these rows only. Search to reach older entries, or widen the period. The Excel/PDF export always covers its full From/To range.`}
+            </p>
+          )}
 
           <div ref={scrollRef} className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 260px)' : '66vh' }}>
             {loading ? (
@@ -1351,7 +1465,7 @@ export default function ExpensesPage() {
       )}
 
       {tab === 'cc-soa' && (
-        <CreditCardSoaTab branch={branch} canWrite={canWrite} onChanged={() => { loadRfps(branch); loadEntries(branch, 'ONE_TIME') }} />
+        <CreditCardSoaTab branch={branch} canWrite={canWrite} onChanged={() => { loadRfps(branch); reload(branch, 'ONE_TIME') }} />
       )}
 
       {tab === 'cc-report' && (
@@ -1361,7 +1475,7 @@ export default function ExpensesPage() {
       {tab === 'rfp' && (
         <>
         <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportRfps}
-          dateLabel="RFP date" note={`${shownRfps.filter(r => inDateRange(r.createdAt, dlFrom, dlTo)).length} in range`} />
+          dateLabel="RFP date" note={`${shownRfps.length} in range`} />
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
             <SortFilterHead cols={rfpCols} sortKey={rfpSort.key} sortDir={rfpSort.dir} filters={rfpFilters}
@@ -1435,7 +1549,11 @@ export default function ExpensesPage() {
               ))}
               {shownRfps.length === 0 && (
                 <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  {rfps.length === 0 ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.' : 'No RFPs match the current filters.'}
+                  {rfps.length === 0
+                    ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.'
+                    : (dlFrom || dlTo)
+                      ? `No RFPs dated ${dlFrom || 'start'} → ${dlTo || 'end'}. Clear the date range to see all ${rfps.length}.`
+                      : 'No RFPs match the current filters.'}
                 </td></tr>
               )}
             </tbody>
@@ -2857,6 +2975,7 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
   const [feeQ, setFeeQ] = useState('')
   const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
   const [fromAccountId, setFromAccountId] = useState('')
+  const [payMethod, setPayMethod] = useState<string>('Telegraphic Transfer')
   const [bankRef, setBankRef] = useState('')
   const [remarks, setRemarks] = useState('')
   const [proofUrl, setProofUrl] = useState('')
@@ -2889,7 +3008,21 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
     try {
       const ids = rfp.meta?.ids || []
       const useEmployee = isSalary ? (rfp.meta?.payableType === 'EMPLOYEE') : true
-      const idBody = useEmployee ? { employeePayslipIds: ids } : { payrollEntryIds: ids }
+      // A salaries RFP can hold whole payslips, instalments of split ones, or
+      // both. Each kind is paid through its own list so the ledger posts the
+      // instalment amount rather than the whole net pay.
+      const meta = isSalary ? rfp.meta : null
+      const splitIds = meta?.splitIds || []
+      const entryIds = meta?.entryIds || []
+      const payslipIds = meta?.payslipIds || []
+      // Older RFPs (and all benefit RFPs) carry a plain id list for one table.
+      const legacy = (!splitIds.length && !entryIds.length && !payslipIds.length) ? ids : (meta?.rowIds || [])
+      const idBody = {
+        ...(splitIds.length ? { salarySplitIds: splitIds } : {}),
+        ...(entryIds.length ? { payrollEntryIds: entryIds } : {}),
+        ...(payslipIds.length ? { employeePayslipIds: payslipIds } : {}),
+        ...(legacy.length ? (useEmployee ? { employeePayslipIds: [...payslipIds, ...legacy] } : { payrollEntryIds: [...entryIds, ...legacy] }) : {}),
+      }
       const hasFee = isSalary && Number(feeAmount) > 0 && feeExpenseAccountId
       const endpoint = isSalary ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
       const res = await fetch(endpoint, {
@@ -2903,7 +3036,14 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
       const data = await res.json()
       if (!res.ok) { alert(data.error || 'Failed to record payment'); return }
       const paymentId = data?.payment?.id || null
-      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'pay-payroll', paymentId, datePaid, paymentMethod: 'Bank/Cash', proofUrl: proofUrl || null }) })
+      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'pay-payroll', paymentId, datePaid,
+        paymentMethod: payMethod,
+        checkNumber: payMethod === 'Check deposit' ? bankRef.trim() : null,
+        transferRef: payMethod === 'Telegraphic Transfer' ? bankRef.trim() : null,
+        // debitAccount holds the readable "number title" label (the billing
+        // voucher and bank rec read it as text), not the account id.
+        debitAccount: (() => { const a = assets.find(x => x.id === fromAccountId); return a ? `${a.accountNumber} ${a.accountTitle}` : null })(),
+        proofUrl: proofUrl || null }) })
       onDone()
     } finally { setBusy(false) }
   }
@@ -2920,8 +3060,24 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
         <select value={fromAccountId} onChange={e => setFromAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
           <option value="">— Select Account —</option>{filtered.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
         </select>
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Bank transaction reference number</label>
-        <input value={bankRef} onChange={e => setBankRef(e.target.value)} placeholder="Reference / check number" className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payment Method</label>
+        <div className="flex gap-2 mb-3">
+          {PAYROLL_PAYMENT_METHODS.map(m => (
+            <button key={m} type="button" onClick={() => setPayMethod(m)}
+              className="flex-1 px-3 py-2 rounded-xl border text-xs font-semibold"
+              style={payMethod === m
+                ? { background: 'var(--teal)', color: 'white', borderColor: 'var(--teal)' }
+                : { background: 'white', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
+              {m === 'Check deposit' ? 'Cheque' : m}
+            </button>
+          ))}
+        </div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+          {payMethod === 'Check deposit' ? 'Cheque number' : payMethod === 'Cash' ? 'Reference (optional)' : 'Bank transaction reference number'}
+        </label>
+        <input value={bankRef} onChange={e => setBankRef(e.target.value)}
+          placeholder={payMethod === 'Check deposit' ? 'Cheque number' : payMethod === 'Cash' ? 'Voucher / slip number' : 'Telegraphic transfer reference'}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
         <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Anything else to note for this transaction" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof of Remittance (optional)</label>

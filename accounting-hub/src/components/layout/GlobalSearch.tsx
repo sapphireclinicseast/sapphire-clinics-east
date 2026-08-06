@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Search, X, Loader2, ArrowRight, CornerDownLeft } from 'lucide-react'
 
 interface Hit {
@@ -10,11 +10,13 @@ interface Hit {
   detail: Record<string, string>
 }
 
+// Keyed on the pathname — hrefs now carry a ?focus= identifier for the record.
 const SECTION: Record<string, string> = {
   '/sales-summary': 'Sales Summary', '/petty-cash': 'Petty Cash', '/expenses': 'Expenses',
   '/inventory': 'Inventory', '/chart-of-accounts': 'Chart of Accounts',
-  '/asset-management': 'Asset Management',
+  '/asset-management': 'Asset Management', '/journal-entries': 'Journal Entries',
 }
+const sectionOf = (href: string) => SECTION[href.split('?')[0]] || 'section'
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function GlobalSearch() {
@@ -52,7 +54,17 @@ export default function GlobalSearch() {
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey) }
   }, [active])
 
-  const goToSection = (h: Hit) => { setActive(null); setOpen(false); setQ(''); setResults([]); router.push(h.href) }
+  const pathname = usePathname()
+  const goToSection = (h: Hit) => {
+    setActive(null); setOpen(false); setQ(''); setResults([])
+    // Pushing the route you're already on is a no-op, which used to make this
+    // button appear dead. The href now carries ?focus=, and the destination
+    // strips it once handled, so the target URL always differs from the current
+    // one. Belt and braces: if it somehow matches, force a real navigation.
+    const current = `${pathname}${window.location.search}`
+    if (h.href === current) window.location.href = h.href
+    else router.push(h.href)
+  }
 
   // group by type, preserving order
   const groups: { type: string; items: Hit[] }[] = []
@@ -137,10 +149,10 @@ export default function GlobalSearch() {
 
             <button onClick={() => goToSection(active)}
               className="w-full mt-5 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>
-              Open in {SECTION[active.href] || 'section'} <ArrowRight size={15} />
+              Open in {sectionOf(active.href)} <ArrowRight size={15} />
             </button>
             <p className="text-[11px] text-center mt-2 flex items-center justify-center gap-1" style={{ color: 'var(--mid-gray)' }}>
-              <CornerDownLeft size={11} /> Goes to where this transaction was created
+              <CornerDownLeft size={11} /> Opens this exact entry where it was created
             </p>
           </div>
         </div>
