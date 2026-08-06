@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { chequeDigits } from '@/lib/cheque-number'
 
 /**
  * Check Release Monitoring — GET /api/fund-transfers/checks?accountId=<id|all>
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
   const strKeys = [...strMap.keys()]
   const labelFor = (s: string | null) => (s && strMap.has(s) ? strMap.get(s)!.label : s || '')
 
+  type Group = Omit<Row, 'id' | 'kind'> & { id?: string; kind?: Row['kind']; items: Row[] }
   type Row = { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
   const rows: Row[] = []
 
@@ -126,14 +128,49 @@ export async function GET(req: Request) {
     })
   }
 
-  // Enumerate by check number (numeric-aware sort)
-  rows.sort((a, b) => {
-    const na = parseInt(a.checkNumber.replace(/\D/g, '') || '0', 10)
-    const nb = parseInt(b.checkNumber.replace(/\D/g, '') || '0', 10)
+  // A cheque book lists cheques. Anything whose reference names another
+  // instrument — a telegraphic transfer keeps its bank reference in the same
+  // column — is dropped here rather than shown as a cheque with no number.
+  const cheques = rows
+    .map(r => ({ ...r, checkNumber: chequeDigits(r.checkNumber) || '' }))
+    .filter(r => r.checkNumber !== '')
+
+  // One cheque, one row. The same cheque appears once per expense line when the
+  // lines sit under different account titles; those are the SAME payment, so
+  // they are folded into a single row whose amount is the cheque's total and
+  // whose `items` carry what made it up.
+  const byCheque = new Map<string, Group>()
+  for (const r of cheques) {
+    const key = `${r.checkNumber}|${r.bankAccount}`
+    const g = byCheque.get(key)
+    if (!g) {
+      byCheque.set(key, {
+        checkNumber: r.checkNumber, bankAccount: r.bankAccount, date: r.date,
+        amount: r.amount, source: r.source, reference: r.reference, payee: r.payee,
+        id: r.id, kind: r.kind, proofUrls: r.proofUrls, items: [r],
+      })
+      continue
+    }
+    g.amount += r.amount
+    g.items.push(r)
+    if (!g.date || (r.date && r.date < g.date)) g.date = r.date
+    if (g.source !== r.source) g.source = 'Multiple'
+    if (g.payee !== r.payee) g.payee = g.payee || r.payee
+    // A grouped row is no longer one record, so it cannot be edited as one.
+    g.id = undefined; g.kind = undefined
+  }
+
+  const grouped = [...byCheque.values()].map(g => (
+    g.items.length === 1 ? { ...g.items[0], items: [] } : { ...g, reference: `${g.items.length} entries` }
+  ))
+
+  // Enumerate by check number (numeric — they are all digits now)
+  grouped.sort((a, b) => {
+    const na = parseInt(a.checkNumber, 10), nb = parseInt(b.checkNumber, 10)
     return na !== nb ? na - nb : a.checkNumber.localeCompare(b.checkNumber)
   })
 
-  return NextResponse.json({ checks: rows, accounts: accountsList })
+  return NextResponse.json({ checks: grouped, accounts: accountsList })
 }
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
