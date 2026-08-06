@@ -161,6 +161,7 @@ export async function POST(req: Request) {
 
   try {
     const {
+      salarySplitIds,       // instalments of a split salary
       payrollEntryIds,      // for CONSULTANT per-person
       employeePayslipIds,   // for EMPLOYEE per-person
       payableIds,           // legacy aggregate
@@ -184,6 +185,86 @@ export async function POST(req: Request) {
     const mapping = await prisma.payrollCOAMapping.findFirst()
     if (!mapping?.salariesPayableAccountId) {
       return NextResponse.json({ error: 'Salaries Payable account not configured in Payroll Settings' }, { status: 400 })
+    }
+
+    // ── SPLIT path — paying selected instalments of split salaries ──
+    // The ledger sees exactly what it would for a whole payslip, only for the
+    // instalment amount; the parent payslip is marked remitted once its last
+    // instalment is paid, so every downstream report stays correct.
+    if (salarySplitIds?.length) {
+      const splits = await prisma.salaryPayableSplit.findMany({
+        where: { id: { in: salarySplitIds }, salariesRemitted: false },
+        include: {
+          employeePayslip: { include: { employee: { select: { firstName: true, lastName: true } } } },
+          payrollEntry: { include: { consultant: { select: { name: true } } } },
+        },
+        orderBy: { seq: 'asc' },
+      })
+      if (!splits.length) return NextResponse.json({ error: 'No valid unpaid splits found' }, { status: 404 })
+
+      const totalNet = splits.reduce((s, x) => s + Number(x.amount), 0)
+      const nameOf = (x: (typeof splits)[number]) => x.employeePayslip
+        ? `${x.employeePayslip.employee.lastName}, ${x.employeePayslip.employee.firstName}`
+        : (x.payrollEntry?.consultant?.name || '—')
+      const descriptions = splits.map(x => `${nameOf(x)} (part ${x.seq})`).join(', ')
+      const isEmployee = !!splits[0].employeePayslipId
+      const branchOf = splits[0].employeePayslip?.branch || splits[0].payrollEntry?.branch || ''
+      const cutoffs = [...new Set(splits.map(x => x.employeePayslip?.cutoffPeriod || x.payrollEntry?.cutoffPeriod || ''))].filter(Boolean)
+
+      const result = await prisma.$transaction(async (tx) => {
+        const lines: { accountId: string; debit: number; credit: number; description: string }[] = [
+          { accountId: mapping.salariesPayableAccountId!, debit: totalNet, credit: 0, description: `Salaries Payable — ${descriptions}` },
+          { accountId: fromAccountId, debit: 0, credit: totalNet, description: 'Cash/Bank — Salary Payment (partial)' },
+        ]
+        if (hasFee) {
+          lines.push({ accountId: feeExpenseAccountId, debit: feeAmt, credit: 0, description: 'Remittance Fee Expense' })
+          lines.push({ accountId: feeCashAccountId || fromAccountId, debit: 0, credit: feeAmt, description: 'Cash/Bank — Remittance Fee' })
+        }
+        const journalEntry = await tx.journalEntry.create({
+          data: {
+            entryDate: new Date(paymentDate),
+            description: `Salary Payment (instalment)${hasFee ? ` (+ PHP ${feeAmt} fee)` : ''} — ${descriptions}`,
+            referenceType: 'SALARY_PAYMENT',
+            referenceId: splits.map(x => x.id).join(';'),
+            totalAmount: totalNet + feeAmt,
+            branch: branchOf,
+            createdById: session.user.id as string,
+            lines: { create: lines },
+          },
+        })
+        const payment = await tx.salaryPayment.create({
+          data: {
+            paymentDate: new Date(paymentDate),
+            totalAmount: totalNet + feeAmt,
+            fromAccountId,
+            proofUrl: proofUrl || null,
+            notes: notes ? `${notes}${hasFee ? ` | Fee: PHP ${feeAmt}` : ''}` : (hasFee ? `Fee: PHP ${feeAmt}` : null),
+            remarks: remarks || null,
+            paymentType: isEmployee ? 'EMPLOYEE' : 'CONSULTANT',
+            cutoffPeriod: cutoffs.join(', '),
+            branch: branchOf,
+            journalEntryId: journalEntry.id,
+            createdById: session.user.id as string,
+          },
+        })
+        await tx.salaryPayableSplit.updateMany({
+          where: { id: { in: splits.map(x => x.id) } },
+          data: { salariesRemitted: true, salaryPaymentId: payment.id, paidAt: new Date(paymentDate) },
+        })
+        // A payslip counts as remitted only when none of its splits are outstanding.
+        const empIds = [...new Set(splits.map(x => x.employeePayslipId).filter(Boolean))] as string[]
+        for (const pid of empIds) {
+          const left = await tx.salaryPayableSplit.count({ where: { employeePayslipId: pid, salariesRemitted: false } })
+          if (left === 0) await tx.employeePayslip.update({ where: { id: pid }, data: { salariesRemitted: true, salaryPaymentId: payment.id } })
+        }
+        const entIds = [...new Set(splits.map(x => x.payrollEntryId).filter(Boolean))] as string[]
+        for (const eid of entIds) {
+          const left = await tx.salaryPayableSplit.count({ where: { payrollEntryId: eid, salariesRemitted: false } })
+          if (left === 0) await tx.payrollEntry.update({ where: { id: eid }, data: { salariesRemitted: true, salaryPaymentId: payment.id } })
+        }
+        return { payment, journalEntry }
+      })
+      return NextResponse.json({ success: true, payment: result.payment, journalEntryId: result.journalEntry.id })
     }
 
     // ── CONSULTANT per-person path ──
