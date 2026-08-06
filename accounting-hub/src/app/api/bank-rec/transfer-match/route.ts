@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postFundTransferJE } from '@/lib/fund-transfer-je'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -111,6 +112,7 @@ export async function POST(req: Request) {
             data: { status: 'POSTED', matchType: 'INTERBANK', matchId: ft.id, matchLabel: label, categoryAccountId: null },
           })
         }
+        await postFundTransferJE(tx, ft.id, session.user!.id ?? null)
         return ft
       })
       results.push({
