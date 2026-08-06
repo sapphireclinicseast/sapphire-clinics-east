@@ -310,6 +310,9 @@ export default function PayPage() {
           period: effectivePeriod,
           voucherCode: appliedVoucher?.code,
           discountPercent: appliedVoucher ? discountPercent : undefined,
+          // Branch routes the charge to that branch's PayMongo account
+          // so the settlement bank matches. Fallback: legacy shared key.
+          branch: user.branch,
         }),
       })
       if (!res.ok) {
