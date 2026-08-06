@@ -103,7 +103,7 @@ interface Supplier { id: string | null; registeredName: string; registeredAddres
 interface SupTxn { date: string | null; pcvNumber: string; description: string; validity: string; gross: number; vat: number; netVat: number }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
-  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
+  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
 }
@@ -3011,11 +3011,17 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
       // A salaries RFP can hold whole payslips, instalments of split ones, or
       // both. Each kind is paid through its own list so the ledger posts the
       // instalment amount rather than the whole net pay.
-      const splitIds = (isSalary && rfp.meta?.splitIds) ? rfp.meta.splitIds : []
-      const rowIds = (isSalary && rfp.meta?.rowIds) ? rfp.meta.rowIds : (splitIds.length ? [] : ids)
+      const meta = isSalary ? rfp.meta : null
+      const splitIds = meta?.splitIds || []
+      const entryIds = meta?.entryIds || []
+      const payslipIds = meta?.payslipIds || []
+      // Older RFPs (and all benefit RFPs) carry a plain id list for one table.
+      const legacy = (!splitIds.length && !entryIds.length && !payslipIds.length) ? ids : (meta?.rowIds || [])
       const idBody = {
         ...(splitIds.length ? { salarySplitIds: splitIds } : {}),
-        ...(rowIds.length ? (useEmployee ? { employeePayslipIds: rowIds } : { payrollEntryIds: rowIds }) : {}),
+        ...(entryIds.length ? { payrollEntryIds: entryIds } : {}),
+        ...(payslipIds.length ? { employeePayslipIds: payslipIds } : {}),
+        ...(legacy.length ? (useEmployee ? { employeePayslipIds: [...payslipIds, ...legacy] } : { payrollEntryIds: [...entryIds, ...legacy] }) : {}),
       }
       const hasFee = isSalary && Number(feeAmount) > 0 && feeExpenseAccountId
       const endpoint = isSalary ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
