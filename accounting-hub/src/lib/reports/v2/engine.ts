@@ -769,44 +769,69 @@ export async function computeLedgerStatements(
   /* ── 8. Bank-statement true-up: cash on the sheet = cash at the bank ──
      The ledger only subtracts what has been categorized, so while Bank Rec has
      a backlog, ledger cash floats above reality. Each bank account with an
-     imported statement is trued to the bank's own running balance as of its
-     latest line in the period; the difference sits on ONE visible equity line,
+     imported statement is trued MONTH BY MONTH to the bank's own running
+     balance at that month end; the difference sits on ONE visible equity line,
      "Cash Pending Reconciliation", which shrinks toward zero as pending lines
      get categorized — at which point the true-up posts nothing at all.
+     Only the change in that gap is posted each month, so the cash flow reads as
+     "movement in the uncategorized backlog" rather than a whole year's gap
+     landing in whichever month happened to hold the last statement line.
+     Months with no statement hold the previous month's true-up steady, so real
+     ledger movement after the statements run out flows through untouched.
      All-Branches only: statements are whole-account and cannot be split. */
   if (branch === 'ALL') {
     try {
-      const latest = await prisma.bankTransaction.findMany({
-        where: { date: { lt: end }, statementBalance: { not: null } },
-        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      const stmtLines = await prisma.bankTransaction.findMany({
+        where: { date: { gte: start, lt: end }, statementBalance: { not: null } },
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
         select: { bankAccountId: true, date: true, statementBalance: true },
       })
-      const latestByAcct = new Map<string, { bal: number; date: Date }>()
-      for (const t of latest) if (!latestByAcct.has(t.bankAccountId)) latestByAcct.set(t.bankAccountId, { bal: Number(t.statementBalance), date: t.date })
+      // Per account, the LAST statement balance seen in each month (1–12).
+      const stmtByAcct = new Map<string, ({ bal: number; date: Date } | null)[]>()
+      for (const t of stmtLines) {
+        if (!stmtByAcct.has(t.bankAccountId)) stmtByAcct.set(t.bankAccountId, Array(13).fill(null))
+        stmtByAcct.get(t.bankAccountId)![t.date.getUTCMonth() + 1] = { bal: Number(t.statementBalance), date: t.date }
+      }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
       let trueups = 0
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
         if (!acct?.id) continue
-        const stmt = latestByAcct.get(acct.id)
-        if (!stmt) continue
-        const m = mov.get(n) || { debit: 0, credit: 0 }
-        const ledgerClosing = (opening.get(n) || 0) + m.debit - m.credit // cash is debit-normal
-        const adj = round2(stmt.bal - ledgerClosing)
-        if (Math.abs(adj) < 0.01) continue
-        const month = monthOf(stmt.date)
-        postBalanced('bank-trueup', month, `True-up to bank statement as of ${stmt.date.toISOString().slice(0, 10)} — ${acct.title}`, [
-          adj < 0 ? { acct, credit: -adj } : { acct, debit: adj },
-          adj < 0 ? { acct: pendReconcile, debit: -adj } : { acct: pendReconcile, credit: adj },
-        ])
-        trueups++
+        const stmtMonths = stmtByAcct.get(acct.id)
+        if (!stmtMonths) continue
+        // Snapshot the ledger's own month-end balances FIRST: postBalanced below
+        // feeds straight back into movMonthly, so every delta must be measured
+        // against the pre-true-up path or each month would count the last again.
+        const mm = movMonthly.get(n) || { debit: Array(13).fill(0), credit: Array(13).fill(0) }
+        const ledgerClosing: number[] = Array(13).fill(0)
+        let running = opening.get(n) || 0
+        for (let m = 1; m <= 12; m++) {
+          running += mm.debit[m] - mm.credit[m] // cash is debit-normal
+          ledgerClosing[m] = running
+        }
+        let prevAdj = 0
+        let posted = false
+        for (let m = 1; m <= 12; m++) {
+          const s = stmtMonths[m]
+          const adj = s ? round2(s.bal - ledgerClosing[m]) : prevAdj
+          const delta = round2(adj - prevAdj)
+          prevAdj = adj
+          if (!s || Math.abs(delta) < 0.01) continue
+          postBalanced('bank-trueup', m, `True-up to bank statement as of ${s.date.toISOString().slice(0, 10)} — ${acct.title}`, [
+            delta < 0 ? { acct, credit: -delta } : { acct, debit: delta },
+            delta < 0 ? { acct: pendReconcile, debit: -delta } : { acct: pendReconcile, credit: delta },
+          ])
+          posted = true
+        }
+        if (posted) trueups++
       }
       if (trueups) {
         validation.synthesized.push(`bank-statement-trueup (${trueups})`)
         validation.notes.push(
-          `Cash is trued to the imported bank statements: ${trueups} bank account(s) are stated at the bank's own ` +
-          `running balance as of their latest imported line. The difference vs the ledger sits on the visible equity ` +
-          `line "3990 Cash Pending Reconciliation" and shrinks as pending Bank Reconciliation lines are categorized.`,
+          `Cash is trued to the imported bank statements month by month: ${trueups} bank account(s) are stated at the ` +
+          `bank's own running balance at each month end that has a statement line. Only the change in the gap is posted ` +
+          `each month, to the visible equity line "3990 Cash Pending Reconciliation", which shrinks as pending Bank ` +
+          `Reconciliation lines are categorized. Months after the statements run out are left untrued.`,
         )
       }
     } catch { /* statements are optional */ }
