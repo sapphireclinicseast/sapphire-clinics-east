@@ -22,19 +22,48 @@ export interface PostAssetResult {
   alreadyPosted?: boolean
 }
 
-async function findDefaultCashAccount(prisma: PrismaClient) {
-  return prisma.account.findFirst({
-    where: {
-      accountType: 'ASSET',
-      OR: [
-        { accountNumber: { startsWith: '10' } },
-        { accountTitle: { contains: 'cash', mode: 'insensitive' } },
-        { accountTitle: { contains: 'bank', mode: 'insensitive' } },
-      ],
-    },
+// Branch → the prefix its own accounts are titled with, e.g. "AHEA BDO Checking
+// Account". Keeps a fallback on the branch that actually spent the money.
+const BRANCH_PREFIX: Record<string, string> = {
+  SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER',
+}
+
+/**
+ * The account to credit when nobody said which one paid.
+ *
+ * This used to be "any ASSET account numbered 10* or titled cash/bank, lowest
+ * account number wins". That is not a funding account, it is an alphabetical
+ * accident: it resolved to 004680350310 VER BDO Petty Cash — a ~P10k float with
+ * no imported bank statement — and quietly credited P10.2M of asset purchases
+ * there across 2024-2026, where no bank reconciliation could ever correct it.
+ *
+ * Now it prefers the branch's own CHECKING account, then the company account,
+ * and never a petty cash account. A fallback is still a guess, so the real fix
+ * is for the purchase to name its source account.
+ */
+async function findDefaultCashAccount(prisma: PrismaClient, branch?: string | null) {
+  const checking = {
+    accountType: 'ASSET' as const,
+    isBankAccount: true,
+    isCheckingAccount: true,
+    isActive: true,
+    NOT: { accountTitle: { contains: 'petty cash', mode: 'insensitive' as const } },
+  }
+  const select = { id: true, accountNumber: true, accountTitle: true }
+  const prefix = branch ? BRANCH_PREFIX[branch] : undefined
+  if (prefix) {
+    const own = await prisma.account.findFirst({
+      where: { ...checking, accountTitle: { startsWith: prefix } },
+      orderBy: { accountNumber: 'asc' },
+      select,
+    })
+    if (own) return own
+  }
+  return await prisma.account.findFirst({
+    where: { ...checking, accountTitle: { contains: 'Main Corporate', mode: 'insensitive' } },
     orderBy: { accountNumber: 'asc' },
-    select: { id: true, accountNumber: true, accountTitle: true },
-  })
+    select,
+  }) ?? await prisma.account.findFirst({ where: checking, orderBy: { accountNumber: 'asc' }, select })
 }
 
 export async function postAssetJournal(
@@ -81,7 +110,7 @@ export async function postAssetJournal(
   // user picked one; otherwise fall back to the earliest cash account.
   const fundingAcct = asset.sourceAccountId
     ? await prisma.account.findUnique({ where: { id: asset.sourceAccountId }, select: { id: true, accountNumber: true, accountTitle: true } })
-    : await findDefaultCashAccount(prisma)
+    : await findDefaultCashAccount(prisma, asset.branch)
   if (!fundingAcct) {
     return { posted: false, reason: 'no funding account found to credit for asset purchase' }
   }

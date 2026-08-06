@@ -231,11 +231,37 @@ export async function computeLedgerStatements(
     for (const a of byNumber.values()) if ((!type || a.type === type) && re.test(a.title)) return a
     return undefined
   }
-  const defaultCash = (): AcctInfo =>
-    (bankFlagged.size ? byNumber.get(Array.from(bankFlagged)[0]) : undefined)
-    || findByTitle(/cash on hand|petty cash|^cash$/i, 'ASSET')
-    || findByTitle(/cash|bank/i, 'ASSET')
-    || virt('1000', 'Cash (derived)', 'ASSET', 'CURRENT_ASSETS', 'DEBIT')
+  // Branch → the prefix its own accounts are titled with ("AHEA BDO Checking
+  // Account"). Used to pick a fallback funding account that belongs to the
+  // branch actually spending the money.
+  const BRANCH_PREFIX: Record<string, string> = {
+    SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER',
+  }
+  /**
+   * Bank accounts a fallback is allowed to credit, cheapest number first.
+   *
+   * Petty cash is excluded deliberately. The old fallback took
+   * `Array.from(bankFlagged)[0]` — whichever account the Set happened to hold
+   * first — and for years that was 004680350310 VER BDO Petty Cash, a ~P10k
+   * float with no imported statement. Millions in asset purchases were credited
+   * there, which no bank true-up could ever correct because there is nothing to
+   * true it to.
+   */
+  const fallbackCashAccounts = (): AcctInfo[] =>
+    Array.from(bankFlagged)
+      .map(n => byNumber.get(n))
+      .filter((a): a is AcctInfo => !!a && !/petty cash/i.test(a.title))
+      .sort((x, y) => x.number.localeCompare(y.number))
+  const defaultCash = (forBranch?: string): AcctInfo => {
+    const cands = fallbackCashAccounts()
+    const p = forBranch ? BRANCH_PREFIX[forBranch] : undefined
+    return (p ? cands.find(a => a.title.startsWith(p)) : undefined)
+      || cands.find(a => /main corporate/i.test(a.title))
+      || cands[0]
+      || findByTitle(/cash on hand|^cash$/i, 'ASSET')
+      || findByTitle(/cash|bank/i, 'ASSET')
+      || virt('1000', 'Cash (derived)', 'ASSET', 'CURRENT_ASSETS', 'DEBIT')
+  }
   const arAccount = (): AcctInfo =>
     byNumber.get('1010') || findByTitle(/receivable/i, 'ASSET') || virt('1010', 'Accounts Receivable', 'ASSET', 'CURRENT_ASSETS', 'DEBIT')
   const unearnedAccount = (): AcctInfo =>
@@ -624,13 +650,32 @@ export async function computeLedgerStatements(
   if (synthesizedAr) validation.synthesized.push(`ar-collections (${synthesizedAr})`)
 
   /* ── 5. Petty cash (never posts to the GL) — same rules as the v1 report ── */
-  const pcCash = findByTitle(/petty cash/i, 'ASSET') || defaultCash()
+  /**
+   * The float a branch's petty cash vouchers are spent out of.
+   *
+   * This used to be `findByTitle(/petty cash/i, 'ASSET')` — the FIRST account
+   * whose title mentions petty cash, for every branch. That resolved to
+   * 013820011174 AHGH BDO Petty Cash, so East's and Verdana's spending was
+   * credited to Greenhills' account: 1174 sank to -P12.98M in 2024 while
+   * 11300 AHEA Petty Cash on Hand climbed to +P2.34M with nothing ever spent
+   * out of it. Each branch now draws on its own "<PREFIX> Petty Cash on Hand".
+   */
+  const pcCashFor = (b: string): AcctInfo => {
+    const p = BRANCH_PREFIX[b]
+    if (p) {
+      const onHand = new RegExp(`^${p} petty cash on hand$`, 'i')
+      for (const a of byNumber.values()) if (a.type === 'ASSET' && onHand.test(a.title)) return a
+    }
+    return findByTitle(/petty cash on hand/i, 'ASSET') || defaultCash(b)
+  }
   const pcEntries = await prisma.pettyCashEntry.findMany({
     where: {
       date: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
     },
-    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, skipReports: true, pcvNumber: true, description: true },
+    // branch comes along so an All-Branches run can draw each voucher on its
+    // own float rather than lumping every branch onto one.
+    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, skipReports: true, pcvNumber: true, description: true, branch: true },
   })
   let pcCount = 0
   for (const e of pcEntries) {
@@ -645,7 +690,7 @@ export async function computeLedgerStatements(
     postBalanced('petty-cash', monthOf(e.date), `PCV ${e.pcvNumber}${e.description ? ` — ${e.description}` : ''}`, [
       { acct: parseAccountKey(e.accountTitle), debit: net },
       ...(vat > 0.005 ? [{ acct: inputVat(), debit: vat }] : []),
-      { acct: pcCash, credit: gross },
+      { acct: pcCashFor(e.branch || branch), credit: gross },
     ])
   }
   if (pcCount) validation.synthesized.push(`petty-cash (${pcCount})`)
@@ -682,7 +727,7 @@ export async function computeLedgerStatements(
       postBalanced('prepaid-recurring', monthOf(e.date), `${prepaidLabel} (prepaid payment)`, [
         { acct: prepaid, debit: net },
         ...(vat > 0.005 ? [{ acct: inputVat(), debit: vat }] : []),
-        { acct: pcCash, credit: gross },
+        { acct: pcCashFor(e.branch || branch), credit: gross },
       ])
     }
     for (let idx = sIdx; idx <= eIdx; idx++) {
@@ -714,7 +759,7 @@ export async function computeLedgerStatements(
       postBalanced('petty-cash-ceo', monthOf(e.date), `PCV ${e.pcvNumber} (CEO allocation)${e.description ? ` — ${e.description}` : ''}`, [
         { acct: parseAccountKey(e.accountTitle), debit: netA },
         ...(vatA > 0.005 ? [{ acct: inputVat(), debit: vatA }] : []),
-        { acct: pcCash, credit: ag },
+        { acct: pcCashFor(ab), credit: ag },
       ])
     }
   }
@@ -722,7 +767,7 @@ export async function computeLedgerStatements(
   /* ── 6. Depreciation schedule (synthesized unless DEPRECIATION JEs exist) ── */
   const assets = await prisma.asset.findMany({
     where: { ...(branch !== 'ALL' ? { branch: orderBranch as never } : {}) },
-    select: { id: true, name: true, dateBought: true, depreciationEndDate: true, monthlyDepreciation: true, classification: true, totalAmount: true, fromPettyCash: true, sourceAccountId: true },
+    select: { id: true, name: true, dateBought: true, depreciationEndDate: true, monthlyDepreciation: true, classification: true, totalAmount: true, fromPettyCash: true, sourceAccountId: true, branch: true },
   })
   const depAcct = byNumber.get('8070') || virt('8070', 'Depreciation Expense', 'EXPENSE', 'NON_OPERATING_EXPENSES', 'DEBIT')
   const accumDep = byNumber.get('2010') || findByTitle(/accumulated dep/i) || virt('2010', 'Accumulated Depreciation', 'ASSET', 'PPE', 'CREDIT')
@@ -766,9 +811,9 @@ export async function computeLedgerStatements(
     if (!amt) continue
     synthesizedAssets++
     const ppe = byNumber.get(a.classification) || virt(a.classification || '1500', `PPE (${a.classification})`, 'ASSET', 'PPE', 'DEBIT')
-    const creditA = a.fromPettyCash ? pcCash
-      : a.sourceAccountId ? (byId.get(a.sourceAccountId) || defaultCash())
-      : defaultCash()
+    const creditA = a.fromPettyCash ? pcCashFor(a.branch)
+      : a.sourceAccountId ? (byId.get(a.sourceAccountId) || defaultCash(a.branch))
+      : defaultCash(a.branch)
     postBalanced('asset-purchases', monthOf(a.dateBought), `Asset purchase — ${a.name}`, [
       { acct: ppe, debit: amt },
       { acct: creditA, credit: amt },
