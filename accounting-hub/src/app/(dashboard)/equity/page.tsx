@@ -379,7 +379,7 @@ export default function EquityPage() {
       )}
 
       {/* Preferred shares are editable by admin, accountant, and bookkeeper. */}
-      {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} onChanged={load} canWrite />}
+      {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onChanged={load} canWrite />}
       {effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} isAdmin={isAdmin} />}
 
       {(showAdd || edit) && <CommonModal row={edit} rows={data?.rows || []} authCommon={authCommon} authFounder={authFounder} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
@@ -597,7 +597,10 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
 // list existing with delete, plus an inline "add deposit" form. Unlike buybacks
 // a deposit has no journal entry of its own — /api/equity/deposits re-posts the
 // holding's single issuance entry, itemised one debit line per deposit.
-function DepositManager({ share, banks, assetAccts, capitalization, onChanged }: { share: CommonRow; banks: Bank[]; assetAccts: EquityAcct[]; capitalization: number; onChanged: () => void }) {
+function DepositManager({ share, banks, assetAccts, capitalization, onChanged, holding = 'common' }: { share: { id: string; deposits?: Deposit[]; stockCertNumber?: string | null; name?: string | null }; banks: Bank[]; assetAccts: EquityAcct[]; capitalization: number; onChanged: () => void; holding?: 'common' | 'preferred' }) {
+  // Preferred shares are paid for exactly like common ones, so the same panel
+  // serves both — only which id the API is given changes.
+  const idParam = holding === 'preferred' ? 'preferredShareId' : 'commonShareId'
   const [list, setList] = useState<Deposit[]>(share.deposits || [])
   const blank = { date: new Date().toISOString().slice(0, 10), amount: '', kind: 'CASH' as 'CASH' | 'NON_CASH', bankAccountId: '', assetAccountId: '', note: '' }
   const [d, setD] = useState(blank)
@@ -613,7 +616,7 @@ function DepositManager({ share, banks, assetAccts, capitalization, onChanged }:
   const remaining = capitalization - recorded
 
   const refresh = async () => {
-    try { const r = await fetch(`/api/equity/deposits?commonShareId=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
+    try { const r = await fetch(`/api/equity/deposits?${idParam}=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
   }
 
   const add = async () => {
@@ -622,7 +625,7 @@ function DepositManager({ share, banks, assetAccts, capitalization, onChanged }:
     if (d.kind === 'NON_CASH' && !d.assetAccountId) { alert('Choose the account the non-cash consideration is debited to.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/equity/deposits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commonShareId: share.id, date: d.date, amount: n(d.amount), kind: d.kind, bankAccountId: d.bankAccountId || null, assetAccountId: d.assetAccountId || null, note: d.note || null, proofUrls }) })
+      const r = await fetch('/api/equity/deposits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [idParam]: share.id, date: d.date, amount: n(d.amount), kind: d.kind, bankAccountId: d.bankAccountId || null, assetAccountId: d.assetAccountId || null, note: d.note || null, proofUrls }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       setD(blank); setProofUrls([]); setAdding(false)
       await refresh(); onChanged()
@@ -815,10 +818,11 @@ interface PrefRow {
   numberOfShares: number; retiredShares: number; truePar: number; apic: number; pricePerShare: number; totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
   annualInterest: number | null; maturityYears: number | null; buybackPrice: number | null
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; pdcUrls: string[] | null
+  deposits?: Deposit[]
 }
 interface PrefFigures { preferredCapitalization: number; preferredShares: number; retiredPreferredShares: number }
 
-function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { banks: Bank[]; equityAccts: EquityAcct[]; onChanged: () => void; canWrite?: boolean }) {
+function PreferredTab({ banks, equityAccts, assetAccts = [], onChanged, canWrite = true }: { banks: Bank[]; equityAccts: EquityAcct[]; assetAccts?: EquityAcct[]; onChanged: () => void; canWrite?: boolean }) {
   const [rows, setRows] = useState<PrefRow[]>([])
   const [shareholders, setShareholders] = useState<Shareholder[]>([])
   const [fig, setFig] = useState<PrefFigures | null>(null)
@@ -939,12 +943,12 @@ function PreferredTab({ banks, equityAccts, onChanged, canWrite = true }: { bank
           )}
         </tbody></table>
       </div>
-      {(showAdd || edit) && <PreferredModal row={edit} shareholders={shareholders} banks={banks} equityAccts={equityAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load(); onChanged() }} />}
+      {(showAdd || edit) && <PreferredModal row={edit} shareholders={shareholders} banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load(); onChanged() }} />}
     </div>
   )
 }
 
-function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSaved }: { row: PrefRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
+function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = [], onClose, onSaved }: { row: PrefRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; assetAccts?: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '', email: row?.email || '', address: row?.address || '',
     dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10), agreementType: row?.agreementType || 'SUBSCRIPTION', stockCertNumber: row?.stockCertNumber || '', shareClass: row?.shareClass || '',
@@ -1002,6 +1006,18 @@ function PreferredModal({ row, shareholders, banks, equityAccts, onClose, onSave
           <div className="col-span-2 sm:col-span-2"><label className={lbl} style={mg}>Equity account to credit <span className="font-normal text-gray-400">(CoA)</span></label><select value={f.equityAccountId} onChange={e => set('equityAccountId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
         </div>
         {f.bankAccountId && f.equityAccountId && <p className="text-[11px] mt-1 font-mono px-2 py-1 rounded" style={{ background: '#f8fafc', color: '#334155' }}>DR {banks.find(b => b.id === f.bankAccountId)?.accountTitle} {peso(cap)} / CR {equityAccts.find(a => a.id === f.equityAccountId)?.accountTitle} {peso(cap)}</p>}
+
+        {/* Deposits — same as common shares: itemise when the subscription was
+            paid across several deposits, so each one can be tagged in bank rec. */}
+        <div className="mt-4 pt-3 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+          <p className="text-sm font-semibold text-gray-700 mb-1">Deposits received <span className="font-normal text-gray-400">(itemise when the subscription was paid across several deposits, or partly in kind)</span></p>
+          {row ? (
+            <DepositManager share={row} banks={banks} assetAccts={assetAccts} capitalization={cap} onChanged={onSaved} holding="preferred" />
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Save the shareholder first, then reopen this record to itemise deposits.</p>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
           <div><label className={lbl} style={mg}>Payout Schedule</label><select value={f.payoutSchedule} onChange={e => set('payoutSchedule', e.target.value)} className={inp} style={bc}><option value="">—</option>{['ANNUALLY', 'BIANNUALLY', 'QUARTERLY', 'MONTHLY'].map(s => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Start month</label><select value={f.payoutStartMonth} onChange={e => set('payoutStartMonth', e.target.value)} className={inp} style={bc}><option value="">—</option>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></div>

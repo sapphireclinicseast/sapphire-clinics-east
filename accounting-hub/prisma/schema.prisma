@@ -2508,8 +2508,13 @@ model CommonShare {
 // treatment for a partially paid subscription.
 model EquityDeposit {
   id             String      @id @default(cuid())
-  commonShareId  String
-  commonShare    CommonShare @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
+  // A deposit belongs to exactly one holding — common OR preferred. Preferred shares
+  // are paid for the same way and need the same bank-rec tagging, so both are allowed
+  // and exactly one is set (enforced in the API).
+  commonShareId  String?
+  commonShare    CommonShare? @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
+  preferredShareId String?
+  preferredShare PreferredShare? @relation(fields: [preferredShareId], references: [id], onDelete: Cascade)
   date           DateTime
   amount         Decimal
   kind           String      @default("CASH") // CASH | NON_CASH
@@ -2521,6 +2526,7 @@ model EquityDeposit {
   createdAt      DateTime    @default(now())
 
   @@index([commonShareId])
+  @@index([preferredShareId])
 }
 
 model ShareBuyback {
@@ -2574,6 +2580,7 @@ model PreferredShare {
   payouts PreferredPayout[]
 
   @@index([shareholderId])
+  deposits       EquityDeposit[]
 }
 
 // Preferred dividend payout history / schedule occurrences.
