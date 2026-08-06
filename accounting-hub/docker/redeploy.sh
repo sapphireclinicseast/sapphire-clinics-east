@@ -129,6 +129,7 @@ CREATE INDEX IF NOT EXISTS "PosSettlementPayment_batchId_idx" ON "PosSettlementP
 ALTER TABLE "PaymentModeDeduction" ADD COLUMN IF NOT EXISTS "effectiveFrom" TIMESTAMP(3);
 ALTER TABLE "PaymentModeDeduction" ADD COLUMN IF NOT EXISTS "effectiveTo" TIMESTAMP(3);
 ALTER TABLE "PaymentMode" ADD COLUMN IF NOT EXISTS "settlementBankAccountId" TEXT;
+ALTER TABLE "SalesDayClearing" ADD COLUMN IF NOT EXISTS "confirmed" JSONB;
 
 -- PayMongo checkout/payment tracking (Phase 1)
 CREATE TABLE IF NOT EXISTS "PaymongoCheckout" (
