@@ -168,6 +168,16 @@ function isCashAccount(a: AcctInfo): boolean {
   return /cash|bank|gcash|paymaya|maya|fund/.test(t)
 }
 
+/**
+ * Bank lines a report is allowed to believe. A line the user excluded ("disable"
+ * in Bank Rec) or archived is one they have said is not a real movement — most
+ * often a mangled import row — so its printed running balance is not evidence of
+ * anything either. Without this the row keeps driving the true-up and the cash
+ * reconciliation panel after being switched off, and only a hard delete makes it
+ * disappear from the reports.
+ */
+const LIVE_STMT = { status: { in: ['PENDING', 'POSTED'] } }
+
 /* ── Engine ────────────────────────────────────────────────────── */
 
 export async function computeLedgerStatements(
@@ -788,7 +798,7 @@ export async function computeLedgerStatements(
       // nothing about this year's month ends, and monthOf would clamp it to
       // January, freezing cash at a stale figure for the whole year.
       const stmtLines = await prisma.bankTransaction.findMany({
-        where: { date: { gte: start, lt: end }, statementBalance: { not: null } },
+        where: { date: { gte: start, lt: end }, statementBalance: { not: null }, ...LIVE_STMT },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
         select: { bankAccountId: true, date: true, statementBalance: true },
       })
@@ -987,7 +997,7 @@ export async function computeLedgerStatements(
     const pendingCount = bankTx.reduce((s, t) => s + t._count._all, 0)
     // Latest statement balance per bank account, as of the report period's end.
     const latest = await prisma.bankTransaction.findMany({
-      where: { date: { lt: end }, statementBalance: { not: null } },
+      where: { date: { lt: end }, statementBalance: { not: null }, ...LIVE_STMT },
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
       select: { bankAccountId: true, date: true, statementBalance: true },
     })
