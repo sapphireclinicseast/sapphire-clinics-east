@@ -1037,7 +1037,8 @@ export async function computeLedgerStatements(
      Beginning + Net Change = Ending still holds exactly. */
   const bankAnchor = { begin: 0, close: Array(13).fill(0) as number[], have: false, accounts: 0 }
   try {
-    const cashAcctIds = cashRows.map(r => r.id).filter(Boolean) as string[]
+    const acctIdOf = (n: string) => byNumber.get(n)?.id || null
+    const cashAcctIds = cashRows.map(r => acctIdOf(r.number)).filter(Boolean) as string[]
     if (cashAcctIds.length) {
       const anchorLines = await prisma.bankTransaction.findMany({
         where: { bankAccountId: { in: cashAcctIds }, statementBalance: { not: null }, date: { lt: end } },
@@ -1053,7 +1054,8 @@ export async function computeLedgerStatements(
         else a.byMonth.set(monthOf(t.date), Number(t.statementBalance))
       }
       for (const r of cashRows) {
-        const a = r.id ? perAcct.get(r.id) : undefined
+        const aid = acctIdOf(r.number)
+        const a = aid ? perAcct.get(aid) : undefined
         if (!a || (a.before === null && a.byMonth.size === 0)) {
           // no statement for this account — keep what the ledger says
           bankAnchor.begin += r.opening
