@@ -49,8 +49,8 @@ export async function GET(req: Request) {
   const strKeys = [...strMap.keys()]
   const labelFor = (s: string | null) => (s && strMap.has(s) ? strMap.get(s)!.label : s || '')
 
-  type Group = Omit<Row, 'id' | 'kind'> & { id?: string; kind?: Row['kind']; items: Row[] }
-  type Row = { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
+  type Group = Omit<Row, 'id' | 'kind'> & { id?: string; kind?: Row['kind'] | 'REGISTER'; items: Row[]; registeredAmount?: number; registerStatus?: string }
+  type Row = { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED' | 'REGISTER'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
   const rows: Row[] = []
 
   // 1. Petty Cash + Expenses
@@ -109,6 +109,12 @@ export async function GET(req: Request) {
     })
   }
 
+  // 4b. The chequebook register — every leaf, including cancelled and unused.
+  const register = await prisma.issuedCheque.findMany({
+    where: { accountId: { in: [...idSet] } },
+    select: { id: true, checkNumber: true, date: true, amount: true, payee: true, status: true, note: true, accountId: true },
+  })
+
   // 4. Manually-recorded cancelled checks
   const cancelled = await prisma.cancelledCheck.findMany({
     where: { accountId: { in: [...idSet] } },
@@ -127,6 +133,14 @@ export async function GET(req: Request) {
       proofUrls: Array.isArray(cc.proofUrls) ? (cc.proofUrls as string[]) : [],
     })
   }
+
+  // The register is the spine: it says which cheque leaves exist and what each
+  // was written for. Rows from petty cash / RFP / fund transfers describe what
+  // the cheque PAID, so they become the breakdown beneath it rather than
+  // separate cheques — and the register's own amount is what the cheque was for,
+  // never the sum of the lines, which may be incomplete.
+  const regByNumber = new Map<string, typeof register[number]>()
+  for (const r of register) regByNumber.set(`${chequeDigits(r.checkNumber) || r.checkNumber}|${acctById.get(r.accountId) || ''}`, r)
 
   // A cheque book lists cheques. Anything whose reference names another
   // instrument — a telegraphic transfer keeps its bank reference in the same
@@ -160,9 +174,51 @@ export async function GET(req: Request) {
     g.id = undefined; g.kind = undefined
   }
 
-  const grouped = [...byCheque.values()].map(g => (
-    g.items.length === 1 ? { ...g.items[0], items: [] } : { ...g, reference: `${g.items.length} entries` }
-  ))
+  // Fold the register in: a leaf with recorded payments keeps them as its
+  // breakdown; a leaf with none is still listed, so gaps in the book show up.
+  for (const [key, r] of regByNumber) {
+    const digits = chequeDigits(r.checkNumber) || r.checkNumber
+    const bank = acctById.get(r.accountId) || ''
+    const g = byCheque.get(key)
+    const registered = {
+      checkNumber: digits, bankAccount: bank,
+      date: r.date?.toISOString().slice(0, 10) || null,
+      amount: Number(r.amount || 0),
+      payee: r.payee || '',
+      note: r.note || '',
+      status: r.status,
+    }
+    if (!g) {
+      byCheque.set(key, {
+        ...registered, kind: 'REGISTER', id: r.id, items: [],
+        source: r.status === 'CANCELLED' ? 'Cancelled' : r.status === 'UNUSED' ? 'Unused' : 'Chequebook',
+        reference: r.note || '',
+      } as Group)
+      continue
+    }
+    // Recorded payments exist — the register still owns the cheque's own facts.
+    g.registeredAmount = registered.amount
+    g.registerStatus = r.status
+    g.payee = g.payee || registered.payee
+    if (!g.date) g.date = registered.date
+    if (r.status === 'CANCELLED') g.source = 'Cancelled'
+  }
+
+  const grouped = [...byCheque.values()].map(g => {
+    const single = g.items.length === 1 && g.registeredAmount === undefined
+    const base = single ? { ...g.items[0], items: [] as Row[] } : { ...g, reference: g.items.length > 1 ? `${g.items.length} entries` : g.reference }
+    if (g.registeredAmount === undefined) return base
+    const lines = g.items.reduce((s, x) => s + x.amount, 0)
+    return {
+      ...base,
+      // What the cheque was written for, per the chequebook.
+      amount: g.registeredAmount,
+      recordedTotal: g.items.length ? lines : undefined,
+      // Flagged when the recorded expenses do not add up to the cheque.
+      mismatch: g.items.length > 0 && Math.round(lines * 100) !== Math.round(g.registeredAmount * 100),
+      registerStatus: g.registerStatus,
+    }
+  })
 
   // Enumerate by check number (numeric — they are all digits now)
   grouped.sort((a, b) => {
