@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { supplierName, email, contactNumber, isForeign, currency, defaultExchangeRate, address, notes } = await req.json()
+    const { supplierName, email, contactNumber, contactPerson, contactMethod, contactHandle, isForeign, currency, defaultExchangeRate, address, notes } = await req.json()
 
     if (!supplierName?.trim()) {
       return NextResponse.json({ error: 'Supplier name is required' }, { status: 400 })
@@ -63,9 +63,14 @@ export async function POST(req: Request) {
 
     const supplier = await prisma.supplier.create({
       data: {
-        supplierName: supplierName.trim(),
+        // Supplier names are stored upper case so the list reads uniformly no
+        // matter how each one was typed in.
+        supplierName: supplierName.trim().toUpperCase(),
         email: email?.trim() || null,
         contactNumber: contactNumber?.trim() || null,
+        contactPerson: contactPerson?.trim() || null,
+        contactMethod: contactMethod?.trim() || null,
+        contactHandle: contactHandle?.trim() || null,
         isForeign: isForeign || false,
         currency: isForeign ? (currency?.trim() || 'USD') : 'PHP',
         defaultExchangeRate: isForeign && defaultExchangeRate ? parseFloat(defaultExchangeRate) : null,
@@ -98,7 +103,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, supplierName, email, contactNumber, isForeign, currency, defaultExchangeRate, address, notes } = await req.json()
+    const { id, supplierName, email, contactNumber, contactPerson, contactMethod, contactHandle, isForeign, currency, defaultExchangeRate, address, notes } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Supplier ID is required' }, { status: 400 })
@@ -106,9 +111,12 @@ export async function PUT(req: Request) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
-    if (supplierName !== undefined) data.supplierName = supplierName.trim()
+    if (supplierName !== undefined) data.supplierName = supplierName.trim().toUpperCase()
     if (email !== undefined) data.email = email?.trim() || null
     if (contactNumber !== undefined) data.contactNumber = contactNumber?.trim() || null
+    if (contactPerson !== undefined) data.contactPerson = contactPerson?.trim() || null
+    if (contactMethod !== undefined) data.contactMethod = contactMethod?.trim() || null
+    if (contactHandle !== undefined) data.contactHandle = contactHandle?.trim() || null
     if (isForeign !== undefined) data.isForeign = isForeign
     if (currency !== undefined) data.currency = currency?.trim() || 'PHP'
     if (defaultExchangeRate !== undefined) data.defaultExchangeRate = defaultExchangeRate ? parseFloat(defaultExchangeRate) : null
