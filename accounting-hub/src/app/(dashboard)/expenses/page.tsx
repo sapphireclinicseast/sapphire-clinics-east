@@ -30,6 +30,9 @@ const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
 // flow through the Credit Card SOA pipeline, and the RFP that settles an SOA is paid
 // to the bank via check / cash / transfer.
 const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', "Deposit to admin officer's bank account", 'Telegraphic Transfer']
+// How a payroll RFP was settled. The strings match the ones used elsewhere so
+// cheque monitoring ('Check deposit') and bank reconciliation recognise these.
+const PAYROLL_PAYMENT_METHODS = ['Cash', 'Check deposit', 'Telegraphic Transfer'] as const
 const RECUR_FREQ = [
   { v: 'MONTHLY', label: 'Monthly' },
   { v: 'QUARTERLY', label: 'Quarterly' },
@@ -2972,6 +2975,7 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
   const [feeQ, setFeeQ] = useState('')
   const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
   const [fromAccountId, setFromAccountId] = useState('')
+  const [payMethod, setPayMethod] = useState<string>('Telegraphic Transfer')
   const [bankRef, setBankRef] = useState('')
   const [remarks, setRemarks] = useState('')
   const [proofUrl, setProofUrl] = useState('')
@@ -3018,7 +3022,14 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
       const data = await res.json()
       if (!res.ok) { alert(data.error || 'Failed to record payment'); return }
       const paymentId = data?.payment?.id || null
-      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'pay-payroll', paymentId, datePaid, paymentMethod: 'Bank/Cash', proofUrl: proofUrl || null }) })
+      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'pay-payroll', paymentId, datePaid,
+        paymentMethod: payMethod,
+        checkNumber: payMethod === 'Check deposit' ? bankRef.trim() : null,
+        transferRef: payMethod === 'Telegraphic Transfer' ? bankRef.trim() : null,
+        // debitAccount holds the readable "number title" label (the billing
+        // voucher and bank rec read it as text), not the account id.
+        debitAccount: (() => { const a = assets.find(x => x.id === fromAccountId); return a ? `${a.accountNumber} ${a.accountTitle}` : null })(),
+        proofUrl: proofUrl || null }) })
       onDone()
     } finally { setBusy(false) }
   }
@@ -3035,8 +3046,24 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
         <select value={fromAccountId} onChange={e => setFromAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
           <option value="">— Select Account —</option>{filtered.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
         </select>
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Bank transaction reference number</label>
-        <input value={bankRef} onChange={e => setBankRef(e.target.value)} placeholder="Reference / check number" className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payment Method</label>
+        <div className="flex gap-2 mb-3">
+          {PAYROLL_PAYMENT_METHODS.map(m => (
+            <button key={m} type="button" onClick={() => setPayMethod(m)}
+              className="flex-1 px-3 py-2 rounded-xl border text-xs font-semibold"
+              style={payMethod === m
+                ? { background: 'var(--teal)', color: 'white', borderColor: 'var(--teal)' }
+                : { background: 'white', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
+              {m === 'Check deposit' ? 'Cheque' : m}
+            </button>
+          ))}
+        </div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+          {payMethod === 'Check deposit' ? 'Cheque number' : payMethod === 'Cash' ? 'Reference (optional)' : 'Bank transaction reference number'}
+        </label>
+        <input value={bankRef} onChange={e => setBankRef(e.target.value)}
+          placeholder={payMethod === 'Check deposit' ? 'Cheque number' : payMethod === 'Cash' ? 'Voucher / slip number' : 'Telegraphic transfer reference'}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
         <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Anything else to note for this transaction" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof of Remittance (optional)</label>
