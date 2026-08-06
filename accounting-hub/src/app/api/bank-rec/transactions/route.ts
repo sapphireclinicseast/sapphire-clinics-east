@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postFundTransferJE, removeFundTransferJE } from '@/lib/fund-transfer-je'
 import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
 import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 import { applyBankRules } from '@/lib/bank-rec-rules'
@@ -383,14 +384,64 @@ export async function PATCH(req: Request) {
             data: { status: 'POSTED', matchType: 'INTERBANK', matchId: created.id, matchLabel: label, categoryAccountId: null },
           })
         }
+        // The transfer moves cash in the ledger, not just between the two lines.
+        await postFundTransferJE(tx, created.id, session.user!.id ?? null)
         return created
       })
       return NextResponse.json({ success: true, refNumber: transfer.refNumber })
     }
 
     if (action === 'match') {
-      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null } })
-      return NextResponse.json({ success: true })
+      // A deposit rarely lands to the centavo: ₱1,000,000.43 arrives against a
+      // ₱1,000,000.00 equity record because the bank added interest, or took a
+      // charge. Matching alone would leave that sliver unexplained — the ledger
+      // would hold the record's amount while the bank holds its own. When a
+      // difference account is chosen the remainder posts to it, so the line is
+      // settled in full and cash still ties to the statement.
+      const diffAccountId: string | null = body.differenceAccountId || null
+      let diffJournalId: string | null = null
+      if (diffAccountId) {
+        if (diffAccountId === txn.bankAccountId) {
+          return NextResponse.json({ error: 'The difference cannot go to this line\'s own bank account — the entry would cancel itself out.' }, { status: 400 })
+        }
+        const isSpent = Number(txn.spent) > 0
+        const bankAmt = isSpent ? Number(txn.spent) : Number(txn.received)
+        // bank − records: positive means the bank moved more than the records explain.
+        const raw = Math.round((bankAmt - Number(body.recordsTotal ?? bankAmt)) * 100) / 100
+        if (Math.abs(raw) >= 0.005) {
+          const bankAcct = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true } })
+          const cur = bankAcct?.currency || 'PHP'
+          let amount = Math.abs(raw), usedRate: number | null = null
+          if (isForeign(cur)) {
+            const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate) } : await rateFor(cur, txn.date)
+            if (!rate || !(rate.phpPerUnit > 0)) {
+              return NextResponse.json({ error: `No ${cur} exchange rate is on file for ${txn.date.toISOString().slice(0, 10)}, so the difference cannot be stated in PHP.`, needsRate: true, currency: cur }, { status: 400 })
+            }
+            usedRate = rate.phpPerUnit
+            amount = toPhp(Math.abs(raw), usedRate)
+          }
+          // Money in with the bank ahead (raw > 0) is an extra inflow: Dr bank /
+          // Cr the account. Money out with the bank ahead is an extra outflow:
+          // Dr the account / Cr bank. A negative raw flips each of those.
+          const bankIsDebit = isSpent ? raw < 0 : raw > 0
+          const lines = bankIsDebit
+            ? [{ accountId: txn.bankAccountId, debit: amount, credit: 0 }, { accountId: diffAccountId, debit: 0, credit: amount }]
+            : [{ accountId: diffAccountId, debit: amount, credit: 0 }, { accountId: txn.bankAccountId, debit: 0, credit: amount }]
+          if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+          const je = await prisma.journalEntry.create({
+            data: {
+              entryDate: txn.date,
+              description: `Bank: ${txn.description} — difference on match`,
+              referenceType: 'BANK_REC', referenceId: txn.id,
+              totalAmount: amount, createdById: session.user!.id as string,
+              lines: { create: lines.map(l => ({ ...l, description: `Match difference — ${txn.description}`.slice(0, 250) })) },
+            },
+          })
+          diffJournalId = je.id
+        }
+      }
+      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: diffJournalId } })
+      return NextResponse.json({ success: true, differenceJournalEntryId: diffJournalId })
     }
     if (action === 'exclude') {
       if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
@@ -414,6 +465,7 @@ export async function PATCH(req: Request) {
             where: { id: { in: both.map(b => b.id) } },
             data: { status: 'PENDING', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null },
           })
+          await removeFundTransferJE(tx, txn.matchId!)
           await tx.fundTransfer.delete({ where: { id: txn.matchId! } }).catch(() => {})
         })
         return NextResponse.json({ success: true, released: both.length })

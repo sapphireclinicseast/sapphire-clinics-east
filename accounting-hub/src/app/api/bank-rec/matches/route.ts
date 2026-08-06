@@ -198,6 +198,19 @@ export async function GET(req: Request) {
     .sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
     .slice(0, 25)
 
+  // The mirror of a combination: ONE record settled by SEVERAL bank lines. A
+  // ₱1,000,000 bond subscribed by one investor arrives as ₱10,000 on 2 June and
+  // ₱990,000 on 11 June. Neither line equals the record, and the record is
+  // bigger than the line, so it appears in neither list above. Offer records
+  // larger than this line as part payments — matching one leaves the record
+  // available for the other lines, since a match posts no entry of its own.
+  const bigger = searching ? [] : forDirection(all, isSpent)
+    .filter(c => gte(c.date) && !c.fx && c.amount > amount + 0.01
+      && !chosen.has(`${c.type}-${c.id}`))
+    .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount, partOf: true }))
+    .sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
+    .slice(0, 15)
+
   // Interbank counterpart legs surface FIRST — an equal-amount pending line on
   // another own account within the settlement day is almost always the answer.
   const interbank = (await interbankCandidates(txn))
@@ -247,6 +260,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     matches: [...interbank, ...pos, ...out].slice(0, searching ? 50 : 20),
     partials,
+    bigger,
     searching,
   })
 }

@@ -39,10 +39,10 @@ const cellText = (t: Txn, key: string): string => {
   }
 }
 
-interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
+interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; statementBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
 interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
-interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[]; partial?: boolean }
+interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[]; partial?: boolean; partOf?: boolean }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
 interface Hint { kind: string; label: string; amount: number; date: string; n: number }
 interface UntaggedGroup { type: string; label: string; count: number; total: number; truncated: boolean; items: { id: string; label: string; date: string; amount: number; dir: string }[] }
@@ -197,6 +197,14 @@ export default function BankReconciliationPage() {
               alert(`Matched ${d.matched} settlement line(s). ${d.remainingPending.toLocaleString()} still pending.`)
               await refreshAll()
             }} title="Bulk-match card/e-wallet day settlements to their order batches" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Check size={14} /> Match settlements</button>
+            <button onClick={async () => {
+              if (!confirm('Pair internal transfers across ALL bank accounts? A spent and an equal received (≥₱5,000) on two of our own accounts within 3 banking days, with exactly one possible counterpart each, are recorded as one Fund Transfer and both posted. Ambiguous pairs are left for the Match dialog.')) return
+              const r = await fetch('/api/bank-rec/transfer-match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+              const d = await r.json()
+              if (!r.ok) { alert(d.error || 'Failed'); return }
+              alert(`Paired ${d.matched} internal transfer(s)${d.matched ? ':\n' + d.pairs.slice(0, 12).map((p: { refNumber: string; amount: number; from: string; to: string; date: string }) => `${p.refNumber} · ${p.date} · ₱${p.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${p.from} → ${p.to}`).join('\n') + (d.pairs.length > 12 ? `\n…and ${d.pairs.length - 12} more` : '') : ''}`)
+              await refreshAll()
+            }} title="Bulk-pair internal transfers between our own accounts (equal amount, both pending, ≤3 banking days, unambiguous)" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Match transfers</button>
             <button onClick={() => setShowRules(true)} title="Auto-categorize recurring lines by description pattern" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Wand2 size={14} /> Auto-rules</button>
             <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
             <button onClick={() => setShowFT(true)} title="Record a transfer between two bank accounts, or from a bank account to a petty cash box" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Record Fund Transfer</button>
@@ -231,6 +239,16 @@ export default function BankReconciliationPage() {
                   </p>
                 )}
                 <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Posted balance{a.startDate ? ` · since ${a.startDate}` : ''}</p>
+                {/* What the loaded statement lines themselves add up to, pending
+                    ones included — so adding or deleting a line moves a figure
+                    here even before it has been tagged. */}
+                {a.pendingCount > 0 && (
+                  <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                    With {a.pendingCount} pending: <strong style={{ color: 'var(--charcoal)' }}>
+                      {a.currency && a.currency !== 'PHP' ? `${a.currency} ` : '₱'}{peso(a.statementBalance)}
+                    </strong>
+                  </p>
+                )}
               </button>
             ))}
           </div>
@@ -451,7 +469,7 @@ export default function BankReconciliationPage() {
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
       {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
-      {matchFor && <MatchModal txn={matchFor} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
+      {matchFor && <MatchModal txn={matchFor} coa={coa} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
     </div>
   )
 }
@@ -904,8 +922,11 @@ function PosSettlementPicker({ txn, onDone }: { txn: Txn; onDone: () => void }) 
   )
 }
 
-function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose: () => void; onDone: () => void; onCategorise: () => void }) {
+function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa: Coa[]; onClose: () => void; onDone: () => void; onCategorise: () => void }) {
   const [matches, setMatches] = useState<Match[] | null>(null)
+  // Where the sliver goes when the ticked records don't reach the bank amount
+  // to the centavo (bank interest, a charge, a rounding difference).
+  const [diffAcct, setDiffAcct] = useState('')
   const [fx, setFx] = useState<FxMatch[]>([])
   const [busy, setBusy] = useState(false)
   // Manual search: any of these switches from same-amount suggestions to a
@@ -917,6 +938,8 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
   const [showPos, setShowPos] = useState(false)
   const [sel, setSel] = useState<Record<string, Match>>({})
   const [partials, setPartials] = useState<Match[]>([])
+  // Records BIGGER than this line — the deposit is one instalment of them.
+  const [bigger, setBigger] = useState<Match[]>([])
   const searching = !!(q.trim() || from || to)
   useEffect(() => {
     setMatches(null)
@@ -926,7 +949,7 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
       if (from) p.set('from', from)
       if (to) p.set('to', to)
       fetch(`/api/bank-rec/matches?${p}`).then(r => r.ok ? r.json() : { matches: [] })
-        .then(d => { setMatches(d.matches || []); setPartials(d.partials || []) })
+        .then(d => { setMatches(d.matches || []); setPartials(d.partials || []); setBigger(d.bigger || []) })
         .catch(() => { setMatches([]); setPartials([]) })
     }, q.trim() ? 350 : 0)
     return () => clearTimeout(t)
@@ -944,9 +967,19 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
         if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
         onDone(); return
       }
+      // Settling part of a bigger record: the label carries the portion so the
+      // grid shows what this line covered and what the record still awaits.
+      // Judged on the amounts, not on which list the record came from — the
+      // record is often months from the deposit (a subscription recorded at
+      // year end, paid in June) and is then reached by search rather than by
+      // the suggestions.
+      const isPart = m.type !== 'INTERBANK' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > target + 0.01
+      const partLabel = isPart
+        ? `Part payment ₱${peso(target)} of ₱${peso(m.amount)} · ${m.label}`.slice(0, 500)
+        : m.label
       const body = m.type === 'INTERBANK'
         ? { id: txn.id, action: 'match-interbank', counterpartId: m.id }
-        : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: m.label }
+        : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: partLabel }
       const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
       onDone()
@@ -969,18 +1002,23 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
   const selDiff = Math.round((selTotal - target) * 100) / 100
 
   const pickMany = async () => {
-    if (selList.length < 2) return
+    if (selList.length < 1) return
+    if (selDiff !== 0 && !diffAcct) return
     setBusy(true)
     try {
       const types = [...new Set(selList.map(m => m.type))]
       // A bank line carries one matchId, so a combination is stored as the ids
       // joined; the label is what makes it legible afterwards.
-      const label = `${selList.length} records · ${selList.map(m => `${m.label} ₱${peso(m.amount)}`).join(' + ')}`
+      const diffNote = selDiff !== 0
+        ? ` + ₱${peso(Math.abs(selDiff))} to ${coa.find(c => c.id === diffAcct)?.accountNumber || 'difference'}`
+        : ''
+      const label = `${selList.length} record${selList.length === 1 ? '' : 's'} · ${selList.map(m => `${m.label} ₱${peso(m.amount)}`).join(' + ')}${diffNote}`
       const body = {
         id: txn.id, action: 'match',
         matchType: types.length === 1 ? types[0] : 'MULTI',
         matchId: selList.map(m => m.id).join(','),
         matchLabel: label.slice(0, 500),
+        ...(selDiff !== 0 && diffAcct ? { differenceAccountId: diffAcct, recordsTotal: selTotal } : {}),
       }
       const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
@@ -1052,7 +1090,7 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
         </div>
       )}
       {matches === null ? <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={15} className="inline animate-spin" /> Finding matches…</p>
-        : matches.length === 0 && partials.length === 0 ? (
+        : matches.length === 0 && partials.length === 0 && bigger.length === 0 ? (
           <div className="text-center py-4">
             <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
               {searching
@@ -1079,13 +1117,49 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setSel({})} className="text-xs underline" style={{ color: 'var(--mid-gray)' }}>Clear</button>
-                  <button onClick={pickMany} disabled={busy || selList.length < 2 || selDiff !== 0}
+                  <button onClick={pickMany} disabled={busy || selList.length < 1 || (selDiff !== 0 && !diffAcct)}
                     className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
-                    style={{ background: '#16a34a', cursor: (selList.length < 2 || selDiff !== 0) ? 'not-allowed' : 'pointer' }}
-                    title={selDiff !== 0 ? 'The ticked records must add up to the bank amount' : 'Match these records to this bank line'}>
-                    Match {selList.length} together
+                    style={{ background: '#16a34a', cursor: (selList.length < 1 || (selDiff !== 0 && !diffAcct)) ? 'not-allowed' : 'pointer' }}
+                    title={selDiff !== 0 && !diffAcct ? 'Choose where the difference goes, or tick records that add up exactly' : 'Match these records to this bank line'}>
+                    {selDiff === 0 ? `Match ${selList.length} together` : `Match ${selList.length} + difference`}
                   </button>
                 </div>
+              </div>
+            )}
+            {/* The bank rarely agrees to the centavo — interest lands on top of a
+                deposit, a charge comes off a payment. Naming the account for the
+                remainder settles the line in full instead of leaving it open. */}
+            {/* One ticked record bigger than the line is almost never a
+                difference to expense — it is an instalment. Offering a ₱990,000
+                "difference" against a ₱10,000 deposit invites a serious
+                misposting, so that case gets the part-payment route instead. */}
+            {selList.length === 1 && selDiff > 0 && (
+              <div className="rounded-xl border px-3 py-2 space-y-1.5" style={{ borderColor: 'var(--gold)', background: '#fffbeb' }}>
+                <p className="text-[11px]" style={{ color: '#92400e' }}>
+                  <strong>{selList[0].label}</strong> is bigger than this line. If this deposit paid only part of it, record it as a part payment — ₱{peso(Math.abs(selDiff))} stays open for the other bank lines that made it up.
+                </p>
+                <button onClick={() => pick(selList[0])} disabled={busy}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+                  style={{ background: 'var(--teal)' }}>
+                  Record ₱{peso(target)} as part payment
+                </button>
+              </div>
+            )}
+            {selList.length > 0 && selDiff !== 0 && !(selList.length === 1 && selDiff > 0) && (
+              <div className="rounded-xl border px-3 py-2 space-y-1.5" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <label className="block text-[11px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                  Record the ₱{peso(Math.abs(selDiff))} {selDiff < 0 ? 'the bank has on top' : 'the records have on top'} as
+                </label>
+                <select value={diffAcct} onChange={e => setDiffAcct(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">— leave unmatched (button stays off) —</option>
+                  {coa.map(c => (
+                    <option key={c.id} value={c.id}>{c.accountNumber} — {c.accountTitle}</option>
+                  ))}
+                </select>
+                <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                  A journal entry posts for the difference only; the ticked records keep their own accounting. Typical picks: interest income, bank charges, other income.
+                </p>
               </div>
             )}
             {matches.map(m => (
@@ -1134,6 +1208,34 @@ function MatchModal({ txn, onClose, onDone, onCategorise }: { txn: Txn; onClose:
                         <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
                       </span>
                     </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* The mirror of combining: this deposit is one instalment of a
+                bigger record. A ₱1,000,000 subscription paid as ₱10,000 then
+                ₱990,000 — match each line to the same record. */}
+            {bigger.length > 0 && (
+              <div className="pt-1">
+                <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  Or this line is part of a bigger record
+                </p>
+                <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                  Records larger than ₱{peso(target)} in the same period. Pick one if this deposit paid only part of it — the rest stays open for the other bank lines that made it up.
+                </p>
+                <div className="space-y-1.5">
+                  {bigger.map(m => (
+                    <button key={`big-${m.type}-${m.id}`} onClick={() => pick(m)} disabled={busy}
+                      className="w-full text-left rounded-xl border px-3 py-2 flex items-start justify-between gap-2 disabled:opacity-50"
+                      style={{ borderColor: 'var(--light-gray)' }}>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{m.label}</span>
+                        <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                          {m.date} · this line covers ₱{peso(target)}, leaving ₱{peso(Math.round((m.amount - target) * 100) / 100)}
+                        </span>
+                      </span>
+                      <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>
+                    </button>
                   ))}
                 </div>
               </div>

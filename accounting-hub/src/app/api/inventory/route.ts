@@ -112,7 +112,9 @@ export async function POST(req: Request) {
 
     const item = await prisma.inventoryItem.create({
       data: {
-        name: name.trim(),
+        // Product names are stored upper case so the catalogue reads uniformly.
+        // The Verdana storefront title-cases them for display.
+        name: name.trim().toUpperCase(),
         sku,
         skuDepartment,
         skuCategory,
@@ -178,7 +180,7 @@ export async function PUT(req: Request) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
-    if (name !== undefined) data.name = name.trim()
+    if (name !== undefined) data.name = name.trim().toUpperCase()
     if (branch !== undefined) data.branch = branch
     if (accountSubType !== undefined) data.accountSubType = accountSubType || null
     if (unitCost !== undefined) data.unitCost = parseFloat(unitCost)

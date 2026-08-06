@@ -168,6 +168,16 @@ function isCashAccount(a: AcctInfo): boolean {
   return /cash|bank|gcash|paymaya|maya|fund/.test(t)
 }
 
+/**
+ * Bank lines a report is allowed to believe. A line the user excluded ("disable"
+ * in Bank Rec) or archived is one they have said is not a real movement — most
+ * often a mangled import row — so its printed running balance is not evidence of
+ * anything either. Without this the row keeps driving the true-up and the cash
+ * reconciliation panel after being switched off, and only a hard delete makes it
+ * disappear from the reports.
+ */
+const LIVE_STMT = { status: { in: ['PENDING', 'POSTED'] } }
+
 /* ── Engine ────────────────────────────────────────────────────── */
 
 export async function computeLedgerStatements(
@@ -769,44 +779,84 @@ export async function computeLedgerStatements(
   /* ── 8. Bank-statement true-up: cash on the sheet = cash at the bank ──
      The ledger only subtracts what has been categorized, so while Bank Rec has
      a backlog, ledger cash floats above reality. Each bank account with an
-     imported statement is trued to the bank's own running balance as of its
-     latest line in the period; the difference sits on ONE visible equity line,
+     imported statement is trued MONTH BY MONTH to the bank's own running
+     balance at that month end; the difference sits on ONE visible equity line,
      "Cash Pending Reconciliation", which shrinks toward zero as pending lines
      get categorized — at which point the true-up posts nothing at all.
+     Only the change in that gap is posted each month, so the cash flow reads as
+     "movement in the uncategorized backlog" rather than a whole year's gap
+     landing in whichever month happened to hold the last statement line.
+     Months with no statement hold the previous month's true-up steady, so real
+     ledger movement after the statements run out flows through untouched.
      All-Branches only: statements are whole-account and cannot be split. */
   if (branch === 'ALL') {
     try {
-      const latest = await prisma.bankTransaction.findMany({
-        where: { date: { lt: end }, statementBalance: { not: null } },
-        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      // Every statement line IN THIS PERIOD that carries a running balance, so
+      // each month can be trued to the bank's own closing balance for THAT
+      // month rather than the whole year's difference landing in one column.
+      // Scoped to the period on purpose: a balance from an earlier year says
+      // nothing about this year's month ends, and monthOf would clamp it to
+      // January, freezing cash at a stale figure for the whole year.
+      const stmtLines = await prisma.bankTransaction.findMany({
+        where: { date: { gte: start, lt: end }, statementBalance: { not: null }, ...LIVE_STMT },
+        orderBy: [{ date: 'asc' }, { id: 'asc' }],
         select: { bankAccountId: true, date: true, statementBalance: true },
       })
-      const latestByAcct = new Map<string, { bal: number; date: Date }>()
-      for (const t of latest) if (!latestByAcct.has(t.bankAccountId)) latestByAcct.set(t.bankAccountId, { bal: Number(t.statementBalance), date: t.date })
+      // last statement balance seen in each month, per account
+      const byAcctMonth = new Map<string, Map<number, number>>()
+      const firstMonth = new Map<string, number>()
+      const lastMonth = new Map<string, number>()
+      for (const t of stmtLines) {
+        const m = t.date.getUTCMonth() + 1
+        if (!byAcctMonth.has(t.bankAccountId)) byAcctMonth.set(t.bankAccountId, new Map())
+        byAcctMonth.get(t.bankAccountId)!.set(m, Number(t.statementBalance))
+        if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
+        lastMonth.set(t.bankAccountId, m)
+      }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
       let trueups = 0
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
         if (!acct?.id) continue
-        const stmt = latestByAcct.get(acct.id)
-        if (!stmt) continue
-        const m = mov.get(n) || { debit: 0, credit: 0 }
-        const ledgerClosing = (opening.get(n) || 0) + m.debit - m.credit // cash is debit-normal
-        const adj = round2(stmt.bal - ledgerClosing)
-        if (Math.abs(adj) < 0.01) continue
-        const month = monthOf(stmt.date)
-        postBalanced('bank-trueup', month, `True-up to bank statement as of ${stmt.date.toISOString().slice(0, 10)} — ${acct.title}`, [
-          adj < 0 ? { acct, credit: -adj } : { acct, debit: adj },
-          adj < 0 ? { acct: pendReconcile, debit: -adj } : { acct: pendReconcile, credit: adj },
-        ])
-        trueups++
+        const months = byAcctMonth.get(acct.id)
+        if (!months) continue
+        const mm = movMonthly.get(n)
+        const firstM = firstMonth.get(acct.id) ?? 1
+        const lastM = lastMonth.get(acct.id) ?? 12
+        // Walk the year: at each month end the sheet should read what the bank
+        // read. Only the CHANGE in the required adjustment is posted, so each
+        // month carries its own correction and none carries the whole year's.
+        let ledger = opening.get(n) || 0
+        let carried = 0          // adjustment already posted in earlier months
+        let lastKnown: number | null = null
+        for (let m = 1; m <= 12; m++) {
+          ledger += (mm?.debit[m] || 0) - (mm?.credit[m] || 0)   // cash is debit-normal
+          const stmt = months.get(m)
+          if (stmt !== undefined) lastKnown = stmt
+          // Before the account's first statement line there is nothing to true
+          // to. After the LAST one, hold the correction already carried and stop
+          // truing: the bank has simply not told us about those months yet, and
+          // re-truing to a stale balance would cancel genuine ledger movement
+          // instead of reconciling it.
+          if (m < firstM || m > lastM || lastKnown === null) continue
+          const want = round2(lastKnown - (ledger + carried))
+          if (Math.abs(want) < 0.01) continue
+          postBalanced('bank-trueup', m, `True-up to bank statement — ${acct.title}`, [
+            want < 0 ? { acct, credit: -want } : { acct, debit: want },
+            want < 0 ? { acct: pendReconcile, debit: -want } : { acct: pendReconcile, credit: want },
+          ])
+          carried = round2(carried + want)
+          trueups++
+        }
       }
       if (trueups) {
         validation.synthesized.push(`bank-statement-trueup (${trueups})`)
         validation.notes.push(
-          `Cash is trued to the imported bank statements: ${trueups} bank account(s) are stated at the bank's own ` +
-          `running balance as of their latest imported line. The difference vs the ledger sits on the visible equity ` +
-          `line "3990 Cash Pending Reconciliation" and shrinks as pending Bank Reconciliation lines are categorized.`,
+          `Cash is trued to the imported bank statements month by month: each bank account is stated at the bank's own ` +
+          `closing balance for every month that has statement lines, so no single month absorbs the whole year's ` +
+          `difference. The offset sits on the visible equity line "3990 Cash Pending Reconciliation" and shrinks as ` +
+          `pending Bank Reconciliation lines are categorized. Months before an account's first statement line, and ` +
+          `after its last, are left untrued.`,
         )
       }
     } catch { /* statements are optional */ }
@@ -947,7 +997,7 @@ export async function computeLedgerStatements(
     const pendingCount = bankTx.reduce((s, t) => s + t._count._all, 0)
     // Latest statement balance per bank account, as of the report period's end.
     const latest = await prisma.bankTransaction.findMany({
-      where: { date: { lt: end }, statementBalance: { not: null } },
+      where: { date: { lt: end }, statementBalance: { not: null }, ...LIVE_STMT },
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
       select: { bankAccountId: true, date: true, statementBalance: true },
     })

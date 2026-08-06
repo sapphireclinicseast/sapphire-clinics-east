@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
@@ -114,6 +116,10 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
 }
 
 export default function PettyCashPage() {
+  return <Suspense fallback={null}><PettyCashInner /></Suspense>
+}
+
+function PettyCashInner() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
   // Users assigned to a single branch only see that branch here.
@@ -161,6 +167,7 @@ export default function PettyCashPage() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
+  const [coaAccounts, setCoaAccounts] = useState<PickableAccount[]>([])
   const [requestors, setRequestors] = useState<string[]>([])
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
   const [showSettings, setShowSettings] = useState(false)
@@ -279,6 +286,8 @@ export default function PettyCashPage() {
         const list = Array.isArray(d) ? d : (d.accounts || d.data || [])
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setCoaOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setCoaAccounts(list.map((a: any) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle, accountType: a.accountType })))
       })
       .catch(() => setCoaOptions([]))
   }, [])
@@ -648,6 +657,9 @@ export default function PettyCashPage() {
   // Per-column header sort/filter for the entries grid.
   const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
   const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
+  // Deep link from global search — filter the grid to the PCV that was clicked.
+  const { focus, done } = useFocusTarget()
+  useEffect(() => { if (focus) { setGridFilters(f => ({ ...f, refNumber: focus })); done() } }, [focus, done])
   const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const gridCols: { key: string; label: string; plain?: boolean }[] = [
     { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Requestor' }, { key: 'department', label: 'Department' },
@@ -1042,12 +1054,10 @@ export default function PettyCashPage() {
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.accountTitle || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { accountTitle: ev.target.value }, false)} style={{ minWidth: 200 }}>
-                            <option value=""></option>
-                            {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                            {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
-                          </select>
+                          <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
+                            disabled={lk} className={cellCls} placeholder="Type a number or a name…"
+                            clearLabel="— Clear —"
+                            onChange={v => saveField(e.id, { accountTitle: v }, false)} />
                           {/* Only tangible (depreciating PPE) classifications — not intangibles. */}
                           {(() => {
                             const ac = assetClassFromAccountTitle(e.accountTitle)

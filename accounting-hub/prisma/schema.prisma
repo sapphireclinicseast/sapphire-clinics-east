@@ -54,8 +54,8 @@ model User {
   passwordHash     String
   role             Role      @default(VIEWER)
   branch           Branch?
-  branches         Branch[]  @default([])  // multi-branch access; when set, overrides the single `branch`
-  disabled         Boolean   @default(false)  // soft-deleted/deactivated — blocked from login
+  branches         Branch[]  @default([]) // multi-branch access; when set, overrides the single `branch`
+  disabled         Boolean   @default(false) // soft-deleted/deactivated — blocked from login
   avatar           String?
   resetToken       String?
   resetTokenExpiry DateTime?
@@ -66,22 +66,22 @@ model User {
   auditLogs AuditLog[]
   accounts  Account[]
 
-  servicesCreated       Service[]               @relation("ServiceCreatedBy")
-  suppliersCreated      Supplier[]              @relation("SupplierCreatedBy")
-  inventoryItems        InventoryItem[]         @relation("ItemCreatedBy")
-  inventoryAdjustments  InventoryAdjustment[]   @relation("AdjustmentBy")
-  inventoryAdjBatches   InventoryAdjustmentBatch[] @relation("AdjBatchCreatedBy")
-  transfersRequested    ConsignmentTransfer[]   @relation("TransferRequestedBy")
-  transfersApproved     ConsignmentTransfer[]   @relation("TransferApprovedBy")
+  servicesCreated      Service[]                  @relation("ServiceCreatedBy")
+  suppliersCreated     Supplier[]                 @relation("SupplierCreatedBy")
+  inventoryItems       InventoryItem[]            @relation("ItemCreatedBy")
+  inventoryAdjustments InventoryAdjustment[]      @relation("AdjustmentBy")
+  inventoryAdjBatches  InventoryAdjustmentBatch[] @relation("AdjBatchCreatedBy")
+  transfersRequested   ConsignmentTransfer[]      @relation("TransferRequestedBy")
+  transfersApproved    ConsignmentTransfer[]      @relation("TransferApprovedBy")
 
-  referrersCreated      Referrer[]              @relation("ReferrerCreatedBy")
-  walletLogs            WalletLog[]             @relation("WalletLogBy")
-  ordersCreated         Order[]                 @relation("OrderCreatedBy")
-  discountSettings      DiscountSetting[]       @relation("DiscountCreatedBy")
-  arPayments            ARPayment[]             @relation("ARPaymentCreatedBy")
-  payrollEntries        PayrollEntry[]          @relation("PayrollCreatedBy")
-  incentiveRules        IncentiveRule[]         @relation("IncentiveCreatedBy")
-  assets                Asset[]                 @relation("AssetCreatedBy")
+  referrersCreated Referrer[]        @relation("ReferrerCreatedBy")
+  walletLogs       WalletLog[]       @relation("WalletLogBy")
+  ordersCreated    Order[]           @relation("OrderCreatedBy")
+  discountSettings DiscountSetting[] @relation("DiscountCreatedBy")
+  arPayments       ARPayment[]       @relation("ARPaymentCreatedBy")
+  payrollEntries   PayrollEntry[]    @relation("PayrollCreatedBy")
+  incentiveRules   IncentiveRule[]   @relation("IncentiveCreatedBy")
+  assets           Asset[]           @relation("AssetCreatedBy")
 
   @@index([email])
   @@index([role])
@@ -108,56 +108,56 @@ model AuditLog {
 // ── Chart of Accounts ──────────────────────────────────────
 
 model Account {
-  id            String        @id @default(cuid())
-  accountNumber String        @unique
-  accountTitle  String
-  accountType   AccountType
-  subType       String?
-  subSubType    String?       // Sub-sub classification (e.g., PT, OT, ST for inventory types)
-  normalBalance NormalBalance
-  currency      String        @default("PHP")   // PHP, USD, CNY, EUR, JPY, etc.
-  description   String?
-  isActive      Boolean       @default(true)
-  isBankAccount Boolean       @default(false)  // Current-asset account that is a bank account (shows in Fund Transfer dropdowns)
-  isCheckingAccount Boolean   @default(false)  // Bank account that is specifically a checking account (Check Release Monitoring)
+  id                String        @id @default(cuid())
+  accountNumber     String        @unique
+  accountTitle      String
+  accountType       AccountType
+  subType           String?
+  subSubType        String? // Sub-sub classification (e.g., PT, OT, ST for inventory types)
+  normalBalance     NormalBalance
+  currency          String        @default("PHP") // PHP, USD, CNY, EUR, JPY, etc.
+  description       String?
+  isActive          Boolean       @default(true)
+  isBankAccount     Boolean       @default(false) // Current-asset account that is a bank account (shows in Fund Transfer dropdowns)
+  isCheckingAccount Boolean       @default(false) // Bank account that is specifically a checking account (Check Release Monitoring)
   // Bank account that actually takes part in buying foreign currency. Only these
   // are paired when matching a currency exchange, so unrelated accounts that
   // merely happen to hold another currency are not offered.
-  isForexAccount Boolean      @default(false)
-  createdById   String
-  createdBy     User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  isForexAccount    Boolean       @default(false)
+  createdById       String
+  createdBy         User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   services              Service[]
-  inventoryItems        InventoryItem[] @relation("InventoryRevenueAccount")
-  inventorySourceItems  InventoryItem[] @relation("InventorySourceAccount")
-  inventoryExpenseItems InventoryItem[] @relation("InventoryExpenseAccount")
+  inventoryItems        InventoryItem[]            @relation("InventoryRevenueAccount")
+  inventorySourceItems  InventoryItem[]            @relation("InventorySourceAccount")
+  inventoryExpenseItems InventoryItem[]            @relation("InventoryExpenseAccount")
   discountSettings      DiscountSetting[]
-  voucherDiscounts      Voucher[]       @relation("VoucherDiscountAccount")
-  wallets               DigitalWallet[] @relation("WalletAccount")
-  arPaymentDiscounts    ARPayment[]     @relation("ARPaymentDiscountAccount")
-  arPaymentCashAccounts ARPayment[]     @relation("ARPaymentCashAccount")
-  arPaymentOverpayments ARPayment[]     @relation("ARPaymentOverpaymentAccount")
-  unitPaysExpense       UnitPay[]         @relation("UnitPayExpense")
-  taxPaymentsFrom       TaxPayment[]      @relation("TaxPaymentFrom")
-  taxSettings           PayrollTaxSettings[] @relation("TaxLiability")
-  paymentModes          PaymentMode[]           @relation("PaymentModeAccount")
-  paymentModeDeductions PaymentModeDeduction[]  @relation("DeductionAccount")
+  voucherDiscounts      Voucher[]                  @relation("VoucherDiscountAccount")
+  wallets               DigitalWallet[]            @relation("WalletAccount")
+  arPaymentDiscounts    ARPayment[]                @relation("ARPaymentDiscountAccount")
+  arPaymentCashAccounts ARPayment[]                @relation("ARPaymentCashAccount")
+  arPaymentOverpayments ARPayment[]                @relation("ARPaymentOverpaymentAccount")
+  unitPaysExpense       UnitPay[]                  @relation("UnitPayExpense")
+  taxPaymentsFrom       TaxPayment[]               @relation("TaxPaymentFrom")
+  taxSettings           PayrollTaxSettings[]       @relation("TaxLiability")
+  paymentModes          PaymentMode[]              @relation("PaymentModeAccount")
+  paymentModeDeductions PaymentModeDeduction[]     @relation("DeductionAccount")
   journalLines          JournalEntryLine[]
-  salaryPaymentsFrom    SalaryPayment[]         @relation("SalaryPaymentFrom")
-  benefitPaymentsFrom   BenefitPayment[]        @relation("BenefitPaymentFrom")
+  salaryPaymentsFrom    SalaryPayment[]            @relation("SalaryPaymentFrom")
+  benefitPaymentsFrom   BenefitPayment[]           @relation("BenefitPaymentFrom")
   // PayrollCOAMapping relations
-  coaSalaryExpense         PayrollCOAMapping[] @relation("COASalaryExpense")
-  coaProfessionalFees      PayrollCOAMapping[] @relation("COAProfFees")
-  coaSssER                 PayrollCOAMapping[] @relation("COASSSER")
-  coaHdmfER                PayrollCOAMapping[] @relation("COAHdmfER")
-  coaPhilhealthER          PayrollCOAMapping[] @relation("COAPhilER")
-  coaSalariesPayable       PayrollCOAMapping[] @relation("COASalPayable")
-  coaBenefitsPayable       PayrollCOAMapping[] @relation("COABenPayable")
-  coaTaxPayable            PayrollCOAMapping[] @relation("COATaxPayable")
-  beginningBalances        BeginningBalance[]
-  adjBatchFxSources        InventoryAdjustmentBatch[] @relation("AdjBatchFxSource")
+  coaSalaryExpense      PayrollCOAMapping[]        @relation("COASalaryExpense")
+  coaProfessionalFees   PayrollCOAMapping[]        @relation("COAProfFees")
+  coaSssER              PayrollCOAMapping[]        @relation("COASSSER")
+  coaHdmfER             PayrollCOAMapping[]        @relation("COAHdmfER")
+  coaPhilhealthER       PayrollCOAMapping[]        @relation("COAPhilER")
+  coaSalariesPayable    PayrollCOAMapping[]        @relation("COASalPayable")
+  coaBenefitsPayable    PayrollCOAMapping[]        @relation("COABenPayable")
+  coaTaxPayable         PayrollCOAMapping[]        @relation("COATaxPayable")
+  beginningBalances     BeginningBalance[]
+  adjBatchFxSources     InventoryAdjustmentBatch[] @relation("AdjBatchFxSource")
 
   @@index([accountType])
   @@index([isActive])
@@ -193,9 +193,9 @@ model Service {
   newPriceEffectiveDate DateTime?
   priceType             PriceType     @default(FIXED)
   revenueType           RevenueType   @default(EARNED)
-  walletType            String?       // VIP, PACKAGE, PREPAID_CARD, DOWNPAYMENT, ADVANCE — only for UNEARNED
-  vipTier               String?       // PLATINUM, GOLD, SILVER — only for VIP type
-  packageSessions       Int?          // Number of sessions included (only for PACKAGE type)
+  walletType            String? // VIP, PACKAGE, PREPAID_CARD, DOWNPAYMENT, ADVANCE — only for UNEARNED
+  vipTier               String? // PLATINUM, GOLD, SILVER — only for VIP type
+  packageSessions       Int? // Number of sessions included (only for PACKAGE type)
   hasDoctorFee          Boolean       @default(false)
   doctorFee             Decimal?
   clinicFee             Decimal?
@@ -208,7 +208,7 @@ model Service {
   unitPay               UnitPay?      @relation(fields: [unitPayId], references: [id], onDelete: SetNull)
   unitPayEnabled        Boolean       @default(true)
   thresholdCounted      Boolean       @default(false) // include in daily patient-threshold incentive count
-  thresholdQty          Decimal       @default(1)     // sessions credited per unit (e.g. 2 for a 2-hour, 0.5 for a half session)
+  thresholdQty          Decimal       @default(1) // sessions credited per unit (e.g. 2 for a 2-hour, 0.5 for a half session)
   issuedOfficialInvoice Boolean       @default(false)
   isHmoGl               Boolean       @default(false) // service billed to HMO / Guarantee Letter → sales are receivables
   isActive              Boolean       @default(true)
@@ -236,7 +236,7 @@ model ServiceBranchPrice {
   id                    String    @id @default(cuid())
   serviceId             String
   service               Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  branch                String    // SANDBOX_EAST or SANDBOX_GREENHILLS
+  branch                String // SANDBOX_EAST or SANDBOX_GREENHILLS
   price                 Decimal
   newPrice              Decimal?
   newPriceEffectiveDate DateTime?
@@ -251,9 +251,9 @@ model ServiceBranchPrice {
 // Links a package/VIP service to the earned services it covers
 model ServiceEligibility {
   id                String   @id @default(cuid())
-  parentServiceId   String   // The package or VIP service
+  parentServiceId   String // The package or VIP service
   parentService     Service  @relation("ParentService", fields: [parentServiceId], references: [id], onDelete: Cascade)
-  eligibleServiceId String   // The earned service that qualifies
+  eligibleServiceId String // The earned service that qualifies
   eligibleService   Service  @relation("EligibleService", fields: [eligibleServiceId], references: [id], onDelete: Cascade)
   discountPercent   Decimal? // For VIP: the discount % on this service
   createdAt         DateTime @default(now())
@@ -280,20 +280,25 @@ enum TransferStatus {
 }
 
 model Supplier {
-  id                  String    @id @default(cuid())
+  id                  String   @id @default(cuid())
   supplierName        String
   email               String?
   contactNumber       String?
-  isForeign           Boolean   @default(false)
-  currency            String    @default("PHP")
+  // Who to actually speak to, and where. Foreign suppliers are usually reached on
+  // a messaging app rather than by phone, so the channel is worth recording.
+  contactPerson       String?
+  contactMethod       String?  // WeChat | WhatsApp | Viber | Facebook | SMS | Email | Call | Other
+  contactHandle       String?  // the id/number on that channel, when not the phone number
+  isForeign           Boolean  @default(false)
+  currency            String   @default("PHP")
   defaultExchangeRate Decimal?
   address             String?
   notes               String?
-  isActive            Boolean   @default(true)
+  isActive            Boolean  @default(true)
   createdById         String
-  createdBy           User      @relation("SupplierCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdBy           User     @relation("SupplierCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   inventoryItems InventoryItem[]
   assets         Asset[]
@@ -303,46 +308,46 @@ model Supplier {
 }
 
 model InventoryItem {
-  id                   String    @id @default(cuid())
-  name                 String
-  sku                  String    @unique
-  skuDepartment        String
-  skuCategory          String
-  skuSubcategory       String
-  skuSequence          Int
-  barcode              String?
-  imageUrl             String?   // product photo (shown in Inventory + adjustment rows)
-  branch               Branch
-  accountSubType       String?
-  unitCost             Decimal   @default(0)
-  initialUnitCost      Decimal?  // Original unit cost set at item creation
-  sellingPrice         Decimal?
-  rewardPointsPrice    Int?      // Price in reward points (e.g., 1000 pts)
-  quantity             Int       @default(0)
-  branchStock          Json?     // Display-only per-branch split of `quantity` for consigned stock, e.g. { "SANDBOX_GREENHILLS": 2 }. `quantity` remains the authoritative TOTAL for FIFO/COGS/BS; this only records where the units physically sit (folded-in from the retired '-SAND' consignment rows).
-  reorderLevel         Int?
-  supplierId           String?
-  supplier             Supplier? @relation(fields: [supplierId], references: [id])
-  supplierExchangeRate Decimal?
-  dimensionLength      Decimal?   // cm — length inclusive of packaging (for CBM)
-  dimensionWidth       Decimal?   // cm — width inclusive of packaging (for CBM)
-  dimensionHeight      Decimal?   // cm — height inclusive of packaging (for CBM)
-  revenueAccountId     String?
-  revenueAccount       Account?  @relation("InventoryRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: SetNull)
-  sourceAccountId      String?
-  sourceAccount        Account?  @relation("InventorySourceAccount", fields: [sourceAccountId], references: [id], onDelete: SetNull)
-  expenseAccountId     String?
-  expenseAccount       Account?  @relation("InventoryExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: SetNull)
-  isBundle             Boolean   @default(false)
-  fromPettyCash        Boolean   @default(false)  // bought via petty cash / expense — cash handled by replenishment, so NOT counted as an inventory cash outflow on the BS (avoids double-count)
-  issuedOfficialInvoice Boolean  @default(false)
-  isPreOrder           Boolean   @default(false)  // deliberately kept at 0 stock (e.g. swings) — stays sellable at 0; negative qty is the backlog, netted off when the arrival is recorded
-  websiteClassification String?                   // customer-facing category on verdanarehab.com (Merch & Resources, Pretend Play & Learning Toys, Sensory Therapeutic Tools, Active & Sensory Play, Furniture & Room Pieces). Internal SKU dept/category stays unchanged.
-  isActive             Boolean   @default(true)
-  createdById          String
-  createdBy            User      @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  name                  String
+  sku                   String    @unique
+  skuDepartment         String
+  skuCategory           String
+  skuSubcategory        String
+  skuSequence           Int
+  barcode               String?
+  imageUrl              String? // product photo (shown in Inventory + adjustment rows)
+  branch                Branch
+  accountSubType        String?
+  unitCost              Decimal   @default(0)
+  initialUnitCost       Decimal? // Original unit cost set at item creation
+  sellingPrice          Decimal?
+  rewardPointsPrice     Int? // Price in reward points (e.g., 1000 pts)
+  quantity              Int       @default(0)
+  branchStock           Json? // Display-only per-branch split of `quantity` for consigned stock, e.g. { "SANDBOX_GREENHILLS": 2 }. `quantity` remains the authoritative TOTAL for FIFO/COGS/BS; this only records where the units physically sit (folded-in from the retired '-SAND' consignment rows).
+  reorderLevel          Int?
+  supplierId            String?
+  supplier              Supplier? @relation(fields: [supplierId], references: [id])
+  supplierExchangeRate  Decimal?
+  dimensionLength       Decimal? // cm — length inclusive of packaging (for CBM)
+  dimensionWidth        Decimal? // cm — width inclusive of packaging (for CBM)
+  dimensionHeight       Decimal? // cm — height inclusive of packaging (for CBM)
+  revenueAccountId      String?
+  revenueAccount        Account?  @relation("InventoryRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: SetNull)
+  sourceAccountId       String?
+  sourceAccount         Account?  @relation("InventorySourceAccount", fields: [sourceAccountId], references: [id], onDelete: SetNull)
+  expenseAccountId      String?
+  expenseAccount        Account?  @relation("InventoryExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: SetNull)
+  isBundle              Boolean   @default(false)
+  fromPettyCash         Boolean   @default(false) // bought via petty cash / expense — cash handled by replenishment, so NOT counted as an inventory cash outflow on the BS (avoids double-count)
+  issuedOfficialInvoice Boolean   @default(false)
+  isPreOrder            Boolean   @default(false) // deliberately kept at 0 stock (e.g. swings) — stays sellable at 0; negative qty is the backlog, netted off when the arrival is recorded
+  websiteClassification String? // customer-facing category on verdanarehab.com (Merch & Resources, Pretend Play & Learning Toys, Sensory Therapeutic Tools, Active & Sensory Play, Furniture & Room Pieces). Internal SKU dept/category stays unchanged.
+  isActive              Boolean   @default(true)
+  createdById           String
+  createdBy             User      @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   adjustments      InventoryAdjustment[]
   consignments     ConsignmentTransfer[]
@@ -363,13 +368,13 @@ model InventoryItem {
 }
 
 model BundleComponent {
-  id           String        @id @default(cuid())
-  bundleId     String
-  bundle       InventoryItem @relation("BundleParent", fields: [bundleId], references: [id], onDelete: Cascade)
-  componentId  String
-  component    InventoryItem @relation("BundleChild", fields: [componentId], references: [id], onDelete: Restrict)
-  quantity     Int           @default(1)  // How many of this component per bundle
-  createdAt    DateTime      @default(now())
+  id          String        @id @default(cuid())
+  bundleId    String
+  bundle      InventoryItem @relation("BundleParent", fields: [bundleId], references: [id], onDelete: Cascade)
+  componentId String
+  component   InventoryItem @relation("BundleChild", fields: [componentId], references: [id], onDelete: Restrict)
+  quantity    Int           @default(1) // How many of this component per bundle
+  createdAt   DateTime      @default(now())
 
   @@unique([bundleId, componentId])
   @@index([bundleId])
@@ -380,9 +385,9 @@ model InventoryVariant {
   id           String        @id @default(cuid())
   itemId       String
   item         InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  variantType  String        @default("Color")  // e.g. "Color", "Size", "Material", "Flavor", "Scent"
-  variantLabel String        // e.g. "Red", "Large", "Wood", "Strawberry"
-  variantSku   String        @unique  // e.g. "OT-TOY-THE-001-RED"
+  variantType  String        @default("Color") // e.g. "Color", "Size", "Material", "Flavor", "Scent"
+  variantLabel String // e.g. "Red", "Large", "Wood", "Strawberry"
+  variantSku   String        @unique // e.g. "OT-TOY-THE-001-RED"
   barcode      String?       @unique
   quantity     Int           @default(0)
   // Per-variant cost and price. NULL = inherit the parent item's figure, so existing
@@ -400,35 +405,35 @@ model InventoryVariant {
 }
 
 model InventoryAdjustment {
-  id                String         @id @default(cuid())
+  id                String                    @id @default(cuid())
   itemId            String
-  item              InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  item              InventoryItem             @relation(fields: [itemId], references: [id], onDelete: Restrict)
   type              AdjustmentType
   quantityChange    Int
-  remainingQuantity Int?           // FIFO: units still available (INCREASE lots only)
+  remainingQuantity Int? // FIFO: units still available (INCREASE lots only)
   previousQuantity  Int
   newQuantity       Int
   adjustmentDate    DateTime
   remarks           String
-  batchId           String?        // Groups adjustments from same bulk upload
-  batchRefId        String?        // FK to InventoryAdjustmentBatch (freight batches)
+  batchId           String? // Groups adjustments from same bulk upload
+  batchRefId        String? // FK to InventoryAdjustmentBatch (freight batches)
   batch             InventoryAdjustmentBatch? @relation(fields: [batchRefId], references: [id])
-  referenceNumber   String?        // Auto-generated display reference
-  foreignCost       Decimal?       // Cost per unit in foreign currency
-  foreignCurrency   String?        // e.g. CNY, USD
-  exchangeRate      Decimal?       // Computed: localTotal / foreignTotal
-  localCost         Decimal?       // Cost per unit in PHP (after exchange)
-  freightAllocation Decimal?       // Pro-rated freight cost allocated to this item
-  totalLandedCost   Decimal?       // localCost * qty + freightAllocation
-  countedQuantity   Int?           // physical-count shrinkage: the counted amount
-  auditorName       String?        // inventory audit: name of person who conducted the count
-  auditorSignature  String?        // inventory audit: auditor e-signature (URL/data-URL)
-  auditPeriodFrom   DateTime?      // inventory audit: period covered — from
-  auditPeriodTo     DateTime?      // inventory audit: period covered — to
-  proofUrls         Json?          // inventory audit: proof documents/photos (string[])
+  referenceNumber   String? // Auto-generated display reference
+  foreignCost       Decimal? // Cost per unit in foreign currency
+  foreignCurrency   String? // e.g. CNY, USD
+  exchangeRate      Decimal? // Computed: localTotal / foreignTotal
+  localCost         Decimal? // Cost per unit in PHP (after exchange)
+  freightAllocation Decimal? // Pro-rated freight cost allocated to this item
+  totalLandedCost   Decimal? // localCost * qty + freightAllocation
+  countedQuantity   Int? // physical-count shrinkage: the counted amount
+  auditorName       String? // inventory audit: name of person who conducted the count
+  auditorSignature  String? // inventory audit: auditor e-signature (URL/data-URL)
+  auditPeriodFrom   DateTime? // inventory audit: period covered — from
+  auditPeriodTo     DateTime? // inventory audit: period covered — to
+  proofUrls         Json? // inventory audit: proof documents/photos (string[])
   adjustedById      String
-  adjustedBy        User           @relation("AdjustmentBy", fields: [adjustedById], references: [id], onDelete: Restrict)
-  createdAt         DateTime       @default(now())
+  adjustedBy        User                      @relation("AdjustmentBy", fields: [adjustedById], references: [id], onDelete: Restrict)
+  createdAt         DateTime                  @default(now())
 
   @@index([itemId])
   @@index([adjustedById])
@@ -442,11 +447,11 @@ model InventoryAdjustment {
 model FormReceipt {
   id            String   @id @default(cuid())
   branch        String
-  formType      String   // form code / series, e.g. "ADMIN01"
+  formType      String // form code / series, e.g. "ADMIN01"
   dateReceived  DateTime
-  fromControl   String   // starting control number (string preserves zero-padding)
-  toControl     String   // ending control number
-  quantity      Int      // computed pcs in the range
+  fromControl   String // starting control number (string preserves zero-padding)
+  toControl     String // ending control number
+  quantity      Int // computed pcs in the range
   remarks       String?
   createdById   String?
   createdByName String?
@@ -458,24 +463,24 @@ model FormReceipt {
 }
 
 model InventoryAdjustmentBatch {
-  id                 String    @id @default(cuid())
-  referenceNumber    String    @unique
+  id                 String               @id @default(cuid())
+  referenceNumber    String               @unique
   adjustmentDate     DateTime
-  hasForeignPurchase Boolean   @default(true)
+  hasForeignPurchase Boolean              @default(true)
   foreignCurrency    String?
   exchangeRate       Decimal?
-  freight1Amount     Decimal?   // Manufacturing → Warehouse
-  freight1IsForeign  Boolean   @default(false)
-  freight2Amount     Decimal?   // Foreign → Local
-  freight2IsForeign  Boolean   @default(false)
-  freight3Amount     Decimal?   // Warehouse → Office
-  freight3IsForeign  Boolean   @default(false)
-  totalFreightPHP    Decimal   @default(0)
+  freight1Amount     Decimal? // Manufacturing → Warehouse
+  freight1IsForeign  Boolean              @default(false)
+  freight2Amount     Decimal? // Foreign → Local
+  freight2IsForeign  Boolean              @default(false)
+  freight3Amount     Decimal? // Warehouse → Office
+  freight3IsForeign  Boolean              @default(false)
+  totalFreightPHP    Decimal              @default(0)
   // FX source: the foreign-currency bank account the payment was drawn from. The
   // suggested exchange rate is the weighted purchase rate of that account's forex
   // buys (Fund Transfer cross-currency history recorded via Bank Recon).
   fxSourceAccountId  String?
-  fxSourceAccount    Account?  @relation("AdjBatchFxSource", fields: [fxSourceAccountId], references: [id], onDelete: SetNull)
+  fxSourceAccount    Account?             @relation("AdjBatchFxSource", fields: [fxSourceAccountId], references: [id], onDelete: SetNull)
   // Payments behind this shipment — possibly recorded as separate Expense RFPs:
   // one paying the manufacturer, one paying the freight forwarder.
   manufacturerRfpId  String?
@@ -485,10 +490,10 @@ model InventoryAdjustmentBatch {
   proofUrls          Json?
   remarks            String?
   createdById        String
-  createdBy          User      @relation("AdjBatchCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt          DateTime  @default(now())
+  createdBy          User                 @relation("AdjBatchCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt          DateTime             @default(now())
 
-  adjustments        InventoryAdjustment[]
+  adjustments InventoryAdjustment[]
 
   @@index([createdById])
   @@index([adjustmentDate])
@@ -499,7 +504,7 @@ model InventoryAdjustmentBatch {
 
 model ConsignmentTransfer {
   id              String         @id @default(cuid())
-  referenceNumber String?        // Groups multiple items in one batch transfer
+  referenceNumber String? // Groups multiple items in one batch transfer
   itemId          String
   item            InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
   fromBranch      Branch
@@ -611,7 +616,7 @@ model ReferredPatient {
   id          String   @id @default(cuid())
   referrerId  String
   referrer    Referrer @relation(fields: [referrerId], references: [id], onDelete: Cascade)
-  patientId   String?  // Operations Hub CRM patient id
+  patientId   String? // Operations Hub CRM patient id
   patientName String
   note        String?
   createdById String?
@@ -622,36 +627,36 @@ model ReferredPatient {
 }
 
 model DigitalWallet {
-  id            String      @id @default(cuid())
-  patientId     String
-  patientName   String
-  patientEmail  String?
-  barcode       String      @unique
-  walletType    WalletType
-  vipTier       String?     // PLATINUM, GOLD, SILVER — only for VIP wallets
-  balance       Decimal     @default(0)
-  rewardPoints  Int         @default(0)
-  accountId     String?     // COA account (e.g., Accounts Receivable for HMO/GL)
-  account       Account?    @relation("WalletAccount", fields: [accountId], references: [id], onDelete: SetNull)
-  totalGlAmount Decimal?    // GL wallets: full approved amount (for AR — different from balance which tracks remaining usable amount)
-  attachmentUrl  String?     // Uploaded proof — legacy single-file field (kept for backward compat)
-  attachmentUrls Json?       // GL wallets: multi-file proof URLs stored as JSON array
-  agency            String?     // GL wallets: issuing agency (e.g., DSWD, PhilHealth, OWWA)
-  diagnosis         String?     // GL wallets: patient diagnosis from CRM (snapshot at creation)
-  approvedServices  Json?       // GL wallets: approved service types (e.g. ["PT","OT","SLP"])
-  soaStatus         String?     @default("With GL/No SOA")  // GL wallets: "With GL/No SOA" blocks checkout; "With GL and SOA" allows it
-  branch        String      @default("ALL")  // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
-  dateObtained  DateTime?   // Date patient originally obtained the wallet/card
-  paymentModeId String?     // How the initial load was paid
-  paymentMode   PaymentMode? @relation("WalletPaymentMode", fields: [paymentModeId], references: [id], onDelete: SetNull)
-  isActive      Boolean     @default(true)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id               String       @id @default(cuid())
+  patientId        String
+  patientName      String
+  patientEmail     String?
+  barcode          String       @unique
+  walletType       WalletType
+  vipTier          String? // PLATINUM, GOLD, SILVER — only for VIP wallets
+  balance          Decimal      @default(0)
+  rewardPoints     Int          @default(0)
+  accountId        String? // COA account (e.g., Accounts Receivable for HMO/GL)
+  account          Account?     @relation("WalletAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  totalGlAmount    Decimal? // GL wallets: full approved amount (for AR — different from balance which tracks remaining usable amount)
+  attachmentUrl    String? // Uploaded proof — legacy single-file field (kept for backward compat)
+  attachmentUrls   Json? // GL wallets: multi-file proof URLs stored as JSON array
+  agency           String? // GL wallets: issuing agency (e.g., DSWD, PhilHealth, OWWA)
+  diagnosis        String? // GL wallets: patient diagnosis from CRM (snapshot at creation)
+  approvedServices Json? // GL wallets: approved service types (e.g. ["PT","OT","SLP"])
+  soaStatus        String?      @default("With GL/No SOA") // GL wallets: "With GL/No SOA" blocks checkout; "With GL and SOA" allows it
+  branch           String       @default("ALL") // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
+  dateObtained     DateTime? // Date patient originally obtained the wallet/card
+  paymentModeId    String? // How the initial load was paid
+  paymentMode      PaymentMode? @relation("WalletPaymentMode", fields: [paymentModeId], references: [id], onDelete: SetNull)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
-  packages    WalletPackage[]
-  logs        WalletLog[]
-  payments    OrderPayment[]
-  arPayments  ARPayment[]
+  packages   WalletPackage[]
+  logs       WalletLog[]
+  payments   OrderPayment[]
+  arPayments ARPayment[]
 
   @@index([patientId, walletType])
   @@index([patientName])
@@ -663,19 +668,19 @@ model DigitalWallet {
 }
 
 model WalletPackage {
-  id                String        @id @default(cuid())
-  walletId          String
-  wallet            DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  serviceName       String
-  serviceId         String?
-  department        String?
-  totalSessions     Int
-  usedSessions      Int           @default(0)
-  amountPaid        Decimal
-  purchaseDate      DateTime      @default(now())
-  expiresAt         DateTime?
-  isActive          Boolean       @default(true)
-  createdAt         DateTime      @default(now())
+  id            String        @id @default(cuid())
+  walletId      String
+  wallet        DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  serviceName   String
+  serviceId     String?
+  department    String?
+  totalSessions Int
+  usedSessions  Int           @default(0)
+  amountPaid    Decimal
+  purchaseDate  DateTime      @default(now())
+  expiresAt     DateTime?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
 
   logs WalletLog[]
 
@@ -684,9 +689,9 @@ model WalletPackage {
 }
 
 model WalletLog {
-  id            String        @id @default(cuid())
+  id            String         @id @default(cuid())
   walletId      String
-  wallet        DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet        DigitalWallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
   packageId     String?
   package       WalletPackage? @relation(fields: [packageId], references: [id])
   action        WalletAction
@@ -696,8 +701,8 @@ model WalletLog {
   balanceBefore Int?
   balanceAfter  Int?
   createdById   String
-  createdBy     User          @relation("WalletLogBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt     DateTime      @default(now())
+  createdBy     User           @relation("WalletLogBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime       @default(now())
 
   @@index([walletId])
   @@index([packageId])
@@ -705,43 +710,53 @@ model WalletLog {
 }
 
 model Order {
-  id              String      @id @default(cuid())
-  orderNumber     Int         @unique @default(autoincrement())
-  orderType       OrderType
-  branch          String
-  platform        String?     // Sales channel for product orders: Website | Shopee | Lazada | Tiktok | Clinic
-  patientId       String?
-  patientName     String?
-  clinicianName   String?
-  subtotal        Decimal
-  discountAmount  Decimal     @default(0)
-  discountType    DiscountType @default(NONE)
-  discountLabel   String?
-  netAmount       Decimal
-  revenueType     String      @default("EARNED")
-  queueItemId     String?
-  referrerId      String?
-  referrer        Referrer?   @relation(fields: [referrerId], references: [id])
-  notes                  String?
-  issuedOfficialInvoice  Boolean  @default(false)
-  salesInvoiceNumber     String?
-  referenceNumber        String?
-  arProofUrl             String?  // Per-transaction AR proof attachment (PDF or image)
-  arCustomDate           DateTime? // Manually overridden transaction date for AR Invoice / SOA
-  status          OrderStatus @default(COMPLETED)
-  returnedByBuyer Boolean     @default(false) // product order returned by buyer (stock restocked, sale reversed)
-  paymentStatus   String      @default("PAID") // PAID | UNPAID (session recorded, cash collected later)
-  paymentDate     DateTime?   // date cash was actually collected — drives end-of-day cash reconciliation; session stays on transactionDate
-  transactionDate DateTime
-  createdById     String
-  createdBy       User        @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                    String       @id @default(cuid())
+  orderNumber           Int          @unique @default(autoincrement())
+  orderType             OrderType
+  branch                String
+  platform              String? // Sales channel for product orders: Website | Shopee | Lazada | Tiktok | Clinic
+  patientId             String?
+  patientName           String?
+  clinicianName         String?
+  subtotal              Decimal
+  discountAmount        Decimal      @default(0)
+  discountType          DiscountType @default(NONE)
+  discountLabel         String?
+  netAmount             Decimal
+  revenueType           String       @default("EARNED")
+  queueItemId           String?
+  referrerId            String?
+  referrer              Referrer?    @relation(fields: [referrerId], references: [id])
+  notes                 String?
+  issuedOfficialInvoice Boolean      @default(false)
+  salesInvoiceNumber    String?
+  referenceNumber       String?
+  arProofUrl            String? // Per-transaction AR proof attachment (PDF or image)
+  arCustomDate          DateTime? // Manually overridden transaction date for AR Invoice / SOA
+  status                OrderStatus  @default(COMPLETED)
+  returnedByBuyer       Boolean      @default(false) // product order returned by buyer (stock restocked, sale reversed)
+  paymentStatus         String       @default("PAID") // PAID | UNPAID (session recorded, cash collected later)
+  paymentDate           DateTime? // date cash was actually collected — drives end-of-day cash reconciliation; session stays on transactionDate
+  transactionDate       DateTime
+  createdById           String
+  createdBy             User         @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
-  items          OrderItem[]
-  payments       OrderPayment[]
-  arPaymentItems ARPaymentItem[]
-  otherReceivable OtherReceivable?
+  items             OrderItem[]
+  payments          OrderPayment[]
+  arPaymentItems    ARPaymentItem[]
+  otherReceivable   OtherReceivable?
+  // Who the sale was to. Asked on every checkout, not just credit sales, because
+  // an official invoice needs the buyer whatever the payment mode was. A patient
+  // is matched from the CRM; anyone else is typed in, and only an invoice needs
+  // an address or a TIN — so these stay null on an ordinary walk-in sale.
+  buyerIsPatient    Boolean          @default(false)
+  buyerName         String?
+  buyerAddress      String?
+  buyerIsBusiness   Boolean          @default(false)
+  buyerBusinessName String?
+  buyerTin          String?
 
   @@index([orderType])
   @@index([branch])
@@ -750,38 +765,27 @@ model Order {
   @@index([createdById])
   @@index([referrerId])
   @@index([queueItemId])
-  // Who the sale was to. Asked on every checkout, not just credit sales, because
-  // an official invoice needs the buyer whatever the payment mode was. A patient
-  // is matched from the CRM; anyone else is typed in, and only an invoice needs
-  // an address or a TIN — so these stay null on an ordinary walk-in sale.
-  buyerIsPatient    Boolean  @default(false)
-  buyerName         String?
-  buyerAddress      String?
-  buyerIsBusiness   Boolean  @default(false)
-  buyerBusinessName String?
-  buyerTin          String?
-
 }
 
 model OrderItem {
-  id              String         @id @default(cuid())
-  orderId         String
-  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  serviceId       String?
-  service         Service?       @relation(fields: [serviceId], references: [id])
-  inventoryItemId String?
-  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
-  name            String
-  quantity        Int            @default(1)
-  unitPrice       Decimal
-  lineTotal       Decimal
-  cogsCost        Decimal?       // FIFO cost of goods sold for this line item
-  isFreeSample    Boolean        @default(false) // Inventory out to marketing expense (8120)
-  returnedQuantity Int           @default(0)     // units returned/refunded (buyer return)
-  refundAmount    Decimal        @default(0)     // ₱ refunded for this line — grossed up into revenue + shown under 7160 Refunds
-  variantId       String?        // Which variant was sold (if product has variants)
-  variantLabel    String?        // e.g. "Red / Large"
-  createdAt       DateTime       @default(now())
+  id               String         @id @default(cuid())
+  orderId          String
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  serviceId        String?
+  service          Service?       @relation(fields: [serviceId], references: [id])
+  inventoryItemId  String?
+  inventoryItem    InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  name             String
+  quantity         Int            @default(1)
+  unitPrice        Decimal
+  lineTotal        Decimal
+  cogsCost         Decimal? // FIFO cost of goods sold for this line item
+  isFreeSample     Boolean        @default(false) // Inventory out to marketing expense (8120)
+  returnedQuantity Int            @default(0) // units returned/refunded (buyer return)
+  refundAmount     Decimal        @default(0) // ₱ refunded for this line — grossed up into revenue + shown under 7160 Refunds
+  variantId        String? // Which variant was sold (if product has variants)
+  variantLabel     String? // e.g. "Red / Large"
+  createdAt        DateTime       @default(now())
 
   @@index([orderId])
   @@index([serviceId])
@@ -797,7 +801,7 @@ model OrderPayment {
   walletId      String?
   wallet        DigitalWallet? @relation(fields: [walletId], references: [id])
   reference     String?
-  paymentModeId String?        // Configured PaymentMode (carries deduction rules)
+  paymentModeId String? // Configured PaymentMode (carries deduction rules)
   paymentMode   PaymentMode?   @relation("OrderPaymentMode", fields: [paymentModeId], references: [id], onDelete: SetNull)
   createdAt     DateTime       @default(now())
 
@@ -813,9 +817,9 @@ model DiscountSetting {
   type        String   @default("PERCENTAGE")
   value       Decimal
   branch      String?
-  walletType  String?  // If set, links this discount to a wallet type (VIP, PREPAID_CARD, etc.)
+  walletType  String? // If set, links this discount to a wallet type (VIP, PREPAID_CARD, etc.)
   departments String[] @default([]) // if set, discount only applies to items in these departments; empty = all
-  accountId   String?  // COA account for this discount (REVENUE accounts with DEBIT normal balance = contra-revenue)
+  accountId   String? // COA account for this discount (REVENUE accounts with DEBIT normal balance = contra-revenue)
   account     Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   isActive    Boolean  @default(true)
   createdById String
@@ -837,8 +841,8 @@ model WalletDiscountRule {
   discountSetting   DiscountSetting @relation(fields: [discountSettingId], references: [id], onDelete: Cascade)
   serviceId         String?
   service           Service?        @relation(fields: [serviceId], references: [id])
-  department        String?         // e.g. "OT", "SLP", "PT" — applies to all services in dept
-  discountPercent   Decimal         // The discount percentage for this service/dept
+  department        String? // e.g. "OT", "SLP", "PT" — applies to all services in dept
+  discountPercent   Decimal // The discount percentage for this service/dept
   createdAt         DateTime        @default(now())
 
   @@index([discountSettingId])
@@ -850,18 +854,18 @@ model WalletDiscountRule {
 
 model PaymentMode {
   id            String   @id @default(cuid())
-  name          String   // "Cash - SBEA", "GCash", "Credit Card", etc.
-  paymentMethod String?  // PaymentMethod enum key: CASH, GCASH, PAYMAYA, DEBIT, CREDIT_CARD, SHOPEE, LAZADA, TIKTOK
-  branch        String?  // null = all branches, "SANDBOX_EAST", "SANDBOX_GREENHILLS"
+  name          String // "Cash - SBEA", "GCash", "Credit Card", etc.
+  paymentMethod String? // PaymentMethod enum key: CASH, GCASH, PAYMAYA, DEBIT, CREDIT_CARD, SHOPEE, LAZADA, TIKTOK
+  branch        String? // null = all branches, "SANDBOX_EAST", "SANDBOX_GREENHILLS"
   isActive      Boolean  @default(true)
-  accountId     String?  // COA where NET amount is lodged (usually an asset account)
+  accountId     String? // COA where NET amount is lodged (usually an asset account)
   account       Account? @relation("PaymentModeAccount", fields: [accountId], references: [id], onDelete: SetNull)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   deductions    PaymentModeDeduction[]
-  orderPayments OrderPayment[]          @relation("OrderPaymentMode")
-  wallets       DigitalWallet[]         @relation("WalletPaymentMode")
+  orderPayments OrderPayment[]         @relation("OrderPaymentMode")
+  wallets       DigitalWallet[]        @relation("WalletPaymentMode")
 
   @@index([isActive])
 }
@@ -870,8 +874,8 @@ model PaymentModeDeduction {
   id            String      @id @default(cuid())
   paymentModeId String
   paymentMode   PaymentMode @relation(fields: [paymentModeId], references: [id], onDelete: Cascade)
-  name          String      // "Merchant Discount Rate", "Creditable Withholding Tax"
-  rate          Decimal     // value — interpreted by valueType: PERCENTAGE → % of gross; FIXED → peso amount
+  name          String // "Merchant Discount Rate", "Creditable Withholding Tax"
+  rate          Decimal // value — interpreted by valueType: PERCENTAGE → % of gross; FIXED → peso amount
   valueType     String      @default("PERCENTAGE") // "PERCENTAGE" | "FIXED"
   // Rate eras: banks reprice MDR (e.g. AUB credit card 2.5% → 2.2%, QRPH 1% → 0%
   // around Oct 2025). A deduction applies to a sale only when the SALE date falls
@@ -879,7 +883,7 @@ model PaymentModeDeduction {
   // rows apply forever, so existing configs behave unchanged.
   effectiveFrom DateTime?
   effectiveTo   DateTime?
-  accountId     String?     // COA where this deduction is lodged (expense or liability)
+  accountId     String? // COA where this deduction is lodged (expense or liability)
   account       Account?    @relation("DeductionAccount", fields: [accountId], references: [id], onDelete: SetNull)
   createdAt     DateTime    @default(now())
 
@@ -894,15 +898,15 @@ model PaymentModeDeduction {
 // session minted for them. One link therefore serves any number of patients.
 model PaymentLink {
   id              String   @id @default(cuid())
-  token           String   @unique   // public, unguessable slug used in /pay/<token>
-  account         String              // AHEA | AHGH | VERDANA | AHI
+  token           String   @unique // public, unguessable slug used in /pay/<token>
+  account         String // AHEA | AHGH | VERDANA | AHI
   branch          String?
   serviceId       String?
   inventoryItemId String?
   itemName        String
   department      String?
   quantity        Int      @default(1)
-  unitPrice       Decimal             // snapshot; re-read from the catalogue on each visit
+  unitPrice       Decimal // snapshot; re-read from the catalogue on each visit
   // Optional promo baked into the link: every payer gets this discount automatically.
   // When set, the payer isn't asked for a code. When null, allowVoucher decides whether
   // they may type their own.
@@ -921,14 +925,14 @@ model PaymentLink {
 
 // Tracks a PayMongo checkout session ↔ POS order, plus the settled payment fee/net.
 model PaymongoCheckout {
-  id            String    @id @default(cuid())
-  checkoutId    String    @unique   // PayMongo checkout_session id (cs_...)
-  referenceCode String?             // our reference (also sent as PayMongo metadata)
-  orderId       String?             // linked POS order (set when the sale is recorded)
-  branch        String?
+  id                String    @id @default(cuid())
+  checkoutId        String    @unique // PayMongo checkout_session id (cs_...)
+  referenceCode     String? // our reference (also sent as PayMongo metadata)
+  orderId           String? // linked POS order (set when the sale is recorded)
+  branch            String?
   // Which PayMongo merchant account issued this link: AHEA | AHGH | VERDANA | AHI.
   // Each account has its own secret key, so payments/payouts are polled per account.
-  account       String?
+  account           String?
   // What is being paid for — either a Service or an Inventory product (never both).
   serviceId         String?
   inventoryItemId   String?
@@ -940,7 +944,7 @@ model PaymongoCheckout {
   customerPhone     String?
   customerEmail     String?
   // Voucher applied (if any). grossAmount = list price before discount; amount = charged.
-  paymentLinkId     String?   // the reusable PaymentLink this payment came through
+  paymentLinkId     String? // the reusable PaymentLink this payment came through
   // Which instrument the payer actually used: CARD | GCASH | PAYMAYA | QRPH.
   // Read from the PayMongo payment payload and used to pick the matching POS PaymentMode.
   paymentMethodUsed String?
@@ -953,20 +957,20 @@ model PaymongoCheckout {
   voucherCode       String?
   grossAmount       Decimal?
   discountAmount    Decimal?
-  description   String?
-  amount        Decimal             // gross (PHP)
-  status        String    @default("PENDING") // PENDING | PAID | FAILED | EXPIRED
-  checkoutUrl   String?
-  paymentId     String?             // pay_... once paid
-  fee           Decimal?            // PayMongo fee (PHP)
-  netAmount     Decimal?            // amount − fee
-  paidAt        DateTime?
-  payoutId      String?             // reconciliation: PayMongo payout that settled this
-  livemode      Boolean   @default(false)
-  raw           Json?               // last webhook/payment payload
-  createdById   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  description       String?
+  amount            Decimal // gross (PHP)
+  status            String    @default("PENDING") // PENDING | PAID | FAILED | EXPIRED
+  checkoutUrl       String?
+  paymentId         String? // pay_... once paid
+  fee               Decimal? // PayMongo fee (PHP)
+  netAmount         Decimal? // amount − fee
+  paidAt            DateTime?
+  payoutId          String? // reconciliation: PayMongo payout that settled this
+  livemode          Boolean   @default(false)
+  raw               Json? // last webhook/payment payload
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([status])
   @@index([orderId])
@@ -979,32 +983,32 @@ model PaymongoCheckout {
 // Effectivity is either a date window or "lifetime" (never expires). A voucher can be
 // valid at several branches at once.
 model Voucher {
-  id            String   @id @default(cuid())
-  name          String
-  code          String   @unique          // what the customer types; matched case-insensitively
-  discountType  String   @default("PERCENTAGE") // PERCENTAGE | FIXED
-  discountValue Decimal  @default(0)      // 10 = 10% when PERCENTAGE; 200 = PHP 200 when FIXED
+  id             String    @id @default(cuid())
+  name           String
+  code           String    @unique // what the customer types; matched case-insensitively
+  discountType   String    @default("PERCENTAGE") // PERCENTAGE | FIXED
+  discountValue  Decimal   @default(0) // 10 = 10% when PERCENTAGE; 200 = PHP 200 when FIXED
   // Effectivity — isLifetime ignores the dates entirely.
-  isLifetime    Boolean  @default(false)
-  startDate     DateTime?
-  endDate       DateTime?
+  isLifetime     Boolean   @default(false)
+  startDate      DateTime?
+  endDate        DateTime?
   // Branch scope (PayMongo account codes: AHEA | AHGH | VERDANA | AHI). Empty = all.
-  branches      String[] @default([])
+  branches       String[]  @default([])
   // Usage cap: UNLIMITED | ONCE_PER_CUSTOMER (by email) | MAX_USES (see maxUses).
-  usageLimitType String  @default("UNLIMITED")
+  usageLimitType String    @default("UNLIMITED")
   maxUses        Int?
   // PWD/Senior vouchers only apply when Patient CRM (Operations Hub) holds BOTH a
   // PWD/Senior ID number AND an uploaded ID photo for the payer. Checked at payment time.
-  requiresPwdId  Boolean @default(false)
+  requiresPwdId  Boolean   @default(false)
   // Contra-revenue account this discount is booked to (chosen from the COA).
-  accountId     String?
-  account       Account? @relation("VoucherDiscountAccount", fields: [accountId], references: [id], onDelete: SetNull)
-  isActive      Boolean  @default(true)
-  createdById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  accountId      String?
+  account        Account?  @relation("VoucherDiscountAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  isActive       Boolean   @default(true)
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  redemptions   VoucherRedemption[]
+  redemptions VoucherRedemption[]
 
   @@index([code])
   @@index([isActive])
@@ -1015,9 +1019,9 @@ model VoucherRedemption {
   id             String   @id @default(cuid())
   voucherId      String
   voucher        Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
-  checkoutId     String?  // PaymongoCheckout.checkoutId that consumed it
+  checkoutId     String? // PaymongoCheckout.checkoutId that consumed it
   customerEmail  String?
-  account        String?  // PayMongo account the redemption happened on
+  account        String? // PayMongo account the redemption happened on
   discountAmount Decimal  @default(0)
   redeemedAt     DateTime @default(now())
 
@@ -1031,38 +1035,38 @@ model VoucherRedemption {
 // Payouts API and posted DR Bank / CR PayMongo Clearing automatically.
 model PaymongoSettings {
   id            String    @id @default("singleton")
-  bankAccountId String?   // COA bank account PayMongo deposits payouts into
+  bankAccountId String? // COA bank account PayMongo deposits payouts into
   autoReconcile Boolean   @default(true)
   lastSyncAt    DateTime? // throttle marker for the on-load poll
-  updatedAt     DateTime  @updatedAt @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
 }
 
 // ── Accounts Receivable Payments ─────────────────────────
 
 model ARPayment {
-  id                String        @id @default(cuid())
-  walletId          String
-  wallet            DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
-  paymentDate       DateTime
-  amount            Decimal
-  discount          Decimal       @default(0)
-  discountAccountId String?
-  discountAccount   Account?      @relation("ARPaymentDiscountAccount", fields: [discountAccountId], references: [id], onDelete: SetNull)
-  cashAccountId     String?       // COA account to debit (cash/bank account)
-  cashAccount       Account?      @relation("ARPaymentCashAccount", fields: [cashAccountId], references: [id], onDelete: SetNull)
+  id                   String        @id @default(cuid())
+  walletId             String
+  wallet               DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  paymentDate          DateTime
+  amount               Decimal
+  discount             Decimal       @default(0)
+  discountAccountId    String?
+  discountAccount      Account?      @relation("ARPaymentDiscountAccount", fields: [discountAccountId], references: [id], onDelete: SetNull)
+  cashAccountId        String? // COA account to debit (cash/bank account)
+  cashAccount          Account?      @relation("ARPaymentCashAccount", fields: [cashAccountId], references: [id], onDelete: SetNull)
   // HMO overpayment: the payer remitted a few pesos more than the AR being
   // settled. amount holds the real cash received; overpayment is the excess,
   // credited to overpaymentAccount (an income account) instead of AR.
-  overpayment          Decimal  @default(0)
+  overpayment          Decimal       @default(0)
   overpaymentAccountId String?
-  overpaymentAccount   Account? @relation("ARPaymentOverpaymentAccount", fields: [overpaymentAccountId], references: [id], onDelete: SetNull)
-  proofUrl          String?       // URL or file path to payment proof
-  notes             String?
-  salesInvoiceNumber String?      // SI issued for this HMO/GL collection → Sales Summary (With SI)
-  branch            String?
-  createdById       String
-  createdBy         User          @relation("ARPaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt         DateTime      @default(now())
+  overpaymentAccount   Account?      @relation("ARPaymentOverpaymentAccount", fields: [overpaymentAccountId], references: [id], onDelete: SetNull)
+  proofUrl             String? // URL or file path to payment proof
+  notes                String?
+  salesInvoiceNumber   String? // SI issued for this HMO/GL collection → Sales Summary (With SI)
+  branch               String?
+  createdById          String
+  createdBy            User          @relation("ARPaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt            DateTime      @default(now())
 
   items ARPaymentItem[]
 
@@ -1079,33 +1083,33 @@ model ARPayment {
 // (percent of principal or an absolute add-on) — totalDue = principal +
 // interest, monthlyAmount = totalDue / months.
 model OtherReceivable {
-  id            String   @id @default(cuid())
-  branch        String
-  customerName  String
+  id                 String    @id @default(cuid())
+  branch             String
+  customerName       String
   // Sales to a company are billed to the company, not the person who collected,
   // and an official sales invoice needs the buyer's TIN. A walk-in customer has
   // neither, so both stay null rather than being faked.
-  isBusiness    Boolean  @default(false)
-  businessName  String?
-  businessTin   String?
-  buyerAddress  String?
-  issuedSalesInvoice Boolean @default(false)
-  orderId       String?  @unique
-  order         Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  principal     Decimal
-  months        Int?      // staggered plan length (null = no plan yet)
-  interestType  String?   // PERCENT | ABSOLUTE
-  interestValue Decimal?
-  totalDue      Decimal   // principal + interest (equals principal until a plan is set)
-  monthlyAmount Decimal?  // totalDue / months
-  startDate     DateTime? // first installment month
-  notes         String?
-  status        String   @default("OPEN") // OPEN | SETTLED
-  createdById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  isBusiness         Boolean   @default(false)
+  businessName       String?
+  businessTin        String?
+  buyerAddress       String?
+  issuedSalesInvoice Boolean   @default(false)
+  orderId            String?   @unique
+  order              Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  principal          Decimal
+  months             Int? // staggered plan length (null = no plan yet)
+  interestType       String? // PERCENT | ABSOLUTE
+  interestValue      Decimal?
+  totalDue           Decimal // principal + interest (equals principal until a plan is set)
+  monthlyAmount      Decimal? // totalDue / months
+  startDate          DateTime? // first installment month
+  notes              String?
+  status             String    @default("OPEN") // OPEN | SETTLED
+  createdById        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  payments      OtherReceivablePayment[]
+  payments OtherReceivablePayment[]
 
   @@index([branch])
   @@index([status])
@@ -1113,7 +1117,7 @@ model OtherReceivable {
 }
 
 model OtherReceivablePayment {
-  id           String   @id @default(cuid())
+  id           String          @id @default(cuid())
   receivableId String
   receivable   OtherReceivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
   date         DateTime
@@ -1123,7 +1127,7 @@ model OtherReceivablePayment {
   proofUrl     String?
   notes        String?
   createdById  String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime        @default(now())
 
   @@index([receivableId])
   @@index([date])
@@ -1144,37 +1148,37 @@ model ARPaymentItem {
 // ── Payroll ──────────────────────────────────────────────
 
 model Consultant {
-  id              String    @id @default(cuid())
-  externalStaffId String?   @unique // Marketing site Staff.id
-  bioId           Int?                // Bio/Employee ID from HR Hub (for payreg)
-  name            String    // "LASTNAME, FIRSTNAME"
-  department      String    // OT, PT, SLP, SPED, MD, PSYCHOLOGY, etc.
-  branch          String    // SBEA, SBGH — primary branch
-  extraBranches   String[]  @default([]) // additional scheduling branches (never overwritten by sync)
-  email           String?
-  phone           String?
-  tinNumber       String?
-  birAddress      String?   // BIR registered address (for payroll XLSX export)
-  sssNumber       String?
+  id               String   @id @default(cuid())
+  externalStaffId  String?  @unique // Marketing site Staff.id
+  bioId            Int? // Bio/Employee ID from HR Hub (for payreg)
+  name             String // "LASTNAME, FIRSTNAME"
+  department       String // OT, PT, SLP, SPED, MD, PSYCHOLOGY, etc.
+  branch           String // SBEA, SBGH — primary branch
+  extraBranches    String[] @default([]) // additional scheduling branches (never overwritten by sync)
+  email            String?
+  phone            String?
+  tinNumber        String?
+  birAddress       String? // BIR registered address (for payroll XLSX export)
+  sssNumber        String?
   philhealthNumber String?
-  pagibigNumber   String?
-  bankName        String?
-  bankAccountNo   String?
-  taxDeduction    String    @default("NONE") // "FIVE_PERCENT" or "NONE"
-  monthlyRetainer Decimal   @default(0)   // total per month; = sum of retainerByBranch when that is set
+  pagibigNumber    String?
+  bankName         String?
+  bankAccountNo    String?
+  taxDeduction     String   @default("NONE") // "FIVE_PERCENT" or "NONE"
+  monthlyRetainer  Decimal  @default(0) // total per month; = sum of retainerByBranch when that is set
   // Which branch(es) the retainer is actually for, e.g. { "SBGH": 10000 } for a consultant
   // who works interbranch but is only retained at Greenhills. Null/empty falls back to the
   // whole of monthlyRetainer on the primary branch.
   retainerByBranch Json?
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  unitPayRates       ConsultantUnitPay[]
-  payrollEntries     PayrollEntry[]
-  requests           EmployeeRequest[]
-  cutoffAdjustments  ConsultantCutoffAdjustment[]
-  benefits           ConsultantBenefit[]
+  unitPayRates      ConsultantUnitPay[]
+  payrollEntries    PayrollEntry[]
+  requests          EmployeeRequest[]
+  cutoffAdjustments ConsultantCutoffAdjustment[]
+  benefits          ConsultantBenefit[]
 
   @@index([department])
   @@index([branch])
@@ -1183,7 +1187,7 @@ model Consultant {
 
 model UnitPay {
   id               String   @id @default(cuid())
-  name             String   // e.g. "Basic PF", "Assessment PF"
+  name             String // e.g. "Basic PF", "Assessment PF"
   departments      Json     @default("[]") // JSON array of dept codes, or empty for all
   isActive         Boolean  @default(true)
   expenseAccountId String?
@@ -1199,19 +1203,19 @@ model UnitPay {
 }
 
 model ConsultantUnitPay {
-  id           String     @id @default(cuid())
-  consultantId String
-  consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
-  unitPayId    String
-  unitPay      UnitPay    @relation(fields: [unitPayId], references: [id], onDelete: Cascade)
-  amount           Decimal    // Per-unit amount for this consultant (default across branches)
+  id               String     @id @default(cuid())
+  consultantId     String
+  consultant       Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  unitPayId        String
+  unitPay          UnitPay    @relation(fields: [unitPayId], references: [id], onDelete: Cascade)
+  amount           Decimal // Per-unit amount for this consultant (default across branches)
   // Per-branch override of `amount`, e.g. { "SBGH": 1050 } for a consultant paid
   // 1,000 at East but 1,050 at Greenhills. Branches not listed use `amount`.
   branchAmounts    Json?
   disabled         Boolean    @default(false) // When true, this unit pay is not applicable for this clinician
   thresholdEnabled Boolean    @default(false)
-  thresholdAmount  Decimal?   // Min order netAmount to qualify for full rate
-  reducedAmount    Decimal?   // Rate used when order netAmount is below threshold
+  thresholdAmount  Decimal? // Min order netAmount to qualify for full rate
+  reducedAmount    Decimal? // Rate used when order netAmount is below threshold
 
   @@unique([consultantId, unitPayId])
   @@index([consultantId])
@@ -1222,12 +1226,12 @@ model ConsultantUnitPay {
 
 model IncentiveRule {
   id           String   @id @default(cuid())
-  name         String   // e.g. "Daily Patient Threshold Bonus"
+  name         String // e.g. "Daily Patient Threshold Bonus"
   description  String?
-  threshold    Int      // Minimum patients per day to trigger (e.g. 7)
-  bonusPerUnit Decimal  // Bonus amount per patient when triggered (e.g. 20)
+  threshold    Int // Minimum patients per day to trigger (e.g. 7)
+  bonusPerUnit Decimal // Bonus amount per patient when triggered (e.g. 20)
   departments  Json     @default("[]") // JSON array of dept codes; empty = all
-  branch       String?  // null = all branches
+  branch       String? // null = all branches
   isActive     Boolean  @default(true)
   createdById  String
   createdBy    User     @relation("IncentiveCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -1239,47 +1243,48 @@ model IncentiveRule {
 }
 
 model PayrollEntry {
-  id              String     @id @default(cuid())
-  consultantId    String
-  consultant      Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
-  cutoffPeriod    String     // e.g. "2026-03-1" or "2026-03-2"
-  branch          String
-  items           Json       // [{unitPayName, unitAmount, quantity, lineTotal}]
-  extraItems      Json       @default("[]") // manually added unit pays [{id, unitPayId, unitPayName, unitAmount, qty}]
-  adjustments     Json       @default("[]") // [{id, name, amount, isAddition, isTaxed, remarks}]
-  incentives      Json       @default("[]") // [{name, bonusPerUnit, sessionCount, bonus, department}]
-  incentiveTotal  Decimal    @default(0)    // sum of all incentive bonuses
-  grossPay        Decimal
-  retainerAmount  Decimal    @default(0)
-  taxAmount       Decimal    @default(0)
+  id                      String     @id @default(cuid())
+  consultantId            String
+  consultant              Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  cutoffPeriod            String // e.g. "2026-03-1" or "2026-03-2"
+  branch                  String
+  items                   Json // [{unitPayName, unitAmount, quantity, lineTotal}]
+  extraItems              Json       @default("[]") // manually added unit pays [{id, unitPayId, unitPayName, unitAmount, qty}]
+  adjustments             Json       @default("[]") // [{id, name, amount, isAddition, isTaxed, remarks}]
+  incentives              Json       @default("[]") // [{name, bonusPerUnit, sessionCount, bonus, department}]
+  incentiveTotal          Decimal    @default(0) // sum of all incentive bonuses
+  grossPay                Decimal
+  retainerAmount          Decimal    @default(0)
+  taxAmount               Decimal    @default(0)
   // Benefit contributions (SSS/PHIC/HDMF) — mirror EmployeePayslip. EE share is
   // deducted from netPay; ER share is an employer accrual. Both feed Benefits Payable.
-  sssDeduction            Decimal @default(0)
-  philhealthDeduction     Decimal @default(0)
-  pagibigDeduction        Decimal @default(0)
-  sssEmployerShare        Decimal @default(0)
-  philhealthEmployerShare Decimal @default(0)
-  pagibigEmployerShare    Decimal @default(0)
-  netPay          Decimal
-  pdfUrl          String?    // Stored PDF file path on VPS
-  status          String     @default("DRAFT") // DRAFT, FINAL
-  taxRemitted      Boolean    @default(false)
-  salariesRemitted Boolean    @default(false)
-  salaryPaymentId  String?    // set when salary is remitted
-  salaryRfpId      String?    // set when included in a Salaries-Payable RFP (locked until paid/deleted)
-  benefitsRemitted Boolean    @default(false)
-  benefitPaymentId String?    // set when SSS/PHIC/HDMF is remitted
-  benefitRfpId     String?    // set when included in a (legacy combined) Benefits-Payable RFP
+  sssDeduction            Decimal    @default(0)
+  philhealthDeduction     Decimal    @default(0)
+  pagibigDeduction        Decimal    @default(0)
+  sssEmployerShare        Decimal    @default(0)
+  philhealthEmployerShare Decimal    @default(0)
+  pagibigEmployerShare    Decimal    @default(0)
+  netPay                  Decimal
+  pdfUrl                  String? // Stored PDF file path on VPS
+  status                  String     @default("DRAFT") // DRAFT, FINAL
+  taxRemitted             Boolean    @default(false)
+  salariesRemitted        Boolean    @default(false)
+  salaryPaymentId         String? // set when salary is remitted
+  salaryRfpId             String? // set when included in a Salaries-Payable RFP (locked until paid/deleted)
+  benefitsRemitted        Boolean    @default(false)
+  benefitPaymentId        String? // set when SSS/PHIC/HDMF is remitted
+  benefitRfpId            String? // set when included in a (legacy combined) Benefits-Payable RFP
   // Per-agency Benefits-Payable RFP locks — SSS/PHIC/HDMF are remitted separately.
-  sssRfpId         String?
-  philhealthRfpId  String?
-  pagibigRfpId     String?
-  createdById     String
-  createdBy       User       @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  sssRfpId                String?
+  philhealthRfpId         String?
+  pagibigRfpId            String?
+  createdById             String
+  createdBy               User       @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
 
   taxPaymentEntries TaxPaymentEntry[]
+  salarySplits      SalaryPayableSplit[]
 
   @@unique([consultantId, cutoffPeriod, branch])
   @@index([consultantId])
@@ -1355,9 +1360,9 @@ enum LeaveType {
   PATERNITY
   BEREAVEMENT
   UNPAID
-  SIL       // Service Incentive Leave
-  BDAY      // Birthday Leave
-  TRAINING  // Training Leave
+  SIL // Service Incentive Leave
+  BDAY // Birthday Leave
+  TRAINING // Training Leave
 }
 
 enum RequestStatus {
@@ -1392,41 +1397,41 @@ enum TKUploadStatus {
 }
 
 model Employee {
-  id                String    @id @default(cuid())
-  externalStaffId   String?   @unique  // Marketing site Staff.id (from Administration dept)
-  employeeBioId     Int?      @unique  // Biometric device ID (column 1 in .dat file)
-  firstName         String
-  lastName          String
-  email             String?
-  phone             String?
-  department        String              // ADMIN, OPERATIONS, etc.
-  branch            String              // SBEA, SBGH
-  jobTitle          String?
-  rateType          RateType  @default(DAILY)
-  dailyRate         Decimal   @default(0)
-  monthlyRate       Decimal   @default(0)
-  sssNumber         String?
-  philhealthNumber  String?
-  pagibigNumber     String?
-  tinNumber         String?
-  bankName          String?
-  bankAccountNo     String?
-  dateHired         DateTime?
+  id                 String    @id @default(cuid())
+  externalStaffId    String?   @unique // Marketing site Staff.id (from Administration dept)
+  employeeBioId      Int?      @unique // Biometric device ID (column 1 in .dat file)
+  firstName          String
+  lastName           String
+  email              String?
+  phone              String?
+  department         String // ADMIN, OPERATIONS, etc.
+  branch             String // SBEA, SBGH
+  jobTitle           String?
+  rateType           RateType  @default(DAILY)
+  dailyRate          Decimal   @default(0)
+  monthlyRate        Decimal   @default(0)
+  sssNumber          String?
+  philhealthNumber   String?
+  pagibigNumber      String?
+  tinNumber          String?
+  bankName           String?
+  bankAccountNo      String?
+  dateHired          DateTime?
   regularizationDate DateTime?
-  scheduleIn        String    @default("08:00")  // Default clock-in time HH:mm
-  scheduleOut       String    @default("17:00")  // Default clock-out time HH:mm
-  daySchedules      Json?     // Per-day overrides: { "THURSDAY": { "in": "09:00", "out": "18:00" } }
-  restDay           String    @default("SUNDAY") // e.g. "SUNDAY", "SATURDAY"
-  ignoreTimekeeping Boolean   @default(false) // If true: pays fixed half-month salary regardless of biometric attendance
-  isActive          Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  scheduleIn         String    @default("08:00") // Default clock-in time HH:mm
+  scheduleOut        String    @default("17:00") // Default clock-out time HH:mm
+  daySchedules       Json? // Per-day overrides: { "THURSDAY": { "in": "09:00", "out": "18:00" } }
+  restDay            String    @default("SUNDAY") // e.g. "SUNDAY", "SATURDAY"
+  ignoreTimekeeping  Boolean   @default(false) // If true: pays fixed half-month salary regardless of biometric attendance
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  timekeepingRecords  TimekeepingRecord[]
-  requests            EmployeeRequest[]
-  benefits            EmployeeBenefit[]
-  payslips            EmployeePayslip[]
-  cutoffAdjustments   CutoffAdjustment[]
+  timekeepingRecords TimekeepingRecord[]
+  requests           EmployeeRequest[]
+  benefits           EmployeeBenefit[]
+  payslips           EmployeePayslip[]
+  cutoffAdjustments  CutoffAdjustment[]
 
   @@index([branch])
   @@index([department])
@@ -1435,70 +1440,70 @@ model Employee {
 }
 
 model EmployeeSettings {
-  id                  String   @id @default(cuid())
+  id                               String   @id @default(cuid())
   // Cutoff configuration
-  cutoff1Start        Int      @default(1)    // Day of month for 1st cutoff start
-  cutoff1End          Int      @default(15)   // Day of month for 1st cutoff end
-  cutoff2Start        Int      @default(16)   // Day of month for 2nd cutoff start
-  cutoff2EndLastDay   Boolean  @default(true) // true = use last day of month
-  cutoff2End          Int      @default(30)   // Day if not using last day
-  payout1Day          Int      @default(15)   // Payout day for 1st cutoff
-  payout2Day          Int      @default(30)   // Payout day for 2nd cutoff (0 = last day)
+  cutoff1Start                     Int      @default(1) // Day of month for 1st cutoff start
+  cutoff1End                       Int      @default(15) // Day of month for 1st cutoff end
+  cutoff2Start                     Int      @default(16) // Day of month for 2nd cutoff start
+  cutoff2EndLastDay                Boolean  @default(true) // true = use last day of month
+  cutoff2End                       Int      @default(30) // Day if not using last day
+  payout1Day                       Int      @default(15) // Payout day for 1st cutoff
+  payout2Day                       Int      @default(30) // Payout day for 2nd cutoff (0 = last day)
   // Work hours
-  standardHoursPerDay Decimal  @default(8)
-  overtimeMultiplier  Decimal  @default(1.25) // Regular OT = 125%
-  nightDiffMultiplier Decimal  @default(0.10) // 10% additional for 10pm-6am
+  standardHoursPerDay              Decimal  @default(8)
+  overtimeMultiplier               Decimal  @default(1.25) // Regular OT = 125%
+  nightDiffMultiplier              Decimal  @default(0.10) // 10% additional for 10pm-6am
   // Holiday multipliers (DOLE Philippines)
-  regularHolidayRate      Decimal @default(2.0)  // 200% of daily rate
-  specialHolidayRate      Decimal @default(1.3)  // 130% of daily rate
-  regularHolidayOTRate    Decimal @default(2.6)  // 260% for OT on regular holiday
-  specialHolidayOTRate    Decimal @default(1.69) // 169% for OT on special holiday
-  restDayRate             Decimal @default(1.3)  // 130% for rest day
-  restDayRegHolidayRate   Decimal @default(2.6)  // 260% for rest day + regular holiday
-  restDaySpecHolidayRate  Decimal @default(1.5)  // 150% for rest day + special holiday
+  regularHolidayRate               Decimal  @default(2.0) // 200% of daily rate
+  specialHolidayRate               Decimal  @default(1.3) // 130% of daily rate
+  regularHolidayOTRate             Decimal  @default(2.6) // 260% for OT on regular holiday
+  specialHolidayOTRate             Decimal  @default(1.69) // 169% for OT on special holiday
+  restDayRate                      Decimal  @default(1.3) // 130% for rest day
+  restDayRegHolidayRate            Decimal  @default(2.6) // 260% for rest day + regular holiday
+  restDaySpecHolidayRate           Decimal  @default(1.5) // 150% for rest day + special holiday
   // Late / Overtime rules
-  lateGraceMinutes    Int      @default(0)    // Minutes late from time-in before deduction applies (e.g. 5)
-  otIntervalMinutes   Int      @default(30)   // OT counted in intervals of N minutes (e.g. 30)
-  otMaxHours          Decimal  @default(3)    // Maximum OT hours considered per day (e.g. 3)
+  lateGraceMinutes                 Int      @default(0) // Minutes late from time-in before deduction applies (e.g. 5)
+  otIntervalMinutes                Int      @default(30) // OT counted in intervals of N minutes (e.g. 30)
+  otMaxHours                       Decimal  @default(3) // Maximum OT hours considered per day (e.g. 3)
   // Deduction toggles
-  sssEnabled          Boolean  @default(true)
-  philhealthEnabled   Boolean  @default(true)
-  pagibigEnabled      Boolean  @default(true)
-  taxEnabled          Boolean  @default(true)
-  benefitDeductionTiming String @default("HALF_HALF") // HALF_HALF, FIRST_CUTOFF, SECOND_CUTOFF
-  hrOfficerNameSBEA    String?  // HR officer name for East Branch COE/COC
-  hrOfficerNameSBGH    String?  // HR officer name for Greenhills Branch COE/COC
-  hrOfficerNameVERDANA String?  // HR officer name for Verdana Store COE/COC
+  sssEnabled                       Boolean  @default(true)
+  philhealthEnabled                Boolean  @default(true)
+  pagibigEnabled                   Boolean  @default(true)
+  taxEnabled                       Boolean  @default(true)
+  benefitDeductionTiming           String   @default("HALF_HALF") // HALF_HALF, FIRST_CUTOFF, SECOND_CUTOFF
+  hrOfficerNameSBEA                String? // HR officer name for East Branch COE/COC
+  hrOfficerNameSBGH                String? // HR officer name for Greenhills Branch COE/COC
+  hrOfficerNameVERDANA             String? // HR officer name for Verdana Store COE/COC
   // Employee request approval settings
   requestApprovalExcludedPositions Json? // JSON array of job titles that branch admins cannot approve (requires ADMIN/ACCOUNTANT)
-  leaveMaxDays        Json?    // { "VACATION": 5, "SICK": 5, "SIL": 5, "BDAY": 1, ... } — max per leave type per year
-  updatedAt           DateTime @updatedAt
+  leaveMaxDays                     Json? // { "VACATION": 5, "SICK": 5, "SIL": 5, "BDAY": 1, ... } — max per leave type per year
+  updatedAt                        DateTime @updatedAt
 }
 
 model EmployeeRequest {
-  id           String              @id @default(cuid())
-  employeeId   String?             // For employee requests (COE, leave, etc.)
-  employee     Employee?           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  consultantId String?             // For consultant requests (Certificate of Consultation)
-  consultant   Consultant?         @relation(fields: [consultantId], references: [id], onDelete: Cascade)
-  requestType  EmployeeRequestType
-  leaveType    LeaveType?          // Only for LEAVE requests
-  isHalfDay    Boolean             @default(false)
-  halfDayPeriod String?            // "MORNING" or "AFTERNOON" — only when isHalfDay is true
-  startDate    DateTime?
-  endDate      DateTime?
-  requestedTimeIn      String?     // HH:mm for CHANGE_TIME_IN
-  requestedTimeOut     String?     // HH:mm for CHANGE_TIME_OUT
-  requestedScheduleIn  String?     // HH:mm for CHANGE_SCHEDULE new time in
-  requestedScheduleOut String?     // HH:mm for CHANGE_SCHEDULE new time out
-  changeToWorkingDay   Boolean?    // true = rest→work, false = work→rest (CHANGE_SCHEDULE)
-  reason       String?
-  attachment   String?             // File URL / base64 for supporting docs (DTR photo)
-  status       RequestStatus       @default(PENDING)
-  reviewedById String?
-  reviewNotes  String?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  id                   String              @id @default(cuid())
+  employeeId           String? // For employee requests (COE, leave, etc.)
+  employee             Employee?           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  consultantId         String? // For consultant requests (Certificate of Consultation)
+  consultant           Consultant?         @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  requestType          EmployeeRequestType
+  leaveType            LeaveType? // Only for LEAVE requests
+  isHalfDay            Boolean             @default(false)
+  halfDayPeriod        String? // "MORNING" or "AFTERNOON" — only when isHalfDay is true
+  startDate            DateTime?
+  endDate              DateTime?
+  requestedTimeIn      String? // HH:mm for CHANGE_TIME_IN
+  requestedTimeOut     String? // HH:mm for CHANGE_TIME_OUT
+  requestedScheduleIn  String? // HH:mm for CHANGE_SCHEDULE new time in
+  requestedScheduleOut String? // HH:mm for CHANGE_SCHEDULE new time out
+  changeToWorkingDay   Boolean? // true = rest→work, false = work→rest (CHANGE_SCHEDULE)
+  reason               String?
+  attachment           String? // File URL / base64 for supporting docs (DTR photo)
+  status               RequestStatus       @default(PENDING)
+  reviewedById         String?
+  reviewNotes          String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@index([employeeId])
   @@index([consultantId])
@@ -1525,27 +1530,27 @@ model TimekeepingUpload {
 }
 
 model TimekeepingRecord {
-  id         String            @id @default(cuid())
-  employeeId String
-  employee   Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  uploadId   String?
-  upload     TimekeepingUpload? @relation(fields: [uploadId], references: [id], onDelete: SetNull)
-  date       DateTime          // The calendar date
-  timeIn     DateTime?         // Clock-in timestamp
-  timeOut    DateTime?         // Clock-out timestamp
-  hoursWorked Decimal?         // Computed hours
-  lateMinutes Int      @default(0)
-  undertimeMinutes Int @default(0)
-  overtimeMinutes  Int @default(0)
-  isRestDay  Boolean   @default(false)
-  isHoliday  Boolean   @default(false)
-  holidayType String?  // REGULAR, SPECIAL_NON_WORKING, SPECIAL_WORKING
-  source     TimekeepingSource @default(BIOMETRIC)
-  conflictData Json?           // Raw time entries when multiple IN/OUT detected
-  dtrProof     String?         // Base64 or URL of DTR photo proof for manual entries
-  remarks    String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id               String             @id @default(cuid())
+  employeeId       String
+  employee         Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  uploadId         String?
+  upload           TimekeepingUpload? @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+  date             DateTime // The calendar date
+  timeIn           DateTime? // Clock-in timestamp
+  timeOut          DateTime? // Clock-out timestamp
+  hoursWorked      Decimal? // Computed hours
+  lateMinutes      Int                @default(0)
+  undertimeMinutes Int                @default(0)
+  overtimeMinutes  Int                @default(0)
+  isRestDay        Boolean            @default(false)
+  isHoliday        Boolean            @default(false)
+  holidayType      String? // REGULAR, SPECIAL_NON_WORKING, SPECIAL_WORKING
+  source           TimekeepingSource  @default(BIOMETRIC)
+  conflictData     Json? // Raw time entries when multiple IN/OUT detected
+  dtrProof         String? // Base64 or URL of DTR photo proof for manual entries
+  remarks          String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   @@unique([employeeId, date])
   @@index([employeeId])
@@ -1554,16 +1559,16 @@ model TimekeepingRecord {
 }
 
 model EmployeeBenefit {
-  id              String   @id @default(cuid())
-  employeeId      String
-  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  benefitType     String   // SSS, PHILHEALTH, PAGIBIG, TAX
-  employeeShare   Decimal  @default(0)  // Employee's monthly contribution
-  employerShare   Decimal  @default(0)  // Employer's monthly contribution
-  effectiveDate   DateTime @default(now())
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default(cuid())
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  benefitType   String // SSS, PHILHEALTH, PAGIBIG, TAX
+  employeeShare Decimal  @default(0) // Employee's monthly contribution
+  employerShare Decimal  @default(0) // Employer's monthly contribution
+  effectiveDate DateTime @default(now())
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([employeeId])
   @@index([benefitType])
@@ -1572,16 +1577,16 @@ model EmployeeBenefit {
 
 // Per-consultant SSS/PHIC/HDMF contribution amounts — mirrors EmployeeBenefit.
 model ConsultantBenefit {
-  id              String     @id @default(cuid())
-  consultantId    String
-  consultant      Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
-  benefitType     String     // SSS, PHILHEALTH, PAGIBIG
-  employeeShare   Decimal    @default(0)  // consultant's monthly contribution (deducted from net)
-  employerShare   Decimal    @default(0)  // employer's monthly contribution
-  effectiveDate   DateTime   @default(now())
-  isActive        Boolean    @default(true)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id            String     @id @default(cuid())
+  consultantId  String
+  consultant    Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  benefitType   String // SSS, PHILHEALTH, PAGIBIG
+  employeeShare Decimal    @default(0) // consultant's monthly contribution (deducted from net)
+  employerShare Decimal    @default(0) // employer's monthly contribution
+  effectiveDate DateTime   @default(now())
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@index([consultantId])
   @@index([benefitType])
@@ -1591,11 +1596,11 @@ model ConsultantBenefit {
 // Reusable "Other Fees" lines pre-loaded when generating a Benefits-Payable RFP
 // (e.g. online-transfer fees). One template per branch; benefitType null = all types.
 model BenefitRfpFeeTemplate {
-  id          String   @id @default(cuid())
-  branch      String   @unique
-  fees        Json     @default("[]") // [{accountTitle, description, requestor, grossAmount, vatable, hasEwt, ewtRate}]
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  branch    String   @unique
+  fees      Json     @default("[]") // [{accountTitle, description, requestor, grossAmount, vatable, hasEwt, ewtRate}]
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
 
 model Holiday {
@@ -1603,8 +1608,8 @@ model Holiday {
   name        String
   date        DateTime
   holidayType HolidayType
-  branch      String?     // null = all branches
-  isRecurring Boolean     @default(false)  // Repeats yearly
+  branch      String? // null = all branches
+  isRecurring Boolean     @default(false) // Repeats yearly
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -1614,59 +1619,61 @@ model Holiday {
 }
 
 model EmployeePayslip {
-  id               String       @id @default(cuid())
-  employeeId       String
-  employee         Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  cutoffPeriod     String       // e.g. "2026-03-1" or "2026-03-2"
-  branch           String
+  id                      String        @id @default(cuid())
+  employeeId              String
+  employee                Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  cutoffPeriod            String // e.g. "2026-03-1" or "2026-03-2"
+  branch                  String
   // Earnings
-  basicPay         Decimal      @default(0)
-  leavePay         Decimal      @default(0)
-  overtimePay      Decimal      @default(0)
-  holidayPay       Decimal      @default(0)
-  nightDiffPay     Decimal      @default(0)
-  restDayPay       Decimal      @default(0)
-  allowances       Decimal      @default(0)
-  grossPay         Decimal      @default(0)
+  basicPay                Decimal       @default(0)
+  leavePay                Decimal       @default(0)
+  overtimePay             Decimal       @default(0)
+  holidayPay              Decimal       @default(0)
+  nightDiffPay            Decimal       @default(0)
+  restDayPay              Decimal       @default(0)
+  allowances              Decimal       @default(0)
+  grossPay                Decimal       @default(0)
   // Deductions
-  sssDeduction     Decimal      @default(0)
-  philhealthDeduction Decimal   @default(0)
-  pagibigDeduction Decimal      @default(0)
-  taxDeduction     Decimal      @default(0)
-  lateDeduction    Decimal      @default(0)
-  undertimeDeduction Decimal    @default(0)
-  otherDeductions  Decimal      @default(0)
-  totalDeductions  Decimal      @default(0)
+  sssDeduction            Decimal       @default(0)
+  philhealthDeduction     Decimal       @default(0)
+  pagibigDeduction        Decimal       @default(0)
+  taxDeduction            Decimal       @default(0)
+  lateDeduction           Decimal       @default(0)
+  undertimeDeduction      Decimal       @default(0)
+  otherDeductions         Decimal       @default(0)
+  totalDeductions         Decimal       @default(0)
   // Employer shares (for journal entries)
-  sssEmployerShare       Decimal @default(0)
-  philhealthEmployerShare Decimal @default(0)
-  pagibigEmployerShare   Decimal @default(0)
+  sssEmployerShare        Decimal       @default(0)
+  philhealthEmployerShare Decimal       @default(0)
+  pagibigEmployerShare    Decimal       @default(0)
   // Net
-  netPay           Decimal      @default(0)
+  netPay                  Decimal       @default(0)
   // Details
-  daysWorked       Decimal      @default(0)
-  hoursWorked      Decimal      @default(0)
-  overtimeHours    Decimal      @default(0)
-  lateMinutes      Int          @default(0)
-  undertimeMinutes Int          @default(0)
-  details          Json?        // Additional breakdown data
-  pdfUrl           String?      // Stored PDF file path on VPS
-  status           PayslipStatus @default(DRAFT)
-  taxRemitted      Boolean      @default(false)
-  salariesRemitted Boolean      @default(false)
-  salaryPaymentId  String?      // set when salary is remitted
-  salaryRfpId      String?      // set when included in a Salaries-Payable RFP
-  benefitsRemitted Boolean      @default(false)
-  benefitPaymentId String?      // set when SSS/PHIC/HDMF is remitted
-  benefitRfpId     String?      // set when included in a (legacy combined) Benefits-Payable RFP
+  daysWorked              Decimal       @default(0)
+  hoursWorked             Decimal       @default(0)
+  overtimeHours           Decimal       @default(0)
+  lateMinutes             Int           @default(0)
+  undertimeMinutes        Int           @default(0)
+  details                 Json? // Additional breakdown data
+  pdfUrl                  String? // Stored PDF file path on VPS
+  status                  PayslipStatus @default(DRAFT)
+  taxRemitted             Boolean       @default(false)
+  salariesRemitted        Boolean       @default(false)
+  salaryPaymentId         String? // set when salary is remitted
+  salaryRfpId             String? // set when included in a Salaries-Payable RFP
+  benefitsRemitted        Boolean       @default(false)
+  benefitPaymentId        String? // set when SSS/PHIC/HDMF is remitted
+  benefitRfpId            String? // set when included in a (legacy combined) Benefits-Payable RFP
   // Per-agency Benefits-Payable RFP locks — SSS/PHIC/HDMF are remitted separately.
-  sssRfpId         String?
-  philhealthRfpId  String?
-  pagibigRfpId     String?
-  computeTaxNow    Boolean      @default(false) // For cutoff 1 resignations: compute monthly tax now instead of waiting for cutoff 2
-  createdById      String
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  sssRfpId                String?
+  philhealthRfpId         String?
+  pagibigRfpId            String?
+  computeTaxNow           Boolean       @default(false) // For cutoff 1 resignations: compute monthly tax now instead of waiting for cutoff 2
+  createdById             String
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  salarySplits SalaryPayableSplit[]
 
   @@unique([employeeId, cutoffPeriod, branch])
   @@index([taxRemitted])
@@ -1681,19 +1688,19 @@ model EmployeePayslip {
 }
 
 model CutoffAdjustment {
-  id              String   @id @default(cuid())
-  employeeId      String
-  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  cutoffPeriod    String   // e.g. "2026-04-1"
-  branch          String
-  allowance       Decimal  @default(0)
-  allowanceType   String   @default("NON_TAXABLE") // TAXABLE or NON_TAXABLE
-  allowanceLabel  String?  // e.g. "De Minimis", "Transportation"
-  deduction       Decimal  @default(0)
-  deductionType   String   @default("NON_TAXABLE") // TAXABLE (pre-tax, reduces taxable income) or NON_TAXABLE
-  deductionLabel  String?  // e.g. "Cash Advance", "Loan"
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  cutoffPeriod   String // e.g. "2026-04-1"
+  branch         String
+  allowance      Decimal  @default(0)
+  allowanceType  String   @default("NON_TAXABLE") // TAXABLE or NON_TAXABLE
+  allowanceLabel String? // e.g. "De Minimis", "Transportation"
+  deduction      Decimal  @default(0)
+  deductionType  String   @default("NON_TAXABLE") // TAXABLE (pre-tax, reduces taxable income) or NON_TAXABLE
+  deductionLabel String? // e.g. "Cash Advance", "Loan"
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([employeeId, cutoffPeriod, branch])
   @@index([employeeId])
@@ -1702,18 +1709,18 @@ model CutoffAdjustment {
 }
 
 model ConsultantCutoffAdjustment {
-  id              String     @id @default(cuid())
-  consultantId    String
-  consultant      Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
-  cutoffPeriod    String     // e.g. "2026-04-1"
-  branch          String
-  allowance       Decimal    @default(0)
-  allowanceType   String     @default("NON_TAXABLE")
-  allowanceLabel  String?
-  deduction       Decimal    @default(0)
-  deductionLabel  String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id             String     @id @default(cuid())
+  consultantId   String
+  consultant     Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  cutoffPeriod   String // e.g. "2026-04-1"
+  branch         String
+  allowance      Decimal    @default(0)
+  allowanceType  String     @default("NON_TAXABLE")
+  allowanceLabel String?
+  deduction      Decimal    @default(0)
+  deductionLabel String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   @@index([consultantId, cutoffPeriod, branch])
   @@index([consultantId])
@@ -1724,40 +1731,40 @@ model ConsultantCutoffAdjustment {
 // ── Payroll COA Mapping ──────────────────────────────────────
 
 model PayrollCOAMapping {
-  id                          String   @id @default(cuid())
+  id                        String   @id @default(cuid())
   // Expense accounts (debits on finalize)
-  salaryExpenseAccountId      String?
-  salaryExpenseAccount        Account? @relation("COASalaryExpense", fields: [salaryExpenseAccountId], references: [id], onDelete: SetNull)
-  professionalFeesAccountId   String?
-  professionalFeesAccount     Account? @relation("COAProfFees", fields: [professionalFeesAccountId], references: [id], onDelete: SetNull)
-  sssERAccountId              String?
-  sssERAccount                Account? @relation("COASSSER", fields: [sssERAccountId], references: [id], onDelete: SetNull)
-  hdmfERAccountId             String?
-  hdmfERAccount               Account? @relation("COAHdmfER", fields: [hdmfERAccountId], references: [id], onDelete: SetNull)
-  philhealthERAccountId       String?
-  philhealthERAccount         Account? @relation("COAPhilER", fields: [philhealthERAccountId], references: [id], onDelete: SetNull)
+  salaryExpenseAccountId    String?
+  salaryExpenseAccount      Account? @relation("COASalaryExpense", fields: [salaryExpenseAccountId], references: [id], onDelete: SetNull)
+  professionalFeesAccountId String?
+  professionalFeesAccount   Account? @relation("COAProfFees", fields: [professionalFeesAccountId], references: [id], onDelete: SetNull)
+  sssERAccountId            String?
+  sssERAccount              Account? @relation("COASSSER", fields: [sssERAccountId], references: [id], onDelete: SetNull)
+  hdmfERAccountId           String?
+  hdmfERAccount             Account? @relation("COAHdmfER", fields: [hdmfERAccountId], references: [id], onDelete: SetNull)
+  philhealthERAccountId     String?
+  philhealthERAccount       Account? @relation("COAPhilER", fields: [philhealthERAccountId], references: [id], onDelete: SetNull)
   // Liability accounts (credits on finalize)
-  salariesPayableAccountId    String?
-  salariesPayableAccount      Account? @relation("COASalPayable", fields: [salariesPayableAccountId], references: [id], onDelete: SetNull)
-  benefitsPayableAccountId    String?
-  benefitsPayableAccount      Account? @relation("COABenPayable", fields: [benefitsPayableAccountId], references: [id], onDelete: SetNull)
-  taxPayableAccountId         String?
-  taxPayableAccount           Account? @relation("COATaxPayable", fields: [taxPayableAccountId], references: [id], onDelete: SetNull)
-  updatedAt                   DateTime @updatedAt
+  salariesPayableAccountId  String?
+  salariesPayableAccount    Account? @relation("COASalPayable", fields: [salariesPayableAccountId], references: [id], onDelete: SetNull)
+  benefitsPayableAccountId  String?
+  benefitsPayableAccount    Account? @relation("COABenPayable", fields: [benefitsPayableAccountId], references: [id], onDelete: SetNull)
+  taxPayableAccountId       String?
+  taxPayableAccount         Account? @relation("COATaxPayable", fields: [taxPayableAccountId], references: [id], onDelete: SetNull)
+  updatedAt                 DateTime @updatedAt
 }
 
 // ── Journal Entries ──────────────────────────────────────────
 
 model JournalEntry {
-  id             String   @id @default(cuid())
-  entryDate      DateTime
-  description    String
-  referenceType  String   // PAYROLL_CONSULTANT, PAYROLL_EMPLOYEE, SALARY_PAYMENT, BENEFIT_PAYMENT, TAX_PAYMENT
-  referenceId    String?  // cutoffPeriod+branch or payment ID
-  totalAmount    Decimal
-  branch         String   @default("ALL")
-  createdById    String
-  createdAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  entryDate     DateTime
+  description   String
+  referenceType String // PAYROLL_CONSULTANT, PAYROLL_EMPLOYEE, SALARY_PAYMENT, BENEFIT_PAYMENT, TAX_PAYMENT
+  referenceId   String? // cutoffPeriod+branch or payment ID
+  totalAmount   Decimal
+  branch        String   @default("ALL")
+  createdById   String
+  createdAt     DateTime @default(now())
 
   lines JournalEntryLine[]
 
@@ -1784,22 +1791,22 @@ model JournalEntryLine {
 // ── Payroll Payable Tracking ─────────────────────────────────
 
 model PayrollPayableStatus {
-  id                    String   @id @default(cuid())
-  cutoffPeriod          String
-  branch                String
-  payrollType           String   // CONSULTANT or EMPLOYEE
-  totalSalariesPayable  Decimal  @default(0)
-  totalBenefitsPayable  Decimal  @default(0)
-  totalTaxPayable       Decimal  @default(0)
-  salariesRemitted      Boolean  @default(false)
-  benefitsRemitted      Boolean  @default(false)
-  taxRemitted           Boolean  @default(false)
-  salaryPaymentId       String?
-  benefitPaymentId      String?
-  taxPaymentId          String?
-  journalEntryId        String?  // The finalization journal entry
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  cutoffPeriod         String
+  branch               String
+  payrollType          String // CONSULTANT or EMPLOYEE
+  totalSalariesPayable Decimal  @default(0)
+  totalBenefitsPayable Decimal  @default(0)
+  totalTaxPayable      Decimal  @default(0)
+  salariesRemitted     Boolean  @default(false)
+  benefitsRemitted     Boolean  @default(false)
+  taxRemitted          Boolean  @default(false)
+  salaryPaymentId      String?
+  benefitPaymentId     String?
+  taxPaymentId         String?
+  journalEntryId       String? // The finalization journal entry
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@unique([cutoffPeriod, branch, payrollType])
   @@index([cutoffPeriod])
@@ -1851,13 +1858,13 @@ model BenefitPayment {
 // ── Sales Checking ────────────────────────────────────────────
 model SalesDayClearing {
   id            String   @id @default(cuid())
-  date          String   // "YYYY-MM-DD"
+  date          String // "YYYY-MM-DD"
   branch        String
   clearedById   String
   clearedAt     DateTime @default(now())
   isCleared     Boolean  @default(false) // true = officially cleared; false = draft-saved only
-  actualAmounts Json?    // [{ method: string, amount: number }]
-  remarks       Json?    // [{ method: string, remarks: string }]
+  actualAmounts Json? // [{ method: string, amount: number }]
+  remarks       Json? // [{ method: string, remarks: string }]
   updatedAt     DateTime @updatedAt
 
   @@unique([date, branch])
@@ -1875,25 +1882,25 @@ model Asset {
   quantity            Int       @default(1)
   totalAmount         Decimal
   dateBought          DateTime
-  classification      String    // e.g. "2020", "2030", … "2100"
-  yearsDepreciation   Int       // 3, 5, or 10
+  classification      String // e.g. "2020", "2030", … "2100"
+  yearsDepreciation   Int // 3, 5, or 10
   monthlyDepreciation Decimal
   depreciationEndDate DateTime
   supplierId          String?
   supplier            Supplier? @relation(fields: [supplierId], references: [id])
-  sourceAccountId     String?   // COA bank account the asset was purchased from (credited on the acquisition JE)
-  fromPettyCash       Boolean   @default(false)  // created from a petty-cash/expense entry — cash is handled by replenishment, so NO bank credit here (avoids double-counting cash on the BS)
-  photoUrl            String?   // main photo (shown in the list)
-  photoUrls           Json?     // all photos (gallery)
+  sourceAccountId     String? // COA bank account the asset was purchased from (credited on the acquisition JE)
+  fromPettyCash       Boolean   @default(false) // created from a petty-cash/expense entry — cash is handled by replenishment, so NO bank credit here (avoids double-counting cash on the BS)
+  photoUrl            String? // main photo (shown in the list)
+  photoUrls           Json? // all photos (gallery)
   isDefective         Boolean   @default(false)
   // A downpayment or part-payment is not a thing anyone can stand in front of and
   // check, so it is carried on the books but kept out of the audit. Only auditable
   // assets can be counted.
   auditable           Boolean   @default(true)
-  departments         Json      @default("[]")  // string[] of dept names
+  departments         Json      @default("[]") // string[] of dept names
   utilized            Boolean   @default(true)
   controlNumber       String?
-  accountableName     String?   // staff accountable/custodian (from HR Hub)
+  accountableName     String? // staff accountable/custodian (from HR Hub)
   remarks             String?
   createdById         String
   createdBy           User      @relation("AssetCreatedBy", fields: [createdById], references: [id])
@@ -1908,29 +1915,29 @@ model Asset {
 // Annual physical asset audit. Snapshots the assets in scope at creation time,
 // records per-asset condition (usable / needs replacement), and locks on finalize.
 model AssetAudit {
-  id           String   @id @default(cuid())
-  refNumber    String   // AUDIT-26-0001
-  refSeq       Int
-  dateFrom     DateTime
-  dateTo       DateTime
-  auditorName  String
-  branch       String   // Branch enum value or 'ALL'
-  departments  Json     @default("[]")  // string[] of dept names covered
-  status       String   @default("DRAFT") // DRAFT | FINALIZED
-  proofUrls    Json?    // photo documentation of the audit
-  finalizedAt  DateTime?
-  createdById  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String    @id @default(cuid())
+  refNumber   String // AUDIT-26-0001
+  refSeq      Int
+  dateFrom    DateTime
+  dateTo      DateTime
+  auditorName String
+  branch      String // Branch enum value or 'ALL'
+  departments Json      @default("[]") // string[] of dept names covered
+  status      String    @default("DRAFT") // DRAFT | FINALIZED
+  proofUrls   Json? // photo documentation of the audit
+  finalizedAt DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  items        AssetAuditItem[]
+  items AssetAuditItem[]
 
   @@unique([refNumber])
   @@index([branch])
 }
 
 model AssetAuditItem {
-  id               String   @id @default(cuid())
+  id               String     @id @default(cuid())
   auditId          String
   audit            AssetAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
   assetId          String
@@ -1940,9 +1947,9 @@ model AssetAuditItem {
   classification   String?
   accountableName  String?
   usable           Boolean? // null = not yet assessed during the audit
-  needsReplacement Boolean  @default(false)
+  needsReplacement Boolean    @default(false)
   remarks          String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime   @default(now())
 
   @@index([auditId])
   @@index([assetId])
@@ -1950,8 +1957,8 @@ model AssetAuditItem {
 
 // Per-classification default depreciation years (set in Depreciation Settings)
 model AssetDepreciationSetting {
-  classification String @id   // "2020", "2030", ... "2100"
-  years          Int           // 3, 5, or 10
+  classification String   @id // "2020", "2030", ... "2100"
+  years          Int // 3, 5, or 10
   updatedAt      DateTime @updatedAt
 }
 
@@ -1960,16 +1967,16 @@ model AssetDepreciationSetting {
 // period. Required so the Balance Sheet reflects cumulative state — Cash,
 // Owner's Equity, and Retained Earnings — instead of just current-year flows.
 model BeginningBalance {
-  id          String  @id @default(cuid())
+  id          String    @id @default(cuid())
   accountId   String
-  account     Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   periodYear  Int
-  amount      Decimal @default(0)
-  startDate   DateTime?  // bank reconciliation only considers Hub entries on/after this date
+  amount      Decimal   @default(0)
+  startDate   DateTime? // bank reconciliation only considers Hub entries on/after this date
   notes       String?
   createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([accountId, periodYear])
   @@index([periodYear])
@@ -2005,8 +2012,8 @@ model SoaRecord {
   id              String   @id @default(cuid())
   walletId        String
   walletName      String
-  period          String   // "YYYY-MM" format
-  pdfData         String?  // Base64-encoded PDF
+  period          String // "YYYY-MM" format
+  pdfData         String? // Base64-encoded PDF
   branch          String?
   isHighlighted   Boolean  @default(false) // true when multiple SOAs for same provider+period
   generatedAt     DateTime @default(now())
@@ -2022,11 +2029,11 @@ model SoaRecord {
 model IEPRPayrollRecord {
   id               String   @id @default(cuid())
   documentId       String   @unique // teletherapy PatientDocument.id
-  staffId          String?           // therapist Staff.id = Consultant.externalStaffId
+  staffId          String? // therapist Staff.id = Consultant.externalStaffId
   countedInPayroll Boolean  @default(false)
-  cutoffPeriod     String?           // e.g. "2026-04-1"
+  cutoffPeriod     String? // e.g. "2026-04-1"
   notes            String?
-  markedById       String?           // accounting User.id who last updated
+  markedById       String? // accounting User.id who last updated
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -2053,73 +2060,73 @@ model InvoiceSettings {
 model EquitySettings {
   id                      String   @id @default("singleton")
   authorizedShares        Int      @default(20000000)
-  authorizedCommonShares  Int?     // sub-limit of authorized shares reserved for Common classes
-  authorizedFounderShares Int?     // sub-limit reserved for Founders classes
+  authorizedCommonShares  Int? // sub-limit of authorized shares reserved for Common classes
+  authorizedFounderShares Int? // sub-limit reserved for Founders classes
   updatedAt               DateTime @updatedAt
 }
 
 // ── Petty Cash module ─────────────────────────────────────────
 model PettyCashEntry {
-  id                String   @id @default(cuid())
-  branch            String   // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
-  pcvNumber         String   // e.g. PCV26-001794
-  pcvSeq            Int
-  pcvSub            Int      @default(1)
-  requestor         String?
-  department        String?  // ADMIN, PT, OT, SLP, SPED, PSYCH, MD, ORTHOSIS
-  pcfStatus         String?  // Unliquidated | For Replenishment | Cancelled | Missing
-  date              DateTime?
-  description       String?
-  vatable           String?  // VAT | NV | Invalid | Cancelled
-  siNumber          String?
-  tinNumber         String?  // XXX-XXX-XXX-XXXXX
-  registeredName    String?
-  registeredAddress String?
-  grossAmount       Decimal  @default(0)
-  accountTitle      String?
-  referenceNumber   String?
-  proofUrl          String?
-  proofUrls         Json?
-  validity          String?
-  branchAllocations Json?
-  recordType        String   @default("PETTY_CASH")
-  finalized         Boolean  @default(false)
-  audited           Boolean  @default(false)
+  id                  String               @id @default(cuid())
+  branch              String // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
+  pcvNumber           String // e.g. PCV26-001794
+  pcvSeq              Int
+  pcvSub              Int                  @default(1)
+  requestor           String?
+  department          String? // ADMIN, PT, OT, SLP, SPED, PSYCH, MD, ORTHOSIS
+  pcfStatus           String? // Unliquidated | For Replenishment | Cancelled | Missing
+  date                DateTime?
+  description         String?
+  vatable             String? // VAT | NV | Invalid | Cancelled
+  siNumber            String?
+  tinNumber           String? // XXX-XXX-XXX-XXXXX
+  registeredName      String?
+  registeredAddress   String?
+  grossAmount         Decimal              @default(0)
+  accountTitle        String?
+  referenceNumber     String?
+  proofUrl            String?
+  proofUrls           Json?
+  validity            String?
+  branchAllocations   Json?
+  recordType          String               @default("PETTY_CASH")
+  finalized           Boolean              @default(false)
+  audited             Boolean              @default(false)
   // A one-time copy made from a distributed recurring entry so the FULL amount can be
   // RFP'd/paid. The recurring entry already amortizes to the P&L, so this copy is kept
   // OUT of the Income Statement (skipReports) to avoid double-counting the expense.
-  skipReports       Boolean  @default(false)
-  sourceRecurringId String?  // links this one-time payment copy back to its recurring setup
-  recurFrequency    String?
-  recurDeadlineDay  Int?
-  distributeMonthly Boolean  @default(false)
-  amountVaries      Boolean  @default(false)
-  hasEwt            Boolean  @default(false)
-  ewtRate           Int?
-  ewtRemitted       Boolean  @default(false)  // EWT withheld on this expense has been remitted via a Taxes EWT RFP
-  ewtRemittedBranches Json?   // CEO shared entries: per-branch EWT remittance state { SANDBOX_EAST: true, ... }
-  distributeStart   DateTime?
-  distributeEnd     DateTime?
-  filingStatus      String?  @default("FOR_FILING")
-  paidAt            DateTime?
-  paymentMethod     String?
-  checkNumber       String?
-  creditCard        String?
-  creditCardId      String?
-  payrollAccount    String?
-  paymentBankAccount String?
-  reimbursementId   String?
-  reimbursement     ReimbursementReport? @relation(fields: [reimbursementId], references: [id], onDelete: SetNull)
+  skipReports         Boolean              @default(false)
+  sourceRecurringId   String? // links this one-time payment copy back to its recurring setup
+  recurFrequency      String?
+  recurDeadlineDay    Int?
+  distributeMonthly   Boolean              @default(false)
+  amountVaries        Boolean              @default(false)
+  hasEwt              Boolean              @default(false)
+  ewtRate             Int?
+  ewtRemitted         Boolean              @default(false) // EWT withheld on this expense has been remitted via a Taxes EWT RFP
+  ewtRemittedBranches Json? // CEO shared entries: per-branch EWT remittance state { SANDBOX_EAST: true, ... }
+  distributeStart     DateTime?
+  distributeEnd       DateTime?
+  filingStatus        String?              @default("FOR_FILING")
+  paidAt              DateTime?
+  paymentMethod       String?
+  checkNumber         String?
+  creditCard          String?
+  creditCardId        String?
+  payrollAccount      String?
+  paymentBankAccount  String?
+  reimbursementId     String?
+  reimbursement       ReimbursementReport? @relation(fields: [reimbursementId], references: [id], onDelete: SetNull)
   // CEO petty cash only: a CEO expense can be allocated across branches and each
   // branch portion goes into its own branch RFP. Maps branch enum → RFP report id
   // so the same entry can be reimbursed once per branch without a single FK.
-  rfpBranchMap      Json?
-  assetAddedAt      DateTime?  // set when this entry was added to Asset Management — persistent, cross-user "Added" state to prevent accidental double-adds
+  rfpBranchMap        Json?
+  assetAddedAt        DateTime? // set when this entry was added to Asset Management — persistent, cross-user "Added" state to prevent accidental double-adds
   inventoryRecordedAt DateTime? // set when this entry was recorded in Inventory & Procurement (new item / stock adjustment / capitalized freight) — persistent, cross-user "Recorded" state
-  soaId             String?   // links a one-time entry tagged "Paid by Credit Card" to its CreditCardSOA
-  createdById       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  soaId               String? // links a one-time entry tagged "Paid by Credit Card" to its CreditCardSOA
+  createdById         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@unique([branch, pcvNumber])
   @@index([branch])
@@ -2128,31 +2135,31 @@ model PettyCashEntry {
 }
 
 model ReimbursementReport {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   branch         String
-  refNumber      String   // e.g. AHEA26-000001
+  refNumber      String // e.g. AHEA26-000001
   refSeq         Int
-  grossTotal     Decimal  @default(0)
-  status         String   @default("PENDING") // PENDING | PAID
-  pdfData        String?  // base64 data URI
+  grossTotal     Decimal   @default(0)
+  status         String    @default("PENDING") // PENDING | PAID
+  pdfData        String? // base64 data URI
   paidAt         DateTime?
   paymentMethod  String?
   checkNumber    String?
   transferRef    String?
   kind           String?
-  module         String   @default("PETTY_CASH")
-  payableTo      String?  // who the payment is payable to → surfaces as Payee in the Expense Report
-  filingStatus   String?  @default("FOR_FILING") // FOR_FILING | FILED — used by the Taxes Report
-  meta           Json?    // tax RFPs: { taxType, period, payrollBranch, items:[{id,name,gross,tax}] }
+  module         String    @default("PETTY_CASH")
+  payableTo      String? // who the payment is payable to → surfaces as Payee in the Expense Report
+  filingStatus   String?   @default("FOR_FILING") // FOR_FILING | FILED — used by the Taxes Report
+  meta           Json? // tax RFPs: { taxType, period, payrollBranch, items:[{id,name,gross,tax}] }
   creditCardId   String?
   debitAccount   String?
   depositAccount String?
   proofUrl       String?
   createdById    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  entries        PettyCashEntry[]
+  entries                  PettyCashEntry[]
   adjBatchesAsManufacturer InventoryAdjustmentBatch[] @relation("AdjBatchManufacturerRfp")
   adjBatchesAsFreight      InventoryAdjustmentBatch[] @relation("AdjBatchFreightRfp")
 
@@ -2168,20 +2175,20 @@ model Refund {
   id                 String    @id @default(cuid())
   branch             String
   date               DateTime  @default(now())
-  patientId          String?   // Marketing Hub CRM patient id (optional)
+  patientId          String? // Marketing Hub CRM patient id (optional)
   patientName        String
-  refundAmount       Decimal   @default(0)  // gross amount to refund
-  chargesDeducted    Decimal   @default(0)  // cancellation / processing charges withheld
-  netAmount          Decimal   @default(0)  // cash actually returned = refundAmount − chargesDeducted
+  refundAmount       Decimal   @default(0) // gross amount to refund
+  chargesDeducted    Decimal   @default(0) // cancellation / processing charges withheld
+  netAmount          Decimal   @default(0) // cash actually returned = refundAmount − chargesDeducted
   reason             String?
-  proofUrls          Json?                  // string[] of uploaded proofs (file or QR)
+  proofUrls          Json? // string[] of uploaded proofs (file or QR)
   audited            Boolean   @default(false) // the "OK" check — required before RFP
-  refundRfpId        String?   // set when included in a Refund RFP (locked until paid/deleted)
+  refundRfpId        String? // set when included in a Refund RFP (locked until paid/deleted)
   paidAt             DateTime?
   paymentMethod      String?
   checkNumber        String?
-  paymentBankAccount String?   // bank account credited (cash out)
-  journalEntryId     String?   // DR Unearned Revenue / CR Cash entry posted on payment
+  paymentBankAccount String? // bank account credited (cash out)
+  journalEntryId     String? // DR Unearned Revenue / CR Cash entry posted on payment
   createdById        String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -2192,12 +2199,12 @@ model Refund {
 }
 
 model PettyCashSettings {
-  branch     String   @id  // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
-  nextPcvSeq Int      @default(1)
-  nextReimbSeq Int   @default(1)
-  requestors Json     @default("[]")
+  branch         String   @id // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
+  nextPcvSeq     Int      @default(1)
+  nextReimbSeq   Int      @default(1)
+  requestors     Json     @default("[]")
   prepaidAccount String?
-  updatedAt  DateTime @updatedAt @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 }
 
 model CreditCard {
@@ -2213,7 +2220,7 @@ model CreditCard {
 }
 
 model CreditCardReport {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   branch       String
   cardId       String
   bankCode     String
@@ -2222,11 +2229,11 @@ model CreditCardReport {
   periodMonth  Int
   periodYear   Int
   statementUrl String?
-  status       String   @default("FOR_FILING")
-  paidAt       DateTime?  // when the credit-card bill itself was settled
-  paymentForm  String?    // Check Deposit | Cash Deposit | Online Fund Transfer
-  paymentRef   String?    // check number / transfer reference for the CC bill payment
-  createdAt    DateTime @default(now())
+  status       String    @default("FOR_FILING")
+  paidAt       DateTime? // when the credit-card bill itself was settled
+  paymentForm  String? // Check Deposit | Cash Deposit | Online Fund Transfer
+  paymentRef   String? // check number / transfer reference for the CC bill payment
+  createdAt    DateTime  @default(now())
 
   @@unique([branch, cardId, periodMonth, periodYear])
   @@index([branch])
@@ -2237,23 +2244,23 @@ model CreditCardReport {
 // for RFP) → PAID (RFP recorded paid), or OPEN → PAID via petty cash. Paid SOAs
 // surface in the Credit Card Report.
 model CreditCardSOA {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   branch           String
   cardId           String
   bankCode         String
   refNumber        String
   refSeq           Int
-  status           String   @default("OPEN")      // OPEN | IN_RFP | PAID
-  paymentRoute     String?                          // RFP | PETTY_CASH
-  statementUrl     String?                          // uploaded bank statement of account
-  soaDocUrl        String?                          // system-generated SOA PDF (petty-cash proof)
-  reimbursementId  String?                          // RFP created via Request for RFP
-  pettyCashEntryId String?                          // settlement entry if paid through petty cash
-  filingStatus     String   @default("FOR_FILING") // FOR_FILING | FILED
+  status           String    @default("OPEN") // OPEN | IN_RFP | PAID
+  paymentRoute     String? // RFP | PETTY_CASH
+  statementUrl     String? // uploaded bank statement of account
+  soaDocUrl        String? // system-generated SOA PDF (petty-cash proof)
+  reimbursementId  String? // RFP created via Request for RFP
+  pettyCashEntryId String? // settlement entry if paid through petty cash
+  filingStatus     String    @default("FOR_FILING") // FOR_FILING | FILED
   paidAt           DateTime?
   createdById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@unique([branch, refNumber])
   @@index([branch])
@@ -2265,51 +2272,51 @@ model CreditCardSOA {
 model CashAdvance {
   id              String   @id @default(cuid())
   branch          String
-  refNumber       String   // e.g. AHEA-CA26-0001
+  refNumber       String // e.g. AHEA-CA26-0001
   refSeq          Int
-  accountableName String   // staff accountable for the float (HR Hub)
+  accountableName String // staff accountable for the float (HR Hub)
   purpose         String
   dateReleased    DateTime
-  amount          Decimal  // amount released
-  sourceAccountId String?  // bank account the float was released from
+  amount          Decimal // amount released
+  sourceAccountId String? // bank account the float was released from
   status          String   @default("OPEN") // OPEN | CLOSED
-  proofUrls       Json?    // release proof(s): approval memo, acknowledgement receipt, etc.
+  proofUrls       Json? // release proof(s): approval memo, acknowledgement receipt, etc.
   createdById     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  lines           CashAdvanceLine[]
+  lines CashAdvanceLine[]
 
   @@unique([branch, refNumber])
   @@index([branch])
 }
 
 model CashAdvanceLine {
-  id             String      @id @default(cuid())
-  advanceId      String
-  advance        CashAdvance @relation(fields: [advanceId], references: [id], onDelete: Cascade)
-  kind           String      // LIQUIDATION | RETURN | REIMBURSE
-  date           DateTime
-  accountTitle   String?     // LIQUIDATION: the expense account
-  description    String?
-  vatable        String?     // VAT | Non-VAT
-  amount         Decimal     // gross
-  siNumber       String?     // SI / OR number
+  id                String      @id @default(cuid())
+  advanceId         String
+  advance           CashAdvance @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  kind              String // LIQUIDATION | RETURN | REIMBURSE
+  date              DateTime
+  accountTitle      String? // LIQUIDATION: the expense account
+  description       String?
+  vatable           String? // VAT | Non-VAT
+  amount            Decimal // gross
+  siNumber          String? // SI / OR number
   // Expense-entry parity fields (BIR-relevant supplier info)
-  requestor        String?   // payee (as picked from Suppliers)
-  department       String?
-  validity         String?   // Valid | Invalid | Cancelled
-  tinNumber        String?
-  registeredName   String?   // BIR-registered supplier name
+  requestor         String? // payee (as picked from Suppliers)
+  department        String?
+  validity          String? // Valid | Invalid | Cancelled
+  tinNumber         String?
+  registeredName    String? // BIR-registered supplier name
   registeredAddress String?
-  hasEwt           Boolean   @default(false)
-  ewtRate          Int?      // 5 | 10 (informational; float posting is unchanged)
-  proofUrl       String?
-  proofUrls      Json?
-  bankAccountId  String?     // RETURN / REIMBURSE bank account
-  journalEntryId String?
-  createdById    String?
-  createdAt      DateTime    @default(now())
+  hasEwt            Boolean     @default(false)
+  ewtRate           Int? // 5 | 10 (informational; float posting is unchanged)
+  proofUrl          String?
+  proofUrls         Json?
+  bankAccountId     String? // RETURN / REIMBURSE bank account
+  journalEntryId    String?
+  createdById       String?
+  createdAt         DateTime    @default(now())
 
   @@index([advanceId])
 }
@@ -2320,9 +2327,9 @@ model SalesInvoiceFlag {
   id          String   @id @default(cuid())
   branch      String
   siNumber    String
-  status      String   // CANCELLED | REMARKS | TAGGED
+  status      String // CANCELLED | REMARKS | TAGGED
   remarks     String?
-  orderId     String?  // TAGGED: the order this SI number was assigned to
+  orderId     String? // TAGGED: the order this SI number was assigned to
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -2339,7 +2346,7 @@ model SalesTarget {
   periodYear  Int
   target      Decimal  @default(0)
   createdById String?
-  updatedAt   DateTime @updatedAt @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 
   @@unique([branch, periodMonth, periodYear])
   @@index([branch])
@@ -2359,7 +2366,7 @@ model ExpenseSupplier {
 
 model FundTransfer {
   id            String   @id @default(cuid())
-  refNumber     String   @unique  // FTYY-000001
+  refNumber     String   @unique // FTYY-000001
   refSeq        Int
   date          DateTime
   fromAccountId String
@@ -2374,7 +2381,7 @@ model FundTransfer {
   checkNumber   String?
   description   String?
   proofUrl      String?
-  proofUrls     Json?     // multiple attachments (proofUrl kept = first, for back-compat)
+  proofUrls     Json? // multiple attachments (proofUrl kept = first, for back-compat)
   createdById   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -2385,20 +2392,20 @@ model FundTransfer {
 model FundTransferSettings {
   id        String   @id @default("singleton")
   nextSeq   Int      @default(1)
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 // Manually-recorded cancelled/voided checks, kept per checking account so the
 // Check Release Monitoring log has a record of checks that were spoiled/cancelled.
 model CancelledCheck {
   id          String   @id @default(cuid())
-  accountId   String   // Account.id of the checking account the check was drawn on
+  accountId   String // Account.id of the checking account the check was drawn on
   checkNumber String
   date        DateTime
   reason      String?
   payee       String?
   amount      Decimal  @default(0)
-  proofUrls   Json?    // scanned image(s) of the cancelled check
+  proofUrls   Json? // scanned image(s) of the cancelled check
   createdById String?
   createdAt   DateTime @default(now())
 
@@ -2410,8 +2417,8 @@ model CancelledCheck {
 // uploads photos into it, and the desktop polls `urls` until done.
 model UploadSession {
   id          String   @id @default(cuid()) // the token embedded in the QR
-  prefix      String   // filename prefix, e.g. AHEA-PCV26-000077
-  section     String   // petty-cash | expenses | taxes | cash-advance | ar | fund-transfer | asset
+  prefix      String // filename prefix, e.g. AHEA-PCV26-000077
+  section     String // petty-cash | expenses | taxes | cash-advance | ar | fund-transfer | asset
   urls        Json     @default("[]")
   createdById String?
   createdAt   DateTime @default(now())
@@ -2422,67 +2429,67 @@ model UploadSession {
 
 // ── Equity: shareholders, common/preferred shares, dividends ──
 model Shareholder {
-  id          String   @id @default(cuid())
-  shNumber    String   @unique // SH0001, SH0002 …
-  shSeq       Int      @unique
+  id          String    @id @default(cuid())
+  shNumber    String    @unique // SH0001, SH0002 …
+  shSeq       Int       @unique
   name        String
   tin         String?
   birthdate   DateTime?
   email       String?
   address     String?
   createdById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   commonShares    CommonShare[]
   preferredShares PreferredShare[]
 }
 
 model CommonShare {
-  id               String   @id @default(cuid())
-  shareholderId    String
-  shareholder      Shareholder @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
-  dateAcquired     DateTime
-  agreementType    String   // SUBSCRIPTION | DEED_OF_ASSIGNMENT
+  id                      String          @id @default(cuid())
+  shareholderId           String
+  shareholder             Shareholder     @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
+  dateAcquired            DateTime
+  agreementType           String // SUBSCRIPTION | DEED_OF_ASSIGNMENT
   assignedToShareholderId String? // when DEED_OF_ASSIGNMENT — who the shares are assigned to
-  agreementUrls    Json?
-  stockCertNumber  String?
-  proofOfDepositUrls Json?
-  validIdUrls      Json?    // shareholder's valid ID(s) — multi-file, QR upload
-  shareClass       String?  // e.g. "Common – Voting – with Par" / "Founders – …"
-  numberOfShares   Decimal
-  truePar          Decimal? // par value per share (PHP)
-  apic             Decimal? // additional paid-in capital per share (PHP)
-  pricePerShare    Decimal  // = truePar + apic (issue price per share)
-  soldFromTreasury Boolean  @default(false) // shares reissued from treasury (bought-back) stock
+  agreementUrls           Json?
+  stockCertNumber         String?
+  proofOfDepositUrls      Json?
+  validIdUrls             Json? // shareholder's valid ID(s) — multi-file, QR upload
+  shareClass              String? // e.g. "Common – Voting – with Par" / "Founders – …"
+  numberOfShares          Decimal
+  truePar                 Decimal? // par value per share (PHP)
+  apic                    Decimal? // additional paid-in capital per share (PHP)
+  pricePerShare           Decimal // = truePar + apic (issue price per share)
+  soldFromTreasury        Boolean         @default(false) // shares reissued from treasury (bought-back) stock
   // Single bank account the equity was debited into. Kept for back-compat and
   // still used when the holding has no EquityDeposit rows — one deposit, one
   // bank, the common case. When deposits exist they take over entirely.
-  bankAccountId    String?  // COA bank account the equity was debited into
-  equityAccountId  String?  // COA equity account credited on issuance (chosen from CoA)
+  bankAccountId           String? // COA bank account the equity was debited into
+  equityAccountId         String? // COA equity account credited on issuance (chosen from CoA)
   // Debited for any part of the subscription not yet paid, when itemised
   // deposits fall short of the full capitalization. Without it a short-paid
   // holding cannot post a balanced entry, so the JE is withheld instead.
-  receivableAccountId String?
-  journalEntryId   String?
+  receivableAccountId     String?
+  journalEntryId          String?
   // Consideration actually received for the shares, itemised. A subscription can
   // be paid across several deposits, into different bank accounts, on different
   // dates — and some consideration is not cash at all (e.g. equipment bought for
   // the company). See EquityDeposit.
-  deposits         EquityDeposit[]
+  deposits                EquityDeposit[]
   // Buyback → Treasury Shares. Legacy single-buyback columns kept for back-compat;
   // buybacks are now recorded as ShareBuyback rows (multiple per shareholder).
-  boughtBack       Boolean  @default(false)
-  buybackPrice     Decimal?
-  buybackShares    Decimal?
-  buybackBankAccountId String?
-  treasuryAccountId String? // COA equity/treasury account debited on buyback
-  buybackProofUrls Json?
-  buybackJournalEntryId String?
-  buybacks         ShareBuyback[]
-  createdById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  boughtBack              Boolean         @default(false)
+  buybackPrice            Decimal?
+  buybackShares           Decimal?
+  buybackBankAccountId    String?
+  treasuryAccountId       String? // COA equity/treasury account debited on buyback
+  buybackProofUrls        Json?
+  buybackJournalEntryId   String?
+  buybacks                ShareBuyback[]
+  createdById             String?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
 
   @@index([shareholderId])
 }
@@ -2511,9 +2518,9 @@ model EquityDeposit {
   date           DateTime
   amount         Decimal
   kind           String      @default("CASH") // CASH | NON_CASH
-  bankAccountId  String?     // COA bank account debited — CASH only
-  assetAccountId String?     // COA asset/expense account debited — NON_CASH only
-  note           String?     // e.g. "Equipment purchased for the company"
+  bankAccountId  String? // COA bank account debited — CASH only
+  assetAccountId String? // COA asset/expense account debited — NON_CASH only
+  note           String? // e.g. "Equipment purchased for the company"
   proofUrls      Json?
   createdById    String?
   createdAt      DateTime    @default(now())
@@ -2540,58 +2547,59 @@ model ShareBuyback {
 }
 
 model PreferredShare {
-  id               String   @id @default(cuid())
-  shareholderId    String
-  shareholder      Shareholder @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
-  dateAcquired     DateTime
-  agreementType    String   // SUBSCRIPTION | DEED_OF_ASSIGNMENT
-  agreementUrls    Json?
-  stockCertNumber  String?
+  id                 String      @id @default(cuid())
+  shareholderId      String
+  shareholder        Shareholder @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
+  dateAcquired       DateTime
+  agreementType      String // SUBSCRIPTION | DEED_OF_ASSIGNMENT
+  agreementUrls      Json?
+  stockCertNumber    String?
   proofOfDepositUrls Json?
-  validIdUrls      Json?    // shareholder's valid ID(s) — multi-file, QR upload
-  shareClass       String?  // e.g. "Preferred – Voting – with Par" / "Redeemable Preferred – …"
-  numberOfShares   Decimal
-  retiredShares    Decimal? @default(0) // preferred shares redeemed/retired
-  truePar          Decimal? // par value per share (PHP)
-  apic             Decimal? // additional paid-in capital per share (PHP)
-  pricePerShare    Decimal  // = truePar + apic (issue price per share)
-  bankAccountId    String?
-  equityAccountId  String?  // COA equity account credited on issuance
-  journalEntryId   String?
-  annualInterest   Decimal? // % per year
-  maturityYears    Int?     // buyback maturity, e.g. 5
-  buybackPrice     Decimal? // price to buy back at maturity
-  payoutSchedule   String?  // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
-  payoutStartMonth Int?     // 1–12
-  payoutStartYear  Int?
-  payoutDay        Int?     // day of month (capped to month end), e.g. 30
-  pdcUrls          Json?    // post-dated cheques (multi)
-  createdById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  validIdUrls        Json? // shareholder's valid ID(s) — multi-file, QR upload
+  shareClass         String? // e.g. "Preferred – Voting – with Par" / "Redeemable Preferred – …"
+  numberOfShares     Decimal
+  retiredShares      Decimal?    @default(0) // preferred shares redeemed/retired
+  truePar            Decimal? // par value per share (PHP)
+  apic               Decimal? // additional paid-in capital per share (PHP)
+  pricePerShare      Decimal // = truePar + apic (issue price per share)
+  bankAccountId      String?
+  equityAccountId    String? // COA equity account credited on issuance
+  journalEntryId     String?
+  annualInterest     Decimal? // % per year
+  maturityYears      Int? // buyback maturity, e.g. 5
+  buybackPrice       Decimal? // price to buy back at maturity
+  payoutSchedule     String? // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
+  payoutStartMonth   Int? // 1–12
+  payoutStartYear    Int?
+  payoutDay          Int? // day of month (capped to month end), e.g. 30
+  pdcUrls            Json? // post-dated cheques (multi)
+  createdById        String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
-  payouts          PreferredPayout[]
+  payouts PreferredPayout[]
+
   @@index([shareholderId])
   deposits       EquityDeposit[]
 }
 
 // Preferred dividend payout history / schedule occurrences.
 model PreferredPayout {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   preferredShareId String
   preferredShare   PreferredShare @relation(fields: [preferredShareId], references: [id], onDelete: Cascade)
   shareholderId    String
   dueDate          DateTime
   amount           Decimal
-  status           String   @default("PENDING") // PENDING | PAID
+  status           String         @default("PENDING") // PENDING | PAID
   paidDate         DateTime?
   bankAccountId    String?
   proofUrls        Json?
   emailedAt        DateTime?
   journalEntryId   String?
   createdById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([preferredShareId])
   @@index([dueDate])
@@ -2599,34 +2607,34 @@ model PreferredPayout {
 
 // Common-share dividend releases.
 model DividendRelease {
-  id                 String   @id @default(cuid())
-  date               DateTime
+  id                  String    @id @default(cuid())
+  date                DateTime
   boardResolutionUrls Json?
-  dividendAmount     Decimal  // per common share
-  dividendType       String   // REGULAR | SPECIAL
-  totalAmountPaid    Decimal  @default(0)
-  status             String   @default("DRAFT") // DRAFT | FINALIZED
-  bankAccountId      String?  // bank credited when the dividend is paid
-  retainedAccountId  String?  // equity account debited (Retained Earnings)
-  proofOfDepositUrls Json?
-  journalEntryId     String?
-  finalizedAt        DateTime?
-  createdById        String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  dividendAmount      Decimal // per common share
+  dividendType        String // REGULAR | SPECIAL
+  totalAmountPaid     Decimal   @default(0)
+  status              String    @default("DRAFT") // DRAFT | FINALIZED
+  bankAccountId       String? // bank credited when the dividend is paid
+  retainedAccountId   String? // equity account debited (Retained Earnings)
+  proofOfDepositUrls  Json?
+  journalEntryId      String?
+  finalizedAt         DateTime?
+  createdById         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  items              DividendReleaseItem[]
+  items DividendReleaseItem[]
 }
 
 model DividendReleaseItem {
-  id               String   @id @default(cuid())
-  releaseId        String
-  release          DividendRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
-  shareholderId    String
-  shareholderName  String
-  shares           Decimal
-  amount           Decimal
-  emailedAt        DateTime?
+  id              String          @id @default(cuid())
+  releaseId       String
+  release         DividendRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  shareholderId   String
+  shareholderName String
+  shares          Decimal
+  amount          Decimal
+  emailedAt       DateTime?
 
   @@index([releaseId])
 }
@@ -2636,31 +2644,32 @@ model DividendReleaseItem {
 model PreferredDividendRelease {
   id                 String   @id @default(cuid())
   date               DateTime // deposit / payout date
-  quarterKey         String   // "2025-Q3" — used to build the per-quarter matrix
-  periodLabel        String?  // "Q3 2025"
+  quarterKey         String // "2025-Q3" — used to build the per-quarter matrix
+  periodLabel        String? // "Q3 2025"
   proofOfDepositUrls Json?
-  bankAccountId      String?  // CR on payout
-  expenseAccountId   String?  // DR (interest expense / retained earnings)
+  bankAccountId      String? // CR on payout
+  expenseAccountId   String? // DR (interest expense / retained earnings)
   journalEntryId     String?
   totalAmountPaid    Decimal  @default(0)
   createdById        String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  items              PreferredDividendItem[]
+  items PreferredDividendItem[]
+
   @@index([quarterKey])
 }
 
 model PreferredDividendItem {
-  id               String   @id @default(cuid())
-  releaseId        String
-  release          PreferredDividendRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
-  shareholderId    String
-  shareholderName  String
-  shares           Decimal
-  amount           Decimal  // quarterly dividend for this shareholder
-  paidDate         DateTime?
-  emailedAt        DateTime?
+  id              String                   @id @default(cuid())
+  releaseId       String
+  release         PreferredDividendRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  shareholderId   String
+  shareholderName String
+  shares          Decimal
+  amount          Decimal // quarterly dividend for this shareholder
+  paidDate        DateTime?
+  emailedAt       DateTime?
 
   @@index([releaseId])
 }
@@ -2672,24 +2681,25 @@ model PreferredDividendItem {
 model ScholarAward {
   id               String   @id @default(cuid())
   portalScholarId  String   @unique // UgatScholar.id from the scholarship portal
-  scholarName      String            // snapshot for history if the portal row goes away
-  school           String?           // snapshot from the portal
-  email            String?           // snapshot from the portal (for release notices)
-  academicYear     String?           // e.g. "2025-2026" — entered here (portal has no A.Y.)
-  scholarshipType  String?           // free-text, self-building dropdown on the client
+  scholarName      String // snapshot for history if the portal row goes away
+  school           String? // snapshot from the portal
+  email            String? // snapshot from the portal (for release notices)
+  academicYear     String? // e.g. "2025-2026" — entered here (portal has no A.Y.)
+  scholarshipType  String? // free-text, self-building dropdown on the client
   amountAwarded    Decimal  @default(0) // total award over the whole grant
   monthlyAmount    Decimal  @default(0) // amount released each month
-  startMonth       String?           // "YYYY-MM" — first release month
-  releaseDay       Int?              // day of month the check is deposited (1..31)
-  numberOfMonths   Int?              // duration in months
-  signedRsaUrls    Json?             // uploaded signed RSA (Return Service Agreement) files
-  bankAccountId    String?           // default bank the release is paid from (CR)
-  expenseAccountId String?           // default scholarship-expense account (DR)
+  startMonth       String? // "YYYY-MM" — first release month
+  releaseDay       Int? // day of month the check is deposited (1..31)
+  numberOfMonths   Int? // duration in months
+  signedRsaUrls    Json? // uploaded signed RSA (Return Service Agreement) files
+  bankAccountId    String? // default bank the release is paid from (CR)
+  expenseAccountId String? // default scholarship-expense account (DR)
   createdById      String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  releases         ScholarRelease[]
+  releases ScholarRelease[]
+
   @@index([academicYear])
   @@index([school])
 }
@@ -2697,10 +2707,10 @@ model ScholarAward {
 // One recorded monthly disbursement for a scholar. Posts DR scholarship
 // expense / CR bank (refType SCHOLAR_RELEASE) so it folds into the P&L.
 model ScholarRelease {
-  id                 String   @id @default(cuid())
+  id                 String       @id @default(cuid())
   awardId            String
   award              ScholarAward @relation(fields: [awardId], references: [id], onDelete: Cascade)
-  monthKey           String   // "YYYY-MM" the release is FOR (drives the matrix)
+  monthKey           String // "YYYY-MM" the release is FOR (drives the matrix)
   date               DateTime // actual deposit date
   amount             Decimal
   bankAccountId      String?
@@ -2709,7 +2719,7 @@ model ScholarRelease {
   proofOfDepositUrls Json?
   emailedAt          DateTime?
   createdById        String?
-  createdAt          DateTime @default(now())
+  createdAt          DateTime     @default(now())
 
   @@unique([awardId, monthKey])
   @@index([awardId])
@@ -2718,64 +2728,65 @@ model ScholarRelease {
 
 // ── Loans & Advances: Advances ────────────────────────────────
 model Advance {
-  id                String   @id @default(cuid())
-  shareholderId     String?
-  name              String
-  dateAcquired      DateTime
-  advanceType       String   // CASH | KIND
-  kindType          String?
-  principalAmount   Decimal
-  hasInterest       Boolean  @default(false)
-  interestMode      String?  // ANNUAL_PCT | MONTHLY_AMORT
-  annualPct         Decimal?
-  termMonths        Int?
-  monthlyAmortization Decimal?
-  computedAnnualPct Decimal? // back-computed effective annual rate (IRR)
-  totalInterest     Decimal?
-  proofOfDepositUrls Json?
-  bankAccountId     String?  // debited (money in)
-  creditAccountId   String?  // Advances liability account (CR on release)
+  id                       String   @id @default(cuid())
+  shareholderId            String?
+  name                     String
+  dateAcquired             DateTime
+  advanceType              String // CASH | KIND
+  kindType                 String?
+  principalAmount          Decimal
+  hasInterest              Boolean  @default(false)
+  interestMode             String? // ANNUAL_PCT | MONTHLY_AMORT
+  annualPct                Decimal?
+  termMonths               Int?
+  monthlyAmortization      Decimal?
+  computedAnnualPct        Decimal? // back-computed effective annual rate (IRR)
+  totalInterest            Decimal?
+  proofOfDepositUrls       Json?
+  bankAccountId            String? // debited (money in)
+  creditAccountId          String? // Advances liability account (CR on release)
   interestExpenseAccountId String? // interest expense account
   // Which branch(es) this advance funds, as [{branch, amount}]. Drives where the
   // interest expense lands on the branch income statements — same shape and meaning
   // as Loan.branchAllocations. Null/empty = company-wide (All Branches view only).
-  branchAllocations Json?
-  payoutSchedule    String?  // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
-  payoutStartMonth  Int?
-  payoutStartYear   Int?
-  payoutDay         Int?
-  payoutAmountPerPeriod Decimal? // explicit cash-out per period (overrides derived amount)
-  repaymentMode     String?  // INTEREST_ONLY | AMORTIZING (null = legacy amortizing)
-  principalPerPeriod Decimal? // explicit principal portion per period (interest = amount − principal)
-  paymentBankAccountId String? // bank credited on each amortization payment (CR)
-  pdcUrls           Json?
-  remarks           String?
-  journalEntryId    String?
-  createdById       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  branchAllocations        Json?
+  payoutSchedule           String? // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
+  payoutStartMonth         Int?
+  payoutStartYear          Int?
+  payoutDay                Int?
+  payoutAmountPerPeriod    Decimal? // explicit cash-out per period (overrides derived amount)
+  repaymentMode            String? // INTEREST_ONLY | AMORTIZING (null = legacy amortizing)
+  principalPerPeriod       Decimal? // explicit principal portion per period (interest = amount − principal)
+  paymentBankAccountId     String? // bank credited on each amortization payment (CR)
+  pdcUrls                  Json?
+  remarks                  String?
+  journalEntryId           String?
+  createdById              String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
-  payouts           AdvancePayout[]
+  payouts AdvancePayout[]
+
   @@index([shareholderId])
 }
 
 model AdvancePayout {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   advanceId        String
-  advance          Advance  @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  advance          Advance   @relation(fields: [advanceId], references: [id], onDelete: Cascade)
   dueDate          DateTime
-  principalPortion Decimal  @default(0)
-  interestPortion  Decimal  @default(0)
+  principalPortion Decimal   @default(0)
+  interestPortion  Decimal   @default(0)
   amount           Decimal
-  status           String   @default("PENDING") // PENDING | PAID
+  status           String    @default("PENDING") // PENDING | PAID
   paidDate         DateTime?
   bankAccountId    String?
   proofUrls        Json?
   emailedAt        DateTime?
   journalEntryId   String?
   createdById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([advanceId])
   @@index([dueDate])
@@ -2783,52 +2794,53 @@ model AdvancePayout {
 
 // ── Loans & Advances: Loans ───────────────────────────────────
 model Loan {
-  id                String   @id @default(cuid())
-  loanEntity        String   // SHAREHOLDER | BANK | OTHER
-  shareholderId     String?  // when loanEntity = SHAREHOLDER
-  entityName        String?  // bank / other-institution name
-  name              String   // display name (shareholder name or entity name)
-  dateAcquired      DateTime
-  loanType          String   // CASH | CORPORATE_BOND | KIND
-  kindType          String?
-  principalAmount   Decimal
+  id                       String    @id @default(cuid())
+  loanEntity               String // SHAREHOLDER | BANK | OTHER
+  shareholderId            String? // when loanEntity = SHAREHOLDER
+  entityName               String? // bank / other-institution name
+  name                     String // display name (shareholder name or entity name)
+  dateAcquired             DateTime
+  loanType                 String // CASH | CORPORATE_BOND | KIND
+  kindType                 String?
+  principalAmount          Decimal
   // Cash / Kind interest (straight-line amortization, mirrors Advance)
-  hasInterest       Boolean  @default(false)
-  interestMode      String?  // ANNUAL_PCT | MONTHLY_AMORT
-  annualPct         Decimal?
-  termMonths        Int?
-  monthlyAmortization Decimal?
-  computedAnnualPct Decimal?
-  totalInterest     Decimal?
+  hasInterest              Boolean   @default(false)
+  interestMode             String? // ANNUAL_PCT | MONTHLY_AMORT
+  annualPct                Decimal?
+  termMonths               Int?
+  monthlyAmortization      Decimal?
+  computedAnnualPct        Decimal?
+  totalInterest            Decimal?
   // Corporate bond: annual coupon %; principal repaid at maturity
-  maturityDate      DateTime?
-  proofOfDepositUrls Json?
-  bankAccountId     String?  // debited (money in) — net of deducted charges
-  creditAccountId   String?  // Loan liability account (CR on release)
+  maturityDate             DateTime?
+  proofOfDepositUrls       Json?
+  bankAccountId            String? // debited (money in) — net of deducted charges
+  creditAccountId          String? // Loan liability account (CR on release)
   interestExpenseAccountId String?
-  payoutSchedule    String?  // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
-  payoutStartMonth  Int?
-  payoutStartYear   Int?
-  payoutDay         Int?
-  payoutAmountPerPeriod Decimal? // explicit cash-out per period (overrides derived amount)
-  repaymentMode     String?  // INTEREST_ONLY | AMORTIZING (null = legacy amortizing)
-  principalPerPeriod Decimal? // explicit principal portion per period (interest = amount − principal)
-  paymentBankAccountId String? // bank credited on each amortization/coupon payment (CR)
-  loanAgreementUrls Json?
-  pdcUrls           Json?
-  netAmountToDebit  Decimal? // principal − charges deducted from disbursement
+  payoutSchedule           String? // ANNUALLY | BIANNUALLY | QUARTERLY | MONTHLY
+  payoutStartMonth         Int?
+  payoutStartYear          Int?
+  payoutDay                Int?
+  payoutAmountPerPeriod    Decimal? // explicit cash-out per period (overrides derived amount)
+  repaymentMode            String? // INTEREST_ONLY | AMORTIZING (null = legacy amortizing)
+  principalPerPeriod       Decimal? // explicit principal portion per period (interest = amount − principal)
+  paymentBankAccountId     String? // bank credited on each amortization/coupon payment (CR)
+  loanAgreementUrls        Json?
+  pdcUrls                  Json?
+  netAmountToDebit         Decimal? // principal − charges deducted from disbursement
   // [{branch: 'SANDBOX_EAST'|…, amount}] — which branch(es) this loan funds; interest
   // expense follows this split on the branch income statements (null = company-wide)
-  branchAllocations Json?
-  remarks           String?
-  fromCreditLineId  String?  // set when this loan is a credit-line drawdown
-  journalEntryId    String?
-  createdById       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  branchAllocations        Json?
+  remarks                  String?
+  fromCreditLineId         String? // set when this loan is a credit-line drawdown
+  journalEntryId           String?
+  createdById              String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
-  charges           LoanCharge[]
-  payouts           LoanPayout[]
+  charges LoanCharge[]
+  payouts LoanPayout[]
+
   @@index([shareholderId])
   @@index([fromCreditLineId])
 }
@@ -2841,36 +2853,36 @@ model LoanCharge {
   loan              Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
   date              DateTime
   description       String
-  registeredName    String?  // supplier / payee
-  vatable           String?  // VAT | NV
+  registeredName    String? // supplier / payee
+  vatable           String? // VAT | NV
   amount            Decimal
   siNumber          String?
-  chargeAccountId   String?  // expense account (COA)
+  chargeAccountId   String? // expense account (COA)
   deductedFromDebit Boolean  @default(false)
   proofUrls         Json?
-  pettyCashEntryId  String?  // linked Expenses-history entry
+  pettyCashEntryId  String? // linked Expenses-history entry
   createdAt         DateTime @default(now())
 
   @@index([loanId])
 }
 
 model LoanPayout {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   loanId           String
-  loan             Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  loan             Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
   dueDate          DateTime
-  principalPortion Decimal  @default(0)
-  interestPortion  Decimal  @default(0)
+  principalPortion Decimal   @default(0)
+  interestPortion  Decimal   @default(0)
   amount           Decimal
-  status           String   @default("PENDING") // PENDING | PAID
+  status           String    @default("PENDING") // PENDING | PAID
   paidDate         DateTime?
   bankAccountId    String?
   proofUrls        Json?
   emailedAt        DateTime?
   journalEntryId   String?
   createdById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([loanId])
   @@index([dueDate])
@@ -2878,18 +2890,18 @@ model LoanPayout {
 
 // ── Loans & Advances: Credit Line ─────────────────────────────
 model CreditLine {
-  id            String   @id @default(cuid())
-  entityName    String   // lender / facility name
-  amount        Decimal  // total available line
-  interestPct   Decimal? // annual %
-  utilized      Boolean  @default(false)
+  id                    String    @id @default(cuid())
+  entityName            String // lender / facility name
+  amount                Decimal // total available line
+  interestPct           Decimal? // annual %
+  utilized              Boolean   @default(false)
   // "Paid full earlier" settlement
-  settledAt     DateTime?
+  settledAt             DateTime?
   settledJournalEntryId String?
-  remarks       String?
-  createdById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  remarks               String?
+  createdById           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 // ── POS settlement batches (bank rec) ────────────────────
@@ -2899,11 +2911,11 @@ model CreditLine {
 // deposit covered; an order payment can settle into at most one deposit.
 model PosSettlementBatch {
   id                String   @id @default(cuid())
-  bankTransactionId String   @unique  // the bank line this batch settles
-  paymentModeId     String?           // mode the payments were made through
+  bankTransactionId String   @unique // the bank line this batch settles
+  paymentModeId     String? // mode the payments were made through
   label             String
   grossTotal        Decimal  @default(0)
-  netTotal          Decimal  @default(0)  // gross minus mode deductions (what the bank shows)
+  netTotal          Decimal  @default(0) // gross minus mode deductions (what the bank shows)
   createdById       String?
   createdAt         DateTime @default(now())
 
@@ -2922,18 +2934,18 @@ model PosSettlementPayment {
 
 model BankTransaction {
   id                String   @id @default(cuid())
-  bankAccountId     String   // Account.id (a Chart-of-Accounts bank account)
+  bankAccountId     String // Account.id (a Chart-of-Accounts bank account)
   date              DateTime
   description       String
   spent             Decimal  @default(0)
   received          Decimal  @default(0)
-  status            String   @default("PENDING")  // PENDING | POSTED | EXCLUDED
+  status            String   @default("PENDING") // PENDING | POSTED | EXCLUDED
   fromToName        String?
-  categoryAccountId String?  // Categorise target account
-  matchType         String?  // FUND_TRANSFER | RFP | ORDER | CC_REPORT | ...
+  categoryAccountId String? // Categorise target account
+  matchType         String? // FUND_TRANSFER | RFP | ORDER | CC_REPORT | ...
   matchId           String?
   matchLabel        String?
-  journalEntryId    String?  // GL journal posted on Categorise
+  journalEntryId    String? // GL journal posted on Categorise
   note              String?
   proofUrl          String?
   // Running balance printed on the statement for this line, when the uploaded
@@ -2977,10 +2989,10 @@ model BankImportBatch {
 // also be entered by hand for dates with no exchange of their own.
 model ExchangeRate {
   id          String   @id @default(cuid())
-  currency    String   // the foreign currency, e.g. "CNY"
-  date        DateTime @db.Date  // effective date
-  phpPerUnit  Decimal  // PHP for 1 unit of `currency`
-  source      String   @default("MANUAL")  // MANUAL | FOREX_MATCH
+  currency    String // the foreign currency, e.g. "CNY"
+  date        DateTime @db.Date // effective date
+  phpPerUnit  Decimal // PHP for 1 unit of `currency`
+  source      String   @default("MANUAL") // MANUAL | FOREX_MATCH
   note        String?
   createdById String?
   createdAt   DateTime @default(now())
@@ -3008,10 +3020,10 @@ model SkuDefinition {
 model BudgetEntry {
   id          String   @id @default(cuid())
   year        Int
-  month       Int      // 1-12
-  branch      String   // Branch enum value, or 'ALL'
-  accountKey  String   // "7010 Physical Therapy Services Revenue" (accountNumber + title)
-  accountType String   // REVENUE | EXPENSE | COGS
+  month       Int // 1-12
+  branch      String // Branch enum value, or 'ALL'
+  accountKey  String // "7010 Physical Therapy Services Revenue" (accountNumber + title)
+  accountType String // REVENUE | EXPENSE | COGS
   amount      Decimal  @default(0)
   createdById String?
   createdAt   DateTime @default(now())
@@ -3042,17 +3054,17 @@ model BudgetLock {
 /// to Consultant/Employee, so retiring someone here never hides what they were paid.
 model StaffDirectory {
   id              String    @id @default(cuid())
-  externalStaffId String    @unique  // Operations Staff.id, or HR id for HR-sourced staff
-  source          String              // OPERATIONS | HR
+  externalStaffId String    @unique // Operations Staff.id, or HR id for HR-sourced staff
+  source          String // OPERATIONS | HR
   name            String
   branch          String
   department      String?
   employmentType  String?
-  activeUpstream  Boolean   @default(true)  // what the feed last said about them
+  activeUpstream  Boolean   @default(true) // what the feed last said about them
   firstSeenAt     DateTime  @default(now())
   lastSeenAt      DateTime  @default(now())
-  missingSince    DateTime?           // first sync that stopped listing them at all
-  resignedAt      DateTime?           // when we concluded they are gone (flag or absence)
+  missingSince    DateTime? // first sync that stopped listing them at all
+  resignedAt      DateTime? // when we concluded they are gone (flag or absence)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -3070,26 +3082,26 @@ model StaffDirectory {
 // through the RFP that paid it, and `advanceRfpId` / `reimbursementRfpId` point
 // at those entries. Recording it here as well would double the amounts.
 model BenefitAvailment {
-  id                  String    @id @default(cuid())
-  branch              String
-  employeeId          String?
-  employeeName        String
-  benefitType         String    // MATERNITY | SICKNESS | ECC | OTHER
-  periodFrom          DateTime?
-  periodTo            DateTime?
+  id                 String    @id @default(cuid())
+  branch             String
+  employeeId         String?
+  employeeName       String
+  benefitType        String // MATERNITY | SICKNESS | ECC | OTHER
+  periodFrom         DateTime?
+  periodTo           DateTime?
   // Advanced on the agency's behalf — the receivable (1165).
-  amountAdvanced      Decimal   @default(0)
+  amountAdvanced     Decimal   @default(0)
   // Granted by the company on top of the statutory benefit — a real expense (8340).
-  companyShare        Decimal   @default(0)
-  datePaidToEmployee  DateTime?
-  advanceRfpId        String?
-  reimbursedAmount    Decimal   @default(0)
-  reimbursedDate      DateTime?
-  reimbursementRfpId  String?
-  notes               String?
-  createdById         String
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  companyShare       Decimal   @default(0)
+  datePaidToEmployee DateTime?
+  advanceRfpId       String?
+  reimbursedAmount   Decimal   @default(0)
+  reimbursedDate     DateTime?
+  reimbursementRfpId String?
+  notes              String?
+  createdById        String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([branch])
   @@index([employeeName])
@@ -3101,19 +3113,19 @@ model BenefitAvailment {
 // posts the same JE the manual categorise action posts. 2,019 pending imports
 // motivated this — recurring payees should be categorized once, not 2,019 times.
 model BankCategoryRule {
-  id                String   @id @default(cuid())
-  pattern           String   // case-insensitive substring matched against description + fromToName
-  direction         String   @default("ANY") // OUT | IN | ANY
-  bankAccountId     String?  // limit to one bank account; null = all
+  id                String    @id @default(cuid())
+  pattern           String // case-insensitive substring matched against description + fromToName
+  direction         String    @default("ANY") // OUT | IN | ANY
+  bankAccountId     String? // limit to one bank account; null = all
   categoryAccountId String
-  fromToName        String?  // stamp a payee on matched lines
+  fromToName        String? // stamp a payee on matched lines
   // Rules only touch lines dated on/after this. Expenses before it were
   // recorded through other channels (QB imports, the petty module), and a rule
   // reaching back would count them twice.
   effectiveFrom     DateTime?
-  active            Boolean  @default(true)
+  active            Boolean   @default(true)
   createdById       String
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
   @@index([active])
 }
@@ -3124,20 +3136,20 @@ model BankCategoryRule {
 // walk down together. Salaries and taxes clear through RFPs; this is for
 // everything else, which previously had no way to close at all.
 model APItem {
-  id                    String    @id @default(cuid())
-  vendor                String
-  description           String?
-  amount                Decimal
-  dateIncurred          DateTime
-  branch                String    @default("ALL")
-  status                String    @default("OPEN")   // OPEN | CLOSED
-  closedAt              DateTime?
-  closeAccountId        String?   // what settled it: a bank account, petty cash, or an income/equity account for write-offs
-  closeNote             String?
-  closeJournalEntryId   String?
-  createdById           String
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  vendor              String
+  description         String?
+  amount              Decimal
+  dateIncurred        DateTime
+  branch              String    @default("ALL")
+  status              String    @default("OPEN") // OPEN | CLOSED
+  closedAt            DateTime?
+  closeAccountId      String? // what settled it: a bank account, petty cash, or an income/equity account for write-offs
+  closeNote           String?
+  closeJournalEntryId String?
+  createdById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([status])
 }
@@ -3162,4 +3174,41 @@ model CeoPcfHistory {
   createdAt   DateTime @default(now())
 
   @@index([branch, date])
+}
+
+/// A net-pay amount broken into instalments so each one can be paid — and bank
+/// reconciled — separately. The splits of a payslip must sum to its net pay, so
+/// nothing is created or lost by splitting; only the timing of payment changes.
+/// Once a payslip has splits, the splits (not the payslip) are what gets put in
+/// an RFP and marked remitted; the parent flips to remitted when all of its
+/// splits are, so every existing report keeps working unchanged.
+model SalaryPayableSplit {
+  id                String  @id @default(cuid())
+  /// Exactly one of these is set — employees and consultants live in
+  /// different tables but split identically.
+  employeePayslipId String?
+  payrollEntryId    String?
+  seq               Int /// 1-based, for stable display order
+  amount            Decimal @db.Decimal(12, 2)
+  note              String?
+
+  salariesRemitted Boolean   @default(false)
+  salaryRfpId      String? /// set while included in a Salaries-Payable RFP
+  salaryPaymentId  String?
+  paidAt           DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  employeePayslip EmployeePayslip? @relation(fields: [employeePayslipId], references: [id], onDelete: Cascade)
+  payrollEntry    PayrollEntry?    @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+
+  @@unique([employeePayslipId, seq])
+  @@unique([payrollEntryId, seq])
+  @@index([employeePayslipId])
+  @@index([payrollEntryId])
+  @@index([salaryRfpId])
+  @@index([salariesRemitted])
+  @@index([salaryPaymentId])
 }
