@@ -9,7 +9,7 @@ import {
   RefreshCw, Ban, Star, Filter, Undo2, RotateCcw,
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
-  Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign,
+  Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign, Wand2,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
@@ -7765,6 +7765,10 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [loading, setLoading] = useState(false)
   const [actualAmounts, setActualAmounts] = useState<Record<string, Record<string, number>>>({})
   const [confirmed, setConfirmed] = useState<Record<string, Record<string, boolean>>>({})
+  // Which OK ticks bank rec set for us: { date: { method: true } }
+  const [autoConfirmed, setAutoConfirmed] = useState<Record<string, Record<string, boolean>>>({})
+  const [autoTagging, setAutoTagging] = useState(false)
+  const [autoResult, setAutoResult] = useState<string | null>(null)
   const [remarks, setRemarks] = useState<Record<string, Record<string, string>>>({}) // { date: { method: remark } }
   // cleared days: { "YYYY-MM-DD|branch": true }
   const [clearedDays, setClearedDays] = useState<Record<string, { clearedAt: string; clearedById: string }>>({})
@@ -7820,6 +7824,8 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         const map: Record<string, { clearedAt: string; clearedById: string }> = {}
         const dbActualAmounts: Record<string, Record<string, number>> = {}
         const dbRemarks: Record<string, Record<string, string>> = {}
+        const dbConfirmed: Record<string, Record<string, boolean>> = {}
+        const dbAuto: Record<string, Record<string, boolean>> = {}
         for (const rec of data) {
           if (rec.isCleared) {
             map[`${rec.date}|${rec.branch}`] = { clearedAt: rec.clearedAt, clearedById: rec.clearedById }
@@ -7836,8 +7842,28 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
               if (item.remarks) dbRemarks[rec.date][item.method] = item.remarks
             }
           }
+          if (Array.isArray(rec.confirmed)) {
+            dbConfirmed[rec.date] = {}
+            dbAuto[rec.date] = {}
+            for (const item of rec.confirmed as { method: string; confirmed: boolean; source?: string }[]) {
+              dbConfirmed[rec.date][item.method] = !!item.confirmed
+              if (item.source === 'BANK_REC') dbAuto[rec.date][item.method] = true
+            }
+          }
         }
         setClearedDays(map)
+        setConfirmed(prev => {
+          const merged = { ...prev }
+          for (const [d, methods] of Object.entries(dbConfirmed)) {
+            const dayMerged = { ...(merged[d] || {}) }
+            for (const [method, v] of Object.entries(methods)) {
+              if (dayMerged[method] === undefined) dayMerged[method] = v
+            }
+            merged[d] = dayMerged
+          }
+          return merged
+        })
+        setAutoConfirmed(dbAuto)
         // Merge DB saved data per method: preserve any field the user has already edited locally,
         // but fill in DB values for methods the user hasn't touched yet.
         setActualAmounts(prev => {
@@ -7943,6 +7969,9 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
       const remarksList = allMethodKeys
         .map(m => ({ method: m, remarks: getRemark(day, m) }))
         .filter(r => r.remarks)
+      const confirmedList = allMethodKeys
+        .filter(m => isConfirmed(day, m))
+        .map(m => ({ method: m, confirmed: true, source: autoConfirmed[day]?.[m] ? 'BANK_REC' : 'USER' }))
       await fetch('/api/pos/sales-clearing', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -7951,6 +7980,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           branch: br,
           actualAmounts: amountsList,
           remarks: remarksList.length ? remarksList : null,
+          confirmed: confirmedList,
         }),
       })
       setSavedDayFeedback(prev => ({ ...prev, [day]: true }))
@@ -7973,6 +8003,9 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
       const remarksList = allMethodKeys
         .map(m => ({ method: m, remarks: getRemark(day, m) }))
         .filter(r => r.remarks)
+      const confirmedList = allMethodKeys
+        .filter(m => isConfirmed(day, m))
+        .map(m => ({ method: m, confirmed: true, source: autoConfirmed[day]?.[m] ? 'BANK_REC' : 'USER' }))
       const res = await fetch('/api/pos/sales-clearing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -7981,6 +8014,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           branch: br,
           actualAmounts: amountsList,
           remarks: remarksList.length ? remarksList : null,
+          confirmed: confirmedList,
         }),
       })
       if (!res.ok) {
@@ -8001,6 +8035,35 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     if (!br) return
     await fetch(`/api/pos/sales-clearing?date=${day}&branch=${br}`, { method: 'DELETE' })
     await fetchClearing()
+  }
+
+  // Fill this range from what bank reconciliation already accounts for: a day's
+  // method is ticked only when every one of its payments is linked to a
+  // reconciled bank line, and figures the accountant typed are never overwritten.
+  const runAutoTag = async () => {
+    const br = selectedBranch || branch
+    if (!br) return
+    setAutoTagging(true)
+    setAutoResult(null)
+    try {
+      const res = await fetch('/api/pos/sales-clearing/auto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: br, dateFrom, dateTo }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setAutoResult(d.error || `Failed (${res.status})`); return }
+      const kept = (d.days || []).reduce((n: number, x: { skipped?: string[] }) => n + (x.skipped?.length || 0), 0)
+      setAutoResult(
+        `Tagged ${d.tagged} method row(s) across ${(d.days || []).length} day(s); ${d.cleared} day(s) cleared.`
+        + (kept ? ` ${kept} row(s) left alone — already filled in by hand.` : '')
+      )
+      await fetchClearing()
+    } catch (e) {
+      setAutoResult(e instanceof Error ? e.message : 'Network error')
+    } finally {
+      setAutoTagging(false)
+    }
   }
 
   // Calendar: days that have sales data
@@ -8037,7 +8100,17 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
           className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        <button onClick={runAutoTag} disabled={autoTagging}
+          title="Fill Actual Amounts and tick OK for every day whose payments are already matched to a bank line in Bank Reconciliation"
+          className="px-4 py-2 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5"
+          style={{ background: 'var(--teal)', opacity: autoTagging ? 0.6 : 1, cursor: autoTagging ? 'not-allowed' : 'pointer' }}>
+          {autoTagging ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
+          {autoTagging ? 'Tagging…' : 'Auto-tag from bank rec'}
+        </button>
       </div>
+      {autoResult && (
+        <p className="text-xs -mt-2" style={{ color: 'var(--deep-teal)' }}>{autoResult}</p>
+      )}
 
       {loading ? (
         <div className="py-12 text-center"><Loader2 size={20} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
@@ -8089,10 +8162,17 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                             {actualAmt ? (diff >= 0 ? '+' : '') + formatCurrency(diff) : '—'}
                           </td>
                           <td className="px-4 py-2 text-center">
-                            {diff === 0 && actualAmt > 0 ? (
+                            {/* Bank rec's own tick stands even when Difference is non-zero — a card
+                                settlement legitimately lands net of merchant fees. */}
+                            {autoConfirmed[day]?.[method] ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}
+                                title="Matched in Bank Reconciliation">
+                                <CheckCircle size={12} /> Bank rec
+                              </span>
+                            ) : actualAmt > 0 ? (
                               <label className="cursor-pointer">
                                 <input type="checkbox" checked={isConfirmed(day, method)}
-                                  onChange={() => toggleConfirm(day, method)} className="rounded" />
+                                  onChange={() => { toggleConfirm(day, method); debouncedSave(day) }} className="rounded" />
                               </label>
                             ) : (
                               <span className="text-xs" style={{ color: 'var(--light-gray)' }}>—</span>

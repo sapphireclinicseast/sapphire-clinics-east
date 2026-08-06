@@ -1865,6 +1865,10 @@ model SalesDayClearing {
   isCleared     Boolean  @default(false) // true = officially cleared; false = draft-saved only
   actualAmounts Json?    // [{ method: string, amount: number }]
   remarks       Json?    // [{ method: string, remarks: string }]
+  // Per-method OK ticks: [{ method, confirmed, source }]. source 'BANK_REC' means
+  // the tick was set automatically because every one of that day's payments on
+  // that method is linked to a reconciled bank line; 'USER' means hand-ticked.
+  confirmed     Json?
   updatedAt     DateTime @updatedAt
 
   @@unique([date, branch])
