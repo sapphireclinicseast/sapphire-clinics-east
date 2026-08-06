@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postFundTransferJE, removeFundTransferJE } from '@/lib/fund-transfer-je'
 import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
 import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 import { applyBankRules } from '@/lib/bank-rec-rules'
@@ -383,6 +384,8 @@ export async function PATCH(req: Request) {
             data: { status: 'POSTED', matchType: 'INTERBANK', matchId: created.id, matchLabel: label, categoryAccountId: null },
           })
         }
+        // The transfer moves cash in the ledger, not just between the two lines.
+        await postFundTransferJE(tx, created.id, session.user!.id ?? null)
         return created
       })
       return NextResponse.json({ success: true, refNumber: transfer.refNumber })
@@ -462,6 +465,7 @@ export async function PATCH(req: Request) {
             where: { id: { in: both.map(b => b.id) } },
             data: { status: 'PENDING', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null },
           })
+          await removeFundTransferJE(tx, txn.matchId!)
           await tx.fundTransfer.delete({ where: { id: txn.matchId! } }).catch(() => {})
         })
         return NextResponse.json({ success: true, released: both.length })
