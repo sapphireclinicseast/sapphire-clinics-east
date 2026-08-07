@@ -651,22 +651,29 @@ export async function computeLedgerStatements(
 
   /* ── 5. Petty cash (never posts to the GL) — same rules as the v1 report ── */
   /**
-   * The float a branch's petty cash vouchers are spent out of.
+   * The account a branch's petty cash vouchers are spent out of — its real BDO
+   * Petty Cash bank account, never a separate "on hand" float.
    *
-   * This used to be `findByTitle(/petty cash/i, 'ASSET')` — the FIRST account
-   * whose title mentions petty cash, for every branch. That resolved to
-   * 013820011174 AHGH BDO Petty Cash, so East's and Verdana's spending was
-   * credited to Greenhills' account: 1174 sank to -P12.98M in 2024 while
-   * 11300 AHEA Petty Cash on Hand climbed to +P2.34M with nothing ever spent
-   * out of it. Each branch now draws on its own "<PREFIX> Petty Cash on Hand".
+   * The 11300-11314 "Petty Cash on Hand" accounts have been retired. They only
+   * ever received (11300 reached +P2.34M) or only ever paid out, because the
+   * replenishment landed in the bank account while the spending was booked to
+   * the float, and the two halves never met. Worse, a float carries no bank
+   * statement, so no true-up could ever correct it. One account per branch
+   * holds the whole petty cash pool and the bank statement keeps it honest.
+   *
+   * Still resolved per branch: an unqualified /petty cash/ search returns the
+   * FIRST matching account for every branch, which is how East's and Verdana's
+   * spending once landed on Greenhills' 013820011174 and sank it to -P12.98M.
+   * A branch with no petty cash account of its own falls back to its default
+   * bank rather than borrowing another branch's.
    */
   const pcCashFor = (b: string): AcctInfo => {
     const p = BRANCH_PREFIX[b]
     if (p) {
-      const onHand = new RegExp(`^${p} petty cash on hand$`, 'i')
-      for (const a of byNumber.values()) if (a.type === 'ASSET' && onHand.test(a.title)) return a
+      const own = new RegExp(`^${p}\\b.*petty cash`, 'i')
+      for (const a of byNumber.values()) if (a.type === 'ASSET' && own.test(a.title)) return a
     }
-    return findByTitle(/petty cash on hand/i, 'ASSET') || defaultCash(b)
+    return defaultCash(b)
   }
   /**
    * Where the money actually left from.

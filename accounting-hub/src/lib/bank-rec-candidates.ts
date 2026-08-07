@@ -153,11 +153,13 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     // wherever it is offered, or it would still appear at full value in the
     // account it names while its deposits are offered in another.
     prisma.equityDeposit.findMany({ select: { commonShareId: true, preferredShareId: true } }),
-    // "Petty Cash on Hand" accounts stand for the physical cash box. A transfer
-    // whose destination is one of them is a replenishment withdrawal — labelled
-    // as such so the bank's withdrawal line reads like what it is.
+    // A transfer into a branch's petty cash account is a replenishment —
+    // labelled as such so the bank's withdrawal line reads like what it is.
+    // This used to key off the separate "Petty Cash on Hand" floats; those are
+    // retired, and each branch's BDO Petty Cash account now holds the whole
+    // pool, so the match is on "Petty Cash" alone.
     prisma.account.findMany({
-      where: { accountTitle: { contains: 'Petty Cash on Hand', mode: 'insensitive' } },
+      where: { accountTitle: { contains: 'Petty Cash', mode: 'insensitive' } },
       select: { id: true },
     }),
   ])
