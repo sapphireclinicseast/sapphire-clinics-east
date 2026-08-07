@@ -668,6 +668,26 @@ export async function computeLedgerStatements(
     }
     return findByTitle(/petty cash on hand/i, 'ASSET') || defaultCash(b)
   }
+  /**
+   * Where the money actually left from.
+   *
+   * Only PETTY_CASH vouchers are spent out of a branch's float. ONE_TIME rows
+   * are RFPs and imported QuickBooks expenses settled from a bank account — or
+   * offset against an advance / due-from-employee, which `paymentBankAccount`
+   * names explicitly. Crediting those to the float is what drove 11300/11310/
+   * 11312 to -P8.09M across 2026 against roughly P160k of genuine vouchers and
+   * P247k of replenishment: the float is not a bank account, so no statement
+   * can ever true it back, and that fiction flowed straight into Ending Cash.
+   */
+  const settlementFor = (e: { recordType: string | null; paymentBankAccount: string | null; branch: string | null }): AcctInfo => {
+    if (e.recordType === 'PETTY_CASH') return pcCashFor(e.branch || branch)
+    // Resolve by number only. parseAccountKey would invent a virtual EXPENSE
+    // account for anything unrecognized, which would book the payment a second
+    // time as cost instead of relieving cash.
+    const num = (e.paymentBankAccount || '').trim().match(/^(\d{4,})\s/)?.[1]
+    if (num && byNumber.get(num)) return byNumber.get(num)!
+    return defaultCash(e.branch || branch)
+  }
   const pcEntries = await prisma.pettyCashEntry.findMany({
     where: {
       date: { gte: start, lt: end },
@@ -675,7 +695,7 @@ export async function computeLedgerStatements(
     },
     // branch comes along so an All-Branches run can draw each voucher on its
     // own float rather than lumping every branch onto one.
-    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, skipReports: true, pcvNumber: true, description: true, branch: true },
+    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, skipReports: true, pcvNumber: true, description: true, branch: true, paymentBankAccount: true },
   })
   let pcCount = 0
   for (const e of pcEntries) {
@@ -690,7 +710,7 @@ export async function computeLedgerStatements(
     postBalanced('petty-cash', monthOf(e.date), `PCV ${e.pcvNumber}${e.description ? ` — ${e.description}` : ''}`, [
       { acct: parseAccountKey(e.accountTitle), debit: net },
       ...(vat > 0.005 ? [{ acct: inputVat(), debit: vat }] : []),
-      { acct: pcCashFor(e.branch || branch), credit: gross },
+      { acct: settlementFor(e), credit: gross },
     ])
   }
   if (pcCount) validation.synthesized.push(`petty-cash (${pcCount})`)
@@ -850,15 +870,46 @@ export async function computeLedgerStatements(
       // last statement balance seen in each month, per account
       const byAcctMonth = new Map<string, Map<number, number>>()
       const firstMonth = new Map<string, number>()
-      const lastMonth = new Map<string, number>()
       for (const t of stmtLines) {
         const m = t.date.getUTCMonth() + 1
         if (!byAcctMonth.has(t.bankAccountId)) byAcctMonth.set(t.bankAccountId, new Map())
         byAcctMonth.get(t.bankAccountId)!.set(m, Number(t.statementBalance))
         if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
-        lastMonth.set(t.bankAccountId, m)
       }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
+
+      /* The period OPENING has to be trued too, not just the month ends.
+         Every BeginningBalance row is dated 2026-01-01 while the statements run
+         from 2024, so the sheet opened the year on a ledger figure the bank had
+         already disagreed with. Truing month ends but not the opening left
+         Beginning Cash and Ending Cash resting on two different sources, which
+         is exactly what stopped the cash flow tying to the bank. The offset
+         goes to the same visible 3990 line, so assets = liabilities + equity
+         still holds at the opening. */
+      // Only the LAST line before the period matters, so let Postgres pick it
+      // rather than shipping every historical statement line to the app just to
+      // overwrite it: the years before 2026 hold tens of thousands of rows.
+      const priorLines = await prisma.$queryRaw<{ bankAccountId: string; statementBalance: unknown }[]>`
+        SELECT DISTINCT ON ("bankAccountId") "bankAccountId", "statementBalance"
+        FROM "BankTransaction"
+        WHERE date < ${start} AND "statementBalance" IS NOT NULL AND status IN ('PENDING','POSTED')
+        ORDER BY "bankAccountId", date DESC, id DESC`
+      const bankOpening = new Map<string, number>()
+      for (const t of priorLines) bankOpening.set(t.bankAccountId, Number(t.statementBalance))
+      let openingTrued = 0
+      for (const n of bankFlagged) {
+        const acct = byNumber.get(n)
+        if (!acct?.id) continue
+        const bankOpen = bankOpening.get(acct.id)
+        if (bankOpen === undefined) continue
+        const delta = round2(bankOpen - (opening.get(n) || 0))
+        if (Math.abs(delta) < 0.01) continue
+        opening.set(n, bankOpen)                                             // cash: debit-normal
+        opening.set(pendReconcile.number, round2((opening.get(pendReconcile.number) || 0) + delta)) // equity: credit-normal
+        openingTrued++
+      }
+      if (openingTrued) validation.synthesized.push(`bank-opening-trueup (${openingTrued})`)
+
       let trueups = 0
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
@@ -867,7 +918,6 @@ export async function computeLedgerStatements(
         if (!months) continue
         const mm = movMonthly.get(n)
         const firstM = firstMonth.get(acct.id) ?? 1
-        const lastM = lastMonth.get(acct.id) ?? 12
         // Walk the year: at each month end the sheet should read what the bank
         // read. Only the CHANGE in the required adjustment is posted, so each
         // month carries its own correction and none carries the whole year's.
@@ -879,11 +929,14 @@ export async function computeLedgerStatements(
           const stmt = months.get(m)
           if (stmt !== undefined) lastKnown = stmt
           // Before the account's first statement line there is nothing to true
-          // to. After the LAST one, hold the correction already carried and stop
-          // truing: the bank has simply not told us about those months yet, and
-          // re-truing to a stale balance would cancel genuine ledger movement
-          // instead of reconciling it.
-          if (m < firstM || m > lastM || lastKnown === null) continue
+          // to. After the last one the account is HELD at the bank's last known
+          // balance rather than left to drift on ledger movement alone: the
+          // months after the final statement are exactly the ones whose entries
+          // Bank Rec has not confirmed, and letting them move cash is what put
+          // P977k on 004680350310 against a bank that reads 0.00. The drift is
+          // not discarded — it lands on the visible 3990 line and comes back the
+          // moment the next statement is imported.
+          if (m < firstM || lastKnown === null) continue
           const want = round2(lastKnown - (ledger + carried))
           if (Math.abs(want) < 0.01) continue
           postBalanced('bank-trueup', m, `True-up to bank statement — ${acct.title}`, [
@@ -894,6 +947,39 @@ export async function computeLedgerStatements(
           trueups++
         }
       }
+
+      /* A physical cash float cannot hold less than nothing.
+         Petty cash floats have no statement to true to, so nothing catches them
+         when vouchers are recorded but the replenishment that funded them is
+         not: across 2026 that put 11300/11301/11309/11310/11312/11314 at
+         -P592k, which is not negative cash — it is spending whose funding is
+         missing from the ledger. Each un-banked cash account is therefore held
+         at its floor of zero and the shortfall goes to the same visible 3990
+         line, so Cash stays truthful and the size of the gap stays legible.
+         It disappears by itself once the replenishments are recorded. */
+      let floored = 0
+      for (const acct of byNumber.values()) {
+        if (acct.virtual || !acct.id) continue
+        if (!(bankFlagged.has(acct.number) || isCashAccount(acct))) continue
+        if (byAcctMonth.has(acct.id)) continue        // has statements — trued above
+        const mm = movMonthly.get(acct.number)
+        let raw = opening.get(acct.number) || 0
+        let carried = 0
+        for (let m = 1; m <= 12; m++) {
+          raw += (mm?.debit[m] || 0) - (mm?.credit[m] || 0)
+          const want = round2(Math.max(0, -raw))      // lift just to zero, never above
+          const delta = round2(want - carried)
+          if (Math.abs(delta) < 0.01) continue
+          postBalanced('float-floor', m, `Unfunded petty cash float — ${acct.title}`, [
+            delta < 0 ? { acct, credit: -delta } : { acct, debit: delta },
+            delta < 0 ? { acct: pendReconcile, debit: -delta } : { acct: pendReconcile, credit: delta },
+          ])
+          carried = want
+          floored++
+        }
+      }
+      if (floored) validation.synthesized.push(`unfunded-float-floor (${floored})`)
+
       if (trueups) {
         validation.synthesized.push(`bank-statement-trueup (${trueups})`)
         validation.notes.push(
@@ -1022,63 +1108,17 @@ export async function computeLedgerStatements(
   const ledgerBeginningCash = round2(cashRows.reduce((s, r) => s + r.opening, 0))
   const ledgerEndingCash = round2(cashRows.reduce((s, r) => s + r.closing, 0))
 
-  /* ── Anchor cash to the bank, not to the ledger ─────────────────────
-     Beginning and Ending Cash must be what the bank actually held, or the
-     statement is describing a company that does not exist. The ledger only
-     knows what has been categorized, so while Bank Rec has a backlog its cash
-     drifts — far enough at one point to report negative millions.
-
-     Each bank account carries the bank's OWN running balance on every imported
-     line, so the period's opening is the last balance before it starts and each
-     month's close is the last balance inside that month (carried forward when a
-     month has no lines). Accounts with no imported statement keep their ledger
-     figures. Whatever the ledger cannot yet explain is not hidden: it lands on
-     one visible reconciling line inside operating activities, so
-     Beginning + Net Change = Ending still holds exactly. */
-  const bankAnchor = { begin: 0, close: Array(13).fill(0) as number[], have: false, accounts: 0 }
-  try {
-    const acctIdOf = (n: string) => byNumber.get(n)?.id || null
-    const cashAcctIds = cashRows.map(r => acctIdOf(r.number)).filter(Boolean) as string[]
-    if (cashAcctIds.length) {
-      const anchorLines = await prisma.bankTransaction.findMany({
-        where: { bankAccountId: { in: cashAcctIds }, statementBalance: { not: null }, date: { lt: end } },
-        orderBy: [{ date: 'asc' }, { id: 'asc' }],
-        select: { bankAccountId: true, date: true, statementBalance: true },
-      })
-      // per account: balance before the period, and the last balance in each month
-      const perAcct = new Map<string, { before: number | null; byMonth: Map<number, number> }>()
-      for (const t of anchorLines) {
-        let a = perAcct.get(t.bankAccountId)
-        if (!a) { a = { before: null, byMonth: new Map() }; perAcct.set(t.bankAccountId, a) }
-        if (t.date < start) a.before = Number(t.statementBalance)
-        else a.byMonth.set(monthOf(t.date), Number(t.statementBalance))
-      }
-      for (const r of cashRows) {
-        const aid = acctIdOf(r.number)
-        const a = aid ? perAcct.get(aid) : undefined
-        if (!a || (a.before === null && a.byMonth.size === 0)) {
-          // no statement for this account — keep what the ledger says
-          bankAnchor.begin += r.opening
-          let led = r.opening
-          for (let m = 1; m <= 12; m++) { led += r.monthly[m - 1] || 0; bankAnchor.close[m] += led }
-          continue
-        }
-        bankAnchor.have = true
-        bankAnchor.accounts++
-        const open = a.before ?? r.opening
-        bankAnchor.begin += open
-        let running = open
-        for (let m = 1; m <= 12; m++) {
-          const seen = a.byMonth.get(m)
-          if (seen !== undefined) running = seen        // the bank's own close for this month
-          bankAnchor.close[m] += running                 // otherwise hold the last known balance
-        }
-      }
-    }
-  } catch { /* bank-rec tables are optional */ }
-
-  const beginningCash = bankAnchor.have ? round2(bankAnchor.begin) : ledgerBeginningCash
-  const endingCash = bankAnchor.have ? round2(bankAnchor.close[12]) : ledgerEndingCash
+  /* ── Cash comes from the balance sheet, which §8 has already trued ──
+     The cash flow and the balance sheet must be the same statement seen two
+     ways: Ending Cash IS the balance sheet's cash line, or one of them is
+     lying. This used to run a SECOND, independent bank anchor here, and the two
+     mechanisms disagreed — §8 lets real ledger movement through after an
+     account's last statement line while the anchor held that balance flat — so
+     the sheet said one thing and the cash flow another.
+     There is now one source: §8 trues each bank account to the bank month by
+     month (and now at the opening too), and both statements read those rows. */
+  const beginningCash = ledgerBeginningCash
+  const endingCash = ledgerEndingCash
 
   /* ── Cash honesty check: ledger cash vs imported bank statements ──
      The ledger can only see recorded transactions. Bank Rec imports carry the
@@ -1222,31 +1262,46 @@ export async function computeLedgerStatements(
     wcTotal += effect
   }
 
-  // Cash is stated at the bank (above). Anything the ledger cannot yet account
-  // for shows here by name rather than silently bending a section total, so
-  // Beginning + Net Change = Ending holds and the size of the gap stays visible.
-  if (bankAnchor.have) {
-    const bankChange = round2(endingCash - beginningCash)
-    const ledgerChange = round2(ledgerEndingCash - ledgerBeginningCash)
-    const unreconciled = round2(bankChange - ledgerChange)
-    if (Math.abs(unreconciled) >= 0.005) {
-      const bankMonthly = Array.from({ length: 12 }, (_, i) =>
-        round2(bankAnchor.close[i + 1] - (i === 0 ? beginningCash : bankAnchor.close[i])))
-      const ledgerMonthly = sumMonthlyOf(cashRows)
-      workingCapital.push({
-        label: 'Bank reconciliation — movement not yet in the ledger',
-        amount: unreconciled,
-        monthly: bankMonthly.map((b, i) => round2(b - (ledgerMonthly[i] || 0))),
-      })
-      wcTotal += unreconciled
-      validation.notes.push(
-        `Beginning and Ending Cash are stated at the bank's own balances from the imported statements ` +
-        `(${bankAnchor.accounts} account(s)). The ledger explains ${ledgerChange.toLocaleString('en-PH', { minimumFractionDigits: 2 })} of the ` +
-        `${bankChange.toLocaleString('en-PH', { minimumFractionDigits: 2 })} movement; the remaining ` +
-        `${unreconciled.toLocaleString('en-PH', { minimumFractionDigits: 2 })} sits on the ` +
-        `"Bank reconciliation" line and shrinks as pending Bank Reconciliation lines are categorized.`,
-      )
-    }
+  // Per-month chain for the monthly/quarterly cash-flow view — same buckets,
+  // month by month. Cash delta per month is the balance sheet's own cash
+  // movement, so every column of the cash flow ends where the sheet does.
+  const revM = sumMonthlyOf(revRows), discM = sumMonthlyOf(discRows), cogsM = sumMonthlyOf(cogsRows)
+  const opexM = sumMonthlyOf(opexRows), depM = sumMonthlyOf(depRows), intM = sumMonthlyOf(intRows), nonopM = sumMonthlyOf(nonopRows)
+  const ebtM = Array.from({ length: 12 }, (_, i) =>
+    round2(revM[i] - discM[i] - cogsM[i] - opexM[i] - depM[i] - intM[i] - nonopM[i]))
+  const cashM = sumMonthlyOf(cashRows)
+  const cfMonthly = {
+    netIncome: ebtM.map(e => round2(e * (1 - INCOME_TAX_RATE))),
+    depreciation: depM,
+    taxProvision: ebtM.map(e => round2(e * INCOME_TAX_RATE)),
+    cashDelta: cashM,
+  }
+
+  /* The balance sheet's cash movement is the truth this statement has to
+     explain. Where the activity sections cannot yet account for all of it the
+     remainder is named on its own line rather than quietly breaking the tie —
+     it is the uncategorized Bank Rec backlog, and it shrinks as lines are
+     categorized. Without this the sections silently disagreed with cash. */
+  const monthlyOf = (ls: { monthly?: number[] }[]) =>
+    Array.from({ length: 12 }, (_, i) => ls.reduce((t, l) => t + (l.monthly?.[i] || 0), 0))
+  const impliedTotal = round2(netIncome + depreciation + taxProvision + wcTotal + invTotal + finTotal)
+  const residual = round2(round2(endingCash - beginningCash) - impliedTotal)
+  if (Math.abs(residual) >= 0.005) {
+    const impliedM = Array.from({ length: 12 }, (_, i) => round2(
+      (cfMonthly.netIncome[i] || 0) + (cfMonthly.depreciation[i] || 0) + (cfMonthly.taxProvision[i] || 0)
+      + monthlyOf(workingCapital)[i] + monthlyOf(investing)[i] + monthlyOf(financing)[i]))
+    workingCapital.push({
+      label: 'Uncategorized bank movement (pending Bank Reconciliation)',
+      amount: residual,
+      monthly: cashM.map((c, i) => round2(c - impliedM[i])),
+    })
+    wcTotal += residual
+    validation.notes.push(
+      `Beginning and Ending Cash are the balance sheet's own cash line, trued to the imported bank statements. ` +
+      `${residual.toLocaleString('en-PH', { minimumFractionDigits: 2 })} of the movement is not yet explained by any ` +
+      `activity section and sits on the "Uncategorized bank movement" line; it shrinks as pending Bank Reconciliation ` +
+      `lines are categorized.`,
+    )
   }
 
   const netOperating = round2(netIncome + depreciation + taxProvision + wcTotal)
@@ -1255,21 +1310,6 @@ export async function computeLedgerStatements(
   const netChange = round2(netOperating + netInvesting + netFinancing)
   const actualChange = round2(endingCash - beginningCash)
   validation.cfTies = Math.abs(netChange - actualChange) < 0.02
-
-  // Per-month chain for the monthly/quarterly cash-flow view — same buckets,
-  // month by month. Cash delta per month comes straight from the cash accounts.
-  const revM = sumMonthlyOf(revRows), discM = sumMonthlyOf(discRows), cogsM = sumMonthlyOf(cogsRows)
-  const opexM = sumMonthlyOf(opexRows), depM = sumMonthlyOf(depRows), intM = sumMonthlyOf(intRows), nonopM = sumMonthlyOf(nonopRows)
-  const ebtM = Array.from({ length: 12 }, (_, i) =>
-    round2(revM[i] - discM[i] - cogsM[i] - opexM[i] - depM[i] - intM[i] - nonopM[i]))
-  const cfMonthly = {
-    netIncome: ebtM.map(e => round2(e * (1 - INCOME_TAX_RATE))),
-    depreciation: depM,
-    taxProvision: ebtM.map(e => round2(e * INCOME_TAX_RATE)),
-    cashDelta: bankAnchor.have
-      ? Array.from({ length: 12 }, (_, i) => round2(bankAnchor.close[i + 1] - (i === 0 ? beginningCash : bankAnchor.close[i])))
-      : sumMonthlyOf(cashRows),
-  }
 
   const isSections = [
     { key: 'REVENUE', label: 'Gross Revenue', rows: revRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: grossRevenue },
