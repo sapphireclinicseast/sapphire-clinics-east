@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { chequeDigits } from '@/lib/cheque-number'
+import { chequeDigits, chequeKey } from '@/lib/cheque-number'
 
 /**
  * Check Release Monitoring — GET /api/fund-transfers/checks?accountId=<id|all>
@@ -140,7 +140,7 @@ export async function GET(req: Request) {
   // separate cheques — and the register's own amount is what the cheque was for,
   // never the sum of the lines, which may be incomplete.
   const regByNumber = new Map<string, typeof register[number]>()
-  for (const r of register) regByNumber.set(`${chequeDigits(r.checkNumber) || r.checkNumber}|${acctById.get(r.accountId) || ''}`, r)
+  for (const r of register) regByNumber.set(`${chequeKey(r.checkNumber) || r.checkNumber}|${acctById.get(r.accountId) || ''}`, r)
 
   // A cheque book lists cheques. Anything whose reference names another
   // instrument — a telegraphic transfer keeps its bank reference in the same
@@ -155,7 +155,9 @@ export async function GET(req: Request) {
   // whose `items` carry what made it up.
   const byCheque = new Map<string, Group>()
   for (const r of cheques) {
-    const key = `${r.checkNumber}|${r.bankAccount}`
+    // Identity ignores zero-padding: the book writes 273801, the hub stores
+    // 0000273801, and those are the same cheque.
+    const key = `${chequeKey(r.checkNumber) || r.checkNumber}|${r.bankAccount}`
     const g = byCheque.get(key)
     if (!g) {
       byCheque.set(key, {
@@ -167,6 +169,8 @@ export async function GET(req: Request) {
     }
     g.amount += r.amount
     g.items.push(r)
+    // Show the fullest form of the number that any record carries.
+    if (r.checkNumber.length > g.checkNumber.length) g.checkNumber = r.checkNumber
     if (!g.date || (r.date && r.date < g.date)) g.date = r.date
     if (g.source !== r.source) g.source = 'Multiple'
     if (g.payee !== r.payee) g.payee = g.payee || r.payee

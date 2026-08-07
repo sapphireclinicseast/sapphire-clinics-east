@@ -32,5 +32,21 @@ export function chequeDigits(raw: string | null | undefined): string | null {
 /** True when this reference should appear in Check Release Monitoring. */
 export const isCheque = (raw: string | null | undefined): boolean => chequeDigits(raw) !== null
 
+/**
+ * The identity of a cheque, for comparing two records that mean the same leaf.
+ *
+ * The same cheque is written down two ways: the chequebook records it as the
+ * teller writes it (273801) while the hub records the number printed on the
+ * cheque, zero-padded (0000273801) and sometimes prefixed with the bank. Those
+ * are one cheque, so identity ignores the padding — only the value matters.
+ * Display keeps whichever form was recorded; this is purely for matching.
+ */
+export function chequeKey(raw: string | null | undefined): string | null {
+  const d = chequeDigits(raw)
+  if (!d) return null
+  const stripped = d.replace(/^0+/, '')
+  return stripped === '' ? '0' : stripped
+}
+
 /** What the user types, reduced to what we store. Used by the cheque-number inputs. */
 export const toChequeInput = (raw: string): string => (raw || '').replace(/\D/g, '').slice(0, MAX_DIGITS)
