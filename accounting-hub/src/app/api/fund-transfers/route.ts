@@ -15,8 +15,17 @@ export async function GET() {
   const label = (id: string) => { const a = accounts.find(x => x.id === id); return a ? `${a.accountNumber} — ${a.accountTitle}` : '—' }
   // How many of this transfer's two bank legs are matched in Bank Reconciliation
   // (0, 1 or 2) — the star on the list.
+  //
+  // A leg counts whichever way it was reconciled. Confirming an interbank pair
+  // or a currency exchange in bank rec CREATES the fund transfer and links both
+  // lines to it by matchId, but labels them INTERBANK / FOREX rather than
+  // FUND_TRANSFER. Counting only the latter therefore showed transfers that are
+  // fully reconciled as having no legs at all — 67 of them, the entire interbank
+  // and forex population.
   const legAgg = await prisma.bankTransaction.groupBy({
-    by: ['matchId'], where: { matchType: 'FUND_TRANSFER', matchId: { in: transfers.map(t => t.id) } }, _count: { _all: true },
+    by: ['matchId'],
+    where: { matchType: { in: ['FUND_TRANSFER', 'INTERBANK', 'FOREX'] }, matchId: { in: transfers.map(t => t.id) } },
+    _count: { _all: true },
   })
   const legs = new Map(legAgg.map(l => [l.matchId as string, l._count._all]))
   return NextResponse.json(transfers.map(t => ({
