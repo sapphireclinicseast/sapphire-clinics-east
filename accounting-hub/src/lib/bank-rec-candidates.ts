@@ -59,7 +59,8 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
     transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
-    shareholderAdvances, loans, equityDeposits, itemisedHoldings, onHandAccts,
+    shareholderAdvances, loans, equityDeposits, itemisedHoldings,
+    buybacks, advancePayouts, loanPayouts, onHandAccts,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -153,6 +154,28 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     // wherever it is offered, or it would still appear at full value in the
     // account it names while its deposits are offered in another.
     prisma.equityDeposit.findMany({ select: { commonShareId: true, preferredShareId: true } }),
+    // Money going back OUT to shareholders. Everything equity-shaped above is a
+    // receipt, so before these a buyback or a repayment could not be matched at
+    // all and had to be written straight into the database.
+    prisma.shareBuyback.findMany({
+      where: { date: range, ...on('bankAccountId', bankAccountId) },
+      select: {
+        id: true, date: true, shares: true, price: true,
+        commonShare: { select: { shareholder: { select: { name: true } } } },
+      },
+    }),
+    // Repayments of shareholder advances and of loans. Only rows already
+    // recorded as paid are offered: those are actual cash movements with a date
+    // and an amount, the same rule salaries and taxes follow. A scheduled
+    // instalment nobody has paid yet is not a bank line waiting to be found.
+    prisma.advancePayout.findMany({
+      where: { status: 'PAID', paidDate: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, paidDate: true, amount: true, advance: { select: { name: true } } },
+    }),
+    prisma.loanPayout.findMany({
+      where: { status: 'PAID', paidDate: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, paidDate: true, amount: true, loan: { select: { name: true } } },
+    }),
     // A transfer into a branch's petty cash account is a replenishment —
     // labelled as such so the bank's withdrawal line reads like what it is.
     // This used to key off the separate "Petty Cash on Hand" floats; those are
@@ -277,6 +300,30 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
         dir: 'in',
       })
     }
+  }
+  for (const b of buybacks) {
+    const who = b.commonShare?.shareholder?.name || ''
+    const shares = num(b.shares)
+    out.push({
+      type: 'BUYBACK', id: b.id,
+      label: `Share buyback · ${who || 'shareholder'}${shares > 0 ? ` · ${shares.toLocaleString('en-PH')} shares @ ₱${num(b.price)}` : ''}`,
+      date: b.date, amount: Math.round(shares * num(b.price) * 100) / 100,
+      dir: 'out',
+    })
+  }
+  for (const p of advancePayouts) {
+    out.push({
+      type: 'ADVANCE_PAYMENT', id: p.id,
+      label: `Advance repayment · ${p.advance?.name || 'shareholder'}`,
+      date: p.paidDate as Date, amount: num(p.amount), dir: 'out',
+    })
+  }
+  for (const p of loanPayouts) {
+    out.push({
+      type: 'LOAN_PAYMENT', id: p.id,
+      label: `Loan repayment · ${p.loan?.name || 'lender'}`,
+      date: p.paidDate as Date, amount: num(p.amount), dir: 'out',
+    })
   }
   for (const d of equityDeposits) {
     const who = d.commonShare?.shareholder?.name || d.preferredShare?.shareholder?.name || ''
