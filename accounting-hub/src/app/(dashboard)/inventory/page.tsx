@@ -409,6 +409,8 @@ interface InventoryItem {
   issuedOfficialInvoice?: boolean
   isPreOrder?: boolean
   websiteClassification?: string | null
+  supplierProductName?: string | null
+  description?: string | null
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
   dimensionLength?: number | null
   dimensionWidth?: number | null
@@ -612,6 +614,8 @@ function InventoryInner() {
   const [fInitialQty, setFInitialQty] = useState('')
   const [fReorderLevel, setFReorderLevel] = useState('')
   const [fSupplierId, setFSupplierId] = useState('')
+  const [fSupplierProductName, setFSupplierProductName] = useState('')
+  const [fDescription, setFDescription] = useState('')
   const [fExchangeRate, setFExchangeRate] = useState('')
   const [fDimL, setFDimL] = useState('')
   const [fDimW, setFDimW] = useState('')
@@ -1235,6 +1239,7 @@ function InventoryInner() {
     setFName(''); setFSkuDept(''); setFSkuCat(''); setFSkuSub(''); setFSkuValue('')
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
+    setFSupplierProductName(''); setFDescription('')
     setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch(''); setFExpenseAccountId(''); setFExpenseAccountSearch('')
     setFFromPettyCash(false); setPcfSourceEntryId(null)
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
@@ -1251,6 +1256,8 @@ function InventoryInner() {
     setEditingItem(item)
     setPcfSourceEntryId(null)
     setFName(item.name)
+    setFSupplierProductName(item.supplierProductName || '')
+    setFDescription(item.description || '')
     const parts = item.sku.split('-')
     setFSkuDept(parts[0] || ''); setFSkuCat(parts[1] || ''); setFSkuSub(parts[2] || '')
     setFSkuValue(item.sku)
@@ -1429,6 +1436,8 @@ function InventoryInner() {
       quantity: isPcfCreate ? '0' : (fInitialQty || '0'),
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
+      supplierProductName: fSupplierProductName || null,
+      description: fDescription || null,
       dimensionLength: fDimL || null,
       dimensionWidth: fDimW || null,
       dimensionHeight: fDimH || null,
@@ -2739,6 +2748,26 @@ setTimeout(()=>window.print(),500);
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item Name</label>
                     <input type="text" value={fName} onChange={(e) => setFName(e.target.value)} required
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+
+                  {/* Supplier's own name for the item — what to quote when reordering */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Supplier Product Name <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(optional — how the supplier lists it)</span>
+                    </label>
+                    <input type="text" value={fSupplierProductName} onChange={(e) => setFSupplierProductName(e.target.value)}
+                      placeholder="e.g. Sensory Brush Set 4pcs (Model TB-204)"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Description of Product <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(optional)</span>
+                    </label>
+                    <textarea value={fDescription} onChange={(e) => setFDescription(e.target.value)} rows={3}
+                      placeholder="What it is, materials, contents, sizing — anything staff should know when selling or reordering."
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-y" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
 
                   {/* SKU Generator */}
