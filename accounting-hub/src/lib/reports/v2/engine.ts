@@ -671,7 +671,17 @@ export async function computeLedgerStatements(
     const p = BRANCH_PREFIX[b]
     if (p) {
       const own = new RegExp(`^${p}\\b.*petty cash`, 'i')
-      for (const a of byNumber.values()) if (a.type === 'ASSET' && own.test(a.title)) return a
+      // Lowest account number wins, deliberately. A branch can hold more than
+      // one petty cash account — Verdana has both 004680350310 and the empty
+      // 013820019086 "(New)" — and `byNumber` iterates in whatever order the
+      // database returned the rows, so an unordered scan would pick a different
+      // account run to run and silently split the branch's petty cash in two.
+      // Lowest number is the incumbent: the account carrying the history and
+      // the imported statements a newer, still-empty one does not have yet.
+      const owns = [...byNumber.values()]
+        .filter(a => a.type === 'ASSET' && own.test(a.title))
+        .sort((x, y) => x.number.localeCompare(y.number))
+      if (owns.length) return owns[0]
     }
     return defaultCash(b)
   }
