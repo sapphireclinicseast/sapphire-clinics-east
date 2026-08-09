@@ -67,6 +67,22 @@ interface TemplateRow {
 
 const num = (v: string | number | null | undefined): number => (v == null ? 0 : typeof v === 'number' ? v : parseFloat(v) || 0)
 
+/**
+ * The hub's list endpoints disagree on shape: some return a bare array, some a
+ * pagination envelope under `data`, some a named key. Normalise rather than
+ * guessing — reading the wrong key silently yields an empty result list.
+ */
+function asArray<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[]
+  if (payload && typeof payload === 'object') {
+    for (const key of ['data', 'items', 'services', 'results']) {
+      const value = (payload as Record<string, unknown>)[key]
+      if (Array.isArray(value)) return value as T[]
+    }
+  }
+  return []
+}
+
 /** The price actually in force for this service at this branch today. */
 function effectiveServicePrice(svc: ServiceResult, serviceBranch: string): number {
   const today = new Date()
@@ -273,12 +289,14 @@ function MakerTab() {
           if (serviceBranch !== 'ALL') params.set('branch', serviceBranch)
           const res = await fetch(`/api/services?${params}`)
           const data = await res.json()
-          if (!cancelled) setServices(data.services || [])
+          // /api/services answers with a pagination envelope: { data, total, … }.
+          if (!cancelled) setServices(asArray<ServiceResult>(data))
         } else {
           const params = new URLSearchParams({ search: q, all: 'true', branch: 'VERDANA_STORE' })
           const res = await fetch(`/api/inventory?${params}`)
           const data = await res.json()
-          if (!cancelled) setProducts((data.items || data || []).slice(0, 25))
+          // …while /api/inventory?all=true answers with a bare array.
+          if (!cancelled) setProducts(asArray<ProductResult>(data).slice(0, 25))
         }
       } catch {
         if (!cancelled) { setServices([]); setProducts([]) }
