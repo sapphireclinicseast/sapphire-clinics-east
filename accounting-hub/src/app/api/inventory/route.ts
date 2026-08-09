@@ -41,7 +41,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where: { ...where, isActive: true },
-      select: { id: true, name: true, supplierProductName: true, description: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true }, orderBy: { variantLabel: 'asc' } } },
+      select: { id: true, name: true, supplierProductName: true, description: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, weightKg: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     const { name, skuDepartment, skuCategory, skuSubcategory, branch, accountSubType,
             unitCost, sellingPrice, rewardPointsPrice, quantity, reorderLevel, supplierId, supplierExchangeRate,
             revenueAccountId, sourceAccountId, expenseAccountId,
-            dimensionLength, dimensionWidth, dimensionHeight } = body
+            dimensionLength, dimensionWidth, dimensionHeight, weightKg } = body
 
     if (!name?.trim() || !skuDepartment || !skuCategory || !skuSubcategory || !branch) {
       return NextResponse.json({ error: 'Name, SKU components, and branch are required' }, { status: 400 })
@@ -143,6 +143,7 @@ export async function POST(req: Request) {
         dimensionLength: dimensionLength ? parseFloat(dimensionLength) : null,
         dimensionWidth: dimensionWidth ? parseFloat(dimensionWidth) : null,
         dimensionHeight: dimensionHeight ? parseFloat(dimensionHeight) : null,
+        weightKg: weightKg ? parseFloat(weightKg) : null,
         createdById: session.user.id,
       },
       include: { supplier: { select: { supplierName: true } } },
@@ -174,7 +175,7 @@ export async function PUT(req: Request) {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
             reorderLevel, supplierId, supplierProductName, description, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
             issuedOfficialInvoice, isPreOrder, websiteClassification, imageUrl, isActive,
-            dimensionLength, dimensionWidth, dimensionHeight } = await req.json()
+            dimensionLength, dimensionWidth, dimensionHeight, weightKg } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 })
@@ -205,6 +206,7 @@ export async function PUT(req: Request) {
     if (dimensionLength !== undefined) data.dimensionLength = dimensionLength !== '' && dimensionLength !== null ? parseFloat(dimensionLength) : null
     if (dimensionWidth !== undefined) data.dimensionWidth = dimensionWidth !== '' && dimensionWidth !== null ? parseFloat(dimensionWidth) : null
     if (dimensionHeight !== undefined) data.dimensionHeight = dimensionHeight !== '' && dimensionHeight !== null ? parseFloat(dimensionHeight) : null
+    if (weightKg !== undefined) data.weightKg = weightKg !== '' && weightKg !== null ? parseFloat(weightKg) : null
 
     const item = await prisma.inventoryItem.update({ where: { id }, data })
 

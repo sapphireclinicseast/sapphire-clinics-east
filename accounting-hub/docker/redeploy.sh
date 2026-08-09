@@ -277,6 +277,8 @@ END$$;
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionLength" DECIMAL(65,30);
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionWidth"  DECIMAL(65,30);
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionHeight" DECIMAL(65,30);
+-- Shipping weight (kg) — feeds the shipping rates on verdanarehab.com
+ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "weightKg" DECIMAL(65,30);
 
 -- Inventory adjustment: display reference + batch FK
 ALTER TABLE "InventoryAdjustment" ADD COLUMN IF NOT EXISTS "referenceNumber" TEXT;

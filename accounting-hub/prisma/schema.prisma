@@ -412,6 +412,7 @@ model InventoryItem {
   dimensionLength       Decimal? // cm — length inclusive of packaging (for CBM)
   dimensionWidth        Decimal? // cm — width inclusive of packaging (for CBM)
   dimensionHeight       Decimal? // cm — height inclusive of packaging (for CBM)
+  weightKg              Decimal? // kg — shipping weight inclusive of packaging (drives store shipping rates)
   revenueAccountId      String?
   revenueAccount        Account?  @relation("InventoryRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: SetNull)
   sourceAccountId       String?
