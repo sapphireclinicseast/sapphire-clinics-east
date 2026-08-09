@@ -1,6 +1,7 @@
 'use client'
 
 import React, { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
@@ -537,6 +538,197 @@ function BarcodeDisplay({ value }: { value: string }) {
   return <svg ref={ref} />
 }
 
+/* ── Searchable picker (type to filter instead of scrolling a long <select>) ──
+   Used for item and RFP selection; options carry a code, a description and an
+   optional badge, and the query matches against code + description. */
+interface SearchOption {
+  id: string
+  code: string
+  description: string
+  badge?: string
+}
+
+function optionLabel(o: SearchOption) {
+  return o.description ? `${o.code} — ${o.description}` : o.code
+}
+
+function SearchSelect({ options, value, onChange, placeholder = 'Type to search...', emptyText = 'No matches found', required, compact }: {
+  options: SearchOption[]
+  value: string
+  onChange: (id: string) => void
+  placeholder?: string
+  emptyText?: string
+  required?: boolean
+  compact?: boolean
+}) {
+  const selected = options.find((o) => o.id === value) || null
+  const label = selected ? optionLabel(selected) : ''
+  const [query, setQuery] = useState(label)
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // Follow the selection when it changes from outside (row reset, edit, clear),
+  // but never overwrite what the user is currently typing.
+  useEffect(() => { if (!open) setQuery(label) }, [label, open])
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q || q === label.toLowerCase()) return options.slice(0, 50)
+    return options.filter((o) => o.code.toLowerCase().includes(q) || o.description.toLowerCase().includes(q)).slice(0, 50)
+  }, [options, query, label])
+
+  // The picker lives inside modals and an overflow-x table, so the menu is
+  // portalled to <body> and positioned against the input to avoid clipping.
+  const place = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const below = window.innerHeight - r.bottom - 8
+    const above = r.top - 8
+    const dropUp = below < 160 && above > below
+    const maxHeight = Math.max(120, Math.min(240, dropUp ? above : below))
+    const width = Math.max(r.width, 280)
+    setRect({
+      top: dropUp ? r.top - 4 - maxHeight : r.bottom + 4,
+      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+      width,
+      maxHeight,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    place()
+    const reposition = () => place()
+    const onPointerDown = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (wrapRef.current?.contains(t) || listRef.current?.contains(t)) return
+      setOpen(false)
+      setQuery(label)
+    }
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    document.addEventListener('mousedown', onPointerDown)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+      document.removeEventListener('mousedown', onPointerDown)
+    }
+  }, [open, place, label])
+
+  useEffect(() => {
+    if (!open) return
+    ;(listRef.current?.children[highlight] as HTMLElement | undefined)?.scrollIntoView({ block: 'nearest' })
+  }, [highlight, open])
+
+  const choose = (o: SearchOption) => {
+    onChange(o.id)
+    setQuery(optionLabel(o))
+    setOpen(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) { setOpen(true); return }
+      if (!matches.length) return
+      setHighlight((h) => (e.key === 'ArrowDown' ? (h + 1) % matches.length : (h - 1 + matches.length) % matches.length))
+    } else if (e.key === 'Enter') {
+      // While the menu is open Enter picks; it must never reach the form and
+      // submit half-typed text that matches no option.
+      if (open) {
+        e.preventDefault()
+        if (matches[highlight]) choose(matches[highlight])
+      }
+    } else if (e.key === 'Escape') {
+      if (open) { e.preventDefault(); setOpen(false); setQuery(label) }
+    }
+  }
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <Search size={compact ? 12 : 14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+      <input ref={inputRef} type="text" value={query} placeholder={placeholder} required={required}
+        autoComplete="off"
+        onChange={(e) => { setQuery(e.target.value); setHighlight(0); setOpen(true) }}
+        onFocus={(e) => { setOpen(true); e.target.select() }}
+        onKeyDown={handleKeyDown}
+        className={compact
+          ? 'w-full pl-7 pr-6 py-1.5 rounded-lg border text-xs outline-none'
+          : 'w-full pl-8 pr-7 py-2.5 rounded-xl border text-sm outline-none'}
+        style={{ borderColor: 'var(--light-gray)' }} />
+      {selected && (
+        <button type="button" aria-label="Clear selection"
+          onClick={() => { onChange(''); setQuery(''); setOpen(false); inputRef.current?.focus() }}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100">
+          <X size={compact ? 11 : 13} style={{ color: 'var(--mid-gray)' }} />
+        </button>
+      )}
+      {open && rect && createPortal(
+        <div ref={listRef} className="fixed bg-white border rounded-xl shadow-lg z-[60] overflow-y-auto"
+          style={{ top: rect.top, left: rect.left, width: rect.width, maxHeight: rect.maxHeight, borderColor: 'var(--light-gray)' }}>
+          {matches.length === 0 ? (
+            <div className="px-3 py-3 text-xs text-center" style={{ color: 'var(--mid-gray)' }}>{emptyText}</div>
+          ) : matches.map((o, idx) => (
+            <button key={o.id} type="button"
+              onMouseEnter={() => setHighlight(idx)}
+              onClick={() => choose(o)}
+              className="w-full px-3 py-2 text-left text-xs flex items-center justify-between gap-2 border-b last:border-b-0"
+              style={{ borderColor: 'var(--light-gray)', background: idx === highlight ? 'var(--off-white)' : undefined }}>
+              <span className="truncate"><span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{o.code}</span>{o.description ? ` — ${o.description}` : ''}</span>
+              {o.badge && <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{o.badge}</span>}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </div>
+  )
+}
+
+function ItemSearchSelect({ items, value, onChange, required, compact }: {
+  items: InventoryItem[]
+  value: string
+  onChange: (item: InventoryItem | null) => void
+  required?: boolean
+  compact?: boolean
+}) {
+  const options = useMemo<SearchOption[]>(
+    () => items.map((i) => ({ id: i.id, code: i.sku, description: i.name, badge: `Stock: ${i.quantity}` })),
+    [items],
+  )
+  return (
+    <SearchSelect options={options} value={value} required={required} compact={compact}
+      placeholder="Type SKU or item name..." emptyText="No items found"
+      onChange={(id) => onChange(items.find((i) => i.id === id) || null)} />
+  )
+}
+
+function RfpSearchSelect({ rfps, value, onChange }: {
+  rfps: RfpOption[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const options = useMemo<SearchOption[]>(
+    () => rfps.map((r) => ({
+      id: r.id,
+      code: r.refNumber,
+      description: [r.payableTo, `₱${r.grossTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]
+        .filter(Boolean).join(' · '),
+      badge: r.status === 'PAID' ? 'Paid' : 'For Payment',
+    })),
+    [rfps],
+  )
+  return (
+    <SearchSelect options={options} value={value} onChange={onChange}
+      placeholder="Type RFP number or payee..." emptyText="No RFPs found" />
+  )
+}
+
 /* ═══════════════════════════════════════════════════════════
    PAGE COMPONENT
    ═══════════════════════════════════════════════════════════ */
@@ -657,7 +849,9 @@ function InventoryInner() {
   const [invSortDir, setInvSortDir] = useState<'asc' | 'desc'>('asc')
   // Adjustment delete
   const [deleteAdjConfirm, setDeleteAdjConfirm] = useState<string | null>(null)
-  const [editAdj, setEditAdj] = useState<Adjustment | null>(null)
+  // Shrinkage of Stocks — multi-item write-off; the id is set when editing one.
+  const [shrinkOpen, setShrinkOpen] = useState(false)
+  const [shrinkEditId, setShrinkEditId] = useState<string | null>(null)
   const [deletingAdj, setDeletingAdj] = useState(false)
   // Variants (color, size, material, etc.)
   const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string; unitCost?: string | number | null; sellingPrice?: string | number | null }[]>([])
@@ -732,7 +926,9 @@ function InventoryInner() {
   const [bulkItemResult, setBulkItemResult] = useState<{ success: number; errors: number; items: { sku: string; name: string; barcode: string }[]; errorDetails: string[] } | null>(null)
   const itemFileRef = useRef<HTMLInputElement>(null)
   const [adjItemId, setAdjItemId] = useState('')
-  const [adjType, setAdjType] = useState<'SHRINKAGE' | 'INCREASE'>('SHRINKAGE')
+  // Stock-in only: the write-off path is its own multi-item modal now, and this
+  // one is reached solely from the petty-cash replenishment draft.
+  const [adjType, setAdjType] = useState<'SHRINKAGE' | 'INCREASE'>('INCREASE')
   const [adjQty, setAdjQty] = useState('')
   const [adjDate, setAdjDate] = useState(new Date().toISOString().split('T')[0])
   const [adjRemarks, setAdjRemarks] = useState('')
@@ -753,7 +949,11 @@ function InventoryInner() {
   // ── Freight batch adjustment state
   const [fbOpen, setFbOpen] = useState(false)
   const [fbEditId, setFbEditId] = useState<string | null>(null)
+  // Set when the form is adding freight to a plain stock-in adjustment that has
+  // no batch yet — saving wraps that lot in a new freight batch.
+  const [fbAdoptAdjId, setFbAdoptAdjId] = useState<string | null>(null)
   const [fbLoadingEdit, setFbLoadingEdit] = useState(false)
+  const [notice, setNotice] = useState('')
   const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null)
   const [fbDate, setFbDate] = useState(new Date().toISOString().split('T')[0])
   const [fbRemarks, setFbRemarks] = useState('')
@@ -1614,12 +1814,6 @@ function InventoryInner() {
      ADJUSTMENT TAB HANDLERS
      ═══════════════════════════════════════════════════════ */
 
-  function openAdjCreate() {
-    setAdjItemId(''); setAdjType('SHRINKAGE'); setAdjQty(''); setAdjRemarks('')
-    setAdjDate(new Date().toISOString().split('T')[0]); setError('')
-    setAdjModalOpen(true)
-  }
-
   async function handleAdjSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true); setError('')
@@ -1714,6 +1908,7 @@ function InventoryInner() {
 
   function openFbModal() {
     setFbEditId(null)
+    setFbAdoptAdjId(null)
     setFbDate(new Date().toISOString().split('T')[0])
     setFbRemarks(''); setFbHasForeign(true); setFbCurrency('CNY'); setFbExRate('')
     setFbFreight1(''); setFbFreight1Foreign(false)
@@ -1735,6 +1930,7 @@ function InventoryInner() {
       if (!res.ok) { setError(d.error || 'Failed to load batch'); return }
       const b = d.batch
       setFbEditId(b.id)
+      setFbAdoptAdjId(null)
       setFbDate(new Date(b.adjustmentDate).toISOString().split('T')[0])
       setFbRemarks(b.remarks || '')
       setFbHasForeign(!!b.hasForeignPurchase)
@@ -1764,6 +1960,48 @@ function InventoryInner() {
     } catch { setError('Network error') } finally { setFbLoadingEdit(false) }
   }
 
+  // Open the freight-purchase form on a plain stock-in adjustment that was
+  // recorded without freight (an ADJ-* row). Nothing is reversed: saving keeps
+  // the same lot and re-costs it, so any sales already made from it stand and
+  // their cost difference is restated into cost of sales.
+  async function openFbAdopt(adjustmentId: string) {
+    setFbLoadingEdit(true); setError(''); setNotice('')
+    try {
+      const res = await fetch(`/api/inventory/adjustments/batch?adjustmentId=${adjustmentId}`)
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to load adjustment'); return }
+      const a = d.adjustment
+      const currency = a.foreignCurrency || 'CNY'
+      const isForeign = a.foreignCost != null
+      setFbEditId(null)
+      setFbAdoptAdjId(a.id)
+      setFbDate(new Date(a.adjustmentDate).toISOString().split('T')[0])
+      setFbRemarks(a.remarks || '')
+      setFbHasForeign(isForeign)
+      setFbCurrency(currency)
+      setFbExRate(a.exchangeRate != null ? String(a.exchangeRate) : '')
+      setFbFreight1(''); setFbFreight1Foreign(false)
+      setFbFreight2(''); setFbFreight2Foreign(false)
+      setFbFreight3(''); setFbFreight3Foreign(false)
+      setFbFxAccountId(''); setFbManuRfpId(''); setFbFreightRfpId('')
+      setFbProofUrls([])
+      loadFbFxAndRfps(currency)
+      // The lot carries no freight yet, so its recorded cost is the whole
+      // manufacturer price — freight entered here is added on top of it.
+      const manPrice = isForeign ? Number(a.foreignCost) : Number(a.localCost ?? a.item?.unitCost ?? 0)
+      setFbRows([{
+        itemId: a.itemId, itemName: a.item?.name || '', itemSku: a.item?.sku || '',
+        dimL: a.item?.dimensionLength ? String(a.item.dimensionLength) : '',
+        dimW: a.item?.dimensionWidth ? String(a.item.dimensionWidth) : '',
+        dimH: a.item?.dimensionHeight ? String(a.item.dimensionHeight) : '',
+        manPrice: manPrice ? String(Number(manPrice.toFixed(4))) : '',
+        manPriceIsForeign: isForeign,
+        quantity: String(a.quantityChange || 0),
+      }])
+      setFbOpen(true)
+    } catch { setError('Network error') } finally { setFbLoadingEdit(false) }
+  }
+
   async function handleFbUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -1786,13 +2024,14 @@ function InventoryInner() {
 
   async function handleFbSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setFbSaving(true); setError('')
+    setFbSaving(true); setError(''); setNotice('')
     try {
       const res = await fetch('/api/inventory/adjustments/batch', {
         method: fbEditId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(fbEditId ? { id: fbEditId } : {}),
+          ...(fbAdoptAdjId ? { adoptAdjustmentId: fbAdoptAdjId } : {}),
           adjustmentDate: fbDate,
           hasForeignPurchase: fbHasForeign,
           foreignCurrency: fbCurrency,
@@ -1813,6 +2052,17 @@ function InventoryInner() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Something went wrong'); setFbSaving(false); return }
+      // Re-costing units that were already sold moves money between Inventory and
+      // Cost of Sales — say so, because it changes the income statement.
+      const cr = data.costRestatement
+      if (cr?.posted && cr.totalDelta) {
+        const amt = Math.abs(cr.totalDelta).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        setNotice(cr.totalDelta > 0
+          ? `Saved. ₱${amt} of this cost change belongs to units already sold — posted to Cost of Sales (out of Inventory).`
+          : `Saved. ₱${amt} of this cost change belongs to units already sold — reversed out of Cost of Sales (back into Inventory).`)
+      } else if (cr && !cr.posted && cr.reason && !cr.reason.startsWith('no cost change')) {
+        setNotice(`Saved, but the cost of units already sold could not be restated: ${cr.reason}`)
+      }
       setFbOpen(false)
       fetchAdjustments(); fetchItems(); fetchAllItems()
     } catch { setError('Network error') }
@@ -3609,6 +3859,13 @@ setTimeout(()=>window.print(),500);
          ════════════════════════════════════════════════════ */}
       {activeTab === 'Adjustments' && (
         <>
+          {notice && (
+            <div className="mb-4 p-3 rounded-xl text-sm flex items-start gap-2" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+              <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+              <span className="flex-1">{notice}</span>
+              <button onClick={() => setNotice('')} className="shrink-0"><X size={15} /></button>
+            </div>
+          )}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Track inventory adjustments and corrections</p>
             <div className="flex items-center gap-2">
@@ -3631,10 +3888,10 @@ setTimeout(()=>window.print(),500);
                   style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'var(--pale-teal)' }}>
                   <Upload size={14} /> Bulk Upload
                 </button>
-                <button onClick={openAdjCreate}
+                <button onClick={() => { setShrinkEditId(null); setShrinkOpen(true) }}
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
                   style={{ borderColor: 'var(--light-gray)', color: '#dc2626' }}>
-                  <TrendingDown size={14} /> Adjust Stock
+                  <TrendingDown size={14} /> Shrinkage of Stocks
                 </button>
                 <button onClick={() => setBulkShrinkOpen(true)}
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
@@ -3644,7 +3901,7 @@ setTimeout(()=>window.print(),500);
                 <button onClick={openFbModal}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
                   style={{ background: 'var(--teal)' }}>
-                  <Plus size={18} /> New Adjustment
+                  <Plus size={18} /> Add Stocks
                 </button>
               </>)}
             </div>
@@ -3703,7 +3960,15 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{adj.adjustedBy?.name || '—'}</td>
                       {canWrite && (
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <button onClick={() => setEditAdj(adj)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit Adjustment">
+                          {/* A stock-in opens the freight form so freight and exchange
+                              rate can be added to it; a write-off opens the multi-item
+                              shrinkage form with everything written off alongside it. */}
+                          <button onClick={() => adj.type === 'INCREASE'
+                            ? openFbAdopt(adj.id)
+                            : (setShrinkEditId(adj.id), setShrinkOpen(true))}
+                            disabled={fbLoadingEdit}
+                            className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                            title={adj.type === 'INCREASE' ? 'Edit / add freight costs' : 'Edit shrinkage'}>
                             <Pencil size={15} style={{ color: 'var(--mid-gray)' }} />
                           </button>
                           <button onClick={() => setDeleteAdjConfirm(adj.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete Adjustment">
@@ -3767,10 +4032,11 @@ setTimeout(()=>window.print(),500);
             )}
           </div>
 
-          {/* Edit a single (non-batch) adjustment */}
-          {editAdj && (
-            <EditAdjustmentModal adj={editAdj} onClose={() => setEditAdj(null)}
-              onSaved={() => { setEditAdj(null); fetchAdjustments(); fetchItems(); fetchAllItems() }} />
+          {/* Shrinkage of Stocks — new write-off, or editing an existing one */}
+          {shrinkOpen && (
+            <ShrinkageModal items={allItems} editAdjustmentId={shrinkEditId}
+              onClose={() => { setShrinkOpen(false); setShrinkEditId(null) }}
+              onDone={() => { setShrinkOpen(false); setShrinkEditId(null); fetchAdjustments(); fetchItems(); fetchAllItems() }} />
           )}
 
           {/* Delete Adjustment Confirm */}
@@ -3789,7 +4055,7 @@ setTimeout(()=>window.print(),500);
             </div>
           )}
 
-          {/* New Adjustment Modal */}
+          {/* Add Stocks — replenishment recorded against a petty-cash entry */}
           {capOpen && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
@@ -3806,11 +4072,8 @@ setTimeout(()=>window.print(),500);
                 <form onSubmit={handleCapitalizeSubmit} className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item</label>
-                    <select value={capItemId} onChange={(e) => loadCapLots(e.target.value)} required
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— Select item —</option>
-                      {allItems.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
-                    </select>
+                    <ItemSearchSelect items={allItems} value={capItemId} required
+                      onChange={(it) => loadCapLots(it?.id || '')} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Stock batch (INCREASE lot)</label>
@@ -3842,7 +4105,7 @@ setTimeout(()=>window.print(),500);
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>New Adjustment</h3>
+                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Add Stocks — Replenishment</h3>
                   <button onClick={() => { setAdjModalOpen(false); setPcfSourceEntryId(null) }} className="p-1 hover:bg-gray-100 rounded-lg">
                     <X size={20} style={{ color: 'var(--mid-gray)' }} />
                   </button>
@@ -3853,22 +4116,8 @@ setTimeout(()=>window.print(),500);
                 <form onSubmit={handleAdjSubmit} className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item</label>
-                    <select value={adjItemId} onChange={(e) => setAdjItemId(e.target.value)} required
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— Select item —</option>
-                      {allItems.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Type</label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
-                        <input type="radio" name="adjType" checked={adjType === 'SHRINKAGE'} onChange={() => setAdjType('SHRINKAGE')} /> Shrinkage
-                      </label>
-                      <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
-                        <input type="radio" name="adjType" checked={adjType === 'INCREASE'} onChange={() => setAdjType('INCREASE')} /> Increase
-                      </label>
-                    </div>
+                    <ItemSearchSelect items={allItems} value={adjItemId} required
+                      onChange={(it) => setAdjItemId(it?.id || '')} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Quantity Change</label>
@@ -4167,8 +4416,16 @@ setTimeout(()=>window.print(),500);
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
                   <div>
-                    <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{fbEditId ? 'Edit Adjustment — Freight Purchase' : 'New Adjustment — Freight Purchase'}</h3>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{fbEditId ? 'Editing reverses this batch and re-applies the rows below (blocked if any item was already sold). Unit costs recompute by CBM.' : 'Enter items, manufacturer prices, freight costs, and the system will compute unit costs proportionally by CBM.'}</p>
+                    <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                      {fbEditId ? 'Edit Stocks — Freight Purchase' : fbAdoptAdjId ? 'Add Freight — Stock-In Adjustment' : 'Add Stocks — Freight Purchase'}
+                    </h3>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                      {fbEditId
+                        ? 'Unit costs recompute by CBM. Units already sold keep their lot — the cost difference on them is posted to Cost of Sales, so no sale needs reversing. Quantities cannot drop below what was sold.'
+                        : fbAdoptAdjId
+                          ? 'Adds freight and exchange rate to this stock-in and files it as a freight batch. The existing stock lot is kept, so any sales made from it stand — their cost difference is posted to Cost of Sales.'
+                          : 'Enter items, manufacturer prices, freight costs, and the system will compute unit costs proportionally by CBM.'}
+                    </p>
                   </div>
                   <button onClick={() => setFbOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg ml-4">
                     <X size={20} style={{ color: 'var(--mid-gray)' }} />
@@ -4300,15 +4557,7 @@ setTimeout(()=>window.print(),500);
                         ].map(({ label, val, set }) => (
                           <div key={label}>
                             <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
-                            <select value={val} onChange={e => set(e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                              <option value="">— Not linked —</option>
-                              {fbRfpOptions.map(r => (
-                                <option key={r.id} value={r.id}>
-                                  {r.refNumber}{r.payableTo ? ` — ${r.payableTo}` : ''} · ₱{r.grossTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {r.status === 'PAID' ? 'Paid' : 'For Payment'}
-                                </option>
-                              ))}
-                            </select>
+                            <RfpSearchSelect rfps={fbRfpOptions} value={val} onChange={set} />
                           </div>
                         ))}
                       </div>
@@ -4376,23 +4625,18 @@ setTimeout(()=>window.print(),500);
                                     <td className="px-2 py-1.5">
                                       <div className="flex items-center gap-2">
                                       {(() => { const img = allItems.find(it => it.id === row.itemId)?.imageUrl; return img ? <img src={img} alt="" className="w-8 h-8 rounded object-cover border shrink-0" style={{ borderColor: 'var(--light-gray)' }} /> : null })()}
-                                      <select value={row.itemId}
-                                        onChange={e => {
-                                          const selected = allItems.find(it => it.id === e.target.value)
+                                      <ItemSearchSelect items={allItems} value={row.itemId} compact
+                                        onChange={selected => {
                                           setFbRows(prev => prev.map((r, idx) => idx !== i ? r : {
                                             ...r,
-                                            itemId: e.target.value,
+                                            itemId: selected?.id || '',
                                             itemName: selected?.name || '',
                                             itemSku: selected?.sku || '',
                                             dimL: selected?.dimensionLength != null ? String(selected.dimensionLength) : r.dimL,
                                             dimW: selected?.dimensionWidth != null ? String(selected.dimensionWidth) : r.dimW,
                                             dimH: selected?.dimensionHeight != null ? String(selected.dimensionHeight) : r.dimH,
                                           }))
-                                        }}
-                                        className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                                        <option value="">— Select item —</option>
-                                        {allItems.map(it => <option key={it.id} value={it.id}>{it.sku} — {it.name}</option>)}
-                                      </select>
+                                        }} />
                                       </div>
                                     </td>
                                     {/* Manufacturer price + currency toggle */}
@@ -5493,6 +5737,194 @@ setTimeout(()=>window.print(),500);
   )
 }
 
+/* ── Shrinkage of Stocks — write off several products in one go ──────
+   Also the editor: opening it on an existing row brings back everything
+   written off with it, so the whole write-off is corrected together. */
+function ShrinkageModal({ items, editAdjustmentId, onClose, onDone }: {
+  items: InventoryItem[]
+  editAdjustmentId: string | null
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [remarks, setRemarks] = useState('')
+  const [rows, setRows] = useState<{ itemId: string; quantity: string }[]>([{ itemId: '', quantity: '' }])
+  const [reference, setReference] = useState<string | null>(null)
+  // Units the rows being edited already gave up — added back to show true on-hand.
+  const [restoreByItem, setRestoreByItem] = useState<Record<string, number>>({})
+  const [loading, setLoading] = useState(!!editAdjustmentId)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const itemById = useMemo(() => new Map(items.map(i => [i.id, i])), [items])
+
+  useEffect(() => {
+    if (!editAdjustmentId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/inventory/adjustments/shrinkage?id=${editAdjustmentId}`)
+        const d = await res.json()
+        if (cancelled) return
+        if (!res.ok) { setErr(d.error || 'Failed to load this write-off'); return }
+        setDate(String(d.adjustmentDate).slice(0, 10))
+        setRemarks(d.remarks || '')
+        setReference(d.referenceNumber || null)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const loaded = (d.rows || []) as any[]
+        setRows(loaded.map(r => ({ itemId: r.itemId, quantity: String(r.quantity) })))
+        setRestoreByItem(loaded.reduce((m: Record<string, number>, r) => {
+          m[r.itemId] = (m[r.itemId] || 0) + Number(r.quantity)
+          return m
+        }, {}))
+      } catch { if (!cancelled) setErr('Network error') } finally { if (!cancelled) setLoading(false) }
+    })()
+    return () => { cancelled = true }
+  }, [editAdjustmentId])
+
+  const setRow = (i: number, patch: Partial<{ itemId: string; quantity: string }>) =>
+    setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  const addRow = () => setRows(rs => [...rs, { itemId: '', quantity: '' }])
+  const removeRow = (i: number) => setRows(rs => rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs)
+
+  const filled = rows.filter(r => r.itemId && Number(r.quantity) > 0)
+  const totalUnits = filled.reduce((s, r) => s + Number(r.quantity), 0)
+  const totalValue = filled.reduce((s, r) => s + Number(itemById.get(r.itemId)?.unitCost || 0) * Number(r.quantity), 0)
+
+  const submit = async () => {
+    setErr('')
+    if (!filled.length) { setErr('Add at least one item with a quantity greater than zero.'); return }
+    if (!remarks.trim()) { setErr('Enter remarks — why is this stock being written off?'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/inventory/adjustments/shrinkage', {
+        method: editAdjustmentId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(editAdjustmentId ? { id: editAdjustmentId } : {}),
+          adjustmentDate: date,
+          remarks: remarks.trim(),
+          rows: filled.map(r => ({ itemId: r.itemId, quantity: Number(r.quantity) })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setErr(d.error || 'Failed to save'); setBusy(false); return }
+      onDone()
+    } catch { setErr('Network error'); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 max-w-3xl w-full shadow-xl mb-8 relative" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
+        <h2 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          {editAdjustmentId ? 'Edit Shrinkage of Stocks' : 'Shrinkage of Stocks'}
+          {reference && <span className="ml-2 font-mono text-xs px-1.5 py-0.5 rounded align-middle" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{reference}</span>}
+        </h2>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+          {editAdjustmentId
+            ? 'Every product written off together is listed below — correcting one corrects the set. The old write-off is given back to stock and re-applied from these rows, and its journal entries are reversed and reposted.'
+            : 'Write off damaged, lost, or expired stock across as many products as you need. Each product’s cost comes off its oldest remaining batch (FIFO) and is posted to the shrinkage expense account.'}
+        </p>
+
+        {err && <div className="mb-3 p-2.5 rounded-lg text-sm bg-red-50 text-red-600">{err}</div>}
+
+        {loading ? (
+          <div className="py-12 text-center"><Loader2 size={22} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+        ) : (<>
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Date <span className="text-red-500">*</span></label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            <div className="flex-1 min-w-[240px]">
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Remarks <span className="text-red-500">*</span></label>
+              <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="e.g. Damaged in transit — supplier claim filed"
+                className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+          </div>
+
+          <div className="rounded-xl border mb-2" style={{ borderColor: 'var(--light-gray)' }}>
+            <table className="w-full text-sm">
+              <thead><tr style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                <th className="px-3 py-2 text-left text-xs font-semibold" style={{ minWidth: 260 }}>Product</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold w-24">On Hand</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold w-32">Write Off</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold w-24">Remaining</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold w-28">Cost</th>
+                <th className="px-2 py-2 w-8"></th>
+              </tr></thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const item = r.itemId ? itemById.get(r.itemId) : null
+                  // In edit mode the item's stored quantity already has the old
+                  // write-off taken out, so add it back to show real availability.
+                  const onHand = item ? item.quantity + (restoreByItem[r.itemId] || 0) : null
+                  const qty = Number(r.quantity) || 0
+                  const after = onHand != null && r.quantity !== '' ? onHand - qty : null
+                  const cost = item ? Number(item.unitCost || 0) * qty : 0
+                  return (
+                    <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-2">
+                        <ItemSearchSelect items={items} value={r.itemId} compact
+                          onChange={it => setRow(i, { itemId: it?.id || '' })} />
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{onHand ?? '—'}</td>
+                      <td className="px-3 py-2 text-right">
+                        <input type="number" min={1} value={r.quantity} onChange={e => setRow(i, { quantity: e.target.value })}
+                          className="w-24 px-2 py-1.5 rounded-lg border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs font-semibold"
+                        style={{ color: after == null ? 'var(--mid-gray)' : after < 0 ? '#dc2626' : 'var(--charcoal)' }}>
+                        {after ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        {qty > 0 && item ? `₱${cost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        {rows.length > 1 && (
+                          <button type="button" onClick={() => removeRow(i)} className="p-1 rounded hover:bg-red-50">
+                            <X size={12} className="text-red-400" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button type="button" onClick={addRow} className="text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1"
+            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+            <Plus size={12} /> Add Row
+          </button>
+
+          {filled.length > 0 && (
+            <div className="mt-4 p-3 rounded-xl flex items-center justify-between" style={{ background: 'var(--off-white)' }}>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                {filled.length} product{filled.length === 1 ? '' : 's'} · {totalUnits} unit{totalUnits === 1 ? '' : 's'}
+              </span>
+              <span className="text-sm font-bold" style={{ color: '#dc2626' }}>
+                −₱{totalValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 mt-5">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+            <button type="button" onClick={submit} disabled={busy}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2" style={{ background: '#dc2626' }}>
+              {busy && <Loader2 size={14} className="animate-spin" />}
+              {busy ? 'Saving…' : editAdjustmentId ? 'Save Changes' : 'Record Shrinkage'}
+            </button>
+          </div>
+        </>)}
+      </div>
+    </div>
+  )
+}
+
 /* ── Bulk physical-count shrinkage (add rows, auditor + e-signature) ── */
 function BulkShrinkageCountModal({ items, onClose, onDone }: {
   items: { id: string; name: string; sku: string; quantity: number }[]
@@ -5662,64 +6094,6 @@ function BulkShrinkageCountModal({ items, onClose, onDone }: {
             {busy ? 'Saving…' : 'Save Audit'}
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// Correct a single (non-batch) adjustment: its date, remarks, and — while none
-// of its units have been sold — the quantity. Freight batches keep their own
-// editor, which re-applies the whole shipment.
-function EditAdjustmentModal({ adj, onClose, onSaved }: { adj: Adjustment; onClose: () => void; onSaved: () => void }) {
-  const [date, setDate] = useState(String(adj.adjustmentDate).slice(0, 10))
-  const [qty, setQty] = useState(String(adj.quantityChange))
-  const [remarks, setRemarks] = useState(adj.remarks || '')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const consumed = adj.type === 'INCREASE' && (adj.remainingQuantity ?? adj.quantityChange) !== adj.quantityChange
-
-  const save = async () => {
-    setBusy(true); setErr('')
-    try {
-      const res = await fetch('/api/inventory/adjustments', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: adj.id, adjustmentDate: date, remarks, quantityChange: consumed ? undefined : parseInt(qty) }),
-      })
-      if (!res.ok) { setErr((await res.json()).error || 'Failed to save'); return }
-      onSaved()
-    } catch { setErr('Network error') } finally { setBusy(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Edit Adjustment</h3>
-          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-          {adj.item?.sku} — {adj.item?.name} · {adj.type === 'INCREASE' ? 'Increase' : 'Decrease'} of {adj.quantityChange}
-        </p>
-        {err && <p className="text-xs text-red-600 mb-2">{err}</p>}
-
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date</label>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
-
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Quantity</label>
-        <input type="number" min={1} value={qty} disabled={consumed} onChange={e => setQty(e.target.value)}
-          className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }} />
-        <p className="text-[11px] mt-1 mb-3" style={{ color: 'var(--mid-gray)' }}>
-          {consumed
-            ? 'Locked: units from this batch have already been sold, so changing the quantity would restate their cost of sales. Reverse those sales first.'
-            : 'Changing this adjusts the item’s stock by the difference.'}
-        </p>
-
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
-        <input value={remarks} onChange={e => setRemarks(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-4" style={{ borderColor: 'var(--light-gray)' }} />
-
-        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-          {busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Save changes'}
-        </button>
       </div>
     </div>
   )
