@@ -124,6 +124,13 @@ model Account {
   // are paired when matching a currency exchange, so unrelated accounts that
   // merely happen to hold another currency are not offered.
   isForexAccount    Boolean       @default(false)
+  // The branch a bank account belongs to. A bank statement is whole-account and
+  // cannot be split, so without this a branch view has no way to say which cash
+  // is its own: it fell back to "movement tagged to this branch", which carries
+  // no opening balance and cannot be trued to any statement — Greenhills read
+  // -P12.0M on its own checking account. Null means shared/corporate (SCEI Main,
+  // SCI) and belongs to no single branch.
+  branch            Branch?
   createdById       String
   createdBy         User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   createdAt         DateTime      @default(now())

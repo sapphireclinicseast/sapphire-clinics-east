@@ -67,6 +67,7 @@ export async function GET(req: Request) {
         isActive: true,
         isBankAccount: true,
         isCheckingAccount: true,
+        branch: true,
         createdAt: true,
         createdBy: { select: { name: true } },
       },
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount } = await req.json()
+    const { accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount, branch } = await req.json()
 
     if (!accountNumber?.trim() || !accountTitle?.trim() || !accountType) {
       return NextResponse.json({ error: 'Account number, title, and type are required' }, { status: 400 })
@@ -122,6 +123,8 @@ export async function POST(req: Request) {
         description: description?.trim() || null,
         isBankAccount: subType?.trim() === 'CURRENT_ASSETS' ? !!isBankAccount : false,
         isCheckingAccount: subType?.trim() === 'CURRENT_ASSETS' && !!isBankAccount ? !!isCheckingAccount : false,
+        // Only a bank account can belong to a branch; everything else is company-wide.
+        branch: subType?.trim() === 'CURRENT_ASSETS' && !!isBankAccount ? (branch || null) : null,
         createdById: session.user.id,
       },
     })
@@ -150,7 +153,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount } = await req.json()
+    const { id, accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount, branch } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Account ID is required' }, { status: 400 })
@@ -192,6 +195,13 @@ export async function PUT(req: Request) {
     if (isCheckingAccount !== undefined || isBankAccount !== undefined || subType !== undefined) {
       const bankFinal = updateData.isBankAccount ?? !!isBankAccount
       updateData.isCheckingAccount = bankFinal ? !!isCheckingAccount : false
+    }
+    // Branch ownership is meaningless on a non-bank account, so it is cleared
+    // alongside the flag rather than left behind to mislead the reports.
+    if (branch !== undefined || isBankAccount !== undefined || subType !== undefined) {
+      const bankFinal = updateData.isBankAccount ?? !!isBankAccount
+      if (!bankFinal) updateData.branch = null
+      else if (branch !== undefined) updateData.branch = branch || null
     }
 
     const account = await prisma.account.update({

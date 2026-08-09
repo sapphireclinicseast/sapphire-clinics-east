@@ -34,6 +34,8 @@ interface AcctInfo {
   subType: string
   normalBalance: 'DEBIT' | 'CREDIT'
   virtual: boolean
+  /** Owning branch of a bank account; null = shared/company-wide. */
+  branch?: string | null
 }
 
 interface Movement { debit: number; credit: number }
@@ -205,7 +207,7 @@ export async function computeLedgerStatements(
   /* ── Account registry ── */
   const dbAccounts = await prisma.account.findMany({
     where: { isActive: true },
-    select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true, isBankAccount: true },
+    select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true, isBankAccount: true, branch: true },
   })
   const byNumber = new Map<string, AcctInfo>()
   const byId = new Map<string, AcctInfo>()
@@ -215,6 +217,7 @@ export async function computeLedgerStatements(
       id: a.id, number: a.accountNumber, title: a.accountTitle,
       type: a.accountType as AcctInfo['type'], subType: a.subType || '',
       normalBalance: a.normalBalance as AcctInfo['normalBalance'], virtual: false,
+      branch: a.branch || null,
     }
     byNumber.set(info.number, info)
     byId.set(a.id, info)
@@ -870,8 +873,13 @@ export async function computeLedgerStatements(
      landing in whichever month happened to hold the last statement line.
      Months with no statement hold the previous month's true-up steady, so real
      ledger movement after the statements run out flows through untouched.
-     All-Branches only: statements are whole-account and cannot be split. */
-  if (branch === 'ALL') {
+     A statement is whole-account, so a branch may only be trued to the accounts
+     the Chart of Accounts says are ITS OWN (Account.branch). Every other cash
+     account is held at zero in that view — a branch does not hold a balance in
+     another branch's bank account. Without this a branch view had no statement
+     to lean on and no opening balance either, and read raw tagged movement:
+     Greenhills showed -P12.0M on its own checking account. */
+  {
     try {
       // Every statement line IN THIS PERIOD that carries a running balance, so
       // each month can be trued to the bank's own closing balance for THAT
@@ -894,6 +902,11 @@ export async function computeLedgerStatements(
         if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
       }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
+      /* Whose cash is this? All Branches owns everything; a branch owns only the
+         accounts tagged to it. An untagged (shared/corporate) account belongs to
+         no branch, so it shows in the All Branches view alone. */
+      const ownsBank = (a: AcctInfo): boolean =>
+        branch === 'ALL' ? true : !!a.branch && branchValues!.includes(a.branch)
 
       /* The period OPENING has to be trued too, not just the month ends.
          Every BeginningBalance row is dated 2026-01-01 while the statements run
@@ -917,7 +930,9 @@ export async function computeLedgerStatements(
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
         if (!acct?.id) continue
-        const bankOpen = bankOpening.get(acct.id)
+        // Not this branch's account -> it opens at zero here, not at the bank's
+        // balance, which belongs to whichever branch does own it.
+        const bankOpen = ownsBank(acct) ? bankOpening.get(acct.id) : 0
         if (bankOpen === undefined) continue
         const delta = round2(bankOpen - (opening.get(n) || 0))
         if (Math.abs(delta) < 0.01) continue
@@ -931,19 +946,22 @@ export async function computeLedgerStatements(
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
         if (!acct?.id) continue
-        const months = byAcctMonth.get(acct.id)
-        if (!months) continue
+        const owned = ownsBank(acct)
+        const months = owned ? byAcctMonth.get(acct.id) : undefined
+        if (owned && !months) continue
         const mm = movMonthly.get(n)
-        const firstM = firstMonth.get(acct.id) ?? 1
+        const firstM = owned ? (firstMonth.get(acct.id) ?? 1) : 1
         // Walk the year: at each month end the sheet should read what the bank
         // read. Only the CHANGE in the required adjustment is posted, so each
         // month carries its own correction and none carries the whole year's.
         let ledger = opening.get(n) || 0
         let carried = 0          // adjustment already posted in earlier months
-        let lastKnown: number | null = null
+        // A foreign account starts and stays at zero; an owned one waits for its
+        // first statement line before there is anything to true to.
+        let lastKnown: number | null = owned ? null : 0
         for (let m = 1; m <= 12; m++) {
           ledger += (mm?.debit[m] || 0) - (mm?.credit[m] || 0)   // cash is debit-normal
-          const stmt = months.get(m)
+          const stmt = months?.get(m)
           if (stmt !== undefined) lastKnown = stmt
           // Before the account's first statement line there is nothing to true
           // to. After the last one the account is HELD at the bank's last known
@@ -956,7 +974,9 @@ export async function computeLedgerStatements(
           if (m < firstM || lastKnown === null) continue
           const want = round2(lastKnown - (ledger + carried))
           if (Math.abs(want) < 0.01) continue
-          postBalanced('bank-trueup', m, `True-up to bank statement — ${acct.title}`, [
+          postBalanced('bank-trueup', m, owned
+            ? `True-up to bank statement — ${acct.title}`
+            : `Not this branch's account — ${acct.title}`, [
             want < 0 ? { acct, credit: -want } : { acct, debit: want },
             want < 0 ? { acct: pendReconcile, debit: -want } : { acct: pendReconcile, credit: want },
           ])
@@ -978,6 +998,7 @@ export async function computeLedgerStatements(
       for (const acct of byNumber.values()) {
         if (acct.virtual || !acct.id) continue
         if (!(bankFlagged.has(acct.number) || isCashAccount(acct))) continue
+        if (!ownsBank(acct)) continue                 // zeroed above, not ours to floor
         if (byAcctMonth.has(acct.id)) continue        // has statements — trued above
         const mm = movMonthly.get(acct.number)
         let raw = opening.get(acct.number) || 0
