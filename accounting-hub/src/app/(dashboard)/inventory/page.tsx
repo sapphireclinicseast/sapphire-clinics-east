@@ -2186,22 +2186,72 @@ setTimeout(()=>window.print(),500);
   }
 
   /* ── Download Handlers ──────────────────────────────────── */
+  // Every field captured on the product form, in roughly the order the form asks
+  // for them. Variants and bundle components are one-to-many, so they get their
+  // own sheets rather than being flattened into unreadable cells.
   const handleDownloadInventory = (format: 'xlsx' | 'pdf', includePhotos = false) => {
-    const headers = ['SKU', 'Name', 'Branch', 'Department', 'Category', 'Subcategory', 'Qty', 'Unit Cost', 'Selling Price', 'Reward Pts Price', 'Reorder Level', 'Supplier']
+    const headers = [
+      'SKU', 'Barcode', 'Name', 'Supplier Product Name', 'Description',
+      'Branch', 'Status', 'Department', 'Category', 'Subcategory',
+      'Account Sub-Type', 'Website Classification',
+      'Qty', 'Reorder Level', 'Branch Stock',
+      'Unit Cost', 'Selling Price', 'Reward Pts Price',
+      'Supplier', 'Supplier Currency', 'Supplier FX Rate',
+      'Revenue Account', 'Source Account', 'Expense Account',
+      'L (cm)', 'W (cm)', 'H (cm)', 'CBM/unit',
+      'Bundle', 'Pre-Order', 'Official Invoice', 'Variants', 'Photo URL',
+    ]
+    const acctLabel = (a?: { accountNumber: string; accountTitle: string } | null) =>
+      a ? `${a.accountNumber} — ${a.accountTitle}` : ''
+    const cbmPerUnit = (i: InventoryItem) => {
+      const l = Number(i.dimensionLength || 0), w = Number(i.dimensionWidth || 0), h = Number(i.dimensionHeight || 0)
+      return l > 0 && w > 0 && h > 0 ? ((l * w * h) / 1_000_000).toFixed(6) : ''
+    }
     const rows = items.map(i => [
-      i.sku, i.name, BRANCH_LABELS[i.branch] || i.branch, i.skuDepartment, i.skuCategory, i.skuSubcategory,
-      i.quantity, formatCurrency(i.unitCost), formatCurrency(i.sellingPrice || 0),
-      i.rewardPointsPrice != null ? i.rewardPointsPrice : '', i.reorderLevel ?? '',
-      i.supplier?.supplierName || ''
+      i.sku, i.barcode || '', i.name, i.supplierProductName || '', i.description || '',
+      BRANCH_LABELS[i.branch] || i.branch, i.isActive === false ? 'Disabled' : 'Active',
+      i.skuDepartment, i.skuCategory, i.skuSubcategory,
+      i.accountSubType || '', i.websiteClassification || '',
+      i.quantity, i.reorderLevel ?? '',
+      i.branchStock ? Object.entries(i.branchStock).map(([b, q]) => `${BRANCH_LABELS[b] || b}: ${q}`).join(' · ') : '',
+      formatCurrency(i.unitCost), formatCurrency(i.sellingPrice || 0),
+      i.rewardPointsPrice != null ? i.rewardPointsPrice : '',
+      i.supplier?.supplierName || '', i.supplier?.currency || '', i.supplierExchangeRate ?? '',
+      acctLabel(i.revenueAccount), acctLabel(i.sourceAccount), acctLabel(i.expenseAccount),
+      i.dimensionLength ?? '', i.dimensionWidth ?? '', i.dimensionHeight ?? '', cbmPerUnit(i),
+      i.isBundle ? 'Yes' : '', i.isPreOrder ? 'Yes' : '', i.issuedOfficialInvoice ? 'Yes' : '',
+      i.variants?.length ? i.variants.map(v => `${v.variantLabel} (${v.quantity})`).join(' · ') : '',
+      i.imageUrl || '',
     ])
     const subtitle = `${rows.length} items — ${itemBranchFilter ? BRANCH_LABELS[itemBranchFilter] || itemBranchFilter : 'All Branches'}`
+
     if (format === 'xlsx') {
-      // Excel can't embed images — include the photo URL column instead when requested.
-      if (includePhotos) {
-        downloadXlsx('Inventory_Items', [{ name: 'Inventory', headers: [...headers, 'Photo URL'], rows: rows.map((r, idx) => [...r, items[idx].imageUrl || '']) }])
-      } else {
-        downloadXlsx('Inventory_Items', [{ name: 'Inventory', headers, rows }])
+      const sheets = [{ name: 'Inventory', headers, rows }]
+      const variantRows = items.flatMap(i => (i.variants || []).map(v => [
+        i.sku, i.name, v.variantType, v.variantLabel, v.color || '', v.variantSku, v.barcode || '',
+        v.quantity,
+        v.unitCost != null ? formatCurrency(Number(v.unitCost)) : '',
+        v.sellingPrice != null ? formatCurrency(Number(v.sellingPrice)) : '',
+      ]))
+      if (variantRows.length) {
+        sheets.push({
+          name: 'Variants',
+          headers: ['Item SKU', 'Item', 'Variant Type', 'Label', 'Color', 'Variant SKU', 'Barcode', 'Qty', 'Unit Cost', 'Selling Price'],
+          rows: variantRows,
+        })
       }
+      const bundleRows = items.flatMap(i => (i.bundleComponents || []).map(b => [
+        i.sku, i.name, b.component.sku, b.component.name, b.quantity,
+      ]))
+      if (bundleRows.length) {
+        sheets.push({
+          name: 'Bundle Components',
+          headers: ['Bundle SKU', 'Bundle', 'Component SKU', 'Component', 'Qty per Bundle'],
+          rows: bundleRows,
+        })
+      }
+      // Excel can't embed images, so the photo travels as its URL column above.
+      downloadXlsx('Inventory_Items', sheets)
     } else {
       downloadPdf({ title: 'Inventory Items', subtitle, headers, rows, landscape: true, images: includePhotos ? items.map(i => i.imageUrl || null) : undefined, imageHeader: 'Photo' })
     }
