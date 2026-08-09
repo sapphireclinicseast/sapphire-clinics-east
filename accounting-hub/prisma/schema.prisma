@@ -337,6 +337,8 @@ model InventoryItem {
   reorderLevel          Int?
   supplierId            String?
   supplier              Supplier? @relation(fields: [supplierId], references: [id])
+  supplierProductName   String? // what the supplier calls this item on their catalogue/invoice — our `name` is the internal one, so this is how you find it when reordering
+  description           String? // free-text description of the product (materials, contents, what it is for)
   supplierExchangeRate  Decimal?
   dimensionLength       Decimal? // cm — length inclusive of packaging (for CBM)
   dimensionWidth        Decimal? // cm — width inclusive of packaging (for CBM)

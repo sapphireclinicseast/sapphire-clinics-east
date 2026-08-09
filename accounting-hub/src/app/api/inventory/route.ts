@@ -41,7 +41,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where: { ...where, isActive: true },
-      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true }, orderBy: { variantLabel: 'asc' } } },
+      select: { id: true, name: true, supplierProductName: true, description: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
@@ -130,6 +130,8 @@ export async function POST(req: Request) {
         quantity: quantity ? parseInt(quantity) : 0,
         reorderLevel: reorderLevel ? parseInt(reorderLevel) : null,
         supplierId: supplierId || null,
+        supplierProductName: body.supplierProductName?.trim() || null,
+        description: body.description?.trim() || null,
         supplierExchangeRate: supplierExchangeRate ? parseFloat(supplierExchangeRate) : null,
         revenueAccountId: revenueAccountId || null,
         sourceAccountId: sourceAccountId || null,
@@ -170,7 +172,7 @@ export async function PUT(req: Request) {
 
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
-            reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
+            reorderLevel, supplierId, supplierProductName, description, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
             issuedOfficialInvoice, isPreOrder, websiteClassification, imageUrl, isActive,
             dimensionLength, dimensionWidth, dimensionHeight } = await req.json()
 
@@ -189,6 +191,8 @@ export async function PUT(req: Request) {
     if (quantity !== undefined) data.quantity = parseInt(quantity)
     if (reorderLevel !== undefined) data.reorderLevel = reorderLevel ? parseInt(reorderLevel) : null
     if (supplierId !== undefined) data.supplierId = supplierId || null
+    if (supplierProductName !== undefined) data.supplierProductName = supplierProductName?.trim() || null
+    if (description !== undefined) data.description = description?.trim() || null
     if (supplierExchangeRate !== undefined) data.supplierExchangeRate = supplierExchangeRate ? parseFloat(supplierExchangeRate) : null
     if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
     if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
