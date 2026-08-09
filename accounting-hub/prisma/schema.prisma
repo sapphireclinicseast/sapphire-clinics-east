@@ -69,6 +69,8 @@ model User {
   servicesCreated      Service[]                  @relation("ServiceCreatedBy")
   suppliersCreated     Supplier[]                 @relation("SupplierCreatedBy")
   inventoryItems       InventoryItem[]            @relation("ItemCreatedBy")
+  quotationsCreated    Quotation[]                @relation("QuotationCreatedBy")
+  quotationTemplates   QuotationTemplate[]        @relation("QuotationTemplateUploadedBy")
   inventoryAdjustments InventoryAdjustment[]      @relation("AdjustmentBy")
   inventoryAdjBatches  InventoryAdjustmentBatch[] @relation("AdjBatchCreatedBy")
   transfersRequested   ConsignmentTransfer[]      @relation("TransferRequestedBy")
@@ -314,6 +316,73 @@ model Supplier {
 
   @@index([isActive])
   @@index([createdById])
+}
+
+/// Per-branch .docx letterhead a quotation is generated onto. The uploaded file is
+/// kept verbatim — generation clones it and writes the body inside, so the header,
+/// footer and artwork stay exactly as the branch designed them.
+model QuotationTemplate {
+  id           String   @id @default(cuid())
+  branch       String   @unique // AHEA | AHGH | VERDANA | INSTITUTE
+  fileName     String // original upload name, shown in Settings
+  storedName   String // file in uploads/, served via /api/files/[filename]
+  uploadedById String
+  uploadedBy   User     @relation("QuotationTemplateUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Quotation {
+  id                  String   @id @default(cuid())
+  quotationNumber     String   @unique
+  branch              String // AHEA | AHGH | VERDANA | INSTITUTE
+  recipientName       String
+  recipientEmail      String?
+  recipientPhone      String?
+  contactPerson       String?
+  datePrepared        DateTime
+  validityDays        Int // 30 | 45 | 60 | 90
+  usePwdRate          Boolean  @default(false)
+  globalDiscountType  String? // PERCENT | AMOUNT — "special discount for all"
+  globalDiscountValue Decimal?
+  remarks             String?
+  preparedByName      String
+  preparedByPosition  String
+  signatureUrl        String? // uploaded e-sig or a drawn signature, both stored as images
+  subtotalGross       Decimal  @default(0)
+  grandTotal          Decimal  @default(0)
+  createdById         String
+  createdBy           User     @relation("QuotationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  items QuotationItem[]
+
+  @@index([branch])
+  @@index([createdAt])
+}
+
+/// A line on the quotation. Name/price/department are copied at generation time so a
+/// later price change never rewrites a quotation that has already gone out.
+model QuotationItem {
+  id              String   @id @default(cuid())
+  quotationId     String
+  quotation       Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  kind            String // SERVICE | PRODUCT
+  serviceId       String?
+  inventoryItemId String?
+  name            String
+  department      String? // services
+  sku             String? // products
+  imageUrl        String? // products — the photo printed on the quotation
+  grossPrice      Decimal
+  discountedPrice Decimal? // null when the line carries no discount
+  discountLabel   String? // PWD, 10%, ₱500 off — printed so the reader sees why
+  quantity        Int      @default(1)
+  lineTotal       Decimal
+  sortOrder       Int      @default(0)
+
+  @@index([quotationId])
 }
 
 model InventoryItem {
