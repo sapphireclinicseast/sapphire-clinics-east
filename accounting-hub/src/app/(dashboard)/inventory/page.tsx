@@ -416,6 +416,7 @@ interface InventoryItem {
   dimensionLength?: number | null
   dimensionWidth?: number | null
   dimensionHeight?: number | null
+  weightKg?: number | null
 }
 
 interface Adjustment {
@@ -812,6 +813,7 @@ function InventoryInner() {
   const [fDimL, setFDimL] = useState('')
   const [fDimW, setFDimW] = useState('')
   const [fDimH, setFDimH] = useState('')
+  const [fWeightKg, setFWeightKg] = useState('')
   const [fRevenueAccountId, setFRevenueAccountId] = useState('')
   const [fRevenueAccountSearch, setFRevenueAccountSearch] = useState('')
   const [revenueAccounts, setRevenueAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
@@ -1446,7 +1448,7 @@ function InventoryInner() {
     setIssuedOfficialInvoice(false)
     setIsPreOrder(false)
     setFWebsiteClass('')
-    setFDimL(''); setFDimW(''); setFDimH('')
+    setFDimL(''); setFDimW(''); setFDimH(''); setFWeightKg('')
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
@@ -1470,6 +1472,7 @@ function InventoryInner() {
     setFReorderLevel(item.reorderLevel != null ? String(item.reorderLevel) : '')
     setFSupplierId(item.supplierId || '')
     setFExchangeRate(item.supplierExchangeRate != null ? String(item.supplierExchangeRate) : '')
+    setFWeightKg(item.weightKg != null ? String(item.weightKg) : '')
     setFDimL(item.dimensionLength != null ? String(item.dimensionLength) : '')
     setFDimW(item.dimensionWidth != null ? String(item.dimensionWidth) : '')
     setFDimH(item.dimensionHeight != null ? String(item.dimensionHeight) : '')
@@ -1638,6 +1641,7 @@ function InventoryInner() {
       supplierId: fSupplierId || null,
       supplierProductName: fSupplierProductName || null,
       description: fDescription || null,
+      weightKg: fWeightKg || null,
       dimensionLength: fDimL || null,
       dimensionWidth: fDimW || null,
       dimensionHeight: fDimH || null,
@@ -2198,7 +2202,7 @@ setTimeout(()=>window.print(),500);
       'Unit Cost', 'Selling Price', 'Reward Pts Price',
       'Supplier', 'Supplier Currency', 'Supplier FX Rate',
       'Revenue Account', 'Source Account', 'Expense Account',
-      'L (cm)', 'W (cm)', 'H (cm)', 'CBM/unit',
+      'L (cm)', 'W (cm)', 'H (cm)', 'CBM/unit', 'Weight (kg)',
       'Bundle', 'Pre-Order', 'Official Invoice', 'Variants', 'Photo URL',
     ]
     const acctLabel = (a?: { accountNumber: string; accountTitle: string } | null) =>
@@ -2218,7 +2222,7 @@ setTimeout(()=>window.print(),500);
       i.rewardPointsPrice != null ? i.rewardPointsPrice : '',
       i.supplier?.supplierName || '', i.supplier?.currency || '', i.supplierExchangeRate ?? '',
       acctLabel(i.revenueAccount), acctLabel(i.sourceAccount), acctLabel(i.expenseAccount),
-      i.dimensionLength ?? '', i.dimensionWidth ?? '', i.dimensionHeight ?? '', cbmPerUnit(i),
+      i.dimensionLength ?? '', i.dimensionWidth ?? '', i.dimensionHeight ?? '', cbmPerUnit(i), i.weightKg ?? '',
       i.isBundle ? 'Yes' : '', i.isPreOrder ? 'Yes' : '', i.issuedOfficialInvoice ? 'Yes' : '',
       i.variants?.length ? i.variants.map(v => `${v.variantLabel} (${v.quantity})`).join(' · ') : '',
       i.imageUrl || '',
@@ -3203,6 +3207,16 @@ setTimeout(()=>window.print(),500);
                         CBM: {((parseFloat(fDimL) * parseFloat(fDimW) * parseFloat(fDimH)) / 1_000_000).toFixed(6)} m³
                       </p>
                     )}
+                  </div>
+
+                  {/* Shipping weight — couriers price by weight, so the store needs this. */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Weight <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(kg, inclusive of packaging — used for shipping on verdanarehab.com)</span>
+                    </label>
+                    <input type="number" step="0.01" min="0" value={fWeightKg} onChange={e => setFWeightKg(e.target.value)}
+                      placeholder="e.g. 0.4"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
 
                   {/* Supplier */}
