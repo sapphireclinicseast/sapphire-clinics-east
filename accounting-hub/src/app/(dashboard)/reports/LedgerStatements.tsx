@@ -663,7 +663,10 @@ export default function LedgerStatements({ year, branch, tab, view }: {
       // Month-end (or quarter-end) POSITIONS: engine sends cumulative
       // statement-signed balances in `monthly` for balance-sheet rows.
       const colLabels = cutCols(view === 'quarterly' ? QUARTERS : MONTHS)
-      const colIdx = view === 'quarterly' ? [2, 5, 8, 11] : Array.from({ length: 12 }, (_, i) => i)
+      // Must be cut the same way colLabels is: in the current year the header
+      // stops at the last real month, so emitting all twelve values shifted
+      // "Year End" into September's slot and left four columns unlabelled.
+      const colIdx = cutCols(view === 'quarterly' ? [2, 5, 8, 11] : Array.from({ length: 12 }, (_, i) => i))
       const pick = (m12: number[]) => colIdx.map(i => m12[i] || 0)
       // cumulative EBT per month → monthly NI / ITP / DTA (statement-signed)
       const isSec = (key: string) => data.incomeStatement.sections.find(s => s.key === key)
