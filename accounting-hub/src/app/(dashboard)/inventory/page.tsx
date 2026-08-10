@@ -40,6 +40,7 @@ import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
+import BranchStockPanel from './BranchStockPanel'
 import SkuGuidePanel from './SkuGuidePanel'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
@@ -347,7 +348,7 @@ const CURRENCIES = [
   { value: 'INR', label: 'INR — Indian Rupee' },
 ]
 
-const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Adjustments', 'Consignments', 'Forms'] as const
+const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms'] as const
 type Tab = (typeof TABS)[number]
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -5622,6 +5623,8 @@ setTimeout(()=>window.print(),500);
       {/* ════════════════════════════════════════════════════
          TAB 5: CONSUMABLE FORMS (control-number stock)
          ════════════════════════════════════════════════════ */}
+      {activeTab === 'Branch Stock' && <BranchStockPanel />}
+
       {activeTab === 'Forms' && (() => {
         const summary = Array.from(
           forms.reduce((m, f) => {
