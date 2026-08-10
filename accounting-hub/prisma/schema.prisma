@@ -487,6 +487,13 @@ model InventoryVariant {
   // (e.g. The Petite Pouf in polyester vs cotton — different landed cost and price).
   unitCost     Decimal?      @db.Decimal(12, 2)
   sellingPrice Decimal?      @db.Decimal(12, 2)
+  // Per-variant physical specs, NULL = inherit the parent item's figure. Size
+  // variants (e.g. a SMALL vs LARGE pouf) ship in genuinely different boxes,
+  // and weight drives the verdanarehab.com shipping fee at checkout.
+  dimensionLength Decimal?   @db.Decimal(10, 2)  // cm, inclusive of packaging
+  dimensionWidth  Decimal?   @db.Decimal(10, 2)  // cm
+  dimensionHeight Decimal?   @db.Decimal(10, 2)  // cm
+  weightKg        Decimal?   @db.Decimal(10, 3)  // kg, inclusive of packaging
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt

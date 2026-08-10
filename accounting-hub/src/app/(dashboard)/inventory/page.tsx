@@ -405,7 +405,7 @@ interface InventoryItem {
   sourceAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   expenseAccountId?: string | null
   expenseAccount?: { id: string; accountNumber: string; accountTitle: string } | null
-  variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null; unitCost?: string | number | null; sellingPrice?: string | number | null }[]
+  variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null; unitCost?: string | number | null; sellingPrice?: string | number | null; dimensionLength?: string | number | null; dimensionWidth?: string | number | null; dimensionHeight?: string | number | null; weightKg?: string | number | null }[]
   isBundle?: boolean
   issuedOfficialInvoice?: boolean
   isPreOrder?: boolean
@@ -855,7 +855,7 @@ function InventoryInner() {
   const [shrinkEditId, setShrinkEditId] = useState<string | null>(null)
   const [deletingAdj, setDeletingAdj] = useState(false)
   // Variants (color, size, material, etc.)
-  const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string; unitCost?: string | number | null; sellingPrice?: string | number | null }[]>([])
+  const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string; unitCost?: string | number | null; sellingPrice?: string | number | null; dimensionLength?: string | number | null; dimensionWidth?: string | number | null; dimensionHeight?: string | number | null; weightKg?: string | number | null }[]>([])
   const [variantSaved, setVariantSaved] = useState<string | null>(null)
   const [newVariantType, setNewVariantType] = useState('Color')
   const [newVariantLabel, setNewVariantLabel] = useState('')
@@ -1485,6 +1485,7 @@ function InventoryInner() {
     setVariants((item.variants || []).map((v: any) => ({
       id: v.id, variantType: v.variantType || 'Color', variantLabel: v.variantLabel || v.color || '', quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode || undefined,
       unitCost: v.unitCost ?? null, sellingPrice: v.sellingPrice ?? null,
+      dimensionLength: v.dimensionLength ?? null, dimensionWidth: v.dimensionWidth ?? null, dimensionHeight: v.dimensionHeight ?? null, weightKg: v.weightKg ?? null,
     })))
     setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(item.issuedOfficialInvoice || false)
@@ -1565,11 +1566,11 @@ function InventoryInner() {
     } catch { setError('Failed to add variant') }
   }
 
-  // Per-variant cost / price. Empty clears the override so the variant inherits the parent.
-  async function saveVariantPricing(variantId: string, field: 'unitCost' | 'sellingPrice', raw: string) {
+  // Per-variant cost / price / physical specs. Empty clears the override so the variant inherits the parent.
+  async function saveVariantPricing(variantId: string, field: 'unitCost' | 'sellingPrice' | 'dimensionLength' | 'dimensionWidth' | 'dimensionHeight' | 'weightKg', raw: string) {
     const value = raw.trim() === '' ? '' : raw.trim()
     const current = variants.find(v => v.id === variantId)
-    const existing = current ? (field === 'unitCost' ? current.unitCost : current.sellingPrice) : null
+    const existing = current ? current[field] : null
     if (String(existing ?? '') === String(value)) return   // unchanged — don't spam the API
     try {
       const res = await fetch('/api/inventory/variants', {
@@ -3421,6 +3422,34 @@ setTimeout(()=>window.print(),500);
                                     onBlur={e => saveVariantPricing(v.id!, 'sellingPrice', e.target.value)}
                                     className="w-24 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                                   {variantSaved === v.id && <span style={{ color: 'var(--teal)' }}>saved</span>}
+                                </div>
+                              )}
+                              {/* Per-variant dims + weight (e.g. SMALL vs LARGE ship in different boxes).
+                                  Blank inherits the parent item; weight feeds the store's shipping fee. */}
+                              {v.id && (
+                                <div className="flex items-center gap-2">
+                                  <label className="shrink-0" style={{ color: 'var(--mid-gray)' }}>L×W×H cm</label>
+                                  <input type="number" step="0.01" min={0}
+                                    defaultValue={v.dimensionLength != null ? String(v.dimensionLength) : ''}
+                                    placeholder={fDimL || 'L'} title={`Length — blank inherits ${fDimL || '—'}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'dimensionLength', e.target.value)}
+                                    className="w-14 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                  <input type="number" step="0.01" min={0}
+                                    defaultValue={v.dimensionWidth != null ? String(v.dimensionWidth) : ''}
+                                    placeholder={fDimW || 'W'} title={`Width — blank inherits ${fDimW || '—'}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'dimensionWidth', e.target.value)}
+                                    className="w-14 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                  <input type="number" step="0.01" min={0}
+                                    defaultValue={v.dimensionHeight != null ? String(v.dimensionHeight) : ''}
+                                    placeholder={fDimH || 'H'} title={`Height — blank inherits ${fDimH || '—'}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'dimensionHeight', e.target.value)}
+                                    className="w-14 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                  <label className="shrink-0 ml-2" style={{ color: 'var(--mid-gray)' }}>Wt kg</label>
+                                  <input type="number" step="0.001" min={0}
+                                    defaultValue={v.weightKg != null ? String(v.weightKg) : ''}
+                                    placeholder={fWeightKg || '0'} title={`Weight — blank inherits ${fWeightKg || '—'}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'weightKg', e.target.value)}
+                                    className="w-16 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                                 </div>
                               )}
                             </div>
