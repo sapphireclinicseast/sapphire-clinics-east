@@ -141,7 +141,9 @@
     "/api/uploads/products/busy-book-yeah-learning-maths/1778579621830-95mpv8.MOV"
   ],
   "preschool-sensory-mealtime-set": [],
-  "busy-book-hello-alphabet": [],
+  "busy-book-hello-alphabet": [
+    "/api/uploads/products/busy-book-hello-alphabet/1786345383179-5ld3pw.mov"
+  ],
   "little-apple-matchers": [
     "/api/uploads/products/little-apple-matchers/1778744592371-4i8dha.mov"
   ],

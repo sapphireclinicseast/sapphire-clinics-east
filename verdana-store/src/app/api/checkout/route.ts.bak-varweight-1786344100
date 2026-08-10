@@ -88,17 +88,7 @@ export async function POST(request: Request) {
       const product = item.slug
         ? getProductBySlug(item.slug)
         : allProducts.find((p) => p.id === item.productId)
-      // Per-variant weight when the selected variant carries one (SMALL vs LARGE
-      // ship in different boxes); otherwise the product's weight.
-      const variant = product?.variants?.find(
-        (v) =>
-          (item.variantSku && v.sku === item.variantSku) ||
-          (item.variantLabel && v.label === item.variantLabel),
-      )
-      const w =
-        variant && typeof variant.weightKg === 'number' && variant.weightKg > 0
-          ? variant.weightKg
-          : product?.weightKg
+      const w = product?.weightKg
       return sum + (typeof w === 'number' && w > 0 ? w : 0) * item.quantity
     }, 0)
 

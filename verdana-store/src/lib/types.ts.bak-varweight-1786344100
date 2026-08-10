@@ -12,9 +12,6 @@ export interface ProductVariant {
   stock?: number
   /** Per-variant price, mirrored from Accounting Hub. Absent = use the product price. */
   price?: number
-  /** Per-variant shipping weight (kg), mirrored from Accounting Hub — SMALL vs LARGE
-   *  ship in different boxes. Absent = use the product's weightKg. */
-  weightKg?: number
 }
 
 export interface Product {
