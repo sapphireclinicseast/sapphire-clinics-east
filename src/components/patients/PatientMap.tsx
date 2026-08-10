@@ -130,17 +130,24 @@ export default function PatientMap({ cities }: PatientMapProps) {
           'MIMAROPA Region':                    3,
           'Region I (Ilocos Region)':           10,
         }
+        // Keyed on the LOOSE (CITY-stripped) name, not the raw feature name —
+        // "San Juan City" (NCR) and "San Juan" (a rural municipality elsewhere)
+        // both draw from the same countMap bucket via lookupCount()'s loose
+        // match, so they must compete for the SAME bestRegion slot or both get
+        // shaded independently and the rural one can win the tooltip/fill by
+        // iteration order regardless of region priority.
         const bestRegion: Record<string, string> = {}
         for (const feat of geojson.features) {
-          const props  = feat.properties ?? {}
-          const name   = geoName(props)
-          const key    = normName(name)
-          const region = props.region ?? ''
+          const props    = feat.properties ?? {}
+          const name     = geoName(props)
+          const key      = normName(name)
+          const dedupKey = stripCityWord(key)
+          const region   = props.region ?? ''
           if (!key || provinceNames.has(key)) continue
           if (lookupCount(name) === null) continue
-          const existing = bestRegion[key]
+          const existing = bestRegion[dedupKey]
           if (!existing || (REGION_PRI[region] ?? 99) < (REGION_PRI[existing] ?? 99)) {
-            bestRegion[key] = region
+            bestRegion[dedupKey] = region
           }
         }
 
@@ -156,9 +163,11 @@ export default function PatientMap({ cities }: PatientMapProps) {
             const c = lookupCount(name)
             if (!c) return noData
             // Skip lower-priority duplicates (e.g. "San Mateo" in Isabela when
-            // the same name exists in Rizal Province, which is closer to the clinic)
+            // the same name exists in Rizal Province, which is closer to the clinic;
+            // dedupKey, not key, so "San Juan"/"San Juan City" compete correctly)
+            const dedupKey = stripCityWord(key)
             const region = props.region ?? ''
-            if (bestRegion[key] && bestRegion[key] !== region) return noData
+            if (bestRegion[dedupKey] && bestRegion[dedupKey] !== region) return noData
             return {
               weight:      0.4,
               color:       '#94a3b8',
@@ -167,13 +176,14 @@ export default function PatientMap({ cities }: PatientMapProps) {
             }
           },
           onEachFeature: (feature: any, layer: any) => {
-            const props  = feature?.properties ?? {}
-            const name   = geoName(props)
-            const key    = normName(name)
-            const region = props.region ?? ''
+            const props    = feature?.properties ?? {}
+            const name     = geoName(props)
+            const key      = normName(name)
+            const dedupKey = stripCityWord(key)
+            const region   = props.region ?? ''
             const active = !provinceNames.has(key)
                         && !!lookupCount(name)
-                        && (!bestRegion[key] || bestRegion[key] === region)
+                        && (!bestRegion[dedupKey] || bestRegion[dedupKey] === region)
             const c = active ? lookupCount(name) : null
             layer.bindTooltip(
               `${name}: ${c ? `${c.n} patient${c.n !== 1 ? 's' : ''}` : '0 patients'}`,
