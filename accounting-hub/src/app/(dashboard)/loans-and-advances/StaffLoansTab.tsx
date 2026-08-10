@@ -17,6 +17,10 @@ import { Plus, Loader2, X, ChevronDown, ChevronRight, Pencil } from 'lucide-reac
 
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Stored branch codes predate the rebrand; never show them raw.
+const BRANCH_LABEL: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VER' }
+const branchLabel = (b: string | null | undefined) => (b ? BRANCH_LABEL[b] || b : '—')
+
 const CATEGORIES = [
   ['LOAN', 'Cash Loan'], ['BIR_ASSISTANCE', 'BIR Assistance'], ['TRAINING', 'Training'],
   ['MEDICAL', 'Medical Bill'], ['SOS', 'SOS Program'], ['PERK', 'Perk / Other'],
@@ -129,7 +133,7 @@ export default function StaffLoansTab() {
                       </button>
                     </td>
                     <td className="px-3 py-1.5 font-medium" style={{ color: 'var(--charcoal)' }}>{l.staffName}</td>
-                    <td className="px-3 py-1.5">{l.branch || '—'}</td>
+                    <td className="px-3 py-1.5">{branchLabel(l.branch)}</td>
                     <td className="px-3 py-1.5">{(CATEGORIES.find(c => c[0] === l.category)?.[1]) || l.category}</td>
                     <td className="px-3 py-1.5" style={{ maxWidth: 220 }} title={l.description || ''}>{(l.description || '').slice(0, 60)}</td>
                     <td className="px-3 py-1.5 whitespace-nowrap">{l.dateReleased ? l.dateReleased.slice(0, 10) : '—'}</td>
@@ -194,14 +198,14 @@ export default function StaffLoansTab() {
                   setF(v => ({ ...v, employeeId: e.target.value, staffName: emp ? `${emp.firstName} ${emp.lastName}` : v.staffName, branch: emp?.branch || v.branch }))
                 }} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
                   <option value="">— not linked (name only) —</option>
-                  {emps.map(e2 => <option key={e2.id} value={e2.id}>{e2.firstName} {e2.lastName} ({e2.branch})</option>)}
+                  {emps.map(e2 => <option key={e2.id} value={e2.id}>{e2.firstName} {e2.lastName} ({branchLabel(e2.branch)})</option>)}
                 </select>
               </div>
               <div><label className="block text-[11px] font-medium mb-1">Staff name</label>
                 <input value={f.staffName} onChange={e => setF(v => ({ ...v, staffName: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></div>
               <div><label className="block text-[11px] font-medium mb-1">Branch</label>
                 <select value={f.branch} onChange={e => setF(v => ({ ...v, branch: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                  {['SBEA', 'SBGH', 'VERDANA'].map(b => <option key={b} value={b}>{b}</option>)}
+                  {([['SBEA', 'AHEA — Aura Health East'], ['SBGH', 'AHGH — Aura Health Greenhills'], ['VERDANA', 'VER — Verdana']] as const).map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
                 </select></div>
               <div><label className="block text-[11px] font-medium mb-1">Category</label>
                 <select value={f.category} onChange={e => setF(v => ({ ...v, category: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
