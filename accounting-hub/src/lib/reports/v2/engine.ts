@@ -1374,11 +1374,54 @@ export async function computeLedgerStatements(
   const investingRows = bsRows.filter(r => r.type === 'ASSET' && ['PPE', 'INTANGIBLE_ASSETS', 'OTHER_NON_CURRENT_ASSETS'].includes(r.subType) && r.number !== accumDep.number)
   const investing: { label: string; amount: number; monthly?: number[] }[] = []
   let invTotal = 0
+  /* ── Corrections are not disposals ──
+     Editing or deleting an asset (or removing a duplicate) posts an
+     ASSET_PURCHASE_REVERSAL that credits the asset-cost account. In a month
+     where corrections exceed new purchases the account's net cash effect goes
+     positive, which reads as "proceeds from selling assets" — but no asset was
+     sold; a recorded purchase was un-recorded. Pull those reversals out of each
+     account's line and show them once, by name, so purchases stay gross and a
+     reader never mistakes a data cleanup for disposal proceeds. */
+  const invRevM = new Map<string, number[]>() // account number -> monthly reversal cash effect (+)
+  try {
+    const invIds = new Map(investingRows.map(r => [byNumber.get(r.number)?.id, r.number]).filter(([id]) => id) as [string, string][])
+    if (invIds.size) {
+      const revLines = await prisma.journalEntryLine.findMany({
+        where: {
+          accountId: { in: [...invIds.keys()] },
+          journalEntry: {
+            referenceType: 'ASSET_PURCHASE_REVERSAL',
+            entryDate: { gte: start, lt: end },
+            ...(branchValues ? { branch: { in: branchValues as never[] } } : {}),
+          },
+        },
+        select: { accountId: true, debit: true, credit: true, journalEntry: { select: { entryDate: true } } },
+      })
+      for (const l of revLines) {
+        const n = invIds.get(l.accountId)
+        if (!n) continue
+        const m = l.journalEntry.entryDate.getUTCMonth()
+        if (!invRevM.has(n)) invRevM.set(n, Array(12).fill(0))
+        // a reversal CREDIT shrinks the asset -> positive cash effect on this line
+        invRevM.get(n)![m] = round2(invRevM.get(n)![m] + Number(l.credit) - Number(l.debit))
+      }
+    }
+  } catch { /* corrections line is presentational — never block the statement */ }
+  const corrMonthly = Array(12).fill(0)
+  for (const arr of invRevM.values()) for (let i = 0; i < 12; i++) corrMonthly[i] = round2(corrMonthly[i] + arr[i])
+  const corrTotal = round2(corrMonthly.reduce((a, b) => a + b, 0))
   for (const r of investingRows) {
-    const effect = delta(r) // cash effect (purchase = negative)
-    if (Math.abs(effect) < 0.005) continue
-    investing.push({ label: `${r.number} ${r.title}`, amount: round2(effect), monthly: effMonthly(r) })
+    const rev = invRevM.get(r.number)
+    const revTot = rev ? round2(rev.reduce((a, b) => a + b, 0)) : 0
+    const effect = round2(delta(r) - revTot) // gross purchases, corrections excluded
+    const monthly = effMonthly(r).map((v, i) => round2(v - (rev?.[i] || 0)))
+    if (Math.abs(effect) < 0.005 && Math.abs(revTot) < 0.005) continue
+    if (Math.abs(effect) >= 0.005) investing.push({ label: `${r.number} ${r.title}`, amount: effect, monthly })
     invTotal += effect
+  }
+  if (Math.abs(corrTotal) >= 0.005) {
+    investing.push({ label: 'Asset purchase corrections / reversals (edits, deletions, duplicates)', amount: corrTotal, monthly: corrMonthly.map(round2) })
+    invTotal += corrTotal
   }
   const financing: { label: string; amount: number; monthly?: number[] }[] = []
   let finTotal = 0
