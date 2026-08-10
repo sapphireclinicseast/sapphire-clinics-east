@@ -282,6 +282,14 @@ ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionHeight" DECIMAL(6
 -- Shipping weight (kg) — feeds the shipping rates on verdanarehab.com
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "weightKg" DECIMAL(65,30);
 
+-- Per-variant physical specs (NULL = inherit the parent item). Size variants
+-- ship in different boxes, so LWH + weight are settable per variant; the
+-- storefront charges shipping by the variant's weight.
+ALTER TABLE "InventoryVariant" ADD COLUMN IF NOT EXISTS "dimensionLength" DECIMAL(10,2);
+ALTER TABLE "InventoryVariant" ADD COLUMN IF NOT EXISTS "dimensionWidth"  DECIMAL(10,2);
+ALTER TABLE "InventoryVariant" ADD COLUMN IF NOT EXISTS "dimensionHeight" DECIMAL(10,2);
+ALTER TABLE "InventoryVariant" ADD COLUMN IF NOT EXISTS "weightKg"        DECIMAL(10,3);
+
 -- Inventory adjustment: display reference + batch FK
 ALTER TABLE "InventoryAdjustment" ADD COLUMN IF NOT EXISTS "referenceNumber" TEXT;
 ALTER TABLE "InventoryAdjustment" ADD COLUMN IF NOT EXISTS "batchRefId"      TEXT;
