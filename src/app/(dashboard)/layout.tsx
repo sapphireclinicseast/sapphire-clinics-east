@@ -24,7 +24,16 @@ export default async function DashboardLayout({
   const role = (session.user as { role?: string })?.role ?? ''
   if (role === 'INVESTOR') {
     const pathname = (await headers()).get('x-pathname') ?? ''
-    const isAllowed = INVESTOR_ALLOWED_PREFIXES.some(
+    // Fail OPEN, not into a loop: if middleware's x-pathname header is ever
+    // missing (proxy/CDN stripped it, a request bypassed middleware, etc.),
+    // pathname is '' — which matches NO allowed prefix, so every request
+    // including /scheduling-dashboard itself would redirect to
+    // /scheduling-dashboard, which re-renders this exact layout with the
+    // same missing header, redirecting again. That self-redirect loop is
+    // what actually rendered as a permanently blank page for investor
+    // accounts. Only redirect when we have positive evidence of an
+    // out-of-scope path, never when we simply don't know the path.
+    const isAllowed = !pathname || INVESTOR_ALLOWED_PREFIXES.some(
       p => pathname === p || pathname.startsWith(p + '/')
     )
     if (!isAllowed) redirect('/scheduling-dashboard')
