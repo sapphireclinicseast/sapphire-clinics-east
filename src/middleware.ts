@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Forwards the request pathname as a REQUEST header (not a response header —
+// Server Components read headers() from the incoming request, so this must
+// go through NextResponse.next({ request: { headers } }), not res.headers.set)
+// so they can make routing decisions — specifically the INVESTOR-role route
+// gate in (dashboard)/layout.tsx.
+function withPathnameHeader(req: NextRequest): NextResponse {
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set('x-pathname', req.nextUrl.pathname)
+  return NextResponse.next({ request: { headers: requestHeaders } })
+}
+
 export function middleware(req: NextRequest) {
   const host = req.headers.get('host') ?? ''
   const { pathname } = req.nextUrl
@@ -74,7 +85,8 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(appUrl + (req.nextUrl.search || ''), 301)
   }
 
-  return NextResponse.next()
+  // Main app domain — this is where (dashboard)/* routes are served.
+  return withPathnameHeader(req)
 }
 
 export const config = {
