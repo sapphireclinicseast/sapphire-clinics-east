@@ -770,7 +770,6 @@ function InventoryInner() {
   const [itemDeptFilter, setItemDeptFilter] = useState('')
   const [itemWebClassFilter, setItemWebClassFilter] = useState('')
   const [showDisabledItems, setShowDisabledItems] = useState(false)
-  const [downloadWithPhotos, setDownloadWithPhotos] = useState(false)
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null)
@@ -2193,7 +2192,7 @@ setTimeout(()=>window.print(),500);
   // Every field captured on the product form, in roughly the order the form asks
   // for them. Variants and bundle components are one-to-many, so they get their
   // own sheets rather than being flattened into unreadable cells.
-  const handleDownloadInventory = (format: 'xlsx' | 'pdf', includePhotos = false) => {
+  const handleDownloadInventory = (format: 'xlsx' | 'pdf') => {
     const headers = [
       'SKU', 'Barcode', 'Name', 'Supplier Product Name', 'Description',
       'Branch', 'Status', 'Department', 'Category', 'Subcategory',
@@ -2257,7 +2256,7 @@ setTimeout(()=>window.print(),500);
       // Excel can't embed images, so the photo travels as its URL column above.
       downloadXlsx('Inventory_Items', sheets)
     } else {
-      downloadPdf({ title: 'Inventory Items', subtitle, headers, rows, landscape: true, images: includePhotos ? items.map(i => i.imageUrl || null) : undefined, imageHeader: 'Photo' })
+      downloadPdf({ title: 'Inventory Items', subtitle, headers, rows, landscape: true, images: items.map(i => i.imageUrl || null), imageHeader: 'Photo' })
     }
   }
 
@@ -2345,11 +2344,7 @@ setTimeout(()=>window.print(),500);
               Manage stock levels and item details
             </p>
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none whitespace-nowrap" style={{ color: 'var(--mid-gray)' }} title="Include the item photo in the download (embedded in PDF; photo URL column in Excel)">
-                <input type="checkbox" checked={downloadWithPhotos} onChange={(e) => setDownloadWithPhotos(e.target.checked)} className="w-4 h-4 accent-teal-600" />
-                Include photos
-              </label>
-              <DownloadMenu onDownload={(fmt) => handleDownloadInventory(fmt, downloadWithPhotos)} label="Download" />
+              <DownloadMenu onDownload={handleDownloadInventory} label="Download" />
               {canWrite && (<>
                 <button onClick={() => {
                   const csv = 'name,department,category,subcategory,branch,unit_cost,selling_price,reward_points_price,quantity,reorder_level\nPRODUCT NAME,OT,Equipment,Fine Motor,VERDANA_STORE,300,1200,,10,3'

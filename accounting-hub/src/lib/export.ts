@@ -57,10 +57,16 @@ export function downloadPdf(config: PdfTableConfig) {
     ? `<colgroup>${withPhotos ? '<col style="width:54px">' : ''}${columnWidths.map(w => `<col style="width:${w}">`).join('')}</colgroup>`
     : ''
 
+  // The print window is opened on about:blank, so a stored relative path like
+  // "/api/files/photo.jpg" has no origin to resolve against and the image
+  // silently fails. Make every src absolute against the app's own origin.
+  const absoluteUrl = (u: string) => /^(https?:)?\/\/|^data:/.test(u) ? u : `${window.location.origin}${u.startsWith('/') ? '' : '/'}${u}`
+
   const headerRow = `${withPhotos ? `<th>${imageHeader}</th>` : ''}${headers.map(h => `<th>${h}</th>`).join('')}`
   const bodyRows = rows.map((row, ri) => {
+    const src = images?.[ri] ? absoluteUrl(images[ri]!) : ''
     const photoCell = withPhotos
-      ? `<td style="text-align:center;">${images![ri] ? `<img src="${images![ri]}" crossOrigin="anonymous" onerror="this.style.display='none'" style="height:34px;max-width:46px;object-fit:cover;border-radius:4px;" />` : ''}</td>`
+      ? `<td style="text-align:center;">${src ? `<img src="${src}" crossOrigin="anonymous" onerror="this.style.display='none'" style="height:34px;max-width:46px;object-fit:cover;border-radius:4px;" />` : ''}</td>`
       : ''
     return `<tr>${photoCell}${row.map((cell, i) => {
       const val = cell ?? ''
