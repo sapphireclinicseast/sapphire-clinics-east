@@ -189,7 +189,7 @@ const LIVE_STMT = { status: { in: ['PENDING', 'POSTED'] } }
 export async function computeLedgerStatements(
   year: number,
   branch: string,
-  collect?: { account: string; month?: number },
+  collect?: { account: string; month?: number; cumulative?: boolean },
 ): Promise<V2Statements> {
   const start = new Date(Date.UTC(year, 0, 1))
   const end = new Date(Date.UTC(year + 1, 0, 1))
@@ -304,7 +304,7 @@ export async function computeLedgerStatements(
     const mm = movMonthly.get(acct.number)!
     mm.debit[month] += debit
     mm.credit[month] += credit
-    if (collect && collect.account === acct.number && (!collect.month || collect.month === month) && (debit || credit)) {
+    if (collect && collect.account === acct.number && (!collect.month || collect.month === month || (collect.cumulative && month <= collect.month)) && (debit || credit)) {
       collected.push({ month, source, label, debit: round2(debit), credit: round2(credit) })
     }
   }
@@ -370,6 +370,40 @@ export async function computeLedgerStatements(
     }
   }
 
+  /* ── 0b. Drill-down for the corrections line ──
+     "Asset purchase corrections / reversals" spans several accounts, so it
+     cannot drill by account number. The special key ASSET_CORRECTIONS lists
+     the underlying reversal entries themselves — what was reversed, when, and
+     for how much — instead of one account's ledger. */
+  if (collect && collect.account === 'ASSET_CORRECTIONS') {
+    const revLines = await prisma.journalEntryLine.findMany({
+      where: {
+        credit: { gt: 0 },
+        account: { accountType: 'ASSET', subType: { in: ['PPE', 'INTANGIBLE_ASSETS', 'OTHER_NON_CURRENT_ASSETS'] } },
+        journalEntry: {
+          referenceType: 'ASSET_PURCHASE_REVERSAL',
+          entryDate: { gte: start, lt: end },
+          ...(branchValues ? { branch: { in: branchValues as never[] } } : {}),
+        },
+      },
+      select: {
+        credit: true,
+        account: { select: { accountNumber: true, accountTitle: true } },
+        journalEntry: { select: { entryDate: true, description: true } },
+      },
+      orderBy: { journalEntry: { entryDate: 'asc' } },
+    })
+    for (const l of revLines) {
+      const m = l.journalEntry.entryDate.getUTCMonth() + 1
+      if (collect.month && !(collect.month === m || (collect.cumulative && m <= collect.month))) continue
+      collected.push({
+        month: m, source: 'asset-reversal',
+        label: `${l.account?.accountNumber} ${l.account?.accountTitle} — ${l.journalEntry.description || ''}`,
+        debit: 0, credit: round2(Number(l.credit)),
+      })
+    }
+  }
+
   /* ── 1. Opening balances ── */
   if (branch === 'ALL') {
     const openingRows = await prisma.beginningBalance.findMany({
@@ -386,7 +420,7 @@ export async function computeLedgerStatements(
       opening.set(acct.number, (opening.get(acct.number) || 0) + amt)
       if (acct.normalBalance === 'DEBIT') openDr += amt
       else openCr += amt
-      if (collect && collect.account === acct.number && !collect.month) {
+      if (collect && collect.account === acct.number && (!collect.month || collect.cumulative)) {
         collected.push({
           month: 0, source: 'opening', label: `Opening balance (${year})`,
           debit: acct.normalBalance === 'DEBIT' ? amt : 0,

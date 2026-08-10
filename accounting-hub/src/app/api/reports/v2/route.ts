@@ -19,10 +19,11 @@ export async function GET(req: Request) {
   const account = searchParams.get('account') || undefined
   const monthParam = searchParams.get('month')
   const month = monthParam ? parseInt(monthParam) : undefined
+  const cumulative = searchParams.get('cumulative') === '1'
   try {
     const statements = await computeLedgerStatements(
       year, branch,
-      account ? { account, ...(month && month >= 1 && month <= 12 ? { month } : {}) } : undefined,
+      account ? { account, ...(month && month >= 1 && month <= 12 ? { month, ...(cumulative ? { cumulative: true } : {}) } : {}) } : undefined,
     )
     return NextResponse.json(statements)
   } catch (err) {

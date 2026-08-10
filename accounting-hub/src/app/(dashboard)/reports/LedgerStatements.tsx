@@ -19,6 +19,7 @@ const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4']
 // engine's synthesized sources).
 const SOURCE_LABELS: Record<string, string> = {
   'opening': 'Opening balance',
+  'asset-reversal': 'Asset correction / reversal',
   'orders': 'POS sales (from orders)',
   'cogs': 'Cost of goods sold (from orders)',
   'ar-collections': 'HMO / guarantee-letter collections',
@@ -175,8 +176,8 @@ function MultiRow({ label, indent, bold, rule, doubleRule, muted, ...cells }: {
 
 /* ── Drill-down modal ───────────────────────────────────────────── */
 
-function DrillDown({ year, branch, account, title, month, onClose }: {
-  year: number; branch: string; account: string; title: string; month: number | null; onClose: () => void
+function DrillDown({ year, branch, account, title, month, cumulative, onClose }: {
+  year: number; branch: string; account: string; title: string; month: number | null; cumulative?: boolean; onClose: () => void
 }) {
   const [lines, setLines] = useState<V2CollectedLine[] | null>(null)
   const [totals, setTotals] = useState<{ debit: number; credit: number } | null>(null)
@@ -187,6 +188,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
     let live = true
     const params = new URLSearchParams({ year: String(year), branch, account })
     if (month) params.set('month', String(month))
+    if (month && cumulative) params.set('cumulative', '1')
     fetch(`/api/reports/v2?${params}`)
       .then(async r => {
         const j = await r.json()
@@ -246,7 +248,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
           <div>
             <p className="font-semibold" style={{ color: '#111827' }}>{title}</p>
             <p className="text-xs" style={{ color: '#6b7280' }}>
-              {month ? MONTHS[month - 1] : 'Whole year'} · every underlying entry, from the ledger dataset
+              {month ? (cumulative ? `Through ${MONTHS[month - 1]} — the running balance you clicked` : MONTHS[month - 1]) : 'Whole year'} · every underlying entry, from the ledger dataset
               {!month && ' · earlier years are listed first as History, and are not included in the totals — they are already embodied in the opening balance'}
             </p>
           </div>
@@ -334,7 +336,7 @@ export default function LedgerStatements({ year, branch, tab, view }: {
   // never calls setState synchronously.
   const key = `${year}|${branch}`
   const [result, setResult] = useState<{ key: string; data: V2Statements | null; error: string | null }>({ key: '', data: null, error: null })
-  const [drill, setDrill] = useState<{ account: string; title: string; month: number | null } | null>(null)
+  const [drill, setDrill] = useState<{ account: string; title: string; month: number | null; cumulative?: boolean } | null>(null)
   const [verticalAnalysis, setVerticalAnalysis] = useState(false)
   // Balance sheet: bank/cash accounts collapse into one "Cash and Cash
   // Equivalents" line; toggle to see the individual accounts.
@@ -371,8 +373,8 @@ export default function LedgerStatements({ year, branch, tab, view }: {
     return <p className="px-6 py-10 text-sm text-center" style={{ color: 'var(--mid-gray)' }}>{error || 'No data'}</p>
   }
 
-  const openDrill = (r: { number: string; title: string }, month: number | null = null) =>
-    setDrill({ account: r.number, title: `${r.number} ${r.title}`, month })
+  const openDrill = (r: { number: string; title: string }, month: number | null = null, cumulative = false) =>
+    setDrill({ account: r.number, title: `${r.number} ${r.title}`, month, cumulative })
 
   const v = data.validation
   const checks: { ok: boolean; label: string }[] = [
@@ -718,12 +720,12 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                   {grouped && cashOpen && cashRows.map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={2} muted
                       values={pick(r.monthly || [])} total={r.closing}
-                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null)} />
+                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null, view === 'monthly')} />
                   ))}
                   {(grouped ? s.rows.filter(r => !r.cash) : s.rows).map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={1}
                       values={pick(r.monthly || [])} total={r.closing}
-                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null)} />
+                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null, view === 'monthly')} />
                   ))}
                   {s.key === 'CURRENT_ASSETS' && bs.deferredTaxAsset > 0 && (
                     <MultiRow label="Deferred Tax Asset (20% provision on loss)" indent={1} values={pick(dtaCum)} total={bs.deferredTaxAsset} />
@@ -799,6 +801,9 @@ export default function LedgerStatements({ year, branch, tab, view }: {
       // plain rather than pretending to be clickable.
       const cfCellMonth = (i: number | null): number | null => (view === 'monthly' ? i : null)
       const cfDrill = (label: string) => {
+        if (label.startsWith('Asset purchase corrections')) {
+          return (mo: number | null) => openDrill({ number: 'ASSET_CORRECTIONS', title: 'Asset purchase corrections / reversals' }, cfCellMonth(mo))
+        }
         const m = /^(\d{3,6})\s+(.+)$/.exec(label.trim())
         return m ? (mo: number | null) => openDrill({ number: m[1], title: m[2] }, cfCellMonth(mo)) : undefined
       }
@@ -897,7 +902,7 @@ export default function LedgerStatements({ year, branch, tab, view }: {
         * derived account (not yet in the Chart of Accounts). Click any amount to see the entries behind it.
       </p>
       {drill && (
-        <DrillDown year={year} branch={branch} account={drill.account} title={drill.title} month={drill.month} onClose={() => setDrill(null)} />
+        <DrillDown year={year} branch={branch} account={drill.account} title={drill.title} month={drill.month} cumulative={drill.cumulative} onClose={() => setDrill(null)} />
       )}
     </div>
   )
