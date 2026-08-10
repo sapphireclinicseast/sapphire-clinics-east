@@ -1179,35 +1179,46 @@ function InventoryInner() {
 
   /* ── Fetchers ──────────────────────────────────────────── */
 
-  const fetchItems = useCallback(async () => {
+  // Every list below used to swallow failures and fall back to an empty array,
+  // so a server error or a database blip rendered as "No adjustments" — visually
+  // identical to the records having been deleted. Record the failure instead.
+  const [loadError, setLoadError] = useState('')
+
+  const fetchJson = useCallback(async (url: string) => {
     try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(String(res.status))
+      const data = await res.json()
+      setLoadError('')
+      return data
+    } catch {
+      setLoadError('Could not load data from the server — this is a connection or server problem, not missing records. Nothing has been deleted.')
+      return null
+    }
+  }, [])
+
+  const fetchItems = useCallback(async () => {
+    {
       const params = new URLSearchParams({ pageSize: '500' })
       if (itemSearch) params.set('search', itemSearch)
       if (itemBranchFilter) params.set('branch', itemBranchFilter)
       if (itemDeptFilter) params.set('department', itemDeptFilter)
       if (itemWebClassFilter) params.set('websiteClassification', itemWebClassFilter)
       if (showDisabledItems) params.set('includeDisabled', 'true')
-      const res = await fetch(`/api/inventory?${params}`)
-      const data = await res.json()
-      setItems(data.data || [])
-    } catch { /* ignore */ }
-  }, [itemSearch, itemBranchFilter, itemDeptFilter, itemWebClassFilter, showDisabledItems])
+      const data = await fetchJson(`/api/inventory?${params}`)
+      if (data) setItems(data.data || [])
+    }
+  }, [fetchJson, itemSearch, itemBranchFilter, itemDeptFilter, itemWebClassFilter, showDisabledItems])
 
   const fetchAllItems = useCallback(async () => {
-    try {
-      const res = await fetch('/api/inventory?all=true')
-      const data = await res.json()
-      setAllItems(Array.isArray(data) ? data : data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/inventory?all=true')
+    if (data) setAllItems(Array.isArray(data) ? data : data.data || [])
+  }, [fetchJson])
 
   const fetchSuppliers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/suppliers?pageSize=100')
-      const data = await res.json()
-      setSuppliers(data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/suppliers?pageSize=100')
+    if (data) setSuppliers(data.data || [])
+  }, [fetchJson])
 
   // Client-side supplier search across the fields anyone would look one up by.
   const shownSuppliers = useMemo(() => {
@@ -1218,37 +1229,25 @@ function InventoryInner() {
   }, [suppliers, supSearch])
 
   const fetchAllSuppliers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/suppliers?all=true')
-      const data = await res.json()
-      setAllSuppliers(Array.isArray(data) ? data : data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/suppliers?all=true')
+    if (data) setAllSuppliers(Array.isArray(data) ? data : data.data || [])
+  }, [fetchJson])
 
   const fetchAdjustments = useCallback(async () => {
-    try {
-      const res = await fetch('/api/inventory/adjustments?pageSize=100')
-      const data = await res.json()
-      setAdjustments(data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/inventory/adjustments?pageSize=100')
+    if (data) setAdjustments(data.data || [])
+  }, [fetchJson])
 
   const fetchConsignments = useCallback(async () => {
-    try {
-      const res = await fetch('/api/inventory/consignments?pageSize=100')
-      const data = await res.json()
-      setConsignments(data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/inventory/consignments?pageSize=100')
+    if (data) setConsignments(data.data || [])
+  }, [fetchJson])
 
   const fetchForms = useCallback(async () => {
-    try {
-      const qs = formsBranchFilter ? `?branch=${encodeURIComponent(formsBranchFilter)}` : ''
-      const res = await fetch(`/api/inventory/forms${qs}`)
-      const data = await res.json()
-      setForms(data.data || [])
-    } catch { /* ignore */ }
-  }, [formsBranchFilter])
+    const qs = formsBranchFilter ? `?branch=${encodeURIComponent(formsBranchFilter)}` : ''
+    const data = await fetchJson(`/api/inventory/forms${qs}`)
+    if (data) setForms(data.data || [])
+  }, [fetchJson, formsBranchFilter])
 
   const fetchFormTemplates = useCallback(async () => {
     try {
@@ -2329,6 +2328,19 @@ setTimeout(()=>window.print(),500);
       {/* Error (outside modals) */}
       {error && !anyModalOpen && (
         <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
+      )}
+
+      {/* A list failed to load. Say so across every tab, because an empty table
+          otherwise reads as "these records are gone". */}
+      {loadError && (
+        <div className="mb-4 p-3 rounded-xl text-sm flex items-start gap-2 border" style={{ background: '#fffbeb', borderColor: '#f59e0b', color: '#92400e' }}>
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+          <span className="flex-1">{loadError}</span>
+          <button onClick={() => { setLoadError(''); fetchItems(); fetchAllItems(); fetchAdjustments(); fetchConsignments(); fetchSuppliers() }}
+            className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: '#f59e0b' }}>
+            Retry
+          </button>
+        </div>
       )}
 
       {/* ════════════════════════════════════════════════════
@@ -3987,7 +3999,7 @@ setTimeout(()=>window.print(),500);
                     <tr>
                       <td colSpan={canWrite ? 9 : 8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <ArrowUpDown size={32} className="mx-auto mb-2 opacity-40" />
-                        <p>No adjustments</p>
+                        <p>{loadError ? 'Could not load adjustments — see the message above. Your records are intact.' : 'No adjustments'}</p>
                       </td>
                     </tr>
                   ) : groupedAdjustments.slice((adjPage - 1) * adjPageSize, adjPage * adjPageSize).map((g) => (
@@ -4907,7 +4919,7 @@ setTimeout(()=>window.print(),500);
                     <tr>
                       <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <ArrowRightLeft size={32} className="mx-auto mb-2 opacity-40" />
-                        <p>No transfers</p>
+                        <p>{loadError ? 'Could not load transfers — see the message above. Your records are intact.' : 'No transfers'}</p>
                       </td>
                     </tr>
                   ) : (() => {
