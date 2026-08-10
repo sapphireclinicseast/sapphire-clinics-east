@@ -39,9 +39,16 @@ export async function GET(req: Request) {
   const configured = paymongoConfigured(account)
   let syncError: string | null = null
   const postWarnings: string[] = []
-  let livePayments: { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string }[] = []
+  let livePayments: { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string; paymentMethod: string | null }[] = []
 
-  if (sp.get('sync') === '1' && configured) {
+  const wantSync = sp.get('sync') === '1'
+  // Listing recent payments is cheap and has no side effects, so the page asks for
+  // it on every load. Storefront sales only exist as raw payments — they never
+  // create a checkout row here — so without this they are invisible until someone
+  // presses Sync, and vanish again on the next tab change.
+  const wantLive = wantSync || sp.get('live') === '1'
+
+  if (wantSync && configured) {
     // 1) Refresh PENDING checkouts for this account.
     try {
       const pending = await prisma.paymongoCheckout.findMany({
@@ -107,7 +114,10 @@ export async function GET(req: Request) {
       }
     } catch (e) { syncError = e instanceof Error ? e.message : 'Sync failed' }
 
-    // 2) Recent raw payments straight from the account.
+  }
+
+  if (wantLive && configured) {
+    // Recent raw payments straight from the account.
     try {
       const raw = await listPayments(account, { limit: 50 })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,6 +130,7 @@ export async function GET(req: Request) {
           status: p.status, paidAt: p.paidAt ? p.paidAt.toISOString() : null,
           description: a.description || a.remarks || '',
           payer: billing.name || billing.email || '',
+          paymentMethod: resolvePaymentMethodUsed(r) || null,
         }
       })
     } catch (e) { syncError = syncError || (e instanceof Error ? e.message : 'Could not list payments') }

@@ -84,6 +84,7 @@ interface Txn {
   amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null
   paymentMethodUsed: string | null
   paymentId: string | null   // set once PayMongo confirms — used to match against live payments
+  external?: boolean         // a payment PayMongo holds that no link here created (storefront sale)
   paidAt: string | null; payoutId: string | null; livemode: boolean; createdAt: string
 }
 interface PayLink {
@@ -93,7 +94,7 @@ interface PayLink {
 }
 interface Payout { payoutId: string; net: number; fee: number; status: string; settled: boolean; paidAt: string | null }
 // A payment as PayMongo itself reports it, independent of anything recorded here.
-interface LivePayment { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string }
+interface LivePayment { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string; paymentMethod: string | null }
 interface Item { id: string; name: string; price: number; sku?: string; stock?: number; department?: string }
 interface Voucher {
   id: string; name: string; code: string; discountType: string; discountValue: number
@@ -161,11 +162,35 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
   const [origin, setOrigin] = useState('')
   useEffect(() => { setOrigin(window.location.origin) }, [])
 
+  // Storefront sales exist only as raw PayMongo payments — no checkout row is
+  // ever created here — so fold them into the same table rather than stranding
+  // them somewhere separate. Matched on paymentId so nothing appears twice.
+  const rows = useMemo<Txn[]>(() => {
+    const known = new Set(txns.map(t => t.paymentId).filter(Boolean))
+    const external: Txn[] = livePayments
+      .filter(lp => lp.paymentId && !known.has(lp.paymentId))
+      .map(lp => ({
+        id: `live-${lp.paymentId}`, checkoutId: '', referenceCode: null,
+        itemName: lp.description || null, description: lp.description || null,
+        customerName: lp.payer || '', customerEmail: null, customerPhone: null,
+        department: null, departmentLabel: null, kind: null,
+        voucherCode: null, grossAmount: null, discountAmount: null,
+        amount: lp.amount, status: lp.status === 'paid' ? 'PAID' : lp.status.toUpperCase(),
+        checkoutUrl: null, fee: lp.fee, netAmount: lp.net,
+        paymentMethodUsed: lp.paymentMethod, paymentId: lp.paymentId,
+        paidAt: lp.paidAt, payoutId: null, livemode: true,
+        createdAt: lp.paidAt || new Date().toISOString(),
+        external: true,
+      }))
+    return [...txns, ...external].sort((a, b) =>
+      new Date(b.paidAt || b.createdAt).getTime() - new Date(a.paidAt || a.createdAt).getTime())
+  }, [txns, livePayments])
+
   const load = useCallback(async (sync = false) => {
     setLoading(true); setError('')
     try {
       const [t, p, l] = await Promise.all([
-        fetch(`/api/paymongo/transactions?account=${account}${sync ? '&sync=1' : ''}`).then(r => r.json()),
+        fetch(`/api/paymongo/transactions?account=${account}${sync ? '&sync=1' : '&live=1'}`).then(r => r.json()),
         fetch(`/api/paymongo/payouts?account=${account}`).then(r => r.json()),
         fetch(`/api/paymongo/links?account=${account}`).then(r => r.ok ? r.json() : []),
       ])
@@ -400,63 +425,6 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
         </div>
       </div>
 
-      {/* ── Payments straight from PayMongo ──
-          Anything the account received, including sales the storefront created
-          its own checkout for. Without this an admin had to log in to PayMongo
-          to confirm a website payment had gone through. */}
-      {livePayments.length > 0 && (() => {
-        const known = new Set(txns.map(t => t.paymentId).filter(Boolean))
-        return (
-          <div className="rounded-2xl border mb-4" style={{ borderColor: 'var(--light-gray)' }}>
-            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-              <div>
-                <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Payments Received in PayMongo — {label}</span>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                  Straight from the PayMongo account, newest first. &ldquo;Website / direct&rdquo; means the payment was not created from a link here — storefront sales land this way.
-                </p>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                  <th className="px-3 py-2 text-left font-semibold uppercase">Paid</th>
-                  <th className="px-3 py-2 text-left font-semibold uppercase">Description</th>
-                  <th className="px-3 py-2 text-left font-semibold uppercase">Payer</th>
-                  <th className="px-3 py-2 text-right font-semibold uppercase">Amount</th>
-                  <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
-                  <th className="px-3 py-2 text-right font-semibold uppercase">Net</th>
-                  <th className="px-3 py-2 text-left font-semibold uppercase">Status</th>
-                  <th className="px-3 py-2 text-left font-semibold uppercase">Source</th>
-                </tr></thead>
-                <tbody>
-                  {livePayments.map(lp => (
-                    <tr key={lp.paymentId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{lp.paidAt ? new Date(lp.paidAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{lp.description || '—'}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{lp.payer || '—'}</td>
-                      <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{lp.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>₱{lp.fee.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: 'var(--teal)' }}>₱{lp.net.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td className="px-3 py-2">
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
-                          style={lp.status === 'paid' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
-                          {lp.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>
-                        {known.has(lp.paymentId)
-                          ? <span style={{ color: 'var(--teal)' }}>From a link here</span>
-                          : 'Website / direct'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )
-      })()}
-
       {/* ── Transactions ── */}
       <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
@@ -485,9 +453,9 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
             <tbody>
               {loading ? (
                 <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
-              ) : txns.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No transactions yet for this account.</td></tr>
-              ) : txns.map(t => (
+              ) : rows.map(t => (
                 <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(t.createdAt).toLocaleDateString('en-PH')}</td>
                   <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
@@ -501,6 +469,11 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
                   </td>
                   <td className="px-3 py-2">
                     <span style={{ color: 'var(--charcoal)' }}>{t.itemName || t.description || '—'}</span>
+                    {/* Paid straight to the PayMongo account — a storefront sale or a
+                        payment taken outside any link created here. */}
+                    {t.external && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#ede9fe', color: '#5b21b6' }}>Website / direct</span>
+                    )}
                     {(t.departmentLabel || t.kind === 'PRODUCT') && (
                       <span className="block mt-0.5">
                         {t.department && <DeptBadge dept={t.department} />}
@@ -522,7 +495,7 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
                     {t.checkoutUrl && t.status === 'PENDING' && <a href={t.checkoutUrl} target="_blank" rel="noreferrer" className="mr-2" title="Open link"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>}
                     {/* A link the payer abandoned can sit PENDING forever, so it must be
                         removable. A settled payment never is — the money is real. */}
-                    {canWrite && t.status !== 'PAID' && (
+                    {canWrite && t.status !== 'PAID' && !t.external && (
                       <button onClick={() => del(t)} title="Expire this link at PayMongo and remove the row"
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border"
                         style={{ borderColor: '#fecaca', color: '#b91c1c', background: '#fef2f2' }}>
