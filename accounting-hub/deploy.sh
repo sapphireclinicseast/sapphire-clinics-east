@@ -20,7 +20,12 @@ LOCAL="$(cd "$(dirname "$0")" && pwd)"
 
 RSYNC_OPTS=(-avz --partial --timeout=90 -e "ssh -o ConnectTimeout=25 -o ServerAliveInterval=10 -o ServerAliveCountMax=6")
 
+HEALTH_URL="https://accounting.sapphireclinicseast.org/login"
+
+# Before the rebuild, a failure means nothing changed on the server.
 fail() { echo ""; echo "DEPLOY FAILED at: $1" >&2; echo "Nothing was rebuilt. The running app is untouched." >&2; exit 1; }
+# After it, the new code IS live — say so rather than implying a clean abort.
+fail_after_build() { echo ""; echo "DEPLOY PROBLEM at: $1" >&2; echo "The rebuild already completed, so the new code is live. Verify the app before assuming it rolled back." >&2; exit 1; }
 
 # The link to the VPS drops often enough that a single blip should not abort a
 # deploy; --partial means a retry resumes rather than restarts.
@@ -66,11 +71,16 @@ ssh -o ConnectTimeout=25 -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
   "$VPS" "bash $REMOTE/docker/redeploy.sh" || fail "remote build (redeploy.sh)"
 
 # The build can succeed and the container still fail to come up, so confirm it.
+# Checked over the public URL rather than SSH: it is what a user actually
+# experiences, and it does not fail merely because SSH is momentarily refused.
 echo "==> Verifying the app is serving..."
-ssh -o ConnectTimeout=25 "$VPS" \
-  'docker ps --filter name=accounting_app --format "{{.Status}}" | grep -q "^Up" \
-     && curl -sf -o /dev/null -m 20 http://127.0.0.1:3000/login' \
-  || fail "post-deploy health check (build finished, app is not serving)"
+for attempt in 1 2 3 4 5; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' -m 25 "$HEALTH_URL" || echo 000)"
+  if [ "$code" = "200" ]; then echo "   healthy — $HEALTH_URL returned 200"; break; fi
+  if [ "$attempt" = "5" ]; then fail_after_build "health check — $HEALTH_URL returned $code after 5 tries"; fi
+  echo "   ...returned $code, retrying in 10s ($attempt/5)"
+  sleep 10
+done
 
 echo ""
 echo "Deploy complete and verified. Ask all users to log out and back in."
