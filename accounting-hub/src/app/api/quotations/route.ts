@@ -10,7 +10,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { priceQuotation, QUOTATION_BRANCHES, VALIDITY_OPTIONS, type QuotationLineInput } from '@/lib/quotations/pricing'
+import { priceQuotation, QUOTATION_BRANCHES, VALIDITY_OPTIONS, DOWNPAYMENT_OPTIONS, type QuotationLineInput } from '@/lib/quotations/pricing'
+import { bankFromTitle } from '@/lib/quotations/banks'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
@@ -77,12 +78,14 @@ export async function POST(req: Request) {
       branch, recipientName, recipientEmail, recipientPhone, contactPerson,
       datePrepared, validityDays, usePwdRate, globalDiscountType, globalDiscountValue,
       remarks, preparedByName, preparedByPosition, signatureUrl, lines,
+      downpaymentPercent, bankAccountId,
     } = body as {
       branch: string; recipientName: string; recipientEmail?: string; recipientPhone?: string
       contactPerson?: string; datePrepared: string; validityDays: number; usePwdRate?: boolean
       globalDiscountType?: 'NONE' | 'PERCENT' | 'AMOUNT'; globalDiscountValue?: number
       remarks?: string; preparedByName: string; preparedByPosition: string
       signatureUrl?: string; lines: QuotationLineInput[]
+      downpaymentPercent?: number | null; bankAccountId?: string | null
     }
 
     if (!BRANCH_KEYS.includes(branch)) {
@@ -99,6 +102,23 @@ export async function POST(req: Request) {
     }
     if (!preparedByName?.trim() || !preparedByPosition?.trim()) {
       return NextResponse.json({ error: 'Name and position of the preparer are required' }, { status: 400 })
+    }
+
+    if (downpaymentPercent != null && !DOWNPAYMENT_OPTIONS.includes(downpaymentPercent as (typeof DOWNPAYMENT_OPTIONS)[number])) {
+      return NextResponse.json({ error: 'Downpayment must be 20%, 30%, 40% or 50%' }, { status: 400 })
+    }
+
+    // Copy the deposit account's details rather than trusting the client's: the
+    // document must name the account that actually exists in the books.
+    let bank: { id: string; accountTitle: string; accountNumber: string } | null = null
+    if (bankAccountId) {
+      bank = await prisma.account.findFirst({
+        where: { id: bankAccountId, isBankAccount: true, isActive: true },
+        select: { id: true, accountTitle: true, accountNumber: true },
+      })
+      if (!bank) {
+        return NextResponse.json({ error: 'That deposit account is not an active bank account' }, { status: 400 })
+      }
     }
 
     const prepared = datePrepared ? new Date(datePrepared) : new Date()
@@ -128,6 +148,11 @@ export async function POST(req: Request) {
         globalDiscountType: globalDiscountType && globalDiscountType !== 'NONE' ? globalDiscountType : null,
         globalDiscountValue: globalDiscountType && globalDiscountType !== 'NONE' ? (globalDiscountValue ?? 0) : null,
         remarks: remarks?.trim() || null,
+        downpaymentPercent: downpaymentPercent ?? null,
+        bankAccountId: bank?.id ?? null,
+        bankAccountName: bank?.accountTitle ?? null,
+        bankAccountNumber: bank?.accountNumber ?? null,
+        bankName: bank ? bankFromTitle(bank.accountTitle) : null,
         preparedByName: preparedByName.trim(),
         preparedByPosition: preparedByPosition.trim(),
         signatureUrl: signatureUrl || null,

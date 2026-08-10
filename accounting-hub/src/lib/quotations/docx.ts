@@ -17,6 +17,49 @@ import { formatPeso, validUntil, type PricedLine } from './pricing'
 
 const EMU_PER_INCH = 914400
 
+/**
+ * The letterheads carry their artwork as a full-page background image, so Word
+ * has no idea the banner is there — every template ships a plain 1" top margin
+ * and the first line lands inside the header graphic.
+ *
+ * Measured against the four supplied letterheads, the solid banner ends between
+ * 1.15" (East) and 1.47" (Greenhills), and the footer motif occupies the bottom
+ * 0.78"–0.83". These minimums clear the tallest of them with room to breathe.
+ * They are floors, never ceilings: a template that already asks for more keeps
+ * its own margins.
+ */
+const MIN_TOP_MARGIN_TWIPS = 2880 // 2.0"
+const MIN_BOTTOM_MARGIN_TWIPS = 2016 // 1.4"
+
+/** Push the body clear of the letterhead artwork without touching anything else in sectPr. */
+function withSafeMargins(sectPr: string): string {
+  if (!sectPr) return sectPr
+
+  const raise = (tag: string): string => {
+    const read = (attr: string): number | null => {
+      const m = tag.match(new RegExp(`w:${attr}="(-?\\d+)"`))
+      return m ? parseInt(m[1], 10) : null
+    }
+    const top = Math.max(read('top') ?? 0, MIN_TOP_MARGIN_TWIPS)
+    const bottom = Math.max(read('bottom') ?? 0, MIN_BOTTOM_MARGIN_TWIPS)
+    let out = tag
+    out = read('top') != null ? out.replace(/w:top="-?\d+"/, `w:top="${top}"`) : out.replace('<w:pgMar', `<w:pgMar w:top="${top}"`)
+    out = read('bottom') != null ? out.replace(/w:bottom="-?\d+"/, `w:bottom="${bottom}"`) : out.replace('<w:pgMar', `<w:pgMar w:bottom="${bottom}"`)
+    return out
+  }
+
+  if (/<w:pgMar\b[^>]*\/>/.test(sectPr)) return sectPr.replace(/<w:pgMar\b[^>]*\/>/, raise)
+
+  // No page margins declared — state them, otherwise Word falls back to 1" and overlaps again.
+  return sectPr.replace(
+    '<w:sectPr',
+    `<w:sectPr`,
+  ).replace(
+    /(<w:sectPr[^>]*>)/,
+    `$1<w:pgMar w:top="${MIN_TOP_MARGIN_TWIPS}" w:right="1440" w:bottom="${MIN_BOTTOM_MARGIN_TWIPS}" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>`,
+  )
+}
+
 export interface QuotationDocInput {
   quotationNumber: string
   branchLabel: string
@@ -30,6 +73,11 @@ export interface QuotationDocInput {
   products: PricedLine[]
   grandTotal: number
   remarks?: string | null
+  /** Downpayment percentage agreed, if any. */
+  downpaymentPercent?: number | null
+  bankAccountName?: string | null
+  bankAccountNumber?: string | null
+  bankName?: string | null
   preparedByName: string
   preparedByPosition: string
   /** Raw bytes of the signature image, if one was provided. */
@@ -328,6 +376,38 @@ export async function buildQuotationDocx(templateBytes: Buffer, input: Quotation
   )
   parts.push(emptyPara())
 
+  // Payment terms — what to pay now, what is left, and exactly where it goes.
+  const hasPaymentTerms = !!input.downpaymentPercent || !!input.bankAccountNumber
+  if (hasPaymentTerms) {
+    parts.push(para('Payment Terms', { bold: true, size: 10, spaceAfter: 40 }))
+    const rows: string[] = []
+    if (input.downpaymentPercent) {
+      const down = Math.round(input.grandTotal * (input.downpaymentPercent / 100) * 100) / 100
+      const balance = Math.round((input.grandTotal - down) * 100) / 100
+      rows.push(
+        rowOf([
+          textCell(`Downpayment (${input.downpaymentPercent}%)`, 34, { size: 9, bold: true }),
+          textCell(formatPeso(down), 26, { size: 9, align: 'right' }),
+          textCell('Balance', 20, { size: 9, bold: true, align: 'right' }),
+          textCell(formatPeso(balance), 20, { size: 9, align: 'right' }),
+        ]),
+      )
+    }
+    if (input.bankAccountNumber) {
+      const label = [input.bankName, 'Account'].filter(Boolean).join(' ')
+      rows.push(
+        rowOf([
+          textCell(`Deposit to (${label})`, 34, { size: 9, bold: true }),
+          textCell(input.bankAccountName || '', 26, { size: 9 }),
+          textCell('Account No.', 20, { size: 9, bold: true, align: 'right' }),
+          textCell(input.bankAccountNumber, 20, { size: 9, align: 'right' }),
+        ]),
+      )
+    }
+    parts.push(table(rows))
+    parts.push(emptyPara())
+  }
+
   if (input.remarks?.trim()) {
     parts.push(para('Remarks', { bold: true, size: 10, spaceAfter: 40 }))
     for (const line of input.remarks.split('\n')) parts.push(para(line, { size: 9 }))
@@ -345,7 +425,7 @@ export async function buildQuotationDocx(templateBytes: Buffer, input: Quotation
   parts.push(para(input.preparedByName, { bold: true, size: 10 }))
   parts.push(para(input.preparedByPosition, { size: 9, color: '5B6770' }))
 
-  const body = parts.join('') + sectPr
+  const body = parts.join('') + withSafeMargins(sectPr)
 
   const newDocument = original.replace(/<w:body>[\s\S]*<\/w:body>/, `<w:body>${body}</w:body>`)
   zip.file(documentPath, newDocument)

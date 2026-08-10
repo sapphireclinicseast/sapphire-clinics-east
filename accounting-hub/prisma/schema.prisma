@@ -139,6 +139,7 @@ model Account {
   updatedAt         DateTime      @updatedAt
 
   services              Service[]
+  quotations            Quotation[]                @relation("QuotationBankAccount")
   inventoryItems        InventoryItem[]            @relation("InventoryRevenueAccount")
   inventorySourceItems  InventoryItem[]            @relation("InventorySourceAccount")
   inventoryExpenseItems InventoryItem[]            @relation("InventoryExpenseAccount")
@@ -346,6 +347,16 @@ model Quotation {
   globalDiscountType  String? // PERCENT | AMOUNT — "special discount for all"
   globalDiscountValue Decimal?
   remarks             String?
+  /// Downpayment required to reserve the booking: 20 | 30 | 40 | 50 (percent).
+  downpaymentPercent  Int?
+  /// Where the downpayment is to be deposited. The name/number/bank are copied
+  /// alongside so a quotation already sent still reads correctly if the account
+  /// is later renamed or retired.
+  bankAccountId       String?
+  bankAccount         Account? @relation("QuotationBankAccount", fields: [bankAccountId], references: [id], onDelete: SetNull)
+  bankAccountName     String?
+  bankAccountNumber   String?
+  bankName            String?
   preparedByName      String
   preparedByPosition  String
   signatureUrl        String? // uploaded e-sig or a drawn signature, both stored as images

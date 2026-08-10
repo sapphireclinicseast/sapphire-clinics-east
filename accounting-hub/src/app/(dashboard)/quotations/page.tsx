@@ -17,7 +17,7 @@ import {
   X, PenLine, Eraser, Building2, Package, Stethoscope, AlertCircle, Check,
 } from 'lucide-react'
 import {
-  QUOTATION_BRANCHES, VALIDITY_OPTIONS, priceQuotation, formatPeso,
+  QUOTATION_BRANCHES, VALIDITY_OPTIONS, DOWNPAYMENT_OPTIONS, priceQuotation, formatPeso,
   type DiscountKind, type QuotationLineInput,
 } from '@/lib/quotations/pricing'
 
@@ -55,6 +55,14 @@ interface SavedQuotation {
   grandTotal: string | number
   createdBy?: { name: string } | null
   _count?: { items: number }
+}
+
+interface BankAccountRow {
+  id: string
+  accountNumber: string
+  accountTitle: string
+  bankName: string | null
+  currency: string
 }
 
 interface TemplateRow {
@@ -258,6 +266,9 @@ function MakerTab() {
   const [datePrepared, setDatePrepared] = useState(() => new Date().toISOString().slice(0, 10))
   const [validityDays, setValidityDays] = useState<number>(30)
   const [remarks, setRemarks] = useState('')
+  const [downpaymentPercent, setDownpaymentPercent] = useState<number | ''>('')
+  const [bankAccountId, setBankAccountId] = useState('')
+  const [bankAccounts, setBankAccounts] = useState<BankAccountRow[]>([])
   const [preparedByName, setPreparedByName] = useState('')
   const [preparedByPosition, setPreparedByPosition] = useState('')
 
@@ -275,6 +286,13 @@ function MakerTab() {
   const [done, setDone] = useState<{ id: string; quotationNumber: string } | null>(null)
 
   const serviceBranch = QUOTATION_BRANCHES.find(b => b.key === branch)?.serviceBranch || 'ALL'
+
+  useEffect(() => {
+    fetch('/api/quotations/bank-accounts')
+      .then(r => (r.ok ? r.json() : { accounts: [] }))
+      .then(d => setBankAccounts(asArray<BankAccountRow>(d)))
+      .catch(() => setBankAccounts([]))
+  }, [])
 
   // Search — services are branch-scoped, products always come from Verdana.
   useEffect(() => {
@@ -384,6 +402,8 @@ function MakerTab() {
           globalDiscountType: useGlobalDiscount ? globalDiscountType : 'NONE',
           globalDiscountValue: useGlobalDiscount ? parseFloat(globalDiscountValue) || 0 : 0,
           remarks, preparedByName, preparedByPosition, signatureUrl,
+          downpaymentPercent: downpaymentPercent === '' ? null : downpaymentPercent,
+          bankAccountId: bankAccountId || null,
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           lines: lines.map(({ key, ...rest }) => rest),
         }),
@@ -665,6 +685,46 @@ function MakerTab() {
                   {VALIDITY_OPTIONS.map(d => <option key={d} value={d}>{d} days</option>)}
                 </select>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={card} style={box}>
+          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--charcoal)' }}>Payment</h3>
+          <div className="space-y-3">
+            <div>
+              <label className={label} style={{ color: 'var(--charcoal)' }}>Downpayment</label>
+              <select value={downpaymentPercent}
+                onChange={e => setDownpaymentPercent(e.target.value === '' ? '' : parseInt(e.target.value))}
+                className={input} style={box}>
+                <option value="">— None —</option>
+                {DOWNPAYMENT_OPTIONS.map(d => <option key={d} value={d}>{d}%</option>)}
+              </select>
+              {downpaymentPercent !== '' && totals.grandTotal > 0 && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+                  {formatPeso(totals.grandTotal * (downpaymentPercent / 100))} now ·{' '}
+                  {formatPeso(totals.grandTotal - totals.grandTotal * (downpaymentPercent / 100))} balance
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={label} style={{ color: 'var(--charcoal)' }}>Deposit to</label>
+              <select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={input} style={box}>
+                <option value="">— Not specified —</option>
+                {bankAccounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.accountTitle} · {a.accountNumber}{a.currency !== 'PHP' ? ` (${a.currency})` : ''}
+                  </option>
+                ))}
+              </select>
+              {bankAccountId && (() => {
+                const a = bankAccounts.find(x => x.id === bankAccountId)
+                return a ? (
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+                    {a.bankName ? `${a.bankName} · ` : ''}{a.accountTitle} · {a.accountNumber}
+                  </p>
+                ) : null
+              })()}
             </div>
           </div>
         </div>
