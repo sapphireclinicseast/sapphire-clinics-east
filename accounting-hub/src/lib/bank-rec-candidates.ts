@@ -60,7 +60,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   const [
     transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
     shareholderAdvances, loans, equityDeposits, itemisedHoldings,
-    buybacks, advancePayouts, loanPayouts, onHandAccts,
+    buybacks, advancePayouts, loanPayouts, staffLoans, onHandAccts,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -175,6 +175,14 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     prisma.loanPayout.findMany({
       where: { status: 'PAID', paidDate: range, ...on('bankAccountId', bankAccountId) },
       select: { id: true, paidDate: true, amount: true, loan: { select: { name: true } } },
+    }),
+    // Staff loan / perk releases: money out to a staff member that comes back
+    // through payroll deductions. The register does not name the paying bank
+    // account, so a release is offered against every account — the cheque
+    // reference in the label says where to look.
+    prisma.staffLoan.findMany({
+      where: { dateReleased: { gte: lo, lte: hi }, principal: { gt: 0 } },
+      select: { id: true, staffName: true, category: true, principal: true, dateReleased: true, chequeRef: true },
     }),
     // A transfer into a branch's petty cash account is a replenishment —
     // labelled as such so the bank's withdrawal line reads like what it is.
@@ -323,6 +331,13 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       type: 'LOAN_PAYMENT', id: p.id,
       label: `Loan repayment · ${p.loan?.name || 'lender'}`,
       date: p.paidDate as Date, amount: num(p.amount), dir: 'out',
+    })
+  }
+  for (const sl of staffLoans) {
+    out.push({
+      type: 'STAFF_LOAN', id: sl.id,
+      label: `Staff loan release · ${sl.staffName} · ${sl.category.replace(/_/g, ' ').toLowerCase()}${sl.chequeRef ? ` · cheque ${sl.chequeRef}` : ''}`,
+      date: sl.dateReleased as Date, amount: num(sl.principal), dir: 'out',
     })
   }
   for (const d of equityDeposits) {

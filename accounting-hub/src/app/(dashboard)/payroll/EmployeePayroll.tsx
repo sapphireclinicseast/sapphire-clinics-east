@@ -414,7 +414,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [leaveSaved, setLeaveSaved] = useState(false)
 
   /* ── Cutoff Adjustments ── */
-  interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string; rowKey: string }
+  interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string; rowKey: string; staffLoanId?: string | null; suggested?: boolean }
   const adjCutoffMonth = parentCutoffMonth
   const adjCutoffYear = parentCutoffYear
   const adjCutoffHalf = parentCutoffHalf
@@ -616,7 +616,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         const empAdjs = existByEmp.get(emp.id)
         if (empAdjs && empAdjs.length > 0) {
           for (const ex of empAdjs) {
-            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionType: (ex as any).deductionType || 'NON_TAXABLE', deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}` })
+            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionType: (ex as any).deductionType || 'NON_TAXABLE', deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}`, staffLoanId: (ex as any).staffLoanId || null, suggested: !!(ex as any).suggested })
           }
         } else {
           rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '', deduction: 0, deductionType: 'NON_TAXABLE', deductionLabel: '', rowKey: `r${rk++}` })

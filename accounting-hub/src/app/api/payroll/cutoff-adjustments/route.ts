@@ -40,7 +40,38 @@ export async function GET(req: Request) {
     orderBy: { employee: { lastName: 'asc' } },
   })
 
-  return NextResponse.json(adjustments)
+  /* Staff loan suggestions: an ACTIVE loan with a standing per-cutoff amount
+     surfaces here as a prefilled deduction row, so preparing payroll starts
+     from what the loan register says is owed. Rows the user already saved for
+     the same loan are left alone; a suggestion only fills the gap. Suggested
+     rows carry `suggested: true` and no id — they become real adjustments only
+     when the user saves them. */
+  const covered = new Set(adjustments.filter(a => (a as { staffLoanId?: string | null }).staffLoanId).map(a => (a as { staffLoanId?: string | null }).staffLoanId))
+  const loans = await prisma.staffLoan.findMany({
+    where: { status: 'ACTIVE', perCutoff: { gt: 0 }, branch, employeeId: { not: null } },
+    include: {
+      employee: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      deductions: { select: { amount: true } },
+    },
+  })
+  const suggestions = loans
+    .filter(l => !covered.has(l.id) && l.employee)
+    .map(l => {
+      const repaid = l.deductions.reduce((s2, d2) => s2 + Number(d2.amount), 0)
+      const remaining = Math.max(0, Number(l.principal) - repaid)
+      const deduction = Math.min(Number(l.perCutoff), remaining)
+      return deduction > 0 ? {
+        id: null, suggested: true, staffLoanId: l.id,
+        employeeId: l.employeeId, employee: l.employee,
+        cutoffPeriod, branch,
+        allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: null,
+        deduction, deductionType: 'NON_TAXABLE',
+        deductionLabel: `Staff Loan — ${l.category.replace(/_/g, ' ').toLowerCase()} (bal ${remaining.toLocaleString('en-PH', { minimumFractionDigits: 2 })})`,
+      } : null
+    })
+    .filter(Boolean)
+
+  return NextResponse.json([...adjustments, ...suggestions])
 }
 
 // POST: Save/update adjustments (bulk upsert)
@@ -63,8 +94,9 @@ export async function POST(req: Request) {
       .filter((adj: { employeeId?: string; allowance?: number; deduction?: number }) =>
         adj.employeeId && ((adj.allowance && Number(adj.allowance) > 0) || (adj.deduction && Number(adj.deduction) > 0))
       )
-      .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionType?: string; deductionLabel?: string }) => ({
+      .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionType?: string; deductionLabel?: string; staffLoanId?: string }) => ({
         employeeId: adj.employeeId,
+        staffLoanId: adj.staffLoanId || null,
         cutoffPeriod,
         branch,
         allowance: Number(adj.allowance) || 0,
@@ -75,7 +107,7 @@ export async function POST(req: Request) {
         deductionLabel: adj.deductionLabel || null,
       }))
 
-    type AdjRow = { employeeId: string; cutoffPeriod: string; branch: string; allowance: number; allowanceType: string; allowanceLabel: string | null; deduction: number; deductionType: string; deductionLabel: string | null }
+    type AdjRow = { employeeId: string; cutoffPeriod: string; branch: string; allowance: number; allowanceType: string; allowanceLabel: string | null; deduction: number; deductionType: string; deductionLabel: string | null; staffLoanId?: string | null }
 
     // Helper: merge multiple rows per employee into one (sums amounts, concatenates labels).
     // Used as fallback while the DB still has the legacy unique constraint on
