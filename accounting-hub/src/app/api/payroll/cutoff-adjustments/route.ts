@@ -107,6 +107,22 @@ export async function POST(req: Request) {
         deductionLabel: adj.deductionLabel || null,
       }))
 
+    // One cutoff can only ever deduct a given loan once. Two rows pointing at the
+    // same loan would quietly take the money twice, so refuse rather than guess
+    // which was intended.
+    const loanSeen = new Map<string, number>()
+    for (const r of toCreate as { employeeId: string; staffLoanId?: string | null }[]) {
+      if (!r.staffLoanId) continue
+      const key = `${r.employeeId}:${r.staffLoanId}`
+      loanSeen.set(key, (loanSeen.get(key) || 0) + 1)
+    }
+    const duplicated = [...loanSeen.entries()].filter(([, n]) => n > 1)
+    if (duplicated.length > 0) {
+      return NextResponse.json({
+        error: `The same staff loan is deducted more than once in this cutoff (${duplicated.length} case(s)). Use the loan picker to set a single amount per loan.`,
+      }, { status: 409 })
+    }
+
     type AdjRow = { employeeId: string; cutoffPeriod: string; branch: string; allowance: number; allowanceType: string; allowanceLabel: string | null; deduction: number; deductionType: string; deductionLabel: string | null; staffLoanId?: string | null }
 
     // Helper: merge multiple rows per employee into one (sums amounts, concatenates labels).
