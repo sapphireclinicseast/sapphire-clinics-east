@@ -282,6 +282,48 @@ ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionHeight" DECIMAL(6
 -- Shipping weight (kg) — feeds the shipping rates on verdanarehab.com
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "weightKg" DECIMAL(65,30);
 
+-- Supplier purchase requests: what we are asking a supplier for, and who asked
+CREATE TABLE IF NOT EXISTS "SupplierRequest" (
+  "id" TEXT NOT NULL,
+  "referenceNumber" TEXT NOT NULL,
+  "supplierId" TEXT NOT NULL,
+  "requestDate" TIMESTAMP(3) NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'DRAFT',
+  "remarks" TEXT,
+  "preparedByName" TEXT NOT NULL,
+  "preparedById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SupplierRequest_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "SupplierRequest_referenceNumber_key" ON "SupplierRequest"("referenceNumber");
+CREATE INDEX IF NOT EXISTS "SupplierRequest_supplierId_idx" ON "SupplierRequest"("supplierId");
+CREATE INDEX IF NOT EXISTS "SupplierRequest_requestDate_idx" ON "SupplierRequest"("requestDate");
+DO $$ BEGIN
+  ALTER TABLE "SupplierRequest" ADD CONSTRAINT "SupplierRequest_supplierId_fkey" FOREIGN KEY ("supplierId") REFERENCES "Supplier"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "SupplierRequest" ADD CONSTRAINT "SupplierRequest_preparedById_fkey" FOREIGN KEY ("preparedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS "SupplierRequestItem" (
+  "id" TEXT NOT NULL,
+  "requestId" TEXT NOT NULL,
+  "itemId" TEXT NOT NULL,
+  "quantity" INTEGER NOT NULL,
+  "remarks" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SupplierRequestItem_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "SupplierRequestItem_requestId_idx" ON "SupplierRequestItem"("requestId");
+CREATE INDEX IF NOT EXISTS "SupplierRequestItem_itemId_idx" ON "SupplierRequestItem"("itemId");
+DO $$ BEGIN
+  ALTER TABLE "SupplierRequestItem" ADD CONSTRAINT "SupplierRequestItem_requestId_fkey" FOREIGN KEY ("requestId") REFERENCES "SupplierRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "SupplierRequestItem" ADD CONSTRAINT "SupplierRequestItem_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "InventoryItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- Per-variant physical specs (NULL = inherit the parent item). Size variants
 -- ship in different boxes, so LWH + weight are settable per variant; the
 -- storefront charges shipping by the variant's weight.

@@ -348,7 +348,7 @@ const CURRENCIES = [
   { value: 'INR', label: 'INR — Indian Rupee' },
 ]
 
-const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms'] as const
+const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Supplier Request', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms'] as const
 type Tab = (typeof TABS)[number]
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -447,6 +447,29 @@ function genAdjRef(adj: { id: string; adjustmentDate: string }): string {
     ? '00000000'
     : `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
   return `ADJ-${ymd}-${adj.id.slice(-5).toUpperCase()}`
+}
+
+interface SupplierRequestItemRow {
+  id: string
+  itemId: string
+  quantity: number
+  remarks: string | null
+  item: {
+    id: string; sku: string; name: string; supplierProductName: string | null; description: string | null
+    imageUrl: string | null; dimensionLength: number | null; dimensionWidth: number | null; dimensionHeight: number | null
+    weightKg: number | null; quantity: number; reorderLevel: number | null
+  }
+}
+
+interface SupplierRequest {
+  id: string
+  referenceNumber: string
+  requestDate: string
+  status: string
+  remarks: string | null
+  preparedByName: string
+  supplier: { id: string; supplierName: string; email?: string | null; contactNumber?: string | null; contactPerson?: string | null; address?: string | null }
+  items: SupplierRequestItemRow[]
 }
 
 interface FbRow {
@@ -851,6 +874,92 @@ function InventoryInner() {
   const [invSortDir, setInvSortDir] = useState<'asc' | 'desc'>('asc')
   // Adjustment delete
   const [deleteAdjConfirm, setDeleteAdjConfirm] = useState<string | null>(null)
+  /* ── Supplier Request ──────────────────────────────────────────
+     Ask a supplier for stock. The printed sheet quotes their own product name,
+     photo and packed size, so they recognise what is being reordered. */
+  const [supReqs, setSupReqs] = useState<SupplierRequest[]>([])
+  const [supReqOpen, setSupReqOpen] = useState(false)
+  const [supReqEditId, setSupReqEditId] = useState<string | null>(null)
+  const [supReqSupplierId, setSupReqSupplierId] = useState('')
+  const [supReqDate, setSupReqDate] = useState(new Date().toISOString().slice(0, 10))
+  const [supReqRemarks, setSupReqRemarks] = useState('')
+  const [supReqRows, setSupReqRows] = useState<{ itemId: string; quantity: string; remarks: string }[]>([{ itemId: '', quantity: '', remarks: '' }])
+  const [supReqSaving, setSupReqSaving] = useState(false)
+  const [supReqDeleteId, setSupReqDeleteId] = useState<string | null>(null)
+
+  function openSupReqCreate() {
+    setSupReqEditId(null); setSupReqSupplierId(''); setSupReqDate(new Date().toISOString().slice(0, 10))
+    setSupReqRemarks(''); setSupReqRows([{ itemId: '', quantity: '', remarks: '' }]); setError('')
+    setSupReqOpen(true)
+  }
+
+  function openSupReqEdit(r: SupplierRequest) {
+    setSupReqEditId(r.id); setSupReqSupplierId(r.supplier.id)
+    setSupReqDate(String(r.requestDate).slice(0, 10)); setSupReqRemarks(r.remarks || '')
+    setSupReqRows(r.items.map(i => ({ itemId: i.itemId, quantity: String(i.quantity), remarks: i.remarks || '' })))
+    setError(''); setSupReqOpen(true)
+  }
+
+  async function handleSupReqSubmit() {
+    const rows = supReqRows.filter(r => r.itemId && Number(r.quantity) > 0)
+    if (!supReqSupplierId) { setError('Choose a supplier'); return }
+    if (rows.length === 0) { setError('Add at least one product with a quantity'); return }
+    setSupReqSaving(true); setError('')
+    try {
+      const res = await fetch('/api/inventory/supplier-requests', {
+        method: supReqEditId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(supReqEditId ? { id: supReqEditId } : {}),
+          supplierId: supReqSupplierId, requestDate: supReqDate, remarks: supReqRemarks || undefined,
+          items: rows.map(r => ({ itemId: r.itemId, quantity: Number(r.quantity), remarks: r.remarks || undefined })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to save'); setSupReqSaving(false); return }
+      setSupReqOpen(false); fetchSupplierRequests()
+    } catch { setError('Network error') } finally { setSupReqSaving(false) }
+  }
+
+  async function handleSupReqDelete(id: string) {
+    try {
+      const res = await fetch(`/api/inventory/supplier-requests?id=${id}`, { method: 'DELETE' })
+      if (res.ok) { setSupReqDeleteId(null); fetchSupplierRequests() }
+      else setError((await res.json()).error || 'Failed to delete')
+    } catch { setError('Network error') }
+  }
+
+  /* The request sheet. Photo first, then the supplier's own name for the
+     product — that is what they look it up by — with our SKU underneath for
+     our own reference, plus packed size and how many we want. */
+  function printSupplierRequest(r: SupplierRequest) {
+    const dims = (i: SupplierRequestItemRow['item']) => {
+      const l = i.dimensionLength, w = i.dimensionWidth, h = i.dimensionHeight
+      return l && w && h ? `${l} × ${w} × ${h}` : '—'
+    }
+    downloadPdf({
+      title: `Supplier Request — ${r.referenceNumber}`,
+      subtitle: [
+        r.supplier.supplierName,
+        `Requested ${formatDate(r.requestDate)}`,
+        `Prepared by ${r.preparedByName}`,
+        r.remarks || null,
+      ].filter(Boolean).join('  ·  '),
+      headers: ["Supplier's Product Name", 'Our SKU', 'Description', 'L × W × H (cm)', 'Weight (kg)', 'Qty Requested'],
+      rows: r.items.map(i => [
+        i.item.supplierProductName || i.item.name,
+        i.item.sku,
+        i.item.description || '—',
+        dims(i.item),
+        i.item.weightKg ?? '—',
+        i.quantity,
+      ]),
+      images: r.items.map(i => i.item.imageUrl || null),
+      imageHeader: 'Photo',
+      landscape: true,
+    })
+  }
+
   // Shrinkage of Stocks — multi-item write-off; the id is set when editing one.
   const [shrinkOpen, setShrinkOpen] = useState(false)
   const [shrinkEditId, setShrinkEditId] = useState<string | null>(null)
@@ -1198,6 +1307,11 @@ function InventoryInner() {
     }
   }, [])
 
+  const fetchSupplierRequests = useCallback(async () => {
+    const data = await fetchJson('/api/inventory/supplier-requests')
+    if (data) setSupReqs(data.data || [])
+  }, [fetchJson])
+
   const fetchItems = useCallback(async () => {
     {
       const params = new URLSearchParams({ pageSize: '500' })
@@ -1268,7 +1382,7 @@ function InventoryInner() {
     }
     initialLoaded.current = true
     setLoading(true)
-    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates()])
+    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates(), fetchSupplierRequests()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
@@ -3958,6 +4072,200 @@ setTimeout(()=>window.print(),500);
       {/* ════════════════════════════════════════════════════
          TAB 3: ADJUSTMENTS
          ════════════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════
+         SUPPLIER REQUEST — ask a supplier for stock
+         ════════════════════════════════════════════════════ */}
+      {activeTab === 'Supplier Request' && (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+              Request products from a supplier. The printed sheet shows each product&apos;s photo and the supplier&apos;s own name for it.
+            </p>
+            {canWrite && (
+              <button onClick={openSupReqCreate}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: 'var(--teal)' }}>
+                <Plus size={18} /> New Supplier Request
+              </button>
+            )}
+          </div>
+
+          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Ref #</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Supplier</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Products</th>
+                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Total Qty</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Prepared By</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supReqs.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                        <Truck size={32} className="mx-auto mb-2 opacity-40" />
+                        <p>{loadError ? 'Could not load supplier requests — see the message above. Your records are intact.' : 'No supplier requests yet'}</p>
+                      </td>
+                    </tr>
+                  ) : supReqs.map(r => (
+                    <tr key={r.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{r.referenceNumber}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(r.requestDate)}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>{r.supplier.supplierName}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.items.length} product{r.items.length === 1 ? '' : 's'}</td>
+                      <td className="px-4 py-3 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{r.items.reduce((sum, i) => sum + i.quantity, 0)}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.preparedByName}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 rounded-md text-xs font-medium"
+                          style={r.status === 'RECEIVED' ? { background: '#dcfce7', color: '#166534' }
+                            : r.status === 'CANCELLED' ? { background: '#fef2f2', color: '#dc2626' }
+                            : r.status === 'SENT' ? { background: '#e0f2fe', color: '#075985' }
+                            : { background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <button onClick={() => printSupplierRequest(r)} className="p-2 rounded-lg hover:bg-teal-50 transition-colors mr-1" title="Print request sheet (PDF)">
+                          <Printer size={15} style={{ color: 'var(--teal)' }} />
+                        </button>
+                        {canWrite && (<>
+                          <button onClick={() => openSupReqEdit(r)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors mr-1" title="Edit request">
+                            <Pencil size={15} style={{ color: 'var(--mid-gray)' }} />
+                          </button>
+                          <button onClick={() => setSupReqDeleteId(r.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete request">
+                            <Trash2 size={15} className="text-red-500" />
+                          </button>
+                        </>)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {supReqDeleteId && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Delete Request</h3>
+                <p className="text-sm mb-2" style={{ color: 'var(--mid-gray)' }}>Delete this supplier request? Nothing in stock changes — a request only records what was asked for.</p>
+                <div className="flex gap-3 justify-end mt-6">
+                  <button onClick={() => setSupReqDeleteId(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+                  <button onClick={() => handleSupReqDelete(supReqDeleteId)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Delete</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* New / edit supplier request */}
+      {supReqOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto p-4" onClick={() => setSupReqOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-4xl w-full shadow-xl mb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                {supReqEditId ? 'Edit Supplier Request' : 'New Supplier Request'}
+              </h3>
+              <button onClick={() => setSupReqOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+              Pick the supplier and what to order. The printed sheet quotes each product the way that supplier lists it, with its photo and packed size.
+            </p>
+
+            {error && <div className="mb-3 p-2.5 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Supplier <span className="text-red-500">*</span></label>
+                <select value={supReqSupplierId} onChange={e => setSupReqSupplierId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">— Select supplier —</option>
+                  {allSuppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.supplierName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Date of Request <span className="text-red-500">*</span></label>
+                <input type="date" value={supReqDate} onChange={e => setSupReqDate(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Remarks <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(optional)</span></label>
+                <input value={supReqRemarks} onChange={e => setSupReqRemarks(e.target.value)} placeholder="e.g. for October restock"
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+            </div>
+
+            <div className="rounded-xl border mb-2" style={{ borderColor: 'var(--light-gray)' }}>
+              <table className="w-full text-sm">
+                <thead><tr style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                  <th className="px-3 py-2 text-left text-xs font-semibold" style={{ minWidth: 250 }}>Product</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold">Supplier&apos;s Name For It</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold w-20">On Hand</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold w-28">Qty to Request</th>
+                  <th className="px-2 py-2 w-8"></th>
+                </tr></thead>
+                <tbody>
+                  {supReqRows.map((row, i) => {
+                    const item = row.itemId ? allItems.find(it => it.id === row.itemId) : null
+                    return (
+                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            {item?.imageUrl && <img src={item.imageUrl} alt="" className="w-8 h-8 rounded object-cover border shrink-0" style={{ borderColor: 'var(--light-gray)' }} />}
+                            <div className="flex-1 min-w-0">
+                              <ItemSearchSelect items={allItems} value={row.itemId} compact
+                                onChange={it => setSupReqRows(rs => rs.map((r, idx) => idx === i ? { ...r, itemId: it?.id || '' } : r))} />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-xs" style={{ color: item?.supplierProductName ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+                          {item ? (item.supplierProductName || 'not recorded — the sheet will use our name') : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{item ? item.quantity : '—'}</td>
+                        <td className="px-3 py-2 text-right">
+                          <input type="number" min={1} value={row.quantity}
+                            onChange={e => setSupReqRows(rs => rs.map((r, idx) => idx === i ? { ...r, quantity: e.target.value } : r))}
+                            className="w-24 px-2 py-1.5 rounded-lg border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          {supReqRows.length > 1 && (
+                            <button type="button" onClick={() => setSupReqRows(rs => rs.filter((_, idx) => idx !== i))} className="p-1 rounded hover:bg-red-50">
+                              <X size={12} className="text-red-400" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" onClick={() => setSupReqRows(rs => [...rs, { itemId: '', quantity: '', remarks: '' }])}
+              className="text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+              <Plus size={12} /> Add Row
+            </button>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button type="button" onClick={() => setSupReqOpen(false)} className="px-4 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+              <button type="button" onClick={handleSupReqSubmit} disabled={supReqSaving}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2" style={{ background: 'var(--teal)' }}>
+                {supReqSaving && <Loader2 size={14} className="animate-spin" />}
+                {supReqSaving ? 'Saving…' : supReqEditId ? 'Save Changes' : 'Create Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'Adjustments' && (
         <>
           {notice && (
