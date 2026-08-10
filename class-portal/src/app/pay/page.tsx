@@ -310,9 +310,12 @@ export default function PayPage() {
           period: effectivePeriod,
           voucherCode: appliedVoucher?.code,
           discountPercent: appliedVoucher ? discountPercent : undefined,
-          // Branch routes the charge to that branch's PayMongo account
-          // so the settlement bank matches. Fallback: legacy shared key.
-          branch: user.branch,
+          // Branch routes the charge to that branch's PayMongo account so the
+          // settlement bank matches. Defaulted the same way the recorded payment
+          // and the displayed bank details are, a few lines down: without it a
+          // student with no branch was recorded as EAST and shown East's bank
+          // while the money went to the shared account instead.
+          branch: user.branch ?? 'EAST',
         }),
       })
       if (!res.ok) {
