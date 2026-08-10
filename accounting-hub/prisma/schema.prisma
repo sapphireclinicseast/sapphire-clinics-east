@@ -138,38 +138,38 @@ model Account {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  services              Service[]
-  quotations            Quotation[]                @relation("QuotationBankAccount")
-  inventoryItems        InventoryItem[]            @relation("InventoryRevenueAccount")
-  inventorySourceItems  InventoryItem[]            @relation("InventorySourceAccount")
-  inventoryExpenseItems InventoryItem[]            @relation("InventoryExpenseAccount")
-  discountSettings      DiscountSetting[]
-  voucherDiscounts      Voucher[]                  @relation("VoucherDiscountAccount")
-  wallets               DigitalWallet[]            @relation("WalletAccount")
-  arPaymentDiscounts    ARPayment[]                @relation("ARPaymentDiscountAccount")
-  arPaymentCashAccounts ARPayment[]                @relation("ARPaymentCashAccount")
-  arPaymentOverpayments ARPayment[]                @relation("ARPaymentOverpaymentAccount")
-  unitPaysExpense       UnitPay[]                  @relation("UnitPayExpense")
-  taxPaymentsFrom       TaxPayment[]               @relation("TaxPaymentFrom")
-  taxSettings           PayrollTaxSettings[]       @relation("TaxLiability")
-  paymentModes          PaymentMode[]              @relation("PaymentModeAccount")
-  paymentModeSettlements PaymentMode[]             @relation("PaymentModeSettlementAccount")
-  paymentModeDeductions PaymentModeDeduction[]     @relation("DeductionAccount")
-  journalLines          JournalEntryLine[]
-  salaryPaymentsFrom    SalaryPayment[]            @relation("SalaryPaymentFrom")
-  benefitPaymentsFrom   BenefitPayment[]           @relation("BenefitPaymentFrom")
+  services               Service[]
+  quotations             Quotation[]                @relation("QuotationBankAccount")
+  inventoryItems         InventoryItem[]            @relation("InventoryRevenueAccount")
+  inventorySourceItems   InventoryItem[]            @relation("InventorySourceAccount")
+  inventoryExpenseItems  InventoryItem[]            @relation("InventoryExpenseAccount")
+  discountSettings       DiscountSetting[]
+  voucherDiscounts       Voucher[]                  @relation("VoucherDiscountAccount")
+  wallets                DigitalWallet[]            @relation("WalletAccount")
+  arPaymentDiscounts     ARPayment[]                @relation("ARPaymentDiscountAccount")
+  arPaymentCashAccounts  ARPayment[]                @relation("ARPaymentCashAccount")
+  arPaymentOverpayments  ARPayment[]                @relation("ARPaymentOverpaymentAccount")
+  unitPaysExpense        UnitPay[]                  @relation("UnitPayExpense")
+  taxPaymentsFrom        TaxPayment[]               @relation("TaxPaymentFrom")
+  taxSettings            PayrollTaxSettings[]       @relation("TaxLiability")
+  paymentModes           PaymentMode[]              @relation("PaymentModeAccount")
+  paymentModeSettlements PaymentMode[]              @relation("PaymentModeSettlementAccount")
+  paymentModeDeductions  PaymentModeDeduction[]     @relation("DeductionAccount")
+  journalLines           JournalEntryLine[]
+  salaryPaymentsFrom     SalaryPayment[]            @relation("SalaryPaymentFrom")
+  benefitPaymentsFrom    BenefitPayment[]           @relation("BenefitPaymentFrom")
   // PayrollCOAMapping relations
-  coaSalaryExpense      PayrollCOAMapping[]        @relation("COASalaryExpense")
-  coaProfessionalFees   PayrollCOAMapping[]        @relation("COAProfFees")
-  coaSssER              PayrollCOAMapping[]        @relation("COASSSER")
-  coaHdmfER             PayrollCOAMapping[]        @relation("COAHdmfER")
-  coaPhilhealthER       PayrollCOAMapping[]        @relation("COAPhilER")
-  coaSalariesPayable    PayrollCOAMapping[]        @relation("COASalPayable")
-  coaBenefitsPayable    PayrollCOAMapping[]        @relation("COABenPayable")
-  coaTaxPayable         PayrollCOAMapping[]        @relation("COATaxPayable")
-  beginningBalances     BeginningBalance[]
-  adjBatchFxSources     InventoryAdjustmentBatch[] @relation("AdjBatchFxSource")
-  issuedCheques         IssuedCheque[]
+  coaSalaryExpense       PayrollCOAMapping[]        @relation("COASalaryExpense")
+  coaProfessionalFees    PayrollCOAMapping[]        @relation("COAProfFees")
+  coaSssER               PayrollCOAMapping[]        @relation("COASSSER")
+  coaHdmfER              PayrollCOAMapping[]        @relation("COAHdmfER")
+  coaPhilhealthER        PayrollCOAMapping[]        @relation("COAPhilER")
+  coaSalariesPayable     PayrollCOAMapping[]        @relation("COASalPayable")
+  coaBenefitsPayable     PayrollCOAMapping[]        @relation("COABenPayable")
+  coaTaxPayable          PayrollCOAMapping[]        @relation("COATaxPayable")
+  beginningBalances      BeginningBalance[]
+  adjBatchFxSources      InventoryAdjustmentBatch[] @relation("AdjBatchFxSource")
+  issuedCheques          IssuedCheque[]
 
   @@index([accountType])
   @@index([isActive])
@@ -376,7 +376,7 @@ model Quotation {
 /// A line on the quotation. Name/price/department are copied at generation time so a
 /// later price change never rewrites a quotation that has already gone out.
 model QuotationItem {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   quotationId     String
   quotation       Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   kind            String // SERVICE | PRODUCT
@@ -389,9 +389,9 @@ model QuotationItem {
   grossPrice      Decimal
   discountedPrice Decimal? // null when the line carries no discount
   discountLabel   String? // PWD, 10%, ₱500 off — printed so the reader sees why
-  quantity        Int      @default(1)
+  quantity        Int       @default(1)
   lineTotal       Decimal
-  sortOrder       Int      @default(0)
+  sortOrder       Int       @default(0)
 
   @@index([quotationId])
 }
@@ -945,21 +945,21 @@ model WalletDiscountRule {
 // ── Payment Mode Settings ─────────────────────────────────
 
 model PaymentMode {
-  id            String   @id @default(cuid())
-  name          String // "Cash - SBEA", "GCash", "Credit Card", etc.
-  paymentMethod String? // PaymentMethod enum key: CASH, GCASH, PAYMAYA, DEBIT, CREDIT_CARD, SHOPEE, LAZADA, TIKTOK
-  branch        String? // null = all branches, "SANDBOX_EAST", "SANDBOX_GREENHILLS"
-  isActive      Boolean  @default(true)
-  accountId     String? // COA where NET amount is lodged (usually an asset account)
-  account       Account? @relation("PaymentModeAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  id                      String   @id @default(cuid())
+  name                    String // "Cash - SBEA", "GCash", "Credit Card", etc.
+  paymentMethod           String? // PaymentMethod enum key: CASH, GCASH, PAYMAYA, DEBIT, CREDIT_CARD, SHOPEE, LAZADA, TIKTOK
+  branch                  String? // null = all branches, "SANDBOX_EAST", "SANDBOX_GREENHILLS"
+  isActive                Boolean  @default(true)
+  accountId               String? // COA where NET amount is lodged (usually an asset account)
+  account                 Account? @relation("PaymentModeAccount", fields: [accountId], references: [id], onDelete: SetNull)
   // Bank account the processor actually deposits settlements into, when that is
   // NOT accountId (e.g. TikTok sales lodge into a clearing account, but the
   // payout lands in VER BDO Checking). Bank rec offers this mode's payments
   // when reconciling either account.
   settlementBankAccountId String?
   settlementBankAccount   Account? @relation("PaymentModeSettlementAccount", fields: [settlementBankAccountId], references: [id], onDelete: SetNull)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   deductions    PaymentModeDeduction[]
   orderPayments OrderPayment[]         @relation("OrderPaymentMode")
@@ -1530,6 +1530,7 @@ model Employee {
   benefits           EmployeeBenefit[]
   payslips           EmployeePayslip[]
   cutoffAdjustments  CutoffAdjustment[]
+  staffLoans         StaffLoan[]
 
   @@index([branch])
   @@index([department])
@@ -1797,6 +1798,9 @@ model CutoffAdjustment {
   deduction      Decimal  @default(0)
   deductionType  String   @default("NON_TAXABLE") // TAXABLE (pre-tax, reduces taxable income) or NON_TAXABLE
   deductionLabel String? // e.g. "Cash Advance", "Loan"
+  // When this deduction repays a staff loan, the loan it repays. Set by the
+  // payroll suggestion flow; finalize turns it into a StaffLoanDeduction.
+  staffLoanId    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1804,6 +1808,50 @@ model CutoffAdjustment {
   @@index([employeeId])
   @@index([cutoffPeriod])
   @@index([branch])
+}
+
+// ── Staff Loans & Perks ──────────────────────────────────────────────
+// Money the company put out for a staff member that comes back through
+// payroll: cash loans, BIR assistance, sponsored trainings, medical bills,
+// SOS program balances. The release debits 1160 Due from Employees; every
+// per-cutoff deduction credits it back. This register is the per-person
+// subledger 1160 never had.
+model StaffLoan {
+  id           String    @id @default(cuid())
+  employeeId   String?
+  employee     Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  staffName    String // as written in the source; kept even when employeeId is linked
+  branch       String? // SBEA, SBGH, VERDANA
+  category     String    @default("LOAN") // LOAN, BIR_ASSISTANCE, TRAINING, MEDICAL, SOS, PERK
+  description  String?
+  principal    Decimal   @default(0)
+  dateReleased DateTime?
+  chequeRef    String? // cheque number that released the money, when known
+  perCutoff    Decimal   @default(0) // standing deduction per cutoff (payroll suggestion)
+  status       String    @default("ACTIVE") // ACTIVE, PAID, WAIVED
+  notes        String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  deductions StaffLoanDeduction[]
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model StaffLoanDeduction {
+  id             String    @id @default(cuid())
+  loanId         String
+  loan           StaffLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  cutoffPeriod   String // "2026-01-2" style, matching payroll cutoffs
+  amount         Decimal
+  source         String    @default("IMPORT") // IMPORT (monitoring sheet), PAYROLL (finalized cutoff), MANUAL
+  journalEntryId String? // the Dr salary expense / Cr 1160 entry, when posted
+  createdAt      DateTime  @default(now())
+
+  @@unique([loanId, cutoffPeriod, source])
+  @@index([cutoffPeriod])
 }
 
 model ConsultantCutoffAdjustment {

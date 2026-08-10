@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { Landmark, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
+import StaffLoansTab from './StaffLoansTab'
 
 const ALLOWED = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -26,7 +27,7 @@ interface AdvanceRow {
 
 export default function LoansAndAdvancesPage() {
   const { data: session, status } = useSession()
-  const [tab, setTab] = useState<'advances' | 'loans' | 'creditline' | 'history'>('advances')
+  const [tab, setTab] = useState<'advances' | 'loans' | 'creditline' | 'staff' | 'history'>('advances')
   const advTableRef = useRef<HTMLTableElement>(null)
   const advRz = useResizableColumns('loans-advances-list', advTableRef)
   const [rows, setRows] = useState<AdvanceRow[]>([])
@@ -64,7 +65,7 @@ export default function LoansAndAdvancesPage() {
       <NearDuePaymentsPopup onGoToHistory={() => setTab('history')} />
 
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['history', 'Payment History']] as const).map(([v, label]) => (
+        {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['staff', 'Staff Loans & Perks'], ['history', 'Payment History']] as const).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
             style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
@@ -113,6 +114,7 @@ export default function LoansAndAdvancesPage() {
 
       {tab === 'loans' && <LoansTab shareholders={shareholders} banks={banks} accts={accts} />}
       {tab === 'creditline' && <CreditLineTab shareholders={shareholders} banks={banks} accts={accts} />}
+      {tab === 'staff' && <StaffLoansTab />}
       {tab === 'history' && <PaymentHistoryTab banks={banks} accts={accts} />}
 
       {(showAdd || edit) && <AdvanceModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}

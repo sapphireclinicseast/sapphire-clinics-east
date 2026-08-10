@@ -396,6 +396,72 @@ export async function POST(req: Request) {
           },
         })
 
+        /* ── Staff loan repayments in this cutoff ──
+           The payroll entry above deliberately excludes otherDeductions from
+           both the expense debit and the payable credit, so a loan deduction
+           never reaches the ledger: 1160 keeps the full receivable and salary
+           expense is understated by the same amount. Every adjustment tied to
+           a staff loan therefore posts its own leg here — Dr salary expense
+           (the earnings were real; they just went to repaying the loan) /
+           Cr 1160 via the loan register — and is recorded on the loan so the
+           register, the payslip and the ledger all say the same thing. */
+        const loanAdjs = await tx.cutoffAdjustment.findMany({
+          where: { cutoffPeriod, branch, staffLoanId: { not: null }, deduction: { gt: 0 } },
+          select: { staffLoanId: true, deduction: true, employeeId: true },
+        })
+        if (loanAdjs.length > 0) {
+          const dueFrom = await tx.account.findFirst({
+            where: { accountNumber: '1160', isActive: true }, select: { id: true },
+          })
+          const totalLoanDed = loanAdjs.reduce((s2, a2) => s2 + Number(a2.deduction), 0)
+          let loanJeId: string | null = null
+          if (dueFrom && mapping.salaryExpenseAccountId && totalLoanDed > 0) {
+            const existing = await tx.journalEntry.findFirst({
+              where: { referenceType: 'STAFF_LOAN_DEDUCTION', referenceId: `${cutoffPeriod}|${branch}` },
+            })
+            if (!existing) {
+              const je = await tx.journalEntry.create({
+                data: {
+                  entryDate: new Date(),
+                  description: `Staff loan repayments — ${cutoffPeriod} — ${branchDisplay(branch)}`,
+                  referenceType: 'STAFF_LOAN_DEDUCTION',
+                  referenceId: `${cutoffPeriod}|${branch}`,
+                  totalAmount: totalLoanDed,
+                  branch,
+                  createdById: session.user.id as string,
+                  lines: {
+                    create: [
+                      { accountId: mapping.salaryExpenseAccountId, debit: totalLoanDed, credit: 0, description: 'Salaries earned, applied to staff loans' },
+                      { accountId: dueFrom.id, debit: 0, credit: totalLoanDed, description: 'Due from Employees — staff loan repayments' },
+                    ],
+                  },
+                },
+              })
+              loanJeId = je.id
+            } else loanJeId = existing.id
+          }
+          for (const adj of loanAdjs) {
+            await tx.staffLoanDeduction.upsert({
+              where: { loanId_cutoffPeriod_source: { loanId: adj.staffLoanId as string, cutoffPeriod, source: 'PAYROLL' } },
+              create: { loanId: adj.staffLoanId as string, cutoffPeriod, amount: Number(adj.deduction), source: 'PAYROLL', journalEntryId: loanJeId },
+              update: { amount: Number(adj.deduction), journalEntryId: loanJeId },
+            })
+          }
+          // A loan whose balance just reached zero is done — close it so it stops suggesting.
+          for (const adj of loanAdjs) {
+            const loan = await tx.staffLoan.findUnique({
+              where: { id: adj.staffLoanId as string },
+              select: { principal: true, deductions: { select: { amount: true } } },
+            })
+            if (loan) {
+              const repaid = loan.deductions.reduce((s2, d2) => s2 + Number(d2.amount), 0)
+              if (repaid >= Number(loan.principal) - 0.005) {
+                await tx.staffLoan.update({ where: { id: adj.staffLoanId as string }, data: { status: 'PAID' } })
+              }
+            }
+          }
+        }
+
         return { journalEntry, payable, lockedCount: payslips.length }
       }
     })
