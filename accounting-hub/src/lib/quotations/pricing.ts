@@ -23,6 +23,9 @@ export type QuotationBranch = (typeof QUOTATION_BRANCHES)[number]['key']
 
 export const VALIDITY_OPTIONS = [30, 45, 60, 90] as const
 
+/** Downpayment required to reserve the booking, as a percentage of the grand total. */
+export const DOWNPAYMENT_OPTIONS = [20, 30, 40, 50] as const
+
 export const PWD_RATE = 0.2
 
 export type DiscountKind = 'NONE' | 'PERCENT' | 'AMOUNT'
