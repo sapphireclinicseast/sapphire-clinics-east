@@ -18,7 +18,15 @@ VPS="root@152.53.231.249"
 REMOTE="/opt/accounting"
 LOCAL="$(cd "$(dirname "$0")" && pwd)"
 
-RSYNC_OPTS=(-avz --partial --timeout=90 -e "ssh -o ConnectTimeout=25 -o ServerAliveInterval=10 -o ServerAliveCountMax=6")
+# One multiplexed connection for the whole deploy. Each rsync and the remote
+# build used to open its own SSH session — six or more in quick succession,
+# which fail2ban reads as an attack and refuses mid-deploy. They now all ride a
+# single master connection, so the server sees one login.
+CTRL="${TMPDIR:-/tmp}/cm-accounting-$$"
+SSH_OPTS=(-o ControlMaster=auto -o ControlPath="$CTRL" -o ControlPersist=600 -o ConnectTimeout=25 -o ServerAliveInterval=10 -o ServerAliveCountMax=6)
+RSYNC_OPTS=(-avz --partial --timeout=90 -e "ssh -o ControlMaster=auto -o ControlPath=$CTRL -o ControlPersist=600 -o ConnectTimeout=25")
+cleanup_ctrl() { ssh -O exit -o ControlPath="$CTRL" "$VPS" >/dev/null 2>&1 || true; }
+trap cleanup_ctrl EXIT
 
 HEALTH_URL="https://accounting.sapphireclinicseast.org/login"
 
@@ -39,6 +47,10 @@ retry_rsync() {
   done
   fail "$what"
 }
+
+# Establish the shared connection up front; everything after reuses it.
+echo "==> 0/5 Opening connection..."
+ssh "${SSH_OPTS[@]}" "$VPS" true || fail "opening the SSH connection (is this IP banned?)"
 
 echo "==> 1/5 Syncing migrations + compose (must land before the schema)..."
 retry_rsync "docker/ sync" \
@@ -67,8 +79,7 @@ retry_rsync "src/ sync" --delete \
   "$LOCAL/src/" "$VPS:$REMOTE/src/"
 
 echo "==> 5/5 Rebuilding on VPS..."
-ssh -o ConnectTimeout=25 -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
-  "$VPS" "bash $REMOTE/docker/redeploy.sh" || fail "remote build (redeploy.sh)"
+ssh "${SSH_OPTS[@]}" "$VPS" "bash $REMOTE/docker/redeploy.sh" || fail "remote build (redeploy.sh)"
 
 # The build can succeed and the container still fail to come up, so confirm it.
 # Checked over the public URL rather than SSH: it is what a user actually
