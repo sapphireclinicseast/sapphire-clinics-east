@@ -120,12 +120,15 @@ export default function PatientMap({ cities }: PatientMapProps) {
 
         // Region priority: prefer features geographically near our Metro Manila clinics.
         // When the same city name appears in multiple regions, only shade the best-ranked one.
+        // Strings match the region names baked into public/ph.geojson (PSGC adm1_en,
+        // sourced from faeldon/philippines-json-maps) — keep in sync if that source
+        // file is ever regenerated from a differently-worded dataset.
         const REGION_PRI: Record<string, number> = {
-          'Metropolitan Manila':        0,
-          'CALABARZON (Region IV-A)':   1,
-          'Central Luzon (Region III)': 2,
-          'MIMAROPA (Region IV-B)':     3,
-          'Ilocos Region (Region I)':   10,
+          'National Capital Region (NCR)':      0,
+          'Region IV-A (CALABARZON)':           1,
+          'Region III (Central Luzon)':         2,
+          'MIMAROPA Region':                    3,
+          'Region I (Ilocos Region)':           10,
         }
         const bestRegion: Record<string, string> = {}
         for (const feat of geojson.features) {
