@@ -86,6 +86,13 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const role = (session.user as { role?: string })?.role ?? ''
+
+  // This feed is real patient names ("ELISH DENISE CONCINA — new patient
+  // registration") — investor accounts are read-only and must never see
+  // patient identities, so block server-side too, not just hide the bell
+  // in TopBar.tsx (the API had no role check at all before this).
+  if (role === 'INVESTOR') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const bookingBranches = bookingBranchesForRole(role)
 
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000)
