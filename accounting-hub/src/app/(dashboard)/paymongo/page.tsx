@@ -83,6 +83,7 @@ interface Txn {
   voucherCode: string | null; grossAmount: number | null; discountAmount: number | null
   amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null
   paymentMethodUsed: string | null
+  paymentId: string | null   // set once PayMongo confirms — used to match against live payments
   paidAt: string | null; payoutId: string | null; livemode: boolean; createdAt: string
 }
 interface PayLink {
@@ -91,6 +92,8 @@ interface PayLink {
   allowVoucher: boolean; isActive: boolean; kind: string; paidCount: number; createdAt: string
 }
 interface Payout { payoutId: string; net: number; fee: number; status: string; settled: boolean; paidAt: string | null }
+// A payment as PayMongo itself reports it, independent of anything recorded here.
+interface LivePayment { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string }
 interface Item { id: string; name: string; price: number; sku?: string; stock?: number; department?: string }
 interface Voucher {
   id: string; name: string; code: string; discountType: string; discountValue: number
@@ -119,6 +122,11 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState('')
+  // Payments the account received that did NOT come from a link created here —
+  // the storefront makes its own PayMongo checkouts, so its sales never appear
+  // in the transactions table below. The API has always returned these; the
+  // page simply dropped them, which is why website payments looked missing.
+  const [livePayments, setLivePayments] = useState<LivePayment[]>([])
 
   const [kind, setKind] = useState<'SERVICE' | 'PRODUCT'>('SERVICE')
   const [itemId, setItemId] = useState('')
@@ -163,6 +171,7 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
       ])
       setLinks(Array.isArray(l) ? l : [])
       setTxns(t.transactions || []); setConfigured(t.configured !== false)
+      if (Array.isArray(t.livePayments)) setLivePayments(t.livePayments)
       if (t.syncError) setError(t.syncError)
       // Sales that couldn't be booked to the GL (e.g. an item with no revenue account).
       if (Array.isArray(t.postWarnings) && t.postWarnings.length) {
@@ -390,6 +399,63 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
           </table>
         </div>
       </div>
+
+      {/* ── Payments straight from PayMongo ──
+          Anything the account received, including sales the storefront created
+          its own checkout for. Without this an admin had to log in to PayMongo
+          to confirm a website payment had gone through. */}
+      {livePayments.length > 0 && (() => {
+        const known = new Set(txns.map(t => t.paymentId).filter(Boolean))
+        return (
+          <div className="rounded-2xl border mb-4" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <div>
+                <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Payments Received in PayMongo — {label}</span>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  Straight from the PayMongo account, newest first. &ldquo;Website / direct&rdquo; means the payment was not created from a link here — storefront sales land this way.
+                </p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  <th className="px-3 py-2 text-left font-semibold uppercase">Paid</th>
+                  <th className="px-3 py-2 text-left font-semibold uppercase">Description</th>
+                  <th className="px-3 py-2 text-left font-semibold uppercase">Payer</th>
+                  <th className="px-3 py-2 text-right font-semibold uppercase">Amount</th>
+                  <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
+                  <th className="px-3 py-2 text-right font-semibold uppercase">Net</th>
+                  <th className="px-3 py-2 text-left font-semibold uppercase">Status</th>
+                  <th className="px-3 py-2 text-left font-semibold uppercase">Source</th>
+                </tr></thead>
+                <tbody>
+                  {livePayments.map(lp => (
+                    <tr key={lp.paymentId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{lp.paidAt ? new Date(lp.paidAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{lp.description || '—'}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{lp.payer || '—'}</td>
+                      <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{lp.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>₱{lp.fee.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: 'var(--teal)' }}>₱{lp.net.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-3 py-2">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                          style={lp.status === 'paid' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                          {lp.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>
+                        {known.has(lp.paymentId)
+                          ? <span style={{ color: 'var(--teal)' }}>From a link here</span>
+                          : 'Website / direct'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Transactions ── */}
       <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
