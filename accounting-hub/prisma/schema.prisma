@@ -68,6 +68,7 @@ model User {
 
   servicesCreated      Service[]                  @relation("ServiceCreatedBy")
   suppliersCreated     Supplier[]                 @relation("SupplierCreatedBy")
+  supplierRequests     SupplierRequest[]          @relation("SupplierRequestPreparedBy")
   inventoryItems       InventoryItem[]            @relation("ItemCreatedBy")
   quotationsCreated    Quotation[]                @relation("QuotationCreatedBy")
   quotationTemplates   QuotationTemplate[]        @relation("QuotationTemplateUploadedBy")
@@ -314,6 +315,7 @@ model Supplier {
 
   inventoryItems InventoryItem[]
   assets         Asset[]
+  requests       SupplierRequest[]
 
   @@index([isActive])
   @@index([createdById])
@@ -457,6 +459,7 @@ model InventoryItem {
   @@index([revenueAccountId])
   @@index([sourceAccountId])
   @@index([expenseAccountId])
+  supplierRequestItems SupplierRequestItem[]
 }
 
 model BundleComponent {
@@ -539,6 +542,45 @@ model InventoryAdjustment {
   @@index([adjustmentDate])
   @@index([batchId])
   @@index([batchRefId])
+}
+
+// A purchase request sent to a supplier: what we want, how many, and who asked.
+// The printed sheet quotes the supplier's own product name, since that is what
+// they recognise when reordering.
+model SupplierRequest {
+  id             String    @id @default(cuid())
+  referenceNumber String   @unique // SR-YYYYMMDD-NNN
+  supplierId     String
+  supplier       Supplier  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  requestDate    DateTime
+  status         String    @default("DRAFT") // DRAFT, SENT, RECEIVED, CANCELLED
+  remarks        String?
+  // Captured at creation so the printed sheet keeps saying who prepared it even
+  // if the account is renamed or deactivated later.
+  preparedByName String
+  preparedById   String?
+  preparedBy     User?     @relation("SupplierRequestPreparedBy", fields: [preparedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  items SupplierRequestItem[]
+
+  @@index([supplierId])
+  @@index([requestDate])
+}
+
+model SupplierRequestItem {
+  id        String          @id @default(cuid())
+  requestId String
+  request   SupplierRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      InventoryItem   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  quantity  Int
+  remarks   String?
+  createdAt DateTime        @default(now())
+
+  @@index([requestId])
+  @@index([itemId])
 }
 
 // Consumable pre-numbered forms (e.g. ADMIN01) tracked by control-number range.
