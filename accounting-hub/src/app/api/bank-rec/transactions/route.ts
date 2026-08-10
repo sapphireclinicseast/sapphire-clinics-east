@@ -367,6 +367,51 @@ export async function PATCH(req: Request) {
       const amount = Number(out.spent)
 
       const transfer = await prisma.$transaction(async (tx) => {
+        // The transfer may already be on file, entered from its voucher with the
+        // cheque number and branch reference on it. Creating a second record for
+        // the same movement double-counts it in the ledger — both records post
+        // their own journal entry — and leaves the voucher permanently showing
+        // as unmatched. Reuse the existing row so the match lands on the record
+        // that carries the evidence.
+        //
+        // Only an unambiguous, still-unreconciled candidate is reused: exactly
+        // one row, same two accounts, same amount, within a week. Two transfers
+        // of the same amount between the same accounts in one week are rare but
+        // real, so anything ambiguous still creates a new record, and the caller
+        // can force that with newRecord:true.
+        const reuse = body.newRecord ? [] : await tx.fundTransfer.findMany({
+          where: {
+            fromAccountId: out.bankAccountId,
+            toAccountId: inn.bankAccountId,
+            amount,
+            date: {
+              gte: new Date(new Date(out.date).getTime() - 7 * 86400000),
+              lte: new Date(new Date(out.date).getTime() + 7 * 86400000),
+            },
+          },
+          select: { id: true, refNumber: true },
+        })
+        const free: { id: string; refNumber: string }[] = []
+        for (const r of reuse) {
+          const legs = await tx.bankTransaction.count({
+            where: { matchId: r.id, matchType: { in: ['FUND_TRANSFER', 'INTERBANK', 'FOREX'] } },
+          })
+          if (legs === 0) free.push(r)
+        }
+        if (free.length === 1) {
+          const existing = free[0]
+          const label = `${existing.refNumber} · transfer ${fromAcct?.accountNumber || ''} → ${toAcct?.accountNumber || ''}`
+          for (const t of [out, inn]) {
+            await tx.bankTransaction.update({
+              where: { id: t.id },
+              data: { status: 'POSTED', matchType: 'INTERBANK', matchId: existing.id, matchLabel: label, categoryAccountId: null },
+            })
+          }
+          // Idempotent — leaves the entry alone if the existing record already posted one.
+          await postFundTransferJE(tx, existing.id, session.user!.id ?? null)
+          return existing
+        }
+
         let s = await tx.fundTransferSettings.findUnique({ where: { id: 'singleton' } })
         if (!s) s = await tx.fundTransferSettings.create({ data: { id: 'singleton', nextSeq: 1 } })
         const maxSeq = (await tx.fundTransfer.aggregate({ _max: { refSeq: true } }))._max.refSeq ?? 0
