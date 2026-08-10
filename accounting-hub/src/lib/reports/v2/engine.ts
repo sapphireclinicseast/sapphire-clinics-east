@@ -36,6 +36,8 @@ interface AcctInfo {
   virtual: boolean
   /** Owning branch of a bank account; null = shared/company-wide. */
   branch?: string | null
+  /** Account currency; anything but PHP is converted at the bank-rec rate. */
+  currency?: string
 }
 
 interface Movement { debit: number; credit: number }
@@ -209,7 +211,7 @@ export async function computeLedgerStatements(
   /* ── Account registry ── */
   const dbAccounts = await prisma.account.findMany({
     where: { isActive: true },
-    select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true, isBankAccount: true, branch: true },
+    select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true, isBankAccount: true, branch: true, currency: true },
   })
   const byNumber = new Map<string, AcctInfo>()
   const byId = new Map<string, AcctInfo>()
@@ -219,7 +221,7 @@ export async function computeLedgerStatements(
       id: a.id, number: a.accountNumber, title: a.accountTitle,
       type: a.accountType as AcctInfo['type'], subType: a.subType || '',
       normalBalance: a.normalBalance as AcctInfo['normalBalance'], virtual: false,
-      branch: a.branch || null,
+      branch: a.branch || null, currency: a.currency || 'PHP',
     }
     byNumber.set(info.number, info)
     byId.set(a.id, info)
@@ -932,6 +934,40 @@ export async function computeLedgerStatements(
       // Scoped to the period on purpose: a balance from an earlier year says
       // nothing about this year's month ends, and monthOf would clamp it to
       // January, freezing cash at a stale figure for the whole year.
+      /* A foreign-currency account's statement balance is in ITS currency —
+         the CNY account's ¥23,643.59 was being summed into peso cash as
+         ₱23,643.59. Policy (user, 2026-08-10): value it at the bank-rec
+         conversion rate — the ExchangeRate rows the forex matches recorded —
+         using the latest rate on or before the statement date. An account
+         whose currency has no recorded rate at all is left raw and flagged in
+         the notes rather than silently guessed at. */
+      const fxAccts = [...byId.values()].filter(a => a.currency && a.currency !== 'PHP')
+      const fxRates = new Map<string, { date: Date; rate: number }[]>()
+      if (fxAccts.length) {
+        const rateRows = await prisma.exchangeRate.findMany({
+          where: { currency: { in: [...new Set(fxAccts.map(a => a.currency!))] } },
+          orderBy: { date: 'asc' },
+          select: { currency: true, date: true, phpPerUnit: true },
+        })
+        for (const r of rateRows) {
+          if (!fxRates.has(r.currency)) fxRates.set(r.currency, [])
+          fxRates.get(r.currency)!.push({ date: r.date, rate: Number(r.phpPerUnit) })
+        }
+        const missing = fxAccts.filter(a => !fxRates.has(a.currency!))
+        if (missing.length) validation.notes.push(
+          `No bank-rec exchange rate recorded for ${missing.map(a => `${a.currency} (${a.title})`).join(', ')} — ` +
+          `their statement balances are shown at face value until a currency exchange is matched in Bank Reconciliation.`,
+        )
+      }
+      const toPhp = (acctId: string, bal: number, asOf: Date): number => {
+        const acct = byId.get(acctId)
+        if (!acct?.currency || acct.currency === 'PHP') return bal
+        const rows = fxRates.get(acct.currency)
+        if (!rows?.length) return bal
+        let rate = rows[0].rate                       // before the first known rate, use it
+        for (const r of rows) { if (r.date <= asOf) rate = r.rate; else break }
+        return bal * rate
+      }
       const stmtLines = await prisma.bankTransaction.findMany({
         where: { date: { gte: start, lt: end }, statementBalance: { not: null }, ...LIVE_STMT },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
@@ -943,7 +979,7 @@ export async function computeLedgerStatements(
       for (const t of stmtLines) {
         const m = t.date.getUTCMonth() + 1
         if (!byAcctMonth.has(t.bankAccountId)) byAcctMonth.set(t.bankAccountId, new Map())
-        byAcctMonth.get(t.bankAccountId)!.set(m, Number(t.statementBalance))
+        byAcctMonth.get(t.bankAccountId)!.set(m, toPhp(t.bankAccountId, Number(t.statementBalance), t.date))
         if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
       }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
@@ -964,13 +1000,13 @@ export async function computeLedgerStatements(
       // Only the LAST line before the period matters, so let Postgres pick it
       // rather than shipping every historical statement line to the app just to
       // overwrite it: the years before 2026 hold tens of thousands of rows.
-      const priorLines = await prisma.$queryRaw<{ bankAccountId: string; statementBalance: unknown }[]>`
-        SELECT DISTINCT ON ("bankAccountId") "bankAccountId", "statementBalance"
+      const priorLines = await prisma.$queryRaw<{ bankAccountId: string; statementBalance: unknown; date: Date }[]>`
+        SELECT DISTINCT ON ("bankAccountId") "bankAccountId", "statementBalance", date
         FROM "BankTransaction"
         WHERE date < ${start} AND "statementBalance" IS NOT NULL AND status IN ('PENDING','POSTED')
         ORDER BY "bankAccountId", date DESC, id DESC`
       const bankOpening = new Map<string, number>()
-      for (const t of priorLines) bankOpening.set(t.bankAccountId, Number(t.statementBalance))
+      for (const t of priorLines) bankOpening.set(t.bankAccountId, toPhp(t.bankAccountId, Number(t.statementBalance), t.date))
       let openingTrued = 0
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
@@ -1227,10 +1263,34 @@ export async function computeLedgerStatements(
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
       select: { bankAccountId: true, date: true, statementBalance: true },
     })
+    // Same currency policy as the true-up: a foreign account's statement
+    // balance is valued at the bank-rec exchange rate in force on that date.
+    const fxAccts2 = [...byId.values()].filter(a => a.currency && a.currency !== 'PHP')
+    const fxRates2 = new Map<string, { date: Date; rate: number }[]>()
+    if (fxAccts2.length) {
+      const rateRows = await prisma.exchangeRate.findMany({
+        where: { currency: { in: [...new Set(fxAccts2.map(a => a.currency!))] } },
+        orderBy: { date: 'asc' },
+        select: { currency: true, date: true, phpPerUnit: true },
+      })
+      for (const r of rateRows) {
+        if (!fxRates2.has(r.currency)) fxRates2.set(r.currency, [])
+        fxRates2.get(r.currency)!.push({ date: r.date, rate: Number(r.phpPerUnit) })
+      }
+    }
+    const toPhp2 = (acctId: string, bal: number, asOf: Date): number => {
+      const acct = byId.get(acctId)
+      if (!acct?.currency || acct.currency === 'PHP') return bal
+      const rows = fxRates2.get(acct.currency)
+      if (!rows?.length) return bal
+      let rate = rows[0].rate
+      for (const r of rows) { if (r.date <= asOf) rate = r.rate; else break }
+      return bal * rate
+    }
     const latestByAcct = new Map<string, { bal: number; asOf: string }>()
     for (const t of latest) {
       if (!latestByAcct.has(t.bankAccountId)) {
-        latestByAcct.set(t.bankAccountId, { bal: Number(t.statementBalance), asOf: t.date.toISOString().slice(0, 10) })
+        latestByAcct.set(t.bankAccountId, { bal: toPhp2(t.bankAccountId, Number(t.statementBalance), t.date), asOf: t.date.toISOString().slice(0, 10) })
       }
     }
     if (latestByAcct.size || pendingCount) {
