@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { pushWeightsToStore } from '@/lib/store-weight-sync'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
@@ -149,6 +150,12 @@ export async function POST(req: Request) {
       include: { supplier: { select: { supplierName: true } } },
     })
 
+    // A new product with a weight should reach the storefront too.
+    if (item.weightKg != null && item.sku) {
+      const sync = await pushWeightsToStore([{ sku: item.sku, weightKg: Number(item.weightKg) }])
+      if (!sync.pushed) console.warn(`[STORE SYNC] weight for ${item.sku} not pushed: ${sync.reason}`)
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
@@ -209,6 +216,15 @@ export async function PUT(req: Request) {
     if (weightKg !== undefined) data.weightKg = weightKg !== '' && weightKg !== null ? parseFloat(weightKg) : null
 
     const item = await prisma.inventoryItem.update({ where: { id }, data })
+
+    // The storefront prices delivery by weight, so its copy has to follow this
+    // one. Non-fatal: the item is saved either way, and the log records a
+    // divergence rather than hiding it.
+    if (weightKg !== undefined && item.sku) {
+      const sync = await pushWeightsToStore([{ sku: item.sku, weightKg: item.weightKg == null ? null : Number(item.weightKg) }])
+      if (!sync.pushed) console.warn(`[STORE SYNC] weight for ${item.sku} not pushed: ${sync.reason}`)
+      else if (sync.unmatched?.length) console.warn(`[STORE SYNC] no storefront product for SKU ${sync.unmatched.join(', ')}`)
+    }
 
     await prisma.auditLog.create({
       data: {
