@@ -1,0 +1,118 @@
+import Image from "next/image"
+import type { Metadata } from "next"
+import { MarqueeTagline } from "@/components/home/MarqueeTagline"
+
+export const metadata: Metadata = {
+  title: "About Us",
+}
+
+export default function AboutPage() {
+  return (
+    <>
+      <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+        <h1 className="text-3xl sm:text-4xl font-bold text-verdana-charcoal">Who We Are</h1>
+
+        {/* Logo mark */}
+        <div className="my-12 flex justify-center">
+          <Image
+            src="/logo/verdana-full-r.png"
+            alt="Verdana Rehab Solutions"
+            width={565}
+            height={589}
+            className="h-auto w-52 sm:w-64"
+          />
+        </div>
+
+        <div className="space-y-6 text-gray-700 leading-relaxed">
+          <p className="text-lg">
+            We are a team of seasoned rehabilitation professionals with over a decade of industry
+            experience.
+          </p>
+          <p>
+            We partner with healthcare professionals, educators, and families to bring
+            evidence-based products that support children&apos;s developmental journeys. Our team
+            includes board-certified occupational therapists, speech-language pathologists, and
+            physical therapists who personally vet and select every product in our catalog.
+          </p>
+        </div>
+      </div>
+
+      <MarqueeTagline />
+
+      {/* Mission section */}
+      <section className="bg-verdana-dark-teal text-white py-16">
+        <div className="mx-auto max-w-3xl px-6 text-center space-y-4">
+          <h2 className="text-2xl font-bold">Our Mission</h2>
+          <p className="text-lg leading-relaxed text-gray-200">
+            To optimize quality of life through accessible, excellent, and evidence-based
+            rehabilitation services &mdash; optimizing functional mobility, enabling effective
+            communication, promoting inclusivity, advancing clinical research, and fostering
+            excellence in the professional community.
+          </p>
+        </div>
+      </section>
+
+      {/* Vision section */}
+      <section className="py-16 bg-verdana-off-white">
+        <div className="mx-auto max-w-3xl px-6 text-center space-y-4">
+          <h2 className="text-2xl font-bold text-verdana-charcoal">Our Vision</h2>
+          <p className="text-lg leading-relaxed text-gray-700">
+            To lead rehabilitation in the Philippines. A global leader in accessible, excellent,
+            and evidence-based habilitation and rehabilitation services &mdash; helping improve the
+            overall health of society, one person and one community at a time.
+          </p>
+          <p className="pt-4 text-base font-serif italic text-verdana-charcoal/80">
+            Feeling seen. Finding footing. Moving forward.
+          </p>
+        </div>
+      </section>
+
+      {/* Values section — the three arches */}
+      <section className="py-16 bg-verdana-cream">
+        <div className="mx-auto max-w-4xl px-6">
+          <h2 className="text-2xl sm:text-3xl font-bold text-verdana-charcoal">
+            The three arches stand for our three values: Quality, Empathy, and Teamwork.
+          </h2>
+
+          <div className="mt-10 space-y-6">
+            {[
+              {
+                arch: "Outer Arch · Narra",
+                title: "Quality",
+                desc: "Foundation of the work. Evidence-based, outcome-led.",
+                color: "#4E6A5A",
+              },
+              {
+                arch: "Middle Arch · Sage",
+                title: "Empathy",
+                desc: "The meeting place. We listen first.",
+                color: "#BFD9B4",
+              },
+              {
+                arch: "Inner Arch · Clay",
+                title: "Teamwork",
+                desc: "Warmth at the core. Therapists, families, patients in concert.",
+                color: "#E0C48F",
+              },
+            ].map((value) => (
+              <div key={value.title} className="flex items-stretch gap-5">
+                <span
+                  className="w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: value.color }}
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-verdana-teal">
+                    {value.arch}
+                  </p>
+                  <h3 className="mt-1 text-2xl font-bold text-verdana-charcoal">{value.title}</h3>
+                  <p className="mt-1 text-gray-700 leading-relaxed">{value.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  )
+}

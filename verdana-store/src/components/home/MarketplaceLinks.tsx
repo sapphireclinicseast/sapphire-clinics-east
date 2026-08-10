@@ -13,7 +13,7 @@ const marketplaces = [
   },
   {
     name: "TikTok",
-    url: "https://www.tiktok.com/@verdanarehabsolutions",
+    url: "https://www.tiktok.com/@verdanarehab",
     color: "bg-gray-900 hover:bg-black",
   },
 ]

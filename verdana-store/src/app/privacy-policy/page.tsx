@@ -85,7 +85,7 @@ export default function PrivacyPolicyPage() {
           <p className="mt-2 text-gray-700 leading-relaxed">
             For more information about our privacy practices, if you have questions, or if you
             would like to make a complaint, please contact us by email at
-            support@verdanarehab.com or through our Contact page.
+            verdanatrading@gmail.com or through our Contact page.
           </p>
         </section>
       </div>
