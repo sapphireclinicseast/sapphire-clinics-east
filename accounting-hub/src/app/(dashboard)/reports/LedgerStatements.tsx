@@ -71,7 +71,9 @@ const SOURCE_LABELS: Record<string, string> = {
   'journal:TIKTOK_WHT': 'TikTok withholding tax',
 }
 const sourceLabel = (s: string) => SOURCE_LABELS[s]
-  || s.replace(/^journal:/, '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())
+  || (s.startsWith('history:')
+      ? `History — ${s.slice(8).replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())}`
+      : s.replace(/^journal:/, '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase()))
 
 /** Historical ledger labels/descriptions were stored with the pre-rebrand branch codes — sanitize at display time only. */
 const rebrand = (s: string) => s.replace(/\bSBEA\b/g, 'AHEA').replace(/\bSBGH\b/g, 'AHGH')
@@ -217,7 +219,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
       [],
       ['Month', 'Source', 'Detail', `Debit (${ccy})`, `Credit (${ccy})`],
       ...lines.map(l => [
-        l.month === 0 ? 'Opening' : MONTHS[l.month - 1],
+        l.period || (l.month === 0 ? 'Opening' : MONTHS[l.month - 1]),
         sourceLabel(l.source),
         rebrand(l.label),
         l.debit ? amt(l.debit) : '',
@@ -245,6 +247,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
             <p className="font-semibold" style={{ color: '#111827' }}>{title}</p>
             <p className="text-xs" style={{ color: '#6b7280' }}>
               {month ? MONTHS[month - 1] : 'Whole year'} · every underlying entry, from the ledger dataset
+              {!month && ' · earlier years are listed first as History, and are not included in the totals — they are already embodied in the opening balance'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -283,7 +286,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
               <tbody>
                 {lines.map((l, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#6b7280' }}>{l.month === 0 ? 'Opening' : MONTHS[l.month - 1]}</td>
+                    <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#6b7280' }}>{l.period || (l.month === 0 ? 'Opening' : MONTHS[l.month - 1])}</td>
                     <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#374151' }}>{sourceLabel(l.source)}</td>
                     <td className="px-3 py-1" style={{ color: '#111827' }}>{rebrand(l.label)}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{l.debit ? formatDisplay(l.debit) : ''}</td>

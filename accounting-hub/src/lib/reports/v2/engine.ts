@@ -58,7 +58,9 @@ export interface V2AccountRow {
 
 /** One underlying line, returned when a drill-down is requested. */
 export interface V2CollectedLine {
-  month: number          // 1..12, or 0 for opening balances
+  month: number          // 1..12, or 0 for opening balances and prior-year history
+  /** "YYYY-MM" for a prior-year history line; absent for lines inside `year`. */
+  period?: string
   source: string         // engine source key (journal:<refType> or a synthesis key)
   label: string          // human context: JE description, order #, PCV, asset name…
   debit: number
@@ -320,6 +322,49 @@ export async function computeLedgerStatements(
       const existing = validation.imbalancePlugs.find(p => p.source === source)
       if (existing) existing.amount = round2(existing.amount + diff)
       else validation.imbalancePlugs.push({ source, amount: diff })
+    }
+  }
+
+  /* ── 0. Prior-year history for a drill-down ──
+     "Opening balance (2026)" on its own is a dead end: it says what the account
+     started at, never how it got there. When one account is drilled with no
+     month filter, every entry that predates the period is listed first, oldest
+     first, so the balance can be read all the way back to 2024 instead of
+     stopping at a figure someone typed in.
+
+     History lines are deliberately EXCLUDED from the drill-down totals — those
+     state this period's movement, and adding earlier years would double-count
+     the opening balance they already produced. */
+  if (collect && !collect.month) {
+    const drilled = byNumber.get(collect.account)
+    if (drilled?.id) {
+      const hist = await prisma.journalEntryLine.findMany({
+        where: {
+          accountId: drilled.id,
+          journalEntry: {
+            entryDate: { lt: start },
+            referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
+            ...(branchValues ? { branch: { in: branchValues as never[] } } : {}),
+          },
+        },
+        select: {
+          debit: true, credit: true,
+          journalEntry: { select: { entryDate: true, description: true, referenceType: true } },
+        },
+        orderBy: { journalEntry: { entryDate: 'asc' } },
+        take: 3000,
+      })
+      for (const l of hist) {
+        const je = l.journalEntry
+        collected.push({
+          month: 0,
+          period: je.entryDate.toISOString().slice(0, 7),
+          source: `history:${je.referenceType || 'JOURNAL'}`,
+          label: je.description || '(no description)',
+          debit: round2(Number(l.debit) || 0),
+          credit: round2(Number(l.credit) || 0),
+        })
+      }
     }
   }
 
@@ -1454,9 +1499,12 @@ export async function computeLedgerStatements(
   collected.sort((a, b) => a.month - b.month)
   const COLLECT_CAP = 2000
   const collectedTruncated = collected.length > COLLECT_CAP
+  // Prior-year history is shown but not totalled: the totals describe THIS
+  // period, and the earlier years are already embodied in the opening balance.
+  const periodLines = collected.filter(l => !l.source.startsWith('history:'))
   const collectedTotals = {
-    debit: round2(collected.reduce((s, l) => s + l.debit, 0)),
-    credit: round2(collected.reduce((s, l) => s + l.credit, 0)),
+    debit: round2(periodLines.reduce((s, l) => s + l.debit, 0)),
+    credit: round2(periodLines.reduce((s, l) => s + l.credit, 0)),
   }
 
   return {
