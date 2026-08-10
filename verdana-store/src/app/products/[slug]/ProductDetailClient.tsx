@@ -1,7 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { fbTrack } from "@/lib/fbpixel"
 import { ShoppingCart, Zap } from "lucide-react"
 import type { Product } from "@/lib/types"
 import { formatPrice } from "@/lib/format"
@@ -22,13 +24,42 @@ import {
 interface ProductDetailClientProps {
   product: Product
   relatedProducts: Product[]
+  videos?: string[]
 }
 
-export function ProductDetailClient({ product, relatedProducts }: ProductDetailClientProps) {
+export function ProductDetailClient({ product, relatedProducts, videos = [] }: ProductDetailClientProps) {
   const { addItem, setIsCartOpen } = useCart()
+  const router = useRouter()
   const [selectedVariant, setSelectedVariant] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [isBuying, setIsBuying] = useState(false)
+
+  // Meta Pixel: product view (for ad optimization + retargeting audiences).
+  useEffect(() => {
+    fbTrack("ViewContent", {
+      content_ids: [product.sku || product.id],
+      content_name: product.title,
+      content_type: "product",
+      value: product.price,
+      currency: "PHP",
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id])
+
+  // When variants carry their own stock, the selected variant drives availability;
+  // otherwise fall back to the product-level stock.
+  const activeVariant = product.variants[selectedVariant]
+  const effectiveStock =
+    activeVariant && activeVariant.stock !== undefined && activeVariant.stock !== null
+      ? activeVariant.stock
+      : product.stock
+
+  // A variant may be priced differently (e.g. cotton vs polyester, small vs large).
+  // Absent price = inherit the product price.
+  const effectivePrice =
+    activeVariant && activeVariant.price !== undefined && activeVariant.price !== null
+      ? activeVariant.price
+      : product.price
 
   function handleAddToCart() {
     const variant = product.variants[selectedVariant]
@@ -36,43 +67,32 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
       productId: product.id,
       variantId: variant?.label,
       variantLabel: variant?.label,
+      variantSku: variant?.sku,
       title: product.title,
-      price: product.price,
+      price: effectivePrice,
       image: product.images[0] || "",
       quantity,
     })
     setIsCartOpen(true)
   }
 
-  async function handleBuyNow() {
+  // Buy It Now funnels through the cart so we always collect the receiver's
+  // name, contact number and delivery address before payment — PayMongo's hosted
+  // page only captures card billing, which isn't a reliable shipping address.
+  function handleBuyNow() {
     setIsBuying(true)
     const variant = product.variants[selectedVariant]
-    const items = [
-      {
-        productId: product.id,
-        variantId: variant?.label,
-        variantLabel: variant?.label,
-        title: product.title,
-        price: product.price,
-        image: product.images[0] || "",
-        quantity,
-      },
-    ]
-    try {
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
-      })
-      const data = await res.json()
-      if (data.url) {
-        window.location.href = data.url
-      }
-    } catch (error) {
-      console.error("Checkout failed:", error)
-    } finally {
-      setIsBuying(false)
-    }
+    addItem({
+      productId: product.id,
+      variantId: variant?.label,
+      variantLabel: variant?.label,
+      variantSku: variant?.sku,
+      title: product.title,
+      price: effectivePrice,
+      image: product.images[0] || "",
+      quantity,
+    })
+    router.push("/cart")
   }
 
   return (
@@ -102,13 +122,59 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
               {product.title}
             </h1>
             <p className="mt-3 text-3xl font-bold text-gradient-teal">
-              {formatPrice(product.price)}
+              {formatPrice(effectivePrice)}
             </p>
+            {product.sku && (
+              <p className="mt-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+                SKU: {product.sku}
+              </p>
+            )}
+            {product.bestSeller && (
+              <p className="mt-3 mr-2 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800 border border-amber-300">
+                ★ Best Seller
+              </p>
+            )}
+            {(() => {
+              const stock = effectiveStock
+              // Pre-order items (flag mirrored from Accounting Hub) stay orderable regardless of
+              // stock and always show the made-to-order lead time.
+              if (product.isPreOrder) {
+                return (
+                  <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 border border-blue-200">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    Pre-order — please allow 45–60 days for arrival
+                  </p>
+                )
+              }
+              if (stock === undefined || stock === null) return null
+              if (stock === 0) {
+                return (
+                  <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700 border border-red-200">
+                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                    Out of stock
+                  </p>
+                )
+              }
+              if (stock <= 5) {
+                return (
+                  <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700 border border-amber-200">
+                    Only {stock} left in stock
+                  </p>
+                )
+              }
+              return (
+                <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700 border border-emerald-200">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  In stock
+                </p>
+              )
+            })()}
           </div>
 
           {/* Variant picker */}
           {product.variants.length > 0 && (
             <VariantPicker
+              isPreOrder={product.isPreOrder}
               variants={product.variants}
               selectedIndex={selectedVariant}
               onSelect={setSelectedVariant}
@@ -122,29 +188,46 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
           </div>
 
           {/* Action buttons */}
-          <div className="space-y-3 pt-2">
-            <Button
-              className="w-full rounded-xl py-6 text-base"
-              size="lg"
-              onClick={handleAddToCart}
-            >
-              <ShoppingCart className="h-5 w-5" />
-              Add to Cart
-            </Button>
-            <Button
-              variant="secondary"
-              className="w-full rounded-xl py-6 text-base"
-              size="lg"
-              onClick={handleBuyNow}
-              disabled={isBuying}
-            >
-              <Zap className="h-5 w-5" />
-              {isBuying ? "Processing..." : "Buy It Now"}
-            </Button>
-          </div>
+          {(() => {
+            const preOrder = !!product.isPreOrder
+            const outOfStock = !preOrder && effectiveStock !== undefined && effectiveStock !== null && effectiveStock <= 0
+            const preOrdering = preOrder
+            return (
+              <div className="space-y-3 pt-2">
+                <Button
+                  className="w-full rounded-xl py-6 text-base"
+                  size="lg"
+                  onClick={handleAddToCart}
+                  disabled={outOfStock}
+                  title={outOfStock ? "Out of stock" : undefined}
+                >
+                  <ShoppingCart className="h-5 w-5" />
+                  {outOfStock ? "Out of stock" : preOrdering ? "Pre-order" : "Add to Cart"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="w-full rounded-xl py-6 text-base"
+                  size="lg"
+                  onClick={handleBuyNow}
+                  disabled={isBuying || outOfStock}
+                  title={outOfStock ? "Out of stock" : undefined}
+                >
+                  <Zap className="h-5 w-5" />
+                  {outOfStock ? "Unavailable" : isBuying ? "Processing..." : preOrdering ? "Pre-order Now" : "Buy It Now"}
+                </Button>
+                {preOrdering && (
+                  <p className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+                    <span className="font-semibold">This is a pre-order item.</span> You can check out and pay
+                    now — your order will be produced and delivered within{" "}
+                    <span className="font-semibold">45–60 days</span>.
+                  </p>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Description */}
-          <p className="text-gray-600 leading-relaxed">{product.description}</p>
+          <p className="text-gray-600 leading-relaxed whitespace-pre-line">{product.description}</p>
 
           {/* Trust badges */}
           <TrustBadges />
@@ -157,7 +240,7 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
               </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-gray-600">
-                  <p>{product.description}</p>
+                  <p className="whitespace-pre-line">{product.description}</p>
                   {product.variants.length > 0 && (
                     <p>
                       Available in {product.variants.length} color
@@ -174,10 +257,18 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
               </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-2 text-gray-600">
-                  <p>
-                    Orders are processed within 1&ndash;2 business days. Delivery typically takes
-                    3&ndash;7 business days depending on your location and chosen shipping method.
-                  </p>
+                  {product.isPreOrder ? (
+                    <p>
+                      This is a pre-order item. Your order goes into production once placed and
+                      typically arrives within 45&ndash;60 days. We&rsquo;ll keep you updated and
+                      ship it as soon as it reaches our warehouse.
+                    </p>
+                  ) : (
+                    <p>
+                      Orders are processed within 1&ndash;2 business days. Delivery typically takes
+                      3&ndash;7 business days depending on your location and chosen shipping method.
+                    </p>
+                  )}
                   <p>
                     We offer returns and exchanges within 7 days of delivery for unused items in
                     original packaging. Please contact our support team to initiate a return.
@@ -188,6 +279,31 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
           </Accordion>
         </div>
       </div>
+
+      {/* Product videos */}
+      {videos.length > 0 && (
+        <section className="mt-16">
+          <h2 className="text-2xl font-bold text-verdana-charcoal mb-6">
+            Product Videos
+          </h2>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {videos.map((url) => (
+              <div
+                key={url}
+                className="overflow-hidden rounded-2xl bg-black shadow-sm"
+              >
+                <video
+                  src={url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="w-full aspect-video"
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Related products */}
       {relatedProducts.length > 0 && (

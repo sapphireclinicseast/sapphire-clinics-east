@@ -1,0 +1,174 @@
+[
+  {
+    "id": "ORD-1785988193571",
+    "paymongoId": "cs_6cf31268528a71626051801d",
+    "status": "paid",
+    "amount": 6080,
+    "currency": "PHP",
+    "customerName": "",
+    "customerPhone": "",
+    "customerEmail": "",
+    "customerAddress": "",
+    "customerCity": "",
+    "customerZip": "",
+    "shippingFee": 280,
+    "discountAmount": 0,
+    "items": [
+      {
+        "productId": "prod_the_sun_bounce_trampoline",
+        "title": "The Sun Bounce Trampoline",
+        "quantity": 1,
+        "price": 5800
+      }
+    ],
+    "paidAt": "2026-08-06T03:49:53.571Z",
+    "deliveryStatus": "pending"
+  },
+  {
+    "id": "ORD-1784776503799",
+    "paymongoId": "cs_bdfb93dc0ac6ec872d53a5eb",
+    "status": "paid",
+    "amount": 9160,
+    "currency": "PHP",
+    "customerName": "",
+    "customerPhone": "",
+    "customerEmail": "",
+    "customerAddress": "",
+    "customerCity": "",
+    "customerZip": "",
+    "shippingFee": 0,
+    "voucherCode": "AURA20DFS2A",
+    "discountAmount": 3320,
+    "items": [
+      {
+        "productId": "prod_little_dentist",
+        "title": "Little Dentist",
+        "quantity": 1,
+        "price": 1000
+      },
+      {
+        "productId": "prod_mini_maestros",
+        "title": "MINI MAESTROS",
+        "quantity": 2,
+        "price": 2150
+      },
+      {
+        "productId": "prod_tangram_puzzle_blue",
+        "title": "Tangram Puzzle - Blue",
+        "quantity": 1,
+        "price": 300
+      },
+      {
+        "productId": "prod_pocket_puzzle_basic",
+        "title": "Pocket Puzzle - Basic",
+        "quantity": 1,
+        "price": 200
+      },
+      {
+        "productId": "prod_pocket_puzzle_advanced",
+        "title": "Pocket Puzzle - Advanced",
+        "quantity": 2,
+        "price": 200
+      },
+      {
+        "productId": "prod_talkacards_audio_set",
+        "title": "TalkaCards Audio Set",
+        "variantLabel": "Blue",
+        "quantity": 2,
+        "price": 500
+      },
+      {
+        "productId": "prod_finger_friends_wild_wonders",
+        "title": "Finger Friends Wild Wonders",
+        "quantity": 2,
+        "price": 350
+      },
+      {
+        "productId": "prod_busy_book_yeah_learning_maths",
+        "title": "BUSY BOOK - YEAH LEARNING MATHS",
+        "quantity": 1,
+        "price": 200
+      },
+      {
+        "productId": "prod_busy_book_hello_alphabet",
+        "title": "BUSY BOOK - HELLO ALPHABET",
+        "quantity": 2,
+        "price": 200
+      },
+      {
+        "productId": "prod_cash_register_toy",
+        "title": "Cash Register Toy",
+        "quantity": 1,
+        "price": 1200
+      },
+      {
+        "productId": "prod_3d_puzzle_sets",
+        "title": "3D PUZZLE SETS",
+        "quantity": 4,
+        "price": 250
+      },
+      {
+        "productId": "prod_form_fit_puzzle_basic",
+        "title": "Form & Fit Puzzle - Basic",
+        "quantity": 2,
+        "price": 400
+      },
+      {
+        "productId": "prod_number_matchies_board",
+        "title": "Number Matchies Board",
+        "quantity": 2,
+        "price": 300
+      },
+      {
+        "productId": "prod_abc_explorers",
+        "title": "ABC Explorers",
+        "quantity": 2,
+        "price": 300
+      },
+      {
+        "productId": "prod_benny_the_hungry_bear",
+        "title": "Benny The Hungry Bear",
+        "quantity": 1,
+        "price": 700
+      },
+      {
+        "productId": "prod_build_balance_wooden_blocks",
+        "title": "Build & Balance Wooden Blocks",
+        "quantity": 1,
+        "price": 1000
+      },
+      {
+        "productId": "prod_am_i_spoiling_my_child",
+        "title": "Am I Spoiling My Child?",
+        "quantity": 1,
+        "price": 500
+      },
+      {
+        "productId": "prod_learning_by_heart",
+        "title": "Learning By Heart",
+        "quantity": 1,
+        "price": 500
+      },
+      {
+        "productId": "prod_toddler_talking",
+        "title": "Toddler Talking",
+        "quantity": 1,
+        "price": 500
+      },
+      {
+        "productId": "prod_form_fit_puzzle_advanced",
+        "title": "Form & Fit Puzzle - Advanced",
+        "quantity": 1,
+        "price": 400
+      },
+      {
+        "productId": "prod_tangram_puzzle_pink",
+        "title": "Tangram Puzzle - Pink",
+        "quantity": 1,
+        "price": 300
+      }
+    ],
+    "paidAt": "2026-07-23T03:15:03.799Z",
+    "deliveryStatus": "shipped"
+  }
+]

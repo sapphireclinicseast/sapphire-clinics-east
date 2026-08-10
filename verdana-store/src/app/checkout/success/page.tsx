@@ -1,7 +1,9 @@
 import Link from "next/link"
+import { Suspense } from "react"
 import type { Metadata } from "next"
 import { CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PurchaseTracker } from "@/components/analytics/PurchaseTracker"
 
 export const metadata: Metadata = {
   title: "Order Confirmed",
@@ -10,6 +12,9 @@ export const metadata: Metadata = {
 export default function CheckoutSuccessPage() {
   return (
     <div className="mx-auto max-w-lg px-4 py-24 sm:px-6 text-center">
+      <Suspense fallback={null}>
+        <PurchaseTracker />
+      </Suspense>
       <CheckCircle className="mx-auto h-16 w-16 text-verdana-teal" />
 
       <h1 className="mt-6 text-3xl font-bold text-verdana-charcoal">

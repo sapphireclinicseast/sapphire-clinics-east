@@ -1,0 +1,344 @@
+"use client"
+
+import { useEffect, useState, useCallback } from "react"
+import { useSearchParams } from "next/navigation"
+import Link from "next/link"
+import { Loader2, LogOut, Copy, Check, Building2 } from "lucide-react"
+
+interface Partner {
+  institution: string
+  website?: string
+  repFirstName: string
+  repLastName: string
+  email: string
+  mobile?: string
+  therapistsRange?: string
+  patientsRange?: string
+  officialBusinessName?: string
+  tin?: string
+  businessAddress?: string
+  tier?: string | null
+  subscriptionStatus: "unpaid" | "active" | "expired"
+  paidAt?: string | null
+  expiresAt?: string | null
+  patientCode?: string | null
+  consultantCode?: string | null
+  invoices?: { id: string; filename: string; url: string; uploadedAt: string }[]
+}
+
+const TIERS = [
+  { key: "PLATINUM", name: "Platinum", fee: 20000, clinicToys: 20, clinicBulky: 8, patientToys: 20 },
+  { key: "GOLD", name: "Gold", fee: 15000, clinicToys: 15, clinicBulky: 5, patientToys: 15 },
+  { key: "SILVER", name: "Silver", fee: 10000, clinicToys: 10, clinicBulky: 3, patientToys: 10 },
+]
+
+const peso = (n: number) => "₱" + Number(n || 0).toLocaleString("en-PH")
+const fmtDate = (s?: string | null) =>
+  s ? new Date(s).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" }) : "—"
+
+function CopyField({ label, code }: { label: string; code: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">{label}</div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-lg font-bold text-verdana-charcoal">{code}</span>
+        <button
+          onClick={() => { navigator.clipboard?.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-verdana-teal"
+        >
+          {copied ? <><Check className="h-3.5 w-3.5 text-emerald-600" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy</>}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export function AccountClient() {
+  const searchParams = useSearchParams()
+  const justSubscribed = searchParams.get("subscribed") === "1"
+
+  const [partner, setPartner] = useState<Partner | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [activating, setActivating] = useState(justSubscribed)
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/partners/me", { cache: "no-store" })
+      if (res.ok) { const d = await res.json(); setPartner(d.partner); return d.partner as Partner }
+    } catch {}
+    setPartner(null)
+    return null
+  }, [])
+
+  useEffect(() => {
+    load().finally(() => setLoading(false))
+  }, [load])
+
+  // After returning from PayMongo, poll until the webhook activates the codes.
+  useEffect(() => {
+    if (!justSubscribed) return
+    let n = 0
+    const t = setInterval(async () => {
+      n++
+      const p = await load()
+      if ((p && p.subscriptionStatus === "active") || n >= 8) { setActivating(false); clearInterval(t) }
+    }, 2500)
+    return () => clearInterval(t)
+  }, [justSubscribed, load])
+
+  if (loading) return <div className="flex items-center justify-center py-32"><Loader2 className="h-8 w-8 animate-spin text-verdana-teal" /></div>
+
+  if (!partner) return <SignIn onSignedIn={setPartner} />
+
+  const isActive = partner.subscriptionStatus === "active"
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-verdana-teal/10 p-2.5"><Building2 className="h-5 w-5 text-verdana-teal" /></div>
+          <div>
+            <h1 className="text-2xl font-bold text-verdana-charcoal">{partner.institution}</h1>
+            <p className="text-sm text-gray-500">{partner.repFirstName} {partner.repLastName} · Partner Portal</p>
+          </div>
+        </div>
+        <button
+          onClick={async () => { await fetch("/api/partners/logout", { method: "POST" }); setPartner(null) }}
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800"
+        >
+          <LogOut className="h-4 w-4" /> Sign out
+        </button>
+      </div>
+
+      {activating && (
+        <div className="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-6 text-center">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
+          <p className="mt-2 font-semibold text-blue-800">Payment received — activating your partner codes…</p>
+          <p className="text-sm text-blue-700">This takes a few seconds.</p>
+        </div>
+      )}
+
+      {isActive ? (
+        <div className="mt-8 space-y-6">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-emerald-600 px-3 py-1 text-sm font-semibold text-white">{partner.tier} — Active</span>
+            </div>
+            <p className="mt-3 text-sm text-emerald-800">
+              Your subscription is active until <span className="font-semibold">{fmtDate(partner.expiresAt)}</span>.
+              Your codes below apply to the published prices on verdanarehab.com and expire automatically on that date.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {partner.consultantCode && <CopyField label="Clinic & Consultant code (all products)" code={partner.consultantCode} />}
+            {partner.patientCode && <CopyField label="Patient code (Toys & Sensory Tools)" code={partner.patientCode} />}
+          </div>
+          <p className="text-sm text-gray-500">
+            Share the <span className="font-medium">patient code</span> with the families you serve; use the{" "}
+            <span className="font-medium">clinic &amp; consultant code</span> for your own and your consultants&rsquo; orders.
+            Enter the code in the cart at checkout.
+          </p>
+        </div>
+      ) : (
+        <ChooseTier expired={partner.subscriptionStatus === "expired"} />
+      )}
+
+      {partner.invoices && partner.invoices.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6">
+          <h2 className="text-lg font-bold text-verdana-charcoal">Sales invoices</h2>
+          <p className="text-sm text-gray-500">Official invoices issued by Verdana for your records.</p>
+          <ul className="mt-4 space-y-2">
+            {partner.invoices.map((inv) => (
+              <li key={inv.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-2.5">
+                <div>
+                  <a href={inv.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-verdana-teal hover:underline break-all">{inv.filename}</a>
+                  <div className="text-xs text-gray-400">{fmtDate(inv.uploadedAt)}</div>
+                </div>
+                <a href={inv.url} target="_blank" rel="noopener noreferrer" download className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-verdana-teal">
+                  Download
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <ProfileSection partner={partner} onSaved={setPartner} />
+    </div>
+  )
+}
+
+function ProfileSection({ partner, onSaved }: { partner: Partner; onSaved: (p: Partner) => void }) {
+  const [officialBusinessName, setName] = useState(partner.officialBusinessName || "")
+  const [tin, setTin] = useState(partner.tin || "")
+  const [businessAddress, setAddr] = useState(partner.businessAddress || "")
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  const [error, setError] = useState("")
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setStatus("saving"); setError("")
+    try {
+      const res = await fetch("/api/partners/profile", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ officialBusinessName, tin, businessAddress }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || "Could not save.")
+      onSaved(d.partner)
+      setStatus("saved"); setTimeout(() => setStatus("idle"), 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong."); setStatus("error")
+    }
+  }
+
+  const input = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal focus:border-transparent"
+  const Row = ({ label, value }: { label: string; value?: string | null }) => (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-sm text-verdana-charcoal">{value || "—"}</div>
+    </div>
+  )
+
+  return (
+    <div className="mt-10 rounded-2xl border border-gray-200 bg-white p-6">
+      <h2 className="text-lg font-bold text-verdana-charcoal">Your profile</h2>
+      <p className="text-sm text-gray-500">The details you registered with.</p>
+      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+        <Row label="Institution" value={partner.institution} />
+        <Row label="Website" value={partner.website} />
+        <Row label="Representative" value={`${partner.repFirstName} ${partner.repLastName}`} />
+        <Row label="Email" value={partner.email} />
+        <Row label="Mobile" value={partner.mobile} />
+        <Row label="Therapists / Teachers" value={partner.therapistsRange} />
+        <Row label="Patients" value={partner.patientsRange} />
+      </div>
+
+      <form onSubmit={save} className="mt-6 border-t border-gray-100 pt-6">
+        <h3 className="text-sm font-semibold text-verdana-charcoal">Billing details for sales invoices</h3>
+        <p className="text-xs text-gray-500 mb-4">Add these so we can issue an official sales invoice when you request one.</p>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Official Registered Business Name</label>
+            <input className={input} value={officialBusinessName} onChange={(e) => setName(e.target.value)} placeholder="As registered with the BIR / SEC / DTI" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">TIN</label>
+              <input className={input} value={tin} onChange={(e) => setTin(e.target.value)} placeholder="000-000-000-000" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Registered Business Address</label>
+              <input className={input} value={businessAddress} onChange={(e) => setAddr(e.target.value)} placeholder="Building, street, city, ZIP" />
+            </div>
+          </div>
+        </div>
+        {status === "error" && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        <button type="submit" disabled={status === "saving"} className="mt-4 rounded-full bg-verdana-teal px-6 py-2.5 text-sm font-semibold text-white hover:bg-verdana-dark-teal disabled:opacity-60">
+          {status === "saving" ? "Saving…" : status === "saved" ? "Saved ✓" : "Save billing details"}
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function ChooseTier({ expired }: { expired: boolean }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState("")
+
+  async function subscribe(tier: string) {
+    setBusy(tier); setError("")
+    try {
+      const res = await fetch("/api/partners/subscribe", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tier }),
+      })
+      const d = await res.json()
+      if (!res.ok || !d.url) throw new Error(d.error || "Could not start checkout.")
+      window.location.href = d.url
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong."); setBusy(null)
+    }
+  }
+
+  return (
+    <div className="mt-8">
+      <h2 className="text-lg font-bold text-verdana-charcoal">{expired ? "Renew your partnership" : "Choose your subscription tier"}</h2>
+      <p className="text-sm text-gray-500">Pay the annual fee to activate your clinic, consultant &amp; patient discount codes for one year.</p>
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      <div className="mt-6 grid gap-5 md:grid-cols-3">
+        {TIERS.map((t) => (
+          <div key={t.key} className="flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h3 className="text-xl font-bold text-verdana-charcoal">{t.name}</h3>
+            <p className="mt-1 text-2xl font-bold text-verdana-teal">{peso(t.fee)}<span className="text-sm font-normal text-gray-400"> / year</span></p>
+            <ul className="mt-4 space-y-2 text-sm text-gray-600 flex-1">
+              <li>• <span className="font-medium">{t.clinicToys}%</span> off Toys &amp; Sensory Tools <span className="text-gray-400">(clinic &amp; consultants)</span></li>
+              <li>• <span className="font-medium">{t.clinicBulky}%</span> off Furniture / Room &amp; Active Play <span className="text-gray-400">(clinic &amp; consultants)</span></li>
+              <li>• <span className="font-medium">{t.patientToys}%</span> patient discount on Toys &amp; Sensory Tools</li>
+              <li>• Priority access to launches &amp; partner promos</li>
+            </ul>
+            <button
+              onClick={() => subscribe(t.key)}
+              disabled={!!busy}
+              className="mt-5 w-full rounded-full bg-verdana-orange px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            >
+              {busy === t.key ? "Starting checkout…" : `Subscribe — ${peso(t.fee)}/yr`}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SignIn({ onSignedIn }: { onSignedIn: (p: Partner) => void }) {
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [status, setStatus] = useState<"idle" | "sending" | "error">("idle")
+  const [error, setError] = useState("")
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setStatus("sending"); setError("")
+    try {
+      const res = await fetch("/api/partners/login", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error || "Could not sign in.")
+      onSignedIn(d.partner)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong."); setStatus("error")
+    }
+  }
+
+  const input = "w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal focus:border-transparent"
+
+  return (
+    <div className="mx-auto max-w-md px-4 py-16 sm:px-6">
+      <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+        <h1 className="text-2xl font-bold text-verdana-charcoal">Partner sign in</h1>
+        <p className="mt-1 text-sm text-gray-500">For registered partner clinics &amp; schools.</p>
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input className={input} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input type="password" className={input} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+          </div>
+          {status === "error" && <p className="text-sm text-red-600">{error}</p>}
+          <button type="submit" disabled={status === "sending"} className="w-full rounded-full bg-verdana-teal px-5 py-3 text-sm font-semibold text-white hover:bg-verdana-dark-teal disabled:opacity-60">
+            {status === "sending" ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+        <p className="mt-5 text-center text-sm text-gray-500">
+          New clinic / school?{" "}
+          <Link href="/" className="font-medium text-verdana-teal hover:underline">Register on the home page</Link>
+        </p>
+      </div>
+    </div>
+  )
+}

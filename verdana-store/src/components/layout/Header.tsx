@@ -31,15 +31,25 @@ export function Header() {
           </button>
 
           {/* Logo */}
-          <Link href="/" className="flex items-center">
+          <Link href="/" className="flex items-center gap-2.5">
             <Image
-              src="/logo/logo-teal-transparent.png"
+              src="/api/uploads/logo/verdana-mark.png"
               alt="Verdana Rehab Solutions"
-              width={160}
-              height={32}
-              className="h-8 w-auto"
+              width={44}
+              height={36}
+              unoptimized
+              className="h-9 w-auto"
               priority
             />
+            <span className="flex flex-col leading-none">
+              <span className="font-display font-bold text-lg text-verdana-charcoal tracking-tight">
+                Verdana
+                <sup className="ml-0.5 text-[0.6em] font-semibold align-super">®</sup>
+              </span>
+              <span className="mt-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-verdana-teal">
+                Rehab Solutions
+              </span>
+            </span>
           </Link>
 
           {/* Desktop navigation */}

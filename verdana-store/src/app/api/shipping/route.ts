@@ -6,7 +6,7 @@ async function geocode(query: string): Promise<{ lat: number; lon: number } | nu
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=ph`,
       {
-        headers: { 'User-Agent': 'VerdanaStore/1.0 (support@verdanarehab.com)' },
+        headers: { 'User-Agent': 'VerdanaStore/1.0 (verdanatrading@gmail.com)' },
       }
     )
     const data = await res.json()

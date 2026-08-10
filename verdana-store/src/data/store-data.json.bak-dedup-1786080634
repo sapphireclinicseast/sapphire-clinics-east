@@ -1,0 +1,4467 @@
+{
+  "collections": [
+    {
+      "id": "col_pretend_play_learning_toys",
+      "slug": "pretend-play-learning-toys",
+      "name": "Pretend Play & Learning Toys",
+      "description": "Therapeutic toys, puzzles, and hands-on learning materials for play-based development.",
+      "imageUrl": "/api/uploads/collections/1785494656508-0lxh1w.png"
+    },
+    {
+      "id": "col_active_sensory_play",
+      "slug": "active-sensory-play",
+      "name": "Active & Sensory Play",
+      "description": "Swings, crash pads, and balance & movement equipment for sensory integration.",
+      "imageUrl": "/api/uploads/collections/1785494641872-iodqs4.png"
+    },
+    {
+      "id": "col_sensory_therapeutic_tools",
+      "slug": "sensory-therapeutic-tools",
+      "name": "Sensory Therapeutic Tools",
+      "description": "Oral-motor, chew, and feeding tools for sensory and speech therapy.",
+      "imageUrl": "/api/uploads/collections/1785494764889-ljypo3.png"
+    },
+    {
+      "id": "col_merch_resources",
+      "slug": "merch-resources",
+      "name": "Merch & Resources",
+      "description": "Apparel, car emblems, stickers, and educational books & manuals.",
+      "imageUrl": "/api/uploads/collections/1785494550698-ar30kj.png"
+    },
+    {
+      "id": "col_furniture_room_pieces",
+      "slug": "furniture-room-pieces",
+      "name": "Furniture & Room Pieces",
+      "description": "Therapy-room furniture, poufs, panels, and room pieces.",
+      "imageUrl": "/api/uploads/collections/1785494628172-hnv9to.png"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_velura_textured_spoon",
+      "slug": "velura-textured-spoon",
+      "title": "VELURA TEXTURED SPOON",
+      "description": "A soft, textured silicone spoon designed to provide gentle oral-sensory input during mealtimes. Ideal for children with feeding difficulties or sensory processing needs.",
+      "price": 350,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BABY PINK",
+          "sku": "ST-EQP-ORA-011-BAB",
+          "stock": 58,
+          "colorHex": "#F4C2C2"
+        },
+        {
+          "type": "Color",
+          "label": "BEIGE",
+          "sku": "ST-EQP-ORA-011-BEI",
+          "stock": 89,
+          "colorHex": "#D2B48C"
+        },
+        {
+          "type": "Color",
+          "label": "BLUE GREY",
+          "sku": "ST-EQP-ORA-011-BLU",
+          "stock": 59,
+          "colorHex": "#6E7F80"
+        },
+        {
+          "type": "Color",
+          "label": "BROWN",
+          "sku": "ST-EQP-ORA-011-BRO",
+          "stock": 58,
+          "colorHex": "#8B4513"
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "ST-EQP-ORA-011-GRE",
+          "stock": 58,
+          "colorHex": "#4CAF50"
+        },
+        {
+          "type": "Color",
+          "label": "OFF-WHITE",
+          "sku": "ST-EQP-ORA-011-OFF",
+          "stock": 48,
+          "colorHex": "#FAF0E6"
+        },
+        {
+          "type": "Color",
+          "label": "ROSE PINK",
+          "sku": "ST-EQP-ORA-011-ROS",
+          "stock": 59,
+          "colorHex": "#B76E79"
+        },
+        {
+          "type": "Color",
+          "label": "YELLOW",
+          "sku": "ST-EQP-ORA-011-YEL",
+          "stock": 58,
+          "colorHex": "#FFD700"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/velura-textured-spoon/1776061862601-rojqjr.png",
+        "/api/uploads/products/velura-textured-spoon/1776064928088-91cxn7.png",
+        "/api/uploads/products/velura-textured-spoon/1776065529524-le7ssq.png",
+        "/api/uploads/products/velura-textured-spoon/1776065539095-205n8o.png",
+        "/api/uploads/products/velura-textured-spoon/1776065568437-3eoj8k.png",
+        "/api/uploads/products/velura-textured-spoon/1776065588479-49ukhp.png",
+        "/api/uploads/products/velura-textured-spoon/1776065618802-hicehl.png",
+        "/api/uploads/products/velura-textured-spoon/1776065619700-gjw9gf.png",
+        "/api/uploads/products/velura-textured-spoon/1776065621096-ow1qxa.png",
+        "/api/uploads/products/velura-textured-spoon/1776065621807-d2o744.png",
+        "/api/uploads/products/velura-textured-spoon/1776065622353-u0eswu.png",
+        "/api/uploads/products/velura-textured-spoon/1776065624314-ikj8tr.png",
+        "/api/uploads/products/velura-textured-spoon/1776065624863-ysrxy4.png"
+      ],
+      "stock": 479,
+      "sku": "ST-EQP-ORA-011",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_hexaring_chew_keys",
+      "slug": "hexaring-chew-keys",
+      "title": "HEXARING CHEW KEYS",
+      "description": "Hexagonal ring-shaped chew keys that provide multiple textures for oral-motor exploration. Great for teething and sensory-seeking children.",
+      "price": 350,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "ST-EQP-ORA-008-BLU",
+          "stock": 100,
+          "colorHex": "#1E88E5"
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "ST-EQP-ORA-008-GRE",
+          "stock": 100,
+          "colorHex": "#43A047"
+        },
+        {
+          "type": "Color",
+          "label": "PURPLE",
+          "sku": "ST-EQP-ORA-008-PUR",
+          "stock": 98,
+          "colorHex": "#8E24AA"
+        },
+        {
+          "type": "Color",
+          "label": "RED",
+          "sku": "ST-EQP-ORA-008-RED",
+          "stock": 99,
+          "colorHex": "#E53935"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/hexaring-chew-keys/1776065798324-zkycpv.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065798869-so6wqh.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065799571-rr94ml.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065800219-8hnyft.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065801014-k6u0ix.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065801711-bojb32.png"
+      ],
+      "stock": 62,
+      "sku": "ST-EQP-ORA-008",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_aerogrip_chew_sleeves",
+      "slug": "aerogrip-chew-sleeves",
+      "title": "AEROGRIP CHEW SLEEVES",
+      "description": "Ergonomic chew sleeves that slide onto pencils or utensils, redirecting chewing behaviour to a safe, food-grade silicone surface.",
+      "price": 250,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "ST-EQP-ORA-006-BLU",
+          "stock": 234,
+          "colorHex": "#1E88E5"
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "ST-EQP-ORA-006-GRE",
+          "stock": 236,
+          "colorHex": "#43A047"
+        },
+        {
+          "type": "Color",
+          "label": "PURPLE",
+          "sku": "ST-EQP-ORA-006-PUR",
+          "stock": 227,
+          "colorHex": "#8E24AA"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065887854-uqkcwi.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065888422-z7iwgu.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065889036-j52pde.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065889614-71l3q2.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065890265-0u5j85.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065890851-y9lty8.png"
+      ],
+      "stock": 694,
+      "sku": "ST-EQP-ORA-006",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_prism_brick_pencil_chew_toppers",
+      "slug": "prism-brick-pencil-chew-toppers",
+      "title": "PRISM BRICK PENCIL CHEW TOPPERS",
+      "description": "Brick-shaped chew toppers that fit standard pencils, providing a discreet oral-sensory outlet for children who chew on writing tools.",
+      "price": 250,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "ST-EQP-ORA-005-BLU",
+          "stock": 114,
+          "colorHex": "#1E88E5"
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "ST-EQP-ORA-005-GRE",
+          "stock": 112,
+          "colorHex": "#43A047"
+        },
+        {
+          "type": "Color",
+          "label": "ORANGE",
+          "sku": "ST-EQP-ORA-005-ORA",
+          "stock": 118,
+          "colorHex": "#FF9800"
+        },
+        {
+          "type": "Color",
+          "label": "PURPLE",
+          "sku": "ST-EQP-ORA-005-PUR",
+          "stock": 123,
+          "colorHex": "#8E24AA"
+        },
+        {
+          "type": "Color",
+          "label": "RED",
+          "sku": "ST-EQP-ORA-005-RED",
+          "stock": 113,
+          "colorHex": "#E53935"
+        },
+        {
+          "type": "Color",
+          "label": "YELLOW",
+          "sku": "ST-EQP-ORA-005-YEL",
+          "stock": 114
+        }
+      ],
+      "images": [
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065946646-ujzvbz.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065947183-0j5z8x.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065947741-adk1jx.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065948346-a39z0t.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065949083-ow34du.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065949713-x9s81z.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065950349-bmbivr.png"
+      ],
+      "stock": 688,
+      "sku": "ST-EQP-ORA-005",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_prism_brick_chew_pendant",
+      "slug": "prism-brick-chew-pendant",
+      "title": "PRISM BRICK CHEW PENDANT",
+      "description": "A wearable brick-shaped chew pendant on a breakaway lanyard. Keeps a safe chew tool accessible for children throughout the day.",
+      "price": 250,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "ST-EQP-ORA-004-BLU",
+          "stock": 120
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "ST-EQP-ORA-004-GRE",
+          "stock": 120,
+          "colorHex": "#43A047"
+        },
+        {
+          "type": "Color",
+          "label": "ORANGE",
+          "sku": "ST-EQP-ORA-004-ORA",
+          "stock": 118,
+          "colorHex": "#FF9800"
+        },
+        {
+          "type": "Color",
+          "label": "RED",
+          "sku": "ST-EQP-ORA-004-RED",
+          "stock": 118,
+          "colorHex": "#E53935"
+        },
+        {
+          "type": "Color",
+          "label": "YELLOW",
+          "sku": "ST-EQP-ORA-004-YEL",
+          "stock": 119,
+          "colorHex": "#FFD700"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/prism-brick-chew-pendant/1776065998418-l6pyit.png"
+      ],
+      "stock": 582,
+      "sku": "ST-EQP-ORA-004",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_crimson_sensory_bars",
+      "slug": "crimson-sensory-bars",
+      "title": "Crimson Sensory Bars",
+      "description": "Firm, textured chew bars designed for children who need intense proprioceptive input through the jaw. Suitable for heavy chewers.",
+      "price": 1000,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/crimson-sensory-bars/1776066044173-udgbzp.png"
+      ],
+      "stock": 91,
+      "sku": "ST-EQP-ORA-009",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_flexi_t_chew_tools",
+      "slug": "flexi-t-chew-tools",
+      "title": "FLEXI-T CHEW TOOLS",
+      "description": "T-shaped flexible chew tools that target the back molars for jaw strengthening. Available in multiple resistance levels by colour.",
+      "price": 350,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "ST-EQP-ORA-007-BLU",
+          "stock": 140,
+          "colorHex": "#1E88E5"
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "ST-EQP-ORA-007-GRE",
+          "stock": 137,
+          "colorHex": "#43A047"
+        },
+        {
+          "type": "Color",
+          "label": "RED",
+          "sku": "ST-EQP-ORA-007-RED",
+          "stock": 139,
+          "colorHex": "#E53935"
+        },
+        {
+          "type": "Color",
+          "label": "YELLOW",
+          "sku": "ST-EQP-ORA-007-YEL",
+          "stock": 129,
+          "colorHex": "#FFD700"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/flexi-t-chew-tools/1776066066334-8w73tk.png",
+        "/api/uploads/products/flexi-t-chew-tools/1776066067074-2pxpr4.png",
+        "/api/uploads/products/flexi-t-chew-tools/1776066067678-wixtjy.png",
+        "/api/uploads/products/flexi-t-chew-tools/1776066068260-edfcnf.png",
+        "/api/uploads/products/flexi-t-chew-tools/1776066068838-ub2ab1.png"
+      ],
+      "stock": 541,
+      "sku": "ST-EQP-ORA-007",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_butterfly_calm_chews",
+      "slug": "butterfly-calm-chews",
+      "title": "BUTTERFLY CALM CHEWS",
+      "description": "Butterfly-shaped silicone chew toys that provide calming oral-sensory input. Lightweight and easy for small hands to hold.",
+      "price": 250,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "ST-EQP-ORA-003-BLU",
+          "stock": 199,
+          "colorHex": "#1E88E5"
+        },
+        {
+          "type": "Color",
+          "label": "PINK",
+          "sku": "ST-EQP-ORA-003-PIN",
+          "stock": 203,
+          "colorHex": "#E91E63"
+        },
+        {
+          "type": "Color",
+          "label": "PURPLE",
+          "sku": "ST-EQP-ORA-003-PUR",
+          "stock": 199,
+          "colorHex": "#8E24AA"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/butterfly-calm-chews/1776066099889-vgbtn4.png",
+        "/api/uploads/products/butterfly-calm-chews/1776066100433-2s3sjr.png",
+        "/api/uploads/products/butterfly-calm-chews/1776066101022-ma7eo5.png",
+        "/api/uploads/products/butterfly-calm-chews/1776066101568-slgoun.png"
+      ],
+      "stock": 427,
+      "sku": "ST-EQP-ORA-003",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_aurora_tag_chews",
+      "slug": "aurora-tag-chews",
+      "title": "AURORA TAG CHEWS",
+      "description": "Small tag-shaped chew pendants that clip to clothing or lanyards. A subtle sensory tool for school and community settings.",
+      "price": 200,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "ST-EQP-ORA-001-BLU",
+          "stock": 120,
+          "colorHex": "#1E88E5"
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "ST-EQP-ORA-001-GRE",
+          "stock": 119,
+          "colorHex": "#43A047"
+        },
+        {
+          "type": "Color",
+          "label": "ORANGE",
+          "sku": "ST-EQP-ORA-001-ORA1",
+          "stock": 100
+        },
+        {
+          "type": "Color",
+          "label": "PURPLE",
+          "sku": "ST-EQP-ORA-001-PUR",
+          "stock": 119,
+          "colorHex": "#8E24AA"
+        },
+        {
+          "type": "Color",
+          "label": "RED",
+          "sku": "ST-EQP-ORA-001-RED",
+          "stock": 120,
+          "colorHex": "#E53935"
+        },
+        {
+          "type": "Color",
+          "label": "SKY BLUE",
+          "sku": "ST-EQP-ORA-001-SKY",
+          "stock": 117,
+          "colorHex": "#87CEEB"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/aurora-tag-chews/1776066130669-xynhii.png",
+        "/api/uploads/products/aurora-tag-chews/1776066131232-7xf8ta.png",
+        "/api/uploads/products/aurora-tag-chews/1776066131777-i6adnc.png",
+        "/api/uploads/products/aurora-tag-chews/1776066132378-z97qi0.png",
+        "/api/uploads/products/aurora-tag-chews/1776066133019-9y9xr0.png",
+        "/api/uploads/products/aurora-tag-chews/1776066133613-ib544v.png"
+      ],
+      "stock": 585,
+      "sku": "ST-EQP-ORA-001",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_preschool_sensory_mealtime_set",
+      "slug": "preschool-sensory-mealtime-set",
+      "title": "Preschool Sensory Mealtime Set A",
+      "description": "A curated set of textured utensils and oral-motor tools to support picky eaters and children with mealtime sensory sensitivities.",
+      "price": 1500,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/preschool-sensory-mealtime-set/1776066175920-547o1m.png",
+        "/api/uploads/products/preschool-sensory-mealtime-set/1776066202783-vdiy5l.png"
+      ],
+      "sku": "ST-EQP-ORA-017",
+      "stock": 50,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_intensive_oral_motor_dev_kit",
+      "slug": "intensive-oral-motor-development-kit",
+      "title": "Intensive Oral Motor Development Kit",
+      "description": "A comprehensive kit for speech-language pathologists featuring graded oral-motor tools for intensive jaw, lip, and tongue exercises.",
+      "price": 2450,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/intensive-oral-motor-development-kit/1776066237178-bieyan.png"
+      ],
+      "sku": "ST-EQP-ORA-016",
+      "stock": 50,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_clinic_assessment_pack",
+      "slug": "clinic-assessment-pack",
+      "title": "Clinic Assessment Pack A",
+      "description": "An essential pack of oral-sensory tools for clinic-based feeding and oral-motor assessments. Includes a variety of textures and resistances.",
+      "price": 2350,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/clinic-assessment-pack/1776066285483-mcp6gq.png",
+        "/api/uploads/products/clinic-assessment-pack/1776066286115-wy937h.png"
+      ],
+      "sku": "ST-EQP-ORA-014",
+      "stock": 50,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_all_in_one_oral_sensory_mega_kit",
+      "slug": "all-in-one-oral-sensory-mega-kit",
+      "title": "All-in-one Oral Sensory Mega Kit A",
+      "description": "The most complete oral-sensory collection, bundling chew tools, feeding utensils, and oral-motor trainers for home and clinic use.",
+      "price": 2800,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/all-in-one-oral-sensory-mega-kit/1776066313102-l9r6wk.png",
+        "/api/uploads/products/all-in-one-oral-sensory-mega-kit/1776066313682-eb986m.png",
+        "/api/uploads/products/all-in-one-oral-sensory-mega-kit/1778723813237-qzd2yu.png"
+      ],
+      "sku": "ST-EQP-ORA-019",
+      "stock": 50,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_starter_oral_sensory_kit",
+      "slug": "starter-oral-sensory-kit",
+      "title": "Starter Oral-Sensory Kit",
+      "description": "An introductory set of oral-sensory tools for families beginning their sensory therapy journey. Therapist-recommended starter bundle.",
+      "price": 1350,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/starter-oral-sensory-kit/1776066327421-kuf4sh.png"
+      ],
+      "stock": 50,
+      "sku": "ST-EQP-ORA-012",
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_abc_explorers",
+      "slug": "abc-explorers",
+      "title": "ABC Explorers",
+      "description": "Tactile letter-learning toys that combine alphabet recognition with fine-motor manipulation. Great for early literacy and speech therapy activities.",
+      "price": 300,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/abc-explorers/1776066912171-7gt8pe.png",
+        "/api/uploads/products/abc-explorers/1776066912778-1tl52m.png"
+      ],
+      "stock": 46,
+      "sku": "OT-TOY-THP-002",
+      "bestSeller": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_active_recovery_kids_shirt",
+      "slug": "active-recovery-active-life-kids-shirt",
+      "title": "Active Recovery, Active Life (for Kids) Shirt",
+      "description": "A fun, comfortable kids t-shirt featuring the \"Active Recovery, Active Life\" tagline. Made in partnership with Sandbox Clinic.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/active-recovery-active-life-kids-shirt/1777953678755-c2wo7e.png"
+      ],
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_glider_swing",
+      "slug": "glider-swing",
+      "title": "Glider Swing",
+      "description": "Made with environmentally friendly high-density\nsponge and eco-friendly PU leather, the Glider Swing\noffers comfortable, safe, and supportive movement for\nbalance, coordination, and sensory integration\nactivities. Its stable platform and secure hand grips\nmake it ideal for therapy and active play.",
+      "price": 30599,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/glider-swing/1777952191389-4ij5wh.png"
+      ],
+      "sku": "OT-SEN-INT-011",
+      "stock": 0,
+      "isPreOrder": true,
+      "weightKg": 5
+    },
+    {
+      "id": "prod_sky_bar_swing",
+      "slug": "sky-bar-swing",
+      "title": "Sky Bar Swing",
+      "description": "Made from durable plywood, supportive foam, and PU\nleather, the Sky Bar provides stable and comfortable\nswinging for balance, coordination, and sensory\nintegration activities. Its slim, secure platform is ideal\nfor therapy use and active play, supporting core\nstrength and controlled movement.",
+      "price": 15899,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/sky-bar-swing/1777952230870-76nzt5.png"
+      ],
+      "sku": "OT-SEN-INT-009",
+      "stock": 3,
+      "isPreOrder": true,
+      "weightKg": 5
+    },
+    {
+      "id": "prod_cuddle_swing",
+      "slug": "cuddle-swing",
+      "title": "Cuddle Swing",
+      "description": "Designed to provide calming, cocoon-like support, the\nCuddle Swing offers gentle vestibular input for\nrelaxation, sensory regulation, and body awareness. Its\nsoft, supportive fabric creates a secure and comforting\nspace, making it ideal for therapy, sensory rooms, and\nquiet time activities.",
+      "price": 14398,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/cuddle-swing/1777952256005-ifs2dm.png"
+      ],
+      "sku": "OT-SEN-INT-007",
+      "stock": 0,
+      "isPreOrder": true,
+      "weightKg": 5
+    },
+    {
+      "id": "prod_breeze_log_swing",
+      "slug": "breeze-log-swing",
+      "title": "Breeze Log Swing",
+      "description": "Made with environmentally friendly high-density\nsponge and eco-friendly PU leather, the Breeze Log\nSwing provides comfortable, supportive seating for\nswinging, balance, and sensory integration activities.\nIts cylindrical design promotes core strength,\ncoordination, and postural control, making it ideal for\ntherapy and active play.",
+      "price": 34499,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/breeze-log-swing/1777952278340-yfja49.png"
+      ],
+      "sku": "OT-SEN-INT-010",
+      "stock": 0,
+      "isPreOrder": true,
+      "weightKg": 5
+    },
+    {
+      "id": "prod_tunnel_roll_swing",
+      "slug": "tunnel-roll-swing",
+      "title": "Tunnel Roll Swing",
+      "description": "Made with environmentally friendly high-density\nsponge and eco-friendly PU leather, the Tunnel Roll\nSwing combines swinging and crawling for dynamic\nsensory and motor play. Its tunnel-style design\npromotes balance, coordination, core strength, and\nbody awareness, making it ideal for therapy and active\nmovement activities.",
+      "price": 33998,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tunnel-roll-swing/1777952303463-wmypsx.png"
+      ],
+      "sku": "OT-SEN-INT-012",
+      "stock": 0,
+      "isPreOrder": true,
+      "weightKg": 5
+    },
+    {
+      "id": "prod_roller_swing",
+      "slug": "roller-swing",
+      "title": "Roller Swing",
+      "description": "Constructed from durable plywood, supportive foam,\nand PU leather, the Roller Swing provides smooth\nswinging and rolling motion for vestibular stimulation,\nbalance training, and core strengthening. Its cylindrical\ndesign supports controlled movement, making it ideal\nfor therapy and sensory integration activities.",
+      "price": 11399,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/roller-swing/1777952322202-s7id5z.png"
+      ],
+      "sku": "OT-SEN-INT-008",
+      "stock": 0,
+      "isPreOrder": true,
+      "weightKg": 5
+    },
+    {
+      "id": "prod_cozy_crash_pad",
+      "slug": "cozy-crash-pad",
+      "title": "Cozy Crash Pad",
+      "description": "The Cozy Crash Pad provides a safe and cushioned landing surface for active play and therapy. Made with high-density foam and a durable, easy-to-clean cover, they help absorb impact, support sensory regulation, and encourage active movement. Perfect for clinics, schools, or home use, these pads promote confidence and safety during jumping, tumbling, and crash play.",
+      "price": 15899,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/cozy-crash-pad/1777952339314-zrc1wo.png"
+      ],
+      "sku": "OT-SEN-INT-013",
+      "stock": 0,
+      "isPreOrder": true,
+      "weightKg": 5
+    },
+    {
+      "id": "prod_am_i_spoiling_my_child",
+      "slug": "am-i-spoiling-my-child",
+      "title": "Am I Spoiling My Child?",
+      "description": "The book explains why children misbehave, introduces a simple\nholistic discipline approach, and offers science-backed strategies for\ncommon challenges like tantrums, aggression, and not listening, while\nalso providing clear guidance on modern parenting issues and when\nto seek professional help.",
+      "price": 500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/am-i-spoiling-my-child/1777952364616-anmq9g.png"
+      ],
+      "stock": 9,
+      "sku": "EDU-MAT-BOK-001",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_i_am_a_hero",
+      "slug": "i-am-a-hero",
+      "title": "I Am A Hero",
+      "description": "It’s designed to help kids reflect on themselves\nthrough the framework of the Hero’s Journey,\nencouraging self-awareness, confidence,\nresilience, and emotional growth through guided\nprompts and creative activities.",
+      "price": 500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/i-am-a-hero/1777952380695-n6yxih.png"
+      ],
+      "stock": 9,
+      "sku": "EDU-MAT-BOK-004",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_learning_by_heart",
+      "slug": "learning-by-heart",
+      "title": "Learning By Heart",
+      "description": "Learning by Heart reassures parents that teaching their\nchild to read doesn’t have to be stressful. It presents a\njoyful, pressure-free, and effective approach using\nscience-backed strategies, simple tips, and fun\nactivities to make reading a natural and enjoyable part\nof everyday life.",
+      "price": 500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/learning-by-heart/1777952401860-uwaxxd.png"
+      ],
+      "stock": 7,
+      "sku": "EDU-MAT-BOK-003",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_toddler_talking",
+      "slug": "toddler-talking",
+      "title": "Toddler Talking",
+      "description": "This book is a practical, science-based guide for\nparents of babies and toddlers under three, offering\nsimple, everyday strategies to support language and\nbrain development. It helps parents track milestones,\navoid common misconceptions, understand the impact\nof screen time, and follow a clear step-by-step plan if\nspeech delay is a concern.",
+      "price": 500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/toddler-talking/1777952465609-x4rcen.png"
+      ],
+      "stock": 8,
+      "sku": "EDU-MAT-BOK-002",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_form_fit_puzzle_basic",
+      "slug": "form-fit-puzzle-basic",
+      "title": "Form & Fit Puzzle - Basic",
+      "description": "Designed to support early learning and fine motor\ndevelopment, the Form & Fit Puzzle – Basic helps children\nrecognize shapes while building hand-eye coordination and\nproblem-solving skills. The chunky, easy-to-grip pieces\nencourage matching, sorting, and spatial awareness,\nmaking it ideal for home, classroom, and therapy use.",
+      "price": 400,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/form-fit-puzzle-basic/1777952514073-hx4d95.png",
+        "/api/uploads/products/form-fit-puzzle-basic/1777952515601-d7gjr0.png"
+      ],
+      "stock": 36,
+      "sku": "OT-TOY-THP-004",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_poppy_the_precision_ball_clip_montessori_toy_occupational_therapy_sorting_matching_grip",
+      "slug": "poppy-the-precision-ball-clip-montessori-toy-occupational-therapy-sorting-matching-grip",
+      "title": "Poppy the Precision Ball Clip | Montessori Toy | Occupational Therapy | Sorting, Matching & Grip",
+      "description": "Elevate play into purposeful therapy. This Montessori-inspired set is crafted with premium materials to enhance fine motor skills, color recognition, focus, and hand-eye coordination. Designed for therapists, parents, and children who deserve only the best in quality and learning.\n\n•  Durable wooden board & safe, vibrant beads\n\n•  Builds multiple skills: grip, sorting, matching\n\n•  Includes activity cards & precision tools\n\n•  Ideal for home, school, or clinical use\n\n\n\nGive your child the gift of precision, quality, and fun—because learning deserves excellence.",
+      "price": 1200,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/poppy-the-precision-ball-clip-montessori-toy-occupational-therapy-sorting-matching-grip/1777952561763-485h93.png",
+        "/api/uploads/products/poppy-the-precision-ball-clip-montessori-toy-occupational-therapy-sorting-matching-grip/1777952562762-w1njgb.png",
+        "/api/uploads/products/poppy-the-precision-ball-clip-montessori-toy-occupational-therapy-sorting-matching-grip/1777952563830-skhuto.png"
+      ],
+      "stock": 16,
+      "sku": "OT-EQP-FIN-004",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_tacto_pegs_play_set",
+      "slug": "tacto-pegs-play-set",
+      "title": "TACTO PEGS PLAY SET",
+      "description": "Turn play into a powerful therapy session. This vibrant peg set is designed to strengthen fine motor skills, visual-motor coordination, focus, and problem-solving. Its colorful, oversized pegs and sturdy board make it safe and engaging for children while meeting the standards of therapists, parents, and educators.\n\n\n\n• Sturdy board with perfectly sized holes for stacking\n\n• Safe, durable, and colorful pegs for sorting & building\n\n• Supports grip strength, bilateral coordination, and focus\n\n• Perfect for home practice, classrooms, or clinical therapy\n\n\n\nEncourage skill-building through quality, color, and creativity—because every stage of learning matters.",
+      "price": 700,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tacto-pegs-play-set/1777952614814-ny0gj3.png",
+        "/api/uploads/products/tacto-pegs-play-set/1777952616130-37tozx.png"
+      ],
+      "stock": 0,
+      "sku": "OT-EQP-FIN-002",
+      "bestSeller": true,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_tactoease_sensory_brushes",
+      "slug": "tactoease-sensory-brushes",
+      "title": "TACTOEASE SENSORY BRUSHES",
+      "description": "Made from BPA-free, food-grade silicone, the\nTactoEase Sensory Brushes provide gentle tactile\nstimulation to support sensory regulation,\ndesensitization, and body awareness. Their soft,\nflexible bristles offer calming sensory input, making\nthem ideal for therapy, home, or daily sensory routines.",
+      "price": 250,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "OT-SEN-INT-001-BLUE",
+          "stock": 25
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "OT-SEN-INT-001-GREE",
+          "stock": 30
+        },
+        {
+          "type": "Color",
+          "label": "PINK",
+          "sku": "OT-SEN-INT-001-PINK",
+          "stock": 33
+        },
+        {
+          "type": "Color",
+          "label": "PURPLE",
+          "sku": "OT-SEN-INT-001-PURP",
+          "stock": 28
+        }
+      ],
+      "images": [
+        "/api/uploads/products/tactoease-sensory-brushes/1777952672068-49bh8k.png",
+        "/api/uploads/products/tactoease-sensory-brushes/1777952672880-3vnl5i.png",
+        "/api/uploads/products/tactoease-sensory-brushes/1777952673803-5nl1f5.png",
+        "/api/uploads/products/tactoease-sensory-brushes/1777952674869-hd4u17.png",
+        "/api/uploads/products/tactoease-sensory-brushes/1777952675853-ga6ro8.png"
+      ],
+      "stock": 116,
+      "sku": "OT-SEN-INT-001",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_alpha_me_letter_board",
+      "slug": "alpha-me-letter-board",
+      "title": "Alpha & Me Letter Board",
+      "description": "Designed to make learning the alphabet fun and interactive,\nthe Alpha & Me Letter Board helps children build letter\nrecognition, fine motor skills, and hand-eye coordination.\nThe chunky letters with lacing holes allow kids to thread\nthe included lace, promoting bilateral coordination, finger\nstrength, and early literacy through hands-on play—ideal\nfor home, classroom, and therapy use.",
+      "price": 300,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/alpha-me-letter-board/1777877351281-sf5zue.jpg"
+      ],
+      "stock": 59,
+      "sku": "OT-TOY-THP-001",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_benny_the_hungry_bear",
+      "slug": "benny-the-hungry-bear",
+      "title": "Benny The Hungry Bear",
+      "description": "Designed to build fine motor skills and play-based learning,\nBenny the Hungry Bear lets children “feedˮ Benny using the\nincluded spoon and food pieces, promoting hand-eye\ncoordination, grasping, and pretend play. This engaging\nactivity also supports sequencing, attention, and early life\nskills, making it ideal for therapy, classrooms, and home play.",
+      "price": 700,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/benny-the-hungry-bear/1777877568446-xr0usp.jpg"
+      ],
+      "stock": 5,
+      "sku": "OT-TOY-THP-009",
+      "bestSeller": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_number_matchies_board",
+      "slug": "number-matchies-board",
+      "title": "Number Matchies Board",
+      "description": "Designed to support early numeracy and problem\nsolving skills, the Number Matchies Board helps\nchildren learn number recognition, counting, and basic\nmath symbols through hands-on matching and play.\nThe chunky, easy-to-grip pieces promote fine motor\nskills and visual-motor coordination, making it ideal for\nhome, classroom, and therapy use.",
+      "price": 300,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/number-matchies-board/1777877693496-aldi5l.jpg"
+      ],
+      "stock": 10,
+      "sku": "OT-TOY-THP-006",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_find_the_shadow_matched_images",
+      "slug": "find-the-shadow-matched-images",
+      "title": "Find The Shadow Matched Images",
+      "description": "Designed to build visual perception, attention, and\nproblem-solving skills, Find the Shadow Matched Images\nchallenges children to match objects with their correct\nsilhouettes. This engaging activity strengthens visual\ndiscrimination, cognitive skills, and focus, making it ideal\nfor therapy, classrooms, and home learning.",
+      "price": 350,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/find-the-shadow-matched-images/1777881485502-rz2f5n.jpg"
+      ],
+      "stock": 28,
+      "sku": "OT-TOY-THP-023",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_shape_stacking_matching_board",
+      "slug": "shape-stacking-matching-board",
+      "title": "Shape Stacking Matching Board",
+      "description": "Designed to build fine motor skills, shape recognition, and\nproblem-solving, the Shape Stacking Matching Board\nchallenges children to stack and match shapes onto the\ncorrect pegs using visual guides. This hands-on activity\nsupports hand-eye coordination, sequencing, and early\ncognitive skills, making it ideal for therapy, classrooms, and\nhome learning.",
+      "price": 700,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shape-stacking-matching-board/1777881627696-r3of9d.jpg",
+        "/api/uploads/products/shape-stacking-matching-board/1777881615467-fd2x8a.jpg"
+      ],
+      "sku": "OT-TOY-THP-016",
+      "stock": 0,
+      "bestSeller": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_form_fit_puzzle_advanced",
+      "slug": "form-fit-puzzle-advanced",
+      "title": "Form & Fit Puzzle - Advanced",
+      "description": "Designed to challenge visual discrimination and problem\nsolving skills, the Form & Fit Puzzle – Advanced features\nmore complex shapes and patterns that encourage careful\nmatching and spatial reasoning. This hands-on puzzle\nbuilds fine motor control, attention, and cognitive flexibility,\nmaking it ideal for therapy, classrooms, and advanced early\nlearning activities.",
+      "price": 400,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/form-fit-puzzle-advanced/1777881743648-qtgd1p.jpg"
+      ],
+      "stock": 39,
+      "sku": "OT-TOY-THP-005",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_matching_eggs",
+      "slug": "matching-eggs",
+      "title": "Matching Eggs",
+      "description": "Matching Eggs is a fun shape and number matching toy that helps children develop color recognition, problem solving, and fine motor skills by opening, matching, and sorting each egg.",
+      "price": 500,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/matching-eggs/1777882145453-fygfee.jpg"
+      ],
+      "stock": 91,
+      "sku": "OT-TOY-THP-008",
+      "disabled": false,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_build_balance_wooden_blocks",
+      "slug": "build-balance-wooden-blocks",
+      "title": "Build & Balance Wooden Blocks",
+      "description": "Build & Balance Wooden Blocks is a classic construction set that helps children develop creativity, balance, and problem-solving skills by stacking and building different structures using natural wooden blocks.",
+      "price": 1000,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/build-balance-wooden-blocks/1777882280166-1qr8ru.jpg"
+      ],
+      "stock": 16,
+      "sku": "OT-TOY-THP-013",
+      "weightKg": 2.5
+    },
+    {
+      "id": "prod_balance_river_stones",
+      "slug": "balance-river-stones",
+      "title": "Balance River Stones",
+      "description": "Designed to build balance, coordination, and motor\nplanning, the Balance River Stones encourage active movement and playful obstacle courses. Their varied sizes and heights promote stepping, jumping, and stability training, making them ideal for therapy, classrooms, and sensory play spaces.",
+      "price": 3500,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/balance-river-stones/1777952769431-2k1qkj.png",
+        "/api/uploads/products/balance-river-stones/1777952771017-ox8qvz.png"
+      ],
+      "sku": "OT-SEN-INT-003",
+      "stock": 0,
+      "isPreOrder": true,
+      "weightKg": 2.5
+    },
+    {
+      "id": "prod_talkacards_audio_set",
+      "slug": "talkacards-audio-set",
+      "title": "TalkaCards Audio Set",
+      "description": "Designed to support early language development, the\nTalkaCards Audio Set combines visual cards with\naudio feedback to help build vocabulary, comprehension, and speech skills. Its interactive\nformat makes learning engaging while reinforcing word recognition, listening, and expressive language—ideal for therapy, classrooms, and home learning.",
+      "price": 500,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        },
+        {
+          "label": "Pink",
+          "colorHex": "#e51f93"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/talkacards-audio-set/1777945905820-wqweqy.jpeg"
+      ],
+      "stock": 72,
+      "sku": "OT-TOY-THP-012",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_tick_tock_clock_toy",
+      "slug": "tick-tock-clock-toy",
+      "title": "Tick-Tock Clock Toy",
+      "description": "Tick-Tock Clock Toy is a hands-on learning clock with blocks and dials that teaches time,\nnumbers, and daily routines while building early math and fine motor skills.",
+      "price": 700,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tick-tock-clock-toy/1777946025744-1amnq7.jpg",
+        "/api/uploads/products/tick-tock-clock-toy/1777946024727-85d5e5.jpg"
+      ],
+      "stock": 1,
+      "sku": "OT-EQP-FIN-006",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_cash_register_toy",
+      "slug": "cash-register-toy",
+      "title": "Cash Register Toy",
+      "description": "Designed to encourage pretend play and early math\nskills, the Cash Register Toy lets children role-play\nshopping, counting, and paying using buttons, scanner, and play money. This interactive set builds number recognition, social skills, and hand-eye coordination, making it ideal for imaginative play at home, in classrooms, or in therapy settings",
+      "price": 1200,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/cash-register-toy/1777946164758-mw0hvo.jpg",
+        "/api/uploads/products/cash-register-toy/1777946163109-rnj6l8.jpg",
+        "/api/uploads/products/cash-register-toy/1777946164122-lylnia.jpg"
+      ],
+      "stock": 34,
+      "sku": "OT-TOY-THP-022",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_little_apple_matchers",
+      "slug": "little-apple-matchers",
+      "title": "Little Apple Matchers",
+      "description": "Designed to build early matching, sorting, and fine motor\nskills, Little Apple Matchers lets children open the apples and pair them by shape. This hands-on activity supports hand-eye coordination, problem-solving, and early cognitive development through fun, playful exploration—ideal for home, classroom, and therapy use.",
+      "price": 500,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/little-apple-matchers/1777946302380-3oicpz.jpg"
+      ],
+      "stock": 182,
+      "sku": "OT-TOY-THP-007",
+      "bestSeller": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_big_brain_builder_puzzle",
+      "slug": "big-brain-builder-puzzle",
+      "title": "BIG BRAIN BUILDER PUZZLE",
+      "description": "The Big Brain Builder Puzzle helps develop problem solving and fine motor skills through colorful animal puzzles. Each set is color-coded and numbered at the back, allowing children to count pieces, match by color, and self-check their work.",
+      "price": 250,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [
+        {
+          "type": "Other",
+          "label": "DINOSAUR PUZZLE",
+          "sku": "OT-TOY-THP-019-DIN1",
+          "stock": 1
+        },
+        {
+          "type": "Other",
+          "label": "FARM ANIMALS PUZZLE",
+          "sku": "OT-TOY-THP-019-FAR3",
+          "stock": 1
+        },
+        {
+          "type": "Other",
+          "label": "FOREST ANIMALS PUZZLE",
+          "sku": "OT-TOY-THP-019-FOR2",
+          "stock": 1
+        },
+        {
+          "type": "Other",
+          "label": "MARINE PUZZLE",
+          "sku": "OT-TOY-THP-019-MAR1",
+          "stock": 1
+        }
+      ],
+      "images": [
+        "/api/uploads/products/big-brain-builder-puzzle/1777947247046-p2m7sb.jpg",
+        "/api/uploads/products/big-brain-builder-puzzle/1777947246395-preuym.jpg",
+        "/api/uploads/products/big-brain-builder-puzzle/1777947245854-0ja2j0.jpg"
+      ],
+      "stock": 0,
+      "sku": "OT-TOY-THP-019",
+      "bestSeller": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_numbysticks",
+      "slug": "numbysticks",
+      "title": "Numbysticks",
+      "description": "Numbysticks is a hands-on math learning set with counting sticks and number tiles that helps children practice counting, basic operations, and number concepts through playful, interactive activities.",
+      "price": 150,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/numbysticks/1777947385981-zwgo84.jpg"
+      ],
+      "stock": 1,
+      "sku": "OT-TOY-THP-021",
+      "bestSeller": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_thinkshapes_discovery_puzzle",
+      "slug": "thinkshapes-discovery-puzzle",
+      "title": "ThinkShapes Discovery Puzzle",
+      "description": "Designed to build problem-solving, shape recognition, and fine motor skills, the ThinkShapes Discovery Puzzle challenges children to match and fit different shapes into the correct openings. This hands-on activity strengthens hand-eye coordination, spatial awareness, and logical thinking, making it ideal for early learning, therapy, and home play.",
+      "price": 500,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/thinkshapes-discovery-puzzle/1777947627723-6ecrzp.jpg"
+      ],
+      "stock": 120,
+      "sku": "OT-TOY-THP-003",
+      "bestSeller": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_little_dentist",
+      "slug": "little-dentist",
+      "title": "Little Dentist",
+      "description": "Designed to teach healthy oral care habits through play,\nLittle Dentist lets children explore brushing, cleaning, and caring for teeth in a fun, non-threatening way. This interactive activity supports role-play, fine motor skills, and understanding of dental routines, making it ideal for therapy, classrooms, and home learning.",
+      "price": 1000,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/little-dentist/1777947764921-7v8k71.jpg"
+      ],
+      "stock": 27,
+      "sku": "OT-TOY-THP-010",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_finger_friends_wild_wonders",
+      "slug": "finger-friends-wild-wonders",
+      "title": "Finger Friends Wild Wonders",
+      "description": "Designed to encourage imaginative play and early\nlanguage development, Finger Friends: Wild Wonders\nfeatures soft animal finger puppets that bring storytelling and role-play to life. These playful characters help build communication skills, creativity, and social interaction while also supporting fine motor control through finger play—ideal for therapy, classrooms, and home use.",
+      "price": 350,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/finger-friends-wild-wonders/1777947904964-4ra27l.jpg",
+        "/api/uploads/products/finger-friends-wild-wonders/1777947907972-md88bz.jpg"
+      ],
+      "stock": 58,
+      "sku": "OT-TOY-THP-011",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_pocket_puzzle_advanced",
+      "slug": "pocket-puzzle-advanced",
+      "title": "Pocket Puzzle – Advanced | 36 Mini Matching Puzzles for Toddlers | Early Learning Toy | Montessori",
+      "description": "The Pocket Puzzle – Advanced set features compact, themed puzzles that build problem-solving, visual matching, and fine motor skills in a fun, travel-friendly format.",
+      "price": 200,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [
+        {
+          "type": "Other",
+          "label": "ANIMAL PUZZLE",
+          "sku": "OT-TOY-THP-018-ANI1",
+          "stock": 7
+        },
+        {
+          "type": "Other",
+          "label": "DINOSAUR PUZZLE",
+          "sku": "OT-TOY-THP-018-DIN1",
+          "stock": 2
+        },
+        {
+          "type": "Other",
+          "label": "TRAFFIC PUZZLE",
+          "sku": "OT-TOY-THP-018-TRA",
+          "stock": 0
+        },
+        {
+          "type": "Other",
+          "label": "VEGETABLE FRUITS PUZZLE",
+          "sku": "OT-TOY-THP-018-VEG",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/pocket-puzzle-advanced/1777952820826-6ew0ep.png"
+      ],
+      "stock": 12,
+      "sku": "OT-TOY-THP-018",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_pocket_puzzle_basic",
+      "slug": "pocket-puzzle-basic",
+      "title": "Pocket Puzzle – Basic | 23 Mini Matching Puzzles for Toddlers | Early Learning Toy | Montessori",
+      "description": "The Pocket Puzzle – Basic set includes simple, fewer, colorful puzzles designed to build early matching, shape recognition, and fine motor skills in a compact, travel friendly size.",
+      "price": 200,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [
+        {
+          "type": "Other",
+          "label": "ANIMAL PUZZLE",
+          "sku": "OT-TOY-THP-017-ANI",
+          "stock": 14
+        },
+        {
+          "type": "Other",
+          "label": "FRUITS&VEGETABLES",
+          "sku": "OT-TOY-THP-017-FRU",
+          "stock": 13
+        },
+        {
+          "type": "Other",
+          "label": "TRAFFIC PUZZLES",
+          "sku": "OT-TOY-THP-017-TRA",
+          "stock": 14
+        }
+      ],
+      "images": [
+        "/api/uploads/products/pocket-puzzle-basic/1777952856647-9xeo7b.png",
+        "/api/uploads/products/pocket-puzzle-basic/1777952857522-e3nu9y.png",
+        "/api/uploads/products/pocket-puzzle-basic/1777952858394-a5cbpq.png",
+        "/api/uploads/products/pocket-puzzle-basic/1777952859441-p4sb2q.png"
+      ],
+      "stock": 26,
+      "sku": "OT-TOY-THP-017",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_mideer_magnet_activities",
+      "slug": "mideer-magnet-activities",
+      "title": "MiDeer Magnet Activities",
+      "description": "MiDeer Magnet Activities is a creative magnetic play set that helps children build pictures, patterns, and scenes while developing imagination, visual skills, and fine motor control.",
+      "price": 800,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/mideer-magnet-activities/1777952927774-mzqksq.png",
+        "/api/uploads/products/mideer-magnet-activities/1777952929182-r8u7vt.png"
+      ],
+      "stock": 0,
+      "sku": "OT-TOY-THP-024",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_mideer_magnet_funny_face",
+      "slug": "mideer-magnet-funny-face",
+      "title": "MiDeer Magnet - Funny Face",
+      "description": "MiDeer Magnet – Funny Face lets kids mix and match magnetic pieces to create silly faces, building creativity, visual skills, and fine motor control through playful design.",
+      "price": 800,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/mideer-magnet-funny-face/1777952966336-hvlwsx.png",
+        "/api/uploads/products/mideer-magnet-funny-face/1777952967543-zknvfl.png",
+        "/api/uploads/products/mideer-magnet-funny-face/1777952968821-lypbm9.png"
+      ],
+      "sku": "OT-TOY-THP-025",
+      "stock": 0,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_tangram_puzzle_blue",
+      "slug": "tangram-tales-puzzle-set",
+      "title": "TANGRAM TALES PUZZLE SET",
+      "description": "The Tangram Puzzle challenges children to recreate shapes and pictures using colorful geometric pieces, building spatial reasoning, problem-solving, and creativity. This is the blue version.",
+      "price": 300,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "OT-TOY-THP-014-BLUE",
+          "stock": 20,
+          "colorHex": "#0400ff"
+        },
+        {
+          "type": "Color",
+          "label": "PINK",
+          "sku": "OT-TOY-THP-014-PINK",
+          "stock": 27,
+          "colorHex": "#ea95ba"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/tangram-tales-puzzle-set/1785645107074-2vwnk8.png",
+        "/api/uploads/products/tangram-tales-puzzle-set/1785645107793-25ns8c.png",
+        "/api/uploads/products/tangram-tales-puzzle-set/1785645108342-mvil3o.png",
+        "/api/uploads/products/tangram-tales-puzzle-set/1785645108876-g15n7z.png"
+      ],
+      "stock": 47,
+      "sku": "OT-TOY-THP-014",
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_busy_book_yeah_learning_maths",
+      "slug": "busy-book-yeah-learning-maths",
+      "title": "BUSY BOOK - YEAH LEARNING MATHS",
+      "description": "Busy Book – Math is an interactive activity book that helps children learn numbers, counting, and simple math concepts through hands-on, reusable activities that build early numeracy and fine motor skills.",
+      "price": 200,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/busy-book-yeah-learning-maths/1777953088938-zrnfdc.png",
+        "/api/uploads/products/busy-book-yeah-learning-maths/1777953091376-8h1ypx.png"
+      ],
+      "stock": 91,
+      "sku": "ST-MAT-LAN-001",
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_busy_book_hello_alphabet",
+      "slug": "busy-book-hello-alphabet",
+      "title": "BUSY BOOK - HELLO ALPHABET",
+      "description": "Busy Book – Alphabet is an interactive activity book that helps children learn letters, sounds, and early word recognition through hands-on, reusable activities that build pre-reading and fine motor skills.",
+      "price": 200,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/busy-book-hello-alphabet/1777953114991-t5r025.png",
+        "/api/uploads/products/busy-book-hello-alphabet/1777953116041-iyf37b.png",
+        "/api/uploads/products/busy-book-hello-alphabet/1777953116952-vx25ch.png",
+        "/api/uploads/products/busy-book-hello-alphabet/1777953117955-rqdvhs.png",
+        "/api/uploads/products/busy-book-hello-alphabet/1778723961665-08imwu.png"
+      ],
+      "stock": 69,
+      "sku": "ST-MAT-LAN-002",
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_clinic_assessment_pack_b",
+      "slug": "clinic-assessment-pack-b",
+      "title": "Clinic Assessment Pack B",
+      "description": "Clinic Assessment Pack B is a focused therapy set designed for oral motor and sensory assessment, featuring one set of Crimson Sensory Bars, one set of Precision Tongue Trainer, and one Aurora Tag Chew for evaluation, training, and sensory support.",
+      "price": 2350,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/clinic-assessment-pack-b/1778723768525-xtzrd3.png",
+        "/api/uploads/products/clinic-assessment-pack-b/1778724213930-0uohsg.png"
+      ],
+      "sku": "ST-EQP-ORA-015",
+      "stock": 50,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_preschool_sensory_mealtime_set_b",
+      "slug": "preschool-sensory-mealtime-set-b",
+      "title": "Preschool Sensory Mealtime Set B",
+      "description": "Preschool Sensory Mealtime Set B is a practical set designed to support sensory-friendly feeding and oral-motor development, featuring one Velura Textured Spoon, one Aurora Tag Chew, and one set of Crimson Sensory Bars for mealtime practice and sensory regulation.",
+      "price": 1500,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/preschool-sensory-mealtime-set-b/1778723475948-75opc5.png"
+      ],
+      "sku": "ST-EQP-ORA-018",
+      "stock": 50,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_all_in_one_oral_sensory_mega_kit_b",
+      "slug": "all-in-one-oral-sensory-mega-kit-b",
+      "title": "All-in-one Oral Sensory Mega Kit B",
+      "description": "All-in-One Oral Sensory Mega Kit B is a comprehensive therapy set\ndesigned to support oral sensory regulation and oral-motor development, featuring one Butterfly Calm Chew, one Prism Brick Pencil Chew Topper, one set of Crimson Sensory Bars, one Velura Textured Spoon, and one set of Precision Tongue Tip Trainer for a\ncomplete range of sensory and training activities.",
+      "price": 5800,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/all-in-one-oral-sensory-mega-kit-b/1778722958095-cpwdmb.png"
+      ],
+      "sku": "ST-EQP-ORA-020",
+      "stock": 50,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_shirt_proud_sandbox_ther_s",
+      "slug": "shirt-proud-sandbox-ther-s",
+      "title": "SHIRT PROUD Aura Health Rehab Clinic THER",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “PROUD SANDBOX THERAPIST” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.\n\nMade for therapy-goers, fitness warriors, and everyday fighters.\n",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-001-M",
+          "stock": 1
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-001-S",
+          "stock": 1
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-proud-sandbox-ther-s/1779257457123-5b2ah6.png"
+      ],
+      "stock": 2,
+      "sku": "MER-GEN-TLS-001",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_proud_sandbox_therapist_medium",
+      "slug": "shirt-proud-sandbox-therapist-medium",
+      "title": "SHIRT PROUD SANDBOX THERAPIST - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “PROUD SANDBOX THERAPIST” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.\n\nMade for therapy-goers, fitness warriors, and everyday fighters.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "label": "WHITE",
+          "colorHex": "#f9fafa"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-proud-sandbox-therapist-medium/1779258029926-4mjbdc.png"
+      ],
+      "stock": 1,
+      "sku": "MER-GEN-TLS-002",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_i_help_u_move_small",
+      "slug": "shirt-i-help-u-move-small",
+      "title": "Shirt I Help U Move",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I HELP YOU MOVE” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.\n\nMade for therapy-goers, fitness warriors, and everyday fighters.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "L",
+          "sku": "MER-GEN-TLS-003-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-003-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-003-S",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-i-help-u-move-small/1779259007470-g6e89d.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-003",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_i_help_u_move_medium",
+      "slug": "shirt-i-help-u-move-medium",
+      "title": "SHIRT I HELP U MOVE - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I HELP YOU MOVE” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-help-u-move-medium/1779326139706-sm9r9y.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-004",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_i_help_u_move_large",
+      "slug": "shirt-i-help-u-move-large",
+      "title": "SHIRT I HELP U MOVE - LARGE",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I HELP YOU MOVE” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-help-u-move-large/1779326292432-vlbxe6.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-005",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_therapist_on_board_large",
+      "slug": "shirt-therapist-on-board-large",
+      "title": "Shirt Therapist In Mot",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “THERAPIST ON BOARD” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "L",
+          "sku": "MER-GEN-TLS-007-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-007-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-007-S",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-therapist-on-board-large/1779326406229-cvbvy8.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-007",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_i_choose_movement_small",
+      "slug": "shirt-i-choose-movement-small",
+      "title": "Shirt I Choose Mov",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I CHOOSE MOVEMENT” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "L",
+          "sku": "MER-GEN-TLS-008-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-008-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-008-S",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-i-choose-movement-small/1779327142105-h9k7az.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-008",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_i_choose_movment_medium",
+      "slug": "shirt-i-choose-movment-medium",
+      "title": "SHIRT I CHOOSE MOVMENT - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I I CHOOSE MOVMENT” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-choose-movment-medium/1779327680252-jsnmn8.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-009",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_strong_everyday_small",
+      "slug": "shirt-strong-everyday-small",
+      "title": "Shirt Strong Everyday",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “STRONG EVERYDAY” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "L",
+          "sku": "MER-GEN-TLS-011-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-011-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-011-S",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-strong-everyday-small/1779330285017-5r3t6o.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-011",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_strong_everyday_medium",
+      "slug": "shirt-strong-everyday-medium",
+      "title": "SHIRT STRONG EVERYDAY - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “SHIRT STRONG EVERYDAY” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-strong-everyday-medium/1779331098196-6men54.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-012",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_pain_to_power_small",
+      "slug": "shirt-pain-to-power-small",
+      "title": "Shirt Pain To Pwr",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “PAIN TO POWER” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "L",
+          "sku": "MER-GEN-TLS-013-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-013-M",
+          "stock": 1
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-013-S",
+          "stock": 1
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-pain-to-power-small/1779331288806-wcm1xc.png"
+      ],
+      "stock": 2,
+      "sku": "MER-GEN-TLS-013",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_pain_to_power_medium",
+      "slug": "shirt-pain-to-power-medium",
+      "title": "SHIRT PAIN TO POWER - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “PAIN TO POWER” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-pain-to-power-medium/1779331398879-shr7z3.png"
+      ],
+      "stock": 1,
+      "sku": "MER-GEN-TLS-014",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_healing_kid_8",
+      "slug": "shirt-healing-kid-8",
+      "title": "Shirt Healing Kid",
+      "description": "Healing with Sandbox – One Step at a Time ✨\n\nA playful and uplifting tee designed to inspire healing, growth, and positivity. Featuring minimalist orange line art and a cheerful character design, this shirt brings comfort and encouragement in every step. Perfect for casual wear, self-care days, or anyone embracing their healing journey with style and confidence.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-015-12",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-015-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-015-8",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-healing-kid-8/1779331635311-7060xn.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-015",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_healing_kid_12",
+      "slug": "shirt-healing-kid-12",
+      "title": "SHIRT HEALING KID #12",
+      "description": "Healing with Sandbox – One Step at a Time ✨\n\nA playful and uplifting tee designed to inspire healing, growth, and positivity. Featuring minimalist orange line art and a cheerful character design, this shirt brings comfort and encouragement in every step. Perfect for casual wear, self-care days, or anyone embracing their healing journey with style and confidence.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-healing-kid-12/1779332177865-h9rjw0.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-016",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_healing_kid_16",
+      "slug": "shirt-healing-kid-16",
+      "title": "SHIRT HEALING KID #16",
+      "description": "Healing with Sandbox – One Step at a Time ✨\n\nA playful and uplifting tee designed to inspire healing, growth, and positivity. Featuring minimalist orange line art and a cheerful character design, this shirt brings comfort and encouragement in every step. Perfect for casual wear, self-care days, or anyone embracing their healing journey with style and confidence.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-healing-kid-16/1779332242136-mg37z1.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-017",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_progress_kid_8",
+      "slug": "shirt-progress-kid-8",
+      "title": "Shirt Progress Kid",
+      "description": "Progress in Motion – #SandboxRecovery 🧡\n\nA fun and empowering graphic tee that celebrates growth, resilience, and recovery. Featuring a playful bunny character with bold orange artwork, this design inspires positivity and reminds everyone that every small step forward matters. Comfortable, stylish, and perfect for everyday wear.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-018-12",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-018-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-018-8",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-progress-kid-8/1779332435603-8l99ti.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-018",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_progress_kid_12",
+      "slug": "shirt-progress-kid-12",
+      "title": "SHIRT PROGRESS KID #12",
+      "description": "Progress in Motion – #SandboxRecovery 🧡\n\nA fun and empowering graphic tee that celebrates growth, resilience, and recovery. Featuring a playful bunny character with bold orange artwork, this design inspires positivity and reminds everyone that every small step forward matters. Comfortable, stylish, and perfect for everyday wear.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-progress-kid-12/1779332504543-nrzvfy.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-019",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_progress_kid_16",
+      "slug": "shirt-progress-kid-16",
+      "title": "SHIRT PROGRESS KID #16",
+      "description": "Progress in Motion – #SandboxRecovery 🧡\n\nA fun and empowering graphic tee that celebrates growth, resilience, and recovery. Featuring a playful bunny character with bold orange artwork, this design inspires positivity and reminds everyone that every small step forward matters. Comfortable, stylish, and perfect for everyday wear.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-progress-kid-16/1779332556029-0lhlon.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-020",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_proud_patient_8",
+      "slug": "shirt-proud-patient-8",
+      "title": "Shirt Proud Patient",
+      "description": "Proud Sandbox Patient Tee 🧡\n\nA meaningful and empowering shirt that represents recovery, strength, and resilience. Designed with bold yet minimalist graphics, this tee celebrates every patient’s journey toward healing and progress. Comfortable for everyday wear and perfect for showing pride in your recovery story.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-021-12",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-021-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-021-8",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-proud-patient-8/1779332759872-rna58t.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-021",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_proud_patient_12",
+      "slug": "shirt-proud-patient-12",
+      "title": "SHIRT PROUD PATIENT #12",
+      "description": "Proud Sandbox Patient Tee 🧡\n\nA meaningful and empowering shirt that represents recovery, strength, and resilience. Designed with bold yet minimalist graphics, this tee celebrates every patient’s journey toward healing and progress. Comfortable for everyday wear and perfect for showing pride in your recovery story.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-proud-patient-12/1779332838324-t8u5z3.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-022",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_proud_patient_16",
+      "slug": "shirt-proud-patient-16",
+      "title": "SHIRT PROUD PATIENT #16",
+      "description": "Proud Sandbox Patient Tee 🧡\n\nA meaningful and empowering shirt that represents recovery, strength, and resilience. Designed with bold yet minimalist graphics, this tee celebrates every patient’s journey toward healing and progress. Comfortable for everyday wear and perfect for showing pride in your recovery story.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-proud-patient-16/1779333703338-yluywn.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-023",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_limit_to_leap_8",
+      "slug": "shirt-limit-to-leap-8",
+      "title": "Shirt Limit To Leap",
+      "description": "From Limits to Leaps T-Shirt\n\nA minimalist statement tee designed to inspire growth, courage, and transformation. Featuring elegant typography with bold and script accents, this premium white shirt symbolizes breaking barriers and taking bold leaps forward in life. Perfect for everyday wear with a meaningful message that stands out effortlessly.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-024-12",
+          "stock": 1
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-024-16",
+          "stock": 1
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-024-8",
+          "stock": 2
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-limit-to-leap-8/1779333854015-ody61e.png"
+      ],
+      "stock": 4,
+      "sku": "MER-GEN-TLS-024",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_limit_to_leap_12",
+      "slug": "shirt-limit-to-leap-12",
+      "title": "SHIRT LIMIT TO LEAP #12",
+      "description": "From Limits to Leaps T-Shirt\n\nA minimalist statement tee designed to inspire growth, courage, and transformation. Featuring elegant typography with bold and script accents, this premium white shirt symbolizes breaking barriers and taking bold leaps forward in life. Perfect for everyday wear with a meaningful message that stands out effortlessly.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-limit-to-leap-12/1779333902786-7qvrc1.png"
+      ],
+      "stock": 1,
+      "sku": "MER-GEN-TLS-025",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_limit_to_leap_16",
+      "slug": "shirt-limit-to-leap-16",
+      "title": "SHIRT LIMIT TO LEAP #16",
+      "description": "From Limits to Leaps T-Shirt\n\nA minimalist statement tee designed to inspire growth, courage, and transformation. Featuring elegant typography with bold and script accents, this premium white shirt symbolizes breaking barriers and taking bold leaps forward in life. Perfect for everyday wear with a meaningful message that stands out effortlessly.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-limit-to-leap-16/1779333956712-uqwc8h.png"
+      ],
+      "stock": 1,
+      "sku": "MER-GEN-TLS-026",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_move_forward_8",
+      "slug": "shirt-move-forward-8",
+      "title": "Shirt Move Frwrd",
+      "description": "Moving Forward One Session at a Time T-Shirt.\n\nA motivational statement tee that celebrates progress, healing, and personal growth. Designed with bold modern typography and uplifting energy, this shirt is a reminder that every small step forward matters. Comfortable, stylish, and perfect for everyday inspiration.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-027-12",
+          "stock": 1
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-027-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-027-8",
+          "stock": 1
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-move-forward-8/1779334109415-xxwzj5.png"
+      ],
+      "stock": 2,
+      "sku": "MER-GEN-TLS-027",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_move_forward_12",
+      "slug": "shirt-move-forward-12",
+      "title": "SHIRT MOVE FORWARD  #12",
+      "description": "Moving Forward One Session at a Time T-Shirt.\n\nA motivational statement tee that celebrates progress, healing, and personal growth. Designed with bold modern typography and uplifting energy, this shirt is a reminder that every small step forward matters. Comfortable, stylish, and perfect for everyday inspiration.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-move-forward-12/1779334181692-3binr0.png"
+      ],
+      "stock": 1,
+      "sku": "MER-GEN-TLS-028",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_active_recovery_active_life_12",
+      "slug": "shirt-active-recovery-active-life-12",
+      "title": "Shirt Active Recov Life",
+      "description": "Active Recovery, Active Life T-Shirt\n\nA vibrant and uplifting tee designed to promote movement, wellness, and everyday recovery. Featuring a clean outdoor-inspired graphic, this shirt represents the balance of staying active while prioritizing healing and self-care. Comfortable, motivational, and perfect for an active lifestyle.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-029-12",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-029-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-029-8",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-active-recovery-active-life-12/1779334409765-x1kkn1.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-029",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_active_recovery_active_life_16",
+      "slug": "shirt-active-recovery-active-life-16",
+      "title": "SHIRT ACTIVE RECOVERY ACTIVE LIFE #16",
+      "description": "Active Recovery, Active Life T-Shirt\n\nA vibrant and uplifting tee designed to promote movement, wellness, and everyday recovery. Featuring a clean outdoor-inspired graphic, this shirt represents the balance of staying active while prioritizing healing and self-care. Comfortable, motivational, and perfect for an active lifestyle.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-active-recovery-active-life-16/1779334475759-xofe1x.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-030",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_building_a_better_me_8",
+      "slug": "shirt-building-a-better-me-8",
+      "title": "Shirt Build Bttr Me",
+      "description": "Building a Better Me, with Sandbox — a bold statement tee designed for builders, dreamers, and go-getters. Featuring a minimalist graphic and striking typography on a premium black shirt, this design represents growth, hard work, and self-improvement through every challenge. Perfect for casual wear, workdays, or anyone proud of the journey they’re building.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-031-12",
+          "stock": 1
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-031-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-031-8",
+          "stock": 1
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-building-a-better-me-8/1779334899967-p1kfe1.png"
+      ],
+      "stock": 2,
+      "sku": "MER-GEN-TLS-031",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shirt_building_a_better_me_12",
+      "slug": "shirt-building-a-better-me-12",
+      "title": "SHIRT BUILDING A BETTER ME  #12",
+      "description": "Building a Better Me, with Sandbox — a bold statement tee designed for builders, dreamers, and go-getters. Featuring a minimalist graphic and striking typography on a premium black shirt, this design represents growth, hard work, and self-improvement through every challenge. Perfect for casual wear, workdays, or anyone proud of the journey they’re building.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-building-a-better-me-12/1779334991085-q5y3uo.png"
+      ],
+      "stock": 1,
+      "sku": "MER-GEN-TLS-032",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_otrp_car_emblem_for_occupational_therapists_premium_quality",
+      "slug": "otrp-car-emblem-for-occupational-therapists-premium-quality",
+      "title": "OTRP Car Emblem for Occupational Therapists (Premium Quality)",
+      "description": "Occupational Therapist On Board — A bold and professional emblem designed to represent licensed occupational therapists with pride and authority. Featuring a classic medical symbol and strong typography, this badge-style logo communicates trust, care, and healthcare expertise—perfect for vehicles, websites, uniforms, or professional branding.",
+      "price": 1200,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/otrp-car-emblem-for-occupational-therapists-premium-quality/1779341714669-rbe8m5.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-EMB-002",
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_rslp_car_emblem_for_speech_language_pathologists_speech_therapists_premium_quality",
+      "slug": "rslp-car-emblem-for-speech-language-pathologists-speech-therapists-premium-quality",
+      "title": "RSLP Car Emblem for Speech Language Pathologists/ Speech Therapists (Premium Quality)",
+      "description": "Speech Language Pathologist On Board — A sleek and professional emblem designed for speech-language pathologists who take pride in their healthcare profession. Featuring a classic medical symbol with bold lettering, this badge-style design represents communication, care, and clinical expertise—ideal for vehicles, websites, work gear, or professional branding.",
+      "price": 1200,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/rslp-car-emblem-for-speech-language-pathologists-speech-therapists-premium-quality/1783259349058-rz3kgw.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-EMB-003",
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_ptrp_car_emblem_for_physical_therapists_premium_quality",
+      "slug": "ptrp-car-emblem-for-physical-therapists-premium-quality",
+      "title": "PTRP Car Emblem for Physical Therapists (Premium Quality)",
+      "description": "Physical Therapist On Board — A bold and professional emblem created for physical therapists who proudly represent their healthcare profession. Featuring a classic medical symbol and strong lettering, this badge-style design symbolizes healing, mobility, and patient care—perfect for vehicles, websites, uniforms, or professional branding.",
+      "price": 1200,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/ptrp-car-emblem-for-physical-therapists-premium-quality/1779341921360-hf26sm.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-EMB-004",
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_shirt_i_choose_movement_large",
+      "slug": "shirt-i-choose-movement-large",
+      "title": "SHIRT I CHOOSE MOVEMENT - LARGE",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I CHOOSE MOVEMENT” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-choose-movement-large/1779342269244-olbmx4.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-010",
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mini_maestros",
+      "slug": "mini-maestros",
+      "title": "MINI MAESTROS",
+      "description": "Mini Maestros\nBy Verdana Rehab Solutions — Progress, Made Possible.\n\nAwaken creativity and rhythm with Mini Maestros, a complete set of child-friendly percussion instruments designed to inspire sensory play, auditory exploration, and motor coordination. Crafted from safe, durable materials, each instrument invites children to explore sound, rhythm, and teamwork—making it a perfect tool for therapy, classrooms, or family playtime.",
+      "price": 2150,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/mini-maestros/1779342858155-m3fx6d.jpg"
+      ],
+      "stock": 13,
+      "sku": "OT-SEN-INT-006",
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_3d_puzzle_sets",
+      "slug": "3d-puzzle-sets",
+      "title": "3D PUZZLE SETS",
+      "description": "Give your child hours of hands-on learning with this delightful 3D Wooden Puzzle Set. Each board features raised, chunky puzzle pieces designed for tiny hands—making it ideal for toddlers and preschoolers who are developing fine motor skills, problem-solving abilities, and shape/animal/object recognition.\n\nThese vibrant, easy-to-grasp pieces bring each scene to life, whether it’s animals, vehicles, dinosaurs, or underwater creatures. Perfect for home play, classroom activities, therapy use, and gifting!",
+      "price": 250,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [
+        {
+          "type": "Other",
+          "label": "ASTRONAUT",
+          "sku": "OT-TOY-THP-020-AST",
+          "stock": 6
+        },
+        {
+          "type": "Other",
+          "label": "BACHIOSAURUS",
+          "sku": "OT-TOY-THP-020-BAC",
+          "stock": 5
+        },
+        {
+          "type": "Other",
+          "label": "COCK",
+          "sku": "OT-TOY-THP-020-COC",
+          "stock": 7
+        },
+        {
+          "type": "Other",
+          "label": "EARTH TRUCK",
+          "sku": "OT-TOY-THP-020-EAR",
+          "stock": 3
+        },
+        {
+          "type": "Other",
+          "label": "ELEPHANT",
+          "sku": "OT-TOY-THP-020-ELE",
+          "stock": 2
+        },
+        {
+          "type": "Other",
+          "label": "FLYING SAUCER",
+          "sku": "OT-TOY-THP-020-FLY",
+          "stock": 4
+        },
+        {
+          "type": "Other",
+          "label": "GIRAFFE",
+          "sku": "OT-TOY-THP-020-GIR",
+          "stock": 1
+        },
+        {
+          "type": "Other",
+          "label": "PARASAUROLOPHUS",
+          "sku": "OT-TOY-THP-020-PAR",
+          "stock": 6
+        },
+        {
+          "type": "Other",
+          "label": "PLANET TOUR",
+          "sku": "OT-TOY-THP-020-PLA",
+          "stock": 0
+        },
+        {
+          "type": "Other",
+          "label": "POLICE CAR",
+          "sku": "OT-TOY-THP-020-POL",
+          "stock": 5
+        },
+        {
+          "type": "Other",
+          "label": "ROAD ROLLER",
+          "sku": "OT-TOY-THP-020-ROA",
+          "stock": 9
+        },
+        {
+          "type": "Other",
+          "label": "ROCKET",
+          "sku": "OT-TOY-THP-020-ROC",
+          "stock": 0
+        },
+        {
+          "type": "Other",
+          "label": "TRICERATOPS",
+          "sku": "OT-TOY-THP-020-TRI",
+          "stock": 5
+        },
+        {
+          "type": "Other",
+          "label": "TYRANNOSAUROS",
+          "sku": "OT-TOY-THP-020-TYR",
+          "stock": 4
+        },
+        {
+          "type": "Other",
+          "label": "UNDERWATER WORLD",
+          "sku": "OT-TOY-THP-020-UND",
+          "stock": 5
+        }
+      ],
+      "images": [
+        "/api/uploads/products/3d-puzzle-sets/1776066756697-ob5543.png",
+        "/api/uploads/products/3d-puzzle-sets/1776066757354-tf46kw.png",
+        "/api/uploads/products/3d-puzzle-sets/1776066758006-tfdngj.png",
+        "/api/uploads/products/3d-puzzle-sets/1776066758635-8dzxhh.png"
+      ],
+      "stock": 76,
+      "sku": "OT-TOY-THP-020",
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_precision_tongue_trainer",
+      "slug": "precision-tongue-trainer",
+      "title": "PRECISION TONGUE TRAINER",
+      "description": "The Precision Tongue Trainer is designed to support oral motor development, feeding readiness, and speech clarity. Each tool encourages controlled tongue elevation, lateralization, and placement — essential skills for articulation, swallowing, and overall oral coordination.\n\n\n\nIdeal for use in speech therapy, occupational therapy, or guided home practice under clinician direction.\n\n\n\n• Supports tongue strength, control, and precision\n\n• Assists with speech sound production (e.g., /l/, /r/, /s/, /sh/, /t/, /d/)\n\n• Encourages proper tongue tip placement for clearer articulation\n\n• Helps promote safe and efficient feeding and swallowing patterns\n\n• Lightweight and easy to handle for both children and therapists\n\n• Durable and easy to clean between sessions\n\n\n\nA structured, therapist-approved tool for building confident and coordinated oral movement.",
+      "price": 1200,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/precision-tongue-trainer/1776066026384-1uol89.png"
+      ],
+      "stock": 490,
+      "sku": "ST-EQP-ORA-010",
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_all_in_one_oral_sensory_mega_kit_chew_support_oral_motor_training_feeding_readiness_set",
+      "slug": "all-in-one-oral-sensory-mega-kit-chew-support-oral-motor-training-feeding-readiness-set",
+      "title": "All-in-One Oral Sensory Mega Kit | Chew Support + Oral Motor Training + Feeding Readiness Set",
+      "description": "The All-in-One Oral Sensory Mega Kit is a complete, therapist-designed set for children who need oral sensory support, chewing alternatives, and structured oral motor practice. Ideal for home programs, therapy centers, preschools, and classroom routines, this kit helps children develop oral awareness, jaw stability, tongue control, and calm self-regulation.\n\n\n\nThis set provides a full range of oral-sensory tools for chewing, feeding readiness, desensitization, and sensory calming — making it a versatile and comprehensive kit for daily use.\n\n\n\nWhat’s Included:\n\nChew Necklace Pendant (Choose 1):\n\n• Butterfly Calm Chew Pendant or\n\n• Aurora Tag Chew Pendant\n\n→ A wearable chew option for on-the-go sensory regulation.\n\n\n\nVelura Textured Spoon (1 pc)\n\n→ Supports feeding readiness, oral awareness, and sensory tolerance.\n\n\n\nPrecision Tongue Trainer Tools (Set of 3)\n\n→ Used for tongue elevation, oral coordination, and strengthening.\n\n\n\nPrism Brick Chew Pencil Toppers (1 pc)\n\n→ Helps reduce chewing on pencils, clothing, or non-food objects while improving focus.\n\n\n\nCrimson Sensory Chew Bars (Set)\n\n→ Provides varying resistances for jaw strengthening and sensory modulation.\n\n\n\n⭐ Benefits\n\n• Supports self-regulation, emotional calming, and sensory coping\n\n• Encourages safe chewing habits, reducing shirt chewing and nail biting\n\n• Promotes stronger jaw control and more efficient chewing patterns\n\n• Helps children participate more successfully in classroom and mealtime routines\n\n• Suitable for OT/ST therapy, home use, and preschool environments\n\n\n\n🌱 Safety & Materials\n\n• Made from food-grade, BPA-free silicone\n\n• Non-toxic, child-safe materials\n\n• Necklace includes breakaway safety cord\n\n• Easy to wash and sanitize\n\n\n\n🎯 Ideal For:\n\n✔ Oral seeking / sensory-seeking children\n\n✔ Feeding therapy & mealtime desensitization\n\n✔ Classroom, clinic, and home sensory routines\n\n✔ Speech & Occupational therapy programs\n\n\n\n📦 Variation Option\n\nPendant Style:\n\n• Butterfly Calm Chew\n\n• Aurora Tag Chew",
+      "price": 5800,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/all-in-one-oral-sensory-mega-kit-chew-support-oral-motor-training-feeding-readiness-set/1779355482264-wsck22.jpg"
+      ],
+      "stock": 50,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_starter_oral_kit",
+      "slug": "starter-oral-kit",
+      "title": "STARTER ORAL KIT",
+      "description": "The Verdana Oral-Sensory Development Kit Collection is a structured range of therapist-informed chew and oral-motor sets designed to support focus, regulation, feeding readiness, and oral motor development across home, school, and clinical settings.\n\n\n\nInstead of random sensory toys, each kit is intentionally curated to match specific developmental goals — whether you are just starting your child’s oral-sensory journey or implementing a more intensive oral-motor program.\n\n\n\nAll items are made from food-grade, non-toxic, BPA-free silicone, ensuring safe daily use.\n\n\n\n1️⃣ STARTER ORAL-SENSORY KIT\n\nIdeal for beginners exploring safe chewing alternatives.\n\nIncludes:\n\n• Prism Brick Pencil Grip – 1\n\n• Aurora Tag Chew – 1\n\n• Crimson Sensory Bars – 1\n\n\n\n2️⃣ SCHOOL & HOMEWORK CHEW PACK\n\nDesigned for classroom focus and quiet regulation.\n\n\n\nIncludes:\n\n• Butterfly Calm Chew – 1\n\n• Prism Brick Pencil Grips – 3\n\n\n\n3️⃣ CLINIC ASSESSMENT PACK A\n\nFor therapists assessing graded oral input and tongue control.\n\n\n\nIncludes:\n\n• 6 Sets of Row Bars – 1\n\n• Precision Tongue Trainer – 1\n\n• Butterfly Calm Chew – 1\n\n\n\n4️⃣ CLINIC ASSESSMENT PACK B\n\nAlternate clinic set with wearable regulation option.\n\n\n\nIncludes:\n\n• 6 Sets of Row Bars – 1\n\n• Precision Tongue Trainer – 1\n\n• Aurora Tag Chew – 1\n\n\n\n5️⃣ INTENSIVE ORAL MOTOR DEVELOPMENT KIT\n\nFor structured strengthening and feeding readiness programs.\n\n\n\nIncludes:\n\n• 6 Sets of Row Bars – 1\n\n• Tongue Tip Trainer – 1\n\n• Velura Textured Spoon – 1\n\n\n\n6️⃣ PRESCHOOL SENSORY MEALTIME SET A\n\nSupports feeding exposure and oral input during meals.\n\n\n\nIncludes:\n\n• Velura Textured Spoon – 1\n\n• Butterfly Calm Chew – 1\n\n• 6 Sets of Row Bars – 1\n\n\n\n7️⃣ PRESCHOOL SENSORY MEALTIME SET B\n\nAlternate mealtime support set with wearable chew option.\n\n\n\nIncludes:\n\n• Velura Textured Spoon – 1\n\n• Aurora Tag Chew – 1\n\n• 6 Sets of Row Bars – 1\n\n\n\n8️⃣ ALL-IN-ONE ORAL SENSORY MEGA KIT A\n\nComprehensive support for home or therapy use.\n\n\n\nIncludes:\n\n• Aurora Tag Chew – 1\n\n• Prism Brick Pencil Chew Topper – 1\n\n• 6 Sets of Row Bars – 1\n\n• Velura Textured Spoon – 1\n\n• Tongue Tip Trainer – 1\n\n\n\n9️⃣ ALL-IN-ONE ORAL SENSORY MEGA KIT B\n\nComplete oral sensory system with alternate chew design.\n\n\n\nIncludes:\n\n• Butterfly Calm Chew – 1\n\n• Prism Brick Pencil Chew Topper – 1\n\n• 6 Sets of Row Bars – 1\n\n• Velura Textured Spoon – 1\n\n• Tongue Tip Trainer – 1\n\n\n\nBenefits Across the Collection\n\n• Supports focus, calm, and emotional regulation\n\n• Helps reduce shirt chewing, nail biting, and pencil chewing\n\n• Provides graded oral motor input\n\n• Strengthens jaw stability and tongue coordination\n\n• Supports feeding readiness and sensory exploration\n\n• Designed for therapists, parents, and educators\n\n• Durable, washable, and safe for daily use\n\n\n\nBest For Children Who:\n\n✓ Seek oral input\n\n✓ Need structured sensory regulation\n\n✓ Are undergoing OT or feeding therapy\n\n✓ Require classroom-friendly sensory tools\n\n✓ Need support with chewing or oral motor development",
+      "price": 1350,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/starter-oral-kit/1779356264916-i360e8.jpg"
+      ],
+      "stock": 48,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_school_chew_pack",
+      "slug": "school-chew-pack",
+      "title": "SCHOOL CHEW PACK",
+      "description": "The Verdana Oral-Sensory Development Kit Collection is a structured range of therapist-informed chew and oral-motor sets designed to support focus, regulation, feeding readiness, and oral motor development across home, school, and clinical settings.\n\n\n\nInstead of random sensory toys, each kit is intentionally curated to match specific developmental goals — whether you are just starting your child’s oral-sensory journey or implementing a more intensive oral-motor program.\n\nAll items are made from food-grade, non-toxic, BPA-free silicone, ensuring safe daily use.",
+      "price": 900,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/school-chew-pack/1779356399105-lj12ub.jpg"
+      ],
+      "stock": 199,
+      "sku": "ST-EQP-ORA-013",
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_clinic_assessment_pack_a",
+      "slug": "clinic-assessment-pack-a",
+      "title": "CLINIC ASSESSMENT PACK A",
+      "description": "The Verdana Oral-Sensory Development Kit Collection is a structured range of therapist-informed chew and oral-motor sets designed to support focus, regulation, feeding readiness, and oral motor development across home, school, and clinical settings.\n\n\n\nInstead of random sensory toys, each kit is intentionally curated to match specific developmental goals — whether you are just starting your child’s oral-sensory journey or implementing a more intensive oral-motor program.\n\nAll items are made from food-grade, non-toxic, BPA-free silicone, ensuring safe daily use.",
+      "price": 2350,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/clinic-assessment-pack-a/1779356518047-vrmh28.jpg"
+      ],
+      "stock": 50,
+      "sku": "ST-EQP-ORA-014",
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_alpaca_sofa",
+      "slug": "alpaca-sofa",
+      "title": "Alpaca Sofa",
+      "description": "Dimensions: Height 110 cm   ·   Pre-order\n\nA cuddly companion and a comfy little seat in one. The plush Alpaca Sofa brings charm and softness to any nursery or playroom, giving your child a supportive spot to sit, lean and rest.\n\nKey features:\n•\tWhimsical alpaca character\n•\tSoft, supportive seating\n•\tA statement piece for play spaces\n•\tLoved at home and in clinics\n",
+      "price": 4300,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "OT-SEN-INT-014",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/alpaca-sofa/1785652494646-l2gkvc.png"
+      ],
+      "weightKg": 3.6
+    },
+    {
+      "id": "prod_the_sun_bounce_trampoline",
+      "slug": "the-sun-bounce-trampoline",
+      "title": "The Sun Bounce Trampoline",
+      "description": "Dimensions: Ø 150 cm   ·   Pre-order\n\nSunshine, springs and happy energy. The Sun Bounce Trampoline gives little ones a safe way to jump, giggle and burn off the wiggles — supporting balance, focus and sensory regulation.\n\nKey features:\n•\tSafe, sturdy jumping surface\n•\tVestibular and proprioceptive input\n•\tBurns energy and boosts focus\n•\tGreat for home and therapy rooms\n",
+      "price": 5800,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "PT-EQP-BAL-001",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-sun-bounce-trampoline/1785652519282-usxcwn.png",
+        "/api/uploads/products/the-sun-bounce-trampoline/1785652534502-rg3ouj.png",
+        "/api/uploads/products/the-sun-bounce-trampoline/1785652535883-o9fov7.png"
+      ],
+      "weightKg": 10
+    },
+    {
+      "id": "prod_the_storyteller_s_theatre",
+      "slug": "the-storyteller-s-theatre",
+      "title": "The Storyteller's Theatre",
+      "description": "Dimensions: L84 · W30 · H135 cm   ·   Pre-order\n\nCurtains up on big imaginations. The Storyteller's Theatre gives little performers a stage for puppet shows, storytelling and confident self-expression — one act at a time.\n\nKey features:\n•\tStage for puppet and role play\n•\tBuilds confidence and language\n•\tIncludes chalkboard panel\n•\tGreat for home, clinic and classroom\n",
+      "price": 19500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "ST-TOY-COM-001",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-storyteller-s-theatre/1785652562164-33b0le.png"
+      ],
+      "weightKg": 35
+    },
+    {
+      "id": "prod_the_petit_chef_kitchen",
+      "slug": "the-petit-chef-kitchen",
+      "title": "The Petit Chef Kitchen",
+      "description": "Dimensions: L100 · W30 · H110 cm   ·   Pre-order\n\nFor the tiniest of chefs. The Petit Chef Kitchen is a beautifully detailed play kitchen where little hands stir, serve and imagine — building language and independence one pretend meal at a time.\n\nKey features:\n•\tDetailed, full-featured play kitchen\n•\tEncourages life-skills and language\n•\tGenerously sized, built to last\n•\tA grand centrepiece for pretend play\n",
+      "price": 20000,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "OT-TOY-THP-030",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-petit-chef-kitchen/1785652614382-yzwk37.png"
+      ],
+      "weightKg": 30
+    },
+    {
+      "id": "prod_the_little_explorer_bus",
+      "slug": "the-little-explorer-bus",
+      "title": "The Little Explorer Bus",
+      "description": "Dimensions: L120 · W55 · H60 cm   ·   Pre-order\n\nDestination: anywhere their imagination goes. The Little Explorer Bus is a pretend-play centrepiece built for storytelling, role-play and endless small adventures.\n\nKey features:\n•\tImmersive pretend-play furniture\n•\tSturdy, standing design\n•\tSparks social and language play\n•\tA statement piece for any playroom\n",
+      "price": 28500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-001",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-explorer-bus/1785652642697-gyos6d.png"
+      ],
+      "weightKg": 60
+    },
+    {
+      "id": "prod_the_first_steps_walkway",
+      "slug": "the-first-steps-walkway",
+      "title": "The First Steps Walkway",
+      "description": "Dimensions: L160 · W46 · H46 cm   ·   Pre-order\n\nFirst steps, steady and sure. The First Steps Walkway offers gentle support as little ones find their balance and their confidence — every wobble a small, celebrated victory.\n\nKey features:\n•\tSupportive walking rails\n•\tBuilds balance and confidence\n•\tIdeal for early mobility and PT\n•\tSolid, dependable construction\n",
+      "price": 22500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "PT-EQP-MOB-002",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-first-steps-walkway/1785652670335-x8mam7.png"
+      ],
+      "weightKg": 20
+    },
+    {
+      "id": "prod_the_summit_climbing_triangle",
+      "slug": "the-summit-climbing-triangle",
+      "title": "The Summit Climbing Triangle",
+      "description": "Dimensions: L120 · W68 · H65 cm   ·   Pre-order\n\nLittle climbers, big confidence. The Summit Climbing Triangle invites your child to climb, balance and problem-solve — building strength and coordination through the joy of movement.\n\nKey features:\n•\tClimbing frame with ramp\n•\tBuilds strength and coordination\n•\tSupports gross-motor development\n•\tClinic-grade, sturdy build\n",
+      "price": 26500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "PT-EQP-BAL-002",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-summit-climbing-triangle/1785652698795-ixxz8b.png"
+      ],
+      "weightKg": 45
+    },
+    {
+      "id": "prod_the_little_adventurer_gym",
+      "slug": "the-little-adventurer-gym",
+      "title": "The Little Adventurer Gym",
+      "description": "Dimensions: L119 · W110 · H124 cm   ·   Pre-order\n\nOne set, endless ways to move. The Little Adventurer Gym combines climbing, sliding and swinging into a single adventure — building confident, capable bodies through active play.\n\nKey features:\n•\tAll-in-one climb, slide and swing\n•\tEncourages active, physical play\n•\tDevelops balance and motor planning\n•\tIdeal for homes, clinics and schools\n",
+      "price": 49500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "PT-EQP-BAL-003",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-adventurer-gym/1785652719107-daagdd.png"
+      ],
+      "weightKg": 40
+    },
+    {
+      "id": "prod_the_little_movers_soft_play_set",
+      "slug": "the-little-movers-soft-play-set",
+      "title": "The Little Movers Soft-Play Set",
+      "description": "Dimensions: L480 · W140 · H110 cm   ·   Pre-order\n\nA whole world of soft, safe adventure. The Little Movers Soft-Play Set brings climbing, sliding and tumbling together in one plush, worry-free landscape — perfect for clinics, playrooms and growing minds.\n\nKey features:\n•\tComplete soft-play landscape\n•\tClimb, slide and tumble safely\n•\tDurable, wipe-clean surfaces\n•\tBuilt for clinics and play centres\n",
+      "price": 159500,
+      "collectionSlug": "sensory-therapeutic-tools",
+      "sku": "OT-SEN-INT-015",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-movers-soft-play-set/1785652768532-2816yd.png"
+      ],
+      "weightKg": 225
+    },
+    {
+      "id": "prod_the_reading_cottage",
+      "slug": "the-reading-cottage",
+      "title": "The Reading Cottage",
+      "description": "Dimensions: up to 120 · 80 · H150 cm   ·   Pre-order\n\nA little cottage where big imaginations grow. Part reading den, part make-believe hideaway, the Reading Cottage gives little ones a room of their own to read, rest and dream. Comes as a pair of two.\n\nKey features:\n•\tCharming cottage design\n•\tDoubles as reading and play space\n•\tSturdy, generously sized\n•\tAvailable in two colour ways\n",
+      "price": 66500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-002",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-reading-cottage/1785652797413-iuizsh.png",
+        "/api/uploads/products/the-reading-cottage/1785769796928-uaxevq.png",
+        "/api/uploads/products/the-reading-cottage/1785769797536-v6sv3l.png",
+        "/api/uploads/products/the-reading-cottage/1785769797999-vcdwyk.png",
+        "/api/uploads/products/the-reading-cottage/1785769798570-yh7yx5.png"
+      ],
+      "weightKg": 265
+    },
+    {
+      "id": "prod_the_story_nook",
+      "slug": "the-story-nook",
+      "title": "The Story Nook",
+      "description": "Dimensions: L150 · W75 · H180 cm   ·   Pre-order\n\nA quiet corner made entirely for stories. The Story Nook is a cozy, enclosed retreat where your child can disappear into a good book — an heirloom-quality reading haven for the home or clinic. Available in single and double.\n\nKey features:\n•\tEnclosed, cozy reading retreat\n•\tHeirloom-quality build\n•\tSingle and double options\n•\tA calming space for focus and rest\n\n",
+      "price": 113000,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-003",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-story-nook/1785652841400-kjt5tm.png"
+      ],
+      "weightKg": 100
+    },
+    {
+      "id": "prod_the_heirloom_dollhouse",
+      "slug": "the-heirloom-dollhouse",
+      "title": "The Heirloom Dollhouse",
+      "description": "Dimensions: L58.5 · W30 · H75 cm   ·   Pre-order\n\nA timeless home for make-believe. Crafted to be loved and handed down, the Heirloom Dollhouse invites gentle storytelling, small-world play and hours of quiet imagination.\n\nKey features:\n•\tTwo-storey small-world play\n•\tHeirloom-quality craftsmanship\n•\tSupports narrative and social skills\n•\tA keepsake piece to treasure\n",
+      "price": 5950,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "OT-TOY-THP-031",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-heirloom-dollhouse/the-heirloom-dollhouse-2.png"
+      ],
+      "weightKg": 15
+    },
+    {
+      "id": "prod_the_little_shores_sand_water_table_small",
+      "slug": "the-little-shores-sand-water-table",
+      "title": "The Little Shores Sand & Water Table",
+      "description": "Dimensions: Small & Large sizes   ·   Pre-order\n\nSand, water and endless curiosity. The Little Shores Table invites hands-on sensory exploration — pouring, scooping and discovering — with two sizes to suit every space.\n\nKey features:\n•\tSand and water sensory play\n•\tEncourages exploration and focus\n•\tAvailable in Small and Large\n•\tPerfect for home, school and clinic\n",
+      "price": 9100,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "OT-SEN-INT-016",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [
+        {
+          "type": "Size",
+          "label": "LARGE",
+          "sku": "OT-SEN-INT-016-LARG",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "SMALL",
+          "sku": "OT-SEN-INT-016-SMAL",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/the-little-shores-sand-water-table/1785652880806-pzjssj.png"
+      ],
+      "weightKg": 10
+    },
+    {
+      "id": "prod_the_wishing_tree_board",
+      "slug": "the-wishing-tree-board",
+      "title": "The Wishing Tree Board",
+      "description": "Dimensions: W118 · H118 cm   ·   Pre-order\n\nAn interactive board that grows with play. The Wishing Tree Board turns a wall into a place for learning, display and imagination — a warm, tactile centrepiece for the classroom or playroom.\n\nKey features:\n•\tLarge interactive wall board\n•\tSupports learning and display\n•\tWarm, natural styling\n•\tPerfect for schools and clinics\n",
+      "price": 8100,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "SP-MAT-LRN-001",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-wishing-tree-board/1785652901745-39m4ou.png"
+      ],
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_the_little_faces_softwall_panels",
+      "slug": "the-little-faces-softwall-panels",
+      "title": "The Little Faces Softwall Panels",
+      "description": "Dimensions: H 60–150 cm  ·   Pre-order\n\nEvery corner, a little friendlier. The Little Faces softwall panels soften hard edges with playful character and padded protection — turning any room into a warm, safe place to play.\n\nKey features:\n•\tPlayful, friendly panel design\n•\tCushions walls and corners\n•\tCustomizable to any wall\n•\tSafe, inviting spaces for little ones\n",
+      "price": 7100,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-004",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-faces-softwall-panels/1785652938683-97lb30.png"
+      ],
+      "weightKg": 25
+    },
+    {
+      "id": "prod_the_castle_keep_softwall_panels",
+      "slug": "the-castle-keep-softwall-panels",
+      "title": "The Castle Keep Softwall Panels",
+      "description": "Dimensions: H 60–150 cm  ·   Pre-order\n\nWhere safe play meets storybook charm. Our Castle Keep softwall panels cushion the room in gentle padding, so little adventurers can climb, tumble and dream — worry-free. \n\nKey features:\n•\tCushioned, impact-absorbing panels\n•\tStorybook castle theme\n•\t60–150 cm\n•\tIdeal for playrooms, schools and therapy centers\n",
+      "price": 6700,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-005",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-castle-keep-softwall-panels/1785652963144-red746.png"
+      ],
+      "weightKg": 25
+    },
+    {
+      "id": "prod_the_garden_cottage_softwall_panels",
+      "slug": "the-garden-cottage-softwall-panels",
+      "title": "The Garden Cottage Softwall Panels",
+      "description": "Dimensions: H 60–150 cm  ·   Pre-order\n\nA softer, sweeter kind of wall. The Garden Cottage panels wrap the room in storybook scenery and gentle cushioning — beauty and safety, made to measure for your space.\n\nKey features:\n•\tSoft padded protection\n•\tCharming garden-cottage scenery\n•\t60–150 cm\n•\tPerfect for nurseries and clinics\n",
+      "price": 7100,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-006",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-garden-cottage-softwall-panels/1785652987969-hcf4iz.png"
+      ],
+      "weightKg": 25
+    },
+    {
+      "id": "prod_the_woodland_softwall_panels",
+      "slug": "the-woodland-softwall-panels",
+      "title": "The Woodland Softwall Panels",
+      "description": "Dimensions: H 60–150 cm   ·   Pre-order\n\nBring the calm of the forest indoors. Our Woodland softwall panels pair nature-inspired charm with gentle cushioning, creating a serene, protected space where little ones can roam free.\n\nKey features:\n•\tNature-inspired woodland theme\n•\tSoft, protective padding\n•\t60–150 cm\n•\tCalming spaces for home and therapy\n",
+      "price": 6700,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-007",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-woodland-softwall-panels/1785653008173-ybcqeu.png"
+      ],
+      "weightKg": 25
+    },
+    {
+      "id": "prod_the_little_frog_pouf",
+      "slug": "the-little-frog-pouf",
+      "title": "The Little Frog Pouf",
+      "description": "Dimensions: W68 · D72 · H70 cm   ·   Pre-order\n\nThe friendliest seat in the room. This whimsical frog-shaped pouf invites little ones to hop in, sink down and get comfy — a cheerful character piece that makes any nursery feel like play while giving cushioned, supportive seating.\nKey features:\n•\tPlush, huggable frog design\n•\tCushioned support for little bodies\n•\tA playful focal point for any room\n•\tGreat for home, clinic or classroom",
+      "price": 7000,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-008",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-frog-pouf/1785653022807-ys3cpp.png"
+      ],
+      "weightKg": 1.9
+    },
+    {
+      "id": "prod_the_little_robot_pouf",
+      "slug": "the-little-robot-pouf",
+      "title": "The Little Robot Pouf",
+      "description": "Dimensions: W65 · D52 · H75 cm   ·   Pre-order\n\nBeep-boop, ready to snuggle. The Little Robot Pouf pairs playful character with genuinely cozy, cushioned support — a soft landing that doubles as your child's favourite little sidekick.\n\nKey features:\n•\tFun robot character styling\n•\tSoft, stable seating\n•\tSparks imaginative play\n•\tDurable enough for busy spaces\n",
+      "price": 6500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-009",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-robot-pouf/1785653034024-j7pk01.png"
+      ],
+      "weightKg": 1.7
+    },
+    {
+      "id": "prod_the_petite_pouf_polyester",
+      "slug": "the-petite-pouf",
+      "title": "The Petite Pouf",
+      "description": "Dimensions: 90 · 110 cm   ·   Pre-order\n\nUnderstated, elegant and endlessly useful. The Petite Pouf is our everyday hero — a beautifully simple seat that blends into a growing room and always finds a purpose, from extra seating to a footrest for story time.\n\nKey features:\n•\tTimeless, minimalist design\n•\tVersatile everyday seating\n•\tBlends into any interior\n•\tAvailable in cotton and polyester",
+      "price": 12000,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-010",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [
+        {
+          "type": "Material",
+          "label": "COTTON",
+          "sku": "CLI-FUR-GEN-010-COTT",
+          "stock": 0
+        },
+        {
+          "type": "Material",
+          "label": "POLYESTER",
+          "sku": "CLI-FUR-GEN-010-POLY",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/the-petite-pouf/1785653043065-njnqf0.png",
+        "/api/uploads/products/the-petite-pouf/1785769780375-bnue0u.png"
+      ],
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_the_whale_cloud_pouf_small",
+      "slug": "the-whale-cloud-pouf",
+      "title": "The Whale Cloud Pouf",
+      "description": "Dimensions: Small & Large sizes   ·   Pre-order\n\nCloud-soft seating for cozy corners. Gentle, plush and endlessly inviting, the Whale Cloud Pouf turns a quiet corner into a calm little retreat — in two sizes to suit every space.\n\nKey features:\n•\tAvailable in Small and Large\n•\tExtra-plush, calming form\n•\tPerfect for calm-down corners\n•\tSoft, safe and inviting\n",
+      "price": 7900,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-012",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [
+        {
+          "type": "Size",
+          "label": "LARGE",
+          "sku": "CLI-FUR-GEN-012-LARG",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "SMALL",
+          "sku": "CLI-FUR-GEN-012-SMAL",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/the-whale-cloud-pouf/1785653054583-gad0ru.png"
+      ],
+      "weightKg": 1.7
+    },
+    {
+      "id": "prod_the_meadow_bunny_pouf_large",
+      "slug": "the-meadow-bunny-pouf",
+      "title": "The Meadow Bunny Pouf",
+      "description": "Dimensions: Small & Large sizes   ·   Pre-order\n\nSoft ears, softer cuddles. The Meadow Bunny Pouf is a huggable friend to sit, lean and rest against — available in two sizes so it can grow right alongside your little one.\n\nKey features:\n•\tAvailable in Small and Large\n•\tCuddly, comforting design\n•\tDoubles as a soft companion\n•\tIdeal for nurseries and calm corners\n",
+      "price": 9500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-014",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [
+        {
+          "type": "Size",
+          "label": "LARGE",
+          "sku": "CLI-FUR-GEN-014-LARG",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "SMALL",
+          "sku": "CLI-FUR-GEN-014-SMAL",
+          "stock": 0
+        }
+      ],
+      "images": [
+        "/api/uploads/products/the-meadow-bunny-pouf/1785653095679-lhq1fl.png",
+        "/api/uploads/products/the-meadow-bunny-pouf/1785769767121-owkxjh.png"
+      ],
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_the_sunny_banana_pouf",
+      "slug": "the-sunny-banana-pouf",
+      "title": "The Sunny Banana Pouf",
+      "description": "Dimensions: L100 · W55 · H60 cm   ·   Pre-order\n\nA little burst of sunshine for the playroom. The Sunny Banana Pouf gives your child a soft, playful spot to curl up with a book or simply rest. Light enough to move from corner to corner, it turns any space into a cozy little reading nook — part seat, part cheerful character.\n\nKey features:\n•\tSoft, child-safe upholstery\n•\tLightweight and easy to reposition\n•\tEncourages independent, comfortable sitting\n•\tPerfect for reading nooks, playrooms and clinics\n",
+      "price": 6700,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-016",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-sunny-banana-pouf/1785653199068-l03rin.png"
+      ],
+      "weightKg": 1.4
+    },
+    {
+      "id": "prod_the_heirloom_rocking_horse",
+      "slug": "the-heirloom-rocking-horse",
+      "title": "The Heirloom Rocking Horse",
+      "description": "Dimensions: L84.5 · W30 · H56.5 cm   ·   Pre-order\n\nA gentle rock, a lifetime of memories. Our Heirloom Rocking Horse pairs classic wooden craftsmanship with soothing, rhythmic movement — building balance while bringing a little calm to the day.\n\nKey features:\n•\tClassic wooden rocking horse\n•\tSoothing, rhythmic movement\n•\tBuilds balance and core strength\n•\tA timeless keepsake piece\n",
+      "price": 6500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "PT-EQP-BAL-004",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-heirloom-rocking-horse/1785653219949-4xx6pj.png"
+      ],
+      "weightKg": 10
+    },
+    {
+      "id": "prod_the_storybook_express",
+      "slug": "the-storybook-express",
+      "title": "The Storybook Express",
+      "description": "Dimensions: L221 · W32 · H60 cm   ·   Pre-order\n\nAll aboard the reading train! The Storybook Express keeps favourite books front-facing and within reach, turning tidy-up time into an adventure and making every story easy to choose.\n\nKey features:\n•\tFront-facing book display\n•\tPlayful train design\n•\tEncourages independent reading\n•\tSturdy storage for home or classroom\n",
+      "price": 55000,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "CLI-FUR-GEN-017",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-storybook-express/1785653271313-bq61h1.png",
+        "/api/uploads/products/the-storybook-express/1785769887986-6xv4c1.png"
+      ],
+      "weightKg": 8
+    },
+    {
+      "id": "prod_the_little_gourmet_kitchen",
+      "slug": "the-little-gourmet-kitchen",
+      "title": "The Little Gourmet Kitchen",
+      "description": "Dimensions: L105 · W30 · H102.5 cm   ·   Pre-order\n\nWhere small hands cook up big stories. Complete with fridge, oven and washer details, the Little Gourmet Kitchen brings pretend cooking to life — nurturing creativity, role-play and everyday skills.\n\nKey features:\n•\tFridge, oven and laundry details\n•\tNurtures creativity and role-play\n•\tSturdy, standing furniture\n•\tLoved at home and in clinics\n",
+      "price": 10500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "OT-TOY-THP-032",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-gourmet-kitchen/1785653303592-q6fhxo.png"
+      ],
+      "weightKg": 18.5
+    },
+    {
+      "id": "prod_the_ripple_tiles",
+      "slug": "the-ripple-tiles",
+      "title": "The Ripple Tiles",
+      "description": "Dimensions: 30 · 30 cm · 8 pcs/set   ·   Pre-order\nSquish, ripple, explore. These liquid-filled sensory tiles react to every little footstep — a mesmerising, tactile invitation to barefoot discovery. Set of 8.\nKey features:\n•\tLiquid-filled sensory floor tiles\n•\tReacts to touch and movement\n•\tSet of 8 (30 × 30 cm each)\n•\tCalming, tactile exploration\n",
+      "price": 6000,
+      "collectionSlug": "active-sensory-play",
+      "sku": "OT-SEN-INT-018",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-ripple-tiles/1785653323945-swyaf2.png",
+        "/api/uploads/products/the-ripple-tiles/1785653336315-3syvp2.jpg",
+        "/api/uploads/products/the-ripple-tiles/1785769811776-qr7mgy.png"
+      ],
+      "weightKg": 18
+    },
+    {
+      "id": "prod_aurora_light_table",
+      "slug": "aurora-light-table",
+      "title": "Aurora Light Table",
+      "description": "Turn any corner into a pool of soft, glowing light. \n\nThe Aurora Light Table is a round LED play surface that illuminates gently from within — inviting little ones to sort, trace, build, and explore. Its warm, even glow makes colors come alive, turning translucent tiles, counters, and shapes into hands-on tools for discovering numbers, letters, patterns, and early math.\n\nTherapists love light tables for the way they naturally draw a child's visual attention and encourage focused, screen-free play — supporting fine motor skills, hand-eye coordination, color and shape recognition, and calm sensory regulation. A beautiful, quieting centerpiece for clinics, classrooms, and cozy play nooks at home.\n\nNumbers, letters, and translucent color-sheet accessory sets inclusive in the set.",
+      "price": 6000,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "OT-SEN-INT-019",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/aurora-light-table/1785653357092-efum7u.png",
+        "/api/uploads/products/aurora-light-table/1785769721963-3f37yc.png"
+      ],
+      "weightKg": 9.5
+    },
+    {
+      "id": "prod_the_horizon_light_table",
+      "slug": "the-horizon-light-table",
+      "title": "The Horizon Light Table",
+      "description": "A wide, glowing canvas for big imaginations. The Horizon Light Table is a rectangular LED surface with room for two or more children to explore side by side — sorting translucent colors, tracing letters, building patterns, and telling stories in soft, glowing light.\n\nIts generous top makes it ideal for group activities and guided therapy sessions, pulling children into focused, hands-on play that builds visual attention, fine motor control, and early literacy and numeracy. The gentle, even illumination is easy on little eyes and doubles as a calming sensory experience for winding down — a screen-free centerpiece for clinics, classrooms, and shared play spaces.\n\nNumbers, letters, and translucent color-sheet accessory sets inclusive in the set.",
+      "price": 5500,
+      "collectionSlug": "furniture-room-pieces",
+      "sku": "OT-SEN-INT-020",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-horizon-light-table/1785653369932-31w4ba.png",
+        "/api/uploads/products/the-horizon-light-table/1785769737992-9fa77c.png"
+      ],
+      "weightKg": 9
+    },
+    {
+      "id": "prod_the_softpage_storybook",
+      "slug": "the-softpage-storybook",
+      "title": "The Softpage Storybook",
+      "description": "Dimensions: Soft cloth book   ·   Available now\n\nA soft felt quiet book that turns reading into hands-on play. Buttons to fasten, laces to thread and characters to move — each page quietly builds fine motor, language and focus while your child plays.\n\nKey features:\n•\tSoft, safe felt pages\n•\tButtons, zips and laces for fine motor\n•\tBuilds language and attention\n•\tScreen-free, quiet play\n",
+      "price": 649,
+      "collectionSlug": "pretend-play-learning-toys",
+      "sku": "ST-TOY-COM-002",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-softpage-storybook/1785769868537-rj69mz.png",
+        "/api/uploads/products/the-softpage-storybook/1785653417278-l1vbj2.png"
+      ],
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_the_little_farmstead_train",
+      "slug": "the-little-farmstead-train",
+      "title": "The Little Farmstead Train",
+      "description": "All aboard for counting fun! The Little Farmstead Train pairs numbered cars with cuddly animal friends — a hands-on way to learn counting, colours and cause-and-effect through play. Recommended for ages 12 months and up.\n\nKey features:\n•\tCounting and colour-sorting play\n•\tTen animal figures included\n•\tBuilds fine motor and language\n•\tRecommended for ages 12 months+",
+      "price": 699,
+      "collectionSlug": "pretend-play-learning-toys",
+      "sku": "OT-TOY-THP-033",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-farmstead-train/1785653455894-qlbzxq.png"
+      ],
+      "weightKg": 40
+    },
+    {
+      "id": "prod_the_magnetic_maker_book",
+      "slug": "the-magnetic-maker-book",
+      "title": "The Magnetic Maker Book",
+      "description": "Snap, build, imagine. The Magnetic Maker Book turns shapes into endless creations — building focus, fine-motor control and creative problem-solving, all tucked into one tidy, portable book.\n\nKey features:\n•\t84 magnetic building pieces\n•\tSparks creativity and problem-solving\n•\tBuilds focus and fine motor\n•\tPortable, self-contained design",
+      "price": 599,
+      "collectionSlug": "pretend-play-learning-toys",
+      "sku": "OT-TOY-THP-034",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-magnetic-maker-book/1785653530848-pj6djd.png"
+      ],
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_the_little_expressions_set",
+      "slug": "the-little-expressions-set",
+      "title": "The Little Expressions Set",
+      "description": "Helping little ones name their big feelings. The Little Expressions Set turns emotions into something children can see, sort and understand — a gentle first step toward emotional confidence.\n\nKey features:\n•\tEmotion recognition activity\n•\tSupports social-emotional learning\n•\tHands-on, interactive design\n•\tLoved by SLPs, teachers and parents\n",
+      "price": 599,
+      "collectionSlug": "pretend-play-learning-toys",
+      "sku": "SP-TOY-EDU-001",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-little-expressions-set/1785653555243-wngnze.png"
+      ],
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_the_talking_story_pen",
+      "slug": "the-talking-story-pen",
+      "title": "The Talking Story Pen",
+      "description": "Touch the page and hear the story. The English-Zone Talking Story Pen brings books to life with sound — a full set of books, a picture dictionary, the smart pen and recordable stickers to build vocabulary, listening and a love of reading.\n\nKey features:\n•\tTouch-to-read smart pen\n•\tFull English-Zone book set + 1,000-word dictionary\n•\tRecordable stickers for personal play\n•\tGreat for early readers and language therapy\n",
+      "price": 2950,
+      "collectionSlug": "pretend-play-learning-toys",
+      "sku": "ST-MAT-LAN-003",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/the-talking-story-pen/1785653752856-dnox1l.png",
+        "/api/uploads/products/the-talking-story-pen/1785769911411-66upbo.png",
+        "/api/uploads/products/the-talking-story-pen/1785769911850-0xpub3.png"
+      ],
+      "weightKg": 0.6
+    },
+    {
+      "id": "prod_mer_gen_tls_051",
+      "slug": "pair-black-scrub-polo-x-large-pants-x-large",
+      "title": "PAIR BLACK SCRUB POLO-X-LARGE & PANTS-X-LARGE",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-051",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_063",
+      "slug": "shirt-from-limits-to-leaps-8",
+      "title": "Shirt From Limits To Leaps",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-063-12",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-063-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-063-8",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-063",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_pch_001",
+      "slug": "verdana-pouch",
+      "title": "VERDANA POUCH",
+      "description": "",
+      "price": 0,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/verdana-pouch/upload-1784535244307-rfz343.jpg"
+      ],
+      "stock": 48,
+      "sku": "MER-GEN-PCH-001",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_075",
+      "slug": "shirt-therapist-in-mot-s",
+      "title": "SHIRT THERAPIST IN MOT - S",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-075",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_ot_toy_thp_029",
+      "slug": "soft-building-blocks",
+      "title": "The Little Builders Soft Blocks",
+      "description": "Big builds, soft landings. The Little Builders Soft Blocks turn any room into a construction zone your child can climb, stack and topple — completely worry-free. Lightweight and cushioned from the inside out, each block is easy for little hands to lift and arrange, encouraging creativity, spatial thinking and gross-motor play while staying gentle on tumbles and bumps. Build a tower, a tunnel, a fort or a cozy nook — then knock it all down and start again. A favourite for playrooms, classrooms and therapy centers alike.\n\nKey features:\n•\tSoft, foam-filled blocks in a wipe-clean cover\n•\tLightweight and easy for little hands to stack\n•\tBuilds creativity, balance and spatial awareness\n•\tSafe for climbing, tumbling and open-ended play\n•\tPerfect for homes, schools and therapy centers\n",
+      "price": 800,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/soft-building-blocks/1785654273761-5k5ix4.png"
+      ],
+      "stock": 1,
+      "sku": "OT-TOY-THP-029",
+      "isPreOrder": false,
+      "disabled": false,
+      "weightKg": 2.5
+    },
+    {
+      "id": "prod_edu_mat_bok_015",
+      "slug": "sandbox-notebook-orange",
+      "title": "SANDBOX NOTEBOOK (ORANGE)",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "EDU-MAT-BOK-015",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_039",
+      "slug": "rust-scrub-pants-large",
+      "title": "RUST SCRUB PANTS LARGE",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-039",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_052",
+      "slug": "pair-rust-scrub-polo-x-large-pants-x-large",
+      "title": "PAIR RUST SCRUB POLO-X-LARGE & PANTS-X-LARGE",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-052",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_064",
+      "slug": "shirt-from-limits-to-leaps-12",
+      "title": "SHIRT FROM LIMITS TO LEAPS-12",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-064",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_edu_mat_bok_016",
+      "slug": "sandbox-notebook-black",
+      "title": "SANDBOX NOTEBOOK (BLACK)",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "EDU-MAT-BOK-016",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_040",
+      "slug": "rust-scrub-pants-medium",
+      "title": "RUST SCRUB PANTS MEDIUM",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-040",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_006",
+      "slug": "shirt-therapist-on-board-l",
+      "title": "Shirt Therapist On Board",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "L",
+          "sku": "MER-GEN-TLS-006-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-006-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-006-S",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-006",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_ot_toy_thp_027",
+      "slug": "alpaca-stuff-toy-small",
+      "title": "Alpaca Stuff Toy (Small)",
+      "description": "",
+      "price": 0,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/alpaca-stuff-toy-small/upload-1784570021494-mehotl.jpeg"
+      ],
+      "stock": 100,
+      "sku": "OT-TOY-THP-027",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.5
+    },
+    {
+      "id": "prod_ot_toy_thp_028",
+      "slug": "alpaca-stuff-toy-medium",
+      "title": "Alpaca Stuff Toy (Medium)",
+      "description": "",
+      "price": 0,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/alpaca-stuff-toy-medium/upload-1784570027257-ct1izl.jpeg"
+      ],
+      "stock": 100,
+      "sku": "OT-TOY-THP-028",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 1
+    },
+    {
+      "id": "prod_edu_mat_bok_014",
+      "slug": "aura-academy-book-set-grade-4",
+      "title": "Aura Academy Book Set (Grade 4)",
+      "description": "Book set for students enrolled in Aura Academy for Learning",
+      "price": 7500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/aura-academy-book-set-grade-4/1785770725810-oegdkg.avif"
+      ],
+      "stock": 0,
+      "sku": "EDU-MAT-BOK-014",
+      "isPreOrder": true,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_ot_sen_int_005",
+      "slug": "tactoease-sensory-brushes-blue",
+      "title": "TACTOEASE SENSORY BRUSHES - BLUE",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "active-sensory-play",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "OT-SEN-INT-005-BLU",
+          "stock": 31
+        }
+      ],
+      "images": [
+        "/api/uploads/products/tactoease-sensory-brushes-blue/upload-1782895369298-r0bpzd.png"
+      ],
+      "stock": 25,
+      "sku": "OT-SEN-INT-005",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_mer_gen_stk_003",
+      "slug": "sandbox-id-lace",
+      "title": "SANDBOX ID LACE",
+      "description": "",
+      "price": 50,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-STK-003",
+      "isPreOrder": false,
+      "disabled": true,
+      "bestSeller": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_041",
+      "slug": "rust-scrub-pants-small",
+      "title": "RUST SCRUB PANTS SMALL",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-041",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_053",
+      "slug": "pair-rust-scrub-polo-large-pants-large",
+      "title": "PAIR RUST SCRUB POLO-LARGE & PANTS-LARGE",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-053",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_065",
+      "slug": "shirt-from-limits-to-leaps-16",
+      "title": "SHIRT FROM LIMITS TO LEAPS-16",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-065",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_stk_002",
+      "slug": "car-sticker-patient-stronger-everyday-rehab-pt-ot-slp",
+      "title": "CAR STICKER PATIENT (STRONGER EVERYDAY) REHAB PT OT SLP",
+      "description": "",
+      "price": 180,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/car-sticker-patient-stronger-everyday-rehab-pt-ot-slp/upload-1784533999225-exfv6l.png"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-STK-002",
+      "isPreOrder": false,
+      "disabled": false,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_035",
+      "slug": "aura-academy-polo-uniform",
+      "title": "Aura Academy Polo Uniform",
+      "description": "",
+      "price": 500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/aura-academy-polo-uniform/upload-1784534081551-qr1uc5.jpg"
+      ],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-035",
+      "isPreOrder": true,
+      "disabled": false,
+      "bestSeller": true,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_mer_gen_stk_004",
+      "slug": "sticker-i-help-you-move",
+      "title": "STICKER, I HELP YOU MOVE",
+      "description": "",
+      "price": 100,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-STK-004",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_042",
+      "slug": "rust-scrub-polo-large",
+      "title": "Rust Scrub Polo",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "LARGE",
+          "sku": "MER-GEN-TLS-042-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "MEDIUM",
+          "sku": "MER-GEN-TLS-042-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "SMALL",
+          "sku": "MER-GEN-TLS-042-S",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "X-LARGE",
+          "sku": "MER-GEN-TLS-042-XL",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-042",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_054",
+      "slug": "proud-sandbox-therapist-m",
+      "title": "Proud Sandbox Therapist",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "L",
+          "sku": "MER-GEN-TLS-054-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-054-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-054-S",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-054",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_mer_gen_tls_066",
+      "slug": "shirt-moving-forward-8",
+      "title": "Shirt Moving Forward",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-066-12",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-066-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-066-8",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-066",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_ot_sen_int_001",
+      "slug": "tactoease-sensory-brushes-purple",
+      "title": "Tactoease Sensory Brushes",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "active-sensory-play",
+      "variants": [
+        {
+          "type": "Color",
+          "label": "BLUE",
+          "sku": "OT-SEN-INT-001-BLUE",
+          "stock": 25
+        },
+        {
+          "type": "Color",
+          "label": "GREEN",
+          "sku": "OT-SEN-INT-001-GREE",
+          "stock": 30
+        },
+        {
+          "type": "Color",
+          "label": "PINK",
+          "sku": "OT-SEN-INT-001-PINK",
+          "stock": 33
+        },
+        {
+          "type": "Color",
+          "label": "PURPLE",
+          "sku": "OT-SEN-INT-001-PURP",
+          "stock": 28
+        }
+      ],
+      "images": [
+        "/api/uploads/products/tactoease-sensory-brushes-purple/upload-1782895417156-h9rxzh.png"
+      ],
+      "stock": 116,
+      "sku": null,
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_ot_sen_int_002",
+      "slug": "tactoease-sensory-brushes-green",
+      "title": "TACTOEASE SENSORY BRUSHES - GREEN",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tactoease-sensory-brushes-green/upload-1782895404644-00mqpl.png"
+      ],
+      "stock": 30,
+      "sku": "OT-SEN-INT-002",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_mer_gen_tls_067",
+      "slug": "shirt-moving-forward-12",
+      "title": "SHIRT MOVING FORWARD-12",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-067",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_stk_005",
+      "slug": "sticker-moving-forward-one-session-at-a-time",
+      "title": "STICKER, MOVING FORWARD ONE SESSION AT A TIME",
+      "description": "",
+      "price": 100,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-STK-005",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_043",
+      "slug": "rust-scrub-polo-medium",
+      "title": "RUST SCRUB POLO MEDIUM",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-043",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_055",
+      "slug": "proud-sandbox-therapist-s",
+      "title": "PROUD SANDBOX THERAPIST S",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-055",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_mer_gen_stk_001",
+      "slug": "verdana-pouch-mer-gen-stk-001",
+      "title": "Verdana Pouch",
+      "description": "",
+      "price": 0,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 48,
+      "sku": "MER-GEN-STK-001",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_ot_eqp_fin_001",
+      "slug": "poppy-the-precision-ball-clip",
+      "title": "POPPY THE PRECISION BALL CLIP",
+      "description": "",
+      "price": 1200,
+      "collectionSlug": "pretend-play-learning-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/poppy-the-precision-ball-clip/upload-1784569911424-cyr7el.png"
+      ],
+      "stock": 28,
+      "sku": "OT-EQP-FIN-001",
+      "isPreOrder": false,
+      "disabled": false,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_mer_gen_pbg_002",
+      "slug": "verdana-paper-bag-white",
+      "title": "VERDANA PAPER BAG - WHITE",
+      "description": "",
+      "price": 0,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 63,
+      "sku": "MER-GEN-PBG-002",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_mer_gen_stk_006",
+      "slug": "sticker-from-pain-to-power",
+      "title": "STICKER, FROM PAIN TO POWER",
+      "description": "",
+      "price": 100,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-STK-006",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_044",
+      "slug": "rust-scrub-polo-small",
+      "title": "RUST SCRUB POLO SMALL",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-044",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_056",
+      "slug": "proud-sandbox-therapist-l",
+      "title": "PROUD SANDBOX THERAPIST L",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-056",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_mer_gen_tls_033",
+      "slug": "movement-mindset-shirt",
+      "title": "MOVEMENT MINDSET SHIRT",
+      "description": "",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-033",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_034",
+      "slug": "aura-health-rehab-clinic-pedia-design-2-tshirt",
+      "title": "Aura Health Rehab Clinic Pedia (Design 2) TSHIRT",
+      "description": "",
+      "price": 498,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-034",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_068",
+      "slug": "shirt-moving-forward-16",
+      "title": "SHIRT MOVING FORWARD-16",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-068",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_ot_sen_int_004",
+      "slug": "tactoease-sensory-brushes-pink",
+      "title": "TACTOEASE SENSORY BRUSHES - PINK",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "active-sensory-play",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tactoease-sensory-brushes-pink/upload-1782895377961-s0fl8a.png"
+      ],
+      "stock": 33,
+      "sku": "OT-SEN-INT-004",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.15
+    },
+    {
+      "id": "prod_mer_gen_stk_007",
+      "slug": "sticker-progress-in-motion",
+      "title": "STICKER, PROGRESS IN MOTION",
+      "description": "",
+      "price": 100,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-STK-007",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_045",
+      "slug": "rust-scrub-polo-x-large",
+      "title": "RUST SCRUB POLO X-LARGE",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-045",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_057",
+      "slug": "shirt-therapist-on-board-m",
+      "title": "SHIRT THERAPIST ON BOARD - M",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-057",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_069",
+      "slug": "shirt-active-recov-life-8",
+      "title": "SHIRT ACTIVE RECOV LIFE 8",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-069",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_stk_008",
+      "slug": "sticker-proud-patient",
+      "title": "STICKER, PROUD PATIENT",
+      "description": "",
+      "price": 100,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-STK-008",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_046",
+      "slug": "scrub-black-pants-large",
+      "title": "Scrub Black Pants",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "LARGE",
+          "sku": "MER-GEN-TLS-046-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "SMALL",
+          "sku": "MER-GEN-TLS-046-S",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-046",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_058",
+      "slug": "shirt-therapist-on-board-s",
+      "title": "SHIRT THERAPIST ON BOARD - S",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-058",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_070",
+      "slug": "shirt-building-better-me-8",
+      "title": "Shirt Building Better Me",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "12",
+          "sku": "MER-GEN-TLS-070-12",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "16",
+          "sku": "MER-GEN-TLS-070-16",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "8",
+          "sku": "MER-GEN-TLS-070-8",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-070",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_stk_009",
+      "slug": "sticker-your-recovery-starts-here",
+      "title": "STICKER, YOUR RECOVERY STARTS HERE",
+      "description": "",
+      "price": 100,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-STK-009",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_047",
+      "slug": "scrub-black-pants-small",
+      "title": "SCRUB BLACK PANTS SMALL",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-047",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_059",
+      "slug": "shirt-from-pain-to-power-s",
+      "title": "Shirt From Pain To Power",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "L",
+          "sku": "MER-GEN-TLS-059-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "M",
+          "sku": "MER-GEN-TLS-059-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "S",
+          "sku": "MER-GEN-TLS-059-S",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-059",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_071",
+      "slug": "shirt-building-better-me-12",
+      "title": "SHIRT BUILDING BETTER ME 12",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-071",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_036",
+      "slug": "sandbox-clinic-polo-shirt-white-2xl",
+      "title": "SANDBOX CLINIC POLO SHIRT WHITE 2XL",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-036",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_048",
+      "slug": "black-scrub-polo-sandbox-clinic-small",
+      "title": "Black Scrub Polo (Sandbox Clinic)",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "SMALL",
+          "sku": "MER-GEN-TLS-048-S",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "X-LARGE",
+          "sku": "MER-GEN-TLS-048-XL",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-048",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_060",
+      "slug": "shirt-from-pain-to-power-m",
+      "title": "SHIRT FROM PAIN TO POWER -M",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-060",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_072",
+      "slug": "shirt-building-better-me-16",
+      "title": "SHIRT BUILDING BETTER ME 16",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-072",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_edu_mat_bok_010",
+      "slug": "aura-academy-book-set-grade-1",
+      "title": "Aura Academy Book Set (Grade 1)",
+      "description": "Book set for students enrolled in Aura Academy for Learning",
+      "price": 7500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/aura-academy-book-set-grade-1/1785770772704-g03i9o.avif"
+      ],
+      "stock": 0,
+      "sku": "EDU-MAT-BOK-010",
+      "isPreOrder": true,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_mer_gen_emb_001",
+      "slug": "pt-car-emblem",
+      "title": "PT CAR EMBLEM",
+      "description": "",
+      "price": 1200,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-EMB-001",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.1
+    },
+    {
+      "id": "prod_mer_gen_tls_073",
+      "slug": "shirt-strong-everyday-l",
+      "title": "SHIRT STRONG EVERYDAY -L",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-073",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_037",
+      "slug": "sandbox-clinic-polo-shirt-white-x-large",
+      "title": "SANDBOX CLINIC POLO SHIRT WHITE X-LARGE",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-037",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_049",
+      "slug": "black-scrub-polo-sandbox-clinic-x-large",
+      "title": "BLACK SCRUB POLO (SANDBOX CLINIC) X-LARGE",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-049",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_061",
+      "slug": "shirt-from-pain-to-power-l",
+      "title": "SHIRT FROM PAIN TO POWER -L",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-061",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_edu_mat_bok_005",
+      "slug": "book-bundle-4s-am-i-spoiling-my-child-toddler-talking-learni",
+      "title": "BOOK BUNDLE: 4S AM I SPOILING MY CHILD+TODDLER TALKING+LEARNING BY HEART+I AM A HERO",
+      "description": "",
+      "price": 1980,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/book-bundle-4s-am-i-spoiling-my-child-toddler-talking-learni/1786079390112-j7ruk1.png"
+      ],
+      "stock": 7,
+      "sku": "EDU-MAT-BOK-005",
+      "isPreOrder": false,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_edu_mat_bok_006",
+      "slug": "book-bundle-2s-toddler-spoiling",
+      "title": "BOOK BUNDLE: 2S TODDLER + SPOILING",
+      "description": "",
+      "price": 990,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/book-bundle-2s-toddler-spoiling/1786078970916-wih4fk.png"
+      ],
+      "stock": 7,
+      "sku": "EDU-MAT-BOK-006",
+      "isPreOrder": false,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_edu_mat_bok_013",
+      "slug": "aura-academy-book-set-grade-9",
+      "title": "Aura Academy Book Set (Grade 9)",
+      "description": "Book set for students enrolled in Aura Academy for Learning",
+      "price": 7500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/aura-academy-book-set-grade-9/1785770783110-2tc4he.avif"
+      ],
+      "stock": 0,
+      "sku": "EDU-MAT-BOK-013",
+      "isPreOrder": true,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_edu_mat_bok_007",
+      "slug": "book-bundle-2s-toddler-learning",
+      "title": "BOOK BUNDLE: 2S TODDLER + LEARNING",
+      "description": "",
+      "price": 990,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/book-bundle-2s-toddler-learning/1786078873315-pcihq1.png"
+      ],
+      "stock": 4,
+      "sku": "EDU-MAT-BOK-007",
+      "isPreOrder": false,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_edu_mat_bok_009",
+      "slug": "aura-academy-book-set-kindergarten",
+      "title": "Aura Academy Book Set (Kindergarten)",
+      "description": "Book set for students enrolled in Aura Academy for Learning",
+      "price": 7500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/aura-academy-book-set-kindergarten/1785770799696-mpiuy9.avif"
+      ],
+      "stock": 0,
+      "sku": "EDU-MAT-BOK-009",
+      "isPreOrder": true,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_edu_mat_bok_008",
+      "slug": "book-bundle-2s-spoiling-learning",
+      "title": "BOOK BUNDLE: 2S SPOILING + LEARNING",
+      "description": "",
+      "price": 990,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/book-bundle-2s-spoiling-learning/upload-1782897653076-c623mr.jpg"
+      ],
+      "stock": 5,
+      "sku": "EDU-MAT-BOK-008",
+      "isPreOrder": false,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_mer_gen_pbg_001",
+      "slug": "verdana-paper-bag-black",
+      "title": "VERDANA PAPER BAG - BLACK",
+      "description": "",
+      "price": 0,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 63,
+      "sku": "MER-GEN-PBG-001",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.4
+    },
+    {
+      "id": "prod_mer_gen_tls_074",
+      "slug": "shirt-therapist-in-mot-m",
+      "title": "SHIRT THERAPIST IN MOT - M",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-074",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_edu_mat_bok_011",
+      "slug": "aura-academy-book-set-grade-2",
+      "title": "Aura Academy Book Set (Grade 2)",
+      "description": "Book set for students enrolled in Aura Academy for Learning",
+      "price": 7500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/aura-academy-book-set-grade-2/1785770811138-2ycdrr.avif"
+      ],
+      "stock": 0,
+      "sku": "EDU-MAT-BOK-011",
+      "isPreOrder": true,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_edu_mat_bok_012",
+      "slug": "aura-academy-book-set-grade-3",
+      "title": "Aura Academy Book Set (Grade 3)",
+      "description": "Book set for students enrolled in Aura Academy for Learning",
+      "price": 7500,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/aura-academy-book-set-grade-3/1785770816055-q3nhq7.avif"
+      ],
+      "stock": 0,
+      "sku": "EDU-MAT-BOK-012",
+      "isPreOrder": true,
+      "disabled": false,
+      "weightKg": 1.5
+    },
+    {
+      "id": "prod_mer_gen_tls_038",
+      "slug": "rust-scrub-pants-x-large",
+      "title": "Rust Scrub Pants",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [
+        {
+          "type": "Size",
+          "label": "LARGE",
+          "sku": "MER-GEN-TLS-038-L",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "MEDIUM",
+          "sku": "MER-GEN-TLS-038-M",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "SMALL",
+          "sku": "MER-GEN-TLS-038-S",
+          "stock": 0
+        },
+        {
+          "type": "Size",
+          "label": "X-LARGE",
+          "sku": "MER-GEN-TLS-038-XL",
+          "stock": 0
+        }
+      ],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-038",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_050",
+      "slug": "pair-black-scrub-polo-large-pants-large",
+      "title": "PAIR BLACK SCRUB POLO-LARGE & PANTS-LARGE",
+      "description": "",
+      "price": 350,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-050",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_mer_gen_tls_062",
+      "slug": "shirt-therapist-on-motion-l",
+      "title": "SHIRT THERAPIST ON MOTION-L",
+      "description": "",
+      "price": 250,
+      "collectionSlug": "merch-resources",
+      "variants": [],
+      "images": [],
+      "stock": 0,
+      "sku": "MER-GEN-TLS-062",
+      "isPreOrder": false,
+      "disabled": true,
+      "weightKg": 0.35
+    },
+    {
+      "id": "prod_shimmer_canvas",
+      "slug": "shimmer-canvas",
+      "title": "Shimmer Canvas",
+      "description": "Dimensions: Reversible sequin board   ·   Pre-order\n\nDraw, swipe and watch it shimmer. The Shimmer Canvas invites little artists to make marks that sparkle and vanish with a wave of the hand — mesmerising, mess-free sensory play.\n\nKey features:\n•\tReversible sequin drawing board\n•\tMess-free, reusable art\n•\tSoothing tactile feedback\n•\tGreat for focus and fine motor\n",
+      "price": 5500,
+      "collectionSlug": "active-sensory-play",
+      "sku": "OT-SEN-INT-021",
+      "stock": 0,
+      "isPreOrder": true,
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shimmer-canvas/1785769833002-g9ri2l.png",
+        "/api/uploads/products/shimmer-canvas/1785654430773-pcdxkt.png",
+        "/api/uploads/products/shimmer-canvas/1785654444734-iavmbc.jpg",
+        "/api/uploads/products/shimmer-canvas/1785654445232-9bvo97.jpg",
+        "/api/uploads/products/shimmer-canvas/1785654445771-6n39vf.jpg"
+      ],
+      "weightKg": 0.4
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { ImagePlus, Package, Search, Trash2 } from "lucide-react"
+import { ImagePlus, Package, Search, Trash2, EyeOff, Eye } from "lucide-react"
 import { formatPrice } from "@/lib/format"
 import type { Product, Collection } from "@/lib/types"
 
@@ -40,6 +40,20 @@ export default function AdminPage() {
     const res = await fetch(`/api/admin/products?slug=${slug}`, { method: "DELETE" })
     if (res.ok) {
       setProducts((prev) => prev.filter((p) => p.slug !== slug))
+    }
+  }
+
+  async function handleToggleDisabled(slug: string, currentlyDisabled: boolean) {
+    const nextDisabled = !currentlyDisabled
+    const res = await fetch("/api/admin/products", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, disabled: nextDisabled }),
+    })
+    if (res.ok) {
+      setProducts((prev) =>
+        prev.map((p) => (p.slug === slug ? { ...p, disabled: nextDisabled } : p))
+      )
     }
   }
 
@@ -120,10 +134,12 @@ export default function AdminPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredProducts.map((product) => (
+          {filteredProducts.map((product, index) => (
             <div
-              key={product.id}
-              className="group relative rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:border-verdana-teal/30 hover:shadow-md"
+              key={`${product.slug}-${index}`}
+              className={`group relative rounded-xl border bg-white shadow-sm transition-all hover:border-verdana-teal/30 hover:shadow-md ${
+                product.disabled ? "border-gray-300 opacity-60" : "border-gray-200"
+              }`}
             >
               <Link href={`/admin/products/${product.slug}`} className="block p-4">
                 <div className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
@@ -146,6 +162,14 @@ export default function AdminPage() {
                   <div className="absolute top-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-xs font-medium text-white">
                     {product.uploadedImages.length} photo{product.uploadedImages.length !== 1 ? "s" : ""}
                   </div>
+                  {/* Disabled badge */}
+                  {product.disabled && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/40">
+                      <span className="rounded-full bg-gray-800 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white shadow">
+                        Disabled
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-3">
                   <h3 className="font-medium text-verdana-charcoal group-hover:text-verdana-teal transition-colors line-clamp-1">
@@ -158,6 +182,25 @@ export default function AdminPage() {
                       {collections.find((c) => c.slug === product.collectionSlug)?.name || product.collectionSlug}
                     </span>
                   </div>
+                  {(() => {
+                    const s = product.stock
+                    if (s === undefined || s === null) return null
+                    return (
+                      <div className="mt-1.5">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            s === 0
+                              ? "bg-red-50 text-red-700 border border-red-200"
+                              : s <= 5
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          }`}
+                        >
+                          {s === 0 ? "Out of stock" : `Stock: ${s}`}
+                        </span>
+                      </div>
+                    )
+                  })()}
                   {product.variants.length > 0 && (
                     <div className="mt-2 flex gap-1">
                       {product.variants.slice(0, 6).map((v) => (
@@ -175,6 +218,18 @@ export default function AdminPage() {
                   )}
                 </div>
               </Link>
+              {/* Enable / Disable toggle */}
+              <button
+                onClick={() => handleToggleDisabled(product.slug, !!product.disabled)}
+                className={`absolute top-6 right-16 rounded-lg bg-white/90 p-1.5 transition-all shadow-sm ${
+                  product.disabled
+                    ? "text-emerald-500 opacity-100 hover:bg-emerald-50"
+                    : "text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-amber-50 hover:text-amber-600"
+                }`}
+                title={product.disabled ? "Enable product (show on store)" : "Disable product (hide from store)"}
+              >
+                {product.disabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              </button>
               {/* Delete button */}
               <button
                 onClick={() => handleDelete(product.slug, product.title)}
