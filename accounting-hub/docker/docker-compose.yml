@@ -56,6 +56,11 @@ services:
       PAYMONGO_SECRET_KEY_AHGH: ${PAYMONGO_SECRET_KEY_AHGH:-}
       PAYMONGO_SECRET_KEY_VERDANA: ${PAYMONGO_SECRET_KEY_VERDANA:-}
       PAYMONGO_SECRET_KEY_AHI: ${PAYMONGO_SECRET_KEY_AHI:-}
+      # Shipping weights pushed to verdanarehab.com. Compose passes variables
+      # through explicitly, so a value in .env alone never reaches the app —
+      # it has to be named here too.
+      WEIGHT_SYNC_SECRET: ${WEIGHT_SYNC_SECRET:-}
+      STORE_WEIGHT_SYNC_URL: ${STORE_WEIGHT_SYNC_URL:-https://verdanarehab.com/api/sync/weights}
       # Tier 3: Enable General Ledger auto-posting (POS Order, AR Payment,
       # Inventory Adjustment, Asset, Depreciation, Closing Entry). Defaults
       # to false so a fresh install stays inert until the operator opts in.
