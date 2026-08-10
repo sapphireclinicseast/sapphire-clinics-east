@@ -117,6 +117,18 @@ const FRONT_DESK_NAV = [
   },
 ]
 
+// Investor nav — read-only, exactly the two pages the account is scoped to
+// (enforced server-side in (dashboard)/layout.tsx; this list is cosmetic).
+const INVESTOR_NAV = [
+  {
+    label: 'Investor View',
+    items: [
+      { href: '/scheduling-dashboard', icon: Activity, label: 'Clinic Utilization' },
+      { href: '/patients/dashboard', icon: BarChart2, label: 'Patient Dashboard' },
+    ],
+  },
+]
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose?: () => void; role?: string }) {
@@ -124,10 +136,11 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
   const { brand, setBrand, brands } = useBrand()
   const [brandOpen, setBrandOpen] = useState(false)
 
+  const isInvestor = role === 'INVESTOR'
   const isFrontDesk = FRONT_DESK_ROLES.includes(role)
   const isAdmin = role === 'ADMIN'
   const isMarketingAdmin = role === 'MARKETING_ADMIN'
-  const nav = isFrontDesk ? FRONT_DESK_NAV : getFullNav(isAdmin, isMarketingAdmin)
+  const nav = isInvestor ? INVESTOR_NAV : isFrontDesk ? FRONT_DESK_NAV : getFullNav(isAdmin, isMarketingAdmin)
 
   // Pick the longest nav href that prefixes the current pathname (with a /
   // boundary). Prevents /patients/profile from also lighting up /patients.
@@ -167,7 +180,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
       </div>
 
       {/* Brand Switcher — hidden for front desk */}
-      {!isFrontDesk && (
+      {!isFrontDesk && !isInvestor && (
         <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(237,104,35,0.1)' }}>
           <p className="px-2 mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>
             Active Brand

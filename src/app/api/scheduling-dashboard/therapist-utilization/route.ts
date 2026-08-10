@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN', 'INVESTOR']
+
+// Investor sessions never receive full staff names over the wire — mask to
+// initials here, before the response is built, not just in the UI layer.
+function initials(fullName: string): string {
+  const parts = fullName.trim().split(/[\s,]+/).filter(Boolean)
+  if (parts.length === 0) return '—'
+  return parts.map(p => p[0].toUpperCase()).join('')
+}
 
 const DAY_MAP: Record<number, string> = {
   0: 'SUN', 1: 'MON', 2: 'TUE', 3: 'WED', 4: 'THU', 5: 'FRI', 6: 'SAT',
@@ -178,9 +186,13 @@ export async function GET(req: NextRequest) {
     t.blank = Math.max(0, t.totalSlots - used)
   }
 
+  // Sort by real name first (better alphabetical grouping), mask last —
+  // staffId (already the Map key throughout) stays the grouping/dedup
+  // identity, so masking staffName here can't merge two same-initial people.
   const therapists = Array.from(therapistMap.values())
     .filter(t => t.totalSlots > 0)
     .sort((a, b) => a.staffName.localeCompare(b.staffName))
+    .map(t => role === 'INVESTOR' ? { ...t, staffName: initials(t.staffName) } : t)
 
   // ── 6. Compute aggregated summary ─────────────────────────────────────────
   const summary = {

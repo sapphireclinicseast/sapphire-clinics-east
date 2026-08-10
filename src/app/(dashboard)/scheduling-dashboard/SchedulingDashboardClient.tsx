@@ -11,7 +11,7 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN', 'INVESTOR']
 
 const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS'] as const
 const DEPT_LABELS: Record<string, string> = {
@@ -65,6 +65,7 @@ interface ScheduleRow {
   endTime: string
   status: string
   sessionType: string
+  staffId: string
   staffName: string
   department: string
   branch: string
@@ -82,16 +83,17 @@ export default function SchedulingDashboardClient({ role }: { role: string }) {
         <Lock size={48} className="text-gray-300 mb-4" />
         <h2 className="text-xl font-bold text-gray-700 mb-2">Access Restricted</h2>
         <p className="text-sm text-gray-500 max-w-sm">
-          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, and Marketing Admin users.
+          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, Marketing Admin, and Investor users.
         </p>
       </div>
     )
   }
 
-  return <DashboardContent />
+  return <DashboardContent role={role} />
 }
 
-function DashboardContent() {
+function DashboardContent({ role }: { role: string }) {
+  const isInvestor = role === 'INVESTOR'
   // ── Filter state ──
   const [startDate, setStartDate] = useState(monthAgoStr())
   const [endDate, setEndDate] = useState(todayStr())
@@ -290,10 +292,12 @@ function DashboardContent() {
   const topTherapists = useMemo(() => {
     const confirmed = schedules.filter(s => s.status === 'CONFIRMED')
     const filtered = therapistTab === 'all' ? confirmed : confirmed.filter(s => s.department === therapistTab)
-    const counts: Record<string, { name: string; dept: string; count: number }> = {}
+    // Keyed by staffId, not staffName — investor sessions receive
+    // initials-only names, and two different therapists can share initials.
+    const counts: Record<string, { staffId: string; name: string; dept: string; count: number }> = {}
     filtered.forEach(s => {
-      if (!counts[s.staffName]) counts[s.staffName] = { name: s.staffName, dept: s.department, count: 0 }
-      counts[s.staffName].count++
+      if (!counts[s.staffId]) counts[s.staffId] = { staffId: s.staffId, name: s.staffName, dept: s.department, count: 0 }
+      counts[s.staffId].count++
     })
     return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5)
   }, [schedules, therapistTab])
@@ -330,12 +334,14 @@ function DashboardContent() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">Clinic utilization analytics from Clinic Schedule data.</p>
         </div>
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:bg-gray-100 border border-gray-200"
-        >
-          <Settings size={15} /> Settings
-        </button>
+        {!isInvestor && (
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:bg-gray-100 border border-gray-200"
+          >
+            <Settings size={15} /> Settings
+          </button>
+        )}
       </div>
 
       {/* Filter bar */}
@@ -532,7 +538,7 @@ function DashboardContent() {
           {topTherapists.length === 0 ? (
             <div className="py-8 text-center text-sm text-gray-400">No data for current filters</div>
           ) : topTherapists.map((t, i) => (
-            <div key={t.name} className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 last:border-b-0">
+            <div key={t.staffId} className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 last:border-b-0">
               <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold flex-shrink-0 ${
                 i === 0 ? 'bg-yellow-100 text-yellow-800' :
                 i === 1 ? 'bg-gray-200 text-gray-700' :
@@ -540,6 +546,9 @@ function DashboardContent() {
                 'bg-gray-100 text-gray-500'
               }`}>{i + 1}</span>
               <div className="flex-1">
+                {/* Names arrive pre-masked to initials from the API for INVESTOR
+                    sessions — never mask client-side only, or the full name
+                    still ships in the network response. */}
                 <div className="text-sm font-semibold text-gray-900">{t.name}</div>
                 <div className="text-[11px] text-gray-400">{DEPT_LABELS[t.dept] || t.dept}</div>
               </div>

@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+
+// Same roles allowed to view the Scheduling Dashboard can read these caps —
+// they drive the heatmap rendering the dashboard already shows those roles.
+// Only non-investor roles may write: this route previously had NO auth check
+// at all (anyone with a session could rewrite clinic capacity), which became
+// a real risk once INVESTOR became a role with dashboard access at all.
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN', 'INVESTOR']
+const WRITE_ROLES = ALLOWED_ROLES.filter(r => r !== 'INVESTOR')
 
 // Field map: [branch][dept] → DB column name
 const FIELD: Record<string, Record<string, string>> = {
@@ -19,6 +28,11 @@ function rowToMaxSessions(row: Record<string, any>): Record<string, Record<strin
 }
 
 export async function GET() {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const role = (session.user as { role?: string })?.role ?? ''
+  if (!ALLOWED_ROLES.includes(role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   try {
     const row = await prisma.clinicCapSettings.findUnique({ where: { id: 'default' } })
     if (!row) {
@@ -38,6 +52,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const role = (session.user as { role?: string })?.role ?? ''
+  if (!WRITE_ROLES.includes(role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   try {
     const body: Record<string, Record<string, number>> = await req.json()
     const data: Record<string, number> = {}
