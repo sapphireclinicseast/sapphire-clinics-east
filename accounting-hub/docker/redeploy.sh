@@ -26,10 +26,12 @@ else
   echo "  DB not running — skipping DB backup."
 fi
 
-# Keep only the 10 most recent source backups (pre_deploy_* only) to save disk
-ls -t "${BACKUP_DIR}"/pre_deploy_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm --
-# Keep only the 10 most recent DB backups
-ls -t "${DB_BACKUP_DIR}"/pre_deploy_*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm --
+# Keep only the 3 most recent source backups (pre_deploy_* only). Each is ~850MB
+# because it carries uploads/, so ten of them was 8GB — on a disk that only has
+# ~12GB spare while a --no-cache build needs ~11GB of it.
+ls -t "${BACKUP_DIR}"/pre_deploy_*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --
+# Keep 5 pre-deploy DB dumps; the nightly off-site job holds the longer history.
+ls -t "${DB_BACKUP_DIR}"/pre_deploy_*.sql.gz 2>/dev/null | tail -n +6 | xargs -r rm --
 echo "─────────────────────────────────────────────────────────────────────────"
 
 echo "Building app image..."
