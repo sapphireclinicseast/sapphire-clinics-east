@@ -445,7 +445,7 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
                 {strays.length} payment{strays.length === 1 ? '' : 's'} here {strays.length === 1 ? 'was' : 'were'} earned by {owed} — {peso(total)} gross, {peso(net)} net settled into this account.
               </p>
               <p className="text-xs mt-1">
-                Class-portal tuition taken before the portal sent the student&apos;s branch, so it settled here instead of {owed}. The figures below are accurate about where the money is; squaring it needs a bank transfer, not a change here.
+                Class-portal tuition taken before the portal sent the student&apos;s branch, so the cash settled here instead of {owed}. The revenue is already recognised under {owed} — these were booked as POS orders on the day they were paid — so nothing is missing from the income statement. Only the cash sits in the wrong account, and squaring that needs a bank transfer, not a change here.
               </p>
               <ul className="text-xs mt-1.5 space-y-0.5">
                 {strays.map(r => (
