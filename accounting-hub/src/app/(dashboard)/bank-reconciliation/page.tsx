@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
 import { branchForBankAccount, branchLabel } from '@/lib/branch'
-import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save } from 'lucide-react'
+import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save, HandCoins } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -171,6 +171,9 @@ export default function BankReconciliationPage() {
     alert(`Deleted ${d.deleted} line(s).`)
     await refreshAll()
   }
+  // The petty cash accounts are the only ones where a withdrawal is not a
+  // payment — it is the branch officer drawing the float into cash.
+  const isPettyCashAccount = /petty cash/i.test(account?.accountTitle || '')
   const act = async (body: Record<string, unknown>) => { const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!r.ok) { alert((await r.json()).error || 'Failed'); return } await refreshAll() }
   const del = async (id: string) => { if (!confirm('Delete this bank line?')) return; await fetch(`/api/bank-rec/transactions?id=${id}`, { method: 'DELETE' }); await refreshAll() }
   const lockOlder = async () => {
@@ -443,6 +446,15 @@ export default function BankReconciliationPage() {
                           <button onClick={() => setMatchFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Link2 size={13} /> Match</button>
                           <button onClick={() => setCatFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}><Check size={13} /> Categorise</button>
                           <button onClick={() => setFtFor(t)} title="Record this line as a transfer to another of our accounts, or to a petty cash box" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><ArrowLeftRight size={13} /> Transfer</button>
+                          {/* A withdrawal from a petty cash account is the officer drawing the
+                              float as cash — the same money, in hand rather than in the passbook.
+                              Nothing to post and nothing to match, so it needs its own way to close. */}
+                          {isPettyCashAccount && t.spent > 0 && (
+                            <button onClick={() => {
+                              if (!confirm(`Close ${money(t.spent)} as cash withdrawn to the box?\n\nThe petty cash account is the float, so cash in the officer's hands is still this account's money. The line is marked reconciled and nothing is posted — the spending is already recognised from the petty cash vouchers.`)) return
+                              act({ id: t.id, action: 'close-petty-cash-withdrawal' })
+                            }} title="Cash withdrawn to the box — reconcile without posting" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><HandCoins size={13} /> Cash on hand</button>
+                          )}
                           <button onClick={() => act({ id: t.id, action: 'exclude' })} title="Exclude" className="inline-flex items-center px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Ban size={13} /></button>
                         </>
                       )}

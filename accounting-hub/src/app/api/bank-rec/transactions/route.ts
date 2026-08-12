@@ -497,6 +497,56 @@ export async function PATCH(req: Request) {
       await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: diffJournalId } })
       return NextResponse.json({ success: true, differenceJournalEntryId: diffJournalId })
     }
+    // Cash drawn from a branch's petty cash account into the officer's hands.
+    //
+    // The petty cash bank account IS the float: whatever is withdrawn from it is
+    // the cash the admin officer holds, so moving it out of the passbook is not
+    // a movement of value — it is the same pool in physical form. There is
+    // therefore nothing to post, and nothing on any other statement to match it
+    // against, which is why these lines sat PENDING forever with no way to
+    // close them. (The Petty Cash on Hand accounts that used to receive them
+    // were retired deliberately; reinstating one per branch would rebuild a
+    // float that has to be reconciled separately.)
+    //
+    // Spending is already accounted for elsewhere: the reports engine
+    // synthesises DR expense / CR petty cash from each PettyCashEntry, so
+    // posting anything here would double-count it.
+    //
+    // reimbursementId optionally names the replenishment report the cash was
+    // spent against, purely so the line carries its own audit trail.
+    if (action === 'close-petty-cash-withdrawal') {
+      const acct = await prisma.account.findUnique({
+        where: { id: txn.bankAccountId },
+        select: { accountNumber: true, accountTitle: true },
+      })
+      if (!acct || !/petty cash/i.test(acct.accountTitle)) {
+        return NextResponse.json({ error: 'Only a petty cash account holds cash on hand — this line is on ' + (acct?.accountTitle || 'another account') }, { status: 400 })
+      }
+      if (!(Number(txn.spent) > 0)) {
+        return NextResponse.json({ error: 'Only money leaving the petty cash account can be cash withdrawn to the box' }, { status: 400 })
+      }
+      let ref: { id: string; refNumber: string; grossTotal: unknown } | null = null
+      if (body.reimbursementId) {
+        ref = await prisma.reimbursementReport.findUnique({
+          where: { id: String(body.reimbursementId) },
+          select: { id: true, refNumber: true, grossTotal: true },
+        })
+        if (!ref) return NextResponse.json({ error: 'That replenishment report no longer exists' }, { status: 400 })
+      }
+      await prisma.bankTransaction.update({
+        where: { id },
+        data: {
+          status: 'POSTED',
+          matchType: 'PETTY_CASH_WITHDRAWAL',
+          matchId: ref?.id ?? null,
+          matchLabel: 'Cash withdrawn to the box — still petty cash, no ledger movement'
+            + (ref ? ` · replenishment ${ref.refNumber}` : ''),
+          categoryAccountId: null,
+          journalEntryId: null,
+        },
+      })
+      return NextResponse.json({ success: true })
+    }
     if (action === 'exclude') {
       if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
       // A POS settlement batch holds its order payments captive — release them.
