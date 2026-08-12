@@ -2064,7 +2064,7 @@ function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccou
 
 // ── Credit Card Report tab ─────────────────────────────────────
 interface SoaRow {
-  id: string; refNumber: string; status: string; paymentRoute: string | null
+  id: string; refNumber: string; legacyRef: string | null; status: string; paymentRoute: string | null
   cardId: string; cardLabel: string; statementUrl: string | null; soaDocUrl: string | null
   filingStatus: string; reimbursementId: string | null; rfpRefNumber: string
   entryCount: number; total: number; paidAt: string | null; createdAt: string
@@ -2175,7 +2175,10 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
             <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           ) : rows.map(r => (
             <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.status === 'PAID' ? 'white' : r.status === 'IN_RFP' ? '#ffedd5' : '#f3e8ff' }}>
-              <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+              <td className="px-3 py-2.5 whitespace-nowrap">
+                <span className="font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</span>
+                {r.legacyRef && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>was: {r.legacyRef}</span>}
+              </td>
               <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
               <td className="px-3 py-2.5 text-right" style={{ color: 'var(--mid-gray)' }}>{r.entryCount}</td>
               <td className="px-3 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(r.total)}</td>
@@ -2255,6 +2258,18 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
     else downloadPdf({ title: 'Credit Card Report', subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} paid SOA(s)`, headers, rows: body, landscape: true })
   }
 
+  const uploadStatement = async (row: SoaRow, file: File | null) => {
+    if (!file) return
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!up.ok) { alert('Upload failed'); return }
+      const { url } = await up.json()
+      await fetch('/api/expenses/soa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, action: 'upload-statement', statementUrl: url }) })
+      await load()
+    } catch { alert('Upload failed') }
+  }
+
   const setFiling = async (id: string, filingStatus: string) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, filingStatus } : r))
     try { await fetch('/api/expenses/soa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'set-filing', filingStatus }) }) } catch { /* ignore */ }
@@ -2271,7 +2286,10 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
               <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
             ) : shown.map(r => (
               <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  <span className="font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</span>
+                  {r.legacyRef && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>was: {r.legacyRef}</span>}
+                </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.paidAt ? new Date(r.paidAt).toLocaleDateString('en-PH') : ''}</td>
                 <td className="px-3 py-2.5 text-xs">
@@ -2290,7 +2308,13 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
                 </td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap">
                   {r.statementUrl && <a href={r.statementUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Eye size={12} /> Statement</a>}
-                  {r.soaDocUrl && <a href={r.soaDocUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileText size={12} /> SOA</a>}
+                  {r.soaDocUrl && <a href={r.soaDocUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileText size={12} /> SOA</a>}
+                  {canWrite && (
+                    <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      <Upload size={12} /> {r.statementUrl ? 'Replace' : 'Attach SOA'}
+                      <input type="file" className="hidden" accept="image/*,.pdf" onChange={e => { uploadStatement(r, e.target.files?.[0] || null); e.target.value = '' }} />
+                    </label>
+                  )}
                 </td>
               </tr>
             ))}
