@@ -86,6 +86,11 @@ export async function POST(req: Request) {
     const bankAccountId = body.bankAccountId
     if (!bankAccountId) return NextResponse.json({ error: 'bankAccountId is required' }, { status: 400 })
 
+    const acctState = await prisma.account.findUnique({ where: { id: bankAccountId }, select: { bankRetiredAt: true, accountTitle: true } })
+    if (acctState?.bankRetiredAt) {
+      return NextResponse.json({ error: `${acctState.accountTitle} is retired — no new bank lines can be added to it` }, { status: 400 })
+    }
+
     if (Array.isArray(body.rows)) {
       // One batch record per upload so the whole file can be removed again later.
       const batchRow = await prisma.bankImportBatch.create({

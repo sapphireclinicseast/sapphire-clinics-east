@@ -127,6 +127,13 @@ model Account {
   // are paired when matching a currency exchange, so unrelated accounts that
   // merely happen to hold another currency are not offered.
   isForexAccount    Boolean       @default(false)
+  // A closed bank account, retired from all bank behavior: it leaves every
+  // payment/transfer dropdown and the Bank Rec section, and no statements can
+  // be uploaded to it. The GL account itself stays ACTIVE so reports, history
+  // and opening balances are untouched (deactivating drops openings silently).
+  // Only settable when the last statement balance is zero and no line is
+  // PENDING — enforced server-side.
+  bankRetiredAt     DateTime?
   // The branch a bank account belongs to. A bank statement is whole-account and
   // cannot be split, so without this a branch view has no way to say which cash
   // is its own: it fell back to "movement tagged to this branch", which carries
