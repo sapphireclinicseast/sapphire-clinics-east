@@ -536,12 +536,15 @@ export async function PUT(
       createdById: session.user.id,
     })
 
-    // Keep the GL in sync: order creation auto-posts a journal entry, so re-post after
-    // item/payment edits — e.g. assigning a configured payment mode now adds its
-    // merchant-discount deduction. Delete the old POS_ORDER entry first so the idempotent
-    // helper writes a fresh, correct one. Non-fatal (gated by ENABLE_GL_POSTING).
-    if ((items || payments) && updated.status !== 'VOIDED') {
-      await prisma.journalEntry.deleteMany({ where: { referenceType: 'POS_ORDER', referenceId: id } })
+    // Keep the GL in sync: reopening posted a POS_ORDER_REVERSAL that cancels the
+    // original forward JE, so completing the order again must post a fresh forward
+    // entry — postOrderJournal's forwardCount>reversalCount check makes this call
+    // idempotent, so it runs on every re-complete, not just item/payment edits
+    // (a name/date/discount-only edit still needs its revenue re-posted).
+    // The old forward JE must NOT be deleted: it pairs with the reopen reversal,
+    // and deleting it leaves that reversal dangling — the fresh forward then nets
+    // to zero against it and the sale silently vanishes from the books.
+    if (updated.status !== 'VOIDED') {
       try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('Order re-post after edit failed:', e) }
     }
 
