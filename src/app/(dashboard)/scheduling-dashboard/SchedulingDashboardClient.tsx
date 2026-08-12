@@ -140,7 +140,11 @@ function DashboardContent({ role }: { role: string }) {
   const [therapistTab, setTherapistTab] = useState('all')
 
   // ── Fetch data ──
-  const fetchData = useCallback(async () => {
+  // Retries once on failure: right after a post-login redirect chain (e.g.
+  // investor's forced /dashboard → /scheduling-dashboard hop) the session
+  // cookie can occasionally lag the very first client-side fetch, which
+  // otherwise left this page silently blank until a manual refresh.
+  const fetchData = useCallback(async (isRetry = false) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -150,12 +154,24 @@ function DashboardContent({ role }: { role: string }) {
         departments: allDepts ? 'all' : selectedDepts.join(','),
       })
       const res = await fetch(`/api/scheduling-dashboard?${params}`)
-      if (!res.ok) throw new Error('Failed to fetch')
+      if (!res.ok) {
+        if (!isRetry && (res.status === 401 || res.status === 403)) {
+          await new Promise(r => setTimeout(r, 700))
+          await fetchData(true)
+          return
+        }
+        throw new Error('Failed to fetch')
+      }
       const data = await res.json()
       setSchedules(data.schedules)
       setUniqueStaff(data.uniqueStaffCount)
     } catch (err) {
       console.error('Fetch error:', err)
+      if (!isRetry) {
+        await new Promise(r => setTimeout(r, 700))
+        await fetchData(true)
+        return
+      }
     } finally {
       setLoading(false)
     }
@@ -706,7 +722,8 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [viewMode, setViewMode]   = useState<'therapist' | 'department' | 'branch'>('therapist')
 
-  const fetchUtil = useCallback(async () => {
+  // Retries once on 401/403/network failure — see fetchData above for why.
+  const fetchUtil = useCallback(async (isRetry = false) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ startDate, endDate, branch, department })
@@ -715,6 +732,17 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
         const json = await res.json()
         setData(json.therapists ?? [])
         setSummary(json.summary ?? null)
+      } else if (!isRetry && (res.status === 401 || res.status === 403)) {
+        await new Promise(r => setTimeout(r, 700))
+        await fetchUtil(true)
+        return
+      }
+    } catch (err) {
+      console.error('Fetch error:', err)
+      if (!isRetry) {
+        await new Promise(r => setTimeout(r, 700))
+        await fetchUtil(true)
+        return
       }
     } finally { setLoading(false) }
   }, [startDate, endDate, branch, department])
