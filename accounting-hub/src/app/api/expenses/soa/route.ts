@@ -61,7 +61,7 @@ export async function GET(req: Request) {
     const c = cardById.get(s.cardId)
     const t = tot.get(s.id) || { count: 0, total: 0 }
     return {
-      id: s.id, refNumber: s.refNumber, status: s.status, paymentRoute: s.paymentRoute,
+      id: s.id, refNumber: s.refNumber, legacyRef: s.legacyRef, status: s.status, paymentRoute: s.paymentRoute,
       cardId: s.cardId, cardLabel: c ? cardLabel(c) : s.bankCode,
       statementUrl: s.statementUrl, soaDocUrl: s.soaDocUrl, filingStatus: s.filingStatus,
       reimbursementId: s.reimbursementId, rfpRefNumber: s.reimbursementId ? (rfpById.get(s.reimbursementId) || '') : '',

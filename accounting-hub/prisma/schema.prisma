@@ -2452,6 +2452,7 @@ model CreditCardSOA {
   status           String    @default("OPEN") // OPEN | IN_RFP | PAID
   paymentRoute     String? // RFP | PETTY_CASH
   statementUrl     String? // uploaded bank statement of account
+  legacyRef        String? // pre-standardization reference (e.g. the source filename) kept for traceability
   soaDocUrl        String? // system-generated SOA PDF (petty-cash proof)
   reimbursementId  String? // RFP created via Request for RFP
   pettyCashEntryId String? // settlement entry if paid through petty cash
