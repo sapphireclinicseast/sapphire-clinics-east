@@ -427,6 +427,17 @@ export async function computeLedgerStatements(
           credit: acct.normalBalance === 'CREDIT' ? amt : 0,
         })
       }
+      // Drilling the 3999 plug itself answers "what causes this": the plug is
+      // the amount by which the entered openings fail to balance, so its
+      // breakdown IS the openings — every one, on its normal side. The drill's
+      // net (debits − credits) then equals the plug figure exactly.
+      if (collect && collect.account === OPENING_PLUG && (!collect.month || collect.cumulative)) {
+        collected.push({
+          month: 0, source: 'opening-plug', label: `${acct.number} ${acct.title} — entered opening`,
+          debit: acct.normalBalance === 'DEBIT' ? amt : 0,
+          credit: acct.normalBalance === 'CREDIT' ? amt : 0,
+        })
+      }
     }
     const openDiff = round2(openDr - openCr)
     if (Math.abs(openDiff) >= 0.01) {
@@ -434,6 +445,14 @@ export async function computeLedgerStatements(
       const plug = virt(OPENING_PLUG, 'Opening Balance Equity (plug)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
       opening.set(plug.number, (opening.get(plug.number) || 0) + openDiff)
       validation.openingPlug = openDiff
+      if (collect && collect.account === OPENING_PLUG && (!collect.month || collect.cumulative)) {
+        collected.push({
+          month: 0, source: 'opening-plug',
+          label: `Opening Balance Equity plug — entered opening debits ${openDr.toLocaleString('en-PH', { minimumFractionDigits: 2 })} vs credits ${openCr.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
+          debit: openDiff < 0 ? -openDiff : 0,
+          credit: openDiff > 0 ? openDiff : 0,
+        })
+      }
     }
   } else {
     /* Company-wide opening balances cannot be split by branch, but the branch's
@@ -1051,6 +1070,17 @@ export async function computeLedgerStatements(
         if (bankOpen === undefined) continue
         const delta = round2(bankOpen - (opening.get(n) || 0))
         if (Math.abs(delta) < 0.01) continue
+        // Drilling 3990 should show its opening component too, not just the
+        // monthly true-ups: which account opened away from the bank, and by
+        // how much.
+        if (collect && collect.account === pendReconcile.number && (!collect.month || collect.cumulative)) {
+          collected.push({
+            month: 0, source: 'bank-opening-trueup',
+            label: `${acct.number} ${acct.title} — books opened at ${(opening.get(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}, bank read ${bankOpen.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
+            debit: delta < 0 ? -delta : 0,
+            credit: delta > 0 ? delta : 0,
+          })
+        }
         opening.set(n, bankOpen)                                             // cash: debit-normal
         opening.set(pendReconcile.number, round2((opening.get(pendReconcile.number) || 0) + delta)) // equity: credit-normal
         openingTrued++
