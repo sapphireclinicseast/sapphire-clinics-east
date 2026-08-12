@@ -12,6 +12,7 @@ interface Hit {
 
 // Keyed on the pathname — hrefs now carry a ?focus= identifier for the record.
 const SECTION: Record<string, string> = {
+  '/pos': 'POS Orders',
   '/sales-summary': 'Sales Summary', '/petty-cash': 'Petty Cash', '/expenses': 'Expenses',
   '/inventory': 'Inventory', '/chart-of-accounts': 'Chart of Accounts',
   '/asset-management': 'Asset Management', '/journal-entries': 'Journal Entries',
