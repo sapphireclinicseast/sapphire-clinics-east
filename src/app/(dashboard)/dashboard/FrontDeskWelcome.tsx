@@ -540,6 +540,9 @@ export default function FrontDeskWelcome({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={200} height={200} style={{ display: 'block' }} />
           <PactCancellationReminder />
+
+          {/* Plush Toy Perk — VIP wallet holders + 100-session milestone patients */}
+          <PlushToyEligible branch={branch} />
         </div>
 
       {/* ── Birthday Reminder ── */}
@@ -797,9 +800,6 @@ export default function FrontDeskWelcome({
             ))}
           </div>
 
-          {/* Plush Toy Perk — VIP wallet holders + 100-session milestone patients */}
-          <PlushToyEligible branch={branch} />
-
           {/* Progress Reports — pending PRs awaiting Paid + Email */}
           <PendingProgressReports />
 
@@ -861,30 +861,30 @@ function PlushToyEligible({ branch }: { branch?: string }) {
   const visible = list.filter(c => !givenIds.has(c.id))
 
   return (
-    <div style={{ background: '#F5F0FF', border: '1px solid #DDD0FA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-      <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6D28D9', marginBottom: '0.6rem' }}>
-        🧸 Plush Toy Perk — VIP / 100th Session ({visible.length})
+    <div className="w-full" style={{ background: '#F5F0FF', border: '1px solid #DDD0FA', borderRadius: '0.875rem', padding: '0.85rem 1rem' }}>
+      <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6D28D9', marginBottom: '0.55rem' }}>
+        🧸 Plush Toy Perk ({visible.length})
       </div>
       {loading ? (
-        <div style={{ fontSize: '0.78rem', color: '#6D28D9', fontStyle: 'italic' }}>Loading…</div>
+        <div style={{ fontSize: '0.75rem', color: '#6D28D9', fontStyle: 'italic' }}>Loading…</div>
       ) : visible.length === 0 ? (
-        <div style={{ fontSize: '0.82rem', color: '#6D28D9', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
+        <div style={{ fontSize: '0.78rem', color: '#6D28D9', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {visible.map(c => (
-            <div key={c.id} style={{ background: '#fff', border: '1px solid #DDD0FA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.6rem' }}>
+            <div key={c.id} style={{ background: '#fff', border: '1px solid #DDD0FA', borderRadius: '0.6rem', padding: '0.55rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#4C1D95' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4C1D95', lineHeight: 1.25 }}>
                   {c.lastName}, {c.firstName}
                 </div>
-                <div style={{ display: 'flex', gap: '0.35rem', marginTop: 3 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: 3 }}>
                   {c.isVip && (
-                    <span style={{ background: '#EDE9FE', color: '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>
+                    <span style={{ background: '#EDE9FE', color: '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
                       VIP Card
                     </span>
                   )}
                   {c.isMilestone && (
-                    <span style={{ background: '#EDE9FE', color: '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>
+                    <span style={{ background: '#EDE9FE', color: '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
                       100th Session
                     </span>
                   )}
@@ -894,10 +894,9 @@ function PlushToyEligible({ branch }: { branch?: string }) {
                 onClick={() => markGiven(c)}
                 disabled={busyId === c.id}
                 style={{
-                  padding: '0.4rem 0.8rem', borderRadius: '0.4rem', border: 'none',
-                  background: '#7C3AED', color: '#fff', fontSize: '0.78rem', fontWeight: 700,
+                  padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: 'none', width: '100%',
+                  background: '#7C3AED', color: '#fff', fontSize: '0.72rem', fontWeight: 700,
                   cursor: busyId === c.id ? 'not-allowed' : 'pointer', opacity: busyId === c.id ? 0.6 : 1,
-                  whiteSpace: 'nowrap',
                 }}
               >
                 🧸 Given the plush toy already

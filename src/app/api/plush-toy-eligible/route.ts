@@ -64,27 +64,42 @@ export async function GET(req: NextRequest) {
   )
 
   // ── VIP check: live lookup against Accounting Hub's DigitalWallet ──────
+  // POST with a JSON body, batched — a full branch's candidate list (a
+  // clinic can have thousands of patients) blew the URL length limit as a
+  // query string (HTTP 414 on every single call, silently non-fatal, so
+  // NO VIP patient ever surfaced). Batching keeps each request body small
+  // regardless of branch size.
   const vipIds = new Set<string>()
   const acctUrl = process.env.ACCOUNTING_HUB_URL ?? 'https://accounting.sapphireclinicseast.org'
   const acctKey = process.env.EXTERNAL_API_KEY ?? ''
   if (acctKey) {
-    try {
-      const res = await fetch(
-        `${acctUrl}/api/internal/vip-status?patientIds=${candidateIds.join(',')}`,
-        { headers: { Authorization: `Bearer ${acctKey}` }, cache: 'no-store', signal: AbortSignal.timeout(5000) },
-      )
-      if (res.ok) {
-        const data = await res.json()
-        for (const id of (data.vipPatientIds as string[] ?? [])) vipIds.add(id)
-      } else {
-        console.error('[plush-toy-eligible] Accounting Hub VIP check returned', res.status)
-      }
-    } catch (err) {
-      // Non-fatal — front desk still sees milestone-eligible patients even
-      // if Accounting Hub is briefly unreachable; VIP-only patients would
-      // just not show up until the next reachable check.
-      console.error('[plush-toy-eligible] Accounting Hub VIP check failed:', err)
+    const BATCH_SIZE = 300
+    const batches: string[][] = []
+    for (let i = 0; i < candidateIds.length; i += BATCH_SIZE) {
+      batches.push(candidateIds.slice(i, i + BATCH_SIZE))
     }
+    await Promise.all(batches.map(async batch => {
+      try {
+        const res = await fetch(`${acctUrl}/api/internal/vip-status`, {
+          method:  'POST',
+          headers: { Authorization: `Bearer ${acctKey}`, 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ patientIds: batch }),
+          cache:   'no-store',
+          signal:  AbortSignal.timeout(5000),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          for (const id of (data.vipPatientIds as string[] ?? [])) vipIds.add(id)
+        } else {
+          console.error('[plush-toy-eligible] Accounting Hub VIP check returned', res.status)
+        }
+      } catch (err) {
+        // Non-fatal — front desk still sees milestone-eligible patients even
+        // if Accounting Hub is briefly unreachable; VIP-only patients in
+        // this batch would just not show up until the next reachable check.
+        console.error('[plush-toy-eligible] Accounting Hub VIP check failed:', err)
+      }
+    }))
   }
 
   const eligible = candidates
