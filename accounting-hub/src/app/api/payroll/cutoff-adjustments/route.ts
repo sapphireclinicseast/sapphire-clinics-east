@@ -107,6 +107,28 @@ export async function POST(req: Request) {
         deductionLabel: adj.deductionLabel || null,
       }))
 
+    // Heal orphaned loan rows: a row that reads "Staff Loan — <category>" but lost
+    // its staffLoanId (e.g. copied by the old Pre-fill, which dropped the link) is
+    // re-linked to the employee's matching ACTIVE loan. Unlinked, it would neither
+    // suppress the auto-suggestion (→ duplicate rows) nor credit the loan at
+    // finalize — the employee would just be docked with nothing recorded against
+    // the loan. Re-linking also puts it under the duplicate guard below.
+    const orphans = toCreate.filter((r: { staffLoanId?: string | null; deduction: number; deductionLabel: string | null }) =>
+      !r.staffLoanId && r.deduction > 0 && (r.deductionLabel || '').startsWith('Staff Loan — '))
+    if (orphans.length > 0) {
+      const empIds = [...new Set(orphans.map((r: { employeeId: string }) => r.employeeId))]
+      const activeLoans = await prisma.staffLoan.findMany({
+        where: { status: 'ACTIVE', branch, employeeId: { in: empIds } },
+        select: { id: true, employeeId: true, category: true },
+      })
+      for (const r of orphans) {
+        const label = (r.deductionLabel || '').toLowerCase()
+        const matches = activeLoans.filter(l => l.employeeId === r.employeeId &&
+          label.startsWith(`staff loan — ${l.category.replace(/_/g, ' ').toLowerCase()}`))
+        if (matches.length === 1) r.staffLoanId = matches[0].id
+      }
+    }
+
     // One cutoff can only ever deduct a given loan once. Two rows pointing at the
     // same loan would quietly take the money twice, so refuse rather than guess
     // which was intended.

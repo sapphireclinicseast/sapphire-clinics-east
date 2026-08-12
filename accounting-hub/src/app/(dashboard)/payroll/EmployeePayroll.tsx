@@ -4211,34 +4211,65 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
               setAdjLoading(true)
               const cp = cutoffPeriod
               try {
-                // Fetch ALL employees for this branch
-                const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
-                const r = await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`, { method: 'PUT' })
-                const data = await r.json()
+                // Fetch ALL employees for this branch, the previous cutoff's rows,
+                // and the CURRENT cutoff's rows (for staff-loan rows/suggestions).
+                const [allBranchEmps, data, curData]: [Employee[], any, any] = await Promise.all([
+                  (await fetch(`/api/payroll/employees?branch=${branch}`)).json(),
+                  (await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`, { method: 'PUT' })).json(),
+                  (await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`)).json(),
+                ])
                 const prevByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string }[]>()
                 for (const a of (data.adjustments || [])) {
+                  // Staff-loan rows are NOT copied from the previous cutoff: copying
+                  // loses the loan link (staffLoanId), so the saved copy neither
+                  // suppresses this cutoff's auto-suggestion (→ duplicate rows after
+                  // save) nor credits the loan at finalize. The register-driven rows
+                  // below are the source of truth for loan deductions.
+                  if ((a as any).staffLoanId) continue
                   if (!prevByEmp.has(a.employeeId)) prevByEmp.set(a.employeeId, [])
                   prevByEmp.get(a.employeeId)!.push(a)
+                }
+                // Current cutoff's loan-linked rows (already-saved ones and fresh
+                // suggestions) — recomputed from the loan register, so amounts are
+                // clamped to what is actually still owed.
+                const loanByEmp = new Map<string, any[]>()
+                for (const a of (Array.isArray(curData) ? curData : [])) {
+                  if (!(a as any).staffLoanId) continue
+                  if (!loanByEmp.has(a.employeeId)) loanByEmp.set(a.employeeId, [])
+                  loanByEmp.get(a.employeeId)!.push(a)
                 }
                 const rows: AdjustmentRow[] = []
                 let rk = 0
                 for (const emp of allBranchEmps) {
-                  const empAdjs = prevByEmp.get(emp.id)
-                  if (empAdjs && empAdjs.length > 0) {
-                    for (const ex of empAdjs) {
-                      rows.push({
-                        employeeId: emp.id,
-                        employeeName: `${emp.firstName} ${emp.lastName}`,
-                        allowance: toNum(ex.allowance),
-                        allowanceType: ex.allowanceType || 'NON_TAXABLE',
-                        allowanceLabel: ex.allowanceLabel || '',
-                        deduction: toNum(ex.deduction),
-                        deductionType: (ex as any).deductionType || 'NON_TAXABLE',
-                        deductionLabel: ex.deductionLabel || '',
-                        rowKey: `r${rk++}`,
-                      })
-                    }
-                  } else {
+                  const empAdjs = prevByEmp.get(emp.id) || []
+                  const empLoans = loanByEmp.get(emp.id) || []
+                  for (const ex of empAdjs) {
+                    rows.push({
+                      employeeId: emp.id,
+                      employeeName: `${emp.firstName} ${emp.lastName}`,
+                      allowance: toNum(ex.allowance),
+                      allowanceType: ex.allowanceType || 'NON_TAXABLE',
+                      allowanceLabel: ex.allowanceLabel || '',
+                      deduction: toNum(ex.deduction),
+                      deductionType: (ex as any).deductionType || 'NON_TAXABLE',
+                      deductionLabel: ex.deductionLabel || '',
+                      rowKey: `r${rk++}`,
+                    })
+                  }
+                  for (const ln of empLoans) {
+                    rows.push({
+                      employeeId: emp.id,
+                      employeeName: `${emp.firstName} ${emp.lastName}`,
+                      allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+                      deduction: toNum(ln.deduction),
+                      deductionType: ln.deductionType || 'NON_TAXABLE',
+                      deductionLabel: ln.deductionLabel || '',
+                      rowKey: `r${rk++}`,
+                      staffLoanId: ln.staffLoanId,
+                      suggested: !!ln.suggested,
+                    })
+                  }
+                  if (empAdjs.length === 0 && empLoans.length === 0) {
                     rows.push({
                       employeeId: emp.id,
                       employeeName: `${emp.firstName} ${emp.lastName}`,
