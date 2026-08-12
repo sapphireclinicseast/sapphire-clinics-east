@@ -193,6 +193,12 @@ export async function computeLedgerStatements(
 ): Promise<V2Statements> {
   const start = new Date(Date.UTC(year, 0, 1))
   const end = new Date(Date.UTC(year + 1, 0, 1))
+  /* Years before the hub went live read the imported QuickBooks GL as the one
+     and only ledger: module JEs and every synthesis family are suppressed —
+     QB's own journal already contains the sales, depreciation, petty cash,
+     transfers and asset purchases — leaving QB journals + opening balances +
+     the bank-statement true-up (the honesty check stays on in every era). */
+  const qbEra = year < 2026
   const collected: V2CollectedLine[] = []
   const monthOf = (d: Date | string) => {
     const dt = new Date(d)
@@ -347,6 +353,9 @@ export async function computeLedgerStatements(
             entryDate: { lt: start },
             referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
             ...(branchValues ? { branch: { in: branchValues as never[] } } : {}),
+            // QB-era history: pre-2026 the QB journal IS the ledger — module
+            // JEs from those years are suppressed here exactly as in §2.
+            OR: [{ entryDate: { gte: new Date(Date.UTC(2026, 0, 1)) } }, { referenceType: 'QB_IMPORT_JE' as never }],
           },
         },
         select: {
@@ -507,7 +516,7 @@ export async function computeLedgerStatements(
         referenceId: { startsWith: `${year}-` },
       },
     ],
-    referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
+    referenceType: qbEra ? 'QB_IMPORT_JE' as never : { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
     ...(branchValues ? { branch: { in: branchValues } } : {}),
   }
   const journalEntries = await prisma.journalEntry.findMany({
@@ -599,7 +608,7 @@ export async function computeLedgerStatements(
   }
 
   /* ── 3. Orders (synthesized when no POS_ORDER journal entry exists) ── */
-  const orders = await prisma.order.findMany({
+  const orders = qbEra ? [] : await prisma.order.findMany({
     where: {
       status: 'COMPLETED',
       transactionDate: { gte: start, lt: end },
@@ -728,7 +737,7 @@ export async function computeLedgerStatements(
   if (synthesizedOrders) validation.synthesized.push(`orders (${synthesizedOrders})`)
 
   /* ── 4. AR collections (synthesized when no AR_PAYMENT JE) ── */
-  const arPayments = await prisma.aRPayment.findMany({
+  const arPayments = qbEra ? [] : await prisma.aRPayment.findMany({
     where: {
       paymentDate: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: { in: [branch, orderBranch] } } : {}),
@@ -808,7 +817,7 @@ export async function computeLedgerStatements(
     if (num && byNumber.get(num)) return byNumber.get(num)!
     return defaultCash(e.branch || branch)
   }
-  const pcEntries = await prisma.pettyCashEntry.findMany({
+  const pcEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: {
       date: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
@@ -840,7 +849,7 @@ export async function computeLedgerStatements(
   const pcSettings = await prisma.pettyCashSettings.findMany({ select: { branch: true, prepaidAccount: true } })
   const prepaidByBranch: Record<string, string | null> = {}
   for (const s of pcSettings) prepaidByBranch[s.branch] = s.prepaidAccount
-  const distEntries = await prisma.pettyCashEntry.findMany({
+  const distEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: {
       recordType: 'RECURRING', distributeMonthly: true,
       distributeStart: { not: null }, distributeEnd: { not: null },
@@ -880,7 +889,7 @@ export async function computeLedgerStatements(
   }
 
   // CEO petty cash allocated across branches
-  const ceoEntries = await prisma.pettyCashEntry.findMany({
+  const ceoEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: { branch: 'CEO', date: { gte: start, lt: end } },
     select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true, pcvNumber: true, description: true },
   })
@@ -912,7 +921,8 @@ export async function computeLedgerStatements(
   const depAcct = byNumber.get('8070') || virt('8070', 'Depreciation Expense', 'EXPENSE', 'NON_OPERATING_EXPENSES', 'DEBIT')
   const accumDep = byNumber.get('2010') || findByTitle(/accumulated dep/i) || virt('2010', 'Accumulated Depreciation', 'ASSET', 'PPE', 'CREDIT')
   const hasDepJEs = (glRefIds.get('DEPRECIATION')?.size || 0) > 0
-  if (!hasDepJEs) {
+  // QB era: the imported GL carries its own monthly depreciation JEs.
+  if (!hasDepJEs && !qbEra) {
     // Accrue only months that have actually elapsed: for the current year stop
     // at this month (matching Asset Management's depreciation-to-date), for
     // past years take all 12, for future years none.
@@ -943,7 +953,7 @@ export async function computeLedgerStatements(
 
   /* ── 7. Asset purchases this year (synthesized unless ASSET_PURCHASE JE) ── */
   let synthesizedAssets = 0
-  for (const a of assets) {
+  for (const a of qbEra ? [] : assets) {
     const d = new Date(a.dateBought)
     if (d < start || d >= end) continue
     if (hasRef('ASSET_PURCHASE', a.id)) continue
