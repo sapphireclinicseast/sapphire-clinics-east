@@ -2064,10 +2064,39 @@ function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccou
 
 // ── Credit Card Report tab ─────────────────────────────────────
 interface SoaRow {
-  id: string; refNumber: string; legacyRef: string | null; status: string; paymentRoute: string | null
+  id: string; refNumber: string; legacyRef: string | null; periodYear: number | null; periodMonth: number | null
+  status: string; paymentRoute: string | null
   cardId: string; cardLabel: string; statementUrl: string | null; soaDocUrl: string | null
   filingStatus: string; reimbursementId: string | null; rfpRefNumber: string
   entryCount: number; total: number; paidAt: string | null; createdAt: string
+}
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "Jul 2025" | em-dash; the SOA's billing month, editable in place. */
+function SoaPeriodCell({ row, canWrite, onSaved }: { row: SoaRow; canWrite: boolean; onSaved: () => void }) {
+  const value = row.periodYear && row.periodMonth ? `${row.periodYear}-${String(row.periodMonth).padStart(2, '0')}` : ''
+  const save = async (v: string) => {
+    const m = /^([0-9]{4})-([0-9]{2})$/.exec(v)
+    try {
+      await fetch('/api/expenses/soa', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id, action: 'set-period', periodYear: m ? parseInt(m[1]) : null, periodMonth: m ? parseInt(m[2]) : null }),
+      })
+      onSaved()
+    } catch { /* leave as-is */ }
+  }
+  if (!canWrite) {
+    return <span className="text-xs" style={{ color: row.periodYear ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+      {row.periodYear && row.periodMonth ? `${MONTH_SHORT[row.periodMonth - 1]} ${row.periodYear}` : '—'}
+    </span>
+  }
+  return (
+    <input type="month" value={value} onChange={e => save(e.target.value)}
+      className="px-1.5 py-1 rounded-lg border text-xs outline-none"
+      style={{ borderColor: value ? 'var(--light-gray)' : '#fcd34d', color: 'var(--charcoal)', background: 'white' }}
+      title="Billing month this SOA covers" />
+  )
 }
 
 // Credit Card SOA subtab — every SOA booked for the branch; active ones first, paid ones kept as history.
@@ -2166,13 +2195,14 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
       <table className="w-full text-sm">
         <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
           <th className="px-3 py-2.5 font-semibold">SOA Ref</th><th className="px-3 py-2.5 font-semibold">Card</th>
+          <th className="px-3 py-2.5 font-semibold">Period</th>
           <th className="px-3 py-2.5 font-semibold text-right">Entries</th><th className="px-3 py-2.5 font-semibold text-right">Total</th>
           <th className="px-3 py-2.5 font-semibold">Status</th><th className="px-3 py-2.5 font-semibold">Statement</th>
           {canWrite && <th className="px-3 py-2.5 font-semibold text-right">Actions</th>}
         </tr></thead>
         <tbody>
           {loading ? (
-            <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+            <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           ) : rows.map(r => (
             <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.status === 'PAID' ? 'white' : r.status === 'IN_RFP' ? '#ffedd5' : '#f3e8ff' }}>
               <td className="px-3 py-2.5 whitespace-nowrap">
@@ -2180,6 +2210,7 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
                 {r.legacyRef && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>was: {r.legacyRef}</span>}
               </td>
               <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
+              <td className="px-3 py-2.5"><SoaPeriodCell row={r} canWrite={canWrite} onSaved={load} /></td>
               <td className="px-3 py-2.5 text-right" style={{ color: 'var(--mid-gray)' }}>{r.entryCount}</td>
               <td className="px-3 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(r.total)}</td>
               <td className="px-3 py-2.5">
@@ -2215,7 +2246,7 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
             </tr>
           ))}
           {!loading && rows.length === 0 && (
-            <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No SOAs booked yet. In One-time expense, select entries and click &quot;Paid by Credit Card&quot;.</td></tr>
+            <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No SOAs booked yet. In One-time expense, select entries and click &quot;Paid by Credit Card&quot;.</td></tr>
           )}
         </tbody>
       </table>
@@ -2232,11 +2263,12 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
   const [filters, setFilters] = useState<Record<string, string>>({})
   const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const cols = [
-    { key: 'refNumber', label: 'SOA Ref' }, { key: 'cardLabel', label: 'Card' }, { key: 'paidAt', label: 'Paid Date' },
+    { key: 'refNumber', label: 'SOA Ref' }, { key: 'cardLabel', label: 'Card' }, { key: 'period', label: 'Period' }, { key: 'paidAt', label: 'Paid Date' },
     { key: 'paidVia', label: 'Paid Via' }, { key: 'total', label: 'Total' }, { key: 'status', label: 'Filing' },
   ]
   const get = (r: SoaRow, k: string): string | number =>
     k === 'refNumber' ? r.refNumber : k === 'cardLabel' ? r.cardLabel
+      : k === 'period' ? (r.periodYear && r.periodMonth ? `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}` : '')
       : k === 'paidAt' ? (r.paidAt ? String(r.paidAt).slice(0, 10) : '')
       : k === 'paidVia' ? (r.paymentRoute === 'PETTY_CASH' ? 'Paid through Petty Cash' : (r.rfpRefNumber || 'RFP'))
       : k === 'total' ? r.total : k === 'status' ? (r.filingStatus === 'FILED' ? 'Filed' : 'For Filing') : ''
@@ -2251,8 +2283,10 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
   useEffect(() => { load() }, [load])
 
   const exportReport = (fmt: ExportFormat) => {
-    const headers = ['SOA Ref', 'Card', 'Paid Date', 'Paid Via', 'Total', 'Filing']
-    const body = shown.map(r => [r.refNumber, r.cardLabel, r.paidAt ? String(r.paidAt).slice(0, 10) : '',
+    const headers = ['SOA Ref', 'Card', 'Period', 'Paid Date', 'Paid Via', 'Total', 'Filing']
+    const body = shown.map(r => [r.refNumber, r.cardLabel,
+      r.periodYear && r.periodMonth ? `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}` : '',
+      r.paidAt ? String(r.paidAt).slice(0, 10) : '',
       r.paymentRoute === 'PETTY_CASH' ? 'Paid through Petty Cash' : (r.rfpRefNumber || 'RFP'), r.total.toFixed(2), r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'])
     if (fmt === 'xlsx') downloadXlsx(`credit-card-report-${branch}`, [{ name: 'Credit Card Report', headers, rows: body }])
     else downloadPdf({ title: 'Credit Card Report', subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} paid SOA(s)`, headers, rows: body, landscape: true })
@@ -2291,6 +2325,7 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
                   {r.legacyRef && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>was: {r.legacyRef}</span>}
                 </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
+                <td className="px-3 py-2.5"><SoaPeriodCell row={r} canWrite={canWrite} onSaved={load} /></td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.paidAt ? new Date(r.paidAt).toLocaleDateString('en-PH') : ''}</td>
                 <td className="px-3 py-2.5 text-xs">
                   {r.paymentRoute === 'PETTY_CASH'
