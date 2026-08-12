@@ -417,8 +417,10 @@ function ExpensesInner() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then((d: any) => {
         const list = Array.isArray(d) ? d : (d.accounts || d.data || [])
+        // Retired bank accounts are closed at the bank — nothing can be paid
+        // from them, so they leave this dropdown along with all the others.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setBankOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
+        setBankOptions(list.filter((a: any) => !a.bankRetiredAt).map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
       })
       .catch(() => setBankOptions([]))
   }, [])

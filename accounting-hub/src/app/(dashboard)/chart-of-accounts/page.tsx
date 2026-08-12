@@ -34,6 +34,7 @@ interface Account {
   description: string | null
   isActive: boolean
   isBankAccount?: boolean
+  bankRetiredAt?: string | null
   isCheckingAccount?: boolean
   branch?: string | null
   createdAt: string
@@ -263,6 +264,7 @@ function ChartOfAccountsInner() {
   const [formDescription, setFormDescription] = useState('')
   const [formCurrency, setFormCurrency] = useState('PHP')
   const [formIsBankAccount, setFormIsBankAccount] = useState(false)
+  const [formBankRetired, setFormBankRetired] = useState(false)
   const [formIsChecking, setFormIsChecking] = useState(false)
   const [formBranch, setFormBranch] = useState('')
 
@@ -338,6 +340,7 @@ function ChartOfAccountsInner() {
     setFormCurrency(account.currency || 'PHP')
     setFormDescription(account.description || '')
     setFormIsBankAccount(!!account.isBankAccount)
+    setFormBankRetired(!!account.bankRetiredAt)
     setFormIsChecking(!!account.isCheckingAccount)
     setFormBranch(account.branch || '')
     setError('')
@@ -375,6 +378,7 @@ function ChartOfAccountsInner() {
       currency: formCurrency,
       description: formDescription,
       isBankAccount: formSubType === 'CURRENT_ASSETS' ? formIsBankAccount : false,
+      ...(editingAccount && editingAccount.isBankAccount ? { bankRetired: formBankRetired } : {}),
       isCheckingAccount: formSubType === 'CURRENT_ASSETS' && formIsBankAccount ? formIsChecking : false,
       branch: formSubType === 'CURRENT_ASSETS' && formIsBankAccount ? (formBranch || null) : null,
     }
@@ -684,6 +688,13 @@ function ChartOfAccountsInner() {
                     </td>
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                       {account.accountTitle}
+                      {account.bankRetiredAt && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold align-middle"
+                          style={{ background: '#fee2e2', color: '#991b1b' }}
+                          title={`Bank account retired ${new Date(account.bankRetiredAt).toLocaleDateString('en-PH')} — hidden from dropdowns and Bank Rec; ledger history unaffected`}>
+                          RETIRED BANK
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -895,6 +906,17 @@ function ChartOfAccountsInner() {
                       <span>
                         <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Is this a checking account?</span>
                         <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>If ticked, checks drawn from this account appear in Fund Transfer &rarr; Check Release Monitoring.</span>
+                      </span>
+                    </label>
+                  )}
+                  {formIsBankAccount && editingAccount && (
+                    <label className="flex items-start gap-2 rounded-xl border p-3 cursor-pointer ml-6" style={{ borderColor: formBankRetired ? '#fecaca' : 'var(--light-gray)', background: formBankRetired ? '#fef2f2' : 'var(--off-white)' }}>
+                      <input type="checkbox" checked={formBankRetired} onChange={(e) => setFormBankRetired(e.target.checked)} className="mt-0.5" />
+                      <span>
+                        <span className="text-sm font-medium" style={{ color: formBankRetired ? '#991b1b' : 'var(--charcoal)' }}>Retire this bank account</span>
+                        <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          For closed accounts only: it disappears from every payment and transfer dropdown and from Bank Reconciliation, and no more statements can be uploaded. Allowed only when the last statement balance is zero and every bank line is matched — the ledger account itself stays active so history and reports are untouched.
+                        </span>
                       </span>
                     </label>
                   )}
