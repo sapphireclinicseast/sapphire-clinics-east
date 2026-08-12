@@ -229,6 +229,11 @@ model Patient {
   pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
   unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
   smsUnsubscribed    Boolean    @default(false)  // opt-out from SMS marketing campaigns (does NOT block schedule reminders, birthdays, or clinical follow-ups)
+  // Aura the Alpaca plush toy perk — one piece, given once, to VIP Digital
+  // Wallet holders (checked live against Accounting Hub) or patients who've
+  // reached 100 CONFIRMED sessions since 2026-04-01 (see /api/plush-toy-eligible).
+  plushToyGivenAt    DateTime?
+  plushToyGivenBy    String?    // front-desk User.name/id who marked it given
   createdAt          DateTime   @default(now())
   updatedAt           DateTime             @updatedAt
   schedules           Schedule[]
