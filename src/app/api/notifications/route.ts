@@ -22,7 +22,7 @@ const BRANCH_ENUM_TO_SHORT: Record<string, string> = {
 const FORM_TYPES = [
   { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE' },
   { key: 'group-therapy', title: 'Group Therapy Registration', sbea: 'ChrSrsBF', sbgh: 'tT8QASYo' },
-  { key: 'sip',           title: 'ALAGA Program Registration', sbea: 'SGWVxqcW', sbgh: 'i8rFr7P6' },
+  { key: 'sip',           title: 'ALAGA Program Registration', sbea: 'SGWVxqcW', sbgh: null }, // Greenhills disabled — no ALAGA interns there yet
   { key: 'psych',         title: 'Psych Registration Form',    sbea: 'X2YDKTaH', sbgh: null },
 ] as const
 

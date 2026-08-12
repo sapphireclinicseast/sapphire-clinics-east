@@ -17,7 +17,7 @@ const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string
     subtitle: 'Allied Learners Advancing Genuine Access',
     intro:    'The ALAGA Program pairs patients with student therapists who are completing their clinical internship hours — all sessions are directly supervised by our licensed clinicians. Because sessions are conducted under supervised training, they are offered at a significantly lower fee than our regular therapy rates, making quality rehabilitation more accessible to families.',
     sbea:     'SGWVxqcW',
-    sbgh:     'i8rFr7P6',
+    sbgh:     null, // Greenhills has no ALAGA interns yet — disabled until it does. East form (SGWVxqcW) is now Physical Therapy only.
   },
   { key: 'psych',         title: 'Psych Registration Form',    sbea: 'X2YDKTaH', sbgh: null },
 ]
