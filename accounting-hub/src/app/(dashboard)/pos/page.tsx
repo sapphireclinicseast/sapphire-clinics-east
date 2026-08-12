@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { redirect } from 'next/navigation'
+import { redirect, useSearchParams } from 'next/navigation'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import {
   ShoppingCart, Search, Plus, X, Trash2, ChevronDown, ChevronUp,
   CreditCard, Wallet, FileText, Download, Printer,
@@ -555,6 +556,17 @@ export default function POSPage() {
   // ── Services sub-tab
   const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes'>('cashier')
   const [loading, setLoading] = useState(true)
+  // ── Deep link (?tab=orders&focus=<orderId>): a SALE/ORDER hit in the global
+  // search lands on the Orders tab with that order's detail modal open. The
+  // focus param is stripped via done() once the modal opens (useFocusTarget),
+  // so a refresh doesn't re-trigger it and re-searching the same order works.
+  const searchParams = useSearchParams()
+  const { focus: focusOrderId, done: focusDone } = useFocusTarget()
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab === 'services' || tab === 'orders' || tab === 'products' || tab === 'sales') setMainTab(tab)
+    else if (focusOrderId) setMainTab('orders')
+  }, [searchParams, focusOrderId])
 
   useEffect(() => {
     if (session?.user) setLoading(false)
@@ -630,7 +642,7 @@ export default function POSPage() {
         />
       )}
       {mainTab === 'orders' && (
-        <OrdersPanel branch={branch} canSelectBranch={true} />
+        <OrdersPanel branch={branch} canSelectBranch={true} focusOrderId={focusOrderId} onFocusHandled={focusDone} />
       )}
       {mainTab === 'products' && (
         <ProductsSection branch={branch} canSelectBranch={canSelectBranch} session={session} />
@@ -2420,7 +2432,7 @@ function OrderFormModal({
    ORDERS PANEL
    ══════════════════════════════════════════════════════════════ */
 
-function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
+function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: { branch: string; canSelectBranch: boolean; focusOrderId?: string; onFocusHandled?: () => void }) {
   const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? '' : branch)
   const [dateFrom, setDateFrom] = useState(firstOfMonth())
   const [dateTo, setDateTo] = useState(today())
@@ -2499,6 +2511,17 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       .then(d => setEditConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : []))
       .catch(() => {})
   }, [branch, canSelectBranch])
+
+  // Deep link from global search: fetch the focused order (it may fall outside
+  // the panel's current date-range filter) and open its detail modal directly.
+  useEffect(() => {
+    if (!focusOrderId) return
+    fetch(`/api/pos/orders/${encodeURIComponent(focusOrderId)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(o => { if (o?.id) setViewOrder(o as Order) })
+      .catch(() => {})
+      .finally(() => onFocusHandled?.())
+  }, [focusOrderId, onFocusHandled])
 
   // useEffect-based search for edit patient (same pattern as new order)
   useEffect(() => {

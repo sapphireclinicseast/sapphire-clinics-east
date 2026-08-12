@@ -120,7 +120,7 @@ export async function GET(req: Request) {
   for (const o of orders) results.push({
     id: o.id, type: 'Sale / Order', title: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}`,
     subtitle: `${bl(o.branch)}${o.platform ? ` · ${o.platform}` : ''} · ${dstr(o.transactionDate)}`,
-    amount: num(o.netAmount), reference: o.salesInvoiceNumber || o.referenceNumber || '', date: dstr(o.transactionDate), href: `/sales-summary?focus=${enc(o.id)}`,
+    amount: num(o.netAmount), reference: o.salesInvoiceNumber || o.referenceNumber || '', date: dstr(o.transactionDate), href: `/pos?tab=orders&focus=${enc(o.id)}`,
     detail: { 'Order #': String(o.orderNumber), Customer: o.patientName || '—', Branch: bl(o.branch), Platform: o.platform || '—', 'SI #': o.salesInvoiceNumber || '—', Reference: o.referenceNumber || '—', 'Net Amount': num(o.netAmount).toFixed(2), Date: dstr(o.transactionDate) },
   })
   for (const e of pcEntries) {
