@@ -2453,6 +2453,8 @@ model CreditCardSOA {
   paymentRoute     String? // RFP | PETTY_CASH
   statementUrl     String? // uploaded bank statement of account
   legacyRef        String? // pre-standardization reference (e.g. the source filename) kept for traceability
+  periodYear       Int? // statement period the SOA covers (billing month)
+  periodMonth      Int? // 1-12
   soaDocUrl        String? // system-generated SOA PDF (petty-cash proof)
   reimbursementId  String? // RFP created via Request for RFP
   pettyCashEntryId String? // settlement entry if paid through petty cash
