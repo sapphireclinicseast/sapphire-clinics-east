@@ -1,11 +1,31 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   HandCoins, Landmark, Building2, Info, ClipboardCheck,
-  CheckCircle2, AlertTriangle, CreditCard,
+  CheckCircle2, AlertTriangle, CreditCard, Wallet, Loader2,
 } from 'lucide-react'
+
+// ── Company loan balance (live from the accounting hub) ───────────────────────
+interface CompanyLoanRow {
+  id: string
+  category: string
+  categoryLabel: string
+  description: string | null
+  branch: string | null
+  principal: number
+  paid: number
+  outstanding: number
+  perCutoff: number
+  status: string
+  dateReleased: string | null
+}
+interface CompanyLoanData {
+  matchedAsEmployee: boolean
+  loans: CompanyLoanRow[]
+  totalOutstanding: number
+}
 
 // ── BDO Virtual Installment Card — reference rate table ───────────────────────
 // Source: BDO Unibank, Inc. offer sheet (via the BDO Payroll Relationship
@@ -230,6 +250,18 @@ function CompanyLoan() {
 
   const monthOptions = Array.from({ length: maxMonthsToPay }, (_, i) => i + 1)
 
+  // Live outstanding balance from the accounting hub's company loan register.
+  const [loanData, setLoanData] = useState<CompanyLoanData | null>(null)
+  const [loanState, setLoanState] = useState<'loading' | 'ready' | 'error'>('loading')
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/company-loans', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: CompanyLoanData) => { if (!cancelled) { setLoanData(d); setLoanState('ready') } })
+      .catch(() => { if (!cancelled) setLoanState('error') })
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <div className="animate-fade-up">
       <div className="card-static !p-4 mb-5 bg-[var(--pale-teal)]/40 border-l-4 border-[var(--deep-teal)]">
@@ -240,6 +272,9 @@ function CompanyLoan() {
           </p>
         </div>
       </div>
+
+      {/* Live balance from the accounting hub */}
+      <CurrentLoanCard state={loanState} data={loanData} />
 
       <div className="card-static mb-5">
         <div className="flex items-center gap-2 mb-1">
@@ -336,6 +371,82 @@ function CompanyLoan() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function CurrentLoanCard({ state, data }: { state: 'loading' | 'ready' | 'error'; data: CompanyLoanData | null }) {
+  if (state === 'loading') {
+    return (
+      <div className="card-static !p-4 mb-5 flex items-center gap-2 text-[13px] text-[var(--mid-gray)]">
+        <Loader2 size={16} className="animate-spin text-[var(--moss)]" /> Checking your loan records…
+      </div>
+    )
+  }
+  if (state === 'error') {
+    return (
+      <div className="card-static !p-4 mb-5 text-[12.5px] text-[var(--mid-gray)]">
+        Couldn’t load your current loan balance right now. The calculator below still works.
+      </div>
+    )
+  }
+  const loans = data?.loans ?? []
+  if (loans.length === 0) {
+    return (
+      <div className="card-static !p-4 mb-5 flex items-start gap-3">
+        <CheckCircle2 size={20} className="text-[var(--moss)] shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[13px] font-semibold text-[var(--narra)]">No active company loan on record.</p>
+          <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">You have no outstanding company loan. Use the calculator below to estimate a new one.</p>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="card-static mb-5">
+      <div className="flex items-center gap-2 mb-3">
+        <Wallet size={18} className="text-[var(--deep-teal)]" />
+        <h2 className="text-[15px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+          Your Current Company Loan{loans.length > 1 ? 's' : ''}
+        </h2>
+      </div>
+      <Highlight label="Total Outstanding Balance" value={peso(data?.totalOutstanding ?? 0)} />
+      <div className="mt-4 space-y-3">
+        {loans.map((l) => (
+          <div key={l.id} className="rounded-xl border border-[var(--light-gray)] p-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[13px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>{l.categoryLabel}</span>
+                {l.branch && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--pale-teal)] text-[var(--teal)] font-semibold">{l.branch}</span>}
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--sage-tint)] text-[var(--moss)] font-bold uppercase tracking-wide shrink-0">{l.status}</span>
+            </div>
+            {l.description && <p className="text-[12px] text-[var(--mid-gray)] mb-2">{l.description}</p>}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <LoanStat label="Principal" value={peso(l.principal)} />
+              <LoanStat label="Paid" value={peso(l.paid)} />
+              <LoanStat label="Outstanding" value={peso(l.outstanding)} strong />
+              <LoanStat label="Per Cut-off" value={l.perCutoff > 0 ? peso(l.perCutoff) : '—'} />
+            </div>
+            {l.dateReleased && <p className="text-[11px] text-[var(--mid-gray)] mt-2">Released {l.dateReleased}</p>}
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-[var(--mid-gray)] mt-3">Balances reflect payroll deductions recorded in the accounting hub. Questions? Contact your HR Officer.</p>
+    </div>
+  )
+}
+
+function LoanStat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">{label}</p>
+      <p
+        className={`tabular-nums ${strong ? 'text-[15px] font-bold text-[var(--deep-teal)]' : 'text-[13px] font-semibold text-[var(--charcoal)]'}`}
+        style={{ fontFamily: 'var(--font-display)' }}
+      >
+        {value}
+      </p>
     </div>
   )
 }
