@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
   const configs = await prisma.deckingTherapistConfig.findMany({
     where: configWhere,
     include: {
-      staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true, dateHired: true } },
     },
   })
 
@@ -106,11 +106,23 @@ export async function GET(req: NextRequest) {
   const start = new Date(`${startDate}T00:00:00`)
   const end   = new Date(`${endDate}T00:00:00`)
 
-  // Count occurrences of each day-of-week in the date range
-  const dayOfWeekCounts: Record<string, number> = { MON: 0, TUE: 0, WED: 0, THU: 0, FRI: 0, SAT: 0, SUN: 0 }
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    dayOfWeekCounts[DAY_MAP[d.getDay()]]++
+  // Count occurrences of each day-of-week between two local-midnight dates
+  // (inclusive). Pulled out so it can be re-run per therapist, clipped to
+  // their hire date — see effectiveStartStr below.
+  function countDaysOfWeek(rangeStart: Date, rangeEnd: Date): Record<string, number> {
+    const counts: Record<string, number> = { MON: 0, TUE: 0, WED: 0, THU: 0, FRI: 0, SAT: 0, SUN: 0 }
+    for (let d = new Date(rangeStart); d <= rangeEnd; d.setDate(d.getDate() + 1)) {
+      counts[DAY_MAP[d.getDay()]]++
+    }
+    return counts
   }
+
+  // Full-range counts — the common case (staff hired before the range).
+  const dayOfWeekCounts = countDaysOfWeek(start, end)
+  // Cache re-clipped counts by effective start date string so therapists who
+  // share a hire date (or who were all hired before the range, the majority
+  // case) don't each re-walk the whole range.
+  const dayOfWeekCountsCache = new Map<string, Record<string, number>>([[startDate, dayOfWeekCounts]])
 
   // For each config, compute total available slots
   type TherapistData = {
@@ -132,9 +144,26 @@ export async function GET(req: NextRequest) {
     const workDays = cfg.workDays as string[]
     const byDay = activeTimeslotsByStaff.get(cfg.staffId)
 
+    // Clip the range to this therapist's hire date — a slot they weren't
+    // yet employed for was never "available" and shouldn't count against
+    // their utilization. Compare as YYYY-MM-DD strings (dateHired is
+    // stored at UTC midnight from the sync; toISOString().slice(0,10)
+    // recovers the intended calendar date regardless of server timezone).
+    let dayCountsForStaff = dayOfWeekCounts
+    const hiredStr = cfg.staff.dateHired ? cfg.staff.dateHired.toISOString().slice(0, 10) : null
+    if (hiredStr && hiredStr > startDate) {
+      let cached = dayOfWeekCountsCache.get(hiredStr)
+      if (!cached) {
+        const effectiveStart = new Date(`${hiredStr}T00:00:00`)
+        cached = countDaysOfWeek(effectiveStart, end)
+        dayOfWeekCountsCache.set(hiredStr, cached)
+      }
+      dayCountsForStaff = cached
+    }
+
     let totalSlots = 0
     for (const day of workDays) {
-      const daysInRange = dayOfWeekCounts[day] ?? 0
+      const daysInRange = dayCountsForStaff[day] ?? 0
       if (daysInRange === 0) continue
 
       // Distinct active timeslots for this day (always 1 per (day, hour)

@@ -378,6 +378,8 @@ model Staff {
   // overwritten by the HR sync. Absent/empty = use employmentType for every branch.
   employmentByBranch Json?
   dob             DateTime?       // Birthday — synced from HR Platform
+  dateHired       DateTime?       // Date Hired — synced from HR Platform Staff Profile; used to
+                                   // exclude pre-hire days from Therapist Utilization capacity
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
   employmentType  String?         // "employee" | "consultant"
   tin             String?         // TIN from HR Platform

@@ -43,6 +43,7 @@ interface HRStaff {
   email: string | null
   phone: string | null
   birthday: string | null
+  dateHired: string | null
   sex: string | null
   // Financial / government-ID fields — synced one-way from HR Hub.
   // Sensitive: keep server-side; do NOT surface in non-admin views.
@@ -134,6 +135,12 @@ export async function POST() {
       if (!isNaN(d.getTime())) dob = d
     }
 
+    let dateHired: Date | null = null
+    if (hr.dateHired) {
+      const d = new Date(hr.dateHired)
+      if (!isNaN(d.getTime())) dateHired = d
+    }
+
     const match = byHrId.get(hr.hrId) ?? byName.get(hr.firstName + '|' + hr.lastName + '|' + hr.branch)
 
     if (match && (match.firstName !== hr.firstName || match.lastName !== hr.lastName)) {
@@ -164,6 +171,7 @@ export async function POST() {
       email:            hr.email,
       phone:            hr.phone,
       dob,
+      dateHired,
       sex,
       department:       hr.department as StaffDepartment,
       branch:           hr.branch,
