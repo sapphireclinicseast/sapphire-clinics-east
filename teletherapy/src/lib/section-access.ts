@@ -22,22 +22,26 @@ export const ALL_SECTIONS = [
   '/directory',
   '/wellness-check',
   '/payroll',
+  '/loans-perks',
   '/settings',
 ]
 
+// Every account type sees the Loans & Perks section (the BDO Loan calculator
+// is available to everyone). The employees-only "Company Loan" subsection is
+// gated inside the page by employmentType, not by the section preset.
 const PRESETS: Record<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF', string[]> = {
   CLINICIAN: [
     '/', '/clinic-schedule', '/patients', '/patients-love', '/peers-love',
     '/seminars', '/templates', '/manuals', '/directory', '/wellness-check',
-    '/payroll', '/settings',
+    '/payroll', '/loans-perks', '/settings',
   ],
   FRONT_DESK: [
     '/patients-love', '/peers-love', '/seminars', '/templates', '/manuals',
-    '/directory', '/wellness-check', '/payroll',
+    '/directory', '/wellness-check', '/payroll', '/loans-perks',
   ],
   ADMIN_STAFF: [
     '/peers-love', '/seminars', '/templates', '/manuals',
-    '/directory', '/wellness-check', '/payroll',
+    '/directory', '/wellness-check', '/payroll', '/loans-perks',
   ],
 }
 
