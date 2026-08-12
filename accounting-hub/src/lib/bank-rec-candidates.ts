@@ -21,6 +21,14 @@ export interface Candidate {
    * callers hold them to a tighter date window than ordinary candidates.
    */
   fx?: boolean
+  /**
+   * How much of this record settled bank lines already, counted per direction.
+   * A record may legitimately be spread over several lines (a payment split
+   * across two transfers) and a transfer or replenishment is consumed once on
+   * each side — but the same money must never be claimed twice, so a record is
+   * offered only until its amount is accounted for in that direction.
+   */
+  settled?: { in: number; out: number }
 }
 
 const num = (v: unknown) => Number(v ?? 0)
@@ -350,10 +358,61 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       dir: 'in',
     })
   }
+  await markSettled(out)
   return out
 }
 
-/** Candidates that could account for a bank line of this direction. */
+/**
+ * Record for each candidate how much of it already settled bank lines, so a
+ * record that is fully accounted for stops being offered.
+ *
+ * Counted per direction and by amount rather than by line, because both of
+ * those are real: a petty cash replenishment leaves the checking account and
+ * arrives in the petty cash passbook, so it is consumed once each way; and one
+ * record may be paid across two bank lines, which is only over-matching once
+ * the lines together exceed what the record is for.
+ */
+async function markSettled(list: Candidate[]) {
+  const ids = [...new Set(list.map(c => c.id))]
+  if (ids.length === 0) return
+  const taken = await prisma.bankTransaction.findMany({
+    where: { status: 'POSTED', matchId: { in: ids } },
+    select: { matchId: true, spent: true, received: true },
+  })
+  if (taken.length === 0) return
+  const by = new Map<string, { in: number; out: number }>()
+  for (const t of taken) {
+    if (!t.matchId) continue
+    const cur = by.get(t.matchId) || { in: 0, out: 0 }
+    cur.out = Math.round((cur.out + num(t.spent)) * 100) / 100
+    cur.in = Math.round((cur.in + num(t.received)) * 100) / 100
+    by.set(t.matchId, cur)
+  }
+  for (const c of list) {
+    const s = by.get(c.id)
+    if (s) c.settled = s
+  }
+}
+
+/**
+ * Candidates that could account for a bank line of this direction, less the
+ * ones already settled in full — matching those again would claim the same
+ * money twice.
+ */
 export function forDirection(all: Candidate[], isSpent: boolean): Candidate[] {
-  return all.filter(c => c.dir === 'either' || c.dir === (isSpent ? 'out' : 'in'))
+  const dir = isSpent ? 'out' : 'in'
+  return all.filter(c => {
+    if (c.dir !== 'either' && c.dir !== dir) return false
+    return remainingOn(c, isSpent) > 0.005
+  })
+}
+
+/**
+ * What is left of a record for a line of this direction. A record with nothing
+ * matched to it yet has its whole amount available; the tolerance keeps a
+ * centavo of rounding from leaving a record perpetually "partly open".
+ */
+export function remainingOn(c: Candidate, isSpent: boolean): number {
+  const used = isSpent ? (c.settled?.out ?? 0) : (c.settled?.in ?? 0)
+  return Math.round((c.amount - used) * 100) / 100
 }

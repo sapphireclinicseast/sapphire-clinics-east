@@ -9,6 +9,8 @@ import { branchForBankAccount, isPostableBranch } from '@/lib/branch'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
+const money = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 // GET ?bankAccountId=&status=PENDING&search=&from=&to=
 export async function GET(req: Request) {
   const session = await auth()
@@ -450,6 +452,35 @@ export async function PATCH(req: Request) {
     }
 
     if (action === 'match') {
+      // The same record must not settle twice. A record can legitimately be
+      // spread over several bank lines, and a transfer or petty cash
+      // replenishment is consumed once on each side, so what is checked is the
+      // amount already matched in this line's direction — not merely whether
+      // the record has been used before.
+      if (body.matchId && body.matchType) {
+        const already = await prisma.bankTransaction.findMany({
+          where: { status: 'POSTED', matchType: body.matchType, matchId: body.matchId, id: { not: id } },
+          select: { id: true, date: true, description: true, spent: true, received: true },
+        })
+        if (already.length) {
+          const isSpent = Number(txn.spent) > 0
+          const used = already.reduce((s, b) => s + Number(isSpent ? b.spent : b.received), 0)
+          const thisLine = isSpent ? Number(txn.spent) : Number(txn.received)
+          // What the record itself is for. recordsTotal is what the picker had
+          // on screen; it is the only figure available for match types whose
+          // record lives outside this route's knowledge.
+          const recordTotal = Number(body.recordsTotal ?? thisLine)
+          if (used + thisLine > recordTotal + 0.01) {
+            const where = already
+              .map(b => `${new Date(b.date).toISOString().slice(0, 10)} ${b.description || ''} ${money(Number(isSpent ? b.spent : b.received))}`.trim())
+              .join('; ')
+            return NextResponse.json({
+              error: `That record is already matched to ${already.length} other bank line${already.length === 1 ? '' : 's'} (${where}) totalling ${money(used)}. Matching this ${money(thisLine)} line as well would claim ${money(used + thisLine)} against a record for ${money(recordTotal)}. Unmatch the other line first, or match this one to its own record.`,
+              alreadyMatchedTo: already.map(b => b.id),
+            }, { status: 409 })
+          }
+        }
+      }
       // A deposit rarely lands to the centavo: ₱1,000,000.43 arrives against a
       // ₱1,000,000.00 equity record because the bank added interest, or took a
       // charge. Matching alone would leave that sliver unexplained — the ledger
