@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import {
   HandCoins, Landmark, Building2, Info, ClipboardCheck,
   CheckCircle2, AlertTriangle, CreditCard, Wallet, Loader2,
+  ShieldPlus,
 } from 'lucide-react'
 
 // ── Company loan balance (live from the accounting hub) ───────────────────────
@@ -72,8 +73,10 @@ export default function LoansPerksPage() {
   const isConsultant = (session?.user?.employmentType ?? '').toLowerCase() === 'consultant'
   const showCompany = status === 'authenticated' && !isConsultant
 
-  const [tab, setTab] = useState<'bdo' | 'company'>('bdo')
-  const activeTab: 'bdo' | 'company' = showCompany ? tab : 'bdo'
+  const [tab, setTab] = useState<'bdo' | 'company' | 'hmo'>('bdo')
+  // HMO is available to everyone (employees + consultants); only Company Loan
+  // is gated. Fall back to BDO if a hidden Company Loan tab is somehow active.
+  const activeTab: 'bdo' | 'company' | 'hmo' = tab === 'company' && !showCompany ? 'bdo' : tab
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -100,9 +103,10 @@ export default function LoansPerksPage() {
         {showCompany && (
           <TabButton icon={<Building2 size={15} />} label="Company Loan" active={activeTab === 'company'} onClick={() => setTab('company')} />
         )}
+        <TabButton icon={<ShieldPlus size={15} />} label="HMO" active={activeTab === 'hmo'} onClick={() => setTab('hmo')} />
       </div>
 
-      {activeTab === 'bdo' ? <BdoLoan /> : <CompanyLoan />}
+      {activeTab === 'bdo' ? <BdoLoan /> : activeTab === 'company' ? <CompanyLoan /> : <Hmo />}
     </div>
   )
 }
@@ -378,6 +382,90 @@ function CompanyLoan() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── HMO (Insular ER Care Choice) ────────────────────────────────────────────────
+const HMO_BENEFITS = [
+  'Doctor’s professional fee',
+  'Emergency room treatment',
+  'Laboratory and diagnostic procedures',
+  'Ward room, if confinement is required',
+  'Required medicines during hospitalization',
+  'Surgery and surgeon’s fees, when medically necessary',
+  'Use of operating room, recovery room, and ICU, as medically necessary',
+  'Special modalities of treatment as medically required in emergency room care and confinement (subject to a ₱5,000 standard limit)',
+]
+
+function Hmo() {
+  return (
+    <div className="animate-fade-up">
+      {/* Eligibility */}
+      <div className="card-static !p-4 mb-5 bg-[var(--pale-teal)]/40 border-l-4 border-[var(--deep-teal)]">
+        <div className="flex items-start gap-3">
+          <Info size={20} className="text-[var(--deep-teal)] shrink-0 mt-0.5" />
+          <p className="text-[13px] text-[var(--charcoal)] leading-relaxed">
+            Available to <strong>employees and consultants</strong> who work with us <strong>at least 3 days a week</strong>. Coordinate with your HR Officer to confirm your eligibility and enroll.
+          </p>
+        </div>
+      </div>
+
+      <div className="card-static mb-5">
+        <div className="flex items-center gap-2 mb-1">
+          <ShieldPlus size={18} className="text-[var(--deep-teal)]" />
+          <h2 className="text-[15px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Insular ER Care Choice
+          </h2>
+        </div>
+        <p className="text-[13px] text-[var(--charcoal)] leading-relaxed mb-4">
+          Perfect for short gigs and short trips. ER Care Choice gives you the freedom to choose the benefit
+          limit and coverage period according to your health plan needs and budget. It provides up to{' '}
+          <strong>₱50,000</strong> worth of outpatient (ER treatment) and inpatient (confinement) care coverage
+          on emergency cases due to accidents, viral/bacterial diseases, and specific conditions. Adults{' '}
+          <strong>ages 18 to 70</strong> can take advantage of this <strong>one-time use</strong> health plan.
+        </p>
+
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <HmoFact label="Coverage up to" value="₱50,000" />
+          <HmoFact label="Eligible ages" value="18 – 70" />
+          <HmoFact label="Plan use" value="One-time" />
+        </div>
+
+        <h3 className="text-[11px] font-semibold text-[var(--mid-gray)] uppercase tracking-wider mb-2">
+          The benefit limit covers
+        </h3>
+        <ul className="space-y-2">
+          {HMO_BENEFITS.map((b) => (
+            <li key={b} className="flex items-start gap-2 text-[13px] text-[var(--charcoal)]">
+              <CheckCircle2 size={16} className="text-[var(--moss)] shrink-0 mt-0.5" />
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="card-static !p-4 flex items-start gap-3">
+        <ClipboardCheck size={20} className="text-[var(--moss)] shrink-0 mt-0.5" />
+        <div>
+          <h3 className="text-[13.5px] font-bold text-[var(--narra)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>How to avail</h3>
+          <p className="text-[13px] text-[var(--charcoal)] leading-relaxed">
+            Talk to your <strong>HR Officer</strong> to enroll and get the details for the Insular ER Care Choice
+            plan. Coverage terms and limits are set by Insular Life and are subject to their approval.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HmoFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[var(--light-gray)] p-3 text-center">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">{label}</p>
+      <p className="text-[15px] font-bold text-[var(--deep-teal)] leading-tight mt-0.5" style={{ fontFamily: 'var(--font-display)' }}>
+        {value}
+      </p>
     </div>
   )
 }
