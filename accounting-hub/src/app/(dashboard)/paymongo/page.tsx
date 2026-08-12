@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search, Link as LinkIcon } from 'lucide-react'
+import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search, Link as LinkIcon, AlertCircle
+} from 'lucide-react'
 import { PosLinksPanel } from './PosLinksPanel'
 import { allowedPaymongoAccounts, canWritePaymongo } from '@/lib/paymongo-access'
 
@@ -85,6 +86,7 @@ interface Txn {
   paymentMethodUsed: string | null
   paymentId: string | null   // set once PayMongo confirms — used to match against live payments
   external?: boolean         // a payment PayMongo holds that no link here created (storefront sale)
+  belongsToAccount?: string | null // settled here but earned by another branch
   paidAt: string | null; payoutId: string | null; livemode: boolean; createdAt: string
 }
 interface PayLink {
@@ -94,7 +96,7 @@ interface PayLink {
 }
 interface Payout { payoutId: string; net: number; fee: number; status: string; settled: boolean; paidAt: string | null }
 // A payment as PayMongo itself reports it, independent of anything recorded here.
-interface LivePayment { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string; paymentMethod: string | null }
+interface LivePayment { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string; paymentMethod: string | null; belongsToAccount: string | null }
 interface Item { id: string; name: string; price: number; sku?: string; stock?: number; department?: string }
 interface Voucher {
   id: string; name: string; code: string; discountType: string; discountValue: number
@@ -178,6 +180,7 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
         amount: lp.amount, status: lp.status === 'paid' ? 'PAID' : lp.status.toUpperCase(),
         checkoutUrl: null, fee: lp.fee, netAmount: lp.net,
         paymentMethodUsed: lp.paymentMethod, paymentId: lp.paymentId,
+        belongsToAccount: lp.belongsToAccount,
         paidAt: lp.paidAt, payoutId: null, livemode: true,
         createdAt: lp.paidAt || new Date().toISOString(),
         external: true,
@@ -425,6 +428,35 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
         </div>
       </div>
 
+      {/* Money that landed in this account but was earned by another branch.
+          Display only — it changes nothing in the ledger, it just stops the tab
+          quietly implying the cash belongs here. */}
+      {(() => {
+        const strays = rows.filter(r => r.belongsToAccount)
+        if (strays.length === 0) return null
+        const total = strays.reduce((sum, r) => sum + r.amount, 0)
+        const net = strays.reduce((sum, r) => sum + (r.netAmount ?? r.amount), 0)
+        const owed = [...new Set(strays.map(r => r.belongsToAccount))].join(', ')
+        return (
+          <div className="mb-4 p-3 rounded-xl border flex items-start gap-2" style={{ background: '#fffbeb', borderColor: '#f59e0b', color: '#92400e' }}>
+            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold">
+                {strays.length} payment{strays.length === 1 ? '' : 's'} here {strays.length === 1 ? 'was' : 'were'} earned by {owed} — {peso(total)} gross, {peso(net)} net settled into this account.
+              </p>
+              <p className="text-xs mt-1">
+                Class-portal tuition taken before the portal sent the student&apos;s branch, so it settled here instead of {owed}. The figures below are accurate about where the money is; squaring it needs a bank transfer, not a change here.
+              </p>
+              <ul className="text-xs mt-1.5 space-y-0.5">
+                {strays.map(r => (
+                  <li key={r.id}>· {r.customerName || r.itemName || '—'} — {peso(r.amount)} gross, {peso(r.netAmount ?? r.amount)} net → belongs to {r.belongsToAccount}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── Transactions ── */}
       <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
         <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
@@ -473,6 +505,12 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
                         payment taken outside any link created here. */}
                     {t.external && (
                       <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#ede9fe', color: '#5b21b6' }}>Website / direct</span>
+                    )}
+                    {t.belongsToAccount && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: '#fef3c7', color: '#92400e' }}
+                        title={`Earned by ${t.belongsToAccount} but settled into this account`}>
+                        ⚠ {t.belongsToAccount}&apos;s money
+                      </span>
                     )}
                     {(t.departmentLabel || t.kind === 'PRODUCT') && (
                       <span className="block mt-0.5">
