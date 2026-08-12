@@ -2070,7 +2070,7 @@ interface SoaRow {
   entryCount: number; total: number; paidAt: string | null; createdAt: string
 }
 
-// Credit Card SOA subtab — SOAs still in progress (OPEN / IN_RFP).
+// Credit Card SOA subtab — every SOA booked for the branch; active ones first, paid ones kept as history.
 function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; canWrite: boolean; onChanged: () => void }) {
   const [rows, setRows] = useState<SoaRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -2078,7 +2078,21 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { const r = await fetch(`/api/expenses/soa?branch=${branch}&status=active`); setRows(r.ok ? await r.json() : []) }
+    try {
+      // Every SOA ever booked stays visible here — a paid SOA is history, not
+      // clutter. Active ones (Open / In RFP) float to the top; paid ones follow,
+      // newest payment first.
+      const r = await fetch(`/api/expenses/soa?branch=${branch}`)
+      const all: SoaRow[] = r.ok ? await r.json() : []
+      all.sort((a, b) => {
+        const aPaid = a.status === 'PAID' ? 1 : 0
+        const bPaid = b.status === 'PAID' ? 1 : 0
+        if (aPaid !== bPaid) return aPaid - bPaid
+        if (aPaid) return String(b.paidAt || '').localeCompare(String(a.paidAt || ''))
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+      })
+      setRows(all)
+    }
     catch { setRows([]) } finally { setLoading(false) }
   }, [branch])
   useEffect(() => { load() }, [load])
@@ -2160,14 +2174,18 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
           {loading ? (
             <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           ) : rows.map(r => (
-            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.status === 'IN_RFP' ? '#ffedd5' : '#f3e8ff' }}>
+            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.status === 'PAID' ? 'white' : r.status === 'IN_RFP' ? '#ffedd5' : '#f3e8ff' }}>
               <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
               <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
               <td className="px-3 py-2.5 text-right" style={{ color: 'var(--mid-gray)' }}>{r.entryCount}</td>
               <td className="px-3 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(r.total)}</td>
               <td className="px-3 py-2.5">
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={r.status === 'IN_RFP' ? { background: '#fed7aa', color: '#9a3412' } : { background: '#e9d5ff', color: '#6b21a8' }}>
-                  {r.status === 'IN_RFP' ? `In RFP${r.rfpRefNumber ? ` · ${r.rfpRefNumber}` : ''}` : 'Open'}
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                  style={r.status === 'PAID' ? { background: '#dcfce7', color: '#166534' }
+                    : r.status === 'IN_RFP' ? { background: '#fed7aa', color: '#9a3412' } : { background: '#e9d5ff', color: '#6b21a8' }}>
+                  {r.status === 'PAID'
+                    ? `Paid${r.paidAt ? ` · ${new Date(r.paidAt).toLocaleDateString('en-PH')}` : ''}${r.paymentRoute === 'PETTY_CASH' ? ' · petty cash' : r.rfpRefNumber ? ` · ${r.rfpRefNumber}` : ''}`
+                    : r.status === 'IN_RFP' ? `In RFP${r.rfpRefNumber ? ` · ${r.rfpRefNumber}` : ''}` : 'Open'}
                 </span>
               </td>
               <td className="px-3 py-2.5">
@@ -2194,7 +2212,7 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
             </tr>
           ))}
           {!loading && rows.length === 0 && (
-            <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No open SOAs. In One-time expense, select entries and click &quot;Paid by Credit Card&quot;.</td></tr>
+            <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No SOAs booked yet. In One-time expense, select entries and click &quot;Paid by Credit Card&quot;.</td></tr>
           )}
         </tbody>
       </table>
