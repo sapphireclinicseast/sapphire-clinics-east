@@ -59,14 +59,21 @@ function pct(n: number): string {
 }
 
 export default function LoansPerksPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   // Consultants (employmentType === 'consultant') only see the BDO loan; the
   // Company Loan is a benefit for regular employees. Anyone not tagged as a
   // consultant (employee / unset) sees both.
+  //
+  // Gate the Company Loan tab on the session being LOADED ('authenticated'),
+  // not merely on !isConsultant. While the session is still loading,
+  // employmentType is unknown, so a plain !isConsultant check renders the tab
+  // and then removes it once "consultant" resolves — flashing it at consultants.
+  // Requiring an authenticated session means it never appears for them at all.
   const isConsultant = (session?.user?.employmentType ?? '').toLowerCase() === 'consultant'
+  const showCompany = status === 'authenticated' && !isConsultant
 
   const [tab, setTab] = useState<'bdo' | 'company'>('bdo')
-  const activeTab: 'bdo' | 'company' = isConsultant ? 'bdo' : tab
+  const activeTab: 'bdo' | 'company' = showCompany ? tab : 'bdo'
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -90,7 +97,7 @@ export default function LoansPerksPage() {
       {/* Subtabs */}
       <div className="flex gap-1 mb-6 border-b border-[var(--light-gray)]">
         <TabButton icon={<CreditCard size={15} />} label="BDO Loan" active={activeTab === 'bdo'} onClick={() => setTab('bdo')} />
-        {!isConsultant && (
+        {showCompany && (
           <TabButton icon={<Building2 size={15} />} label="Company Loan" active={activeTab === 'company'} onClick={() => setTab('company')} />
         )}
       </div>
