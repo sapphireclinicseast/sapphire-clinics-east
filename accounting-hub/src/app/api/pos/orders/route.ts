@@ -217,6 +217,24 @@ export async function POST(req: Request) {
     }
     const payLines = isUnpaid ? [] : (payments || [])
 
+    // The collected total must equal the net amount. The GL layer refuses a
+    // lopsided journal entry, so an order that slips through here with
+    // payments ≠ net is accepted by the POS but silently never posts to the
+    // books (Apr–Jul 2026: 31 such orders). Catch it at the till instead —
+    // the classic causes are a discount computed on the balance after a
+    // downpayment while the order records it on the full price, or a booking
+    // downpayment stacked on top of the session price instead of applied to it.
+    if (!isUnpaid && payLines.length) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const paidTotal = payLines.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0)
+      if (Math.abs(paidTotal - netAmount) > 0.05) {
+        return NextResponse.json(
+          { error: `Payments total ₱${paidTotal.toFixed(2)} but the net amount is ₱${netAmount.toFixed(2)}. The collected amount must equal the net amount — check the discount and downpayment math before completing the order.` },
+          { status: 400 }
+        )
+      }
+    }
+
     const order = await prisma.order.create({
       data: {
         buyerIsPatient: !!buyerIsPatient,
