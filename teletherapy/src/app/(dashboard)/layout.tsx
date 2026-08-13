@@ -29,6 +29,7 @@ import {
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { allowedSections } from '@/lib/section-access'
+import { branchLabel } from '@/lib/branch-label'
 import BranchSwitcher, { BranchProvider, useBranchSwitcher } from '@/components/BranchSwitcher'
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
@@ -45,7 +46,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const initials = fullName
     ? fullName.split(' ').filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase()
     : (userEmail?.[0]?.toUpperCase() ?? '')
-  const metaLine = [session?.user?.department, session?.user?.branch].filter(Boolean).join(' · ')
+  const metaLine = [session?.user?.department, branchLabel(session?.user?.branch)].filter(Boolean).join(' · ')
 
   const isAdmin = session?.user?.role === 'ADMIN'
 
