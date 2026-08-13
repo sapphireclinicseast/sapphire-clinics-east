@@ -508,7 +508,7 @@ function RecordPaymentModal({
     setBusy(true)
     try {
       const studentName = [selected.firstName, selected.lastName].filter(Boolean).join(' ') || selected.email
-      const id = await recordPaymentOnBehalfOf({
+      const result = await recordPaymentOnBehalfOf({
         studentId: selected.id,
         studentEmail: selected.email,
         studentName,
@@ -521,8 +521,14 @@ function RecordPaymentModal({
         period: period.trim(),
         reference: reference.trim() || undefined,
       })
-      if (!id) {
-        setErr('Could not record the payment. Retry?')
+      if (!result.ok) {
+        // Surface the real reason so an expired token doesn't look like a
+        // generic server error. On auth-expired the token has already
+        // been cleared client-side, so bounce to /sign-in after a beat.
+        setErr(result.message)
+        if (result.reason === 'auth-expired' && typeof window !== 'undefined') {
+          setTimeout(() => { window.location.href = '/sign-in' }, 1500)
+        }
         return
       }
       await onRecorded()
