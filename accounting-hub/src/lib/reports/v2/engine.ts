@@ -606,7 +606,7 @@ export async function computeLedgerStatements(
       ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
     },
     select: {
-      id: true, orderNumber: true, patientName: true, transactionDate: true,
+      id: true, orderNumber: true, patientName: true, transactionDate: true, branch: true,
       netAmount: true, revenueType: true, discountAmount: true, discountLabel: true, discountType: true,
       items: {
         select: {
@@ -691,7 +691,12 @@ export async function computeLedgerStatements(
         lines.push({ acct: byNumber.get(d.account.accountNumber) || parseAccountKey(`${d.account.accountNumber} deduction`), debit: dAmt })
         net -= dAmt
       }
-      const cashA = p.paymentMode?.account ? (byNumber.get(p.paymentMode.account.accountNumber) || defaultCash()) : defaultCash()
+      // No branch on the payment mode's own account -> land on THIS order's
+      // branch's default cash, never the bare company-wide fallback. Without
+      // the branch argument every unmapped payment mode across every branch
+      // fell onto SCEI Main Corporate Account regardless of which branch's
+      // register actually took the payment.
+      const cashA = p.paymentMode?.account ? (byNumber.get(p.paymentMode.account.accountNumber) || defaultCash(o.branch)) : defaultCash(o.branch)
       lines.push({ acct: cashA, debit: net })
     }
     const unpaid = round2(Number(o.netAmount) - paid)
@@ -733,13 +738,16 @@ export async function computeLedgerStatements(
       paymentDate: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: { in: [branch, orderBranch] } } : {}),
     },
-    select: { id: true, amount: true, discount: true, paymentDate: true, cashAccount: { select: { accountNumber: true } }, discountAccount: { select: { accountNumber: true } }, wallet: { select: { patientName: true } } },
+    select: { id: true, amount: true, discount: true, paymentDate: true, branch: true, cashAccount: { select: { accountNumber: true } }, discountAccount: { select: { accountNumber: true } }, wallet: { select: { patientName: true } } },
   })
   let synthesizedAr = 0
   for (const p of arPayments) {
     if (hasRef('AR_PAYMENT', p.id)) continue
     synthesizedAr++
-    const cashA = p.cashAccount ? (byNumber.get(p.cashAccount.accountNumber) || defaultCash()) : defaultCash()
+    // Same fix as the orders section above: an unmapped cash account must land
+    // on THIS payment's own branch, not the bare company-wide fallback.
+    const pBranch = BRANCH_MAP[p.branch || ''] || p.branch || undefined
+    const cashA = p.cashAccount ? (byNumber.get(p.cashAccount.accountNumber) || defaultCash(pBranch)) : defaultCash(pBranch)
     const lines: { acct: AcctInfo; debit?: number; credit?: number }[] = [
       { acct: cashA, debit: Number(p.amount) },
       { acct: arAccount(), credit: Number(p.amount) + Number(p.discount || 0) },
