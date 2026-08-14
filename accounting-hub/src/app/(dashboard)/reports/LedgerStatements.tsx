@@ -673,25 +673,34 @@ export default function LedgerStatements({ year, branch, tab, view }: {
       // "Year End" into September's slot and left four columns unlabelled.
       const colIdx = cutCols(view === 'quarterly' ? [2, 5, 8, 11] : Array.from({ length: 12 }, (_, i) => i))
       const pick = (m12: number[]) => colIdx.map(i => m12[i] || 0)
-      // cumulative EBT per month → monthly NI / ITP / DTA (statement-signed)
-      const isSec = (key: string) => data.incomeStatement.sections.find(s => s.key === key)
-      const mvSum = (key: string) => Array.from({ length: 12 }, (_, i) => (isSec(key)?.rows || []).reduce((s, r) => s + (r.monthly?.[i] || 0), 0))
-      const revM = mvSum('REVENUE'), discM = mvSum('DISCOUNTS'), cogsM = mvSum('COGS'), opexM = mvSum('OPEX')
-      const depM = mvSum('DEPRECIATION'), intM = mvSum('INTEREST'), nonopM = mvSum('NON_OPERATING')
-      const ebtDelta = Array.from({ length: 12 }, (_, i) =>
-        revM[i] - discM[i] - cogsM[i] - opexM[i] - depM[i] - intM[i] - nonopM[i])
-      const cumEbt = ebtDelta.map((_, i) => ebtDelta.slice(0, i + 1).reduce((a, b) => a + b, 0))
+      // Net income for interim months is not yet a posted ledger balance —
+      // formal closing only happens at year end. It has to be shown as
+      // whatever gap remains once real assets, liabilities and equity
+      // (excluding net income itself) are totalled. Deriving it as THAT
+      // plug — rather than independently re-summing the income statement's
+      // monthly revenue/expense rows on a separate cumulative-EBT model —
+      // is what guarantees Assets = Liabilities + Equity every month, not
+      // only at year end: the two approaches agreed on the full-year total
+      // (both are anchored to the same bs.netIncome at December) but used
+      // different month-by-month allocation, which showed up as a swinging
+      // imbalance — up to ₱216k in one month — that only closed to zero in
+      // December. See project_reports_trueup_distortion-style investigation,
+      // 2026-08-13.
+      const secMonthly = (s: (typeof bs.sections)[number]) =>
+        Array.from({ length: 12 }, (_, i) => s.rows.reduce((sum, r) => sum + (r.monthly?.[i] || 0), 0))
+      const assetsRawM = Array.from({ length: 12 }, (_, i) =>
+        bs.sections.filter(s => s.key.includes('ASSETS')).reduce((sum, s) => sum + secMonthly(s)[i], 0))
+      const liabRawM = Array.from({ length: 12 }, (_, i) =>
+        bs.sections.filter(s => s.key.includes('LIABILITIES')).reduce((sum, s) => sum + secMonthly(s)[i], 0))
+      const equityRawM = Array.from({ length: 12 }, (_, i) =>
+        bs.sections.filter(s => s.key === 'EQUITY').reduce((sum, s) => sum + secMonthly(s)[i], 0))
+      const cumEbt = Array.from({ length: 12 }, (_, i) => assetsRawM[i] - liabRawM[i] - equityRawM[i])
       const niCum = cumEbt.map(e => e * (1 - INCOME_TAX_RATE))
       const itpCum = cumEbt.map(e => (e > 0 ? e * INCOME_TAX_RATE : 0))
       const dtaCum = cumEbt.map(e => (e < 0 ? -e * INCOME_TAX_RATE : 0))
-      const secMonthly = (s: (typeof bs.sections)[number]) =>
-        Array.from({ length: 12 }, (_, i) => s.rows.reduce((sum, r) => sum + (r.monthly?.[i] || 0), 0))
-      const assetsM = Array.from({ length: 12 }, (_, i) =>
-        bs.sections.filter(s => s.key.includes('ASSETS')).reduce((sum, s) => sum + secMonthly(s)[i], 0) + dtaCum[i])
-      const liabM = Array.from({ length: 12 }, (_, i) =>
-        bs.sections.filter(s => s.key.includes('LIABILITIES')).reduce((sum, s) => sum + secMonthly(s)[i], 0) + itpCum[i])
-      const equityM = Array.from({ length: 12 }, (_, i) =>
-        bs.sections.filter(s => s.key === 'EQUITY').reduce((sum, s) => sum + secMonthly(s)[i], 0) + niCum[i])
+      const assetsM = Array.from({ length: 12 }, (_, i) => assetsRawM[i] + dtaCum[i])
+      const liabM = Array.from({ length: 12 }, (_, i) => liabRawM[i] + itpCum[i])
+      const equityM = Array.from({ length: 12 }, (_, i) => equityRawM[i] + niCum[i])
       body = (
         <div className="py-1">
           <p className="text-xs italic px-4 py-2" style={{ color: 'var(--mid-gray)' }}>
