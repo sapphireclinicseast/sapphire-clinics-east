@@ -418,13 +418,24 @@ export async function computeLedgerStatements(
       const amt = Number(r.amount)
       if (!amt) continue
       opening.set(acct.number, (opening.get(acct.number) || 0) + amt)
-      if (acct.normalBalance === 'DEBIT') openDr += amt
-      else openCr += amt
+      // `amt` is signed in the account's OWN normal-balance direction — a
+      // negative entered opening (e.g. 6030 Retained Earnings starting the
+      // year in an accumulated deficit) is on the account's CONTRA side, not
+      // a negative amount of its normal side. Splitting purely on
+      // normalBalance without checking the sign produced literal negative
+      // debit/credit figures in the drill-down (a -P2.89M "credit" line for
+      // 6030's 2026 opening) that didn't read as anything a real ledger line
+      // could be, even though the actual opening/closing math downstream
+      // (which uses the signed `amt` directly) was always correct.
+      const onNormalSide = amt >= 0
+      const isDebitNormal = acct.normalBalance === 'DEBIT'
+      const dr = (isDebitNormal === onNormalSide) ? Math.abs(amt) : 0
+      const cr = (isDebitNormal !== onNormalSide) ? Math.abs(amt) : 0
+      openDr += dr; openCr += cr
       if (collect && collect.account === acct.number && (!collect.month || collect.cumulative)) {
         collected.push({
           month: 0, source: 'opening', label: `Opening balance (${year})`,
-          debit: acct.normalBalance === 'DEBIT' ? amt : 0,
-          credit: acct.normalBalance === 'CREDIT' ? amt : 0,
+          debit: dr, credit: cr,
         })
       }
       // Drilling the 3999 plug itself answers "what causes this": the plug is
@@ -434,8 +445,7 @@ export async function computeLedgerStatements(
       if (collect && collect.account === OPENING_PLUG && (!collect.month || collect.cumulative)) {
         collected.push({
           month: 0, source: 'opening-plug', label: `${acct.number} ${acct.title} — entered opening`,
-          debit: acct.normalBalance === 'DEBIT' ? amt : 0,
-          credit: acct.normalBalance === 'CREDIT' ? amt : 0,
+          debit: dr, credit: cr,
         })
       }
     }
