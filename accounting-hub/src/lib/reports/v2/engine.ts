@@ -156,6 +156,28 @@ const OPENING_PLUG = '3999'
 const IMBALANCE_PLUG = '9990'
 const round2 = (n: number) => Math.round(n * 100) / 100
 
+/**
+ * The Accounting Hub only started posting live, in the moment, per-order
+ * journal entries on 2026-01-02 (the earliest real POS_ORDER-referenced JE in
+ * the system; zero exist anywhere in 2025). Every 2025 order was bulk
+ * backfilled into the Order table in one batch (2026-07), and that period's
+ * revenue is already fully reflected in the historical QuickBooks import
+ * (QB_IMPORT_JE) — confirmed: 2025 Order-table earned revenue (₱25.02M) sits
+ * within ~5% of QB_IMPORT_JE's own 2025 revenue-account total (₱23.86M).
+ *
+ * `hasRef('POS_ORDER', order.id)` cannot see any of that: the QB import was
+ * never linked to individual Order ids, so the dedup check always misses and
+ * every 2025 order gets synthesized on TOP of revenue QuickBooks already
+ * recorded — company-wide, for the whole year. That doubled the Income
+ * Statement's 2025 gross revenue (₱57.86M synthesized vs ₱23.86M real) and
+ * inflated every bank account's cash movement by the corresponding phantom
+ * payment lines. Orders (and their COGS/free-sample legs) dated before this
+ * cutoff are therefore never synthesized, full stop — that period's GL is
+ * QuickBooks', not the Hub's, regardless of what hasRef() does or doesn't
+ * find.
+ */
+const LIVE_GL_POSTING_START = new Date(Date.UTC(2026, 0, 1))
+
 // Sections an account lands in, by CoA classification.
 const BS_SECTION: [key: string, label: string, match: (a: AcctInfo) => boolean][] = [
   ['CURRENT_ASSETS', 'Current Assets', a => a.type === 'ASSET' && (a.subType === 'CURRENT_ASSETS' || a.subType === 'INVENTORY' || a.subType.startsWith('INV_'))],
@@ -677,6 +699,7 @@ export async function computeLedgerStatements(
       }
     }
     if (hasRef('POS_ORDER', o.id)) continue
+    if (o.transactionDate < LIVE_GL_POSTING_START) continue // already in the QB import — see LIVE_GL_POSTING_START
     synthesizedOrders++
     const oMonth = monthOf(o.transactionDate)
     const oLabel = `Order #${o.orderNumber}${o.patientName ? ` — ${o.patientName}` : ''}`
