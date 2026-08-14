@@ -665,6 +665,18 @@ export default function EmailPage() {
 
 // ── Campaign History ─────────────────────────────────────────────────────────
 
+// recipientGroup is stored as the raw internal encoding (e.g.
+// "all|SANDBOX_EAST,VERDANA_STORE" — see /api/email/send's storedGroup).
+// Render it through the same friendly labels used in the compose form
+// above, instead of the raw group/branch codes.
+function formatRecipientGroup(raw: string): string {
+  const [groupKey, branchPart] = raw.split('|')
+  const groupLabel = RECIPIENT_GROUPS.find(g => g.value === groupKey)?.label ?? groupKey
+  if (!branchPart) return groupLabel
+  const branchLabels = branchPart.split(',').map(b => BRANCH_FILTERS.find(f => f.value === b)?.label ?? b)
+  return `${groupLabel} — ${branchLabels.join(', ')}`
+}
+
 interface HistoryRow {
   id: string
   subject: string
@@ -844,7 +856,7 @@ function CampaignHistory() {
                 <tr key={r.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
                   <td className="px-4 py-3">
                     <div className="font-semibold text-xs truncate max-w-[300px]" style={{ color: 'var(--charcoal)' }} title={r.subject}>{r.subject || '(no subject)'}</div>
-                    <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.recipientGroup}</div>
+                    <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{formatRecipientGroup(r.recipientGroup)}</div>
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>{r.recipientCount}</td>
                   <td className="px-4 py-3">{statusBadge(r)}</td>
