@@ -945,15 +945,37 @@ export async function computeLedgerStatements(
     }
   }
 
-  /* ── 6. Depreciation schedule (synthesized unless DEPRECIATION JEs exist) ── */
+  /* ── 6. Depreciation schedule (synthesized per branch/month, unless a real
+     depreciation-account posting already covers that exact branch+month) ── */
   const assets = await prisma.asset.findMany({
     where: { ...(branch !== 'ALL' ? { branch: orderBranch as never } : {}) },
     select: { id: true, name: true, dateBought: true, depreciationEndDate: true, monthlyDepreciation: true, classification: true, totalAmount: true, fromPettyCash: true, sourceAccountId: true, branch: true },
   })
   const depAcct = byNumber.get('8070') || virt('8070', 'Depreciation Expense', 'EXPENSE', 'NON_OPERATING_EXPENSES', 'DEBIT')
   const accumDep = byNumber.get('2010') || findByTitle(/accumulated dep/i) || virt('2010', 'Accumulated Depreciation', 'ASSET', 'PPE', 'CREDIT')
-  const hasDepJEs = (glRefIds.get('DEPRECIATION')?.size || 0) > 0
-  if (!hasDepJEs) {
+  /*
+   * A single global "any real JE with referenceType DEPRECIATION" check
+   * can't see it: QuickBooks' imported depreciation catch-up rows carry
+   * referenceType QB_IMPORT_JE, never DEPRECIATION, so that check always
+   * missed them and synthesis piled a second depreciation charge on top of
+   * real ones already posted to 8070 — same shape as the orders/revenue
+   * double-count. Coverage also turned out inconsistent per branch (East:
+   * real entries for every month of 2025; Greenhills: only from May; every
+   * other branch: none at all), so a blanket date cutoff like the orders fix
+   * would have deleted real depreciation outright wherever it doesn't exist.
+   * The fix has to match the data's own granularity: skip synthesis only for
+   * the exact (branch, month) pairs a real 8070 posting already covers.
+   */
+  const realDepLines = await prisma.journalEntryLine.findMany({
+    where: { account: { accountNumber: '8070' }, journalEntry: { entryDate: { gte: start, lt: end } } },
+    select: { journalEntry: { select: { entryDate: true, branch: true } } },
+  })
+  const realDepCovered = new Set<string>()
+  for (const l of realDepLines) {
+    const m = l.journalEntry.entryDate.getUTCMonth() + 1
+    realDepCovered.add(`${l.journalEntry.branch}|${m}`)
+  }
+  {
     // Accrue only months that have actually elapsed: for the current year stop
     // at this month (matching Asset Management's depreciation-to-date), for
     // past years take all 12, for future years none.
@@ -970,6 +992,7 @@ export async function computeLedgerStatements(
       for (const a of assets) {
         const md = Number(a.monthlyDepreciation)
         if (!md) continue
+        if (realDepCovered.has(`${a.branch}|${m + 1}`)) continue
         if (new Date(a.dateBought) < monthEnd && new Date(a.depreciationEndDate) > monthStart) {
           depTotal += md
           postBalanced('depreciation-schedule', m + 1, `Depreciation — ${a.name}`, [
