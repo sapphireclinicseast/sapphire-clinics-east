@@ -38,6 +38,7 @@ const SESSION_TYPES: Record<string, string[]> = {
     'Group Session (Cash)', 'Group Session (HMO)',
     'PTC (Cash)', 'PTC (HMO)',
     'Aquatherapy (Cash)', 'Aquatherapy (HMO)',
+    'IE Intern', 'Session Intern',
   ],
   PT: [
     'IE (Cash)', 'IE (HMO)',
@@ -46,6 +47,7 @@ const SESSION_TYPES: Record<string, string[]> = {
     'Group Session (Cash)', 'Group Session (HMO)',
     'PTC (Cash)', 'PTC (HMO)',
     'Aquatherapy (Cash)', 'Aquatherapy (HMO)',
+    'IE Intern', 'Session Intern',
   ],
   SLP: [
     'IE (Cash)', 'IE (HMO)',
@@ -54,6 +56,7 @@ const SESSION_TYPES: Record<string, string[]> = {
     'Group Session (Cash)', 'Group Session (HMO)',
     'PTC (Cash)', 'PTC (HMO)',
     'Aquatherapy (Cash)', 'Aquatherapy (HMO)',
+    'IE Intern', 'Session Intern',
   ],
   SPED:       ['IE', 'Basic Session', 'PTC', 'Group Session'],
   MD:         ['Initial Consult', 'Follow Up'],
@@ -85,9 +88,33 @@ interface QueueEntry {
   department: string; therapist: string; initials: string; patientName: string | null
   staffId: string
 }
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string }
+interface StaffMember {
+  id: string; firstName: string; lastName: string; department: string; branch: string
+  employmentType?: string | null; active?: boolean
+  dateHired?: string | null; contractExpiry?: string | null // interns: Start Month / End Month
+}
 interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
 interface Ad { id: string; fileName: string; mimeType: string; order: number; branch: string }
+
+const INTERN_SESSION_TYPES = new Set(['IE Intern', 'Session Intern'])
+
+// Is this staff member an intern whose Start/End Month covers `forDate`
+// (YYYY-MM-DD)? Falls back to today if no date is picked yet.
+function isEligibleIntern(s: StaffMember, forDate: string): boolean {
+  if (s.employmentType !== 'intern' || s.active === false) return false
+  const d = forDate || new Date().toISOString().split('T')[0]
+  if (s.dateHired) {
+    const startMonth = s.dateHired.split('T')[0].slice(0, 7)
+    if (d < `${startMonth}-01`) return false
+  }
+  if (s.contractExpiry) {
+    const endMonth = s.contractExpiry.split('T')[0].slice(0, 7)
+    const [y, m] = endMonth.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate() // last calendar day of the End Month
+    if (d > `${endMonth}-${String(lastDay).padStart(2, '0')}`) return false
+  }
+  return true
+}
 
 // ─── Input style helper ───────────────────────────────────────────────────────
 const inp = {
@@ -180,6 +207,7 @@ function WalkInModal({ staff, defaultBranch, defaultDate, onClose, onSaved }: {
   const [sessionType, setSessionType] = useState('')
   const [status, setStatus]         = useState('PENDING')
   const [notes, setNotes]           = useState('')
+  const [internStaffId, setInternStaffId] = useState('')
 
   const selectedStaff = branchStaff.find(s => s.id === staffId)
   const deptTypes = selectedStaff ? (SESSION_TYPES[selectedStaff.department] ?? []) : []
@@ -206,6 +234,7 @@ function WalkInModal({ staff, defaultBranch, defaultDate, onClose, onSaved }: {
       patientId: patientId || undefined,
       ...(isNew ? { firstName, lastName, phone, email, dob, sex, address, diagnosis } : {}),
       staffId, date: defaultDate, startTime, endTime, duration, sessionType, status, notes,
+      internStaffId: INTERN_SESSION_TYPES.has(sessionType) ? (internStaffId || undefined) : undefined,
     }
     const res = await fetch('/api/queueing/walkin', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -354,11 +383,37 @@ function WalkInModal({ staff, defaultBranch, defaultDate, onClose, onSaved }: {
               </div>
               <div>
                 <label style={lbl}>Session Type *</label>
-                <select style={inp} value={sessionType} onChange={e => setSessionType(e.target.value)}>
+                <select style={inp} value={sessionType} onChange={e => {
+                  const val = e.target.value
+                  setSessionType(val)
+                  if (!INTERN_SESSION_TYPES.has(val)) setInternStaffId('')
+                }}>
                   <option value="">Select type</option>
                   {deptTypes.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
+              {INTERN_SESSION_TYPES.has(sessionType) && (
+                <div>
+                  <label style={lbl}>Select Intern</label>
+                  {(() => {
+                    const eligible = selectedStaff
+                      ? staff
+                          .filter(s => s.department === selectedStaff.department && isEligibleIntern(s, defaultDate))
+                          .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName))
+                      : []
+                    return eligible.length === 0 ? (
+                      <div style={{ ...inp, background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                        No active {selectedStaff?.department} interns right now
+                      </div>
+                    ) : (
+                      <select style={inp} value={internStaffId} onChange={e => setInternStaffId(e.target.value)}>
+                        <option value="">Select intern…</option>
+                        {eligible.map(s => <option key={s.id} value={s.id}>{s.lastName}, {s.firstName}</option>)}
+                      </select>
+                    )
+                  })()}
+                </div>
+              )}
               <div>
                 <label style={lbl}>Status</label>
                 <select style={inp} value={status} onChange={e => setStatus(e.target.value)}>

@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
       staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
     orderBy: { startTime: 'asc' },
   })
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy } = await req.json()
+  const { staffId, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, internStaffId } = await req.json()
 
   if (!staffId || !date || !startTime || !endTime || !duration || !sessionType) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -92,10 +93,12 @@ export async function POST(req: NextRequest) {
       status: status || 'PENDING',
       notes: notes || null,
       isTeletherapy: isTeletherapy || false,
+      internStaffId: internStaffId || null,
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
       staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
   })
 
@@ -125,7 +128,7 @@ export async function PUT(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, meetLink } = await req.json()
+  const { id, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, meetLink, internStaffId } = await req.json()
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
   const data: Record<string, unknown> = {}
@@ -139,6 +142,7 @@ export async function PUT(req: NextRequest) {
   if (notes !== undefined) data.notes = notes || null
   if (isTeletherapy !== undefined) data.isTeletherapy = isTeletherapy
   if (meetLink !== undefined) data.meetLink = meetLink || null
+  if (internStaffId !== undefined) data.internStaffId = internStaffId || null
 
   // Auto-generate a Jitsi link when teletherapy is being TOGGLED ON during an
   // edit (POST creates a link on initial save, but the PUT path used to leave
@@ -175,6 +179,7 @@ export async function PUT(req: NextRequest) {
     data,
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
   })
 

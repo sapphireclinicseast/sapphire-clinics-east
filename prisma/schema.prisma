@@ -378,10 +378,14 @@ model Staff {
   // overwritten by the HR sync. Absent/empty = use employmentType for every branch.
   employmentByBranch Json?
   dob             DateTime?       // Birthday — synced from HR Platform
-  dateHired       DateTime?       // Date Hired — synced from HR Platform Staff Profile; used to
-                                   // exclude pre-hire days from Therapist Utilization capacity
+  dateHired       DateTime?       // Date Hired ("Start Month" for interns) — synced from HR
+                                   // Platform Staff Profile; used to exclude pre-hire days from
+                                   // Therapist Utilization capacity
+  contractExpiry  DateTime?       // Contract Expiration ("End Month" for interns) — synced from
+                                   // HR Platform; gates the Clinic Schedule intern picker to only
+                                   // currently-active interns
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
-  employmentType  String?         // "employee" | "consultant"
+  employmentType  String?         // "employee" | "consultant" | "intern"
   tin             String?         // TIN from HR Platform
   sss             String?         // SSS No. from HR Platform
   pagibig         String?         // Pag-IBIG No. from HR Platform
@@ -395,6 +399,7 @@ model Staff {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   schedules       Schedule[]
+  internSchedules Schedule[]      @relation("ScheduleIntern") // sessions this person did as an intern
   surveyAssignments SurveyAssignment[]
   surveyResponses   SurveyResponse[]
   assessmentTargets AssessmentTarget[]
@@ -474,7 +479,7 @@ model AssessmentTarget {
 
 model Schedule {
   id          String         @id @default(cuid())
-  staffId     String
+  staffId     String         // supervising therapist — whoever's card this was booked under
   staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
   patientId   String?
   patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
@@ -487,6 +492,11 @@ model Schedule {
   notes       String?
   isTeletherapy Boolean @default(false)
   meetLink      String?
+  // Which intern actually did the session, when sessionType is "IE Intern" /
+  // "Session Intern" — the intern writes the note; staffId above stays the
+  // supervisor. Null for every non-intern session.
+  internStaffId String?
+  internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
   createdAt     DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   surveyAssignments SurveyAssignment[]

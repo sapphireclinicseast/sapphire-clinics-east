@@ -50,20 +50,47 @@ function visibleBranches(role: string): string[] {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches: string[]; phone: string | null }
+interface StaffMember {
+  id: string; firstName: string; lastName: string; department: string; branch: string
+  extraBranches: string[]; phone: string | null
+  employmentType: string | null; active: boolean
+  dateHired: string | null; contractExpiry: string | null // interns: Start Month / End Month
+}
 interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
+interface InternStaff { id: string; firstName: string; lastName: string }
 interface Schedule {
   id: string; staffId: string; patientId: string | null; patient: Patient | null
   date: string; startTime: string; endTime: string; duration: string
   sessionType: string; status: string; notes: string | null
   isTeletherapy: boolean; meetLink: string | null
+  internStaffId: string | null; internStaff: InternStaff | null
 }
 
 const EMPTY_FORM = {
   patientId: '', patientLabel: '', date: '',
   startTime: '08:00', duration: '1h', endTime: '09:00',
   sessionType: '', status: 'PENDING', notes: '',
-  isTeletherapy: false,
+  isTeletherapy: false, internStaffId: '',
+}
+
+const INTERN_SESSION_TYPES = new Set(['IE Intern', 'Session Intern'])
+
+// Is this staff member an intern whose Start/End Month covers `forDate`
+// (YYYY-MM-DD)? Falls back to today if no date is picked yet.
+function isEligibleIntern(s: StaffMember, forDate: string): boolean {
+  if (s.employmentType !== 'intern' || s.active === false) return false
+  const d = forDate || new Date().toISOString().split('T')[0]
+  if (s.dateHired) {
+    const startMonth = s.dateHired.split('T')[0].slice(0, 7)
+    if (d < `${startMonth}-01`) return false
+  }
+  if (s.contractExpiry) {
+    const endMonth = s.contractExpiry.split('T')[0].slice(0, 7)
+    const [y, m] = endMonth.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate() // last calendar day of the End Month
+    if (d > `${endMonth}-${String(lastDay).padStart(2, '0')}`) return false
+  }
+  return true
 }
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
@@ -135,8 +162,9 @@ function PatientSearch({ value, label, onChange }: {
 }
 
 // ─── Schedule form ─────────────────────────────────────────────────────────────
-function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submitting, submitLabel }: {
+function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, error, submitting, submitLabel }: {
   dept: string
+  allStaff: StaffMember[]
   values: typeof EMPTY_FORM
   onChange: (v: typeof EMPTY_FORM) => void
   onSubmit: (e: React.FormEvent) => void
@@ -239,11 +267,37 @@ function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submi
         </div>
         <div>
           <label style={labelStyle}>Session Type</label>
-          <select style={inputStyle} value={values.sessionType} onChange={e => onChange({ ...values, sessionType: e.target.value })}>
+          <select style={inputStyle} value={values.sessionType} onChange={e => {
+            const sessionType = e.target.value
+            // Clear a stale intern pick when switching away from an intern session type.
+            const internStaffId = INTERN_SESSION_TYPES.has(sessionType) ? values.internStaffId : ''
+            onChange({ ...values, sessionType, internStaffId })
+          }}>
             <option value="">Select type</option>
             {(SESSION_TYPES[dept] ?? []).map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
+        {INTERN_SESSION_TYPES.has(values.sessionType) && (
+          <div>
+            <label style={labelStyle}>Select Intern</label>
+            {(() => {
+              const eligible = allStaff
+                .filter(s => s.department === dept && isEligibleIntern(s, values.date))
+                .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName))
+              return eligible.length === 0 ? (
+                <div style={{ ...inputStyle, background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  No active {dept} interns right now
+                </div>
+              ) : (
+                <select style={inputStyle} value={values.internStaffId}
+                  onChange={e => onChange({ ...values, internStaffId: e.target.value })}>
+                  <option value="">Select intern…</option>
+                  {eligible.map(s => <option key={s.id} value={s.id}>{s.lastName}, {s.firstName}</option>)}
+                </select>
+              )
+            })()}
+          </div>
+        )}
         <div className="col-span-2">
           <label style={labelStyle}>Status</label>
           <select style={inputStyle} value={values.status} onChange={e => onChange({ ...values, status: e.target.value })}>
@@ -286,7 +340,7 @@ function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submi
 }
 
 // ─── Staff card with schedules ─────────────────────────────────────────────────
-function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMember; selectedDate: string; schedulingBranch: string }) {
+function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff: StaffMember; allStaff: StaffMember[]; selectedDate: string; schedulingBranch: string }) {
   const [open, setOpen] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loadingSchedules, setLoadingSchedules] = useState(false)
@@ -382,6 +436,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
       status: 'PENDING',
       notes: '',
       isTeletherapy: s.isTeletherapy || false,
+      internStaffId: s.internStaffId ?? '',
     })
   }
 
@@ -409,6 +464,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
       startTime: s.startTime, endTime: s.endTime, duration: s.duration,
       sessionType: s.sessionType, status: s.status, notes: s.notes ?? '',
       isTeletherapy: s.isTeletherapy || false,
+      internStaffId: s.internStaffId ?? '',
     })
     setEditError('')
   }
@@ -668,6 +724,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
                           status: 'PENDING',
                           notes: '',
                           isTeletherapy: false,
+                          internStaffId: '',
                         })}
                         className="px-3 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"
                         style={{ background: '#ED6823', color: '#fff' }}
@@ -679,7 +736,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
                   </div>
                 </div>
               )}
-              <ScheduleForm dept={staff.department} values={form} onChange={setForm}
+              <ScheduleForm dept={staff.department} allStaff={allStaff} values={form} onChange={setForm}
                 onSubmit={handleAdd} onCancel={closeAddForm}
                 error={formError} submitting={saving} submitLabel="Save Schedule" />
             </div>
@@ -756,7 +813,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
                       {editId === s.id && (
                         <tr key={`${s.id}-edit`} style={{ borderBottom: '1px solid var(--light-gray)' }}>
                           <td colSpan={5} className="px-3 py-3" style={{ background: 'var(--pale-teal)' }}>
-                            <ScheduleForm dept={staff.department} values={editForm} onChange={setEditForm}
+                            <ScheduleForm dept={staff.department} allStaff={allStaff} values={editForm} onChange={setEditForm}
                               onSubmit={handleEdit} onCancel={() => { setEditId(null); setEditError('') }}
                               error={editError} submitting={editSaving} submitLabel="Save Changes" />
                           </td>
@@ -1037,7 +1094,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                       </div>
                       <div className="space-y-2">
                         {g.list.map(({ staff: s }) => (
-                          <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
+                          <StaffCard key={s.id} staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                         ))}
                       </div>
                     </div>
@@ -1066,7 +1123,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                           Remove
                         </button>
                       </div>
-                      <StaffCard staff={s} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
+                      <StaffCard staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                     </div>
                   ))}
                 </div>
@@ -1140,7 +1197,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       ) : (
         <div className="space-y-2">
           {filtered.map(s => (
-            <StaffCard key={s.id} staff={s} selectedDate={selectedDate} schedulingBranch={activeBranch} />
+            <StaffCard key={s.id} staff={s} allStaff={staff} selectedDate={selectedDate} schedulingBranch={activeBranch} />
           ))}
         </div>
       )}
