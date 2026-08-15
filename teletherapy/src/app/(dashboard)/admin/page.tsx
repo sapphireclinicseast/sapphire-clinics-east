@@ -47,6 +47,7 @@ interface TherapistAccountItem {
   lastLoginAt: string | null
   lastPlainPassword: string | null
   createdAt: string
+  staffId: string
   staff: {
     firstName: string
     lastName: string
@@ -239,9 +240,11 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  const availableStaff = staffList.filter(
-    (s) => !accounts.some((a) => a.staff.firstName === s.firstName && a.staff.lastName === s.lastName)
-  )
+  // Match by staffId, not name — two different Staff records (e.g. an
+  // intern and an unrelated existing account) can share the same name,
+  // and a name match wrongly hid the intern from this list entirely.
+  const accountedStaffIds = new Set(accounts.map((a) => a.staffId))
+  const availableStaff = staffList.filter((s) => !accountedStaffIds.has(s.id))
 
   if (loading) {
     return (

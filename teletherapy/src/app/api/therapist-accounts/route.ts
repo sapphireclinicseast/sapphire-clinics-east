@@ -19,6 +19,7 @@ export async function GET() {
       lastLoginAt: true,
       lastPlainPassword: true,
       createdAt: true,
+      staffId: true,
       staff: {
         select: {
           firstName: true,
