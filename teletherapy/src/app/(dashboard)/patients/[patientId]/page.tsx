@@ -594,17 +594,18 @@ export default function PatientDetailPage() {
         )
       })()}
 
-      {/* Other Services Notice — patient confidentiality */}
+      {/* Interdisciplinary notice — this patient also sees other departments,
+          and their notes are shown below for interprofessional collaboration. */}
       {otherServices.length > 0 && (
         <div className="mb-6 animate-fade-up stagger-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
           <div className="flex gap-3">
             <ShieldAlert size={20} className="text-blue-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-[13px] font-semibold text-blue-800 mb-1">
-                Other Services Availed in the Clinic: {otherServices.join(', ')}
+                Also receiving services from: {otherServices.join(', ')}
               </p>
               <p className="text-[12px] text-blue-600 leading-relaxed">
-                This patient is also receiving services from other departments. For patient confidentiality, only your sessions are displayed here. Coordinate with the front desk for information if needed for interprofessional collaboration.
+                This patient is an interdisciplinary case. The other professionals&rsquo; session notes are shown below (marked with their department) so you can coordinate care. You can view all notes but can only edit your own.
               </p>
             </div>
           </div>
