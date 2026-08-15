@@ -68,19 +68,19 @@ export async function GET(
   const staffSelect = { id: true, firstName: true, lastName: true, department: true }
 
   // ── Sessions visible to this clinician ──
-  // Continuity-of-care rule, scoped to discipline AND active status:
+  // Continuity-of-care rule, gated on active status:
   //   - Admin sees every confirmed session.
-  //   - A clinician with an ACTIVE assignment row sees sessions from
-  //     any staff in the SAME DEPARTMENT as them. So an OT receiving
-  //     an endorsement sees the previous OT's notes (read-only,
-  //     because those notes are locked) but NOT MD or PT sessions.
+  //   - A clinician with an ACTIVE assignment row sees EVERY professional's
+  //     confirmed sessions for the patient, across ALL departments — so an OT
+  //     treating a child can read the SLP's, PT's, MD's and psychologist's
+  //     notes for that same child (interdisciplinary collaboration). Notes are
+  //     view-only unless the clinician personally authored them (canEdit).
   //   - A clinician with a non-ACTIVE row (DEACTIVATED / DISCHARGED /
   //     legacy ENDORSED) OR no row at all only sees sessions they
   //     personally handled. Critically, a DEACTIVATED clinician must
   //     NOT see new notes the active owner is writing — they only
   //     see their own historical contribution. If endorsed back to
-  //     ACTIVE, they regain same-department visibility (and by then
-  //     the other clinician's notes are locked, so still read-only).
+  //     ACTIVE, they regain the full interdisciplinary view.
   let ownSessions
   if (isAdmin) {
     ownSessions = await prisma.schedule.findMany({
@@ -101,12 +101,17 @@ export async function GET(
     const sharedView = myAssignment?.status === 'ACTIVE'
 
     let where: Record<string, unknown>
-    if (sharedView && currentDepartment) {
-      // Cross-staff but same-department visibility for continuity of care.
+    if (sharedView) {
+      // Interdisciplinary continuity of care: a clinician actively assigned to
+      // this patient sees EVERY professional's confirmed sessions/notes for the
+      // patient, across ALL departments — so an OT can read the SLP's and
+      // psychologist's notes for the same child. Editing stays restricted to
+      // each note's own author (see canEdit below), so notes authored by other
+      // professionals are view-only. (Previously this was scoped to the
+      // clinician's own department only.)
       where = {
         patientId: id,
         status: 'CONFIRMED',
-        staff: { department: currentDepartment },
       }
     } else {
       // Fallback: only sessions this clinician personally handled.
