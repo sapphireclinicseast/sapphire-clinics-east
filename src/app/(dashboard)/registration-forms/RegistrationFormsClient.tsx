@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { localTodayStr } from '@/lib/utils'
 import {
   FileText, QrCode, BarChart3, ExternalLink, Copy, Check,
   RefreshCw, Download, ChevronRight, Trash2, Pencil, X,
@@ -260,7 +261,7 @@ export default function RegistrationFormsClient({ role }: Props) {
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href = url
-    a.download = `${selectedForm.title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`
+    a.download = `${selectedForm.title.replace(/[^a-zA-Z0-9]/g, '_')}_${localTodayStr()}.csv`
     a.click(); URL.revokeObjectURL(url)
   }, [results, selectedForm, isAdmin])
 

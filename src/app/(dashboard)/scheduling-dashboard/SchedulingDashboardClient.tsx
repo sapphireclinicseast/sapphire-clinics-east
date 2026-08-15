@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { localTodayStr } from '@/lib/utils'
 import {
   BarChart2, CalendarDays, Users, Settings, Star,
   Filter, Lock, Activity, ChevronDown, ChevronUp, User,
@@ -38,7 +39,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayStr() { return new Date().toISOString().split('T')[0] }
+const todayStr = localTodayStr
 function monthAgoStr() {
   const d = new Date(); d.setMonth(d.getMonth() - 1)
   return d.toISOString().split('T')[0]
@@ -406,7 +407,10 @@ function DashboardContent({ role }: { role: string }) {
               ))}
             </div>
           </div>
-          <button onClick={fetchData}
+          {/* Wrap, don't pass fetchData directly: onClick would hand it the
+              MouseEvent as its `isRetry` arg (truthy), silently disabling the
+              one-shot retry on 401/403. */}
+          <button onClick={() => fetchData()}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all"
             style={{ background: 'var(--teal)' }}>
             <Filter size={14} /> Apply

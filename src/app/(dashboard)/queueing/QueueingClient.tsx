@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { localTodayStr } from '@/lib/utils'
 import {
   UserPlus, Trash2, ChevronUp, ChevronDown, Upload, Tv2,
   X, Plus, ExternalLink, ImageIcon, Film, RefreshCw,
@@ -102,7 +103,7 @@ const INTERN_SESSION_TYPES = new Set(['IE Intern', 'Session Intern'])
 // (YYYY-MM-DD)? Falls back to today if no date is picked yet.
 function isEligibleIntern(s: StaffMember, forDate: string): boolean {
   if (s.employmentType !== 'intern' || s.active === false) return false
-  const d = forDate || new Date().toISOString().split('T')[0]
+  const d = forDate || localTodayStr()
   if (s.dateHired) {
     const startMonth = s.dateHired.split('T')[0].slice(0, 7)
     if (d < `${startMonth}-01`) return false
@@ -900,7 +901,7 @@ export default function QueueingClient({ role }: { role: string }) {
   const branches = visibleBranches(role)
   const [activeTab, setActiveTab]   = useState<'queue' | 'ads'>('queue')
   const [activeBranch, setActiveBranch] = useState(branches[0])
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDate] = useState(() => localTodayStr())
   const [queue, setQueue]           = useState<QueueEntry[]>([])
   const [staff, setStaff]           = useState<StaffMember[]>([])
   const [loadingQueue, setLoadingQueue] = useState(false)

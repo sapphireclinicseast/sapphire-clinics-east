@@ -6,16 +6,10 @@ import DepartmentView from './DepartmentView'
 import DailyView from './DailyView'
 import CalendarView from './CalendarView'
 import StatusView from './StatusView'
+import { localTodayStr, localTomorrowStr } from '@/lib/utils'
 
-function tomorrowStr() {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
-}
-
-function todayStr() {
-  return new Date().toISOString().split('T')[0]
-}
+const tomorrowStr = localTomorrowStr
+const todayStr = localTodayStr
 
 function fmtDate(iso: string) {
   return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', {
@@ -248,7 +242,7 @@ function ComingSoonTab({ label }: { label: string }) {
 
 export default function ClinicScheduleClient({ role }: { role: string }) {
   const [activeTab, setActiveTab] = useState<TabId>('department')
-  const [selectedDate, setSelectedDateRaw] = useState(() => new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDateRaw] = useState(() => todayStr())
   const [showTransfer, setShowTransfer] = useState(false)
 
   // selectedDate's initial value is only computed once, at mount — a tab

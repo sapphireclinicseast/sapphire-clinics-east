@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
+import { localTodayStr, localTomorrowStr } from '@/lib/utils'
 
 // ─── Branch display labels (enum values must stay SBEA / SBGH in the DB) ────
 const BRANCH_LABEL: Record<string, string> = {
@@ -79,7 +80,7 @@ const INTERN_SESSION_TYPES = new Set(['IE Intern', 'Session Intern'])
 // (YYYY-MM-DD)? Falls back to today if no date is picked yet.
 function isEligibleIntern(s: StaffMember, forDate: string): boolean {
   if (s.employmentType !== 'intern' || s.active === false) return false
-  const d = forDate || new Date().toISOString().split('T')[0]
+  const d = forDate || localTodayStr()
   if (s.dateHired) {
     const startMonth = s.dateHired.split('T')[0].slice(0, 7)
     if (d < `${startMonth}-01`) return false
@@ -922,11 +923,7 @@ const WEEKDAY_FULL: Record<string, string> = {
 function weekdayCodeFor(iso: string): string {
   return WEEKDAY_CODES[new Date(iso + 'T12:00:00').getDay()]
 }
-function tomorrowStr(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
-}
+const tomorrowStr = localTomorrowStr
 function fmtDateShort(iso: string): string {
   return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
 }
