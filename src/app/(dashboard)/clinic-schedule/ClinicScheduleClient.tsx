@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { CalendarDays, LayoutGrid, Clock, Activity, CalendarClock, ArrowRightLeft, X } from 'lucide-react'
 import DepartmentView from './DepartmentView'
 import DailyView from './DailyView'
@@ -248,8 +248,35 @@ function ComingSoonTab({ label }: { label: string }) {
 
 export default function ClinicScheduleClient({ role }: { role: string }) {
   const [activeTab, setActiveTab] = useState<TabId>('department')
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDateRaw] = useState(() => new Date().toISOString().split('T')[0])
   const [showTransfer, setShowTransfer] = useState(false)
+
+  // selectedDate's initial value is only computed once, at mount — a tab
+  // left open across midnight (common for an always-on front-desk screen)
+  // would otherwise silently keep showing yesterday's "today" until a hard
+  // refresh, even though it still looks live. isDefaultDateRef tracks
+  // whether the user has ever explicitly picked a date; while they haven't,
+  // regaining focus/visibility re-derives "today" from the real clock.
+  const isDefaultDateRef = useRef(true)
+
+  function setSelectedDate(date: string) {
+    isDefaultDateRef.current = false
+    setSelectedDateRaw(date)
+  }
+
+  useEffect(() => {
+    function resyncIfStillDefault() {
+      if (!isDefaultDateRef.current) return
+      const fresh = todayStr()
+      setSelectedDateRaw(prev => (prev === fresh ? prev : fresh))
+    }
+    document.addEventListener('visibilitychange', resyncIfStillDefault)
+    window.addEventListener('focus', resyncIfStillDefault)
+    return () => {
+      document.removeEventListener('visibilitychange', resyncIfStillDefault)
+      window.removeEventListener('focus', resyncIfStillDefault)
+    }
+  }, [])
 
   return (
     <div className="space-y-5">
