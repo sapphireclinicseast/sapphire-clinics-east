@@ -773,9 +773,28 @@ export async function computeLedgerStatements(
     },
     select: { id: true, amount: true, discount: true, paymentDate: true, branch: true, cashAccount: { select: { accountNumber: true } }, discountAccount: { select: { accountNumber: true } }, wallet: { select: { patientName: true } } },
   })
+  /*
+   * Same shape as the orders/depreciation double-counts: hasRef('AR_PAYMENT',
+   * p.id) only catches a real JE tied to THIS payment's own id. Some of the
+   * 2025 QuickBooks import already recorded these exact collections (e.g.
+   * "QB Payment AR25-0020 — HMO - INTELLICARE") under referenceType
+   * QB_IMPORT_JE, which hasRef can never match, so synthesis added a second
+   * credit to Accounts Receivable on top of a real one. Confirmed by exact
+   * (date, amount) match against real AR-account credits — not every
+   * unlinked payment is a duplicate (~2/3 are genuine gaps), so this checks
+   * each one individually rather than skipping a whole date range.
+   */
+  const arAcctForDedup = arAccount()
+  const realArCredits = arAcctForDedup.id ? await prisma.journalEntryLine.findMany({
+    where: { accountId: arAcctForDedup.id, credit: { gt: 0 }, journalEntry: { entryDate: { gte: start, lt: end }, referenceType: 'QB_IMPORT_JE' } },
+    select: { credit: true, journalEntry: { select: { entryDate: true } } },
+  }) : []
+  const realArCreditKeys = new Set(realArCredits.map(l => `${l.journalEntry.entryDate.toISOString().slice(0, 10)}|${round2(Number(l.credit))}`))
   let synthesizedAr = 0
   for (const p of arPayments) {
     if (hasRef('AR_PAYMENT', p.id)) continue
+    const totalCredit = round2(Number(p.amount) + Number(p.discount || 0))
+    if (realArCreditKeys.has(`${p.paymentDate.toISOString().slice(0, 10)}|${totalCredit}`)) continue
     synthesizedAr++
     // Same fix as the orders section above: an unmapped cash account must land
     // on THIS payment's own branch, not the bare company-wide fallback.
@@ -1006,6 +1025,21 @@ export async function computeLedgerStatements(
   }
 
   /* ── 7. Asset purchases this year (synthesized unless ASSET_PURCHASE JE) ── */
+  /*
+   * Same double-count shape as orders/depreciation/ar-collections:
+   * hasRef('ASSET_PURCHASE', a.id) only sees a real JE tied to THIS asset's
+   * own id, but most of 2025's PPE additions were already recorded in the
+   * QuickBooks import under referenceType QB_IMPORT_JE — hasRef can never
+   * match those, so synthesis debited PPE a second time on top of a real
+   * entry for the exact same asset. Confirmed by exact (classification
+   * account, date, amount) match against real PPE-account debits — a small
+   * minority of unlinked assets are genuine gaps, so check individually.
+   */
+  const realAssetDebits = await prisma.journalEntryLine.findMany({
+    where: { debit: { gt: 0 }, journalEntry: { entryDate: { gte: start, lt: end }, referenceType: 'QB_IMPORT_JE' } },
+    select: { debit: true, account: { select: { accountNumber: true } }, journalEntry: { select: { entryDate: true } } },
+  })
+  const realAssetDebitKeys = new Set(realAssetDebits.map(l => `${l.account?.accountNumber}|${l.journalEntry.entryDate.toISOString().slice(0, 10)}|${round2(Number(l.debit))}`))
   let synthesizedAssets = 0
   for (const a of assets) {
     const d = new Date(a.dateBought)
@@ -1013,6 +1047,7 @@ export async function computeLedgerStatements(
     if (hasRef('ASSET_PURCHASE', a.id)) continue
     const amt = Number(a.totalAmount)
     if (!amt) continue
+    if (realAssetDebitKeys.has(`${a.classification}|${d.toISOString().slice(0, 10)}|${round2(amt)}`)) continue
     synthesizedAssets++
     const ppe = byNumber.get(a.classification) || virt(a.classification || '1500', `PPE (${a.classification})`, 'ASSET', 'PPE', 'DEBIT')
     const creditA = a.fromPettyCash ? pcCashFor(a.branch)
