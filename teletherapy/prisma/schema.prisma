@@ -58,6 +58,7 @@ model Staff {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   schedules       Schedule[]
+  internSchedules Schedule[]      @relation("ScheduleIntern") // sessions this person did as an intern
   therapistAccount TherapistAccount?
   surveyResponses  SurveyResponse[]
 }
@@ -211,7 +212,7 @@ model DirectoryWebsite {
 
 model Schedule {
   id          String         @id @default(cuid())
-  staffId     String
+  staffId     String         // supervising therapist — whoever's card this was booked under
   staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
   patientId   String?
   patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
@@ -223,11 +224,18 @@ model Schedule {
   status      ScheduleStatus @default(PENDING)
   notes       String?
   meetLink    String?
+  // Which intern actually did the session, when sessionType is "IE Intern" /
+  // "Session Intern" (set from the Ops Hub Clinic Schedule) — the intern
+  // writes the note; staffId above stays the supervisor. Column already
+  // exists in the shared DB (Ops Hub migration 20260815_schedule_intern_staff).
+  internStaffId String?
+  internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   sessionNote SessionNote?
 
   @@index([staffId])
+  @@index([internStaffId])
   @@index([patientId])
   @@index([date])
   @@index([status])

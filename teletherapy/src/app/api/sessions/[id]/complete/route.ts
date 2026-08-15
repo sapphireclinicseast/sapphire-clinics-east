@@ -25,7 +25,11 @@ export async function POST(
 
   if (session.user.role !== 'ADMIN') {
     const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
-    if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
+    const isSupervisor = allowedStaffIds.includes(schedule.staffId) || schedule.staffId === session.user.staffId
+    // The assigned intern also writes the note for their own session — the
+    // supervisor sees it afterward on their own schedule, no separate access needed.
+    const isAssignedIntern = !!schedule.internStaffId && schedule.internStaffId === session.user.staffId
+    if (!isSupervisor && !isAssignedIntern) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     // If we'd be mutating an existing note, refuse if it's locked.

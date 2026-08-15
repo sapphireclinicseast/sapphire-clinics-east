@@ -29,7 +29,9 @@ export async function PATCH(
 
   if (session.user.role !== 'ADMIN') {
     const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
-    if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
+    const isSupervisor = allowedStaffIds.includes(schedule.staffId) || schedule.staffId === session.user.staffId
+    const isAssignedIntern = !!schedule.internStaffId && schedule.internStaffId === session.user.staffId
+    if (!isSupervisor && !isAssignedIntern) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     // Locked notes are permanently read-only. lockedAt is stamped when

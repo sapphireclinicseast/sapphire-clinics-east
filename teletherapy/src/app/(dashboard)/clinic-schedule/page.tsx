@@ -18,6 +18,7 @@ import {
   MapPin,
   Stethoscope,
   User as UserIcon,
+  GraduationCap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBranchSwitcher } from '@/components/BranchSwitcher'
@@ -47,6 +48,7 @@ interface ScheduleItem {
   notes: string | null
   patient: PatientInfo | null
   staff: { id: string; firstName: string; lastName: string; department: string; branch: string }
+  intern?: { id: string; firstName: string; lastName: string } | null
 }
 
 interface Summary {
@@ -515,6 +517,14 @@ function ScheduleRow({ item, delay, onPatientClick }: {
           <span>{item.sessionType}</span>
           <span>·</span>
           <span className="opacity-70">{item.staff.department} · {item.staff.branch}</span>
+          {item.intern && (
+            <>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1 font-semibold text-[var(--clay)]" title="Assigned intern">
+                <GraduationCap size={11} /> {item.intern.firstName} {item.intern.lastName}
+              </span>
+            </>
+          )}
         </div>
       </div>
       {item.meetLink && (

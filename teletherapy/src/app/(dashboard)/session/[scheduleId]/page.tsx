@@ -20,6 +20,7 @@ import {
   Stethoscope,
   Pencil,
   ClipboardList,
+  GraduationCap,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
@@ -55,6 +56,11 @@ interface SessionDetail {
     lastName: string
     department: string
   }
+  internStaff: {
+    id: string
+    firstName: string
+    lastName: string
+  } | null
   sessionNote: {
     id: string
     status: string
@@ -598,7 +604,12 @@ export default function SessionDetailPage() {
           { icon: Calendar, label: 'Date', value: formatDate(session.date) },
           { icon: Clock, label: 'Time', value: `${formatTime(session.startTime)} – ${formatTime(session.endTime)}` },
           { icon: FileText, label: 'Type', value: session.sessionType },
-          { icon: Stethoscope, label: 'Clinician', value: `${session.staff.lastName} (${session.staff.department})` },
+          // "Clinician" stays the supervisor — the therapist whose card this
+          // was booked under — whether or not an intern is assigned.
+          { icon: Stethoscope, label: session.internStaff ? 'Supervisor' : 'Clinician', value: `${session.staff.lastName} (${session.staff.department})` },
+          ...(session.internStaff
+            ? [{ icon: GraduationCap, label: 'Intern', value: `${session.internStaff.firstName} ${session.internStaff.lastName}` }]
+            : []),
         ].map((item, i) => (
           <div key={item.label} className={`card-static !p-4 animate-fade-up stagger-${i + 1}`}>
             <div className="flex items-center gap-1.5 mb-1">
