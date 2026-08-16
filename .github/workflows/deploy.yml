@@ -496,6 +496,26 @@ jobs:
           echo "→ Generating Prisma client..."
           npx prisma generate 2>&1 | tail -2
 
+          # A partial `prisma generate` (transient npm/engine state) leaves the
+          # query compiler missing, so EVERY DB query — including login — 500s
+          # while the deploy still reports green. Verify the compiler exists and
+          # self-heal: regenerate, then reinstall prisma packages if still gone.
+          QC="node_modules/.prisma/client/query_compiler_fast_bg.js"
+          if [ ! -f "$QC" ]; then
+            echo "⚠ Prisma client incomplete (query compiler missing) — regenerating..."
+            npx prisma generate 2>&1 | tail -2
+          fi
+          if [ ! -f "$QC" ]; then
+            echo "⚠ Still incomplete — reinstalling prisma packages and regenerating..."
+            npm install @prisma/client prisma @prisma/adapter-pg 2>&1 | tail -3
+            npx prisma generate 2>&1 | tail -2
+          fi
+          if [ ! -f "$QC" ]; then
+            echo "❌ FATAL: Prisma client query compiler still missing — leaving the previous (working) container up instead of serving a broken client."
+            exit 1
+          fi
+          echo "   ✓ Prisma client verified (query compiler present)"
+
           echo "→ Creating teletherapy tables..."
           cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 || true
 

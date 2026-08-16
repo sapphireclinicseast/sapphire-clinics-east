@@ -119,3 +119,26 @@ CREATE INDEX IF NOT EXISTS "Schedule_date_idx" ON "Schedule"("date");
 CREATE INDEX IF NOT EXISTS "Schedule_status_idx" ON "Schedule"("status");
 CREATE INDEX IF NOT EXISTS "Schedule_staffId_date_idx" ON "Schedule"("staffId", "date");
 CREATE INDEX IF NOT EXISTS "Schedule_patientId_status_idx" ON "Schedule"("patientId", "status");
+
+-- ── Support Tickets (staff concerns about the portal) ──
+CREATE TABLE IF NOT EXISTS "Ticket" (
+  "id" TEXT PRIMARY KEY,
+  "ticketNumber" TEXT NOT NULL,
+  "branch" TEXT NOT NULL,
+  "subject" TEXT NOT NULL,
+  "description" TEXT NOT NULL,
+  "attachmentPath" TEXT,
+  "attachmentName" TEXT,
+  "status" TEXT NOT NULL DEFAULT 'OPEN',
+  "raisedByAccountId" TEXT NOT NULL,
+  "raisedByName" TEXT NOT NULL,
+  "raisedByEmail" TEXT,
+  "resolution" TEXT,
+  "resolvedByName" TEXT,
+  "resolvedAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "Ticket_ticketNumber_key" ON "Ticket"("ticketNumber");
+CREATE INDEX IF NOT EXISTS "Ticket_raisedByAccountId_idx" ON "Ticket"("raisedByAccountId");
+CREATE INDEX IF NOT EXISTS "Ticket_status_idx" ON "Ticket"("status");
