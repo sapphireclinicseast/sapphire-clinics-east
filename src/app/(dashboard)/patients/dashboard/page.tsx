@@ -7,6 +7,8 @@ import {
 } from 'recharts'
 import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
 
+import SurveySection from './SurveySection'
+
 const PatientMap = dynamic(() => import('@/components/patients/PatientMap'), { ssr: false })
 
 interface Stats {
@@ -689,6 +691,9 @@ export default function PatientDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* ── Customer Satisfaction Survey ── */}
+      <SurveySection branches={selectedBranches} />
 
       {/* ── Map ── */}
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
