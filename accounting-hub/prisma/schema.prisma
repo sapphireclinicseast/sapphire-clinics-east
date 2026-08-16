@@ -2340,6 +2340,33 @@ model PettyCashEntry {
   @@index([recordType])
 }
 
+// A TikTok order that never became a sale — cancelled or failed-delivery, with
+// TikTok's own reason. Informational only (no GL impact): postOrderJournal never
+// sees these, since the orders importer only processes Order Status = Completed.
+// Purpose is purely the Products Analysis "Top Cancellation Reasons" breakdown.
+// Upserted by orderId so re-uploading the same TikTok export is a no-op, and a
+// later "Cancelled" export can supply the real reason for an order that first
+// showed up in a "Failed Delivery" export with no reason yet.
+model TiktokCancellation {
+  id            String    @id @default(cuid())
+  orderId       String    @unique
+  branch        String    @default("VERDANA_STORE")
+  status        String // TikTok's Order Status at export time, e.g. "Canceled", "Shipped"
+  cancelType    String? // TikTok's "Cancelation/Return Type"
+  cancelBy      String? // System | User | Seller
+  cancelReason  String? // null when the order failed delivery but hasn't been formally
+  // cancelled by TikTok yet (Order Status still "Shipped"/"In transit")
+  orderAmount   Decimal?
+  cancelledTime DateTime?
+  sourceFile    String // which upload last touched this row: "CANCELLED" | "FAILED_DELIVERY"
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([branch])
+  @@index([cancelReason])
+}
+
 model ReimbursementReport {
   id             String    @id @default(cuid())
   branch         String
