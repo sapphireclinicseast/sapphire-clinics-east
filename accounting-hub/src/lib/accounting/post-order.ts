@@ -43,14 +43,23 @@ export async function postOrderJournal(
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
 
-  // Idempotency: skip while an ACTIVE forward JE exists for this order. A
-  // forward JE cancelled by a POS_ORDER_REVERSAL (void → reopen → complete
-  // again) no longer counts, so the re-completed sale posts a fresh JE.
-  const [forwardCount, reversalCount] = await Promise.all([
-    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER', referenceId: orderId } }),
-    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER_REVERSAL', referenceId: orderId } }),
-  ])
-  if (forwardCount > reversalCount) return { posted: false, alreadyPosted: true }
+  // Idempotency: skip while an ACTIVE forward JE exists for this order. A forward JE
+  // cancelled by a POS_ORDER_REVERSAL (void → reopen → complete again) no longer
+  // counts, so the re-completed sale posts a fresh JE — determined by which posting
+  // happened LAST, not by comparing raw counts. Raw counts (forwardCount >
+  // reversalCount) look equivalent but aren't: any order reopened exactly once before
+  // its revenue account existed (so the fresh forward posts only once, after the
+  // reversal) lands at forwardCount === reversalCount == 1 the moment the backfill
+  // that finally posts it runs a second time — indistinguishable, by count alone,
+  // from "already caught up" and "still needs its post-reversal repost". Ordering by
+  // createdAt resolves it correctly either way and self-heals any order already
+  // double-posted by the count-based check (its last JE is still the newer forward).
+  const lastJe = await prisma.journalEntry.findFirst({
+    where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
+    orderBy: { createdAt: 'desc' },
+    select: { referenceType: true },
+  })
+  if (lastJe?.referenceType === 'POS_ORDER') return { posted: false, alreadyPosted: true }
 
   // Pull everything we need in one round-trip.
   const order = await prisma.order.findUnique({
@@ -331,17 +340,22 @@ export async function reverseOrderJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
-  const [original, reversalCount] = await Promise.all([
-    prisma.journalEntry.findFirst({
-      where: { referenceType: 'POS_ORDER', referenceId: orderId },
-      include: { lines: true },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER_REVERSAL', referenceId: orderId } }),
-  ])
+  const original = await prisma.journalEntry.findFirst({
+    where: { referenceType: 'POS_ORDER', referenceId: orderId },
+    include: { lines: true },
+    orderBy: { createdAt: 'desc' },
+  })
   if (!original) return { posted: false, reason: 'no forward JE to reverse' }
-  const forwardCount = await prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER', referenceId: orderId } })
-  if (reversalCount >= forwardCount) return { posted: false, alreadyPosted: true }
+  // Idempotency: mirrors postOrderJournal's fix above — ordering by createdAt, not
+  // raw counts, since forwardCount===reversalCount is ambiguous (could mean "fully
+  // reversed" or "freshly reposted after a reversal") and raw counts read that
+  // ambiguous case as "already reversed", silently skipping a genuine new void/reopen.
+  const lastJe = await prisma.journalEntry.findFirst({
+    where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
+    orderBy: { createdAt: 'desc' },
+    select: { referenceType: true },
+  })
+  if (lastJe?.referenceType !== 'POS_ORDER') return { posted: false, alreadyPosted: true }
 
   const lines: PostingLine[] = original.lines.map(l => ({
     accountId: l.accountId,
