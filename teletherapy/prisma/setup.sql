@@ -142,3 +142,6 @@ CREATE TABLE IF NOT EXISTS "Ticket" (
 CREATE UNIQUE INDEX IF NOT EXISTS "Ticket_ticketNumber_key" ON "Ticket"("ticketNumber");
 CREATE INDEX IF NOT EXISTS "Ticket_raisedByAccountId_idx" ON "Ticket"("raisedByAccountId");
 CREATE INDEX IF NOT EXISTS "Ticket_status_idx" ON "Ticket"("status");
+
+-- Session note edit history (intern author + supervisor edits, with timestamps)
+ALTER TABLE "SessionNote" ADD COLUMN IF NOT EXISTS "editHistory" JSONB;

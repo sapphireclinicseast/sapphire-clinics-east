@@ -339,6 +339,10 @@ model SessionNote {
   // by who delivered it at the time it was delivered, and a later
   // re-endorsement should not unlock historical clinical content.
   lockedAt            DateTime?
+  // Append-only audit trail: who created/edited the note and when. Each entry
+  // is { name, accountType, action: 'created'|'edited', at }. Interns author;
+  // supervisors edit — this makes both visible.
+  editHistory         Json?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 }

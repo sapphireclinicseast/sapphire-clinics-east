@@ -70,6 +70,18 @@ export async function PATCH(
     updateData.emailSentTo = null
   }
 
+  // Record this edit in the note's history — a supervisor editing an intern's
+  // note shows alongside the intern's original authoring.
+  updateData.editHistory = [
+    ...(Array.isArray(schedule.sessionNote.editHistory) ? schedule.sessionNote.editHistory : []),
+    {
+      name: session.user.name ?? session.user.email ?? 'Staff',
+      accountType: session.user.accountType ?? 'CLINICIAN',
+      action: 'edited',
+      at: new Date().toISOString(),
+    },
+  ]
+
   const note = await prisma.sessionNote.update({
     where: { id: schedule.sessionNote.id },
     data: updateData,
