@@ -18,6 +18,7 @@ import {
   Trash2,
   Search,
   X,
+  RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -70,6 +71,7 @@ export default function AdminPage() {
   const [accounts, setAccounts] = useState<TherapistAccountItem[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   const [selectedStaffId, setSelectedStaffId] = useState('')
   const [email, setEmail] = useState('')
@@ -117,6 +119,30 @@ export default function AdminPage() {
       if (!ccBranch && ccData.knownBranches?.length) setCcBranch(ccData.knownBranches[0])
     }
     setLoading(false)
+  }
+
+  async function handleSyncFromHr() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/staff/sync-hr', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setToast(data.error || 'Sync failed')
+      } else {
+        const { created = 0, updated = 0 } = data
+        setToast(
+          created || updated
+            ? `Synced from HR — ${created} added, ${updated} updated`
+            : 'Already up to date with HR',
+        )
+        await fetchData() // refresh the staff list so new interns appear below
+      }
+    } catch {
+      setToast('Could not reach HR — try again')
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setToast(null), 4000)
+    }
   }
 
   async function saveCcEmail() {
@@ -281,10 +307,22 @@ export default function AdminPage() {
 
       {/* Create Account Form */}
       <div className="card-static mb-8 animate-fade-up stagger-1">
-        <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-          <UserPlus size={18} className="text-[var(--teal)]" />
-          Create Account
-        </h2>
+        <div className="flex items-center justify-between gap-3 mb-5 pb-4 border-b border-[var(--light-gray)]">
+          <h2 className="font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+            <UserPlus size={18} className="text-[var(--teal)]" />
+            Create Account
+          </h2>
+          <button
+            type="button"
+            onClick={handleSyncFromHr}
+            disabled={syncing}
+            title="Pull the latest staff & interns from the HR Platform so new people appear in the list below"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-semibold text-[var(--teal)] border border-[var(--teal)]/30 hover:bg-[var(--teal)]/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : 'Sync from HR'}
+          </button>
+        </div>
 
         <form onSubmit={handleCreate} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
