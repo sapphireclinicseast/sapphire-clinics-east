@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { scheduleBranchWhere, patientBranchWhere } from '@/lib/branch-filter'
@@ -132,9 +133,23 @@ export async function GET(req: NextRequest) {
 
   const assignmentMap = new Map(assignments.map((a) => [a.patientId, a.status]))
 
+  // Departments (services) each patient avails, so clinicians can spot
+  // interdepartmental patients at a glance. One grouped query over the
+  // returned patients' confirmed sessions.
+  const svcMap = new Map<string, string[]>()
+  if (patientIds.length > 0) {
+    const rows = await prisma.$queryRaw<{ patientId: string; depts: string[] }[]>`
+      SELECT s."patientId" AS "patientId", array_agg(DISTINCT st."department"::text) AS depts
+      FROM "Schedule" s JOIN "Staff" st ON st.id = s."staffId"
+      WHERE s."patientId" IN (${Prisma.join(patientIds)}) AND s."status" = 'CONFIRMED'
+      GROUP BY s."patientId"`
+    for (const r of rows) svcMap.set(r.patientId, (r.depts ?? []).filter(Boolean).sort())
+  }
+
   const result = patients.map((p) => ({
     ...p,
     assignmentStatus: assignmentMap.get(p.id) ?? 'ACTIVE',
+    services: svcMap.get(p.id) ?? [],
   }))
 
   return NextResponse.json({ patients: result })
