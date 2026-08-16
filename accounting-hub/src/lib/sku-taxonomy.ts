@@ -46,7 +46,7 @@ export const SKU_HIERARCHY: Record<string, { label: string; categories: Record<s
     ACC: { label: 'Accessories', subcategories: { CER: 'Certification Materials' } },
   }},
   MER: { label: 'Merchandise', categories: {
-    GEN: { label: 'General', subcategories: { STK: 'Stickers', EMB: 'Car Emblems', TLS: 'Tagless Shirt', PCH: 'Pouch', PBG: 'Paper Bags' } },
+    GEN: { label: 'General', subcategories: { STK: 'Stickers', EMB: 'Car Emblems', TLS: 'Tagless Shirt', PCH: 'Pouch', PBG: 'Paper Bags', TOY: 'Plush Toys' } },
   }},
 }
 
