@@ -611,8 +611,10 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
                   ))}
                 </Fragment>))}
                 <MultiRow label="EBT" values={ebtC} total={is.ebt} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
-                <MultiRow label="Provision for Income Tax (20%)" indent={1}
+                {INCOME_TAX_RATE > 0 && (
+                <MultiRow label={`Provision for Income Tax (${Math.round(INCOME_TAX_RATE * 100)}%)`} indent={1}
                   values={ebtC.map(e => e * INCOME_TAX_RATE)} total={is.taxProvision} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                )}
                 <MultiRow label="NET INCOME" values={ebtC.map(e => e * (1 - INCOME_TAX_RATE))} total={is.netIncome} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
               </tbody>
             </table>
@@ -665,7 +667,9 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
             ))}
           </Fragment>))}
           <Row label="EBT" amount={is.ebt} bold rule pctBase={vaBase} />
-          <Row label="Provision for Income Tax (20%)" amount={is.taxProvision} indent={1} pctBase={vaBase} />
+          {INCOME_TAX_RATE > 0 && (
+          <Row label={`Provision for Income Tax (${Math.round(INCOME_TAX_RATE * 100)}%)`} amount={is.taxProvision} indent={1} pctBase={vaBase} />
+          )}
           <Row label="NET INCOME" amount={is.netIncome} bold doubleRule pctBase={vaBase} />
         </div>
       )

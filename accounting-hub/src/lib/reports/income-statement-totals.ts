@@ -41,7 +41,9 @@ export interface IsReportData {
 }
 
 /** CREATE-Act corporate income tax rate — matches the FY2024–FY2026 FS package. */
-export const INCOME_TAX_RATE = 0.20
+// Set to 0 per Hannah (2026-08-16): a provision is an estimate with no cash
+// effect — actual income tax is booked in 8270 Taxes and Licenses when paid.
+export const INCOME_TAX_RATE = 0
 
 const DEPRECIATION_ACCT = '8070'
 const INTEREST_ACCT = '8310'
