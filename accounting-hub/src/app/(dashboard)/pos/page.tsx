@@ -2450,7 +2450,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [ordSortDir, setOrdSortDir] = useState<'asc' | 'desc'>('desc')
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
-  const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string }[]>([])
+  const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string; inventoryItemId?: string }[]>([])
   const [editPayments, setEditPayments] = useState<{ method: string; amount: number; paymentModeId?: string; walletId?: string; reference?: string }[]>([])
   const [editPatient, setEditPatient] = useState('')
   const [editClinician, setEditClinician] = useState('')
@@ -2475,7 +2475,10 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const editPatientTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editClinicianTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Per-item service search for the line-items list in Edit Order
-  const [editItemResults, setEditItemResults] = useState<ServiceItem[][]>([])
+  // A search result the item editor can offer is either a Service or an Inventory
+  // product — searched together so re-linking a PRODUCT order (previously impossible;
+  // this box only ever queried /api/services) works the same way as a service order.
+  const [editItemResults, setEditItemResults] = useState<({ kind: 'service' | 'product'; id: string; name: string; price: number; sub?: string })[][]>([])
   const editItemTimers = useRef<(ReturnType<typeof setTimeout> | null)[]>([])
   const [editConfiguredModes, setEditConfiguredModes] = useState<PaymentModeType[]>([])
   const [editIssuedOfficialInvoice, setEditIssuedOfficialInvoice] = useState(false)
@@ -2663,6 +2666,12 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
       unitPrice: toNum(it.unitPrice),
       lineTotal: toNum(it.lineTotal),
       serviceId: it.serviceId,
+      // Preserve the product link untouched unless the cashier actually retypes this
+      // line (the name-field handler below clears it then). Without this, saving ANY
+      // change on this form — even just the date or a discount — silently dropped
+      // every item's inventory link and rerouted its revenue to the 7000 fallback,
+      // regardless of whether that item was ever edited.
+      inventoryItemId: (it as { inventoryItemId?: string }).inventoryItemId,
     })))
     setEditItemResults(o.items.map(() => []))
     editItemTimers.current = o.items.map(() => null)
@@ -2729,6 +2738,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
         discountType: computedEditDiscount.type,
         items: editItems.map(it => ({
           serviceId: it.serviceId || null,
+          inventoryItemId: it.inventoryItemId || null,
           name: it.name,
           quantity: it.quantity,
           unitPrice: it.unitPrice,
@@ -3187,17 +3197,30 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                           value={it.name}
                           onChange={e => {
                             const val = e.target.value
-                            setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: val, serviceId: undefined } : x))
-                            // Debounced service search
+                            // Retyping this line means the cashier is replacing it, not
+                            // just re-saving the order — drop BOTH links so a stale one
+                            // can't silently survive a rename.
+                            setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: val, serviceId: undefined, inventoryItemId: undefined } : x))
+                            // Debounced search — services AND inventory products together,
+                            // since this form edits both order types and used to only ever
+                            // search services (the reason product links kept disappearing).
                             if (editItemTimers.current[idx]) clearTimeout(editItemTimers.current[idx]!)
                             if (val.length >= 1) {
                               editItemTimers.current[idx] = setTimeout(async () => {
                                 try {
-                                  const r = await fetch(`/api/services?pageSize=20&branch=${editOrder?.branch || ''}&search=${encodeURIComponent(val)}`)
-                                  const d = await r.json()
+                                  const branch = editOrder?.branch || ''
+                                  const [svcRes, prodRes] = await Promise.all([
+                                    fetch(`/api/services?pageSize=20&branch=${branch}&search=${encodeURIComponent(val)}`),
+                                    fetch(`/api/inventory?pageSize=20&branch=${branch}&search=${encodeURIComponent(val)}`),
+                                  ])
+                                  const [svcData, prodData] = await Promise.all([svcRes.json(), prodRes.json()])
+                                  const services = ((Array.isArray(svcData) ? svcData : svcData.data || []) as ServiceItem[])
+                                    .map(s => ({ kind: 'service' as const, id: s.id, name: s.name, price: Number(s.price), sub: s.department }))
+                                  const products = ((Array.isArray(prodData) ? prodData : prodData.data || []) as InventoryProduct[])
+                                    .map(p => ({ kind: 'product' as const, id: p.id, name: p.name, price: Number(p.sellingPrice) || 0, sub: p.sku }))
                                   setEditItemResults(prev => {
                                     const next = [...prev]
-                                    next[idx] = (Array.isArray(d) ? d : d.data || []) as ServiceItem[]
+                                    next[idx] = [...products, ...services]
                                     return next
                                   })
                                 } catch { /* ignore */ }
@@ -3206,26 +3229,28 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                               setEditItemResults(prev => { const next = [...prev]; next[idx] = []; return next })
                             }
                           }}
-                          placeholder="Search service…"
+                          placeholder="Search service or product…"
                           className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
                         />
                         {(editItemResults[idx]?.length ?? 0) > 0 && (
                           <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                            {editItemResults[idx].map(svc => (
-                              <button key={svc.id} onMouseDown={e => e.preventDefault()} onClick={() => {
+                            {editItemResults[idx].map(hit => (
+                              <button key={`${hit.kind}-${hit.id}`} onMouseDown={e => e.preventDefault()} onClick={() => {
                                 setEditItems(prev => prev.map((x, i) => i === idx ? {
                                   ...x,
-                                  name: svc.name,
-                                  unitPrice: Number(svc.price),
-                                  lineTotal: Number(svc.price) * x.quantity,
-                                  serviceId: svc.id,
+                                  name: hit.name,
+                                  unitPrice: hit.price,
+                                  lineTotal: hit.price * x.quantity,
+                                  serviceId: hit.kind === 'service' ? hit.id : undefined,
+                                  inventoryItemId: hit.kind === 'product' ? hit.id : undefined,
                                 } : x))
                                 setEditItemResults(prev => { const next = [...prev]; next[idx] = []; return next })
                               }}
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
-                                {svc.name}
-                                {svc.department && <span className="ml-1 text-xs" style={{ color: 'var(--mid-gray)' }}>({svc.department})</span>}
-                                <span className="ml-2 text-xs font-medium" style={{ color: 'var(--teal)' }}>{formatCurrency(Number(svc.price))}</span>
+                                <span className="text-[10px] font-semibold uppercase mr-1.5 px-1 py-0.5 rounded" style={hit.kind === 'product' ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { background: '#f3f4f6', color: 'var(--mid-gray)' }}>{hit.kind === 'product' ? 'Product' : 'Service'}</span>
+                                {hit.name}
+                                {hit.sub && <span className="ml-1 text-xs" style={{ color: 'var(--mid-gray)' }}>({hit.sub})</span>}
+                                <span className="ml-2 text-xs font-medium" style={{ color: 'var(--teal)' }}>{formatCurrency(hit.price)}</span>
                               </button>
                             ))}
                           </div>
