@@ -36,6 +36,12 @@ interface StaffOption {
   department: string
   branch: string
   email: string | null
+  employmentType?: string | null
+  jobTitle?: string | null
+}
+
+function isInternStaff(s: Pick<StaffOption, 'employmentType' | 'jobTitle'>): boolean {
+  return s.employmentType === 'intern' || /intern/i.test(s.jobTitle ?? '')
 }
 
 interface TherapistAccountItem {
@@ -69,7 +75,7 @@ export default function AdminPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [accountType, setAccountType] = useState<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'ADMIN'>('CLINICIAN')
+  const [accountType, setAccountType] = useState<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'ADMIN' | 'INTERN'>('CLINICIAN')
   const [toast, setToast] = useState<string | null>(null)
   const [changingPasswordId, setChangingPasswordId] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState('')
@@ -154,6 +160,8 @@ export default function AdminPage() {
     setSelectedStaffId(staffId)
     const staff = staffList.find((s) => s.id === staffId)
     if (staff?.email) setEmail(staff.email)
+    // Interns default to the Intern account type; admin can still change it.
+    if (staff && isInternStaff(staff)) setAccountType('INTERN')
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -287,7 +295,7 @@ export default function AdminPage() {
               <select value={selectedStaffId} onChange={(e) => onStaffSelect(e.target.value)} required className="input bg-white">
                 <option value="">Select staff member...</option>
                 {availableStaff.map((s) => (
-                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {s.branch})</option>
+                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {s.branch}){isInternStaff(s) ? ' · INTERN' : ''}</option>
                 ))}
               </select>
             </div>
@@ -317,12 +325,14 @@ export default function AdminPage() {
               <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Account Type</label>
               <select value={accountType} onChange={(e) => setAccountType(e.target.value as typeof accountType)} className="input bg-white">
                 <option value="CLINICIAN">Clinician — full clinical access</option>
+                <option value="INTERN">Intern — clinical access, cannot send notes/reports</option>
                 <option value="FRONT_DESK">Front Desk (Administration) — no patient pages, incl. Patients Love</option>
                 <option value="ADMIN_STAFF">Administration staff — no patient pages, no Patients Love</option>
                 <option value="ADMIN">Admin — full access + Admin Panel</option>
               </select>
               <p className="text-[11px] text-[var(--mid-gray)] mt-1">
                 {accountType === 'CLINICIAN' && 'Sees all clinical pages plus Peers Love.'}
+                {accountType === 'INTERN' && 'Same clinical pages as a clinician (writes session notes, uploads IE reports). Cannot send notes or IE reports to patients — only their supervisor sends, and the supervisor’s license appears on what is sent.'}
                 {accountType === 'FRONT_DESK' && 'For front-desk staff. No Dashboard / Clinic Schedule / Patients / Settings. Sees: Patients Love (HR12 feedback), Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
                 {accountType === 'ADMIN_STAFF' && 'For other Administration roles. No Dashboard / Clinic Schedule / Patients / Settings, and no Patients Love. Sees: Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
                 {accountType === 'ADMIN' && 'Full access including the Admin Panel.'}
