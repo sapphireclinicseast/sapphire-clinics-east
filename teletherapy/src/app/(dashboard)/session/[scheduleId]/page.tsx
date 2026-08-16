@@ -70,10 +70,29 @@ interface SessionDetail {
     emailSentAt: string | null
     emailSentTo: string | null
     isInitialEvaluation: boolean
+    editHistory?: { name: string; accountType: string; action: string; at: string }[] | null
   } | null
 }
 
 type ActionMode = null | 'complete' | 'discontinue' | 'edit'
+
+// Compact edit-history block: who created the note and every subsequent edit.
+function NoteEditHistory({ history }: { history?: { name: string; accountType: string; action: string; at: string }[] | null }) {
+  if (!history || history.length === 0) return null
+  return (
+    <div className="mt-3 pt-3 border-t border-[var(--light-gray)]">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)] mb-1.5">Edit history</p>
+      <ul className="space-y-1">
+        {history.map((h, i) => (
+          <li key={i} className="text-[11.5px] text-[var(--mid-gray)]">
+            <span className="capitalize">{h.action}</span> by <span className="font-semibold text-[var(--charcoal)]">{h.name}</span>
+            {h.accountType === 'INTERN' ? ' (Intern)' : ''} · {new Date(h.at).toLocaleString()}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 export default function SessionDetailPage() {
   const params = useParams()
@@ -126,7 +145,7 @@ export default function SessionDetailPage() {
 
   async function fetchClinicianSettings() {
     try {
-      const res = await fetch('/api/clinician-settings')
+      const res = await fetch(`/api/clinician-settings?scheduleId=${scheduleId}`)
       if (res.ok) {
         const data = await res.json()
         setClinicianSettings(data.settings ?? null)
@@ -713,6 +732,8 @@ export default function SessionDetailPage() {
               </div>
             </div>
           )}
+
+          <NoteEditHistory history={session.sessionNote!.editHistory} />
 
           {/* No notes and no attachments indicator */}
           {!session.sessionNote!.notes && (!session.sessionNote!.attachments || (session.sessionNote!.attachments as any[]).length === 0) && (
