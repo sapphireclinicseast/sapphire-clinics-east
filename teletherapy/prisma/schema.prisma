@@ -391,3 +391,29 @@ model ClinicianSettings {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 }
+
+// ── Support Tickets ──────────────────────────────────────────────
+// Staff-raised concerns about the portal. Numbered per branch per day
+// (AHEA-/AHGH-/VERD-YYYYMMDD-NN). The main admin resolves; the raiser
+// sees the resolution.
+model Ticket {
+  id                String    @id @default(cuid())
+  ticketNumber      String    @unique
+  branch            String
+  subject           String
+  description       String
+  attachmentPath    String?
+  attachmentName    String?
+  status            String    @default("OPEN") // OPEN / RESOLVED
+  raisedByAccountId String
+  raisedByName      String
+  raisedByEmail     String?
+  resolution        String?
+  resolvedByName    String?
+  resolvedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([raisedByAccountId])
+  @@index([status])
+}
