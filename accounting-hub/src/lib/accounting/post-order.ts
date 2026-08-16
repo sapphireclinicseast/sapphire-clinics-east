@@ -145,11 +145,60 @@ export async function postOrderJournal(
     agg.set(accountId, cur)
   }
 
+  /* ── 0b. Name fallback for unlinked product lines ───────────────
+     A line rung up as free text carries no inventoryItem, but nearly always names
+     a real catalogue product — and the reporting engine ALREADY resolves exactly
+     these lines by name for the 7080 product-subtype breakdown. Without the same
+     fallback here the two disagree on the same sale: the income statement files it
+     under "Training & Education · Materials" while its peso sits in 7000
+     Unclassified Revenue. Resolve by name so classification follows the catalogue
+     automatically, and 7000 means what it says — a product we genuinely can't
+     identify — rather than "the cashier didn't pick from the dropdown".
+
+     Ambiguity is never guessed through: a name matching several catalogue rows
+     (consignment copies share their parent's name) only resolves when the order's
+     own branch picks a single one, or when every candidate points at the same
+     revenue account anyway. Otherwise it falls through to 7000, which is visible
+     and fixable, rather than silently crediting the wrong line. */
+  const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ')
+  const unlinkedNames = [...new Set(
+    order.items
+      .filter(i => !i.service && !i.inventoryItem && Number(i.lineTotal) > 0 && (i.name || '').trim())
+      .map(i => norm(i.name)),
+  )]
+  const revByName = new Map<string, { id: string; accountNumber: string; accountTitle: string }>()
+  if (unlinkedNames.length > 0) {
+    const candidates = await prisma.inventoryItem.findMany({
+      where: { name: { in: unlinkedNames } },   // catalogue names are stored upper-case
+      select: { name: true, branch: true, revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } } },
+    })
+    const byName = new Map<string, typeof candidates>()
+    for (const c of candidates) {
+      const k = norm(c.name)
+      if (!byName.has(k)) byName.set(k, [])
+      byName.get(k)!.push(c)
+    }
+    for (const [name, rows] of byName) {
+      const withAcct = rows.filter(r => r.revenueAccount)
+      if (withAcct.length === 0) continue
+      const sameBranch = withAcct.filter(r => r.branch === order.branch)
+      const pick =
+        withAcct.length === 1 ? withAcct[0]
+        : sameBranch.length === 1 ? sameBranch[0]
+        : new Set(withAcct.map(r => r.revenueAccount!.id)).size === 1 ? withAcct[0]
+        : null
+      if (pick?.revenueAccount) revByName.set(name, pick.revenueAccount)
+    }
+  }
+
   /* ── 1. Revenue (CR) per item ─────────────────────────────────── */
   for (const item of order.items) {
     const lineTotal = Number(item.lineTotal)
     if (lineTotal <= 0) continue   // free samples / zero-priced items have their own JE
-    const revAcct = item.service?.revenueAccount || item.inventoryItem?.revenueAccount || defaultUnclassifiedRevenue
+    const revAcct = item.service?.revenueAccount
+      || item.inventoryItem?.revenueAccount
+      || revByName.get(norm(item.name || ''))
+      || defaultUnclassifiedRevenue
     if (!revAcct) {
       return { posted: false, reason: `item "${item.name}" has no revenue account and no 7000 fallback exists` }
     }
