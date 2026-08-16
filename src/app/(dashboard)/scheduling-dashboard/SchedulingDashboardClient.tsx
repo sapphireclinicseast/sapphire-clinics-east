@@ -12,7 +12,10 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN', 'INVESTOR']
+// INVESTOR is deliberately excluded — investor accounts are scoped to the
+// Patient Dashboard only (hard-gated in (dashboard)/layout.tsx). This client
+// check is the cosmetic backstop; the API routes exclude INVESTOR too.
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
 
 const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS'] as const
 const DEPT_LABELS: Record<string, string> = {
@@ -84,7 +87,7 @@ export default function SchedulingDashboardClient({ role }: { role: string }) {
         <Lock size={48} className="text-gray-300 mb-4" />
         <h2 className="text-xl font-bold text-gray-700 mb-2">Access Restricted</h2>
         <p className="text-sm text-gray-500 max-w-sm">
-          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, Marketing Admin, and Investor users.
+          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, and Marketing Admin users.
         </p>
       </div>
     )

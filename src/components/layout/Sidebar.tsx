@@ -117,13 +117,12 @@ const FRONT_DESK_NAV = [
   },
 ]
 
-// Investor nav — read-only, exactly the two pages the account is scoped to
+// Investor nav — read-only, exactly the page the account is scoped to
 // (enforced server-side in (dashboard)/layout.tsx; this list is cosmetic).
 const INVESTOR_NAV = [
   {
     label: 'Investor View',
     items: [
-      { href: '/scheduling-dashboard', icon: Activity, label: 'Clinic Utilization' },
       { href: '/patients/dashboard', icon: BarChart2, label: 'Patient Dashboard' },
     ],
   },

@@ -4,10 +4,11 @@ import { prisma } from '@/lib/prisma'
 
 // Same roles allowed to view the Scheduling Dashboard can read these caps —
 // they drive the heatmap rendering the dashboard already shows those roles.
-// Only non-investor roles may write: this route previously had NO auth check
-// at all (anyone with a session could rewrite clinic capacity), which became
-// a real risk once INVESTOR became a role with dashboard access at all.
-const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN', 'INVESTOR']
+// INVESTOR is excluded entirely (read included): investor accounts are scoped
+// to the Patient Dashboard and no longer see clinic utilization at all. Note
+// this route previously had NO auth check at all (anyone with a session could
+// rewrite clinic capacity) — hence the explicit read/write split below.
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
 const WRITE_ROLES = ALLOWED_ROLES.filter(r => r !== 'INVESTOR')
 
 // Field map: [branch][dept] → DB column name

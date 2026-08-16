@@ -65,7 +65,7 @@ export default function LoginPage() {
       // (dashboard)/layout.tsx's INVESTOR_ALLOWED_PREFIXES) — pushing them
       // there first meant every investor login triggered a client-side
       // soft-navigation into a chained server redirect
-      // (/dashboard -> /scheduling-dashboard). That chain is what actually
+      // (/dashboard -> /patients/dashboard). That chain is what actually
       // produced the blank-until-refresh bug: Next's router got stuck
       // retrying the same RSC fetch for the redirect target for several
       // seconds (sometimes 20+) before finally resolving. Reading the role
@@ -76,7 +76,7 @@ export default function LoginPage() {
       try {
         const sessionRes = await fetch('/api/auth/session')
         const session = await sessionRes.json()
-        if (session?.user?.role === 'INVESTOR') dest = '/scheduling-dashboard'
+        if (session?.user?.role === 'INVESTOR') dest = '/patients/dashboard'
       } catch {
         // fall through to /dashboard — the layout gate still redirects
         // investor sessions correctly, just via the slower chained path.

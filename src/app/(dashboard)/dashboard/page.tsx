@@ -112,13 +112,13 @@ export default async function DashboardPage() {
   const session = await auth()
 
   // Investors never see the front-desk dashboard — send them straight to
-  // Clinic Utilization. This is a direct redirect (not the layout's
+  // the Patient Dashboard. This is a direct redirect (not the layout's
   // pathname-header gate) so it doesn't depend on the x-pathname header
   // being fresh on the very first post-login navigation, which is
   // unreliable during a client-side redirect chain and was causing a
   // blank page that only resolved on manual refresh.
   if ((session?.user as { role?: string })?.role === 'INVESTOR') {
-    redirect('/scheduling-dashboard')
+    redirect('/patients/dashboard')
   }
 
   // ── Everyone sees the front-desk-style welcome dashboard ──

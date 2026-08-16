@@ -5,13 +5,14 @@ import { SessionProvider } from 'next-auth/react'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { BrandProvider } from '@/contexts/BrandContext'
 
-// Investor accounts are read-only and restricted to two pages. There is no
-// middleware/route-level auth elsewhere in this app (every other page relies
-// on its own, inconsistent client/API checks — see the many ALLOWED_ROLES
-// allow-lists scattered through src/app/api/**), so this is the ONE hard
-// gate that stops an investor session from reaching anything else by typing
-// or bookmarking a URL directly.
-const INVESTOR_ALLOWED_PREFIXES = ['/scheduling-dashboard', '/patients/dashboard']
+// Investor accounts are read-only and restricted to the Patient Dashboard
+// only. There is no middleware/route-level auth elsewhere in this app (every
+// other page relies on its own, inconsistent client/API checks — see the many
+// ALLOWED_ROLES allow-lists scattered through src/app/api/**), so this is the
+// ONE hard gate that stops an investor session from reaching anything else by
+// typing or bookmarking a URL directly.
+const INVESTOR_ALLOWED_PREFIXES = ['/patients/dashboard']
+const INVESTOR_HOME = '/patients/dashboard'
 
 export default async function DashboardLayout({
   children,
@@ -27,16 +28,16 @@ export default async function DashboardLayout({
     // Fail OPEN, not into a loop: if middleware's x-pathname header is ever
     // missing (proxy/CDN stripped it, a request bypassed middleware, etc.),
     // pathname is '' — which matches NO allowed prefix, so every request
-    // including /scheduling-dashboard itself would redirect to
-    // /scheduling-dashboard, which re-renders this exact layout with the
-    // same missing header, redirecting again. That self-redirect loop is
-    // what actually rendered as a permanently blank page for investor
-    // accounts. Only redirect when we have positive evidence of an
-    // out-of-scope path, never when we simply don't know the path.
+    // including INVESTOR_HOME itself would redirect to INVESTOR_HOME, which
+    // re-renders this exact layout with the same missing header, redirecting
+    // again. That self-redirect loop is what actually rendered as a
+    // permanently blank page for investor accounts. Only redirect when we
+    // have positive evidence of an out-of-scope path, never when we simply
+    // don't know the path.
     const isAllowed = !pathname || INVESTOR_ALLOWED_PREFIXES.some(
       p => pathname === p || pathname.startsWith(p + '/')
     )
-    if (!isAllowed) redirect('/scheduling-dashboard')
+    if (!isAllowed) redirect(INVESTOR_HOME)
   }
 
   return (

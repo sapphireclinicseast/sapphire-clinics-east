@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN', 'INVESTOR']
+// INVESTOR is deliberately NOT in this list — investor accounts are scoped to
+// the Patient Dashboard only and must not be able to read clinic utilization
+// data, including by calling this route directly.
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
 
-// Investor sessions never receive full staff names over the wire — mask to
-// initials here, before the response is built, not just in the UI layer.
+// Kept as defence-in-depth: if INVESTOR is ever re-granted access to this
+// route, names stay masked to initials at the API layer rather than silently
+// going out in full. Unreachable while INVESTOR is excluded above.
 function initials(fullName: string): string {
   const parts = fullName.trim().split(/[\s,]+/).filter(Boolean)
   if (parts.length === 0) return '—'
