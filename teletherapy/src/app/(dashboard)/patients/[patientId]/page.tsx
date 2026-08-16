@@ -85,6 +85,23 @@ interface StaffOption {
   branch: string
 }
 
+// Read-only render of one session note's body, reusing the department display
+// components (falls back to plain text). Used for other departments' notes.
+function renderNoteBody(notes: string | null | undefined) {
+  if (!notes) return null
+  try {
+    const parsed = JSON.parse(notes)
+    if (parsed.formType?.startsWith('PSYCH_')) return <PsychologyNoteDisplay data={parsed} />
+    if (parsed.formType === 'OT_DAILY_NOTES') return <OTNoteDisplay data={parsed} />
+    if (parsed.formType === 'SLP_DAILY_NOTES') return <SLPNoteDisplay data={parsed} />
+    if (parsed.formType === 'SPED16' || parsed.formType === 'SPED18') return <SPEDNoteDisplay data={parsed} />
+    if (parsed.formType === 'PT_SESSION_NOTES') return <PTNoteDisplay data={parsed} />
+  } catch { /* not JSON — render as plain text below */ }
+  return (
+    <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-3 rounded-lg border border-[var(--light-gray)]">{notes}</div>
+  )
+}
+
 export default function PatientDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -98,6 +115,8 @@ export default function PatientDetailPage() {
 
   const [patient, setPatient] = useState<PatientDetail | null>(null)
   const [sessions, setSessions] = useState<SessionItem[]>([])
+  const [otherDeptSessions, setOtherDeptSessions] = useState<SessionItem[]>([])
+  const [otherDeptOpen, setOtherDeptOpen] = useState(false)
   const [otherServices, setOtherServices] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
@@ -142,6 +161,7 @@ export default function PatientDetailPage() {
         const data = await res.json()
         setPatient(data.patient)
         setSessions(data.sessions)
+        setOtherDeptSessions(data.otherDeptSessions ?? [])
         setOtherServices(data.otherServices ?? [])
         setAssignmentStatus(data.assignment?.status ?? null)
         setReadOnly(!!data.readOnly)
@@ -594,10 +614,9 @@ export default function PatientDetailPage() {
         )
       })()}
 
-      {/* Interdisciplinary notice — this patient also sees other departments,
-          and their notes are shown below for interprofessional collaboration. */}
+      {/* Interdisciplinary notice */}
       {otherServices.length > 0 && (
-        <div className="mb-6 animate-fade-up stagger-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+        <div className="mb-4 animate-fade-up stagger-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
           <div className="flex gap-3">
             <ShieldAlert size={20} className="text-blue-600 shrink-0 mt-0.5" />
             <div>
@@ -605,10 +624,50 @@ export default function PatientDetailPage() {
                 Also receiving services from: {otherServices.join(', ')}
               </p>
               <p className="text-[12px] text-blue-600 leading-relaxed">
-                This patient is an interdisciplinary case. The other professionals&rsquo; session notes are shown below (marked with their department) so you can coordinate care. You can view all notes but can only edit your own.
+                This patient is an interdisciplinary case.{otherDeptSessions.length > 0
+                  ? ' The other professionals’ notes are in the read-only section below — kept separate from your own notes, which you write and edit in the session history further down.'
+                  : ' Coordinate with the other departments for interprofessional collaboration.'}
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Other departments' notes — READ ONLY, kept separate from the
+          clinician's own note-making so the two never get confused. */}
+      {otherDeptSessions.length > 0 && (
+        <div className="mb-6 animate-fade-up">
+          <button
+            onClick={() => setOtherDeptOpen((o) => !o)}
+            className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--light-gray)] bg-white px-4 py-3 text-left hover:bg-[var(--off-white)]"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[13.5px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>Notes from Other Departments</span>
+              <span className="text-[11px] font-semibold text-[var(--mid-gray)] bg-[var(--pale-teal)] px-2 py-0.5 rounded-full">{otherDeptSessions.length}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--mid-gray)] border border-[var(--light-gray)] px-1.5 py-0.5 rounded">View only</span>
+            </div>
+            {otherDeptOpen ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+          </button>
+          {otherDeptOpen && (
+            <div className="mt-2 space-y-2.5">
+              {otherDeptSessions.map((s) => (
+                <div key={s.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--teal)]">{s.staff.department}</span>
+                      <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{s.staff.firstName} {s.staff.lastName}</span>
+                    </div>
+                    <span className="text-[11.5px] text-[var(--mid-gray)]">{s.date}{s.sessionType ? ` · ${s.sessionType}` : ''}</span>
+                  </div>
+                  {s.sessionNote?.notes
+                    ? renderNoteBody(s.sessionNote.notes)
+                    : s.sessionNote?.discontinuedRemarks
+                      ? <p className="text-[13px] text-[var(--mid-gray)] italic">Discontinued: {s.sessionNote.discontinuedRemarks}</p>
+                      : <p className="text-[13px] text-[var(--mid-gray)] italic">No note content.</p>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

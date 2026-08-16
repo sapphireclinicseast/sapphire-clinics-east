@@ -82,6 +82,9 @@ export async function GET(
   //     see their own historical contribution. If endorsed back to
   //     ACTIVE, they regain the full interdisciplinary view.
   let ownSessions
+  // Other departments' notes for this patient, shown READ-ONLY in a separate
+  // subsection — never mixed into the clinician's own note-making list.
+  const otherDeptOut: Record<string, unknown>[] = []
   if (isAdmin) {
     ownSessions = await prisma.schedule.findMany({
       where: { patientId: id, status: 'CONFIRMED' },
@@ -101,17 +104,15 @@ export async function GET(
     const sharedView = myAssignment?.status === 'ACTIVE'
 
     let where: Record<string, unknown>
-    if (sharedView) {
-      // Interdisciplinary continuity of care: a clinician actively assigned to
-      // this patient sees EVERY professional's confirmed sessions/notes for the
-      // patient, across ALL departments — so an OT can read the SLP's and
-      // psychologist's notes for the same child. Editing stays restricted to
-      // each note's own author (see canEdit below), so notes authored by other
-      // professionals are view-only. (Previously this was scoped to the
-      // clinician's own department only.)
+    if (sharedView && currentDepartment) {
+      // The clinician's OWN note-making list stays within their own department
+      // (continuity of care across staff in the same discipline). Notes from
+      // OTHER departments are surfaced separately below, read-only, so they are
+      // never mixed into the area where the clinician writes their own notes.
       where = {
         patientId: id,
         status: 'CONFIRMED',
+        staff: { department: currentDepartment },
       }
     } else {
       // Fallback: only sessions this clinician personally handled.
@@ -126,6 +127,23 @@ export async function GET(
       include: { staff: { select: staffSelect }, sessionNote: { select: sessionNoteSelect } },
       orderBy: { date: 'desc' },
     })
+
+    // Interdepartmental notes: for an ACTIVE-assigned clinician, pull the OTHER
+    // departments' confirmed sessions that actually have a note. READ-ONLY —
+    // the clinician can view but never edit another professional's note.
+    if (sharedView && currentDepartment) {
+      const otherRows = await prisma.schedule.findMany({
+        where: {
+          patientId: id,
+          status: 'CONFIRMED',
+          staff: { department: { not: currentDepartment } },
+          sessionNote: { isNot: null },
+        },
+        include: { staff: { select: staffSelect }, sessionNote: { select: sessionNoteSelect } },
+        orderBy: { date: 'desc' },
+      })
+      for (const r of otherRows) otherDeptOut.push({ ...r, canEdit: false })
+    }
   }
 
   // For NON-ADMIN: find what OTHER departments/services this patient has used
@@ -202,5 +220,6 @@ export async function GET(
     assignment,
     readOnly,
     otherServices, // e.g. ["MD", "OT"] — departments the patient also sees
+    otherDeptSessions: otherDeptOut, // read-only notes from other departments
   })
 }
