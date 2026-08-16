@@ -3,7 +3,8 @@ import { pushWeightsToStore } from '@/lib/store-weight-sync'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
-import { resolveProductAccounts } from '@/lib/inventory-accounts'
+import { resolveProductAccounts, inventorySubTypeForDept } from '@/lib/inventory-accounts'
+import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -190,6 +191,7 @@ export async function PUT(req: Request) {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
             reorderLevel, supplierId, supplierProductName, description, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
             issuedOfficialInvoice, isPreOrder, websiteClassification, imageUrl, isActive,
+            skuDepartment, skuCategory, skuSubcategory,
             dimensionLength, dimensionWidth, dimensionHeight, weightKg } = await req.json()
 
     if (!id) {
@@ -223,16 +225,63 @@ export async function PUT(req: Request) {
     if (dimensionHeight !== undefined) data.dimensionHeight = dimensionHeight !== '' && dimensionHeight !== null ? parseFloat(dimensionHeight) : null
     if (weightKg !== undefined) data.weightKg = weightKg !== '' && weightKg !== null ? parseFloat(weightKg) : null
 
+    const current = await prisma.inventoryItem.findUnique({
+      where: { id },
+      select: { sku: true, skuDepartment: true, skuCategory: true, skuSubcategory: true, skuSequence: true,
+                revenueAccountId: true, expenseAccountId: true, sourceAccountId: true, accountSubType: true },
+    })
+
+    // Reclassification. The edit form has always SENT these three fields; the API
+    // just ignored them, so changing a product's department in the UI silently did
+    // nothing. Applying them means re-cutting the SKU under the new prefix, since a
+    // SKU that says OT- on a merchandise item is worse than no structure at all.
+    //
+    // The BARCODE is deliberately left alone: it's the string printed on labels
+    // already stuck to physical stock, so re-cutting it would strand every unit in
+    // the stockroom. Old label keeps scanning; the SKU is the accounting identity.
+    let reclassified: { from: string; to: string } | null = null
+    if (current && (skuDepartment || skuCategory || skuSubcategory)) {
+      const nextDept = (skuDepartment || current.skuDepartment).trim().toUpperCase()
+      const nextCat = (skuCategory || current.skuCategory).trim().toUpperCase()
+      const nextSub = (skuSubcategory || current.skuSubcategory).trim().toUpperCase()
+      const changed = nextDept !== current.skuDepartment || nextCat !== current.skuCategory || nextSub !== current.skuSubcategory
+      if (changed) {
+        if (!SKU_HIERARCHY[nextDept]?.categories?.[nextCat]?.subcategories?.[nextSub]) {
+          return NextResponse.json({ error: `Unknown SKU classification ${nextDept}-${nextCat}-${nextSub}` }, { status: 400 })
+        }
+        const prefix = `${nextDept}-${nextCat}-${nextSub}`
+        const last = await prisma.inventoryItem.findFirst({
+          where: { sku: { startsWith: prefix } },
+          orderBy: { skuSequence: 'desc' },
+          select: { skuSequence: true },
+        })
+        const nextSeq = (last?.skuSequence || 0) + 1
+        // Consignment copies carry a "-BRANCH" suffix on the parent SKU; keep it so
+        // the copy stays recognisable as the same product at another branch.
+        const suffix = current.sku.startsWith(`${current.skuDepartment}-${current.skuCategory}-${current.skuSubcategory}-`)
+          ? current.sku.split('-').slice(4).join('-')
+          : ''
+        const newSku = `${prefix}-${String(nextSeq).padStart(3, '0')}${suffix ? `-${suffix}` : ''}`
+        data.skuDepartment = nextDept
+        data.skuCategory = nextCat
+        data.skuSubcategory = nextSub
+        data.skuSequence = nextSeq
+        data.sku = newSku
+        reclassified = { from: current.sku, to: newSku }
+        // Keep the sub-type aligned with the new department when it was aligned with
+        // the old one (i.e. auto-derived, not a deliberate override).
+        if (accountSubType === undefined && current.accountSubType === inventorySubTypeForDept(current.skuDepartment)) {
+          data.accountSubType = inventorySubTypeForDept(nextDept)
+        }
+      }
+    }
+
     // Self-heal on save: a product created before the accounts were derived (or by
     // a path that didn't set them) gets its blanks filled the first time anyone
     // edits it. Only ever fills nulls — an explicit value in this request, or one
     // already on the row, is left exactly as it is.
-    const current = await prisma.inventoryItem.findUnique({
-      where: { id },
-      select: { skuDepartment: true, revenueAccountId: true, expenseAccountId: true, sourceAccountId: true, accountSubType: true },
-    })
     if (current) {
-      const filled = await resolveProductAccounts(prisma, current.skuDepartment, {
+      const filled = await resolveProductAccounts(prisma, data.skuDepartment ?? current.skuDepartment, {
         revenueAccountId: data.revenueAccountId !== undefined ? data.revenueAccountId : current.revenueAccountId,
         expenseAccountId: data.expenseAccountId !== undefined ? data.expenseAccountId : current.expenseAccountId,
         sourceAccountId: data.sourceAccountId !== undefined ? data.sourceAccountId : current.sourceAccountId,
@@ -258,10 +307,10 @@ export async function PUT(req: Request) {
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
-        action: 'UPDATE',
+        action: reclassified ? 'RECLASSIFY' : 'UPDATE',
         entity: 'inventoryItem',
         entityId: item.id,
-        details: { updated: Object.keys(data) },
+        details: { updated: Object.keys(data), ...(reclassified ? { skuChanged: reclassified } : {}) },
       },
     })
 
