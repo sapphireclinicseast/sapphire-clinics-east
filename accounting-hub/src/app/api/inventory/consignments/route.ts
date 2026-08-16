@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
+import { resolveProductAccounts } from '@/lib/inventory-accounts'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -223,6 +224,12 @@ export async function PUT(req: Request) {
             data: { quantity: { increment: transfer.quantity } },
           })
         } else {
+          const destAcct = await resolveProductAccounts(prisma, transfer.item.skuDepartment, {
+            revenueAccountId: transfer.item.revenueAccountId,
+            expenseAccountId: transfer.item.expenseAccountId,
+            sourceAccountId: transfer.item.sourceAccountId,
+            accountSubType: transfer.item.accountSubType,
+          })
           // Create new item at destination branch
           await prisma.inventoryItem.create({
             data: {
@@ -240,6 +247,14 @@ export async function PUT(req: Request) {
               quantity: transfer.quantity,
               reorderLevel: transfer.item.reorderLevel,
               supplierId: transfer.item.supplierId,
+              // Carry the source item's GL wiring across (falling back to the
+              // department defaults if the source itself was never wired). Without
+              // this the destination copy had no revenue/COGS accounts at all, so
+              // selling it posted to 7000 Unclassified Revenue — the origin of the
+              // stray "-SAND" catalogue entries.
+              revenueAccountId: destAcct.revenueAccountId,
+              expenseAccountId: destAcct.expenseAccountId,
+              sourceAccountId: destAcct.sourceAccountId,
               createdById: session.user.id,
             },
           })

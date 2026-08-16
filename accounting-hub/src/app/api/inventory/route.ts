@@ -3,6 +3,7 @@ import { pushWeightsToStore } from '@/lib/store-weight-sync'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
+import { resolveProductAccounts } from '@/lib/inventory-accounts'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -111,6 +112,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'SKU already exists' }, { status: 409 })
     }
 
+    // Wire the GL accounts from the SKU department unless the form supplied them,
+    // so a product is always postable — and lands on the right income-statement
+    // line and sub-classification — the moment it's created.
+    const acct = await resolveProductAccounts(prisma, skuDepartment, {
+      revenueAccountId, expenseAccountId, sourceAccountId, accountSubType,
+    })
+
     const item = await prisma.inventoryItem.create({
       data: {
         // Product names are stored upper case so the catalogue reads uniformly.
@@ -123,7 +131,7 @@ export async function POST(req: Request) {
         skuSequence: nextSequence,
         barcode: sku, // Code128 uses the SKU string directly
         branch,
-        accountSubType: accountSubType || null,
+        accountSubType: acct.accountSubType,
         unitCost: unitCost ? parseFloat(unitCost) : 0,
         initialUnitCost: unitCost ? parseFloat(unitCost) : 0,
         sellingPrice: sellingPrice ? parseFloat(sellingPrice) : null,
@@ -134,10 +142,10 @@ export async function POST(req: Request) {
         supplierProductName: body.supplierProductName?.trim() || null,
         description: body.description?.trim() || null,
         supplierExchangeRate: supplierExchangeRate ? parseFloat(supplierExchangeRate) : null,
-        revenueAccountId: revenueAccountId || null,
-        sourceAccountId: sourceAccountId || null,
+        revenueAccountId: acct.revenueAccountId,
+        sourceAccountId: acct.sourceAccountId,
         fromPettyCash: body.fromPettyCash === true,
-        expenseAccountId: expenseAccountId || null,
+        expenseAccountId: acct.expenseAccountId,
         issuedOfficialInvoice: body.issuedOfficialInvoice || false,
         isPreOrder: body.isPreOrder || false,
         websiteClassification: body.websiteClassification || null,
@@ -214,6 +222,27 @@ export async function PUT(req: Request) {
     if (dimensionWidth !== undefined) data.dimensionWidth = dimensionWidth !== '' && dimensionWidth !== null ? parseFloat(dimensionWidth) : null
     if (dimensionHeight !== undefined) data.dimensionHeight = dimensionHeight !== '' && dimensionHeight !== null ? parseFloat(dimensionHeight) : null
     if (weightKg !== undefined) data.weightKg = weightKg !== '' && weightKg !== null ? parseFloat(weightKg) : null
+
+    // Self-heal on save: a product created before the accounts were derived (or by
+    // a path that didn't set them) gets its blanks filled the first time anyone
+    // edits it. Only ever fills nulls — an explicit value in this request, or one
+    // already on the row, is left exactly as it is.
+    const current = await prisma.inventoryItem.findUnique({
+      where: { id },
+      select: { skuDepartment: true, revenueAccountId: true, expenseAccountId: true, sourceAccountId: true, accountSubType: true },
+    })
+    if (current) {
+      const filled = await resolveProductAccounts(prisma, current.skuDepartment, {
+        revenueAccountId: data.revenueAccountId !== undefined ? data.revenueAccountId : current.revenueAccountId,
+        expenseAccountId: data.expenseAccountId !== undefined ? data.expenseAccountId : current.expenseAccountId,
+        sourceAccountId: data.sourceAccountId !== undefined ? data.sourceAccountId : current.sourceAccountId,
+        accountSubType: data.accountSubType !== undefined ? data.accountSubType : current.accountSubType,
+      })
+      if (filled.revenueAccountId) data.revenueAccountId = filled.revenueAccountId
+      if (filled.expenseAccountId) data.expenseAccountId = filled.expenseAccountId
+      if (filled.sourceAccountId) data.sourceAccountId = filled.sourceAccountId
+      if (filled.accountSubType) data.accountSubType = filled.accountSubType
+    }
 
     const item = await prisma.inventoryItem.update({ where: { id }, data })
 
