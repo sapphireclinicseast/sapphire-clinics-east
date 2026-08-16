@@ -1712,7 +1712,7 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branch}.csv`
+    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1731,7 +1731,7 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branch}.xls`
+    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.xls`
     a.click()
     URL.revokeObjectURL(url)
   }
