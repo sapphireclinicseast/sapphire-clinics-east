@@ -50,23 +50,23 @@ export default function ConcernsWidget() {
 
   async function captureScreen() {
     setError(null); setCapturing(true)
-    const el = rootRef.current
-    const prev = el?.style.visibility
     try {
-      if (el) el.style.visibility = 'hidden' // keep the widget out of the shot
-      const html2canvas = (await import('html2canvas')).default
-      const canvas = await html2canvas(document.body, {
-        logging: false, useCORS: true, backgroundColor: '#eef3d9',
-        scale: Math.min(window.devicePixelRatio || 1, 2),
-        windowWidth: document.documentElement.clientWidth,
-        windowHeight: document.documentElement.clientHeight,
+      // html-to-image renders the DOM via an SVG <foreignObject>, so the
+      // browser itself paints it — modern CSS (Tailwind v4's oklch colours,
+      // color-mix, etc.) works, unlike html2canvas which can't parse them.
+      // The `filter` drops this widget so it isn't in the shot.
+      const { toBlob } = await import('html-to-image')
+      const blob = await toBlob(document.body, {
+        backgroundColor: '#eef3d9',
+        cacheBust: true,
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        filter: (node) => node !== rootRef.current,
       })
-      const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'))
       if (blob) setAttachment(new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' }))
+      else setError('Couldn’t capture the screen automatically — you can upload a photo instead.')
     } catch {
       setError('Couldn’t capture the screen automatically — you can upload a photo instead.')
     } finally {
-      if (el) el.style.visibility = prev ?? ''
       setCapturing(false)
     }
   }
