@@ -156,28 +156,6 @@ const OPENING_PLUG = '3999'
 const IMBALANCE_PLUG = '9990'
 const round2 = (n: number) => Math.round(n * 100) / 100
 
-/**
- * The Accounting Hub only started posting live, in the moment, per-order
- * journal entries on 2026-01-02 (the earliest real POS_ORDER-referenced JE in
- * the system; zero exist anywhere in 2025). Every 2025 order was bulk
- * backfilled into the Order table in one batch (2026-07), and that period's
- * revenue is already fully reflected in the historical QuickBooks import
- * (QB_IMPORT_JE) — confirmed: 2025 Order-table earned revenue (₱25.02M) sits
- * within ~5% of QB_IMPORT_JE's own 2025 revenue-account total (₱23.86M).
- *
- * `hasRef('POS_ORDER', order.id)` cannot see any of that: the QB import was
- * never linked to individual Order ids, so the dedup check always misses and
- * every 2025 order gets synthesized on TOP of revenue QuickBooks already
- * recorded — company-wide, for the whole year. That doubled the Income
- * Statement's 2025 gross revenue (₱57.86M synthesized vs ₱23.86M real) and
- * inflated every bank account's cash movement by the corresponding phantom
- * payment lines. Orders (and their COGS/free-sample legs) dated before this
- * cutoff are therefore never synthesized, full stop — that period's GL is
- * QuickBooks', not the Hub's, regardless of what hasRef() does or doesn't
- * find.
- */
-const LIVE_GL_POSTING_START = new Date(Date.UTC(2026, 0, 1))
-
 // Sections an account lands in, by CoA classification.
 const BS_SECTION: [key: string, label: string, match: (a: AcctInfo) => boolean][] = [
   ['CURRENT_ASSETS', 'Current Assets', a => a.type === 'ASSET' && (a.subType === 'CURRENT_ASSETS' || a.subType === 'INVENTORY' || a.subType.startsWith('INV_'))],
@@ -215,6 +193,12 @@ export async function computeLedgerStatements(
 ): Promise<V2Statements> {
   const start = new Date(Date.UTC(year, 0, 1))
   const end = new Date(Date.UTC(year + 1, 0, 1))
+  /* Years before the hub went live read the imported QuickBooks GL as the one
+     and only ledger: module JEs and every synthesis family are suppressed —
+     QB's own journal already contains the sales, depreciation, petty cash,
+     transfers and asset purchases — leaving QB journals + opening balances +
+     the bank-statement true-up (the honesty check stays on in every era). */
+  const qbEra = year < 2026
   const collected: V2CollectedLine[] = []
   const monthOf = (d: Date | string) => {
     const dt = new Date(d)
@@ -369,6 +353,9 @@ export async function computeLedgerStatements(
             entryDate: { lt: start },
             referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
             ...(branchValues ? { branch: { in: branchValues as never[] } } : {}),
+            // QB-era history: pre-2026 the QB journal IS the ledger — module
+            // JEs from those years are suppressed here exactly as in §2.
+            OR: [{ entryDate: { gte: new Date(Date.UTC(2026, 0, 1)) } }, { referenceType: 'QB_IMPORT_JE' as never }],
           },
         },
         select: {
@@ -440,24 +427,13 @@ export async function computeLedgerStatements(
       const amt = Number(r.amount)
       if (!amt) continue
       opening.set(acct.number, (opening.get(acct.number) || 0) + amt)
-      // `amt` is signed in the account's OWN normal-balance direction — a
-      // negative entered opening (e.g. 6030 Retained Earnings starting the
-      // year in an accumulated deficit) is on the account's CONTRA side, not
-      // a negative amount of its normal side. Splitting purely on
-      // normalBalance without checking the sign produced literal negative
-      // debit/credit figures in the drill-down (a -P2.89M "credit" line for
-      // 6030's 2026 opening) that didn't read as anything a real ledger line
-      // could be, even though the actual opening/closing math downstream
-      // (which uses the signed `amt` directly) was always correct.
-      const onNormalSide = amt >= 0
-      const isDebitNormal = acct.normalBalance === 'DEBIT'
-      const dr = (isDebitNormal === onNormalSide) ? Math.abs(amt) : 0
-      const cr = (isDebitNormal !== onNormalSide) ? Math.abs(amt) : 0
-      openDr += dr; openCr += cr
+      if (acct.normalBalance === 'DEBIT') openDr += amt
+      else openCr += amt
       if (collect && collect.account === acct.number && (!collect.month || collect.cumulative)) {
         collected.push({
           month: 0, source: 'opening', label: `Opening balance (${year})`,
-          debit: dr, credit: cr,
+          debit: acct.normalBalance === 'DEBIT' ? amt : 0,
+          credit: acct.normalBalance === 'CREDIT' ? amt : 0,
         })
       }
       // Drilling the 3999 plug itself answers "what causes this": the plug is
@@ -467,7 +443,8 @@ export async function computeLedgerStatements(
       if (collect && collect.account === OPENING_PLUG && (!collect.month || collect.cumulative)) {
         collected.push({
           month: 0, source: 'opening-plug', label: `${acct.number} ${acct.title} — entered opening`,
-          debit: dr, credit: cr,
+          debit: acct.normalBalance === 'DEBIT' ? amt : 0,
+          credit: acct.normalBalance === 'CREDIT' ? amt : 0,
         })
       }
     }
@@ -539,7 +516,7 @@ export async function computeLedgerStatements(
         referenceId: { startsWith: `${year}-` },
       },
     ],
-    referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
+    referenceType: qbEra ? 'QB_IMPORT_JE' as never : { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
     ...(branchValues ? { branch: { in: branchValues } } : {}),
   }
   const journalEntries = await prisma.journalEntry.findMany({
@@ -631,7 +608,7 @@ export async function computeLedgerStatements(
   }
 
   /* ── 3. Orders (synthesized when no POS_ORDER journal entry exists) ── */
-  const orders = await prisma.order.findMany({
+  const orders = qbEra ? [] : await prisma.order.findMany({
     where: {
       status: 'COMPLETED',
       transactionDate: { gte: start, lt: end },
@@ -699,7 +676,6 @@ export async function computeLedgerStatements(
       }
     }
     if (hasRef('POS_ORDER', o.id)) continue
-    if (o.transactionDate < LIVE_GL_POSTING_START) continue // already in the QB import — see LIVE_GL_POSTING_START
     synthesizedOrders++
     const oMonth = monthOf(o.transactionDate)
     const oLabel = `Order #${o.orderNumber}${o.patientName ? ` — ${o.patientName}` : ''}`
@@ -709,8 +685,12 @@ export async function computeLedgerStatements(
       const amt = Number(p.amount)
       if (!amt) continue
       paid += amt
-      if (p.walletId && ['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS'].includes(p.method as string)) {
-        lines.push({ acct: unearnedAccount(), debit: amt }) // wallet draw-down consumes the liability
+      /* Wallet/package/advance draws consume a liability the money already
+         funded when it was first received — they are NOT new cash. Routing
+         them to cash (worse: the no-branch default, which lands on the SCEI
+         Main corporate account) invented deposits the bank never saw. */
+      if (['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'PACKAGE', 'ADVANCE', 'DOWNPAYMENT'].includes(p.method as string)) {
+        lines.push({ acct: unearnedAccount(), debit: amt }) // draw-down consumes the liability
         continue
       }
       if (p.method === 'HMO' || p.method === 'GL') {
@@ -724,12 +704,7 @@ export async function computeLedgerStatements(
         lines.push({ acct: byNumber.get(d.account.accountNumber) || parseAccountKey(`${d.account.accountNumber} deduction`), debit: dAmt })
         net -= dAmt
       }
-      // No branch on the payment mode's own account -> land on THIS order's
-      // branch's default cash, never the bare company-wide fallback. Without
-      // the branch argument every unmapped payment mode across every branch
-      // fell onto SCEI Main Corporate Account regardless of which branch's
-      // register actually took the payment.
-      const cashA = p.paymentMode?.account ? (byNumber.get(p.paymentMode.account.accountNumber) || defaultCash(o.branch)) : defaultCash(o.branch)
+      const cashA = p.paymentMode?.account ? (byNumber.get(p.paymentMode.account.accountNumber) || defaultCash(o.branch || branch)) : defaultCash(o.branch || branch)
       lines.push({ acct: cashA, debit: net })
     }
     const unpaid = round2(Number(o.netAmount) - paid)
@@ -766,40 +741,18 @@ export async function computeLedgerStatements(
   if (synthesizedOrders) validation.synthesized.push(`orders (${synthesizedOrders})`)
 
   /* ── 4. AR collections (synthesized when no AR_PAYMENT JE) ── */
-  const arPayments = await prisma.aRPayment.findMany({
+  const arPayments = qbEra ? [] : await prisma.aRPayment.findMany({
     where: {
       paymentDate: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: { in: [branch, orderBranch] } } : {}),
     },
-    select: { id: true, amount: true, discount: true, paymentDate: true, branch: true, cashAccount: { select: { accountNumber: true } }, discountAccount: { select: { accountNumber: true } }, wallet: { select: { patientName: true } } },
+    select: { id: true, amount: true, discount: true, paymentDate: true, cashAccount: { select: { accountNumber: true } }, discountAccount: { select: { accountNumber: true } }, wallet: { select: { patientName: true } } },
   })
-  /*
-   * Same shape as the orders/depreciation double-counts: hasRef('AR_PAYMENT',
-   * p.id) only catches a real JE tied to THIS payment's own id. Some of the
-   * 2025 QuickBooks import already recorded these exact collections (e.g.
-   * "QB Payment AR25-0020 — HMO - INTELLICARE") under referenceType
-   * QB_IMPORT_JE, which hasRef can never match, so synthesis added a second
-   * credit to Accounts Receivable on top of a real one. Confirmed by exact
-   * (date, amount) match against real AR-account credits — not every
-   * unlinked payment is a duplicate (~2/3 are genuine gaps), so this checks
-   * each one individually rather than skipping a whole date range.
-   */
-  const arAcctForDedup = arAccount()
-  const realArCredits = arAcctForDedup.id ? await prisma.journalEntryLine.findMany({
-    where: { accountId: arAcctForDedup.id, credit: { gt: 0 }, journalEntry: { entryDate: { gte: start, lt: end }, referenceType: 'QB_IMPORT_JE' } },
-    select: { credit: true, journalEntry: { select: { entryDate: true } } },
-  }) : []
-  const realArCreditKeys = new Set(realArCredits.map(l => `${l.journalEntry.entryDate.toISOString().slice(0, 10)}|${round2(Number(l.credit))}`))
   let synthesizedAr = 0
   for (const p of arPayments) {
     if (hasRef('AR_PAYMENT', p.id)) continue
-    const totalCredit = round2(Number(p.amount) + Number(p.discount || 0))
-    if (realArCreditKeys.has(`${p.paymentDate.toISOString().slice(0, 10)}|${totalCredit}`)) continue
     synthesizedAr++
-    // Same fix as the orders section above: an unmapped cash account must land
-    // on THIS payment's own branch, not the bare company-wide fallback.
-    const pBranch = BRANCH_MAP[p.branch || ''] || p.branch || undefined
-    const cashA = p.cashAccount ? (byNumber.get(p.cashAccount.accountNumber) || defaultCash(pBranch)) : defaultCash(pBranch)
+    const cashA = p.cashAccount ? (byNumber.get(p.cashAccount.accountNumber) || defaultCash()) : defaultCash()
     const lines: { acct: AcctInfo; debit?: number; credit?: number }[] = [
       { acct: cashA, debit: Number(p.amount) },
       { acct: arAccount(), credit: Number(p.amount) + Number(p.discount || 0) },
@@ -868,7 +821,7 @@ export async function computeLedgerStatements(
     if (num && byNumber.get(num)) return byNumber.get(num)!
     return defaultCash(e.branch || branch)
   }
-  const pcEntries = await prisma.pettyCashEntry.findMany({
+  const pcEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: {
       date: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
@@ -900,7 +853,7 @@ export async function computeLedgerStatements(
   const pcSettings = await prisma.pettyCashSettings.findMany({ select: { branch: true, prepaidAccount: true } })
   const prepaidByBranch: Record<string, string | null> = {}
   for (const s of pcSettings) prepaidByBranch[s.branch] = s.prepaidAccount
-  const distEntries = await prisma.pettyCashEntry.findMany({
+  const distEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: {
       recordType: 'RECURRING', distributeMonthly: true,
       distributeStart: { not: null }, distributeEnd: { not: null },
@@ -940,7 +893,7 @@ export async function computeLedgerStatements(
   }
 
   // CEO petty cash allocated across branches
-  const ceoEntries = await prisma.pettyCashEntry.findMany({
+  const ceoEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: { branch: 'CEO', date: { gte: start, lt: end } },
     select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true, pcvNumber: true, description: true },
   })
@@ -964,37 +917,16 @@ export async function computeLedgerStatements(
     }
   }
 
-  /* ── 6. Depreciation schedule (synthesized per branch/month, unless a real
-     depreciation-account posting already covers that exact branch+month) ── */
+  /* ── 6. Depreciation schedule (synthesized unless DEPRECIATION JEs exist) ── */
   const assets = await prisma.asset.findMany({
     where: { ...(branch !== 'ALL' ? { branch: orderBranch as never } : {}) },
     select: { id: true, name: true, dateBought: true, depreciationEndDate: true, monthlyDepreciation: true, classification: true, totalAmount: true, fromPettyCash: true, sourceAccountId: true, branch: true },
   })
   const depAcct = byNumber.get('8070') || virt('8070', 'Depreciation Expense', 'EXPENSE', 'NON_OPERATING_EXPENSES', 'DEBIT')
   const accumDep = byNumber.get('2010') || findByTitle(/accumulated dep/i) || virt('2010', 'Accumulated Depreciation', 'ASSET', 'PPE', 'CREDIT')
-  /*
-   * A single global "any real JE with referenceType DEPRECIATION" check
-   * can't see it: QuickBooks' imported depreciation catch-up rows carry
-   * referenceType QB_IMPORT_JE, never DEPRECIATION, so that check always
-   * missed them and synthesis piled a second depreciation charge on top of
-   * real ones already posted to 8070 — same shape as the orders/revenue
-   * double-count. Coverage also turned out inconsistent per branch (East:
-   * real entries for every month of 2025; Greenhills: only from May; every
-   * other branch: none at all), so a blanket date cutoff like the orders fix
-   * would have deleted real depreciation outright wherever it doesn't exist.
-   * The fix has to match the data's own granularity: skip synthesis only for
-   * the exact (branch, month) pairs a real 8070 posting already covers.
-   */
-  const realDepLines = await prisma.journalEntryLine.findMany({
-    where: { account: { accountNumber: '8070' }, journalEntry: { entryDate: { gte: start, lt: end } } },
-    select: { journalEntry: { select: { entryDate: true, branch: true } } },
-  })
-  const realDepCovered = new Set<string>()
-  for (const l of realDepLines) {
-    const m = l.journalEntry.entryDate.getUTCMonth() + 1
-    realDepCovered.add(`${l.journalEntry.branch}|${m}`)
-  }
-  {
+  const hasDepJEs = (glRefIds.get('DEPRECIATION')?.size || 0) > 0
+  // QB era: the imported GL carries its own monthly depreciation JEs.
+  if (!hasDepJEs && !qbEra) {
     // Accrue only months that have actually elapsed: for the current year stop
     // at this month (matching Asset Management's depreciation-to-date), for
     // past years take all 12, for future years none.
@@ -1011,7 +943,6 @@ export async function computeLedgerStatements(
       for (const a of assets) {
         const md = Number(a.monthlyDepreciation)
         if (!md) continue
-        if (realDepCovered.has(`${a.branch}|${m + 1}`)) continue
         if (new Date(a.dateBought) < monthEnd && new Date(a.depreciationEndDate) > monthStart) {
           depTotal += md
           postBalanced('depreciation-schedule', m + 1, `Depreciation — ${a.name}`, [
@@ -1025,29 +956,13 @@ export async function computeLedgerStatements(
   }
 
   /* ── 7. Asset purchases this year (synthesized unless ASSET_PURCHASE JE) ── */
-  /*
-   * Same double-count shape as orders/depreciation/ar-collections:
-   * hasRef('ASSET_PURCHASE', a.id) only sees a real JE tied to THIS asset's
-   * own id, but most of 2025's PPE additions were already recorded in the
-   * QuickBooks import under referenceType QB_IMPORT_JE — hasRef can never
-   * match those, so synthesis debited PPE a second time on top of a real
-   * entry for the exact same asset. Confirmed by exact (classification
-   * account, date, amount) match against real PPE-account debits — a small
-   * minority of unlinked assets are genuine gaps, so check individually.
-   */
-  const realAssetDebits = await prisma.journalEntryLine.findMany({
-    where: { debit: { gt: 0 }, journalEntry: { entryDate: { gte: start, lt: end }, referenceType: 'QB_IMPORT_JE' } },
-    select: { debit: true, account: { select: { accountNumber: true } }, journalEntry: { select: { entryDate: true } } },
-  })
-  const realAssetDebitKeys = new Set(realAssetDebits.map(l => `${l.account?.accountNumber}|${l.journalEntry.entryDate.toISOString().slice(0, 10)}|${round2(Number(l.debit))}`))
   let synthesizedAssets = 0
-  for (const a of assets) {
+  for (const a of qbEra ? [] : assets) {
     const d = new Date(a.dateBought)
     if (d < start || d >= end) continue
     if (hasRef('ASSET_PURCHASE', a.id)) continue
     const amt = Number(a.totalAmount)
     if (!amt) continue
-    if (realAssetDebitKeys.has(`${a.classification}|${d.toISOString().slice(0, 10)}|${round2(amt)}`)) continue
     synthesizedAssets++
     const ppe = byNumber.get(a.classification) || virt(a.classification || '1500', `PPE (${a.classification})`, 'ASSET', 'PPE', 'DEBIT')
     const creditA = a.fromPettyCash ? pcCashFor(a.branch)

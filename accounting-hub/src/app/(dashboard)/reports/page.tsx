@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
-  Calendar, Building2, LayoutList, BarChart3, X,
+  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { DISPLAY_CURRENCIES, type DisplayCurrency, setDisplay, inDisplay, fmt, fmtSigned } from './display-currency'
@@ -13,6 +13,7 @@ import { computeIncomeStatementTotals, INCOME_TAX_RATE } from '@/lib/reports/inc
 import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
 import HistoricalReport from './HistoricalReport'
 import LedgerStatements from './LedgerStatements'
+import GraphsView from './GraphsView'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 
@@ -98,7 +99,7 @@ interface ReportData {
   unearnedRevenueFromAR?: number
 }
 
-type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
+type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow' | 'graphs'
 // 'quarterly' is offered on the full statements only; the med-rep revenue view
 // treats it as 'annual' if it ever reaches it.
 type ViewMode = 'annual' | 'quarterly' | 'monthly'
@@ -139,6 +140,7 @@ const TABS: { key: ReportTab; label: string; icon: typeof FileText }[] = [
   { key: 'balance-sheet', label: 'Balance Sheet', icon: FileText },
   { key: 'income-statement', label: 'Income Statement', icon: BarChart3 },
   { key: 'cash-flow', label: 'Cash Flow Statement', icon: LayoutList },
+  { key: 'graphs', label: 'Graphs', icon: TrendingUp },
 ]
 
 const DEPT_LABELS: Record<string, string> = {
@@ -1667,9 +1669,16 @@ export default function ReportsPage() {
   // filter still applies. These "effective" values override the (hidden) tab/view controls.
   const role = (session?.user as { role?: string })?.role || ''
   const isMedrep = role === 'MEDREP'
+  // Investor: read-only statements + Graphs. Balance sheet and cash flow are
+  // whole-company only (no branch filter); the income statement may be
+  // branch-filtered. Amounts are never clickable — drill-downs reach
+  // patient-level lines, which investors must not see (also enforced API-side).
+  const isInvestor = role === 'INVESTOR'
   const effTab: ReportTab = isMedrep ? 'income-statement' : activeTab
   const effView: ViewMode = isMedrep ? 'monthly' : viewMode
-  const effDrill: OnDrillDown = isMedrep ? () => {} : handleDrillDown
+  const effDrill: OnDrillDown = (isMedrep || isInvestor) ? () => {} : handleDrillDown
+  const branchLocked = isInvestor && effTab !== 'income-statement' && effTab !== 'graphs'
+  const effBranch = branchLocked ? 'ALL' : branch
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
@@ -1708,7 +1717,28 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url)
   }
 
-  const handleDownloadCSV = () => {
+  // Excel: an HTML table with an .xls name — Excel opens it natively, keeps
+  // numbers as numbers, and needs no extra library.
+  const downloadRowsAsExcel = (rows: string[][]) => {
+    const esc = (c: string) => String(c).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const cell = (c: string) => {
+      const n = String(c).replace(/,/g, '')
+      const isNum = n !== '' && !isNaN(Number(n)) && /\d/.test(n)
+      return isNum ? `<td style="mso-number-format:'#,##0.00'">${esc(n)}</td>` : `<td>${esc(c)}</td>`
+    }
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table>${rows.map(r => `<tr>${r.map(cell).join('')}</tr>`).join('')}</table></body></html>`
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeTab}-${year}-${branch}.xls`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const exportRows = (rows: string[][], fmt: 'csv' | 'xls') =>
+    fmt === 'xls' ? downloadRowsAsExcel(rows) : downloadRowsAsCSV(rows)
+
+  const handleDownloadCSV = (fmt: 'csv' | 'xls' = 'csv') => {
     if (!data) return
     if (data.historical) {
       const h = data.historical
@@ -1730,7 +1760,7 @@ export default function ReportsPage() {
           rows.push([label, ...months, r.total !== null ? r.total.toFixed(2) : ''])
         }
       }
-      downloadRowsAsCSV(rows)
+      exportRows(rows, fmt)
       return
     }
     const t = computeIncomeStatementTotals(data)
@@ -1877,7 +1907,7 @@ export default function ReportsPage() {
       rows.push(['Note: For Balance Sheet and Cash Flow, use Print (PDF) for a formatted version.'])
     }
 
-    downloadRowsAsCSV(rows)
+    exportRows(rows, fmt)
   }
 
   const reportTitle = activeTab === 'balance-sheet'
@@ -1907,15 +1937,24 @@ export default function ReportsPage() {
             Generate and review financial statements for Sapphire Clinics East Incorporated
           </p>
         </div>
-        <div className="flex gap-2" style={{ display: isMedrep ? 'none' : undefined }}>
+        <div className="flex gap-2" style={{ display: (isMedrep || isInvestor || effTab === 'graphs') ? 'none' : undefined }}>
           <button
-            onClick={handleDownloadCSV}
-            disabled={!data}
+            onClick={() => handleDownloadCSV('csv')}
+            disabled={loading || !data}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
             <Download size={16} />
             CSV
+          </button>
+          <button
+            onClick={() => handleDownloadCSV('xls')}
+            disabled={loading || !data}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
+            style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+          >
+            <Download size={16} />
+            Excel
           </button>
           <button
             onClick={handlePrint}
@@ -1954,6 +1993,7 @@ export default function ReportsPage() {
       </div>
       )}
 
+      {effTab === 'graphs' ? <GraphsView /> : <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-5 print:hidden">
         {/* Presentation currency — display only, the ledger stays in pesos */}
@@ -2033,12 +2073,15 @@ export default function ReportsPage() {
           <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
           <div className="relative">
             <select
-              value={branch}
+              value={effBranch}
+              disabled={branchLocked}
+              title={branchLocked ? 'Balance sheet and cash flow are whole-company statements' : undefined}
               onChange={(e) => setBranch(e.target.value)}
               className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
               style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
             >
-              {(scope.short ? BRANCHES.filter(b => b.value === scope.short) : BRANCHES).map((b) => (
+              {(branchLocked ? BRANCHES.filter(b => b.value === 'ALL')
+                : scope.short ? BRANCHES.filter(b => b.value === scope.short) : BRANCHES).map((b) => (
                 <option key={b.value} value={b.value}>{b.label}</option>
               ))}
             </select>
@@ -2075,7 +2118,7 @@ export default function ReportsPage() {
             {reportTitle}
           </p>
           <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '1px' }}>
-            {reportSubtitle}{branch !== 'ALL' ? ` · ${branchLabel}` : ''}
+            {reportSubtitle}{effBranch !== 'ALL' ? ` · ${branchLabel}` : ''}
           </p>
         </div>
 
@@ -2091,7 +2134,7 @@ export default function ReportsPage() {
 
         {/* Report content */}
         {!loading && data?.historical && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
+          <LedgerStatements year={year} branch={effBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
         {!loading && data?.historical && isMedrep && (
           <HistoricalReport
@@ -2102,7 +2145,7 @@ export default function ReportsPage() {
           />
         )}
         {!loading && !data?.historical && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
+          <LedgerStatements year={year} branch={effBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
         {!loading && data && !data.historical && isMedrep && (
           <div className="py-2">
@@ -2127,8 +2170,10 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      </>}
+
       {/* Drill-down panel */}
-      {drillDown && (
+      {!isInvestor && drillDown && (
         <DrillDownPanel
           target={drillDown}
           year={year}
