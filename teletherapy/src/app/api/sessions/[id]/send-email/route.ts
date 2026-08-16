@@ -226,6 +226,14 @@ export async function POST(
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // Interns cannot send session notes to patients — only their supervisor
+  // sends (and the supervisor's licence appears on what is sent).
+  if (session.user.accountType === 'INTERN') {
+    return NextResponse.json(
+      { error: 'Interns cannot send notes. Ask your supervisor to review and send this note.' },
+      { status: 403 },
+    )
+  }
 
   const { id } = await params
 

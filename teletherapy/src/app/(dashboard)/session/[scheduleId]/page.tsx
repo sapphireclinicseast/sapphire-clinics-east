@@ -734,8 +734,14 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          {/* Send notes email — hidden for Psychology (internal only) and for IE (see above) */}
-          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && (
+          {/* Send notes email — hidden for Psychology (internal only), for IE
+              (see above), and for interns (only the supervisor sends). */}
+          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && authSession?.user?.accountType === 'INTERN' && (
+            <div className="pt-4 border-t border-[var(--light-gray)]">
+              <p className="text-sm text-[var(--mid-gray)] italic flex items-center gap-2"><Mail size={15} /> Only your supervisor can send this note to the patient.</p>
+            </div>
+          )}
+          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && authSession?.user?.accountType !== 'INTERN' && (
             <div className="pt-4 border-t border-[var(--light-gray)]">
               {session.sessionNote!.emailSentAt && (
                 <p className="text-sm text-green-600 flex items-center gap-2 font-medium mb-3">

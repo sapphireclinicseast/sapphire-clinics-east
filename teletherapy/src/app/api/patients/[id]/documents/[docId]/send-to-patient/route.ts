@@ -26,6 +26,14 @@ export async function POST(
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // Interns can upload IE / documents but cannot send them to patients —
+  // only their supervisor sends.
+  if (session.user.accountType === 'INTERN') {
+    return NextResponse.json(
+      { error: 'Interns cannot send reports. Ask your supervisor to review and send this report.' },
+      { status: 403 },
+    )
+  }
 
   const { id: patientId, docId } = await params
 
