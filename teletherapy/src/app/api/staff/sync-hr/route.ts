@@ -8,21 +8,23 @@
  * The ops hub remains the single authoritative full-sync (with pruning); this
  * button is a convenience that can only ADD or UPDATE, so it can't wipe anyone.
  *
- * teletherapy runs as a pm2 process on the VPS host (not in Docker), so
- * 127.0.0.1:3457 reaches the HR Platform directly.
+ * Uses teletherapy's existing HR credentials (HR_API_BASE + HR_API_KEY, the
+ * same pair the wellness-check/seminars/certificates routes use). The public
+ * base already carries the "/api" prefix, so the endpoint is
+ * `${HR_API_BASE}/staff/external`. A localhost:3457 fallback (same key) covers
+ * the case where the public host is briefly unreachable from the box.
  */
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { StaffDepartment } from '@prisma/client'
 
-const HR_URLS = [
-  process.env.HR_PLATFORM_URL,
-  'http://127.0.0.1:3457',    // pm2 host (teletherapy is not containerised)
-  'http://172.17.0.1:3457',   // default Docker bridge gateway (fallback)
-  'http://host.docker.internal:3457',
-].filter(Boolean) as string[]
-const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
+const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
+const HR_KEY = process.env.HR_API_KEY ?? ''
+const HR_STAFF_URLS = [
+  `${HR_API_BASE}/staff/external`,
+  'http://127.0.0.1:3457/staff/external', // direct pm2 fallback (same key)
+]
 
 // Departments the staff portal recognises. Interns are pulled regardless of
 // department (an intern in a non-clinical dept can still need an account).
@@ -49,21 +51,21 @@ export async function POST() {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
   if (!HR_KEY) {
-    return NextResponse.json({ error: 'HR Platform API key not configured' }, { status: 500 })
+    return NextResponse.json({ error: 'HR_API_KEY is not configured on the server' }, { status: 500 })
   }
 
-  // Fetch from HR, trying each candidate address until one answers.
+  // Fetch from HR, trying each candidate URL until one answers.
   let hrStaff: HRStaff[] = []
   let fetched = false
   let lastErr = ''
-  for (const hrUrl of HR_URLS) {
+  for (const url of HR_STAFF_URLS) {
     try {
-      const res = await fetch(hrUrl + '/staff/external', {
+      const res = await fetch(url, {
         headers: { Authorization: 'Bearer ' + HR_KEY },
         cache: 'no-store',
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(8000),
       })
-      if (!res.ok) { lastErr = 'HR returned ' + res.status + ' from ' + hrUrl; continue }
+      if (!res.ok) { lastErr = 'HR returned ' + res.status + ' from ' + url; continue }
       const data = await res.json()
       hrStaff = data.staff || []
       fetched = true
