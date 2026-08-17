@@ -473,7 +473,8 @@ export default function PatientDashboardPage() {
               Interdepartmental Service Co-occurrence
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-              Based on {interdeptStats.totalPatients.toLocaleString()} patients with confirmed sessions ·
+              Based on {interdeptStats.totalPatients.toLocaleString()} patients with recorded treatment
+              (Clinic Schedule sessions plus POS billing history, so visits from before this hub was in use are included) ·
               <strong>Confidence</strong> = if patient has Row, % chance they also have Column ·
               <strong>Lift</strong> = how many times more likely than pure chance (Lift 1 = independent) ·
               <strong>φ</strong> = effect size −1 to +1 (like a correlation coefficient) ·

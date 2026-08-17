@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadPosHistory } from '@/lib/pos-history'
 
 export const dynamic = 'force-dynamic'
 
@@ -148,6 +149,32 @@ export async function GET(req: NextRequest) {
     monthDept[mKey][dept]++
   }
 
+  // ── Merge POS treatment history from the Accounting Hub ───────────────────
+  // Without this, every figure below (patients per department, the affinity
+  // matrix and the Multi-Service Combinations) is computed from ~5 months of
+  // Schedule data only and understates real co-occurrence by 3-4x. POS orders
+  // reach back to Jun 2024. Scoped to FOCUS_DEPTS so the matrix stays a 4x4
+  // with its stated Bonferroni correction for 6 pairs.
+  const pos = await loadPosHistory(filterBranches, FOCUS_DEPTS)
+  if (pos) {
+    for (const [key, depts] of pos.patientDepts) {
+      if (!patientDepts.has(key)) patientDepts.set(key, new Set())
+      for (const d of depts) {
+        if ((FOCUS_DEPTS as readonly string[]).includes(d)) {
+          patientDepts.get(key)!.add(d as Dept)
+        }
+      }
+    }
+    // Session volume feeds avg sessions/patient/mo, which can't be derived from
+    // the deduped per-patient pairs above.
+    for (const [month, byDept] of pos.monthly) {
+      if (!monthDept[month]) monthDept[month] = { OT: 0, PT: 0, SLP: 0, SPED: 0 }
+      for (const d of FOCUS_DEPTS) {
+        monthDept[month][d] += byDept[d] ?? 0
+      }
+    }
+  }
+
   const N = patientDepts.size
 
   // ── Single-dept counts ───────────────────────────────────────────────────────
@@ -243,5 +270,7 @@ export async function GET(req: NextRequest) {
     comboStats,
     affinityMatrix,
     avgSessionsPerMonth,
+    posMerged: !!pos,
+    match: pos?.match ?? null,
   })
 }

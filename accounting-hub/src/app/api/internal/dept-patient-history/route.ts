@@ -41,6 +41,32 @@ const DEPT_MAP: Record<string, string> = {
 // departments). Counting them under a department would invent treatment that
 // didn't happen, so they're skipped and reported rather than silently dropped.
 
+// Order.patientName is free text and, in the migrated history, sometimes holds
+// something that isn't a patient: a service description pasted in
+// ("PT - THERAPIST (SINGLE) - MSK/ORTHO..."), an institution or HMO
+// ("Municipality of Cainta", "HMO - INTELLICARE"), a sales channel ("Shopee"),
+// or a test row ("UNPAID TEST"). Each of those otherwise becomes a distinct
+// "patient" in the Operations Hub breakdown and inflates the department counts.
+// Only applied when there is no patientId — a real id always wins over the text.
+const NON_PERSON = new RegExp(
+  [
+    'SESSION', 'PACKAGE', 'THERAPIST', 'TUTORIAL', 'INTELLICARE', 'HMO',
+    'MUNICIPALITY', 'PREPAID', 'PER DIAGNOSTIC', 'ONE-ON-ONE', 'PLACEMENT',
+    'HOMECARE', 'TELETHERAPY', 'AQUATHERAPY', 'VOUCHER', 'SHOPEE', 'LAZADA',
+    'WALK-?IN', 'GUEST', 'UNPAID', '\\bTEST\\b', '\\bN/?A\\b', '\\bCASH\\b',
+  ].join('|'),
+  'i',
+)
+
+function isNonPerson(name: string): boolean {
+  const n = name.trim()
+  if (n.length < 3) return true            // "Hi"
+  if (NON_PERSON.test(n)) return true
+  // Service rows are long and hyphen-delimited; real names are neither.
+  if (n.length > 45 && n.includes(' - ')) return true
+  return false
+}
+
 export async function GET(req: NextRequest) {
   if (!verifyKey(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -71,12 +97,21 @@ export async function GET(req: NextRequest) {
   // count once, or the caller's "unique patients" figure stops being unique.
   const seen = new Set<string>()
   const rows: { patientId: string | null; patientName: string | null; dept: string }[] = []
+  // Session volume per (month, dept) — the caller needs this for
+  // "avg sessions/patient/mo", which cannot be derived from the deduped pairs
+  // above. Each order line is one paid session.
+  const monthly = new Map<string, number>()
   let skippedNonClinical = 0
+  let skippedNonPatient = 0
   let from: Date | null = null
   let to: Date | null = null
 
   for (const o of orders) {
     if (!o.patientId && !o.patientName) continue   // walk-in retail, no patient
+    if (!o.patientId && o.patientName && isNonPerson(o.patientName)) {
+      skippedNonPatient++
+      continue
+    }
     if (o.transactionDate) {
       if (!from || o.transactionDate < from) from = o.transactionDate
       if (!to   || o.transactionDate > to)   to   = o.transactionDate
@@ -86,6 +121,12 @@ export async function GET(req: NextRequest) {
       if (!raw) continue
       const dept = DEPT_MAP[raw]
       if (!dept) { skippedNonClinical++; continue }
+      // Volume counts every line, before the per-patient dedupe below.
+      if (o.transactionDate) {
+        const mKey = `${o.transactionDate.getFullYear()}-${String(o.transactionDate.getMonth() + 1).padStart(2, '0')}|${dept}`
+        monthly.set(mKey, (monthly.get(mKey) ?? 0) + 1)
+      }
+
       const identity = o.patientId ?? `name:${o.patientName}`
       const key = `${identity}|${dept}`
       if (seen.has(key)) continue
@@ -100,6 +141,11 @@ export async function GET(req: NextRequest) {
       to:   to   ? to.toISOString().slice(0, 10)   : null,
     },
     rows,
+    monthly: Array.from(monthly.entries()).map(([k, sessions]) => {
+      const [month, dept] = k.split('|')
+      return { month, dept, sessions }
+    }),
     skippedNonClinical,
+    skippedNonPatient,
   })
 }
