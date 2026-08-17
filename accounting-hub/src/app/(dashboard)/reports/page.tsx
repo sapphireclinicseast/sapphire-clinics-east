@@ -1717,21 +1717,72 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url)
   }
 
-  // Excel: an HTML table with an .xls name — Excel opens it natively, keeps
-  // numbers as numbers, and needs no extra library.
+  // Excel: a real .xlsx built in the browser — a stored (uncompressed) zip of
+  // the minimal OOXML parts, so Excel opens it with no compatibility warning
+  // and numbers stay numbers. No extra library.
   const downloadRowsAsExcel = (rows: string[][]) => {
     const esc = (c: string) => String(c).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const cell = (c: string) => {
-      const n = String(c).replace(/,/g, '')
-      const isNum = n !== '' && !isNaN(Number(n)) && /\d/.test(n)
-      return isNum ? `<td style="mso-number-format:'#,##0.00'">${esc(n)}</td>` : `<td>${esc(c)}</td>`
+    const colRef = (i: number) => {
+      let s = ''
+      for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s
+      return s
     }
-    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table>${rows.map(r => `<tr>${r.map(cell).join('')}</tr>`).join('')}</table></body></html>`
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+    const sheetRows = rows.map((r, ri) => {
+      const cells = r.map((c, ci) => {
+        const ref = `${colRef(ci)}${ri + 1}`
+        const n = String(c).replace(/,/g, '')
+        const isNum = n !== '' && !isNaN(Number(n)) && /\d/.test(n)
+        if (isNum) return `<c r="${ref}" s="1"><v>${Number(n)}</v></c>`
+        if (c === '') return ''
+        return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(c)}</t></is></c>`
+      }).join('')
+      return `<row r="${ri + 1}">${cells}</row>`
+    }).join('')
+    const files: [string, string][] = [
+      ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+      ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+      ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+      ['xl/styles.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf/><xf numFmtId="164" applyNumberFormat="1"/></cellXfs></styleSheet>'],
+      ['xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`],
+    ]
+    // stored zip: CRC32 + local headers + central directory + EOCD
+    const crcTable = (() => {
+      const t = new Uint32Array(256)
+      for (let i = 0; i < 256; i++) {
+        let c = i
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+        t[i] = c >>> 0
+      }
+      return t
+    })()
+    const crc32 = (b: Uint8Array) => {
+      let c = 0xffffffff
+      for (let i = 0; i < b.length; i++) c = crcTable[(c ^ b[i]) & 0xff] ^ (c >>> 8)
+      return (c ^ 0xffffffff) >>> 0
+    }
+    const enc = new TextEncoder()
+    const parts: Uint8Array[] = []
+    const central: Uint8Array[] = []
+    let offset = 0
+    const u16 = (v: number) => [v & 0xff, (v >> 8) & 0xff]
+    const u32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff]
+    for (const [name, content] of files) {
+      const nameB = enc.encode(name)
+      const dataB = enc.encode(content)
+      const crc = crc32(dataB)
+      const head = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(dataB.length), ...u32(dataB.length), ...u16(nameB.length), ...u16(0)])
+      parts.push(head, nameB, dataB)
+      central.push(new Uint8Array([0x50, 0x4b, 0x01, 0x02, ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(dataB.length), ...u32(dataB.length), ...u16(nameB.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), nameB)
+      offset += head.length + nameB.length + dataB.length
+    }
+    const centralSize = central.reduce((s, p) => s + p.length, 0)
+    const eocd = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0)])
+    const blob = new Blob([...parts, ...central, eocd], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.xls`
+    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   }
