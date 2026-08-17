@@ -792,6 +792,7 @@ function SessionsSection({ sessions, stats, token }: { sessions: MeResult['sessi
 
   const [dept, setDept] = useState<string | null>(departments[0] ?? null)
   const [selected, setSelected] = useState<PatientSessionRecord | null>(null)
+  const [docsOpen, setDocsOpen] = useState(false)
   useEffect(() => {
     if (departments.length && (dept == null || !departments.includes(dept))) {
       setDept(departments[0])
@@ -825,26 +826,37 @@ function SessionsSection({ sessions, stats, token }: { sessions: MeResult['sessi
         <p className="mt-4 text-sm text-[color:var(--mid-gray)]">No sessions recorded yet.</p>
       ) : (
         <>
-          {/* Department subtabs */}
-          <div className="mt-5 flex flex-wrap gap-2">
-            {departments.map((d) => (
+          {/* Frozen bar: department tabs stay put on scroll + one Documents card */}
+          <div className="sticky top-[60px] z-20 -mx-7 mt-4 px-7 py-3 bg-white/95 backdrop-blur-sm border-b border-[color:var(--light-gray)]">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex flex-wrap gap-2">
+                {departments.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDept(d)}
+                    className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
+                      active === d
+                        ? 'bg-[color:var(--teal)] text-white'
+                        : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:opacity-80'
+                    }`}
+                    style={{ fontFamily: 'var(--font-display)' }}
+                  >
+                    {shortDept(d)}
+                  </button>
+                ))}
+              </div>
               <button
-                key={d}
-                onClick={() => setDept(d)}
-                className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
-                  active === d
-                    ? 'bg-[color:var(--teal)] text-white'
-                    : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:opacity-80'
-                }`}
-                style={{ fontFamily: 'var(--font-display)' }}
+                onClick={() => setDocsOpen(true)}
+                title="Initial Evaluation, Progress Reports and other documents"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[color:var(--paper-3)] bg-[color:var(--paper-2)] text-sm font-semibold text-[color:var(--deep-teal)] hover:border-[color:var(--sage)] transition-colors shrink-0"
               >
-                {shortDept(d)}
+                <FolderIcon /> Documents
               </button>
-            ))}
+            </div>
           </div>
 
-          <p className="mt-4 text-[12px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Tap a session to view the therapist&apos;s notes and documents.
+          <p className="mt-3 text-[12px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Tap a session to view the therapist&apos;s notes.
           </p>
 
           <div className="mt-3 space-y-6">
@@ -885,6 +897,14 @@ function SessionsSection({ sessions, stats, token }: { sessions: MeResult['sessi
 
       <Disclaimer>{SESSIONS_DISCLAIMER}</Disclaimer>
 
+      {docsOpen && (
+        <DocumentsModal
+          token={token}
+          department={deptSessions.find((s) => s.departmentCode)?.departmentCode}
+          deptLabel={active ?? 'Documents'}
+          onClose={() => setDocsOpen(false)}
+        />
+      )}
       {selected && <SessionDetailModal session={selected} token={token} onClose={() => setSelected(null)} />}
     </div>
   )
@@ -902,8 +922,9 @@ function StatTile({ label, value, pct, tone }: { label: string; value: number; p
   )
 }
 
+// Per-session detail — read-only. Shows ONLY the therapist's session notes and
+// any attachments they included with those notes for THIS session.
 function SessionDetailModal({ session, token, onClose }: { session: PatientSessionRecord; token: string; onClose: () => void }) {
-  const [showDocs, setShowDocs] = useState(false)
   const deptCode = session.departmentCode || shortDept(session.department)
 
   return (
@@ -912,34 +933,19 @@ function SessionDetailModal({ session, token, onClose }: { session: PatientSessi
         className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Sticky header: Department + Documents card */}
-        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 pt-4 pb-3 z-10">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <span className="inline-block text-[11px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]">
-                {deptCode || 'Session'}
-              </span>
-              <div className="text-sm text-[color:var(--deep-teal)] font-semibold mt-1.5">{fmtDate(session.date)}</div>
-              <div className="text-[12px] text-[color:var(--mid-gray)]">
-                {session.clinician}{session.isTeletherapy ? ' · Teletherapy' : ' · In-clinic'} · <StatusInline status={session.status} />
-              </div>
-            </div>
-            <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
-          </div>
-
-          <button
-            onClick={() => setShowDocs((v) => !v)}
-            className="mt-3 w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-[color:var(--paper-3)] bg-[color:var(--paper-2)] hover:border-[color:var(--sage)] transition-colors"
-          >
-            <span className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--deep-teal)]">
-              <FolderIcon /> Documents
+        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 pt-4 pb-3 z-10 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <span className="inline-block text-[11px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]">
+              {deptCode || 'Session'}
             </span>
-            <span className="text-[color:var(--teal)] text-sm">{showDocs ? '▲' : '▼'}</span>
-          </button>
-          {showDocs && <DocumentsPanel token={token} department={session.departmentCode} />}
+            <div className="text-sm text-[color:var(--deep-teal)] font-semibold mt-1.5">{fmtDate(session.date)}</div>
+            <div className="text-[12px] text-[color:var(--mid-gray)]">
+              {session.clinician}{session.isTeletherapy ? ' · Teletherapy' : ' · In-clinic'} · <StatusInline status={session.status} />
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
         </div>
 
-        {/* Scrollable body: read-only session notes */}
         <div className="overflow-y-auto px-4 py-4">
           <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
             Therapist&apos;s Session Notes
@@ -949,8 +955,15 @@ function SessionDetailModal({ session, token, onClose }: { session: PatientSessi
           ) : (
             <p className="mt-2 text-sm text-[color:var(--mid-gray)] italic">No notes were recorded for this session.</p>
           )}
+
+          {/* Attachments the therapist included with this session's note (if any) */}
+          <div className="mt-5 text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Attachments
+          </div>
+          <DocumentsPanel token={token} scheduleId={session.id} emptyText="No attachments for this session." />
+
           <p className="mt-4 text-[11px] text-[color:var(--mid-gray)] border-t border-[color:var(--light-gray)] pt-3" style={{ fontFamily: 'var(--font-display)' }}>
-            Read-only. Notes and documents are added by your therapist.
+            Read-only. Notes and attachments are added by your therapist.
           </p>
         </div>
       </div>
@@ -958,24 +971,48 @@ function SessionDetailModal({ session, token, onClose }: { session: PatientSessi
   )
 }
 
-function DocumentsPanel({ token, department }: { token: string; department?: string }) {
+// Department-level Documents (the single "Documents" card at the top of Sessions):
+// Initial Evaluation, Progress Reports and other files for the active department.
+function DocumentsModal({ token, department, deptLabel, onClose }: { token: string; department?: string; deptLabel: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
+      <div
+        className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 pt-4 pb-3 z-10 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[18px] font-semibold text-[color:var(--deep-teal)] inline-flex items-center gap-2"><FolderIcon /> Documents</div>
+            <div className="text-[12px] text-[color:var(--mid-gray)] mt-0.5 truncate">{deptLabel}</div>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
+        </div>
+        <div className="overflow-y-auto px-4 py-4">
+          <DocumentsPanel token={token} department={department} emptyText="No documents uploaded yet." />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DocumentsPanel({ token, department, scheduleId, emptyText }: { token: string; department?: string; scheduleId?: string; emptyText?: string }) {
   const [docs, setDocs] = useState<PatientDocuments | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    listMyDocuments(token, department)
+    listMyDocuments(token, { department, scheduleId })
       .then((d) => { if (!cancelled) setDocs(d) })
       .catch((e) => { if (!cancelled) setErr((e as Error).message) })
     return () => { cancelled = true }
-  }, [token, department])
+  }, [token, department, scheduleId])
 
   if (err) return <div className="mt-2 text-[12.5px] text-rose-700">{err}</div>
-  if (!docs) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)]">Loading documents…</div>
-  if (docs.total === 0) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)] italic">No documents uploaded yet.</div>
+  if (!docs) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)]">Loading…</div>
+  if (docs.total === 0) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)] italic">{emptyText ?? 'No documents.'}</div>
 
   return (
-    <div className="mt-2 max-h-[38vh] overflow-y-auto space-y-3 pr-1">
+    <div className="mt-2 space-y-3">
       <DocGroup title="Initial Evaluation" rows={docs.initialEvaluations} token={token} />
       <DocGroup title="Progress Reports" rows={docs.progressReports} token={token} />
       <DocGroup title="Other Documents" rows={docs.otherDocuments} token={token} />

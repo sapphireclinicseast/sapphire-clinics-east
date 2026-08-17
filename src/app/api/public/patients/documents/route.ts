@@ -26,6 +26,9 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const token = url.searchParams.get('token') ?? ''
   const department = (url.searchParams.get('department') ?? '').toUpperCase().trim()
+  // When scheduleId is given, return ONLY that session's attachments (files the
+  // therapist attached to their note); otherwise return the department's docs.
+  const scheduleId = (url.searchParams.get('scheduleId') ?? '').trim()
   const session = verifyPatientToken(token)
   if (!session) {
     return withCors(NextResponse.json({ error: 'Invalid token' }, { status: 401 }), origin)
@@ -34,7 +37,7 @@ export async function GET(req: NextRequest) {
   const docs = await prisma.patientDocument.findMany({
     where: {
       patientId: session.patientId,
-      ...(department ? { department } : {}),
+      ...(scheduleId ? { scheduleId } : department ? { department } : {}),
     },
     orderBy: { createdAt: 'desc' },
     take: 200,

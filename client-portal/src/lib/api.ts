@@ -222,9 +222,14 @@ export interface PatientDocuments {
   total: number
 }
 
-export function listMyDocuments(token: string, department?: string) {
+export function listMyDocuments(
+  token: string,
+  opts?: { department?: string; scheduleId?: string },
+) {
   const qs = new URLSearchParams({ token })
-  if (department) qs.set('department', department)
+  // scheduleId (a session's attachments) takes precedence over department.
+  if (opts?.scheduleId) qs.set('scheduleId', opts.scheduleId)
+  else if (opts?.department) qs.set('department', opts.department)
   return jsonFetch<PatientDocuments>(`/patients/documents?${qs.toString()}`)
 }
 
