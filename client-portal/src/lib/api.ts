@@ -256,3 +256,30 @@ export function cancelBooking(bookingId: string, token: string) {
     { method: 'POST', body: JSON.stringify({ token }) },
   )
 }
+
+// ── Portal concern/support tickets ───────────────────────────────────────────
+export interface PortalTicket {
+  id: string
+  subject: string
+  description: string
+  status: string // OPEN | RESOLVED
+  adminResponse: string | null
+  resolvedAt: string | null
+  createdAt: string
+}
+
+export function submitTicket(
+  token: string,
+  payload: { subject: string; description: string; screenshot?: string | null },
+) {
+  return jsonFetch<{ ok: boolean; id: string }>(`/patients/tickets`, {
+    method: 'POST',
+    body: JSON.stringify({ token, ...payload }),
+  })
+}
+
+export function listMyTickets(token: string) {
+  return jsonFetch<{ tickets: PortalTicket[] }>(
+    `/patients/tickets?token=${encodeURIComponent(token)}`,
+  )
+}
