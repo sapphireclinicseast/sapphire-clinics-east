@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
+// Branch front desk are read-only and HMO-only (see HMO_ONLY_ROLES below).
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+// These roles never see GL wallets, so ?type= is ignored for them rather than
+// trusted — the UI hides the GL tab, this is what actually enforces it.
+const HMO_ONLY_ROLES = ['HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -11,7 +15,9 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url)
-  const type = searchParams.get('type') || 'HMO' // HMO or GL
+  const type = HMO_ONLY_ROLES.includes(session.user.role as string)
+    ? 'HMO'
+    : (searchParams.get('type') || 'HMO') // HMO or GL
   const branch = searchParams.get('branch') || ''
   const dateFrom = searchParams.get('dateFrom') || ''
   const dateTo = searchParams.get('dateTo') || ''
