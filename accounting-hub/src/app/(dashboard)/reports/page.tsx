@@ -1915,22 +1915,19 @@ export default function ReportsPage() {
 
   const handleDownloadCSV = (fmt: 'csv' | 'xls' | 'pdf' = 'csv') => {
     if (!data) return
-    if (data.historical) {
-      const h = data.historical
-      const stmt = activeTab === 'income-statement' ? h.incomeStatement
-        : activeTab === 'balance-sheet' ? h.balanceSheet
-        : h.cashFlow
-      if (!stmt) {
-        // The manual FY2024–FY2025 package has no statement for this tab/branch
-        // (e.g. Verdana 2025, or any 2024 cash flow) — export the derived
-        // ledger-engine statement instead, which is what the screen shows.
+    // Export the derived ledger-engine statement (what LedgerStatements shows
+    // on screen). Used when the manual FY2024–FY2025 package has no statement
+    // for this tab/branch (Verdana 2025, any 2024 cash flow), when monthly
+    // columns are requested but the manual statement is annual-only, and for
+    // live-year balance sheet / cash flow exports.
+    const exportEngineStatement = () => {
         void (async () => {
           try {
             const res = await fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
             if (!res.ok) return
             const v2 = await res.json()
             const rows: string[][] = []
-            const withMonths = activeTab !== 'balance-sheet' && viewMode === 'monthly'
+            const withMonths = viewMode === 'monthly'
             const mcols = withMonths ? FULL_MONTHS : []
             const blank = () => (withMonths ? Array(12).fill('') : [])
             const num = (v: number) => (Number(v) || 0).toFixed(2)
@@ -1952,16 +1949,16 @@ export default function ReportsPage() {
               for (const [l, v] of summary) rows.push([l, ...blank(), num(v)])
             } else if (activeTab === 'balance-sheet' && v2.balanceSheet) {
               const t = v2.balanceSheet
-              rows.push([`Balance Sheet — ${year} — ${branchLbl}`, `Amount (${dispCcy})`])
+              rows.push([`Balance Sheet — ${year} — ${branchLbl}`, ...mcols, withMonths ? 'Closing' : `Amount (${dispCcy})`])
               for (const sec of t.sections || []) {
-                rows.push([sec.label, ''])
-                for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, num(r.closing)])
-                rows.push([`Total ${sec.label}`, num(sec.total)])
+                rows.push([sec.label, ...blank(), ''])
+                for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, ...mrow(r.monthly), num(r.closing)])
+                rows.push([`Total ${sec.label}`, ...blank(), num(sec.total)])
               }
-              rows.push(['Net Income (current year)', num(t.netIncome)])
-              rows.push(['TOTAL ASSETS', num(t.totalAssets)])
-              rows.push(['TOTAL LIABILITIES', num(t.totalLiabilities)])
-              rows.push(['TOTAL EQUITY', num(t.totalEquity)])
+              rows.push(['Net Income (current year)', ...blank(), num(t.netIncome)])
+              rows.push(['TOTAL ASSETS', ...blank(), num(t.totalAssets)])
+              rows.push(['TOTAL LIABILITIES', ...blank(), num(t.totalLiabilities)])
+              rows.push(['TOTAL EQUITY', ...blank(), num(t.totalEquity)])
             } else if (activeTab === 'cash-flow' && v2.cashFlow) {
               const cf = v2.cashFlow
               rows.push([`Cash Flow Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
@@ -1985,9 +1982,21 @@ export default function ReportsPage() {
             console.error('Engine export fallback failed:', err)
           }
         })()
-        return
-      }
-      const withMonths = activeTab !== 'balance-sheet' && viewMode === 'monthly'
+    }
+    if (data.historical) {
+      const h = data.historical
+      const stmt = activeTab === 'income-statement' ? h.incomeStatement
+        : activeTab === 'balance-sheet' ? h.balanceSheet
+        : h.cashFlow
+      if (!stmt) { exportEngineStatement(); return }
+      const stmtHasMonthly = stmt.rows.some(r => {
+        const m = (r as { monthly?: number[] }).monthly
+        return Array.isArray(m) && m.some(v => v)
+      })
+      // Monthly columns requested but the manual statement is annual-only
+      // (all manual balance sheets; some cash flows) — export the engine view.
+      if (viewMode === 'monthly' && !stmtHasMonthly) { exportEngineStatement(); return }
+      const withMonths = viewMode === 'monthly' && stmtHasMonthly
       const rows: string[][] = []
       const title = 'title' in stmt ? stmt.title : ''
       rows.push([`${title} — ${year}`, ...(withMonths ? FULL_MONTHS : []), activeTab === 'balance-sheet' ? `Amount (${dispCcy})` : 'FY Total'])
@@ -2144,8 +2153,10 @@ export default function ReportsPage() {
         rows.push(['NET INCOME', ...Array(12).fill(''), t.netIncome.toFixed(2)])
       }
     } else {
-      rows.push([`${reportTitle} — ${year} — ${branchLbl}`])
-      rows.push(['Note: For Balance Sheet and Cash Flow, use Print (PDF) for a formatted version.'])
+      // Balance sheet / cash flow for live years: export the engine statement
+      // (monthly columns included when the monthly view is active).
+      exportEngineStatement()
+      return
     }
 
     exportRows(rows, fmt)
