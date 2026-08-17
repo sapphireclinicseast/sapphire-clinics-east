@@ -1164,6 +1164,11 @@ export async function computeLedgerStatements(
       for (const acct of byNumber.values()) {
         if (acct.virtual || !acct.id) continue
         if (!(bankFlagged.has(acct.number) || isCashAccount(acct))) continue
+        /* Clearing / undeposited / in-transit accounts group under Cash and
+           Cash Equivalents for DISPLAY, but they are net timing positions that
+           may legitimately run negative (e.g. 1170 at -200,000 across the
+           2024/25 year straddle) — flooring them invented 3990 noise. */
+        if (/clearing|undeposited|in transit/i.test(acct.title)) continue
         if (!ownsBank(acct)) continue                 // zeroed above, not ours to floor
         if (byAcctMonth.has(acct.id)) continue        // has statements — trued above
         const mm = movMonthly.get(acct.number)

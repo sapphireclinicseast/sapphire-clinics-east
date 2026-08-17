@@ -35,15 +35,6 @@ const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'
 export default function BenefitsPayablePage() {
   const [branch, setBranch] = useState('SBEA')
   const [agencyKey, setAgencyKey] = useState<typeof AGENCIES[number]['key']>('SSS')
-  // Combined view: one RFP covering several agencies at once. A single bank transfer
-  // often settles PHIC and HDMF together (sometimes with EWT), and three separate RFPs
-  // can never be matched against one bank line.
-  const [combined, setCombined] = useState(false)
-  const [combinedKeys, setCombinedKeys] = useState<Set<string>>(new Set(['PHIC', 'HDMF']))
-  const activeAgencies = useMemo(
-    () => combined ? AGENCIES.filter(a => combinedKeys.has(a.key)) : AGENCIES.filter(a => a.key === agencyKey),
-    [combined, combinedKeys, agencyKey],
-  )
   // Availments sit beside the remittance tabs but are the opposite flow: SSS owes
   // us, rather than us owing SSS, so the view is separate rather than a filter.
   const [showAvailments, setShowAvailments] = useState(false)
@@ -80,19 +71,11 @@ export default function BenefitsPayablePage() {
     } catch { setRows([]) } finally { setLoading(false) }
   }, [branch])
   useEffect(() => { load() }, [load])
-  // Changing which agencies are in scope changes what each row totals and whether it's
-  // claimable, so a selection made under the old scope can't carry over.
-  useEffect(() => { setSelected(new Set()) }, [branch, agencyKey, combined, combinedKeys, fType, fYear, fMonth, fCutoff, hideRemitted])
+  useEffect(() => { setSelected(new Set()) }, [branch, agencyKey, fType, fYear, fMonth, fCutoff, hideRemitted])
 
-  // In combined mode every figure is the sum across the ticked agencies, and a row is
-  // claimable only when ALL of them are still free — matching the server, which locks
-  // each covered agency and refuses a row where any one of them is already spoken for.
-  const ee = (r: Row) => activeAgencies.reduce((s, a) => s + (r[a.eeField] as number), 0)
-  const er = (r: Row) => activeAgencies.reduce((s, a) => s + (r[a.erField] as number), 0)
-  const rfpOf = (r: Row) => activeAgencies.map(a => r[a.rfpField] as string | null).find(Boolean) ?? null
-  const scopeLabel = combined
-    ? (activeAgencies.length === AGENCIES.length ? 'All agencies' : activeAgencies.map(a => a.key).join(' + '))
-    : agency.label
+  const ee = (r: Row) => r[agency.eeField] as number
+  const er = (r: Row) => r[agency.erField] as number
+  const rfpOf = (r: Row) => r[agency.rfpField] as string | null
 
   const years = useMemo(() => Array.from(new Set(rows.map(r => r.cutoffPeriod.split('-')[0]))).sort().reverse(), [rows])
 
@@ -107,7 +90,7 @@ export default function BenefitsPayablePage() {
     if (fCutoff && half !== fCutoff) return false
     return true
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [rows, agencyKey, combined, combinedKeys, fType, fYear, fMonth, fCutoff, hideRemitted])
+  }), [rows, agencyKey, fType, fYear, fMonth, fCutoff, hideRemitted])
 
   const selectable = shown.filter(r => !rfpOf(r) && !r.benefitsRemitted)
   const selRows = shown.filter(r => selected.has(r.id))
@@ -120,7 +103,7 @@ export default function BenefitsPayablePage() {
   const rfpTotal = selTotal + feesTotal
 
   const openRfp = async () => {
-    if (selRows.length === 0 || activeAgencies.length === 0) return
+    if (selRows.length === 0) return
     setRfpSeq('')
     // Preload the branch's saved "Other Fees" template.
     await otherFees.loadTemplate(branch)
@@ -140,9 +123,7 @@ export default function BenefitsPayablePage() {
       for (let i = 0; i < types.length; i++) {
         const t = types[i]
         const body = {
-          source: 'benefit',
-          // Server locks every agency listed, so a combined RFP can't be double-claimed.
-          benefitTypes: activeAgencies.map(a => a.benefitType),
+          source: 'benefit', benefitType: agency.benefitType,
           payableType: t === 'consultant' ? 'CONSULTANT' : 'EMPLOYEE',
           ids: byType[t], branch,
           manualSeq: types.length === 1 && rfpSeq.trim() ? rfpSeq.trim() : undefined,
@@ -176,13 +157,9 @@ export default function BenefitsPayablePage() {
       {/* Agency subtabs */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
         {AGENCIES.map(a => (
-          <button key={a.key} onClick={() => { setAgencyKey(a.key); setCombined(false); setShowAvailments(false) }} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
-            style={{ borderColor: !showAvailments && !combined && agencyKey === a.key ? 'var(--teal)' : 'transparent', color: !showAvailments && !combined && agencyKey === a.key ? 'var(--teal)' : 'var(--mid-gray)' }}>{a.label}</button>
+          <button key={a.key} onClick={() => { setAgencyKey(a.key); setShowAvailments(false) }} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style={{ borderColor: !showAvailments && agencyKey === a.key ? 'var(--teal)' : 'transparent', color: !showAvailments && agencyKey === a.key ? 'var(--teal)' : 'var(--mid-gray)' }}>{a.label}</button>
         ))}
-        <button onClick={() => { setCombined(true); setShowAvailments(false) }} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
-          style={{ borderColor: !showAvailments && combined ? 'var(--teal)' : 'transparent', color: !showAvailments && combined ? 'var(--teal)' : 'var(--mid-gray)' }}>
-          Combined RFP
-        </button>
         <button onClick={() => setShowAvailments(true)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
           style={{ borderColor: showAvailments ? 'var(--teal)' : 'transparent', color: showAvailments ? 'var(--teal)' : 'var(--mid-gray)' }}>
           Benefit Availments
@@ -191,29 +168,6 @@ export default function BenefitsPayablePage() {
 
       {showAvailments && <Availments branch={branch} />}
       {!showAvailments && (<>
-
-      {/* Combined-RFP agency picker */}
-      {combined && (
-        <div className="rounded-xl border px-4 py-3" style={{ borderColor: 'var(--teal)', background: 'var(--off-white)' }}>
-          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Agencies in this RFP</p>
-          <div className="flex items-center gap-4 flex-wrap">
-            {AGENCIES.map(a => (
-              <label key={a.key} className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--charcoal)' }}>
-                <input type="checkbox" checked={combinedKeys.has(a.key)} onChange={e => setCombinedKeys(prev => {
-                  const n = new Set(prev)
-                  e.target.checked ? n.add(a.key) : n.delete(a.key)
-                  return n
-                })} />
-                {a.label}
-              </label>
-            ))}
-          </div>
-          <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>
-            Produces <strong>one</strong> RFP covering the ticked agencies, so it matches a single bank transfer. Amounts below are the combined EE + ER across them. A line is only selectable when none of the ticked agencies is already in another RFP.
-          </p>
-          {activeAgencies.length === 0 && <p className="text-[11px] mt-1 text-red-600">Tick at least one agency.</p>}
-        </div>
-      )}
 
       {/* Filters */}
       <div className="flex items-end gap-2 flex-wrap">
@@ -266,8 +220,8 @@ export default function BenefitsPayablePage() {
               <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Department</th>
               <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
               <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff</th>
-              <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{scopeLabel} EE</th>
-              <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{scopeLabel} ER</th>
+              <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{agency.label} EE</th>
+              <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{agency.label} ER</th>
               <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Total</th>
               <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
             </tr>
@@ -277,8 +231,8 @@ export default function BenefitsPayablePage() {
               <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}><Loader2 size={18} className="inline animate-spin" /></td></tr>
             ) : shown.length === 0 ? (
               <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
-                No {scopeLabel} contributions in locked payroll for this filter.
-                <div className="mt-1 text-[11px]">Contributions appear once payroll is <strong>locked</strong> and the {scopeLabel} deduction falls on the selected cutoff.</div>
+                No {agency.label} contributions in locked payroll for this filter.
+                <div className="mt-1 text-[11px]">Contributions appear once payroll is <strong>locked</strong> and the {agency.label} deduction falls on the selected cutoff.</div>
               </td></tr>
             ) : shown.map(r => {
               const locked = !!rfpOf(r) || r.benefitsRemitted
@@ -322,7 +276,7 @@ export default function BenefitsPayablePage() {
         <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
           <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Selected: <strong style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selTotal)}</strong> · {selected.size} line{selected.size === 1 ? '' : 's'}</span>
           <button onClick={openRfp} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
-            <BadgeDollarSign size={14} /> Generate {scopeLabel} RFP
+            <BadgeDollarSign size={14} /> Generate {agency.label} RFP
           </button>
         </div>
       )}
@@ -332,7 +286,7 @@ export default function BenefitsPayablePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate {scopeLabel} Payable RFP</h2>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate {agency.label} Payable RFP</h2>
               <button onClick={() => setRfpOpen(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
             </div>
             <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
