@@ -136,7 +136,11 @@ export default function PatientDetailPage() {
   const [otherDeptSessions, setOtherDeptSessions] = useState<SessionItem[]>([])
   const [otherDeptDocuments, setOtherDeptDocuments] = useState<OtherDeptDoc[]>([])
   const [otherDeptStaff, setOtherDeptStaff] = useState<{ name: string; department: string }[]>([])
-  const [otherDeptOpen, setOtherDeptOpen] = useState(false)
+  // Interdisciplinary patients get a two-tab view (own notes vs other
+  // departments' records) so the page isn't crowded; openDept drives the
+  // per-department accordion inside the "other" tab.
+  const [activeTab, setActiveTab] = useState<'own' | 'other'>('own')
+  const [openDept, setOpenDept] = useState<string | null>(null)
   const [otherServices, setOtherServices] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
@@ -363,6 +367,18 @@ export default function PatientDetailPage() {
   const completedCount = sessions.filter((s) => s.sessionNote?.status === 'COMPLETED').length
   const totalCount = sessions.length
 
+  // Interdisciplinary = the patient also sees other departments. Only then do
+  // we split the page into tabs. The department list is the union of every
+  // other-department the patient has services, notes, or documents in.
+  const isInterdisciplinary = otherServices.length > 0
+  const otherDepts = Array.from(new Set<string>([
+    ...otherServices,
+    ...otherDeptSessions.map((s) => s.staff.department),
+    ...otherDeptDocuments.map((d) => d.department),
+  ])).sort()
+  // The own-documents sidebar belongs to the "own" view; hide it on the other tab.
+  const showSidebar = !isInterdisciplinary || activeTab === 'own'
+
   return (
     <div className="max-w-7xl mx-auto">
       {toast && <div className="toast">{toast}</div>}
@@ -377,7 +393,8 @@ export default function PatientDetailPage() {
       </button>
 
       <div className={cn(
-        'grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6',
+        'grid grid-cols-1 gap-6',
+        showSidebar && 'lg:grid-cols-[1fr_320px]',
         // Whole-page muted state when this clinician no longer owns the
         // patient. Slight desaturation + lower opacity makes it visually
         // obvious without preventing reading.
@@ -636,102 +653,126 @@ export default function PatientDetailPage() {
         )
       })()}
 
-      {/* Interdisciplinary notice */}
-      {otherServices.length > 0 && (
-        <div className="mb-4 animate-fade-up stagger-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-          <div className="flex gap-3">
-            <ShieldAlert size={20} className="text-blue-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[13px] font-semibold text-blue-800 mb-1">
-                Also receiving services from: {otherServices.join(', ')}
-              </p>
-              {otherDeptStaff.length > 0 && (
-                <p className="text-[12px] text-blue-700 mb-1">
-                  <span className="font-semibold">Care team:</span>{' '}
-                  {otherDeptStaff.map((p) => `${p.name} (${p.department})`).join(', ')}
-                </p>
-              )}
-              <p className="text-[12px] text-blue-600 leading-relaxed">
-                This patient is an interdisciplinary case.{otherDeptSessions.length > 0 || otherDeptDocuments.length > 0
-                  ? ' The other professionals’ notes and documents are in the read-only section below — kept separate from your own notes, which you write and edit in the session history further down.'
-                  : ' Coordinate with the other departments for interprofessional collaboration.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Other departments' notes AND documents — READ ONLY, kept separate from
-          the clinician's own note-making so the two never get confused. */}
-      {(otherDeptSessions.length > 0 || otherDeptDocuments.length > 0) && (
-        <div className="mb-6 animate-fade-up">
+      {/* Interdisciplinary tab switcher — only for patients seen by more than
+          one department. Keeps the clinician's own notes separate from the
+          (read-only) records of the other departments so the page isn't crowded. */}
+      {isInterdisciplinary && (
+        <div className="mb-6 flex gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] animate-fade-up">
           <button
-            onClick={() => setOtherDeptOpen((o) => !o)}
-            className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--light-gray)] bg-white px-4 py-3 text-left hover:bg-[var(--off-white)]"
+            onClick={() => setActiveTab('own')}
+            className={cn(
+              'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
+              activeTab === 'own' ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
+            )}
           >
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[13.5px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>Records from Other Departments</span>
-              <span className="text-[11px] font-semibold text-[var(--mid-gray)] bg-[var(--pale-teal)] px-2 py-0.5 rounded-full">{otherDeptSessions.length + otherDeptDocuments.length}</span>
-              <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--mid-gray)] border border-[var(--light-gray)] px-1.5 py-0.5 rounded">View only</span>
-            </div>
-            {otherDeptOpen ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+            Own Session Notes
           </button>
-          {otherDeptOpen && (
-            <div className="mt-2 space-y-2.5">
-              {otherDeptSessions.map((s) => (
-                <div key={s.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
-                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--teal)]">{s.staff.department}</span>
-                      <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{s.staff.firstName} {s.staff.lastName}</span>
-                    </div>
-                    <span className="text-[11.5px] text-[var(--mid-gray)]">{s.date}{s.sessionType ? ` · ${s.sessionType}` : ''}</span>
-                  </div>
-                  {s.sessionNote?.notes
-                    ? renderNoteBody(s.sessionNote.notes)
-                    : s.sessionNote?.discontinuedRemarks
-                      ? <p className="text-[13px] text-[var(--mid-gray)] italic">Discontinued: {s.sessionNote.discontinuedRemarks}</p>
-                      : <p className="text-[13px] text-[var(--mid-gray)] italic">No note content.</p>}
-                </div>
-              ))}
-
-              {otherDeptDocuments.length > 0 && (
-                <>
-                  {otherDeptSessions.length > 0 && (
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-2 px-1">
-                      Documents — Initial Evaluations, Progress Reports &amp; Uploads
-                    </p>
-                  )}
-                  {otherDeptDocuments.map((d) => (
-                    <div key={d.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
-                      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--teal)]">{d.department}</span>
-                          <span className="text-[11px] font-semibold text-[var(--narra)]">{DOC_TYPE_LABEL[d.documentType] ?? d.documentType}</span>
-                          {d.uploaderName && <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{d.uploaderName}</span>}
-                        </div>
-                        <span className="text-[11.5px] text-[var(--mid-gray)]">{new Date(d.createdAt).toLocaleDateString()}</span>
-                      </div>
-                      {d.description && <p className="text-[12.5px] text-[var(--mid-gray)] mb-2">{d.description}</p>}
-                      <a
-                        href={`/api/upload/${d.filePath}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--teal)] hover:underline"
-                      >
-                        <FileText size={14} />
-                        {d.fileName}
-                      </a>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
+          <button
+            onClick={() => setActiveTab('other')}
+            className={cn(
+              'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-2',
+              activeTab === 'other' ? 'bg-white text-[var(--narra)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
+            )}
+          >
+            Records from Other Departments
+            {otherDeptSessions.length + otherDeptDocuments.length > 0 && (
+              <span className="text-[10px] font-bold text-white bg-[var(--narra)] px-1.5 py-0.5 rounded-full">{otherDeptSessions.length + otherDeptDocuments.length}</span>
+            )}
+          </button>
         </div>
       )}
 
-      {/* Session history */}
+      {/* OTHER tab — per-department, read-only records (notes + IE / Progress
+          Reports / uploads). One accordion per department the patient sees. */}
+      {isInterdisciplinary && activeTab === 'other' && (
+        <div className="mb-6 animate-fade-up space-y-3">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex gap-2.5">
+            <ShieldAlert size={18} className="text-blue-600 shrink-0 mt-0.5" />
+            <p className="text-[12.5px] text-blue-700 leading-relaxed">
+              <span className="font-semibold">Interdisciplinary case.</span> These are the other departments’ read-only records — you can view but not edit them. Open a department to see its notes and documents, and coordinate with the professional for interprofessional collaboration.
+            </p>
+          </div>
+
+          {otherDepts.map((dep) => {
+            const notes = otherDeptSessions.filter((s) => s.staff.department === dep)
+            const docs = otherDeptDocuments.filter((d) => d.department === dep)
+            const pros = otherDeptStaff.filter((p) => p.department === dep).map((p) => p.name)
+            const open = openDept === dep
+            return (
+              <div key={dep} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
+                <button
+                  onClick={() => setOpenDept(open ? null : dep)}
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)]"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--teal)]">{dep}</span>
+                    {pros.length > 0 && <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{pros.join(', ')}</span>}
+                    <span className="text-[11px] text-[var(--mid-gray)]">{notes.length} note{notes.length === 1 ? '' : 's'} · {docs.length} document{docs.length === 1 ? '' : 's'}</span>
+                  </div>
+                  {open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+                </button>
+                {open && (
+                  <div className="px-3 pb-3 space-y-2.5 border-t border-[var(--light-gray)]">
+                    {notes.length === 0 && docs.length === 0 && (
+                      <p className="text-[12.5px] text-[var(--mid-gray)] italic px-1 py-3">No notes or documents yet for this department.</p>
+                    )}
+
+                    {notes.length > 0 && (
+                      <>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-3 px-1">Session Notes</p>
+                        {notes.map((s) => (
+                          <div key={s.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
+                            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                              <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{s.staff.firstName} {s.staff.lastName}</span>
+                              <span className="text-[11.5px] text-[var(--mid-gray)]">{s.date}{s.sessionType ? ` · ${s.sessionType}` : ''}</span>
+                            </div>
+                            {s.sessionNote?.notes
+                              ? renderNoteBody(s.sessionNote.notes)
+                              : s.sessionNote?.discontinuedRemarks
+                                ? <p className="text-[13px] text-[var(--mid-gray)] italic">Discontinued: {s.sessionNote.discontinuedRemarks}</p>
+                                : <p className="text-[13px] text-[var(--mid-gray)] italic">No note content.</p>}
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {docs.length > 0 && (
+                      <>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-3 px-1">Documents — Initial Evaluations, Progress Reports &amp; Uploads</p>
+                        {docs.map((d) => (
+                          <div key={d.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
+                            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] font-semibold text-[var(--narra)]">{DOC_TYPE_LABEL[d.documentType] ?? d.documentType}</span>
+                                {d.uploaderName && <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{d.uploaderName}</span>}
+                              </div>
+                              <span className="text-[11.5px] text-[var(--mid-gray)]">{new Date(d.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            {d.description && <p className="text-[12.5px] text-[var(--mid-gray)] mb-2">{d.description}</p>}
+                            <a
+                              href={`/api/upload/${d.filePath}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--teal)] hover:underline"
+                            >
+                              <FileText size={14} />
+                              {d.fileName}
+                            </a>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* OWN tab — the clinician's own session history + note-making. Always
+          shown for single-department patients; the "own" tab for the rest. */}
+      {(!isInterdisciplinary || activeTab === 'own') && (
       <div className="animate-fade-up stagger-4">
         <button
           type="button"
@@ -997,12 +1038,15 @@ export default function PatientDetailPage() {
         </>
         )}
       </div>
+      )}
         </div>
 
-        {/* Right sidebar: Patient Widgets */}
+        {/* Right sidebar: Patient Widgets — own documents, part of the "own" view. */}
+        {showSidebar && (
         <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
           <PatientWidgets patient={patient} canManage={!readOnly} />
         </aside>
+        )}
       </div>
     </div>
   )
