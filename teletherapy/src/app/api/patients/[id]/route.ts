@@ -82,9 +82,13 @@ export async function GET(
   //     see their own historical contribution. If endorsed back to
   //     ACTIVE, they regain the full interdisciplinary view.
   let ownSessions
-  // Other departments' notes for this patient, shown READ-ONLY in a separate
-  // subsection — never mixed into the clinician's own note-making list.
+  // Other departments' notes AND documents for this patient, shown READ-ONLY
+  // in a separate subsection — never mixed into the clinician's own note-making
+  // list. otherDeptStaffOut is the named roster of professionals from other
+  // departments so the care team can coordinate.
   const otherDeptOut: Record<string, unknown>[] = []
+  const otherDeptDocsOut: Record<string, unknown>[] = []
+  const otherDeptStaffOut: { name: string; department: string }[] = []
   if (isAdmin) {
     ownSessions = await prisma.schedule.findMany({
       where: { patientId: id, status: 'CONFIRMED' },
@@ -102,6 +106,12 @@ export async function GET(
     // handled" — which is exactly what a deactivated clinician needs
     // so they can't peek at the new owner's ongoing notes.
     const sharedView = myAssignment?.status === 'ACTIVE'
+
+    // Interdisciplinary visibility is broader than sharedView: a clinician who
+    // delivers sessions but has NO assignment row (many patients have none) is
+    // still an active carer. Only an explicit endorsed-away / deactivated /
+    // discharged status removes their cross-department read access.
+    const isActiveCarer = !myAssignment || myAssignment.status === 'ACTIVE'
 
     let where: Record<string, unknown>
     if (sharedView && currentDepartment) {
@@ -128,10 +138,10 @@ export async function GET(
       orderBy: { date: 'desc' },
     })
 
-    // Interdepartmental notes: for an ACTIVE-assigned clinician, pull the OTHER
-    // departments' confirmed sessions that actually have a note. READ-ONLY —
-    // the clinician can view but never edit another professional's note.
-    if (sharedView && currentDepartment) {
+    // Interdepartmental notes: any active carer sees the OTHER departments'
+    // confirmed sessions that actually have a note. READ-ONLY — the clinician
+    // can view but never edit another professional's note.
+    if (isActiveCarer && currentDepartment) {
       const otherRows = await prisma.schedule.findMany({
         where: {
           patientId: id,
@@ -143,6 +153,43 @@ export async function GET(
         orderBy: { date: 'desc' },
       })
       for (const r of otherRows) otherDeptOut.push({ ...r, canEdit: false })
+
+      // Interdepartmental documents: IE reports, Progress Reports and other
+      // uploads from OTHER departments — read-only, so the full interdisciplinary
+      // record is visible for coordination. File download is auth-gated only,
+      // so linking these is safe.
+      const otherDocs = await prisma.patientDocument.findMany({
+        where: { patientId: id, department: { not: currentDepartment } },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, department: true, documentType: true, fileName: true,
+          filePath: true, description: true, createdAt: true, uploadedById: true,
+        },
+      })
+      // PatientDocument has no relation to the account, so resolve uploader
+      // names in one lookup.
+      const uploaderIds = [...new Set(otherDocs.map((d) => d.uploadedById))]
+      const uploaders = uploaderIds.length
+        ? await prisma.therapistAccount.findMany({
+            where: { id: { in: uploaderIds } },
+            select: { id: true, staff: { select: { firstName: true, lastName: true } } },
+          })
+        : []
+      const nameById = new Map(
+        uploaders.map((u) => [u.id, u.staff ? `${u.staff.firstName} ${u.staff.lastName}` : '']),
+      )
+      for (const d of otherDocs) {
+        otherDeptDocsOut.push({
+          id: d.id,
+          department: d.department,
+          documentType: d.documentType,
+          fileName: d.fileName,
+          filePath: d.filePath,
+          description: d.description,
+          createdAt: d.createdAt,
+          uploaderName: nameById.get(d.uploadedById) ?? '',
+        })
+      }
     }
   }
 
@@ -158,17 +205,24 @@ export async function GET(
       },
       select: {
         staff: {
-          select: { department: true },
+          select: { id: true, firstName: true, lastName: true, department: true },
         },
       },
       distinct: ['staffId'],
     })
 
-    // Collect unique department abbreviations that are NOT the current clinician's
+    // Collect unique department abbreviations, plus the named roster of the
+    // professionals from those departments, so the care team can coordinate.
     const deptSet = new Set<string>()
+    const seenStaff = new Set<string>()
     for (const s of allDepartments) {
-      if (s.staff?.department && s.staff.department !== currentDepartment) {
-        deptSet.add(s.staff.department)
+      const st = s.staff
+      if (st?.department && st.department !== currentDepartment) {
+        deptSet.add(st.department)
+        if (st.id && !seenStaff.has(st.id)) {
+          seenStaff.add(st.id)
+          otherDeptStaffOut.push({ name: `${st.firstName} ${st.lastName}`, department: st.department })
+        }
       }
     }
     otherServices = Array.from(deptSet).sort()
@@ -221,5 +275,7 @@ export async function GET(
     readOnly,
     otherServices, // e.g. ["MD", "OT"] — departments the patient also sees
     otherDeptSessions: otherDeptOut, // read-only notes from other departments
+    otherDeptDocuments: otherDeptDocsOut, // read-only IE/PR/other docs from other departments
+    otherDeptStaff: otherDeptStaffOut, // named roster of other-department professionals
   })
 }

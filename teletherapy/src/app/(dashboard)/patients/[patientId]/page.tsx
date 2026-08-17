@@ -85,6 +85,24 @@ interface StaffOption {
   branch: string
 }
 
+// Read-only document from another department (IE / Progress Report / other upload).
+interface OtherDeptDoc {
+  id: string
+  department: string
+  documentType: string
+  fileName: string
+  filePath: string
+  description: string | null
+  createdAt: string
+  uploaderName: string
+}
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  INITIAL_EVALUATION: 'Initial Evaluation',
+  PROGRESS_REPORT: 'Progress Report',
+  OTHER_DOCUMENT: 'Other Document',
+}
+
 // Read-only render of one session note's body, reusing the department display
 // components (falls back to plain text). Used for other departments' notes.
 function renderNoteBody(notes: string | null | undefined) {
@@ -116,6 +134,8 @@ export default function PatientDetailPage() {
   const [patient, setPatient] = useState<PatientDetail | null>(null)
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [otherDeptSessions, setOtherDeptSessions] = useState<SessionItem[]>([])
+  const [otherDeptDocuments, setOtherDeptDocuments] = useState<OtherDeptDoc[]>([])
+  const [otherDeptStaff, setOtherDeptStaff] = useState<{ name: string; department: string }[]>([])
   const [otherDeptOpen, setOtherDeptOpen] = useState(false)
   const [otherServices, setOtherServices] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -162,6 +182,8 @@ export default function PatientDetailPage() {
         setPatient(data.patient)
         setSessions(data.sessions)
         setOtherDeptSessions(data.otherDeptSessions ?? [])
+        setOtherDeptDocuments(data.otherDeptDocuments ?? [])
+        setOtherDeptStaff(data.otherDeptStaff ?? [])
         setOtherServices(data.otherServices ?? [])
         setAssignmentStatus(data.assignment?.status ?? null)
         setReadOnly(!!data.readOnly)
@@ -623,9 +645,15 @@ export default function PatientDetailPage() {
               <p className="text-[13px] font-semibold text-blue-800 mb-1">
                 Also receiving services from: {otherServices.join(', ')}
               </p>
+              {otherDeptStaff.length > 0 && (
+                <p className="text-[12px] text-blue-700 mb-1">
+                  <span className="font-semibold">Care team:</span>{' '}
+                  {otherDeptStaff.map((p) => `${p.name} (${p.department})`).join(', ')}
+                </p>
+              )}
               <p className="text-[12px] text-blue-600 leading-relaxed">
-                This patient is an interdisciplinary case.{otherDeptSessions.length > 0
-                  ? ' The other professionals’ notes are in the read-only section below — kept separate from your own notes, which you write and edit in the session history further down.'
+                This patient is an interdisciplinary case.{otherDeptSessions.length > 0 || otherDeptDocuments.length > 0
+                  ? ' The other professionals’ notes and documents are in the read-only section below — kept separate from your own notes, which you write and edit in the session history further down.'
                   : ' Coordinate with the other departments for interprofessional collaboration.'}
               </p>
             </div>
@@ -633,17 +661,17 @@ export default function PatientDetailPage() {
         </div>
       )}
 
-      {/* Other departments' notes — READ ONLY, kept separate from the
-          clinician's own note-making so the two never get confused. */}
-      {otherDeptSessions.length > 0 && (
+      {/* Other departments' notes AND documents — READ ONLY, kept separate from
+          the clinician's own note-making so the two never get confused. */}
+      {(otherDeptSessions.length > 0 || otherDeptDocuments.length > 0) && (
         <div className="mb-6 animate-fade-up">
           <button
             onClick={() => setOtherDeptOpen((o) => !o)}
             className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--light-gray)] bg-white px-4 py-3 text-left hover:bg-[var(--off-white)]"
           >
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[13.5px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>Notes from Other Departments</span>
-              <span className="text-[11px] font-semibold text-[var(--mid-gray)] bg-[var(--pale-teal)] px-2 py-0.5 rounded-full">{otherDeptSessions.length}</span>
+              <span className="text-[13.5px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>Records from Other Departments</span>
+              <span className="text-[11px] font-semibold text-[var(--mid-gray)] bg-[var(--pale-teal)] px-2 py-0.5 rounded-full">{otherDeptSessions.length + otherDeptDocuments.length}</span>
               <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--mid-gray)] border border-[var(--light-gray)] px-1.5 py-0.5 rounded">View only</span>
             </div>
             {otherDeptOpen ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
@@ -666,6 +694,38 @@ export default function PatientDetailPage() {
                       : <p className="text-[13px] text-[var(--mid-gray)] italic">No note content.</p>}
                 </div>
               ))}
+
+              {otherDeptDocuments.length > 0 && (
+                <>
+                  {otherDeptSessions.length > 0 && (
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-2 px-1">
+                      Documents — Initial Evaluations, Progress Reports &amp; Uploads
+                    </p>
+                  )}
+                  {otherDeptDocuments.map((d) => (
+                    <div key={d.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
+                      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--teal)]">{d.department}</span>
+                          <span className="text-[11px] font-semibold text-[var(--narra)]">{DOC_TYPE_LABEL[d.documentType] ?? d.documentType}</span>
+                          {d.uploaderName && <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{d.uploaderName}</span>}
+                        </div>
+                        <span className="text-[11.5px] text-[var(--mid-gray)]">{new Date(d.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      {d.description && <p className="text-[12.5px] text-[var(--mid-gray)] mb-2">{d.description}</p>}
+                      <a
+                        href={`/api/upload/${d.filePath}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--teal)] hover:underline"
+                      >
+                        <FileText size={14} />
+                        {d.fileName}
+                      </a>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
