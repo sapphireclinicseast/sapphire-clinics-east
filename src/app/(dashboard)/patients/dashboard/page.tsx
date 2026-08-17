@@ -7,6 +7,8 @@ import {
 } from 'recharts'
 import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
 
+import DeptBreakdownSection from './DeptBreakdownSection'
+
 const PatientMap = dynamic(() => import('@/components/patients/PatientMap'), { ssr: false })
 
 interface Stats {
@@ -458,6 +460,9 @@ export default function PatientDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* ── Patients by Service ── */}
+      <DeptBreakdownSection branches={selectedBranches} />
 
       {/* ── Interdepartmental Service Co-occurrence ── */}
       {interdeptStats && interdeptStats.totalPatients > 0 && (
