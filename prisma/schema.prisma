@@ -227,6 +227,8 @@ model Patient {
   pwdIdUrl           String?    // optional PWD ID photo URL
   firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
   pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
+  username           String?    @unique  // portal login handle (siblings sharing an email get distinct usernames)
+  profilePhoto       String?             // portal avatar, stored as a base64 data URL
   unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
   smsUnsubscribed    Boolean    @default(false)  // opt-out from SMS marketing campaigns (does NOT block schedule reminders, birthdays, or clinical follow-ups)
   // Aura the Alpaca plush toy perk — one piece, given once, to VIP Digital
