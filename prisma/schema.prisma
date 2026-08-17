@@ -295,6 +295,11 @@ model EmailCampaign {
   scheduledAt    DateTime?
   sentAt         DateTime?
   gmailAccountId String?
+  // Comma-separated address(es) that get ONE copy of the campaign when it
+  // starts sending — not a per-recipient Cc header (a 2,700-recipient send
+  // would otherwise put 2,700 mails in the operator's inbox and expose the
+  // address to every patient).
+  ccEmails       String?
   userId         String
   createdBy      User      @relation(fields: [userId], references: [id])
   createdAt      DateTime  @default(now())

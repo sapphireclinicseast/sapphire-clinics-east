@@ -91,6 +91,9 @@ export default function EmailPage() {
   const [pasteUploading, setPasteUploading] = useState(false)
   const bodyRef = useRef<HTMLTextAreaElement | null>(null)
   const [recipientGroup, setRecipientGroup] = useState('all')
+  // Address(es) that get a single copy of the campaign. Pre-filled from the
+  // most recent campaign that used one (see the load effect below).
+  const [ccEmails, setCcEmails] = useState('')
   const [branchFilter, setBranchFilter] = useState<Set<string>>(new Set())  // empty = no filter
   const [recipientCount, setRecipientCount] = useState<number | null>(null)
   const [sending, setSending] = useState(false)
@@ -122,6 +125,19 @@ export default function EmailPage() {
         setGmailAccounts(accts)
         if (accts.length > 0) setSelectedGmailId(accts[0].id)
       })
+  }, [])
+
+  // Pre-fill the "send me a copy" box with the address used on the most recent
+  // campaign that had one, so it doesn't have to be retyped every send. Still
+  // fully editable/clearable per campaign.
+  useEffect(() => {
+    fetch('/api/email/campaigns?status=all')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { campaigns?: { ccEmails?: string | null }[] } | null) => {
+        const last = d?.campaigns?.find(c => c.ccEmails && c.ccEmails.trim())
+        if (last?.ccEmails) setCcEmails(last.ccEmails)
+      })
+      .catch(() => { /* pre-fill is a convenience; never block composing */ })
   }, [])
 
   useEffect(() => {
@@ -234,6 +250,7 @@ export default function EmailPage() {
         recipientGroup,
         gmailAccountId: selectedGmailId || undefined,
         branches: branchFilter.size > 0 ? Array.from(branchFilter) : undefined,
+        ccEmails: ccEmails.trim() || undefined,
       }
       if (sendMode === 'schedule' && scheduledAt) payload.scheduledAt = new Date(scheduledAt).toISOString()
       const res = await fetch('/api/email/send', {
@@ -466,6 +483,25 @@ export default function EmailPage() {
             className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
             style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
           />
+        </div>
+
+        {/* Copy me — one copy of the campaign, not a per-recipient Cc header */}
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--mid-gray)' }}>
+            Send me a copy (optional)
+          </label>
+          <input
+            type="text"
+            value={ccEmails}
+            onChange={(e) => setCcEmails(e.target.value)}
+            placeholder="you@sapphireclinicseast.org"
+            className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+            style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
+          />
+          <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+            Gets <strong>one</strong> copy of this campaign when it starts sending — not one per recipient.
+            Patients never see this address. Separate multiple addresses with commas.
+          </p>
         </div>
 
         {/* AI generation */}
