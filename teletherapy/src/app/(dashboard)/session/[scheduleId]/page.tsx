@@ -21,6 +21,9 @@ import {
   Pencil,
   ClipboardList,
   GraduationCap,
+  Mic,
+  Image as ImageIcon,
+  Files,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
@@ -131,6 +134,10 @@ export default function SessionDetailPage() {
   const [overrideToProgress, setOverrideToProgress] = useState(false)
   const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
   const [psychEditUseForm, setPsychEditUseForm] = useState(true) // same toggle for edit mode
+  // Within the non-form (upload) panel: 'uploadqr' = the single scanned note /
+  // QR capture; 'others' = attach MULTIPLE supplementary files (voice notes,
+  // photos, documents) to the session.
+  const [attachMode, setAttachMode] = useState<'uploadqr' | 'others'>('uploadqr')
   const [captureReceived, setCaptureReceived] = useState<string | null>(null) // filename of received capture
   const [spedFormVariant, setSPEDFormVariant] = useState<'SPED16' | 'SPED18'>('SPED16') // SPED form selector
   const [ieMode, setIEMode] = useState<'PENDING' | 'DAILY_NOTES' | 'INITIAL_EVAL'>('PENDING') // PT/OT/SLP/SPED IE flag
@@ -268,6 +275,13 @@ export default function SessionDetailPage() {
       if (mode === 'complete') setPsychUseForm(false)
       else setPsychEditUseForm(false)
     }
+  }
+
+  // Jump straight from a structured form to the upload panel in "Attach Others"
+  // mode (multiple voice notes / photos / documents).
+  function openAttachOthers(mode: 'complete' | 'edit') {
+    setAttachMode('others')
+    handlePsychSwitchToUpload(mode)
   }
 
   function handleClearFormChoice(clearIt: boolean) {
@@ -1382,6 +1396,13 @@ export default function SessionDetailPage() {
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
+            <button
+              onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+            >
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
+            </button>
           </div>
 
           {/* Override toggle for first session */}
@@ -1438,6 +1459,13 @@ export default function SessionDetailPage() {
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
+            <button
+              onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+            >
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
+            </button>
           </div>
 
           <OTNoteForm
@@ -1490,6 +1518,11 @@ export default function SessionDetailPage() {
               className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
+            </button>
+            <button onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
             </button>
           </div>
 
@@ -1547,6 +1580,11 @@ export default function SessionDetailPage() {
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
+            <button onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
+            </button>
           </div>
 
           <SPEDNoteForm
@@ -1598,6 +1636,10 @@ export default function SessionDetailPage() {
               className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" /> Upload / QR
             </button>
+            <button onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" /> Attach Others
+            </button>
           </div>
 
           <PTNoteForm
@@ -1639,9 +1681,9 @@ export default function SessionDetailPage() {
             Complete Session
           </h2>
 
-          {/* Structured form toggle — so they can switch back to form */}
-          {hasStructuredForm && (
-            <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          {/* Mode tabs: Use Form (structured depts only) · Upload / QR · Attach Others */}
+          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            {hasStructuredForm && (
               <button
                 onClick={() => setPsychUseForm(true)}
                 className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
@@ -1649,29 +1691,58 @@ export default function SessionDetailPage() {
                 <FileText size={14} className="inline mr-1.5 -mt-0.5" />
                 Use Form
               </button>
-              <button
-                onClick={() => setPsychUseForm(false)}
-                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
-              >
-                <Upload size={14} className="inline mr-1.5 -mt-0.5" />
-                Upload / QR
-              </button>
+            )}
+            <button
+              onClick={() => setAttachMode('uploadqr')}
+              className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${attachMode === 'uploadqr' ? 'bg-[var(--teal)] text-white' : 'bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100'}`}
+            >
+              <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+              Upload / QR
+            </button>
+            <button
+              onClick={() => setAttachMode('others')}
+              className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${attachMode === 'others' ? 'bg-[var(--teal)] text-white' : 'bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100'}`}
+            >
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
+            </button>
+          </div>
+
+          {attachMode === 'uploadqr' ? (
+            <div className={`grid grid-cols-1 ${hasStructuredForm ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 mb-6`}>
+              {[
+                { icon: Upload, label: 'Upload Photo/PDF', onClick: () => fileInputRef.current?.click() },
+                { icon: QrCode, label: 'QR Camera Capture', onClick: generateQR },
+                ...(!hasStructuredForm ? [{ icon: FileText, label: 'Write Notes', onClick: () => document.getElementById('notes-area')?.focus() }] : []),
+              ].map((opt) => (
+                <button key={opt.label} onClick={opt.onClick}
+                  className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group">
+                  <opt.icon size={28} className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors" />
+                  <span className="text-[13px] font-semibold text-[var(--mid-gray)] group-hover:text-[var(--deep-teal)]">{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mb-6">
+              <p className="text-[12px] text-[var(--mid-gray)] mb-3">Attach multiple voice notes, photos, or documents to this session. You can add several of each.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { icon: Mic, label: 'Voice Notes', hint: 'audio files', accept: 'audio/*' },
+                  { icon: ImageIcon, label: 'Photos', hint: 'jpg, png, heic', accept: 'image/*' },
+                  { icon: Files, label: 'Documents', hint: 'pdf, docx, xlsx', accept: '.pdf,.doc,.docx,.xls,.xlsx' },
+                ].map((opt) => (
+                  <label key={opt.label}
+                    className="flex flex-col items-center gap-2 p-5 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group cursor-pointer">
+                    <opt.icon size={28} className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors" />
+                    <span className="text-[13px] font-semibold text-[var(--mid-gray)] group-hover:text-[var(--deep-teal)]">{opt.label}</span>
+                    <span className="text-[11px] text-[var(--mid-gray)]">{opt.hint}</span>
+                    <input type="file" accept={opt.accept} multiple onChange={handleFileUpload}
+                      onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} className="hidden" />
+                  </label>
+                ))}
+              </div>
             </div>
           )}
-
-          <div className={`grid grid-cols-1 ${hasStructuredForm ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 mb-6`}>
-            {[
-              { icon: Upload, label: 'Upload Photo/PDF', onClick: () => fileInputRef.current?.click() },
-              { icon: QrCode, label: 'QR Camera Capture', onClick: generateQR },
-              ...(!hasStructuredForm ? [{ icon: FileText, label: 'Write Notes', onClick: () => document.getElementById('notes-area')?.focus() }] : []),
-            ].map((opt) => (
-              <button key={opt.label} onClick={opt.onClick}
-                className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group">
-                <opt.icon size={28} className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors" />
-                <span className="text-[13px] font-semibold text-[var(--mid-gray)] group-hover:text-[var(--deep-teal)]">{opt.label}</span>
-              </button>
-            ))}
-          </div>
 
           <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple onChange={handleFileUpload} className="hidden" />
 
