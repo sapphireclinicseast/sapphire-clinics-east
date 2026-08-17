@@ -249,6 +249,26 @@ model Patient {
   patientBookings     PatientBooking[]
   followUpReminders   FollowUpReminder[]
   documents           PatientDocument[]
+  tickets             PatientTicket[]
+}
+
+// Patient-submitted portal concern/support ticket. Patient files it from the
+// portal "Concerns" widget; admin resolves it in the admin console; the
+// resolution then shows in the patient's "My tickets".
+model PatientTicket {
+  id            String    @id @default(cuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  subject       String
+  description   String
+  screenshot    String?   // optional screenshot, base64 data URL
+  status        String    @default("OPEN")   // OPEN | RESOLVED
+  adminResponse String?   // reply shown to the patient when resolved
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([patientId])
 }
 
 model ReferralUploadToken {
