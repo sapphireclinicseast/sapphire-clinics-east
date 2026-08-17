@@ -99,6 +99,15 @@ interface Ad { id: string; fileName: string; mimeType: string; order: number; br
 
 const INTERN_SESSION_TYPES = new Set(['IE Intern', 'Session Intern'])
 
+// Interns are attached to a supervisor's session via the "Select Intern"
+// field; they are never bookable clinicians in their own right. Deliberately
+// date-independent, unlike isEligibleIntern below — an intern outside their
+// Start/End Month is still an intern and must not fall back into the
+// clinician list.
+function isIntern(s: StaffMember): boolean {
+  return s.employmentType === 'intern'
+}
+
 // Is this staff member an intern whose Start/End Month covers `forDate`
 // (YYYY-MM-DD)? Falls back to today if no date is picked yet.
 function isEligibleIntern(s: StaffMember, forDate: string): boolean {
@@ -200,7 +209,10 @@ function WalkInModal({ staff, defaultBranch, defaultDate, onClose, onSaved }: {
   const [diagnosis, setDiagnosis]   = useState('')
 
   // Schedule fields
-  const branchStaff = staff.filter(s => s.branch === defaultBranch)
+  // Interns excluded — this list is the bookable-clinician dropdown. The
+  // "Select Intern" picker below reads from the unfiltered `staff`, so it
+  // still finds them.
+  const branchStaff = staff.filter(s => !isIntern(s) && s.branch === defaultBranch)
   const [staffId, setStaffId]       = useState('')
   const [startTime, setStartTime]   = useState('08:00')
   const [duration, setDuration]     = useState('1h')
