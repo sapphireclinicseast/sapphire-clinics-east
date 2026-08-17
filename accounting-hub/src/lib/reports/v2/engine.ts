@@ -170,8 +170,10 @@ const BS_SECTION: [key: string, label: string, match: (a: AcctInfo) => boolean][
 function isCashAccount(a: AcctInfo): boolean {
   if (a.type !== 'ASSET') return false
   const t = a.title.toLowerCase()
-  if (/receivable|input vat|withholding|prepaid|deposit|inventory|advances|due from/.test(t)) return false
-  return /cash|bank|gcash|paymaya|maya|fund/.test(t)
+  // 'deposit' used to exclude "UnDEPOSITed Funds" — the clearing account IS
+  // cash in transit and belongs in Cash and Cash Equivalents (user policy).
+  if (/receivable|input vat|withholding|prepaid|security deposit|deposit paid|inventory|advances|due from/.test(t)) return false
+  return /cash|bank|gcash|paymaya|maya|fund|clearing|undeposited/.test(t)
 }
 
 /**
@@ -615,7 +617,7 @@ export async function computeLedgerStatements(
       ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
     },
     select: {
-      id: true, orderNumber: true, patientName: true, transactionDate: true,
+      id: true, orderNumber: true, patientName: true, transactionDate: true, branch: true,
       netAmount: true, revenueType: true, discountAmount: true, discountLabel: true, discountType: true,
       items: {
         select: {
@@ -627,7 +629,7 @@ export async function computeLedgerStatements(
       payments: {
         select: {
           method: true, amount: true, walletId: true,
-          paymentMode: { select: { account: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, account: { select: { accountNumber: true } } } } } },
+          paymentMode: { select: { account: { select: { accountNumber: true } }, settlementBankAccount: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, account: { select: { accountNumber: true } } } } } },
         },
       },
     },
@@ -685,8 +687,12 @@ export async function computeLedgerStatements(
       const amt = Number(p.amount)
       if (!amt) continue
       paid += amt
-      if (p.walletId && ['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS'].includes(p.method as string)) {
-        lines.push({ acct: unearnedAccount(), debit: amt }) // wallet draw-down consumes the liability
+      /* Wallet/package/advance draws consume a liability the money already
+         funded when it was first received — they are NOT new cash. Routing
+         them to cash (worse: the no-branch default, which lands on the SCEI
+         Main corporate account) invented deposits the bank never saw. */
+      if (['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'PACKAGE', 'ADVANCE', 'DOWNPAYMENT'].includes(p.method as string)) {
+        lines.push({ acct: unearnedAccount(), debit: amt }) // draw-down consumes the liability
         continue
       }
       if (p.method === 'HMO' || p.method === 'GL') {
@@ -700,7 +706,12 @@ export async function computeLedgerStatements(
         lines.push({ acct: byNumber.get(d.account.accountNumber) || parseAccountKey(`${d.account.accountNumber} deduction`), debit: dAmt })
         net -= dAmt
       }
-      const cashA = p.paymentMode?.account ? (byNumber.get(p.paymentMode.account.accountNumber) || defaultCash()) : defaultCash()
+      /* Synthesized history: cash goes where it actually SETTLED. Modes now
+         point at a clearing account for sale-time posting (live JEs reclass
+         clearing -> bank on recon match), but synthesized orders have no
+         matching reclass — so use the mode's settlement bank when set. */
+      const pmAcctNum = p.paymentMode?.settlementBankAccount?.accountNumber || p.paymentMode?.account?.accountNumber
+      const cashA = pmAcctNum ? (byNumber.get(pmAcctNum) || defaultCash(o.branch || branch)) : defaultCash(o.branch || branch)
       lines.push({ acct: cashA, debit: net })
     }
     const unpaid = round2(Number(o.netAmount) - paid)

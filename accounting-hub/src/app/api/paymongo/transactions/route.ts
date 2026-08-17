@@ -148,6 +148,24 @@ export async function GET(req: Request) {
           description: a.description || a.remarks || '',
           payer: billing.name || billing.email || '',
           paymentMethod: resolvePaymentMethodUsed(r) || null,
+          // Storefront checkouts send the whole cart in metadata.cart_items —
+          // surface it so the UI can enumerate what was actually bought.
+          cartItems: (() => {
+            try {
+              const rawCart = (a.metadata || {}).cart_items
+              const arr = typeof rawCart === 'string' ? JSON.parse(rawCart) : Array.isArray(rawCart) ? rawCart : null
+              if (!Array.isArray(arr) || !arr.length) return null
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              return arr.map((c: any) => ({
+                title: String(c.title || c.name || ''),
+                variant: c.variantLabel ? String(c.variantLabel) : null,
+                quantity: Number(c.quantity) || 1,
+                price: Number(c.price) || 0,
+              }))
+            } catch { return null }
+          })(),
+          shippingFee: Number((a.metadata || {}).shipping_fee) || null,
+          voucherCode: String((a.metadata || {}).voucher_code || '') || null,
           // Where this money should have landed, when that differs from the
           // account it is sitting in. Display only — no ledger effect.
           belongsToAccount: (() => {

@@ -11,6 +11,7 @@ datasource db {
 
 enum Role {
   ADMIN
+  INVESTOR
   ACCOUNTANT
   BOOKKEEPER
   PAYROLL_OFFICER
@@ -3478,4 +3479,23 @@ model IssuedCheque {
   @@index([accountId])
   @@index([date])
   @@index([status])
+}
+
+model TiktokCancellation {
+  id            String    @id @default(cuid())
+  orderId       String    @unique
+  branch        String    @default("VERDANA_STORE")
+  status        String
+  cancelType    String?
+  cancelBy      String?
+  cancelReason  String?
+  orderAmount   Decimal?
+  cancelledTime DateTime?
+  sourceFile    String
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([branch])
+  @@index([cancelReason])
 }

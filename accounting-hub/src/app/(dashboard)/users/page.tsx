@@ -39,6 +39,7 @@ const ROLE_OPTIONS = [
   { value: 'AHGH_FRONTDESK', label: 'AHGH Front Desk' },
   { value: 'HMO_OFFICER', label: 'HMO Officer' },
   { value: 'MEDREP', label: 'Medical Representative (Reports — Gross Revenue only)' },
+  { value: 'INVESTOR', label: 'Investor (Financial Reports view-only — no drill-downs; BS/CF whole-company)' },
 ]
 
 const BRANCH_OPTIONS = [
@@ -62,6 +63,7 @@ const ROLE_LABELS: Record<string, string> = {
   AHGH_FRONTDESK: 'AHGH Front Desk',
   HMO_OFFICER: 'HMO Officer',
   MEDREP: 'Medical Representative',
+  INVESTOR: 'Investor',
 }
 
 const BRANCH_LABELS: Record<string, string> = {

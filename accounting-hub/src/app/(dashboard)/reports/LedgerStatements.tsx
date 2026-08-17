@@ -5,12 +5,17 @@
 // underlying entries with Excel export), the Income Statement offers monthly /
 // quarterly columns and a vertical-analysis mode (every line as % of gross
 // revenue), and the integrity card sits at the bottom in plain language.
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, createContext, useContext, useEffect, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Loader2, X, Download, ChevronDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { formatDisplay, displayCode, displayRate, inDisplay } from './display-currency'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import type { V2Statements, V2AccountRow, V2CollectedLine } from '@/lib/reports/v2/engine'
+
+// Investor mode: statements render normally but no amount is clickable — the
+// drill-down reaches patient-level lines. Provided by the page, consumed at the
+// single place every clickable amount goes through (Amt).
+const ReadOnlyCtx = createContext(false)
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4']
@@ -85,6 +90,8 @@ const fmtAmt = (v: number) => (v < 0 ? `(${formatDisplay(Math.abs(v))})` : forma
 const fmtPct = (v: number, base: number) => (Math.abs(base) < 0.005 ? '—' : `${(v / base * 100).toFixed(1)}%`)
 
 function Amt({ v, bold, onClick, pctBase }: { v: number; bold?: boolean; onClick?: () => void; pctBase?: number | null }) {
+  const readOnly = useContext(ReadOnlyCtx)
+  if (readOnly) onClick = undefined
   // Vertical analysis keeps the amount and appends the % beside it,
   // in bright blue so it stands out: ₱454,534.91 (11.9%)
   const usePct = pctBase !== undefined && pctBase !== null
@@ -326,9 +333,10 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
 
 /* ── Main component ─────────────────────────────────────────────── */
 
-export default function LedgerStatements({ year, branch, tab, view }: {
+export default function LedgerStatements({ year, branch, tab, view, readOnly }: {
   year: number
   branch: string
+  readOnly?: boolean
   tab: 'balance-sheet' | 'income-statement' | 'cash-flow'
   view: 'annual' | 'quarterly' | 'monthly'
 }) {
@@ -603,8 +611,10 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                   ))}
                 </Fragment>))}
                 <MultiRow label="EBT" values={ebtC} total={is.ebt} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
-                <MultiRow label="Provision for Income Tax (20%)" indent={1}
+                {INCOME_TAX_RATE > 0 && (
+                <MultiRow label={`Provision for Income Tax (${Math.round(INCOME_TAX_RATE * 100)}%)`} indent={1}
                   values={ebtC.map(e => e * INCOME_TAX_RATE)} total={is.taxProvision} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                )}
                 <MultiRow label="NET INCOME" values={ebtC.map(e => e * (1 - INCOME_TAX_RATE))} total={is.netIncome} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
               </tbody>
             </table>
@@ -657,7 +667,9 @@ export default function LedgerStatements({ year, branch, tab, view }: {
             ))}
           </Fragment>))}
           <Row label="EBT" amount={is.ebt} bold rule pctBase={vaBase} />
-          <Row label="Provision for Income Tax (20%)" amount={is.taxProvision} indent={1} pctBase={vaBase} />
+          {INCOME_TAX_RATE > 0 && (
+          <Row label={`Provision for Income Tax (${Math.round(INCOME_TAX_RATE * 100)}%)`} amount={is.taxProvision} indent={1} pctBase={vaBase} />
+          )}
           <Row label="NET INCOME" amount={is.netIncome} bold doubleRule pctBase={vaBase} />
         </div>
       )
@@ -898,15 +910,17 @@ export default function LedgerStatements({ year, branch, tab, view }: {
   }
 
   return (
+    <ReadOnlyCtx.Provider value={!!readOnly}>
     <div className="pb-2">
       {body}
-      {integrity}
+      {readOnly ? null : integrity}
       <p className="px-5 pt-1 text-[0.68rem]" style={{ color: '#9ca3af' }}>
-        * derived account (not yet in the Chart of Accounts). Click any amount to see the entries behind it.
+        * derived account (not yet in the Chart of Accounts).{readOnly ? '' : ' Click any amount to see the entries behind it.'}
       </p>
-      {drill && (
+      {drill && !readOnly && (
         <DrillDown year={year} branch={branch} account={drill.account} title={drill.title} month={drill.month} cumulative={drill.cumulative} onClose={() => setDrill(null)} />
       )}
     </div>
+    </ReadOnlyCtx.Provider>
   )
 }

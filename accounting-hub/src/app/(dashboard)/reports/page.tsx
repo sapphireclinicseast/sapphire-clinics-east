@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
-  Calendar, Building2, LayoutList, BarChart3, X,
+  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { DISPLAY_CURRENCIES, type DisplayCurrency, setDisplay, inDisplay, fmt, fmtSigned } from './display-currency'
@@ -13,6 +13,7 @@ import { computeIncomeStatementTotals, INCOME_TAX_RATE } from '@/lib/reports/inc
 import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
 import HistoricalReport from './HistoricalReport'
 import LedgerStatements from './LedgerStatements'
+import GraphsView from './GraphsView'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 
@@ -98,7 +99,7 @@ interface ReportData {
   unearnedRevenueFromAR?: number
 }
 
-type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
+type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow' | 'graphs'
 // 'quarterly' is offered on the full statements only; the med-rep revenue view
 // treats it as 'annual' if it ever reaches it.
 type ViewMode = 'annual' | 'quarterly' | 'monthly'
@@ -139,6 +140,7 @@ const TABS: { key: ReportTab; label: string; icon: typeof FileText }[] = [
   { key: 'balance-sheet', label: 'Balance Sheet', icon: FileText },
   { key: 'income-statement', label: 'Income Statement', icon: BarChart3 },
   { key: 'cash-flow', label: 'Cash Flow Statement', icon: LayoutList },
+  { key: 'graphs', label: 'Graphs', icon: TrendingUp },
 ]
 
 const DEPT_LABELS: Record<string, string> = {
@@ -1667,9 +1669,16 @@ export default function ReportsPage() {
   // filter still applies. These "effective" values override the (hidden) tab/view controls.
   const role = (session?.user as { role?: string })?.role || ''
   const isMedrep = role === 'MEDREP'
+  // Investor: read-only statements + Graphs. Balance sheet and cash flow are
+  // whole-company only (no branch filter); the income statement may be
+  // branch-filtered. Amounts are never clickable — drill-downs reach
+  // patient-level lines, which investors must not see (also enforced API-side).
+  const isInvestor = role === 'INVESTOR'
   const effTab: ReportTab = isMedrep ? 'income-statement' : activeTab
   const effView: ViewMode = isMedrep ? 'monthly' : viewMode
-  const effDrill: OnDrillDown = isMedrep ? () => {} : handleDrillDown
+  const effDrill: OnDrillDown = (isMedrep || isInvestor) ? () => {} : handleDrillDown
+  const branchLocked = isInvestor && effTab !== 'income-statement' && effTab !== 'graphs'
+  const effBranch = branchLocked ? 'ALL' : branch
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
@@ -1693,30 +1702,301 @@ export default function ReportsPage() {
     fetchData()
   }, [fetchData])
 
-  const handlePrint = () => {
-    window.print()
-  }
-
   const downloadRowsAsCSV = (rows: string[][]) => {
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branch}.csv`
+    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const handleDownloadCSV = () => {
+  // Excel: a real .xlsx built in the browser — a stored (uncompressed) zip of
+  // the minimal OOXML parts, so Excel opens it with no compatibility warning
+  // and numbers stay numbers. No extra library.
+  const downloadRowsAsExcel = (rows: string[][]) => {
+    const esc = (c: string) => String(c).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const colRef = (i: number) => {
+      let s = ''
+      for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s
+      return s
+    }
+    const sheetRows = rows.map((r, ri) => {
+      const cells = r.map((c, ci) => {
+        const ref = `${colRef(ci)}${ri + 1}`
+        const n = String(c).replace(/,/g, '')
+        const isNum = n !== '' && !isNaN(Number(n)) && /\d/.test(n)
+        if (isNum) return `<c r="${ref}" s="1"><v>${Number(n)}</v></c>`
+        if (c === '') return ''
+        return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(c)}</t></is></c>`
+      }).join('')
+      return `<row r="${ri + 1}">${cells}</row>`
+    }).join('')
+    const files: [string, string][] = [
+      ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+      ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+      ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+      ['xl/styles.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf/><xf numFmtId="164" applyNumberFormat="1"/></cellXfs></styleSheet>'],
+      ['xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`],
+    ]
+    // stored zip: CRC32 + local headers + central directory + EOCD
+    const crcTable = (() => {
+      const t = new Uint32Array(256)
+      for (let i = 0; i < 256; i++) {
+        let c = i
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+        t[i] = c >>> 0
+      }
+      return t
+    })()
+    const crc32 = (b: Uint8Array) => {
+      let c = 0xffffffff
+      for (let i = 0; i < b.length; i++) c = crcTable[(c ^ b[i]) & 0xff] ^ (c >>> 8)
+      return (c ^ 0xffffffff) >>> 0
+    }
+    const enc = new TextEncoder()
+    const parts: Uint8Array[] = []
+    const central: Uint8Array[] = []
+    let offset = 0
+    const u16 = (v: number) => [v & 0xff, (v >> 8) & 0xff]
+    const u32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff]
+    for (const [name, content] of files) {
+      const nameB = enc.encode(name)
+      const dataB = enc.encode(content)
+      const crc = crc32(dataB)
+      const head = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(dataB.length), ...u32(dataB.length), ...u16(nameB.length), ...u16(0)])
+      parts.push(head, nameB, dataB)
+      central.push(new Uint8Array([0x50, 0x4b, 0x01, 0x02, ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(dataB.length), ...u32(dataB.length), ...u16(nameB.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), nameB)
+      offset += head.length + nameB.length + dataB.length
+    }
+    const centralSize = central.reduce((s, p) => s + p.length, 0)
+    const eocd = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0)])
+    const pieces = [...parts, ...central, eocd]
+    const merged = new Uint8Array(pieces.reduce((s, p) => s + p.length, 0))
+    let pos = 0
+    for (const p of pieces) { merged.set(p, pos); pos += p.length }
+    const blob = new Blob([merged], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  // PDF: a real financial-report PDF built in the browser — letterhead,
+  // accounting number format (parenthesized negatives), section rules,
+  // landscape for monthly columns, page footers. Plain PDF 1.4, no library.
+  const downloadRowsAsPDF = (rows: string[][]) => {
+    if (!rows.length) return
+    const ncols = Math.max(...rows.map(r => r.length))
+    const landscape = ncols > 3
+    const W = landscape ? 841.89 : 595.28
+    const H = landscape ? 595.28 : 841.89
+    const M = 40
+    const fs = landscape ? 6.6 : 8.5
+    const lh = fs * 1.6
+    const labelW = landscape ? 168 : (W - 2 * M) * 0.62
+    const colW = (W - 2 * M - labelW) / Math.max(1, ncols - 1)
+    const clean = (s: string) => String(s).replace(/₱/g, 'P').replace(/[—–]/g, '-')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '')
+    const esc = (s: string) => clean(s).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+    const isNum = (s: string) => s !== '' && !isNaN(Number(String(s).replace(/,/g, ''))) && /\d/.test(s)
+    const fmtNum = (s: string) => {
+      if (!isNum(s)) return s
+      const n = Number(String(s).replace(/,/g, ''))
+      const a = Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      return n < 0 ? `(${a})` : a
+    }
+    const numWidth = (s: string) => {
+      let w = 0
+      for (const ch of s) w += (ch === ',' || ch === '.') ? 278 : (ch === '(' || ch === ')' || ch === '-') ? 333 : 556
+      return (w * fs) / 1000
+    }
+    const pageOps: string[][] = []
+    let ops: string[] = []
+    let y = 0
+    const text = (x: number, yy: number, s: string, bold = false, size = fs, gray = false) => {
+      if (!s) return
+      ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${gray ? '0.45 0.45 0.45' : '0 0 0'} rg ${x.toFixed(1)} ${yy.toFixed(1)} Td (${esc(s)}) Tj ET`)
+    }
+    const rule = (x1: number, yy: number, x2: number, w = 0.5, dark = false) =>
+      ops.push(`${w} w ${dark ? '0.25 0.25 0.25' : '0.72 0.72 0.72'} RG ${x1.toFixed(1)} ${yy.toFixed(1)} m ${x2.toFixed(1)} ${yy.toFixed(1)} l S`)
+    const drawRow = (r: string[], bold: boolean, size = fs) => {
+      text(M + (bold ? 0 : 8), y, r[0], bold, size)
+      for (let c = 1; c < ncols; c++) {
+        const v = fmtNum(r[c] ?? '')
+        if (v === '') continue
+        const right = M + labelW + c * colW - 2
+        text(right - numWidth(v), y, v, bold, size)
+      }
+    }
+    const header = rows[0]
+    const stmtTitle = header[0]
+    const body = rows.slice(1)
+    const colHeader = () => {
+      rule(M, y + lh * 0.55, W - M, 0.8, true)
+      text(M, y, 'Line Item', true, fs)
+      for (let c = 1; c < ncols; c++) {
+        const v = header[c] ?? ''
+        if (!v) continue
+        const right = M + labelW + c * colW - 2
+        text(right - (v.length * 0.52 * fs), y, v, true, fs)
+      }
+      y -= lh * 0.5
+      rule(M, y + lh * 0.35, W - M, 0.5, true)
+      y -= lh
+    }
+    const startPage = (first: boolean) => {
+      y = H - M
+      if (first) {
+        text(M, y - 4, 'SAPPHIRE CLINICS EAST INCORPORATED', true, 13)
+        y -= 18
+        text(M, y, stmtTitle, true, 10.5)
+        y -= 13
+        text(M, y, `Amounts in ${dispCcy === 'PHP' ? 'Philippine pesos' : dispCcy}. Negative amounts are shown in parentheses.`, false, 7.5, true)
+        y -= lh * 1.6
+      }
+      colHeader()
+    }
+    startPage(true)
+    for (const r of body) {
+      if (y < M + lh * 2) { pageOps.push(ops); ops = []; startPage(false) }
+      const label = r[0] ?? ''
+      const bold = !label.startsWith('  ')
+      const hasAmounts = r.slice(1).some(c => isNum(c ?? ''))
+      if (bold && hasAmounts) { rule(M, y + lh * 0.42, W - M, 0.4); y -= 1.5 }
+      if (bold && !hasAmounts) y -= lh * 0.35
+      drawRow(r, bold)
+      y -= lh
+    }
+    rule(M, y + lh * 0.42, W - M, 0.8, true)
+    pageOps.push(ops)
+    // footers
+    const stamp = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+    pageOps.forEach((p, i) => {
+      p.push(`BT /F1 7 Tf 0.45 0.45 0.45 rg ${M} ${(M * 0.5).toFixed(1)} Td (Generated ${esc(stamp)} - SCEI Accounting Hub) Tj ET`)
+      const pn = `Page ${i + 1} of ${pageOps.length}`
+      p.push(`BT /F1 7 Tf 0.45 0.45 0.45 rg ${(W - M - pn.length * 3.6).toFixed(1)} ${(M * 0.5).toFixed(1)} Td (${pn}) Tj ET`)
+    })
+    // assemble PDF
+    const objs: string[] = []
+    const kids = pageOps.map((_, i) => `${5 + i * 2} 0 R`).join(' ')
+    objs.push('<< /Type /Catalog /Pages 2 0 R >>')
+    objs.push(`<< /Type /Pages /Kids [${kids}] /Count ${pageOps.length} >>`)
+    objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>')
+    objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>')
+    for (let i = 0; i < pageOps.length; i++) {
+      objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W.toFixed(2)} ${H.toFixed(2)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + i * 2} 0 R >>`)
+      const stream = pageOps[i].join('\n')
+      objs.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`)
+    }
+    let pdf = '%PDF-1.4\n'
+    const offsets: number[] = []
+    objs.forEach((o, i) => { offsets.push(pdf.length); pdf += `${i + 1} 0 obj\n${o}\nendobj\n` })
+    const xref = pdf.length
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` +
+      offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('') +
+      `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
+    const bytes = new Uint8Array(pdf.length)
+    for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff
+    const blob = new Blob([bytes], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const exportRows = (rows: string[][], fmt: 'csv' | 'xls' | 'pdf') =>
+    fmt === 'xls' ? downloadRowsAsExcel(rows) : fmt === 'pdf' ? downloadRowsAsPDF(rows) : downloadRowsAsCSV(rows)
+
+  const handleDownloadCSV = (fmt: 'csv' | 'xls' | 'pdf' = 'csv') => {
     if (!data) return
+    // Export the derived ledger-engine statement (what LedgerStatements shows
+    // on screen). Used when the manual FY2024–FY2025 package has no statement
+    // for this tab/branch (Verdana 2025, any 2024 cash flow), when monthly
+    // columns are requested but the manual statement is annual-only, and for
+    // live-year balance sheet / cash flow exports.
+    const exportEngineStatement = () => {
+        void (async () => {
+          try {
+            const res = await fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
+            if (!res.ok) return
+            const v2 = await res.json()
+            const rows: string[][] = []
+            const withMonths = viewMode === 'monthly'
+            const mcols = withMonths ? FULL_MONTHS : []
+            const blank = () => (withMonths ? Array(12).fill('') : [])
+            const num = (v: number) => (Number(v) || 0).toFixed(2)
+            const mrow = (m?: number[]) => (withMonths ? (m && m.length === 12 ? m.map(num) : Array(12).fill('')) : [])
+            const branchLbl = branch === 'ALL' ? 'All Branches' : BRANCHES.find(b => b.value === branch)?.label || branch
+            if (activeTab === 'income-statement' && v2.incomeStatement) {
+              const t = v2.incomeStatement
+              rows.push([`Income Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
+              for (const sec of t.sections || []) {
+                rows.push([sec.label, ...blank(), ''])
+                for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, ...mrow(r.monthly), num(r.closing)])
+                rows.push([`Total ${sec.label}`, ...blank(), num(sec.total)])
+              }
+              const summary: [string, number][] = [
+                ['Net Sales', t.netSales], ['Total Cost of Sales', t.totalCOGS], ['Gross Profit', t.grossProfit],
+                ['Total Operating Expenses', t.totalOpex], ['EBITDA', t.ebitda], ['Depreciation', t.depreciation],
+                ['Interest', t.interest], ['Net Income', t.netIncome],
+              ]
+              for (const [l, v] of summary) rows.push([l, ...blank(), num(v)])
+            } else if (activeTab === 'balance-sheet' && v2.balanceSheet) {
+              const t = v2.balanceSheet
+              rows.push([`Balance Sheet — ${year} — ${branchLbl}`, ...mcols, withMonths ? 'Closing' : `Amount (${dispCcy})`])
+              for (const sec of t.sections || []) {
+                rows.push([sec.label, ...blank(), ''])
+                for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, ...mrow(r.monthly), num(r.closing)])
+                rows.push([`Total ${sec.label}`, ...blank(), num(sec.total)])
+              }
+              rows.push(['Net Income (current year)', ...blank(), num(t.netIncome)])
+              rows.push(['TOTAL ASSETS', ...blank(), num(t.totalAssets)])
+              rows.push(['TOTAL LIABILITIES', ...blank(), num(t.totalLiabilities)])
+              rows.push(['TOTAL EQUITY', ...blank(), num(t.totalEquity)])
+            } else if (activeTab === 'cash-flow' && v2.cashFlow) {
+              const cf = v2.cashFlow
+              rows.push([`Cash Flow Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
+              rows.push(['Net Income', ...mrow(cf.monthly?.netIncome), num(cf.netIncome)])
+              rows.push(['Depreciation', ...mrow(cf.monthly?.depreciation), num(cf.depreciation)])
+              rows.push(['Working capital changes', ...blank(), ''])
+              for (const r of cf.workingCapital || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Operating Activities', ...blank(), num(cf.netOperating)])
+              rows.push(['Investing activities', ...blank(), ''])
+              for (const r of cf.investing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Investing Activities', ...blank(), num(cf.netInvesting)])
+              rows.push(['Financing activities', ...blank(), ''])
+              for (const r of cf.financing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Financing Activities', ...blank(), num(cf.netFinancing)])
+              rows.push(['Net Change in Cash', ...mrow(cf.monthly?.cashDelta), num(cf.netChange)])
+              rows.push(['Beginning Cash', ...blank(), num(cf.beginningCash)])
+              rows.push(['Ending Cash', ...blank(), num(cf.endingCash)])
+            }
+            if (rows.length > 1) exportRows(rows, fmt)
+          } catch (err) {
+            console.error('Engine export fallback failed:', err)
+          }
+        })()
+    }
     if (data.historical) {
       const h = data.historical
       const stmt = activeTab === 'income-statement' ? h.incomeStatement
         : activeTab === 'balance-sheet' ? h.balanceSheet
         : h.cashFlow
-      if (!stmt) return
-      const withMonths = activeTab !== 'balance-sheet' && viewMode === 'monthly'
+      if (!stmt) { exportEngineStatement(); return }
+      const stmtHasMonthly = stmt.rows.some(r => {
+        const m = (r as { monthly?: number[] }).monthly
+        return Array.isArray(m) && m.some(v => v)
+      })
+      // Monthly columns requested but the manual statement is annual-only
+      // (all manual balance sheets; some cash flows) — export the engine view.
+      if (viewMode === 'monthly' && !stmtHasMonthly) { exportEngineStatement(); return }
+      const withMonths = viewMode === 'monthly' && stmtHasMonthly
       const rows: string[][] = []
       const title = 'title' in stmt ? stmt.title : ''
       rows.push([`${title} — ${year}`, ...(withMonths ? FULL_MONTHS : []), activeTab === 'balance-sheet' ? `Amount (${dispCcy})` : 'FY Total'])
@@ -1730,7 +2010,7 @@ export default function ReportsPage() {
           rows.push([label, ...months, r.total !== null ? r.total.toFixed(2) : ''])
         }
       }
-      downloadRowsAsCSV(rows)
+      exportRows(rows, fmt)
       return
     }
     const t = computeIncomeStatementTotals(data)
@@ -1873,11 +2153,13 @@ export default function ReportsPage() {
         rows.push(['NET INCOME', ...Array(12).fill(''), t.netIncome.toFixed(2)])
       }
     } else {
-      rows.push([`${reportTitle} — ${year} — ${branchLbl}`])
-      rows.push(['Note: For Balance Sheet and Cash Flow, use Print (PDF) for a formatted version.'])
+      // Balance sheet / cash flow for live years: export the engine statement
+      // (monthly columns included when the monthly view is active).
+      exportEngineStatement()
+      return
     }
 
-    downloadRowsAsCSV(rows)
+    exportRows(rows, fmt)
   }
 
   const reportTitle = activeTab === 'balance-sheet'
@@ -1907,10 +2189,10 @@ export default function ReportsPage() {
             Generate and review financial statements for Sapphire Clinics East Incorporated
           </p>
         </div>
-        <div className="flex gap-2" style={{ display: isMedrep ? 'none' : undefined }}>
+        <div className="flex gap-2" style={{ display: (isMedrep || isInvestor || effTab === 'graphs') ? 'none' : undefined }}>
           <button
-            onClick={handleDownloadCSV}
-            disabled={!data}
+            onClick={() => handleDownloadCSV('csv')}
+            disabled={loading || !data}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -1918,8 +2200,18 @@ export default function ReportsPage() {
             CSV
           </button>
           <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            onClick={() => handleDownloadCSV('xls')}
+            disabled={loading || !data}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
+            style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+          >
+            <Download size={16} />
+            Excel
+          </button>
+          <button
+            onClick={() => handleDownloadCSV('pdf')}
+            disabled={loading || !data}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
             <Printer size={16} />
@@ -1954,6 +2246,7 @@ export default function ReportsPage() {
       </div>
       )}
 
+      {effTab === 'graphs' ? <GraphsView /> : <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-5 print:hidden">
         {/* Presentation currency — display only, the ledger stays in pesos */}
@@ -2033,12 +2326,15 @@ export default function ReportsPage() {
           <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
           <div className="relative">
             <select
-              value={branch}
+              value={effBranch}
+              disabled={branchLocked}
+              title={branchLocked ? 'Balance sheet and cash flow are whole-company statements' : undefined}
               onChange={(e) => setBranch(e.target.value)}
               className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
               style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
             >
-              {(scope.short ? BRANCHES.filter(b => b.value === scope.short) : BRANCHES).map((b) => (
+              {(branchLocked ? BRANCHES.filter(b => b.value === 'ALL')
+                : scope.short ? BRANCHES.filter(b => b.value === scope.short) : BRANCHES).map((b) => (
                 <option key={b.value} value={b.value}>{b.label}</option>
               ))}
             </select>
@@ -2075,7 +2371,7 @@ export default function ReportsPage() {
             {reportTitle}
           </p>
           <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '1px' }}>
-            {reportSubtitle}{branch !== 'ALL' ? ` · ${branchLabel}` : ''}
+            {reportSubtitle}{effBranch !== 'ALL' ? ` · ${branchLabel}` : ''}
           </p>
         </div>
 
@@ -2091,7 +2387,7 @@ export default function ReportsPage() {
 
         {/* Report content */}
         {!loading && data?.historical && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
+          <LedgerStatements year={year} branch={effBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
         {!loading && data?.historical && isMedrep && (
           <HistoricalReport
@@ -2102,7 +2398,7 @@ export default function ReportsPage() {
           />
         )}
         {!loading && !data?.historical && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
+          <LedgerStatements year={year} branch={effBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
         {!loading && data && !data.historical && isMedrep && (
           <div className="py-2">
@@ -2127,8 +2423,10 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      </>}
+
       {/* Drill-down panel */}
-      {drillDown && (
+      {!isInvestor && drillDown && (
         <DrillDownPanel
           target={drillDown}
           year={year}
