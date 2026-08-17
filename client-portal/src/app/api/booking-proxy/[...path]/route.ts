@@ -17,11 +17,15 @@ async function proxy(req: NextRequest, method: 'GET' | 'POST', path: string[]) {
     init.body = await req.text()
   }
   const res = await fetch(url.toString(), init)
-  const body = await res.text()
-  return new NextResponse(body, {
-    status: res.status,
-    headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
-  })
+  // Pass the body through as bytes so binary responses (document/image/PDF
+  // file downloads) aren't corrupted by UTF-8 text decoding. JSON still works.
+  const buf = await res.arrayBuffer()
+  const headers: Record<string, string> = {
+    'Content-Type': res.headers.get('content-type') ?? 'application/json',
+  }
+  const cd = res.headers.get('content-disposition')
+  if (cd) headers['Content-Disposition'] = cd
+  return new NextResponse(buf, { status: res.status, headers })
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {

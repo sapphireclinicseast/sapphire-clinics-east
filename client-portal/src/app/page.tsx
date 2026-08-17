@@ -9,8 +9,13 @@ import {
   setPatientPassword,
   getMe,
   updatePatientProfile,
+  listMyDocuments,
+  documentFileUrl,
   InvalidTokenError,
   type MeResult,
+  type PatientSessionRecord,
+  type SessionStats,
+  type PatientDocuments,
 } from '@/lib/api'
 import { getSession, setSession, clearSession } from '@/lib/session'
 import Chatbot from '@/components/Chatbot'
@@ -476,7 +481,7 @@ function PortalDashboard({
                 }
               />
             )}
-            {section === 'sessions' && <SessionsSection sessions={data.sessions} />}
+            {section === 'sessions' && <SessionsSection sessions={data.sessions} stats={data.stats} token={token} />}
             {section === 'feedback' && <FeedbackSection surveys={data.surveys} />}
             {section === 'rewards' && (
               <div>
@@ -773,7 +778,7 @@ function resizeToDataUrl(file: File, size: number): Promise<string> {
 const SESSIONS_DISCLAIMER =
   'We began using this system in late March–April 2026, so sessions before then are not reflected here.'
 
-function SessionsSection({ sessions }: { sessions: MeResult['sessions'] }) {
+function SessionsSection({ sessions, stats, token }: { sessions: MeResult['sessions']; stats?: SessionStats; token: string }) {
   // Distinct departments present in this patient's history → subtabs.
   const departments = useMemo(() => {
     const seen = new Set<string>()
@@ -786,27 +791,16 @@ function SessionsSection({ sessions }: { sessions: MeResult['sessions'] }) {
   }, [sessions])
 
   const [dept, setDept] = useState<string | null>(departments[0] ?? null)
-  // Keep the active subtab valid if the underlying data changes.
+  const [selected, setSelected] = useState<PatientSessionRecord | null>(null)
   useEffect(() => {
     if (departments.length && (dept == null || !departments.includes(dept))) {
       setDept(departments[0])
     }
   }, [departments, dept])
 
-  if (sessions.length === 0) {
-    return (
-      <div className="card-static">
-        <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Session History</h3>
-        <p className="mt-3 text-sm text-[color:var(--mid-gray)]">No sessions recorded yet.</p>
-        <Disclaimer>{SESSIONS_DISCLAIMER}</Disclaimer>
-      </div>
-    )
-  }
-
   const active = dept && departments.includes(dept) ? dept : departments[0]
   const deptSessions = sessions.filter((s) => (s.department || 'Other') === active)
 
-  // Group the active department's sessions by provider (clinician).
   const byProvider = new Map<string, MeResult['sessions']>()
   for (const s of deptSessions) {
     const arr = byProvider.get(s.clinician) ?? []
@@ -818,59 +812,209 @@ function SessionsSection({ sessions }: { sessions: MeResult['sessions'] }) {
     <div className="card-static">
       <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Session History</h3>
 
-      {/* Department subtabs */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {departments.map((d) => (
-          <button
-            key={d}
-            onClick={() => setDept(d)}
-            className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
-              active === d
-                ? 'bg-[color:var(--teal)] text-white'
-                : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:opacity-80'
-            }`}
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            {shortDept(d)}
-          </button>
-        ))}
-      </div>
+      {/* Attendance summary */}
+      {stats && (
+        <div className="mt-4 grid grid-cols-3 gap-2.5">
+          <StatTile label="Total Sessions" value={stats.total} tone="teal" />
+          <StatTile label="Confirmed" value={stats.confirmed} pct={stats.confirmedPct} tone="green" />
+          <StatTile label="Cancelled / Resched." value={stats.cancelledRescheduled} pct={stats.cancelledRescheduledPct} tone="rose" />
+        </div>
+      )}
 
-      <p className="mt-4 text-[13px] font-semibold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-        {active}
-      </p>
-
-      <div className="mt-3 space-y-6">
-        {[...byProvider.entries()].map(([provider, rows]) => (
-          <div key={provider}>
-            <div className="text-sm font-semibold text-[color:var(--teal)]">{provider}</div>
-            <div className="mt-2 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                    <th className="pb-2 pr-4 font-semibold">Date</th>
-                    <th className="pb-2 pr-4 font-semibold">Type of Service</th>
-                    <th className="pb-2 font-semibold">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((s) => (
-                    <tr key={`${s.source}-${s.id}`} className="border-t border-[color:var(--light-gray)]">
-                      <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--deep-teal)]">{fmtDate(s.date)}</td>
-                      <td className="py-2.5 pr-4 text-[color:var(--mid-gray)]">{s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}</td>
-                      <td className="py-2.5"><StatusBadge status={s.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      {sessions.length === 0 ? (
+        <p className="mt-4 text-sm text-[color:var(--mid-gray)]">No sessions recorded yet.</p>
+      ) : (
+        <>
+          {/* Department subtabs */}
+          <div className="mt-5 flex flex-wrap gap-2">
+            {departments.map((d) => (
+              <button
+                key={d}
+                onClick={() => setDept(d)}
+                className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
+                  active === d
+                    ? 'bg-[color:var(--teal)] text-white'
+                    : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:opacity-80'
+                }`}
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                {shortDept(d)}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
+
+          <p className="mt-4 text-[12px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Tap a session to view the therapist&apos;s notes and documents.
+          </p>
+
+          <div className="mt-3 space-y-6">
+            {[...byProvider.entries()].map(([provider, rows]) => (
+              <div key={provider}>
+                <div className="text-sm font-semibold text-[color:var(--teal)]">{provider}</div>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[11px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+                        <th className="pb-2 pr-4 font-semibold">Date</th>
+                        <th className="pb-2 pr-4 font-semibold">Type of Service</th>
+                        <th className="pb-2 pr-4 font-semibold">Status</th>
+                        <th className="pb-2 font-semibold"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((s) => (
+                        <tr
+                          key={`${s.source}-${s.id}`}
+                          onClick={() => setSelected(s)}
+                          className="border-t border-[color:var(--light-gray)] cursor-pointer hover:bg-[color:var(--pale-teal)]/40 transition-colors"
+                        >
+                          <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--deep-teal)]">{fmtDate(s.date)}</td>
+                          <td className="py-2.5 pr-4 text-[color:var(--mid-gray)]">{s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}</td>
+                          <td className="py-2.5 pr-4"><StatusBadge status={s.status} /></td>
+                          <td className="py-2.5 text-right text-[color:var(--teal)]">›</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <Disclaimer>{SESSIONS_DISCLAIMER}</Disclaimer>
+
+      {selected && <SessionDetailModal session={selected} token={token} onClose={() => setSelected(null)} />}
     </div>
   )
+}
+
+function StatTile({ label, value, pct, tone }: { label: string; value: number; pct?: number; tone: 'teal' | 'green' | 'rose' }) {
+  const color = tone === 'green' ? '#166534' : tone === 'rose' ? '#b91c1c' : 'var(--deep-teal)'
+  const bg = tone === 'green' ? '#F0FDF4' : tone === 'rose' ? '#FEF2F2' : 'var(--pale-teal)'
+  return (
+    <div className="rounded-xl px-3 py-3 text-center" style={{ background: bg }}>
+      <div className="text-[22px] font-semibold tabular-nums leading-none" style={{ color }}>{value}</div>
+      {pct != null && <div className="text-[12px] font-semibold mt-0.5" style={{ color }}>{pct}%</div>}
+      <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] mt-1 leading-tight" style={{ fontFamily: 'var(--font-display)' }}>{label}</div>
+    </div>
+  )
+}
+
+function SessionDetailModal({ session, token, onClose }: { session: PatientSessionRecord; token: string; onClose: () => void }) {
+  const [showDocs, setShowDocs] = useState(false)
+  const deptCode = session.departmentCode || shortDept(session.department)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
+      <div
+        className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Sticky header: Department + Documents card */}
+        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 pt-4 pb-3 z-10">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className="inline-block text-[11px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]">
+                {deptCode || 'Session'}
+              </span>
+              <div className="text-sm text-[color:var(--deep-teal)] font-semibold mt-1.5">{fmtDate(session.date)}</div>
+              <div className="text-[12px] text-[color:var(--mid-gray)]">
+                {session.clinician}{session.isTeletherapy ? ' · Teletherapy' : ' · In-clinic'} · <StatusInline status={session.status} />
+              </div>
+            </div>
+            <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
+          </div>
+
+          <button
+            onClick={() => setShowDocs((v) => !v)}
+            className="mt-3 w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-[color:var(--paper-3)] bg-[color:var(--paper-2)] hover:border-[color:var(--sage)] transition-colors"
+          >
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--deep-teal)]">
+              <FolderIcon /> Documents
+            </span>
+            <span className="text-[color:var(--teal)] text-sm">{showDocs ? '▲' : '▼'}</span>
+          </button>
+          {showDocs && <DocumentsPanel token={token} department={session.departmentCode} />}
+        </div>
+
+        {/* Scrollable body: read-only session notes */}
+        <div className="overflow-y-auto px-4 py-4">
+          <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Therapist&apos;s Session Notes
+          </div>
+          {session.notes && session.notes.trim() ? (
+            <p className="mt-2 text-sm text-[color:var(--deep-teal)] whitespace-pre-wrap leading-relaxed">{session.notes}</p>
+          ) : (
+            <p className="mt-2 text-sm text-[color:var(--mid-gray)] italic">No notes were recorded for this session.</p>
+          )}
+          <p className="mt-4 text-[11px] text-[color:var(--mid-gray)] border-t border-[color:var(--light-gray)] pt-3" style={{ fontFamily: 'var(--font-display)' }}>
+            Read-only. Notes and documents are added by your therapist.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DocumentsPanel({ token, department }: { token: string; department?: string }) {
+  const [docs, setDocs] = useState<PatientDocuments | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    listMyDocuments(token, department)
+      .then((d) => { if (!cancelled) setDocs(d) })
+      .catch((e) => { if (!cancelled) setErr((e as Error).message) })
+    return () => { cancelled = true }
+  }, [token, department])
+
+  if (err) return <div className="mt-2 text-[12.5px] text-rose-700">{err}</div>
+  if (!docs) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)]">Loading documents…</div>
+  if (docs.total === 0) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)] italic">No documents uploaded yet.</div>
+
+  return (
+    <div className="mt-2 max-h-[38vh] overflow-y-auto space-y-3 pr-1">
+      <DocGroup title="Initial Evaluation" rows={docs.initialEvaluations} token={token} />
+      <DocGroup title="Progress Reports" rows={docs.progressReports} token={token} />
+      <DocGroup title="Other Documents" rows={docs.otherDocuments} token={token} />
+    </div>
+  )
+}
+
+function DocGroup({ title, rows, token }: { title: string; rows: PatientDocuments['initialEvaluations']; token: string }) {
+  if (rows.length === 0) return null
+  return (
+    <div>
+      <div className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[color:var(--teal)] mb-1">{title}</div>
+      <div className="space-y-1.5">
+        {rows.map((d) => (
+          <a
+            key={d.id}
+            href={documentFileUrl(d.id, token)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-[color:var(--paper-3)] bg-white hover:border-[color:var(--sage)] transition-colors"
+          >
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-[color:var(--deep-teal)] truncate">{d.fileName}</span>
+              <span className="block text-[11px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>{fmtDate(d.createdAt.slice(0, 10))}</span>
+            </span>
+            <span className="text-[color:var(--teal)] text-[12px] font-semibold shrink-0">View ↗</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StatusInline({ status }: { status: string }) {
+  return <span className="font-semibold text-[color:var(--deep-teal)]">{fmtStatus(status)}</span>
+}
+
+function FolderIcon() {
+  return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>)
 }
 
 function StatusBadge({ status }: { status: string }) {
