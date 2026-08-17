@@ -79,22 +79,24 @@ export async function GET(req: NextRequest) {
 
   const [schedules, bookings, assignments] = await Promise.all([
     prisma.schedule.findMany({
-      where: { patientId: patient.id, status: { not: 'CANCELLED' } },
+      // All statuses (incl. CANCELLED / RESCHEDULED) so the portal can show the
+      // patient's full attendance record.
+      where: { patientId: patient.id },
       orderBy: { date: 'desc' },
-      take: 100,
+      take: 300,
       select: {
         id: true, date: true, startTime: true, endTime: true, status: true,
-        isTeletherapy: true,
+        isTeletherapy: true, notes: true,
         staff: { select: { firstName: true, lastName: true, department: true } },
       },
     }),
     prisma.patientBooking.findMany({
       where: { patientId: patient.id, status: { in: ['PAID', 'COMPLETED'] } },
       orderBy: { date: 'desc' },
-      take: 100,
+      take: 200,
       select: {
         id: true, date: true, startTime: true, endTime: true, status: true,
-        department: true, isTeletherapy: true,
+        department: true, isTeletherapy: true, notes: true,
         staff: { select: { firstName: true, lastName: true, department: true } },
       },
     }),
@@ -129,40 +131,65 @@ export async function GET(req: NextRequest) {
     endTime: string
     clinician: string
     department: string
+    departmentCode: string
     status: string
     isTeletherapy: boolean
+    notes: string | null
     source: 'schedule' | 'booking'
   }
   const clin = (f?: string | null, l?: string | null) =>
     titleCase(`${f ?? ''} ${l ?? ''}`.trim()) || 'Clinician'
 
   const sessions: Session[] = [
-    ...schedules.map((s): Session => ({
-      id: s.id,
-      date: s.date.toISOString().slice(0, 10),
-      startTime: s.startTime,
-      endTime: s.endTime,
-      clinician: clin(s.staff?.firstName, s.staff?.lastName),
-      department: s.staff?.department ? (DEPT_LABEL[s.staff.department] ?? titleCase(s.staff.department)) : '',
-      status: s.status,
-      isTeletherapy: s.isTeletherapy,
-      source: 'schedule',
-    })),
+    ...schedules.map((s): Session => {
+      const code = (s.staff?.department ?? '').toUpperCase()
+      return {
+        id: s.id,
+        date: s.date.toISOString().slice(0, 10),
+        startTime: s.startTime,
+        endTime: s.endTime,
+        clinician: clin(s.staff?.firstName, s.staff?.lastName),
+        department: code ? (DEPT_LABEL[code] ?? titleCase(code)) : '',
+        departmentCode: code,
+        status: s.status,
+        isTeletherapy: s.isTeletherapy,
+        notes: s.notes ?? null,
+        source: 'schedule',
+      }
+    }),
     ...bookings.map((b): Session => {
-      const d = (b.staff?.department ?? b.department ?? '').toUpperCase()
+      const code = (b.staff?.department ?? b.department ?? '').toUpperCase()
       return {
         id: b.id,
         date: b.date.toISOString().slice(0, 10),
         startTime: b.startTime,
         endTime: b.endTime,
         clinician: clin(b.staff?.firstName, b.staff?.lastName),
-        department: d ? (DEPT_LABEL[d] ?? titleCase(d)) : '',
+        department: code ? (DEPT_LABEL[code] ?? titleCase(code)) : '',
+        departmentCode: code,
         status: b.status,
         isTeletherapy: b.isTeletherapy,
+        notes: b.notes ?? null,
         source: 'booking',
       }
     }),
   ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.startTime < b.startTime ? 1 : -1))
+
+  // ── Attendance stats (Confirmed vs Cancelled/Rescheduled; PENDING excluded) ──
+  const CONFIRMED = new Set(['CONFIRMED', 'PAID', 'COMPLETED'])
+  const CANCELLED_RESCHED = new Set(['CANCELLED', 'RESCHEDULED'])
+  const counted = sessions.filter((s) => CONFIRMED.has(s.status) || CANCELLED_RESCHED.has(s.status))
+  const confirmedCount = counted.filter((s) => CONFIRMED.has(s.status)).length
+  const cancelledCount = counted.filter((s) => CANCELLED_RESCHED.has(s.status)).length
+  const totalCounted = counted.length
+  const pct = (n: number) => (totalCounted > 0 ? Math.round((n / totalCounted) * 1000) / 10 : 0)
+  const stats = {
+    total: totalCounted,
+    confirmed: confirmedCount,
+    confirmedPct: pct(confirmedCount),
+    cancelledRescheduled: cancelledCount,
+    cancelledRescheduledPct: pct(cancelledCount),
+  }
 
   // ── Active surveys (links built client-side to the survey subdomain) ──
   const surveys = assignments.map((a) => ({
@@ -198,5 +225,5 @@ export async function GET(req: NextRequest) {
     pwdIdUrl: patient.pwdIdUrl ?? null,
   }
 
-  return withCors(NextResponse.json({ profile, servicesAvailed, sessions, surveys }), origin)
+  return withCors(NextResponse.json({ profile, servicesAvailed, sessions, surveys, stats }), origin)
 }

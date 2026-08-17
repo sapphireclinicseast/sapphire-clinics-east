@@ -176,8 +176,10 @@ export interface PatientSessionRecord {
   endTime: string
   clinician: string
   department: string
+  departmentCode?: string
   status: string
   isTeletherapy: boolean
+  notes?: string | null
   source: 'schedule' | 'booking'
 }
 export interface ActiveSurvey {
@@ -185,15 +187,50 @@ export interface ActiveSurvey {
   surveyType: string
   expiresAt: string
 }
+export interface SessionStats {
+  total: number
+  confirmed: number
+  confirmedPct: number
+  cancelledRescheduled: number
+  cancelledRescheduledPct: number
+}
 export interface MeResult {
   profile: PatientProfile
   servicesAvailed: string[]
   sessions: PatientSessionRecord[]
   surveys: ActiveSurvey[]
+  stats?: SessionStats
 }
 
 export function getMe(token: string) {
   return jsonFetch<MeResult>(`/patients/me?token=${encodeURIComponent(token)}`)
+}
+
+// ── Clinical documents (read-only, uploaded by therapists) ───────────────────
+export interface PatientDocRow {
+  id: string
+  fileName: string
+  documentType: string
+  department: string
+  description: string | null
+  createdAt: string
+}
+export interface PatientDocuments {
+  initialEvaluations: PatientDocRow[]
+  progressReports: PatientDocRow[]
+  otherDocuments: PatientDocRow[]
+  total: number
+}
+
+export function listMyDocuments(token: string, department?: string) {
+  const qs = new URLSearchParams({ token })
+  if (department) qs.set('department', department)
+  return jsonFetch<PatientDocuments>(`/patients/documents?${qs.toString()}`)
+}
+
+// Same-origin URL for viewing a document file (through the binary-safe proxy).
+export function documentFileUrl(id: string, token: string) {
+  return `${API_BASE}/patients/documents/${encodeURIComponent(id)}/file?token=${encodeURIComponent(token)}`
 }
 
 // Update the signed-in patient's own account (photo / username / password).
