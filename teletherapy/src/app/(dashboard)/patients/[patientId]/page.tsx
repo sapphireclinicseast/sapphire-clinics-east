@@ -141,6 +141,9 @@ export default function PatientDetailPage() {
   // per-department accordion inside the "other" tab.
   const [activeTab, setActiveTab] = useState<'own' | 'other'>('own')
   const [openDept, setOpenDept] = useState<string | null>(null)
+  // Which other-department note (by session id) is expanded. Notes collapse to
+  // a per-day list first so a year of sessions isn't one giant scroll.
+  const [openNoteId, setOpenNoteId] = useState<string | null>(null)
   const [otherServices, setOtherServices] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
@@ -719,20 +722,35 @@ export default function PatientDetailPage() {
 
                     {notes.length > 0 && (
                       <>
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-3 px-1">Session Notes</p>
-                        {notes.map((s) => (
-                          <div key={s.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
-                            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                              <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{s.staff.firstName} {s.staff.lastName}</span>
-                              <span className="text-[11.5px] text-[var(--mid-gray)]">{s.date}{s.sessionType ? ` · ${s.sessionType}` : ''}</span>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-3 px-1">Session Notes ({notes.length}) — pick a day</p>
+                        {notes.map((s) => {
+                          const noteOpen = openNoteId === s.id
+                          return (
+                            <div key={s.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
+                              <button
+                                onClick={() => setOpenNoteId(noteOpen ? null : s.id)}
+                                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]"
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Calendar size={13} className="text-[var(--mid-gray)] shrink-0" />
+                                  <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{s.date}</span>
+                                  {s.sessionType && <span className="text-[11px] text-[var(--mid-gray)]">{s.sessionType}</span>}
+                                </div>
+                                {noteOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)] shrink-0" /> : <ChevronDown size={16} className="text-[var(--mid-gray)] shrink-0" />}
+                              </button>
+                              {noteOpen && (
+                                <div className="px-3 pb-3 pt-2 border-t border-[var(--light-gray)]">
+                                  <p className="text-[11px] text-[var(--mid-gray)] mb-2">by {s.staff.firstName} {s.staff.lastName}</p>
+                                  {s.sessionNote?.notes
+                                    ? renderNoteBody(s.sessionNote.notes)
+                                    : s.sessionNote?.discontinuedRemarks
+                                      ? <p className="text-[13px] text-[var(--mid-gray)] italic">Discontinued: {s.sessionNote.discontinuedRemarks}</p>
+                                      : <p className="text-[13px] text-[var(--mid-gray)] italic">No note content.</p>}
+                                </div>
+                              )}
                             </div>
-                            {s.sessionNote?.notes
-                              ? renderNoteBody(s.sessionNote.notes)
-                              : s.sessionNote?.discontinuedRemarks
-                                ? <p className="text-[13px] text-[var(--mid-gray)] italic">Discontinued: {s.sessionNote.discontinuedRemarks}</p>
-                                : <p className="text-[13px] text-[var(--mid-gray)] italic">No note content.</p>}
-                          </div>
-                        ))}
+                          )
+                        })}
                       </>
                     )}
 
