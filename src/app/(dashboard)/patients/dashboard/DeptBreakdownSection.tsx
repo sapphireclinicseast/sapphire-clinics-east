@@ -16,7 +16,14 @@ interface DeptRow {
 
 interface Data {
   totalPatients: number
+  totalRoster: number
+  sessionWindow: { from: string | null; to: string | null }
   departments: DeptRow[]
+}
+
+function monthYear(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })
 }
 
 // Friendly labels — the DB stores the enum name. Matches the convention used
@@ -81,10 +88,19 @@ export default function DeptBreakdownSection({ branches }: { branches: string[] 
           </p>
         </div>
         <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-          Unique patients with confirmed sessions per department
-          {data ? ` · ${data.totalPatients.toLocaleString()} patients treated` : ''}
-          {' '}· a patient receiving two services is counted in both, so these add up to more than the total
+          Unique patients with confirmed sessions per department. A patient receiving two
+          services is counted in both, so these add up to more than the total.
         </p>
+        {data && (
+          <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+            Based on <strong>{data.totalPatients.toLocaleString()}</strong> patients with recorded
+            sessions{data.sessionWindow.from ? ` between ${monthYear(data.sessionWindow.from)} and ${monthYear(data.sessionWindow.to)}` : ''}
+            {' '}— percentages are of that figure, not of the{' '}
+            <strong>{data.totalRoster.toLocaleString()}</strong>-patient roster. Session history
+            only exists from when the Clinic Schedule module went into use, so earlier visits by
+            long-standing patients are not counted here.
+          </p>
+        )}
       </div>
 
       {loading && !data ? (

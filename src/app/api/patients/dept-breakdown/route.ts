@@ -36,10 +36,18 @@ export async function GET(req: NextRequest) {
     where: { status: 'CONFIRMED', patientId: { not: null } },
     select: {
       patientId: true,
+      date:      true,
       staff:   { select: { department: true } },
       patient: { select: { branches: true, branch: true } },
     },
   })
+
+  // The Schedule table only goes back as far as the Clinic Schedule module has
+  // been in use (currently ~Mar 2026), while Patient holds the full historical
+  // roster. Without surfacing both numbers and the window, "899 patients" reads
+  // against a 2,760-patient roster as though two thirds are inactive — which is
+  // an artefact of missing session history, not a clinical fact.
+  const totalRoster = await prisma.patient.count()
 
   // Branch filter applied in JS, mirroring /api/patients/stats and
   // interdept-stats — the Prisma PG adapter can't filter on the enum array.
@@ -79,8 +87,17 @@ export async function GET(req: NextRequest) {
     .filter((set) => Array.from(set).some((d) => (DEPTS as readonly string[]).includes(d)))
     .length
 
+  const dates = branchFiltered.map((s) => s.date).filter(Boolean) as Date[]
+  const earliest = dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : null
+  const latest   = dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : null
+
   return NextResponse.json({
     totalPatients,
+    totalRoster,
+    sessionWindow: {
+      from: earliest ? earliest.toISOString().slice(0, 10) : null,
+      to:   latest   ? latest.toISOString().slice(0, 10)   : null,
+    },
     departments: DEPTS.map((d) => ({
       dept: d,
       count: counts[d],
