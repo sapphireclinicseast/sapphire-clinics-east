@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// Ledger-facing branch codes: JournalEntry.branch must use the chart/report codes
+// (SANDBOX_EAST etc.) so branch-filtered financial statements include these entries.
+// Payroll's own tables keep their stored codes (SBEA/SBGH).
+const LEDGER_BRANCH: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', SBVR: 'VERDANA_STORE' }
+const ledgerBranch = (b: string) => LEDGER_BRANCH[b] ?? b
+
+
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 export async function GET(req: Request) {
@@ -229,7 +236,7 @@ export async function POST(req: Request) {
             referenceType: 'SALARY_PAYMENT',
             referenceId: splits.map(x => x.id).join(';'),
             totalAmount: totalNet + feeAmt,
-            branch: branchOf,
+            branch: ledgerBranch(branchOf),
             createdById: session.user.id as string,
             lines: { create: lines },
           },
@@ -338,7 +345,7 @@ export async function POST(req: Request) {
             referenceType: 'SALARY_PAYMENT',
             referenceId: [...splits.map(x => x.id), ...entries.map(e => e.id), ...payslips.map(p => p.id)].join(';'),
             totalAmount: totalNet + feeAmt,
-            branch: branchOf,
+            branch: ledgerBranch(branchOf),
             createdById: session.user.id as string,
             lines: { create: lines },
           },
@@ -435,7 +442,7 @@ export async function POST(req: Request) {
             referenceType: 'SALARY_PAYMENT',
             referenceId: entries.map(e => e.id).join(';'),
             totalAmount: totalNet + feeAmt,
-            branch: entries[0].branch,
+            branch: ledgerBranch(entries[0].branch),
             createdById: session.user.id as string,
             lines: { create: lines },
           },
@@ -512,7 +519,7 @@ export async function POST(req: Request) {
             referenceType: 'SALARY_PAYMENT',
             referenceId: payslips.map(p => p.id).join(';'),
             totalAmount: totalNet + feeAmt,
-            branch: payslips[0].branch,
+            branch: ledgerBranch(payslips[0].branch),
             createdById: session.user.id as string,
             lines: { create: lines },
           },
@@ -589,7 +596,7 @@ export async function POST(req: Request) {
           referenceType: 'SALARY_PAYMENT',
           referenceId: payables.map(p => `${p.cutoffPeriod}|${p.branch}|${p.payrollType}`).join(';'),
           totalAmount: totalAmount + feeAmt,
-          branch: payables[0].branch,
+          branch: ledgerBranch(payables[0].branch),
           createdById: session.user.id as string,
           lines: { create: lines },
         },

@@ -9,6 +9,13 @@ const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AH
 const BRANCH_DISPLAY: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH' }
 const branchDisplay = (b: string) => BRANCH_DISPLAY[b] ?? b
 
+// Ledger-facing branch codes: JournalEntry.branch must use the chart/report codes
+// (SANDBOX_EAST etc.) so branch-filtered financial statements include these entries.
+// Payroll's own tables keep their stored codes (SBEA/SBGH).
+const LEDGER_BRANCH: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', SBVR: 'VERDANA_STORE' }
+const ledgerBranch = (b: string) => LEDGER_BRANCH[b] ?? b
+
+
 // Unlock payroll — reverse a previous lock & finalize
 export async function DELETE(req: Request) {
   const session = await auth()
@@ -284,7 +291,7 @@ export async function POST(req: Request) {
             referenceType: 'PAYROLL_CONSULTANT',
             referenceId: `${cutoffPeriod}|${branch}`,
             totalAmount: totalGross,
-            branch: branch,
+            branch: ledgerBranch(branch),
             createdById: session.user.id as string,
             lines: { create: lines },
           },
@@ -379,7 +386,7 @@ export async function POST(req: Request) {
             referenceType: 'PAYROLL_EMPLOYEE',
             referenceId: `${cutoffPeriod}|${branch}`,
             totalAmount: totalTaxableSalary + totalBenefitsER,
-            branch: branch,
+            branch: ledgerBranch(branch),
             createdById: session.user.id as string,
             lines: { create: lines },
           },
@@ -427,7 +434,7 @@ export async function POST(req: Request) {
                   referenceType: 'STAFF_LOAN_DEDUCTION',
                   referenceId: `${cutoffPeriod}|${branch}`,
                   totalAmount: totalLoanDed,
-                  branch,
+                  branch: ledgerBranch(branch),
                   createdById: session.user.id as string,
                   lines: {
                     create: [
