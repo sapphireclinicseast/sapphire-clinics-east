@@ -1778,7 +1778,11 @@ export default function ReportsPage() {
     }
     const centralSize = central.reduce((s, p) => s + p.length, 0)
     const eocd = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0)])
-    const blob = new Blob([...parts, ...central, eocd], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const pieces = [...parts, ...central, eocd]
+    const merged = new Uint8Array(pieces.reduce((s, p) => s + p.length, 0))
+    let pos = 0
+    for (const p of pieces) { merged.set(p, pos); pos += p.length }
+    const blob = new Blob([merged], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -1796,7 +1800,73 @@ export default function ReportsPage() {
       const stmt = activeTab === 'income-statement' ? h.incomeStatement
         : activeTab === 'balance-sheet' ? h.balanceSheet
         : h.cashFlow
-      if (!stmt) return
+      if (!stmt) {
+        // The manual FY2024–FY2025 package has no statement for this tab/branch
+        // (e.g. Verdana 2025, or any 2024 cash flow) — export the derived
+        // ledger-engine statement instead, which is what the screen shows.
+        void (async () => {
+          try {
+            const res = await fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
+            if (!res.ok) return
+            const v2 = await res.json()
+            const rows: string[][] = []
+            const withMonths = activeTab !== 'balance-sheet' && viewMode === 'monthly'
+            const mcols = withMonths ? FULL_MONTHS : []
+            const blank = () => (withMonths ? Array(12).fill('') : [])
+            const num = (v: number) => (Number(v) || 0).toFixed(2)
+            const mrow = (m?: number[]) => (withMonths ? (m && m.length === 12 ? m.map(num) : Array(12).fill('')) : [])
+            const branchLbl = branch === 'ALL' ? 'All Branches' : BRANCHES.find(b => b.value === branch)?.label || branch
+            if (activeTab === 'income-statement' && v2.incomeStatement) {
+              const t = v2.incomeStatement
+              rows.push([`Income Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
+              for (const sec of t.sections || []) {
+                rows.push([sec.label, ...blank(), ''])
+                for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, ...mrow(r.monthly), num(r.closing)])
+                rows.push([`Total ${sec.label}`, ...blank(), num(sec.total)])
+              }
+              const summary: [string, number][] = [
+                ['Net Sales', t.netSales], ['Total Cost of Sales', t.totalCOGS], ['Gross Profit', t.grossProfit],
+                ['Total Operating Expenses', t.totalOpex], ['EBITDA', t.ebitda], ['Depreciation', t.depreciation],
+                ['Interest', t.interest], ['Net Income', t.netIncome],
+              ]
+              for (const [l, v] of summary) rows.push([l, ...blank(), num(v)])
+            } else if (activeTab === 'balance-sheet' && v2.balanceSheet) {
+              const t = v2.balanceSheet
+              rows.push([`Balance Sheet — ${year} — ${branchLbl}`, `Amount (${dispCcy})`])
+              for (const sec of t.sections || []) {
+                rows.push([sec.label, ''])
+                for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, num(r.closing)])
+                rows.push([`Total ${sec.label}`, num(sec.total)])
+              }
+              rows.push(['Net Income (current year)', num(t.netIncome)])
+              rows.push(['TOTAL ASSETS', num(t.totalAssets)])
+              rows.push(['TOTAL LIABILITIES', num(t.totalLiabilities)])
+              rows.push(['TOTAL EQUITY', num(t.totalEquity)])
+            } else if (activeTab === 'cash-flow' && v2.cashFlow) {
+              const cf = v2.cashFlow
+              rows.push([`Cash Flow Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
+              rows.push(['Net Income', ...mrow(cf.monthly?.netIncome), num(cf.netIncome)])
+              rows.push(['Depreciation', ...mrow(cf.monthly?.depreciation), num(cf.depreciation)])
+              rows.push(['Working capital changes', ...blank(), ''])
+              for (const r of cf.workingCapital || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Operating Activities', ...blank(), num(cf.netOperating)])
+              rows.push(['Investing activities', ...blank(), ''])
+              for (const r of cf.investing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Investing Activities', ...blank(), num(cf.netInvesting)])
+              rows.push(['Financing activities', ...blank(), ''])
+              for (const r of cf.financing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Financing Activities', ...blank(), num(cf.netFinancing)])
+              rows.push(['Net Change in Cash', ...mrow(cf.monthly?.cashDelta), num(cf.netChange)])
+              rows.push(['Beginning Cash', ...blank(), num(cf.beginningCash)])
+              rows.push(['Ending Cash', ...blank(), num(cf.endingCash)])
+            }
+            if (rows.length > 1) exportRows(rows, fmt)
+          } catch (err) {
+            console.error('Engine export fallback failed:', err)
+          }
+        })()
+        return
+      }
       const withMonths = activeTab !== 'balance-sheet' && viewMode === 'monthly'
       const rows: string[][] = []
       const title = 'title' in stmt ? stmt.title : ''
