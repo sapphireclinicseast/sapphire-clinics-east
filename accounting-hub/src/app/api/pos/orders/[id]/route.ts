@@ -99,6 +99,16 @@ export async function PUT(
       const pays: { method: string; amount: number; walletId?: string; reference?: string; paymentModeId?: string }[] = body.payments || []
       const total = pays.reduce((s, p) => s + Number(p.amount || 0), 0)
       if (!(total > 0)) return NextResponse.json({ error: 'Enter the payment collected' }, { status: 400 })
+      // Collected total must equal the amount due — a mismatch is accepted by
+      // the POS but the GL refuses the lopsided entry, so the sale silently
+      // never posts. Refuse it at collection time instead.
+      const amountDue = Number(existing.netAmount)
+      if (Math.abs(total - amountDue) > 0.05) {
+        return NextResponse.json(
+          { error: `Payments total ₱${total.toFixed(2)} but the amount due is ₱${amountDue.toFixed(2)}. The collected amount must equal the net amount — check the discount and downpayment math.` },
+          { status: 400 }
+        )
+      }
       const payDate = body.paymentDate ? new Date(`${body.paymentDate}T08:00:00+08:00`) : new Date()
       await prisma.$transaction(async (tx) => {
         await tx.orderPayment.createMany({
@@ -422,6 +432,23 @@ export async function PUT(
       )
       data.subtotal = subtotal
       data.netAmount = subtotal - Number(data.discountAmount ?? existing.discountAmount)
+    }
+
+    // Re-completing must leave payments equal to the net amount — otherwise
+    // the POS accepts the order but the GL refuses the lopsided entry and the
+    // sale silently never posts. (Same guard as order creation.)
+    if (payments?.length) {
+      const paidTotal = payments.reduce(
+        (s: number, p: { amount: number }) => s + (Number(p.amount) || 0),
+        0
+      )
+      const expectedNet = Number(data.netAmount ?? existing.netAmount)
+      if (Math.abs(paidTotal - expectedNet) > 0.05) {
+        return NextResponse.json(
+          { error: `Payments total ₱${paidTotal.toFixed(2)} but the net amount is ₱${expectedNet.toFixed(2)}. The collected amount must equal the net amount — fix the discount/downpayment or the payment lines before completing.` },
+          { status: 400 }
+        )
+      }
     }
 
     // Use a transaction to replace items/payments atomically

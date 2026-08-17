@@ -22,6 +22,15 @@ interface PatientItem {
   patientType: string
   diagnosis: string | null
   assignmentStatus: 'ACTIVE' | 'DEACTIVATED' | 'ENDORSED' | 'DISCHARGED'
+  services?: string[]
+}
+
+// Short chip label for a department/service.
+function svcAbbr(dept: string): string {
+  const m: Record<string, string> = {
+    PSYCHOLOGY: 'Psych', ADMINISTRATION: 'Admin', ORTHOSIS: 'Ortho',
+  }
+  return m[dept] ?? dept
 }
 
 export default function PatientsPage() {
@@ -172,6 +181,16 @@ export default function PatientsPage() {
                         {patient.lastName}, {patient.firstName}
                       </p>
                       {statusBadge(patient.assignmentStatus)}
+                      {/* Services availed — flags interdepartmental patients */}
+                      {(patient.services ?? []).map((d) => (
+                        <span
+                          key={d}
+                          title={`Also seen by ${d}`}
+                          className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--teal)]"
+                        >
+                          {svcAbbr(d)}
+                        </span>
+                      ))}
                     </div>
                     <p className="text-[12px] text-[var(--mid-gray)]">
                       {patient.patientType} {patient.diagnosis ? `· ${patient.diagnosis}` : ''}

@@ -7,7 +7,11 @@
 //   - Both get Peers-Love, Seminars, Templates, Manuals, Directory,
 //     Wellness Check and Payroll — but NOT the clinical pages.
 
-export type AccountType = 'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'ADMIN'
+// INTERN gets the same sections as a CLINICIAN (falls through to the default
+// preset in allowedSections). What sets interns apart is enforced elsewhere:
+// they cannot send session notes / IE reports to patients (only their
+// supervisor can), and their notes route to the session's supervisor.
+export type AccountType = 'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'ADMIN' | 'INTERN'
 
 // Every section href the app knows about (admins see this full set).
 export const ALL_SECTIONS = [

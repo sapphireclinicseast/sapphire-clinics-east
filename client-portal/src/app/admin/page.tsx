@@ -652,6 +652,7 @@ function UsersView({ onUnauthorized }: { onUnauthorized: () => void }) {
                       <th className="px-3 py-2 font-semibold text-right">Sessions</th>
                       <th className="px-3 py-2 font-semibold">Last session</th>
                       <th className="px-4 py-2 font-semibold">Registered</th>
+                      <th className="px-4 py-2 font-semibold text-right">Preview</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -663,6 +664,17 @@ function UsersView({ onUnauthorized }: { onUnauthorized: () => void }) {
                         <td className="px-3 py-2 text-right whitespace-nowrap">{u.sessionCount}</td>
                         <td className="px-3 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{u.lastSession || '—'}</td>
                         <td className="px-4 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{u.createdAt}</td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                          <a
+                            href={`/impersonate/${u.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Open this patient's portal exactly as they see it (new tab)"
+                            className="inline-block px-2.5 py-1 rounded-lg text-[12px] font-semibold text-[color:var(--deep-teal)] bg-[color:var(--pale-teal)] hover:opacity-80"
+                          >
+                            Open portal ↗
+                          </a>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

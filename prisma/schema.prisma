@@ -227,6 +227,8 @@ model Patient {
   pwdIdUrl           String?    // optional PWD ID photo URL
   firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
   pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
+  username           String?    @unique  // portal login handle (siblings sharing an email get distinct usernames)
+  profilePhoto       String?             // portal avatar, stored as a base64 data URL
   unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
   smsUnsubscribed    Boolean    @default(false)  // opt-out from SMS marketing campaigns (does NOT block schedule reminders, birthdays, or clinical follow-ups)
   // Aura the Alpaca plush toy perk — one piece, given once, to VIP Digital
@@ -295,6 +297,11 @@ model EmailCampaign {
   scheduledAt    DateTime?
   sentAt         DateTime?
   gmailAccountId String?
+  // Comma-separated address(es) that get ONE copy of the campaign when it
+  // starts sending — not a per-recipient Cc header (a 2,700-recipient send
+  // would otherwise put 2,700 mails in the operator's inbox and expose the
+  // address to every patient).
+  ccEmails       String?
   userId         String
   createdBy      User      @relation(fields: [userId], references: [id])
   createdAt      DateTime  @default(now())
@@ -378,8 +385,14 @@ model Staff {
   // overwritten by the HR sync. Absent/empty = use employmentType for every branch.
   employmentByBranch Json?
   dob             DateTime?       // Birthday — synced from HR Platform
+  dateHired       DateTime?       // Date Hired ("Start Month" for interns) — synced from HR
+                                   // Platform Staff Profile; used to exclude pre-hire days from
+                                   // Therapist Utilization capacity
+  contractExpiry  DateTime?       // Contract Expiration ("End Month" for interns) — synced from
+                                   // HR Platform; gates the Clinic Schedule intern picker to only
+                                   // currently-active interns
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
-  employmentType  String?         // "employee" | "consultant"
+  employmentType  String?         // "employee" | "consultant" | "intern"
   tin             String?         // TIN from HR Platform
   sss             String?         // SSS No. from HR Platform
   pagibig         String?         // Pag-IBIG No. from HR Platform
@@ -393,6 +406,7 @@ model Staff {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   schedules       Schedule[]
+  internSchedules Schedule[]      @relation("ScheduleIntern") // sessions this person did as an intern
   surveyAssignments SurveyAssignment[]
   surveyResponses   SurveyResponse[]
   assessmentTargets AssessmentTarget[]
@@ -472,7 +486,7 @@ model AssessmentTarget {
 
 model Schedule {
   id          String         @id @default(cuid())
-  staffId     String
+  staffId     String         // supervising therapist — whoever's card this was booked under
   staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
   patientId   String?
   patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
@@ -485,6 +499,11 @@ model Schedule {
   notes       String?
   isTeletherapy Boolean @default(false)
   meetLink      String?
+  // Which intern actually did the session, when sessionType is "IE Intern" /
+  // "Session Intern" — the intern writes the note; staffId above stays the
+  // supervisor. Null for every non-intern session.
+  internStaffId String?
+  internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
   createdAt     DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   surveyAssignments SurveyAssignment[]

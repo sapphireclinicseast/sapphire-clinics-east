@@ -50,6 +50,14 @@ const BRANCH_DISPLAY: Record<string, string> = {
   SBGH: 'Greenhills Branch',
 }
 
+// Short Aura-era branch codes. SBEA/SBGH are the legacy Sandbox codes still
+// stored in the DB and used as filter values — these are display-only, so the
+// UI never surfaces the retired Sandbox naming.
+const BRANCH_CODE: Record<string, string> = {
+  SBEA: 'AHEA',
+  SBGH: 'AHGH',
+}
+
 function BranchChip({ branch }: { branch: string }) {
   const isSBEA = branch === 'SBEA'
   return (
@@ -334,7 +342,7 @@ export default function StaffClient({ role }: { role: string }) {
 
   const statCards = autoBranch
     ? [
-        { label: `${autoBranch} Staff`, value: staff.length, icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
+        { label: `${BRANCH_CODE[autoBranch] ?? autoBranch} Staff`, value: staff.length, icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
       ]
     : [
         { label: 'Total Staff', value: staff.length,  icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
@@ -530,11 +538,11 @@ export default function StaffClient({ role }: { role: string }) {
                         onChange={e => setFilters(f => ({ ...f, branch: e.target.value }))}
                         style={filterInputStyle}>
                         <option value="">All</option>
-                        <option value="SBEA">SBEA</option>
-                        <option value="SBGH">SBGH</option>
+                        <option value="SBEA">AHEA</option>
+                        <option value="SBGH">AHGH</option>
                       </select>
                     ) : (
-                      <span style={{ fontSize: '11px', color: 'var(--mid-gray)', paddingLeft: '6px' }}>{autoBranch}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--mid-gray)', paddingLeft: '6px' }}>{BRANCH_CODE[autoBranch] ?? autoBranch}</span>
                     )}
                   </th>
                   {/* Sex */}

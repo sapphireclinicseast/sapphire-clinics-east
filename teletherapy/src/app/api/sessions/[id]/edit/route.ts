@@ -29,7 +29,9 @@ export async function PATCH(
 
   if (session.user.role !== 'ADMIN') {
     const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
-    if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
+    const isSupervisor = allowedStaffIds.includes(schedule.staffId) || schedule.staffId === session.user.staffId
+    const isAssignedIntern = !!schedule.internStaffId && schedule.internStaffId === session.user.staffId
+    if (!isSupervisor && !isAssignedIntern) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     // Locked notes are permanently read-only. lockedAt is stamped when
@@ -67,6 +69,18 @@ export async function PATCH(
     updateData.emailSentAt = null
     updateData.emailSentTo = null
   }
+
+  // Record this edit in the note's history — a supervisor editing an intern's
+  // note shows alongside the intern's original authoring.
+  updateData.editHistory = [
+    ...(Array.isArray(schedule.sessionNote.editHistory) ? schedule.sessionNote.editHistory : []),
+    {
+      name: session.user.name ?? session.user.email ?? 'Staff',
+      accountType: session.user.accountType ?? 'CLINICIAN',
+      action: 'edited',
+      at: new Date().toISOString(),
+    },
+  ]
 
   const note = await prisma.sessionNote.update({
     where: { id: schedule.sessionNote.id },

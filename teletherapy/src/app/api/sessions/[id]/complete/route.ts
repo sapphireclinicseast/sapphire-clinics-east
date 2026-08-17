@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+
+// Append-only note audit trail. Each entry records who touched the note and
+// when (interns author; supervisors edit), so both are visible.
+function appendHistory(
+  existing: unknown,
+  entry: { name: string; accountType: string; action: 'created' | 'edited'; at: string },
+): Prisma.InputJsonValue {
+  const arr = Array.isArray(existing) ? existing : []
+  return [...arr, entry] as unknown as Prisma.InputJsonValue
+}
 
 export async function POST(
   req: NextRequest,
@@ -25,7 +36,11 @@ export async function POST(
 
   if (session.user.role !== 'ADMIN') {
     const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
-    if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
+    const isSupervisor = allowedStaffIds.includes(schedule.staffId) || schedule.staffId === session.user.staffId
+    // The assigned intern also writes the note for their own session — the
+    // supervisor sees it afterward on their own schedule, no separate access needed.
+    const isAssignedIntern = !!schedule.internStaffId && schedule.internStaffId === session.user.staffId
+    if (!isSupervisor && !isAssignedIntern) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     // If we'd be mutating an existing note, refuse if it's locked.
@@ -55,6 +70,12 @@ export async function POST(
         notes: body.notes || schedule.sessionNote.notes || null,
         attachments: mergedAttachments.length > 0 ? (mergedAttachments as any) : undefined,
         therapistAccountId: session.user.id,
+        editHistory: appendHistory(schedule.sessionNote.editHistory, {
+          name: session.user.name ?? session.user.email ?? 'Staff',
+          accountType: session.user.accountType ?? 'CLINICIAN',
+          action: Array.isArray(schedule.sessionNote.editHistory) && schedule.sessionNote.editHistory.length > 0 ? 'edited' : 'created',
+          at: new Date().toISOString(),
+        }),
         ...(body.isInitialEvaluation === true ? { isInitialEvaluation: true } : {}),
       },
     })
@@ -71,6 +92,12 @@ export async function POST(
       notes: body.notes || null,
       attachments: body.attachments || null,
       isInitialEvaluation: body.isInitialEvaluation === true,
+      editHistory: appendHistory(null, {
+        name: session.user.name ?? session.user.email ?? 'Staff',
+        accountType: session.user.accountType ?? 'CLINICIAN',
+        action: 'created',
+        at: new Date().toISOString(),
+      }),
     },
   })
 

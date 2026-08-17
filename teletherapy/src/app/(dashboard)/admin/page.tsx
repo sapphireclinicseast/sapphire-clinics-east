@@ -18,15 +18,18 @@ import {
   Trash2,
   Search,
   X,
+  RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// Public-facing branch codes: SBEA/SANDBOX_EAST = Aura Health East (AHEA),
+// SBGH/SANDBOX_GREENHILLS = Aura Health Greenhills (AHGH).
 const BRANCH_LABEL: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
+  SANDBOX_EAST: 'AHEA',
+  SANDBOX_GREENHILLS: 'AHGH',
+  VERDANA_STORE: 'Verdana',
+  SBEA: 'AHEA',
+  SBGH: 'AHGH',
 }
 
 interface StaffOption {
@@ -36,6 +39,12 @@ interface StaffOption {
   department: string
   branch: string
   email: string | null
+  employmentType?: string | null
+  jobTitle?: string | null
+}
+
+function isInternStaff(s: Pick<StaffOption, 'employmentType' | 'jobTitle'>): boolean {
+  return s.employmentType === 'intern' || /intern/i.test(s.jobTitle ?? '')
 }
 
 interface TherapistAccountItem {
@@ -47,6 +56,7 @@ interface TherapistAccountItem {
   lastLoginAt: string | null
   lastPlainPassword: string | null
   createdAt: string
+  staffId: string
   staff: {
     firstName: string
     lastName: string
@@ -63,12 +73,13 @@ export default function AdminPage() {
   const [accounts, setAccounts] = useState<TherapistAccountItem[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   const [selectedStaffId, setSelectedStaffId] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [accountType, setAccountType] = useState<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'ADMIN'>('CLINICIAN')
+  const [accountType, setAccountType] = useState<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'ADMIN' | 'INTERN'>('CLINICIAN')
   const [toast, setToast] = useState<string | null>(null)
   const [changingPasswordId, setChangingPasswordId] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState('')
@@ -112,6 +123,30 @@ export default function AdminPage() {
     setLoading(false)
   }
 
+  async function handleSyncFromHr() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/staff/sync-hr', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setToast(data.error || 'Sync failed')
+      } else {
+        const { created = 0, updated = 0 } = data
+        setToast(
+          created || updated
+            ? `Synced from HR — ${created} added, ${updated} updated`
+            : 'Already up to date with HR',
+        )
+        await fetchData() // refresh the staff list so new interns appear below
+      }
+    } catch {
+      setToast('Could not reach HR — try again')
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setToast(null), 4000)
+    }
+  }
+
   async function saveCcEmail() {
     if (!ccBranch || !ccEmail) {
       setToast('Branch and email required')
@@ -153,6 +188,8 @@ export default function AdminPage() {
     setSelectedStaffId(staffId)
     const staff = staffList.find((s) => s.id === staffId)
     if (staff?.email) setEmail(staff.email)
+    // Interns default to the Intern account type; admin can still change it.
+    if (staff && isInternStaff(staff)) setAccountType('INTERN')
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -239,8 +276,25 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 4000)
   }
 
+  // A staff member is "already accounted" if their own Staff row has an
+  // account (by staffId) OR if another Staff row with the SAME name AND
+  // department already has one. The second check hides duplicate Staff rows:
+  // interbranch consultants often end up with a stale legacy row that holds
+  // the account plus a fresh HR-synced row (different hrPlatformId) that has
+  // none — without this, the account-less duplicate kept showing here even
+  // though the person already has a login. Keyed on name + department (not
+  // name alone) so two genuinely different people who merely share a name
+  // aren't wrongly hidden.
+  const nameDeptKey = (firstName: string, lastName: string, department: string) =>
+    `${firstName}|${lastName}|${department}`.toLowerCase().trim()
+  const accountedStaffIds = new Set(accounts.map((a) => a.staffId))
+  const accountedNameDept = new Set(
+    accounts.map((a) => nameDeptKey(a.staff.firstName, a.staff.lastName, a.staff.department)),
+  )
   const availableStaff = staffList.filter(
-    (s) => !accounts.some((a) => a.staff.firstName === s.firstName && a.staff.lastName === s.lastName)
+    (s) =>
+      !accountedStaffIds.has(s.id) &&
+      !accountedNameDept.has(nameDeptKey(s.firstName, s.lastName, s.department)),
   )
 
   if (loading) {
@@ -270,10 +324,22 @@ export default function AdminPage() {
 
       {/* Create Account Form */}
       <div className="card-static mb-8 animate-fade-up stagger-1">
-        <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-          <UserPlus size={18} className="text-[var(--teal)]" />
-          Create Account
-        </h2>
+        <div className="flex items-center justify-between gap-3 mb-5 pb-4 border-b border-[var(--light-gray)]">
+          <h2 className="font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+            <UserPlus size={18} className="text-[var(--teal)]" />
+            Create Account
+          </h2>
+          <button
+            type="button"
+            onClick={handleSyncFromHr}
+            disabled={syncing}
+            title="Pull the latest staff & interns from the HR Platform so new people appear in the list below"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-semibold text-[var(--teal)] border border-[var(--teal)]/30 hover:bg-[var(--teal)]/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : 'Sync from HR'}
+          </button>
+        </div>
 
         <form onSubmit={handleCreate} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -284,7 +350,7 @@ export default function AdminPage() {
               <select value={selectedStaffId} onChange={(e) => onStaffSelect(e.target.value)} required className="input bg-white">
                 <option value="">Select staff member...</option>
                 {availableStaff.map((s) => (
-                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {s.branch})</option>
+                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {BRANCH_LABEL[s.branch] ?? s.branch}){isInternStaff(s) ? ' · INTERN' : ''}</option>
                 ))}
               </select>
             </div>
@@ -314,12 +380,14 @@ export default function AdminPage() {
               <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Account Type</label>
               <select value={accountType} onChange={(e) => setAccountType(e.target.value as typeof accountType)} className="input bg-white">
                 <option value="CLINICIAN">Clinician — full clinical access</option>
+                <option value="INTERN">Intern — clinical access, cannot send notes/reports</option>
                 <option value="FRONT_DESK">Front Desk (Administration) — no patient pages, incl. Patients Love</option>
                 <option value="ADMIN_STAFF">Administration staff — no patient pages, no Patients Love</option>
                 <option value="ADMIN">Admin — full access + Admin Panel</option>
               </select>
               <p className="text-[11px] text-[var(--mid-gray)] mt-1">
                 {accountType === 'CLINICIAN' && 'Sees all clinical pages plus Peers Love.'}
+                {accountType === 'INTERN' && 'Same clinical pages as a clinician (writes session notes, uploads IE reports). Cannot send notes or IE reports to patients — only their supervisor sends, and the supervisor’s license appears on what is sent.'}
                 {accountType === 'FRONT_DESK' && 'For front-desk staff. No Dashboard / Clinic Schedule / Patients / Settings. Sees: Patients Love (HR12 feedback), Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
                 {accountType === 'ADMIN_STAFF' && 'For other Administration roles. No Dashboard / Clinic Schedule / Patients / Settings, and no Patients Love. Sees: Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
                 {accountType === 'ADMIN' && 'Full access including the Admin Panel.'}
@@ -353,7 +421,7 @@ export default function AdminPage() {
           const q = accountSearch.trim().toLowerCase()
           const filtered = q
             ? accounts.filter((a) => {
-                const hay = `${a.staff.firstName} ${a.staff.lastName} ${a.email} ${a.staff.department} ${a.staff.branch} ${a.role}`.toLowerCase()
+                const hay = `${a.staff.firstName} ${a.staff.lastName} ${a.email} ${a.staff.department} ${a.staff.branch} ${BRANCH_LABEL[a.staff.branch] ?? ''} ${a.role}`.toLowerCase()
                 return hay.includes(q)
               })
             : accounts

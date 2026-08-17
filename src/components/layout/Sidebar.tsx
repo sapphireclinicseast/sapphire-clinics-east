@@ -117,14 +117,15 @@ const FRONT_DESK_NAV = [
   },
 ]
 
-// Investor nav — read-only, exactly the two pages the account is scoped to
-// (enforced server-side in (dashboard)/layout.tsx; this list is cosmetic).
+// Investor nav — read-only, exactly the pages the account is scoped to
+// (enforced server-side in (dashboard)/layout.tsx; this list is cosmetic —
+// adding an entry here does NOT grant access, INVESTOR_ALLOWED_PREFIXES does).
 const INVESTOR_NAV = [
   {
     label: 'Investor View',
     items: [
-      { href: '/scheduling-dashboard', icon: Activity, label: 'Clinic Utilization' },
       { href: '/patients/dashboard', icon: BarChart2, label: 'Patient Dashboard' },
+      { href: '/customer-satisfaction', icon: ClipboardCheck, label: 'Customer Satisfaction Survey' },
     ],
   },
 ]

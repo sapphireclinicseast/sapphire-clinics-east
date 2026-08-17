@@ -58,6 +58,7 @@ model Staff {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   schedules       Schedule[]
+  internSchedules Schedule[]      @relation("ScheduleIntern") // sessions this person did as an intern
   therapistAccount TherapistAccount?
   surveyResponses  SurveyResponse[]
 }
@@ -211,7 +212,7 @@ model DirectoryWebsite {
 
 model Schedule {
   id          String         @id @default(cuid())
-  staffId     String
+  staffId     String         // supervising therapist — whoever's card this was booked under
   staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
   patientId   String?
   patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
@@ -223,11 +224,18 @@ model Schedule {
   status      ScheduleStatus @default(PENDING)
   notes       String?
   meetLink    String?
+  // Which intern actually did the session, when sessionType is "IE Intern" /
+  // "Session Intern" (set from the Ops Hub Clinic Schedule) — the intern
+  // writes the note; staffId above stays the supervisor. Column already
+  // exists in the shared DB (Ops Hub migration 20260815_schedule_intern_staff).
+  internStaffId String?
+  internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   sessionNote SessionNote?
 
   @@index([staffId])
+  @@index([internStaffId])
   @@index([patientId])
   @@index([date])
   @@index([status])
@@ -331,6 +339,10 @@ model SessionNote {
   // by who delivered it at the time it was delivered, and a later
   // re-endorsement should not unlock historical clinical content.
   lockedAt            DateTime?
+  // Append-only audit trail: who created/edited the note and when. Each entry
+  // is { name, accountType, action: 'created'|'edited', at }. Interns author;
+  // supervisors edit — this makes both visible.
+  editHistory         Json?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 }
@@ -382,4 +394,30 @@ model ClinicianSettings {
   signatureDataUrl    String?          @db.Text // base64 signature image
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
+}
+
+// ── Support Tickets ──────────────────────────────────────────────
+// Staff-raised concerns about the portal. Numbered per branch per day
+// (AHEA-/AHGH-/VERD-YYYYMMDD-NN). The main admin resolves; the raiser
+// sees the resolution.
+model Ticket {
+  id                String    @id @default(cuid())
+  ticketNumber      String    @unique
+  branch            String
+  subject           String
+  description       String
+  attachmentPath    String?
+  attachmentName    String?
+  status            String    @default("OPEN") // OPEN / RESOLVED
+  raisedByAccountId String
+  raisedByName      String
+  raisedByEmail     String?
+  resolution        String?
+  resolvedByName    String?
+  resolvedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([raisedByAccountId])
+  @@index([status])
 }

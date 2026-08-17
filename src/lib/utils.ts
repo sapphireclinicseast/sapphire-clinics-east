@@ -5,6 +5,38 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// ── Local calendar dates (YYYY-MM-DD) ────────────────────────────────────────
+// NEVER use `new Date().toISOString().split('T')[0]` to get "today" — that
+// converts to UTC first. The clinic runs in Manila (UTC+8), so between
+// midnight and 8:00 AM local it yields YESTERDAY's date. That produced a
+// Clinic Schedule that showed the previous day every morning, and a
+// "Tomorrow" quick-filter that pointed at today.
+//
+// These read the LOCAL calendar fields instead, so they always match the
+// date on the user's own wall clock.
+
+export function toLocalDateStr(d: Date): string {
+  const y  = d.getFullYear()
+  const m  = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
+
+export function localTodayStr(): string {
+  return toLocalDateStr(new Date())
+}
+
+/** Local calendar date `days` from today (negative = past). */
+export function localDateStrOffset(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return toLocalDateStr(d)
+}
+
+export function localTomorrowStr(): string {
+  return localDateStrOffset(1)
+}
+
 export function formatDate(date: Date | string): string {
   return new Date(date).toLocaleDateString('en-PH', {
     year: 'numeric',

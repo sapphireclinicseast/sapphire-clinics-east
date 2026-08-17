@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { localTodayStr } from '@/lib/utils'
 import {
   BarChart2, CalendarDays, Users, Settings, Star,
   Filter, Lock, Activity, ChevronDown, ChevronUp, User,
@@ -11,7 +12,10 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN', 'INVESTOR']
+// INVESTOR is deliberately excluded — investor accounts are scoped to the
+// Patient Dashboard only (hard-gated in (dashboard)/layout.tsx). This client
+// check is the cosmetic backstop; the API routes exclude INVESTOR too.
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
 
 const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS'] as const
 const DEPT_LABELS: Record<string, string> = {
@@ -38,7 +42,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayStr() { return new Date().toISOString().split('T')[0] }
+const todayStr = localTodayStr
 function monthAgoStr() {
   const d = new Date(); d.setMonth(d.getMonth() - 1)
   return d.toISOString().split('T')[0]
@@ -83,7 +87,7 @@ export default function SchedulingDashboardClient({ role }: { role: string }) {
         <Lock size={48} className="text-gray-300 mb-4" />
         <h2 className="text-xl font-bold text-gray-700 mb-2">Access Restricted</h2>
         <p className="text-sm text-gray-500 max-w-sm">
-          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, Marketing Admin, and Investor users.
+          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, and Marketing Admin users.
         </p>
       </div>
     )
@@ -140,7 +144,11 @@ function DashboardContent({ role }: { role: string }) {
   const [therapistTab, setTherapistTab] = useState('all')
 
   // ── Fetch data ──
-  const fetchData = useCallback(async () => {
+  // Retries once on failure: right after a post-login redirect chain (e.g.
+  // investor's forced /dashboard → /scheduling-dashboard hop) the session
+  // cookie can occasionally lag the very first client-side fetch, which
+  // otherwise left this page silently blank until a manual refresh.
+  const fetchData = useCallback(async (isRetry = false) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -150,12 +158,24 @@ function DashboardContent({ role }: { role: string }) {
         departments: allDepts ? 'all' : selectedDepts.join(','),
       })
       const res = await fetch(`/api/scheduling-dashboard?${params}`)
-      if (!res.ok) throw new Error('Failed to fetch')
+      if (!res.ok) {
+        if (!isRetry && (res.status === 401 || res.status === 403)) {
+          await new Promise(r => setTimeout(r, 700))
+          await fetchData(true)
+          return
+        }
+        throw new Error('Failed to fetch')
+      }
       const data = await res.json()
       setSchedules(data.schedules)
       setUniqueStaff(data.uniqueStaffCount)
     } catch (err) {
       console.error('Fetch error:', err)
+      if (!isRetry) {
+        await new Promise(r => setTimeout(r, 700))
+        await fetchData(true)
+        return
+      }
     } finally {
       setLoading(false)
     }
@@ -390,7 +410,10 @@ function DashboardContent({ role }: { role: string }) {
               ))}
             </div>
           </div>
-          <button onClick={fetchData}
+          {/* Wrap, don't pass fetchData directly: onClick would hand it the
+              MouseEvent as its `isRetry` arg (truthy), silently disabling the
+              one-shot retry on 401/403. */}
+          <button onClick={() => fetchData()}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all"
             style={{ background: 'var(--teal)' }}>
             <Filter size={14} /> Apply
@@ -706,7 +729,8 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [viewMode, setViewMode]   = useState<'therapist' | 'department' | 'branch'>('therapist')
 
-  const fetchUtil = useCallback(async () => {
+  // Retries once on 401/403/network failure — see fetchData above for why.
+  const fetchUtil = useCallback(async (isRetry = false) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ startDate, endDate, branch, department })
@@ -715,6 +739,17 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
         const json = await res.json()
         setData(json.therapists ?? [])
         setSummary(json.summary ?? null)
+      } else if (!isRetry && (res.status === 401 || res.status === 403)) {
+        await new Promise(r => setTimeout(r, 700))
+        await fetchUtil(true)
+        return
+      }
+    } catch (err) {
+      console.error('Fetch error:', err)
+      if (!isRetry) {
+        await new Promise(r => setTimeout(r, 700))
+        await fetchUtil(true)
+        return
       }
     } finally { setLoading(false) }
   }, [startDate, endDate, branch, department])

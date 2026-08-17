@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
       createdAt: true,
       gmailAccountId: true,
       nextTrancheAt: true,
+      ccEmails: true,   // lets the compose form pre-fill the last-used copy address
     },
   })
 

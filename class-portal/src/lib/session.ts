@@ -1089,6 +1089,10 @@ export async function recordPayMongoPayment(args: {
  * caller can optionally one-click Confirm it right after; returns null
  * on any failure (network, auth, validation).
  */
+export type RecordPaymentOutcome =
+  | { ok: true; classPortalPaymentId: string }
+  | { ok: false; reason: 'auth-expired' | 'validation' | 'server' | 'network'; message: string; status?: number }
+
 export async function recordPaymentOnBehalfOf(args: {
   studentId: string
   studentEmail: string
@@ -1107,10 +1111,10 @@ export async function recordPaymentOnBehalfOf(args: {
   reference?: string
   /** Optional extra context appended to the auto-generated notes. */
   extraNotes?: string
-}): Promise<string | null> {
-  if (typeof window === 'undefined') return null
+}): Promise<RecordPaymentOutcome> {
+  if (typeof window === 'undefined') return { ok: false, reason: 'network', message: 'Not in a browser context.' }
   const tok = getToken()
-  if (!tok) return null
+  if (!tok) return { ok: false, reason: 'auth-expired', message: 'You are signed out. Sign in again to record payments.' }
   try {
     // Per-method prefix on the dedupe key keeps these distinct from
     // student-originated /pay rows in any future audit.
@@ -1166,12 +1170,39 @@ export async function recordPaymentOnBehalfOf(args: {
     })
     if (!res.ok) {
       console.warn('[recordPaymentOnBehalfOf] failed:', res.status)
-      return null
+      // Pull the server's own error message so the modal can surface it.
+      let serverMessage = ''
+      try { const j = await res.json() as { error?: string }; serverMessage = j?.error ?? '' } catch { /* ignore */ }
+      if (res.status === 401) {
+        // Token expired / missing / signed under a rotated secret. Drop the
+        // stale token so the next page load bounces to /sign-in cleanly.
+        try { clearToken() } catch { /* ignore */ }
+        return {
+          ok: false,
+          reason: 'auth-expired',
+          status: 401,
+          message: 'Your session has expired. Sign out and sign back in, then retry.',
+        }
+      }
+      if (res.status >= 400 && res.status < 500) {
+        return {
+          ok: false,
+          reason: 'validation',
+          status: res.status,
+          message: serverMessage || 'The payment details were rejected by the server.',
+        }
+      }
+      return {
+        ok: false,
+        reason: 'server',
+        status: res.status,
+        message: serverMessage || `Server error (${res.status}).`,
+      }
     }
-    return classPortalPaymentId
+    return { ok: true, classPortalPaymentId }
   } catch (e) {
     console.warn('[recordPaymentOnBehalfOf] error:', e)
-    return null
+    return { ok: false, reason: 'network', message: 'Network error — check your connection and retry.' }
   }
 }
 
