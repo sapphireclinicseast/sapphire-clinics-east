@@ -93,9 +93,9 @@ export default function SurveySection({ branches }: { branches: string[] }) {
         className="px-5 py-3 text-xs font-semibold uppercase tracking-widest"
         style={{ borderBottom: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}
       >
-        Customer Satisfaction Survey
+        Survey Results
         <span className="ml-2 normal-case font-normal" style={{ color: 'var(--mid-gray)' }}>
-          — therapist leaderboard and patient feedback{data ? ` · ${data.year}` : ''}
+          {data ? `— ${data.year}` : ''}
         </span>
       </div>
 
@@ -179,9 +179,9 @@ export default function SurveySection({ branches }: { branches: string[] }) {
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={15} style={{ color: '#f59e0b' }} />
               <h3 className="font-bold text-sm" style={{ color: 'var(--charcoal)' }}>Social Media Highlights</h3>
-              {data && data.totalHighlights > highlights.length && (
+              {data && data.totalHighlights > 0 && (
                 <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
-                  showing {highlights.length} of {data.totalHighlights}
+                  {data.totalHighlights} {data.totalHighlights === 1 ? 'comment' : 'comments'}
                 </span>
               )}
             </div>
@@ -191,7 +191,7 @@ export default function SurveySection({ branches }: { branches: string[] }) {
                 No written feedback yet.
               </p>
             ) : (
-              <div className="space-y-2.5 overflow-y-auto" style={{ maxHeight: 460 }}>
+              <div className="space-y-2.5 overflow-y-auto" style={{ maxHeight: '70vh' }}>
                 {highlights.map((h, i) => (
                   <div key={i} className="rounded-lg p-4"
                     style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>

@@ -235,9 +235,13 @@ export async function GET(req: NextRequest) {
     return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
   })
 
+  // Every highlight is returned — this was capped at 20, which silently hid
+  // most of them ("showing 20 of 130"). The list is virtualised only by CSS
+  // scroll, so the cost is payload size; ~130 quotes is a few tens of KB.
+  //
   // Drop `name` and `staffId`, emit only the masked `staffName` — spreading
   // `h` here would leak the real name alongside the masked one.
-  const topHighlights = highlights.slice(0, 20).map(h => ({
+  const topHighlights = highlights.map(h => ({
     staffName:   isInvestor ? initials(h.name) : h.name,
     department:  h.department,
     branch:      h.branch,

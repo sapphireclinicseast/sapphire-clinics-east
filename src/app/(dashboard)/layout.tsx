@@ -11,7 +11,11 @@ import { BrandProvider } from '@/contexts/BrandContext'
 // ALLOWED_ROLES allow-lists scattered through src/app/api/**), so this is the
 // ONE hard gate that stops an investor session from reaching anything else by
 // typing or bookmarking a URL directly.
-const INVESTOR_ALLOWED_PREFIXES = ['/patients/dashboard']
+// NOTE: these are PREFIX matches. '/customer-satisfaction' is deliberately a
+// separate top-level route rather than something under '/customer-survey' —
+// the latter would have opened the entire admin Customer Survey module to
+// investor accounts.
+const INVESTOR_ALLOWED_PREFIXES = ['/patients/dashboard', '/customer-satisfaction']
 const INVESTOR_HOME = '/patients/dashboard'
 
 export default async function DashboardLayout({
