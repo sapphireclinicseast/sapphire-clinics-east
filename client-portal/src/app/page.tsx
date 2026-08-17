@@ -504,12 +504,12 @@ function SidebarNav({ section, onChange }: { section: Section; onChange: (s: Sec
       >
         Sections
       </div>
-      <div className="flex lg:flex-col gap-1">
+      <div className="flex flex-wrap lg:flex-col gap-1">
         {SECTIONS.map((s) => (
           <button
             key={s.key}
             onClick={() => onChange(s.key)}
-            className={`flex-1 lg:flex-none text-left px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+            className={`lg:w-full text-left px-3 py-2.5 rounded-lg text-[13px] lg:text-sm font-semibold whitespace-nowrap transition-colors ${
               section === s.key
                 ? 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]'
                 : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)] hover:bg-[color:var(--pale-teal)]/50'
