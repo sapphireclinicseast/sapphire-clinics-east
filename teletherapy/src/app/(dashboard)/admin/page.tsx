@@ -276,11 +276,26 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  // Match by staffId, not name — two different Staff records (e.g. an
-  // intern and an unrelated existing account) can share the same name,
-  // and a name match wrongly hid the intern from this list entirely.
+  // A staff member is "already accounted" if their own Staff row has an
+  // account (by staffId) OR if another Staff row with the SAME name AND
+  // department already has one. The second check hides duplicate Staff rows:
+  // interbranch consultants often end up with a stale legacy row that holds
+  // the account plus a fresh HR-synced row (different hrPlatformId) that has
+  // none — without this, the account-less duplicate kept showing here even
+  // though the person already has a login. Keyed on name + department (not
+  // name alone) so two genuinely different people who merely share a name
+  // aren't wrongly hidden.
+  const nameDeptKey = (firstName: string, lastName: string, department: string) =>
+    `${firstName}|${lastName}|${department}`.toLowerCase().trim()
   const accountedStaffIds = new Set(accounts.map((a) => a.staffId))
-  const availableStaff = staffList.filter((s) => !accountedStaffIds.has(s.id))
+  const accountedNameDept = new Set(
+    accounts.map((a) => nameDeptKey(a.staff.firstName, a.staff.lastName, a.staff.department)),
+  )
+  const availableStaff = staffList.filter(
+    (s) =>
+      !accountedStaffIds.has(s.id) &&
+      !accountedNameDept.has(nameDeptKey(s.firstName, s.lastName, s.department)),
+  )
 
   if (loading) {
     return (
