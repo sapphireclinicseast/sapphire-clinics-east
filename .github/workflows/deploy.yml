@@ -791,7 +791,13 @@ jobs:
       # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
       # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
       - name: Deploy Accounting Hub
-        if: always()   # must run even when ssh-keyscan or marketing-hub build fails
+        # DISABLED 2026-08-17: this repo's origin/main accounting-hub/ is stale
+        # (e.g. missing the INVESTOR Role) and this step was reverting approved
+        # production work in /opt/accounting on EVERY merge to main. The
+        # accounting hub is deployed from its own pipeline / golden copy; do NOT
+        # sync it from here. The "Restart Accounting Hub" step above still keeps
+        # the running (good) accounting container up without touching its source.
+        if: false
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
