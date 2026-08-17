@@ -105,15 +105,8 @@ function MediaCapture({ kind, onAdd }: { kind: 'audio' | 'video'; onAdd: (file: 
       setPhase('recording')
       setElapsed(0)
       timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
-      // Attach the live camera feed once the <video> is mounted.
-      if (kind === 'video') {
-        setTimeout(() => {
-          if (liveVideoRef.current) {
-            liveVideoRef.current.srcObject = stream
-            liveVideoRef.current.play().catch(() => {})
-          }
-        }, 0)
-      }
+      // The live camera feed is bound to the <video> in an effect below, once
+      // the element is actually mounted (phase === 'recording').
     } catch (err) {
       cleanupStream()
       const name = err instanceof Error ? err.name : ''
@@ -158,6 +151,16 @@ function MediaCapture({ kind, onAdd }: { kind: 'audio' | 'video'; onAdd: (file: 
     setPhase('idle')
   }
 
+  // Bind the live camera feed once the <video> is actually mounted (i.e. after
+  // React commits the phase === 'recording' render). Doing this synchronously in
+  // start() raced the render and left the preview black.
+  useEffect(() => {
+    if (phase === 'recording' && kind === 'video' && liveVideoRef.current && streamRef.current) {
+      liveVideoRef.current.srcObject = streamRef.current
+      liveVideoRef.current.play().catch(() => {})
+    }
+  }, [phase, kind])
+
   useEffect(() => () => {
     if (timerRef.current) clearInterval(timerRef.current)
     cleanupStream()
@@ -189,7 +192,7 @@ function MediaCapture({ kind, onAdd }: { kind: 'audio' | 'video'; onAdd: (file: 
       {phase === 'recording' && (
         <div className="flex flex-col items-center gap-3">
           {kind === 'video' && (
-            <video ref={liveVideoRef} muted playsInline
+            <video ref={liveVideoRef} autoPlay muted playsInline
               className="w-full max-h-56 rounded-lg bg-black object-contain" />
           )}
           <div className="flex items-center gap-2 text-[13px] font-semibold text-red-600">
