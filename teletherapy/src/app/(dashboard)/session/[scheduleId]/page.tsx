@@ -114,11 +114,19 @@ function MediaCapture({ kind, onAdd }: { kind: 'audio' | 'video'; onAdd: (file: 
           }
         }, 0)
       }
-    } catch {
+    } catch (err) {
       cleanupStream()
-      setError(kind === 'video'
-        ? 'Camera/microphone unavailable or permission denied.'
-        : 'Microphone unavailable or permission denied.')
+      const name = err instanceof Error ? err.name : ''
+      const device = kind === 'video' ? 'camera & microphone' : 'microphone'
+      setError(
+        name === 'NotAllowedError' || name === 'SecurityError'
+          ? `Access blocked. Allow ${device} for this site in your browser, then try again.`
+          : name === 'NotFoundError' || name === 'OverconstrainedError'
+            ? `No ${kind === 'video' ? 'camera' : 'microphone'} found on this device.`
+            : name === 'NotReadableError'
+              ? `Your ${kind === 'video' ? 'camera' : 'microphone'} is in use by another app. Close it and try again.`
+              : `${kind === 'video' ? 'Camera/microphone' : 'Microphone'} unavailable on this device/browser.`,
+      )
       setPhase('idle')
     }
   }
