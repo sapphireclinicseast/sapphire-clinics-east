@@ -421,13 +421,13 @@ export default function PatientDetailPage() {
           )}>
             {patient.firstName[0]}{patient.lastName[0]}
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className={cn(
-              'text-xl font-bold',
+              'text-xl font-bold break-words',
               readOnly ? 'text-[var(--mid-gray)]' : 'text-white'
             )}>{patientName}</h1>
             <p className={cn(
-              'text-sm mt-0.5',
+              'text-sm mt-0.5 break-words',
               readOnly ? 'text-[var(--mid-gray)]/80' : 'text-white/60'
             )}>
               {patient.patientType} {patient.diagnosis ? `· ${patient.diagnosis}` : ''}
