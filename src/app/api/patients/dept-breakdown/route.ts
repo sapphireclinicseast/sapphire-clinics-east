@@ -90,7 +90,9 @@ export async function GET(req: NextRequest) {
   // to Jun 2024. Without this the breakdown undercounts every department by
   // 3-4x and reads as though most of the roster is untreated.
   let histFrom: string | null = null
-  const match = { byId: 0, byName: 0, unmatched: 0, ambiguous: 0 }
+  // byNameVariant is tracked separately from byName because it is the least
+  // certain match tier — see subsetMatch below for the risk it carries.
+  const match = { byId: 0, byName: 0, byNameVariant: 0, unmatched: 0, ambiguous: 0 }
 
   const acctUrl = process.env.ACCOUNTING_HUB_URL ?? 'https://accounting.sapphireclinicseast.org'
   const acctKey = process.env.EXTERNAL_API_KEY ?? ''
@@ -114,10 +116,38 @@ export async function GET(req: NextRequest) {
         const roster = await prisma.patient.findMany({ select: { id: true, firstName: true, lastName: true } })
         const byId = new Set(roster.map((p) => p.id))
         const byName = new Map<string, string[]>()
+        // Roster rows with no name at all (5 exist) are skipped: their key is
+        // the empty string, which is a subset of every name and would match
+        // indiscriminately in the subset pass below.
+        const tokenIndex: { id: string; tokens: Set<string> }[] = []
         for (const p of roster) {
           const k = nameKey(`${p.lastName} ${p.firstName}`)
+          if (!k) continue
           if (!byName.has(k)) byName.set(k, [])
           byName.get(k)!.push(p.id)
+          tokenIndex.push({ id: p.id, tokens: new Set(k.split(' ')) })
+        }
+
+        // Fallback for name variants: POS free-text often carries an extra
+        // middle name ("JAYSON PHARELL RAGON CUA" vs "CUA, JAYSON PHARELL") or
+        // omits one ("SANTIAGO AIA" vs "SANTIAGO, AIA JOHAN"). Accept only when
+        // exactly ONE roster patient stands in a strict subset/superset relation
+        // — more than one candidate means we cannot tell them apart, so it stays
+        // unmatched rather than guessing.
+        function subsetMatch(posName: string): string | null {
+          const at = new Set(nameKey(posName).split(' ').filter(Boolean))
+          if (at.size < 2) return null   // a lone token ("RAZON") is never enough
+          const hits: string[] = []
+          for (const cand of tokenIndex) {
+            if (cand.tokens.size < 2) continue
+            const posInCand  = [...at].every(t => cand.tokens.has(t)) && cand.tokens.size > at.size
+            const candInPos  = [...cand.tokens].every(t => at.has(t)) && at.size > cand.tokens.size
+            if (posInCand || candInPos) {
+              hits.push(cand.id)
+              if (hits.length > 1) return null
+            }
+          }
+          return hits.length === 1 ? hits[0] : null
         }
 
         // Count each unresolved identity once, not once per department row.
@@ -139,7 +169,11 @@ export async function GET(req: NextRequest) {
               const hits = byName.get(nameKey(r.patientName))
               if (hits && hits.length === 1) { pid = hits[0]; match.byName++ }
               else if (hits && hits.length > 1) match.ambiguous++
-              else match.unmatched++
+              else {
+                const sub = subsetMatch(r.patientName)
+                if (sub) { pid = sub; match.byNameVariant++ }
+                else match.unmatched++
+              }
             } else {
               match.unmatched++
             }
