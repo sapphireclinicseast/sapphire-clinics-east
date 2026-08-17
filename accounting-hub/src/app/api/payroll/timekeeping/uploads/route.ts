@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 function allowedBranches(role: string): string[] | null {
-  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
-  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'AHEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'AHGH_ADMIN') return ['SBGH', 'VERDANA']
   if (role === 'VERDANA_ADMIN') return ['VERDANA']
   return null
 }

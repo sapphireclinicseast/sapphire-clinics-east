@@ -272,12 +272,21 @@ export async function DELETE(req: Request) {
     if (rep?.module === 'PAYROLL_SALARY' || rep?.module === 'PAYROLL_BENEFIT') {
       // Reactivate the locked payroll entries. (A paid payroll RFP must be unpaid first.)
       const ids: string[] = Array.isArray(meta.ids) ? meta.ids : []
-      // Benefit RFPs lock a per-agency field (sss/philhealth/pagibigRfpId); legacy combined ones use benefitRfpId.
+      // Benefit RFPs lock one field per agency covered (sss/philhealth/pagibigRfpId);
+      // legacy ones use the single combined benefitRfpId. A combined RFP locks several,
+      // so release every field it holds — clearing only one would strand the rest as
+      // permanently unselectable.
       const AGENCY_LOCK: Record<string, string> = { SSS: 'sssRfpId', PHILHEALTH: 'philhealthRfpId', PAGIBIG: 'pagibigRfpId' }
-      const field = rep.module === 'PAYROLL_SALARY' ? 'salaryRfpId' : (meta.benefitType && AGENCY_LOCK[meta.benefitType] ? AGENCY_LOCK[meta.benefitType] : 'benefitRfpId')
+      const types: string[] = Array.isArray(meta.benefitTypes) && meta.benefitTypes.length
+        ? meta.benefitTypes
+        : (meta.benefitType ? [meta.benefitType] : [])
+      const fields = rep.module === 'PAYROLL_SALARY'
+        ? ['salaryRfpId']
+        : (types.length ? types.map(t => AGENCY_LOCK[t]).filter(Boolean) : ['benefitRfpId'])
+      const clear = Object.fromEntries(fields.map(f => [f, null]))
       if (ids.length) {
-        if (meta.idKind === 'payrollEntry') await prisma.payrollEntry.updateMany({ where: { id: { in: ids } }, data: { [field]: null } })
-        else await prisma.employeePayslip.updateMany({ where: { id: { in: ids } }, data: { [field]: null } })
+        if (meta.idKind === 'payrollEntry') await prisma.payrollEntry.updateMany({ where: { id: { in: ids } }, data: clear })
+        else await prisma.employeePayslip.updateMany({ where: { id: { in: ids } }, data: clear })
       }
       await prisma.reimbursementReport.delete({ where: { id } })
       return NextResponse.json({ success: true })
