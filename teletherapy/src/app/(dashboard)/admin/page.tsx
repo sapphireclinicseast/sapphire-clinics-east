@@ -22,12 +22,14 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// Public-facing branch codes: SBEA/SANDBOX_EAST = Aura Health East (AHEA),
+// SBGH/SANDBOX_GREENHILLS = Aura Health Greenhills (AHGH).
 const BRANCH_LABEL: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
+  SANDBOX_EAST: 'AHEA',
+  SANDBOX_GREENHILLS: 'AHGH',
+  VERDANA_STORE: 'Verdana',
+  SBEA: 'AHEA',
+  SBGH: 'AHGH',
 }
 
 interface StaffOption {
@@ -333,7 +335,7 @@ export default function AdminPage() {
               <select value={selectedStaffId} onChange={(e) => onStaffSelect(e.target.value)} required className="input bg-white">
                 <option value="">Select staff member...</option>
                 {availableStaff.map((s) => (
-                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {s.branch}){isInternStaff(s) ? ' · INTERN' : ''}</option>
+                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {BRANCH_LABEL[s.branch] ?? s.branch}){isInternStaff(s) ? ' · INTERN' : ''}</option>
                 ))}
               </select>
             </div>
@@ -404,7 +406,7 @@ export default function AdminPage() {
           const q = accountSearch.trim().toLowerCase()
           const filtered = q
             ? accounts.filter((a) => {
-                const hay = `${a.staff.firstName} ${a.staff.lastName} ${a.email} ${a.staff.department} ${a.staff.branch} ${a.role}`.toLowerCase()
+                const hay = `${a.staff.firstName} ${a.staff.lastName} ${a.email} ${a.staff.department} ${a.staff.branch} ${BRANCH_LABEL[a.staff.branch] ?? ''} ${a.role}`.toLowerCase()
                 return hay.includes(q)
               })
             : accounts
