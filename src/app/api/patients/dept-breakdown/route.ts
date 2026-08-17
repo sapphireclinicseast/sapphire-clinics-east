@@ -23,6 +23,17 @@ import { prisma } from '@/lib/prisma'
 const DEPTS = ['PT', 'OT', 'SLP', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'SPED'] as const
 type Dept = (typeof DEPTS)[number]
 
+// Order-insensitive, punctuation-insensitive token set. POS history stores a
+// single free-text patientName whose word order isn't consistent
+// ("ZAPATA ENRICO" vs "Enrico Zapata"), so comparing sorted token sets matches
+// 93% of the name-only history where naive string equality matches almost none.
+function nameKey(s: string): string {
+  return s
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z ]/g, ' ')
+    .split(/\s+/).filter(Boolean).sort().join(' ')
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -74,6 +85,81 @@ export async function GET(req: NextRequest) {
     patientDepts.get(s.patientId)!.add(dept)
   }
 
+  // ── Merge POS order history from the Accounting Hub ──────────────────────
+  // Operations Hub's Schedule table only starts ~Mar 2026; POS orders go back
+  // to Jun 2024. Without this the breakdown undercounts every department by
+  // 3-4x and reads as though most of the roster is untreated.
+  let histFrom: string | null = null
+  const match = { byId: 0, byName: 0, unmatched: 0, ambiguous: 0 }
+
+  const acctUrl = process.env.ACCOUNTING_HUB_URL ?? 'https://accounting.sapphireclinicseast.org'
+  const acctKey = process.env.EXTERNAL_API_KEY ?? ''
+  if (acctKey) {
+    try {
+      const qs = filterBranches ? `?branches=${filterBranches.join(',')}` : ''
+      const res = await fetch(`${acctUrl}/api/internal/dept-patient-history${qs}`, {
+        headers: { Authorization: `Bearer ${acctKey}` },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const hist = await res.json() as {
+          window: { from: string | null; to: string | null }
+          rows: { patientId: string | null; patientName: string | null; dept: string }[]
+        }
+        histFrom = hist.window?.from ?? null
+
+        // Resolve POS identities onto this hub's patients. Exact id first —
+        // 917 of 924 ids in the POS data are this hub's Patient.id. Names are
+        // the fallback for the migrated 2024-25 history, which has no ids.
+        const roster = await prisma.patient.findMany({ select: { id: true, firstName: true, lastName: true } })
+        const byId = new Set(roster.map((p) => p.id))
+        const byName = new Map<string, string[]>()
+        for (const p of roster) {
+          const k = nameKey(`${p.lastName} ${p.firstName}`)
+          if (!byName.has(k)) byName.set(k, [])
+          byName.get(k)!.push(p.id)
+        }
+
+        // Count each unresolved identity once, not once per department row.
+        const resolvedIdentity = new Map<string, string | null>()
+
+        for (const r of hist.rows) {
+          if (!(DEPTS as readonly string[]).includes(r.dept)) continue
+          const rawIdentity = r.patientId ?? `name:${r.patientName ?? ''}`
+
+          let pid: string | null
+          if (resolvedIdentity.has(rawIdentity)) {
+            pid = resolvedIdentity.get(rawIdentity)!
+          } else {
+            pid = null
+            if (r.patientId && byId.has(r.patientId)) {
+              pid = r.patientId
+              match.byId++
+            } else if (r.patientName) {
+              const hits = byName.get(nameKey(r.patientName))
+              if (hits && hits.length === 1) { pid = hits[0]; match.byName++ }
+              else if (hits && hits.length > 1) match.ambiguous++
+              else match.unmatched++
+            } else {
+              match.unmatched++
+            }
+            resolvedIdentity.set(rawIdentity, pid)
+          }
+
+          // Unresolved POS patients still receive treatment — keep them in the
+          // department counts under their POS identity rather than discarding
+          // real activity, which would reintroduce the undercount this fixes.
+          const key = pid ?? rawIdentity
+          if (!patientDepts.has(key)) patientDepts.set(key, new Set())
+          patientDepts.get(key)!.add(r.dept)
+        }
+      }
+    } catch {
+      // Historical merge is additive; if the Accounting Hub is unreachable the
+      // section still renders from Schedule data alone.
+    }
+  }
+
   const counts = Object.fromEntries(DEPTS.map((d) => [d, 0])) as Record<Dept, number>
   for (const depts of patientDepts.values()) {
     for (const d of depts) {
@@ -88,8 +174,13 @@ export async function GET(req: NextRequest) {
     .length
 
   const dates = branchFiltered.map((s) => s.date).filter(Boolean) as Date[]
-  const earliest = dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : null
-  const latest   = dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : null
+  let earliest = dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : null
+  const latest  = dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : null
+  // POS history predates Schedule, so it sets the true start of the window.
+  if (histFrom) {
+    const h = new Date(`${histFrom}T00:00:00.000Z`)
+    if (!earliest || h < earliest) earliest = h
+  }
 
   return NextResponse.json({
     totalPatients,
@@ -98,6 +189,7 @@ export async function GET(req: NextRequest) {
       from: earliest ? earliest.toISOString().slice(0, 10) : null,
       to:   latest   ? latest.toISOString().slice(0, 10)   : null,
     },
+    match,
     departments: DEPTS.map((d) => ({
       dept: d,
       count: counts[d],

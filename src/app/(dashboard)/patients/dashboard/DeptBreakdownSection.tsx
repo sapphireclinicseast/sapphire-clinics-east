@@ -18,6 +18,7 @@ interface Data {
   totalPatients: number
   totalRoster: number
   sessionWindow: { from: string | null; to: string | null }
+  match?: { byId: number; byName: number; unmatched: number; ambiguous: number }
   departments: DeptRow[]
 }
 
@@ -94,11 +95,21 @@ export default function DeptBreakdownSection({ branches }: { branches: string[] 
         {data && (
           <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
             Based on <strong>{data.totalPatients.toLocaleString()}</strong> patients with recorded
-            sessions{data.sessionWindow.from ? ` between ${monthYear(data.sessionWindow.from)} and ${monthYear(data.sessionWindow.to)}` : ''}
+            treatment{data.sessionWindow.from ? ` between ${monthYear(data.sessionWindow.from)} and ${monthYear(data.sessionWindow.to)}` : ''}
             {' '}— percentages are of that figure, not of the{' '}
-            <strong>{data.totalRoster.toLocaleString()}</strong>-patient roster. Session history
-            only exists from when the Clinic Schedule module went into use, so earlier visits by
-            long-standing patients are not counted here.
+            <strong>{data.totalRoster.toLocaleString()}</strong>-patient roster. Combines Clinic
+            Schedule sessions with POS billing history, so visits from before this hub was in use
+            are included.
+            {data.match && (data.match.unmatched + data.match.ambiguous) > 0 && (
+              <>
+                {' '}
+                <span title="Historical POS records identified only by a free-text name that could not be tied to exactly one patient. They are still counted, under their billing identity.">
+                  {(data.match.unmatched + data.match.ambiguous).toLocaleString()} historical
+                  record(s) could not be matched to a patient profile by name and are counted
+                  separately.
+                </span>
+              </>
+            )}
           </p>
         )}
       </div>
