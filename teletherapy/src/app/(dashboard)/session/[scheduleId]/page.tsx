@@ -227,6 +227,66 @@ function MediaCapture({ kind, onAdd }: { kind: 'audio' | 'video'; onAdd: (file: 
   )
 }
 
+// Reusable attachments field: record voice/video in the portal, or upload
+// voice/photos/videos/documents. Stages File objects into the parent's list so
+// they can be saved ALONGSIDE a structured form or an uploaded note — the three
+// completion methods (form, upload/QR, attach others) are additive, not
+// mutually exclusive.
+function AttachOthersField({
+  files,
+  onAdd,
+  onRemove,
+}: {
+  files: File[]
+  onAdd: (f: File | File[]) => void
+  onRemove: (index: number) => void
+}) {
+  const tiles = [
+    { icon: Mic, label: 'Voice Notes', hint: 'audio', accept: 'audio/*' },
+    { icon: ImageIcon, label: 'Photos', hint: 'jpg, png, heic', accept: 'image/*' },
+    { icon: Film, label: 'Videos', hint: 'mp4, mov, webm', accept: 'video/*' },
+    { icon: Files, label: 'Documents', hint: 'pdf, docx, xlsx', accept: '.pdf,.doc,.docx,.xls,.xlsx' },
+  ]
+  return (
+    <div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <MediaCapture kind="audio" onAdd={(f) => onAdd(f)} />
+        <MediaCapture kind="video" onAdd={(f) => onAdd(f)} />
+      </div>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Or upload files</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {tiles.map((opt) => (
+          <label key={opt.label}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group cursor-pointer">
+            <opt.icon size={26} className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors" />
+            <span className="text-[13px] font-semibold text-[var(--mid-gray)] group-hover:text-[var(--deep-teal)]">{opt.label}</span>
+            <span className="text-[11px] text-[var(--mid-gray)]">{opt.hint}</span>
+            <input type="file" accept={opt.accept} multiple
+              onChange={(e) => { if (e.target.files) onAdd(Array.from(e.target.files)) }}
+              onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} className="hidden" />
+          </label>
+        ))}
+      </div>
+      {files.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-2">Attachments ({files.length})</p>
+          <div className="space-y-2">
+            {files.map((f, i) => (
+              <div key={i} className="flex items-center justify-between bg-[var(--off-white)] px-4 py-2.5 rounded-xl text-[13px] border border-[var(--light-gray)]">
+                <span className="flex items-center gap-2 truncate font-medium">
+                  <Paperclip size={14} className="text-[var(--teal)] shrink-0" />
+                  <span className="truncate">{f.name}</span>
+                </span>
+                <button type="button" onClick={() => onRemove(i)} className="text-[var(--mid-gray)] hover:text-red-500 shrink-0 ml-2"><X size={16} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface SessionDetail {
   id: string
   date: string
@@ -1604,6 +1664,24 @@ export default function SessionDetailPage() {
           >
             Switch to IE upload
           </button>
+        </div>
+      )}
+
+      {/* Attachments alongside the structured form — so a clinician can fill the
+          form AND attach voice notes / video / photos / files in one completion.
+          These stage into files[] and the form's own Save uploads them. */}
+      {actionMode === 'complete' && hasStructuredForm && psychUseForm && (isPsychDept || ieMode === 'DAILY_NOTES') && (
+        <div className="card-static mb-6 animate-gate">
+          <h2 className="font-bold text-[var(--charcoal)] mb-1.5 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+            <Paperclip size={18} className="text-[var(--teal)]" />
+            Attachments <span className="text-[12px] font-medium text-[var(--mid-gray)]">(optional)</span>
+          </h2>
+          <p className="text-[12px] text-[var(--mid-gray)] mb-4">Record a voice note or video, or upload photos/videos/files. These are saved together with the form when you complete the session.</p>
+          <AttachOthersField
+            files={files}
+            onAdd={(f) => setFiles((prev) => [...prev, ...(Array.isArray(f) ? f : [f])])}
+            onRemove={removeFile}
+          />
         </div>
       )}
 
