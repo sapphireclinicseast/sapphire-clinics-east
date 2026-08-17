@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import {
@@ -926,8 +927,9 @@ function StatTile({ label, value, pct, tone }: { label: string; value: number; p
 // any attachments they included with those notes for THIS session.
 function SessionDetailModal({ session, token, onClose }: { session: PatientSessionRecord; token: string; onClose: () => void }) {
   const deptCode = session.departmentCode || shortDept(session.department)
+  if (typeof document === 'undefined') return null
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
       <div
         className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
@@ -967,14 +969,16 @@ function SessionDetailModal({ session, token, onClose }: { session: PatientSessi
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
 // Department-level Documents (the single "Documents" card at the top of Sessions):
 // Initial Evaluation, Progress Reports and other files for the active department.
 function DocumentsModal({ token, department, deptLabel, onClose }: { token: string; department?: string; deptLabel: string; onClose: () => void }) {
-  return (
+  if (typeof document === 'undefined') return null
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
       <div
         className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
@@ -991,7 +995,8 @@ function DocumentsModal({ token, department, deptLabel, onClose }: { token: stri
           <DocumentsPanel token={token} department={department} emptyText="No documents uploaded yet." />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
