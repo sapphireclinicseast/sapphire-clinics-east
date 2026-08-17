@@ -76,6 +76,15 @@ const EMPTY_FORM = {
 
 const INTERN_SESSION_TYPES = new Set(['IE Intern', 'Session Intern'])
 
+// Interns are attached to a supervisor's session via the "Select Intern"
+// field; they are never listed as clinicians in their own right. Note this is
+// intentionally date-independent, unlike isEligibleIntern below — an intern
+// outside their Start/End Month is still an intern, and must not fall back
+// into the clinician list.
+function isIntern(s: StaffMember): boolean {
+  return s.employmentType === 'intern'
+}
+
 // Is this staff member an intern whose Start/End Month covers `forDate`
 // (YYYY-MM-DD)? Falls back to today if no date is picked yet.
 function isEligibleIntern(s: StaffMember, forDate: string): boolean {
@@ -956,7 +965,12 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   // Reset dept filter + make-up picks when branch changes
   useEffect(() => { setActiveDept('Tomorrow'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
 
-  const branchStaff = staff.filter(s => s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch))
+  // Interns are never standalone clinicians — they hold no caseload of their
+  // own and appear only as the "Select Intern" field inside a supervisor's
+  // schedule entry (see ScheduleForm's isEligibleIntern picker). They must
+  // stay in `staff` so that picker can still find them; they're excluded
+  // here, from every list that renders a clinician row.
+  const branchStaff = staff.filter(s => !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)))
   const presentDepts = ALL_DEPARTMENTS.filter(d => branchStaff.some(s => s.department === d))
   const filtered = activeDept === 'All' ? branchStaff : branchStaff.filter(s => s.department === activeDept)
 
@@ -968,7 +982,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const tomorrowClinicians = configs
     .filter(c => Array.isArray(c.workDays) && c.workDays.includes(tomorrowCode))
     .map(c => ({ cfg: c, staff: staffById.get(c.staffId) }))
-    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && (x.staff.branch === activeBranch || (x.staff.extraBranches ?? []).includes(activeBranch)))
+    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && !isIntern(x.staff) && (x.staff.branch === activeBranch || (x.staff.extraBranches ?? []).includes(activeBranch)))
     .sort((a, b) =>
       (a.staff.lastName || '').localeCompare(b.staff.lastName || '') ||
       (a.staff.firstName || '').localeCompare(b.staff.firstName || ''))
@@ -984,7 +998,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
   const makeupClinicians = makeupIds
     .map(id => staffById.get(id))
-    .filter((s): s is StaffMember => !!s && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && !autoIds.has(s.id))
+    .filter((s): s is StaffMember => !!s && !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && !autoIds.has(s.id))
   // Type-ahead matches for the make-up search (exclude already-listed staff).
   const makeupMatches = makeupQuery.trim().length > 0
     ? branchStaff
