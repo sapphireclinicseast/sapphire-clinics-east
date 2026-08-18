@@ -15,6 +15,7 @@ import HistoricalReport from './HistoricalReport'
 import LedgerStatements from './LedgerStatements'
 import GraphsView from './GraphsView'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
+import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1650,6 +1651,22 @@ export default function ReportsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('annual')
   const [branch, setBranch] = useState(scope.short || 'ALL')
   useEffect(() => { if (scope.short && branch !== scope.short) setBranch(scope.short) }, [scope.short]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Income-statement branch tickboxes: tick a subset and the statement totals
+  // only those branches (each branch's derived statement, summed). All ticked
+  // = the combined books. Kept in sync with `branch` when the selection
+  // resolves to ALL or a single branch, so the other tabs and exports behave
+  // exactly as the dropdown did.
+  const TICK_BRANCHES = BRANCHES.filter(b => b.value !== 'ALL')
+  const [isTicked, setIsTicked] = useState<string[]>(TICK_BRANCHES.map(b => b.value))
+  const toggleIsBranch = (v: string) => {
+    setIsTicked(prev => {
+      const next = prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]
+      if (next.length === 0) return prev // at least one branch stays ticked
+      if (next.length === TICK_BRANCHES.length) setBranch('ALL')
+      else if (next.length === 1) setBranch(next[0])
+      return next
+    })
+  }
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
@@ -1679,6 +1696,13 @@ export default function ReportsPage() {
   const effDrill: OnDrillDown = (isMedrep || isInvestor) ? () => {} : handleDrillDown
   const branchLocked = isInvestor && effTab !== 'income-statement' && effTab !== 'graphs'
   const effBranch = branchLocked ? 'ALL' : branch
+  // Tickboxes replace the dropdown on the income-statement tab (whole-company
+  // users only — branch-scoped admins keep their pinned branch, med-reps keep
+  // the dropdown-driven restricted view).
+  const isTickboxes = effTab === 'income-statement' && !isMedrep && !scope.short
+  const allIsTicked = isTicked.length === TICK_BRANCHES.length
+  const isBranchSel = allIsTicked ? 'ALL' : isTicked.length === 1 ? isTicked[0] : isTicked.join('+')
+  const effIsBranch = isTickboxes ? isBranchSel : effBranch
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
@@ -1702,13 +1726,20 @@ export default function ReportsPage() {
     fetchData()
   }, [fetchData])
 
+  // Export filename branch tag — reflects the income-statement tickboxes
+  // when they drive the view (e.g. "AHEA+AHGH"), else the dropdown branch.
+  const exportBranchTag = () => {
+    const bsel = (activeTab === 'income-statement' && isTickboxes) ? isBranchSel : branch
+    return bsel.split('+').map(p => branchCode(p)).join('+').replace(/\s+/g, '-')
+  }
+
   const downloadRowsAsCSV = (rows: string[][]) => {
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.csv`
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1782,7 +1813,7 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.xlsx`
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1906,7 +1937,7 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.pdf`
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.pdf`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1915,24 +1946,31 @@ export default function ReportsPage() {
 
   const handleDownloadCSV = (fmt: 'csv' | 'xls' | 'pdf' = 'csv') => {
     if (!data) return
+    // Ticked subset of branches on the income statement: export the summed
+    // engine statements (matches the screen).
+    // (defined below; invoked after exportEngineStatement exists)
     // Export the derived ledger-engine statement (what LedgerStatements shows
     // on screen). Used when the manual FY2024–FY2025 package has no statement
     // for this tab/branch (Verdana 2025, any 2024 cash flow), when monthly
     // columns are requested but the manual statement is annual-only, and for
     // live-year balance sheet / cash flow exports.
-    const exportEngineStatement = () => {
+    const exportEngineStatement = (branchOverride?: string) => {
         void (async () => {
           try {
-            const res = await fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
-            if (!res.ok) return
-            const v2 = await res.json()
+            const bsel = branchOverride || branch
+            const parts = bsel.split('+')
+            const resps = await Promise.all(parts.map(p => fetch(`/api/reports/v2?year=${year}&branch=${p}`)))
+            if (resps.some(r => !r.ok)) return
+            const payloads = await Promise.all(resps.map(r => r.json()))
+            const v2 = parts.length > 1 ? mergeLedgerStatements(payloads) : payloads[0]
             const rows: string[][] = []
             const withMonths = viewMode === 'monthly'
             const mcols = withMonths ? FULL_MONTHS : []
             const blank = () => (withMonths ? Array(12).fill('') : [])
             const num = (v: number) => (Number(v) || 0).toFixed(2)
             const mrow = (m?: number[]) => (withMonths ? (m && m.length === 12 ? m.map(num) : Array(12).fill('')) : [])
-            const branchLbl = branch === 'ALL' ? 'All Branches' : BRANCHES.find(b => b.value === branch)?.label || branch
+            const branchLbl = bsel === 'ALL' ? 'All Branches'
+              : parts.map(p => BRANCHES.find(b => b.value === p)?.label || p).join(' + ')
             if (activeTab === 'income-statement' && v2.incomeStatement) {
               const t = v2.incomeStatement
               rows.push([`Income Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
@@ -1982,6 +2020,10 @@ export default function ReportsPage() {
             console.error('Engine export fallback failed:', err)
           }
         })()
+    }
+    if (activeTab === 'income-statement' && isTickboxes && isBranchSel.includes('+')) {
+      exportEngineStatement(isBranchSel)
+      return
     }
     if (data.historical) {
       const h = data.historical
@@ -2321,7 +2363,32 @@ export default function ReportsPage() {
         </div>
         )}
 
-        {/* Branch */}
+        {/* Branch — tickboxes on the income statement (tick a subset to total
+            only those branches); dropdown elsewhere. */}
+        {isTickboxes ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
+            {TICK_BRANCHES.map(b => (
+              <label
+                key={b.value}
+                className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-medium cursor-pointer select-none"
+                style={{
+                  border: `1px solid ${isTicked.includes(b.value) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`,
+                  color: 'var(--charcoal)',
+                  background: isTicked.includes(b.value) ? '#f0f7f2' : 'white',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isTicked.includes(b.value)}
+                  onChange={() => toggleIsBranch(b.value)}
+                  className="accent-current"
+                />
+                {b.label}
+              </label>
+            ))}
+          </div>
+        ) : (
         <div className="flex items-center gap-2">
           <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
           <div className="relative">
@@ -2341,6 +2408,7 @@ export default function ReportsPage() {
             <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
           </div>
         </div>
+        )}
 
       </div>
 
@@ -2387,7 +2455,7 @@ export default function ReportsPage() {
 
         {/* Report content */}
         {!loading && data?.historical && !isMedrep && (
-          <LedgerStatements year={year} branch={effBranch} tab={effTab} view={effView} readOnly={isInvestor} />
+          <LedgerStatements year={year} branch={effIsBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
         {!loading && data?.historical && isMedrep && (
           <HistoricalReport
@@ -2398,7 +2466,7 @@ export default function ReportsPage() {
           />
         )}
         {!loading && !data?.historical && !isMedrep && (
-          <LedgerStatements year={year} branch={effBranch} tab={effTab} view={effView} readOnly={isInvestor} />
+          <LedgerStatements year={year} branch={effIsBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
         {!loading && data && !data.historical && isMedrep && (
           <div className="py-2">
