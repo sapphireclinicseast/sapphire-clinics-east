@@ -206,3 +206,6 @@ CREATE TABLE IF NOT EXISTS "InternshipDocument" (
 );
 CREATE INDEX IF NOT EXISTS "InternshipDocument_department_idx" ON "InternshipDocument"("department");
 CREATE INDEX IF NOT EXISTS "InternshipDocument_createdAt_idx" ON "InternshipDocument"("createdAt");
+
+-- Intern auto-disable: manual re-enable overrides the daily sweep
+ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "internAccessOverride" BOOLEAN NOT NULL DEFAULT false;

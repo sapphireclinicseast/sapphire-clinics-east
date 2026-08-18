@@ -340,6 +340,10 @@ model TherapistAccount {
   // are limited staff presets; ADMIN-role accounts always see everything.
   accountType  String        @default("CLINICIAN") // CLINICIAN | FRONT_DESK | ADMIN_STAFF | ADMIN
   isActive         Boolean       @default(true)
+  // For intern accounts: once a human (HR/supervisor/admin) re-enables access
+  // after the rotation lapsed, this is set so the daily auto-disable sweep
+  // won't turn the account off again (e.g. a re-rotation).
+  internAccessOverride Boolean   @default(false)
   lastLoginAt      DateTime?
   resetToken       String?
   resetTokenExpiry DateTime?

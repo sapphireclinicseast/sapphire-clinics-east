@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info, IdCard } from 'lucide-react'
+import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info, IdCard, Ban, Power } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
 import InternProfileModal from '@/components/InternProfileModal'
 
-interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null }
+interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null; hasAccount?: boolean; accountActive?: boolean | null; rotationLapsed?: boolean }
 interface GradeInfo { grade: string; note: string | null; fileName: string | null; filePath: string | null; gradedByName: string | null; updatedAt: string }
 interface Doc { id: string; title: string; description: string | null; fileName: string; filePath: string; uploadedByName: string; uploadedByAccountId: string; createdAt: string }
 
@@ -291,6 +291,17 @@ export default function InternSupervisionPage() {
     setSigning(null)
   }
 
+  const [enabling, setEnabling] = useState<string | null>(null)
+  async function enableAccess(internId: string) {
+    setEnabling(internId)
+    try {
+      const res = await fetch(`/api/intern-supervision/interns/${internId}/enable-access`, { method: 'POST' })
+      if (res.ok) { showToast('Access re-enabled'); load() }
+      else { const d = await res.json().catch(() => ({})); showToast(d.error ?? 'Failed to enable') }
+    } catch { showToast('Failed to enable') }
+    setEnabling(null)
+  }
+
   if (loading) {
     return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" /></div>
   }
@@ -349,6 +360,15 @@ export default function InternSupervisionPage() {
                       <Calendar size={13} />
                       {i.startMonth || '—'} to {i.endMonth || '—'}
                     </span>
+                    {i.hasAccount && i.accountActive === false && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><Ban size={11} /> Access disabled</span>
+                    )}
+                    {i.hasAccount && i.accountActive === false && (
+                      <button onClick={() => enableAccess(i.id)} disabled={enabling === i.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--teal)] text-white text-[12.5px] font-semibold hover:opacity-90 disabled:opacity-50">
+                        {enabling === i.id ? <Loader2 size={13} className="animate-spin" /> : <Power size={13} />} Enable Access
+                      </button>
+                    )}
                     <button onClick={() => setProfileFor(i.id)}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--teal)]/30 text-[var(--teal)] text-[12.5px] font-semibold hover:bg-[var(--teal)]/5 transition-colors">
                       <IdCard size={14} /> Intern Profile

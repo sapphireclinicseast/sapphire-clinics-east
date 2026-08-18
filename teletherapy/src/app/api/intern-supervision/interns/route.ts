@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isRotationLapsed } from '@/lib/intern-access'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
 const HR_KEY = process.env.HR_API_KEY ?? ''
@@ -69,10 +70,18 @@ export async function GET() {
     } catch { /* HR unavailable — fall back to local Staff.branch, no month range */ }
   }
 
+  // Portal-account status per intern (for the auto-disable / Enable UI).
+  const accounts = await prisma.therapistAccount.findMany({
+    where: { staffId: { in: interns.map((i) => i.id) } },
+    select: { staffId: true, isActive: true },
+  })
+  const acctByStaff = new Map(accounts.map((a) => [a.staffId, a]))
+
   const out = interns
     .map((i) => {
       const hr = i.hrPlatformId ? hrMap.get(i.hrPlatformId) : undefined
       const branchCode = hr?.branch ?? i.branch
+      const acct = acctByStaff.get(i.id)
       return {
         id: i.id,
         name: `${i.firstName} ${i.lastName}`,
@@ -80,6 +89,9 @@ export async function GET() {
         branch: BRANCH_LABEL[branchCode ?? ''] ?? branchCode ?? '—',
         startMonth: fmtMonth(hr?.dateHired),
         endMonth: fmtMonth(hr?.contractExpiry),
+        hasAccount: !!acct,
+        accountActive: acct?.isActive ?? null,
+        rotationLapsed: isRotationLapsed(hr?.contractExpiry),
       }
     })
     .sort((a, b) => a.name.localeCompare(b.name))
