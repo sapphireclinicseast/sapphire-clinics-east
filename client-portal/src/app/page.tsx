@@ -25,6 +25,7 @@ import { Hero3D } from '@/components/landing/Hero3D'
 import RewardsPanel from '@/components/RewardsPanel'
 import { DirectorySection } from '@/components/Directory'
 import PortalConcerns from '@/components/PortalConcerns'
+import HomeProgressSection from '@/components/HomeProgress'
 
 type Tab = 'returning' | 'new'
 
@@ -411,11 +412,12 @@ const SURVEY_BASE = 'https://survey.sapphireclinicseast.org'
 const CLINICIAN_SURVEYS = new Set(['HR10', 'HR11', 'HR16'])
 const FRONTDESK_SURVEYS = new Set(['HR12'])
 
-type Section = 'profile' | 'sessions' | 'feedback' | 'rewards' | 'directory'
+type Section = 'profile' | 'sessions' | 'homeprogress' | 'feedback' | 'rewards' | 'directory'
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'profile', label: 'Profile' },
   { key: 'sessions', label: 'Sessions' },
+  { key: 'homeprogress', label: 'Home Progress' },
   { key: 'feedback', label: 'Feedback' },
   { key: 'rewards', label: 'Reward Points' },
   { key: 'directory', label: 'Directory' },
@@ -484,6 +486,7 @@ function PortalDashboard({
               />
             )}
             {section === 'sessions' && <SessionsSection sessions={data.sessions} stats={data.stats} token={token} />}
+            {section === 'homeprogress' && <HomeProgressSection token={token} />}
             {section === 'feedback' && <FeedbackSection surveys={data.surveys} />}
             {section === 'rewards' && (
               <div>

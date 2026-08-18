@@ -284,6 +284,7 @@ model Patient {
   followUpReminders   FollowUpReminder[]
   documents           PatientDocument[]
   tickets             PatientTicket[]
+  homeProgress        HomeProgressEntry[]
 }
 
 // Patient-submitted portal concern/support ticket. Patient files it from the
@@ -303,6 +304,35 @@ model PatientTicket {
   updatedAt     DateTime  @updatedAt
 
   @@index([patientId])
+}
+
+// Patient-created "Home Progress" log: a dated entry with remarks and one or
+// more media files (voice / video / photo) the parent uploads or records at
+// home. Visible to their clinicians in the CRM.
+model HomeProgressEntry {
+  id        String             @id @default(cuid())
+  patientId String
+  patient   Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date      DateTime
+  remarks   String?
+  createdAt DateTime           @default(now())
+  files     HomeProgressFile[]
+
+  @@index([patientId])
+}
+
+model HomeProgressFile {
+  id        String            @id @default(cuid())
+  entryId   String
+  entry     HomeProgressEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  kind      String            // AUDIO | VIDEO | PHOTO | OTHER
+  fileName  String
+  filePath  String            // relative path under ./uploads
+  mimeType  String
+  sizeBytes Int               @default(0)
+  createdAt DateTime          @default(now())
+
+  @@index([entryId])
 }
 
 model ReferralUploadToken {
