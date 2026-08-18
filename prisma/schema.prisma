@@ -938,6 +938,17 @@ model ClassPortalUser {
   disabledAt   DateTime?
   /// Email of the admin who disabled the account. Cleared on re-enable.
   disabledBy   String?
+  /// TEACHER accounts minted from an HR-hub intern row. When true, the
+  /// class portal treats them as a regular teacher (same upload / edit
+  /// permissions) but the intern-lifecycle cron will auto-disable the
+  /// account 15 days after the end of the internship-end month tracked
+  /// on the linked Staff row. Cleared to make it a permanent teacher.
+  isIntern      Boolean          @default(false)
+  /// Optional link to the ops-hub Staff row this account was created
+  /// from. Powers the auto-disable cron (needs Staff.contractExpiry)
+  /// and the Users-list badge that surfaces the intern's contract end
+  /// date. Nullable so admins can still create teachers directly.
+  linkedStaffId String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -945,6 +956,8 @@ model ClassPortalUser {
   @@index([role])
   @@index([branch])
   @@index([disabledAt])
+  @@index([isIntern])
+  @@index([linkedStaffId])
 }
 
 enum ClassPortalEventType {

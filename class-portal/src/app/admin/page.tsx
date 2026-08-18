@@ -232,15 +232,25 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
     const branch: Branch | undefined = member.branch === 'SBEA' ? 'EAST'
       : member.branch === 'SBGH' ? 'GREENHILLS'
       : undefined
+    // Interns keep the same TEACHER permissions but get flagged so the
+    // intern-lifecycle cron can auto-disable them 15 days after their
+    // contract-end month. linkedStaffId is the join key back to HR.
+    const isIntern = (member.employmentType ?? '').toLowerCase() === 'intern'
     try {
       const created = await addUser({
         role: 'TEACHER', email: member.email, password,
         firstName: member.firstName || undefined,
         lastName: member.lastName || undefined,
         branch,
+        isIntern,
+        linkedStaffId: member.id,
       })
       refresh()
-      setInfo(`Teacher account created for ${created.firstName ?? member.firstName} ${created.lastName ?? member.lastName} (${branchLabel(branch)}). Password: ${password}`)
+      const roleTag = isIntern ? 'Intern teacher' : 'Teacher'
+      const lifecycleNote = isIntern && member.contractExpiry
+        ? ` Auto-disables ${formatAutoDisableDate(member.contractExpiry)}.`
+        : ''
+      setInfo(`${roleTag} account created for ${created.firstName ?? member.firstName} ${created.lastName ?? member.lastName} (${branchLabel(branch)}).${lifecycleNote} Password: ${password}`)
     } catch (e) { setErr((e as Error).message) }
   }
 
@@ -393,6 +403,16 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                 >
                   <td className="py-2.5 px-3">
                     <span className={`badge ${ROLE_BADGE_CLASS[u.role] ?? 'badge-pending'}`}>{roleLabel(u.role)}</span>
+                    {u.isIntern && (
+                      <span
+                        className="ml-1.5 inline-block text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200 align-middle"
+                        title={u.internContractExpiry
+                          ? `Intern — auto-disables ${formatAutoDisableDate(u.internContractExpiry)} (15 days after the end of the contract month, ${formatShortDate(u.internContractExpiry)})`
+                          : 'Intern — no contract end on file, will not auto-disable'}
+                      >
+                        Intern
+                      </span>
+                    )}
                     {u.disabledAt && (
                       <span className="ml-1.5 inline-block text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 align-middle" title="Cannot sign in. Hidden from teacher and front-desk lists.">
                         Disabled
@@ -519,10 +539,18 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
           <div>
             <h2 className="text-[18px] leading-tight">Add teacher from Staff Module</h2>
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              Showing <span className="font-semibold">SPED teachers only</span> from <span className="font-semibold">marketing.sapphireclinicseast.org</span>.
+              Showing <span className="font-semibold">active SPED teachers + interns</span> from <span className="font-semibold">HR Hub</span>.
             </p>
           </div>
           {staffLoading && <span className="text-[12px] text-[color:var(--mid-gray)]">Loading staff…</span>}
+        </div>
+
+        <div className="mt-3 px-4 py-3 rounded-xl border" style={{ background: 'var(--paper-2)', borderColor: 'var(--paper-3)' }}>
+          <p className="text-[12.5px] leading-snug text-[color:var(--ink)]">
+            <span className="font-semibold">Intern accounts auto-disable</span> 15 days after the end of their internship-end month
+            (e.g. an August end date auto-disables on September 15). They keep the same upload / edit permissions as a regular
+            SPED teacher while active. Re-enable manually from the Users list if HR extends their contract.
+          </p>
         </div>
 
         {staffErr && <div className="mt-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">Couldn&apos;t load Staff Module: {staffErr}</div>}
@@ -547,26 +575,39 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
             <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
               <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
                 <th className="py-2 px-3">Name</th>
+                <th className="py-2 px-3">Role</th>
                 <th className="py-2 px-3">Job title</th>
                 <th className="py-2 px-3">Branch</th>
                 <th className="py-2 px-3">Email</th>
+                <th className="py-2 px-3">Contract end</th>
                 <th className="py-2 px-3"></th>
               </tr>
             </thead>
             <tbody>
               {!staffLoading && filteredStaff.length === 0 && (
-                <tr><td colSpan={5} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
+                <tr><td colSpan={7} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
                   {staff.length === 0 ? 'No SPED teachers returned from the Staff Module.' : 'No SPED teachers match this search.'}
                 </td></tr>
               )}
               {filteredStaff.map(m => {
                 const has = teacherEmailSet.has(m.email.toLowerCase())
+                const isIntern = (m.employmentType ?? '').toLowerCase() === 'intern'
                 return (
                   <tr key={m.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
                     <td className="py-2.5 px-3 whitespace-nowrap">{m.firstName} {m.lastName}</td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      {isIntern
+                        ? <span className="badge badge-pending" title="Auto-disables 15 days after contract end month">Intern</span>
+                        : <span className="text-[12.5px] text-[color:var(--mid-gray)]">Staff</span>}
+                    </td>
                     <td className="py-2.5 px-3">{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{m.branch === 'SBEA' ? 'East Branch' : m.branch === 'SBGH' ? 'Greenhills Branch' : m.branch}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
+                    <td className="py-2.5 px-3 text-[12.5px] whitespace-nowrap">
+                      {m.contractExpiry
+                        ? <span title={`Auto-disables ${formatAutoDisableDate(m.contractExpiry)}`}>{formatShortDate(m.contractExpiry)}</span>
+                        : <span className="text-[color:var(--mid-gray)]">—</span>}
+                    </td>
                     <td className="py-2.5 px-3 text-right whitespace-nowrap">
                       {has ? <span className="badge badge-approved">Account exists</span> : <CreateTeacherInlineForm onCreate={pw => handleCreateFromStaff(m, pw)} disabled={!m.email} />}
                     </td>
@@ -677,6 +718,32 @@ function CreateTeacherInlineForm({ onCreate, disabled }: { onCreate: (pw: string
 }
 
 /* ─────────────────────── FEES PANEL ─────────────────────── */
+
+/** Short human date — "Aug 25, 2026". Falls back to raw string on parse fail. */
+function formatShortDate(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso.slice(0, 10)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/** Compute the intern auto-disable date: end of contract-end month + 15
+ *  days. e.g. a contractExpiry anywhere in August 2026 disables on
+ *  September 15, 2026. Returns a human string like "Sep 15, 2026". */
+export function computeAutoDisableDate(contractExpiryIso: string): Date | null {
+  const d = new Date(contractExpiryIso)
+  if (isNaN(d.getTime())) return null
+  // First day of the NEXT month, then + 15 days = 16th of the next month
+  // (i.e. 15 days after the end of the intern's contract month).
+  const nextMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))
+  nextMonth.setUTCDate(nextMonth.getUTCDate() + 15)
+  return nextMonth
+}
+
+function formatAutoDisableDate(contractExpiryIso: string): string {
+  const d = computeAutoDisableDate(contractExpiryIso)
+  if (!d) return '—'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
 
 function pesoToCentavos(s: string): number {
   const n = Number(String(s).replace(/[^\d.]/g, ''))

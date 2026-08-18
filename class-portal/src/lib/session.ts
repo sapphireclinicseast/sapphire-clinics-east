@@ -334,6 +334,20 @@ export interface StoredUser {
   disabledAt?: string | null
   /** Email of the admin who disabled the account. Cleared on re-enable. */
   disabledBy?: string | null
+  /** TEACHER accounts minted from an HR-hub intern row. Same permissions
+   *  as any other teacher, but the intern-lifecycle cron auto-disables
+   *  the account 15 days after their contract-end month. */
+  isIntern?: boolean
+  /** ops-hub Staff.id — populated when minted from Staff Module. Powers
+   *  the auto-disable cron and lets the Users list surface the intern's
+   *  live contract end date without a second round trip. */
+  linkedStaffId?: string | null
+  /** ISO timestamp of the linked Staff row's contractExpiry, joined
+   *  server-side on GET. Only set for intern rows. */
+  internContractExpiry?: string | null
+  /** Whether the linked HR-hub Staff row is still active. Null for
+   *  non-intern rows. */
+  internStaffActive?: boolean | null
 }
 
 export interface AuthSession {
@@ -379,6 +393,10 @@ interface ApiUser {
   passwordSetBy?: string | null
   disabledAt?: string | null
   disabledBy?: string | null
+  isIntern?: boolean
+  linkedStaffId?: string | null
+  internContractExpiry?: string | null
+  internStaffActive?: boolean | null
   createdAt: string
   updatedAt: string
 }
@@ -398,6 +416,10 @@ function apiToStored(u: ApiUser, password = ''): StoredUser {
     passwordSetBy: u.passwordSetBy ?? null,
     disabledAt: u.disabledAt ?? null,
     disabledBy: u.disabledBy ?? null,
+    isIntern: !!u.isIntern,
+    linkedStaffId: u.linkedStaffId ?? null,
+    internContractExpiry: u.internContractExpiry ?? null,
+    internStaffActive: u.internStaffActive ?? null,
     createdAt: u.createdAt,
   }
 }
@@ -433,6 +455,10 @@ export async function addUser(u: Omit<StoredUser, 'id' | 'createdAt'>): Promise<
       level: u.level,
       branch: u.branch,
       enrollment: u.enrollment,
+      // Intern-lifecycle metadata. Server drops both fields on non-
+      // TEACHER roles, so it's safe to always pass through.
+      isIntern: u.isIntern ?? false,
+      linkedStaffId: u.linkedStaffId ?? null,
     }),
   })
   const stored = apiToStored(user, u.password)
