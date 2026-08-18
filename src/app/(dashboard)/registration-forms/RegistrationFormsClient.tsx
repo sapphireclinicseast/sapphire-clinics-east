@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { localTodayStr } from '@/lib/utils'
 import {
   FileText, QrCode, BarChart3, ExternalLink, Copy, Check,
-  RefreshCw, Download, ChevronRight, Trash2, Pencil, X,
+  RefreshCw, Download, ChevronRight, Trash2, Pencil, X, Settings,
 } from 'lucide-react'
 
 // ── Form definitions ─────────────────────────────────────────────────────────
@@ -18,7 +18,11 @@ const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string
     subtitle: 'Allied Learners Advancing Genuine Access',
     intro:    'The ALAGA Program pairs patients with student therapists who are completing their clinical internship hours — all sessions are directly supervised by our licensed clinicians. Because sessions are conducted under supervised training, they are offered at a significantly lower fee than our regular therapy rates, making quality rehabilitation more accessible to families.',
     sbea:     'SGWVxqcW',
-    sbgh:     null, // Greenhills has no ALAGA interns yet — disabled until it does. East form (SGWVxqcW) is now Physical Therapy only.
+    // Greenhills activated — form i8rFr7P6 ("AHGH ALAGA Program Registration")
+    // already existed in the HR Platform but was never wired up here. Which
+    // departments each branch offers is now managed per-form in Settings
+    // rather than by editing the form definition.
+    sbgh:     'i8rFr7P6',
   },
   { key: 'psych',         title: 'Psych Registration Form',    sbea: 'X2YDKTaH', sbgh: null },
 ]
@@ -51,7 +55,7 @@ interface Props { role: string }
 
 export default function RegistrationFormsClient({ role }: Props) {
   const [selectedForm, setSelectedForm] = useState<FormType | null>(null)
-  const [tab, setTab]                   = useState<'qr' | 'results'>('qr')
+  const [tab, setTab]                   = useState<'qr' | 'results' | 'settings'>('qr')
   const [qrBranch, setQrBranch]         = useState<'SBEA' | 'SBGH'>('SBEA')
   const [copied, setCopied]             = useState(false)
   const [results, setResults]           = useState<{ fields: any[]; items: ResponseItem[]; total: number } | null>(null)
@@ -324,6 +328,7 @@ export default function RegistrationFormsClient({ role }: Props) {
               {[
                 { key: 'qr' as const, label: 'QR & Link', icon: QrCode },
                 { key: 'results' as const, label: 'Responses', icon: BarChart3 },
+                { key: 'settings' as const, label: 'Settings', icon: Settings },
               ].map(t => (
                 <button
                   key={t.key}
@@ -336,6 +341,17 @@ export default function RegistrationFormsClient({ role }: Props) {
                 </button>
               ))}
             </div>
+
+            {tab === 'settings' && (
+              <ServiceOptionsSettings
+                formId={qrBranch === 'SBGH' && selectedForm.sbgh ? selectedForm.sbgh : selectedForm.sbea}
+                branchLabel={qrBranch === 'SBGH' && selectedForm.sbgh ? 'Greenhills Branch' : 'East Branch'}
+                canEdit={isAdmin}
+                showBranchToggle={isAdmin && !!selectedForm.sbgh}
+                qrBranch={qrBranch}
+                onBranchChange={setQrBranch}
+              />
+            )}
 
             {tab === 'qr' && (
               <div className="flex flex-col items-center py-4">
@@ -672,4 +688,145 @@ function extractAnswer(answer: any): string {
     case 'file_url':     return answer.file_url || answer.text || ''
     default:             return answer.text || answer.email || '—'
   }
+}
+
+
+// ── Service departments settings ─────────────────────────────────────────────
+// Controls which departments appear on the form's "What service does the
+// patient need" question, per branch (each branch is a separate form in the HR
+// Platform). Toggling here never edits the form definition itself — the HR
+// Platform keeps an overlay, so a disabled department is hidden rather than
+// deleted and can be switched back on at any time.
+function ServiceOptionsSettings({
+  formId, branchLabel, canEdit, showBranchToggle, qrBranch, onBranchChange,
+}: {
+  formId: string
+  branchLabel: string
+  canEdit: boolean
+  showBranchToggle: boolean
+  qrBranch: 'SBEA' | 'SBGH'
+  onBranchChange: (b: 'SBEA' | 'SBGH') => void
+}) {
+  const [all, setAll] = useState<string[]>([])
+  const [enabled, setEnabled] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true); setMsg(null)
+    fetch(`/api/registration-forms/${formId}/service-options`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        if (d?.ok) { setAll(d.all || []); setEnabled(d.enabled || []) }
+        else setMsg({ kind: 'err', text: d?.error || 'Could not load settings.' })
+      })
+      .catch(() => { if (!cancelled) setMsg({ kind: 'err', text: 'Could not reach the form service.' }) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [formId])
+
+  async function toggle(label: string) {
+    if (!canEdit || saving) return
+    const next = enabled.includes(label) ? enabled.filter(l => l !== label) : [...enabled, label]
+    // A form whose only question has no options can't be submitted at all.
+    if (next.length === 0) {
+      setMsg({ kind: 'err', text: 'At least one service must stay enabled.' })
+      return
+    }
+    const prev = enabled
+    setEnabled(next); setSaving(true); setMsg(null)
+    try {
+      const r = await fetch(`/api/registration-forms/${formId}/service-options`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      })
+      const d = await r.json()
+      if (!r.ok || !d?.ok) throw new Error(d?.error || 'Save failed')
+      setMsg({ kind: 'ok', text: 'Saved — the public form updates immediately.' })
+    } catch (e) {
+      setEnabled(prev)   // roll back so the UI never claims a save that didn't happen
+      setMsg({ kind: 'err', text: (e as Error).message })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="py-4 max-w-xl mx-auto">
+      {showBranchToggle && (
+        <div className="flex gap-1 mb-5 p-1 rounded-lg" style={{ background: 'var(--bg-secondary, #f5f5f5)' }}>
+          {(['SBEA', 'SBGH'] as const).map(b => (
+            <button
+              key={b}
+              onClick={() => onBranchChange(b)}
+              className="px-5 py-1.5 rounded-md text-sm font-semibold transition-all flex-1"
+              style={qrBranch === b ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--text-secondary)' }}
+            >
+              {b === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <p className="text-sm font-semibold mb-1" style={{ color: 'var(--near-black)' }}>
+        Services offered — {branchLabel}
+      </p>
+      <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
+        Controls the options patients see under “What service does the patient need”.
+        Turning one off hides it from the public form immediately; it is not deleted and can be switched back on.
+      </p>
+
+      {loading ? (
+        <p className="text-sm py-6 text-center" style={{ color: 'var(--text-secondary)' }}>Loading…</p>
+      ) : all.length === 0 ? (
+        <p className="text-sm py-6 text-center" style={{ color: 'var(--text-secondary)' }}>
+          This form has no service question to configure.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {all.map(label => {
+            const on = enabled.includes(label)
+            return (
+              <button
+                key={label}
+                onClick={() => toggle(label)}
+                disabled={!canEdit || saving}
+                className="flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all"
+                style={{
+                  border: `1.5px solid ${on ? 'var(--teal)' : 'var(--border, #e5e7eb)'}`,
+                  background: on ? 'var(--pale-teal, #ecfdf5)' : '#fff',
+                  color: on ? 'var(--teal)' : 'var(--text-secondary)',
+                  cursor: canEdit && !saving ? 'pointer' : 'not-allowed',
+                  opacity: saving ? 0.7 : 1,
+                }}
+              >
+                <span>{label}</span>
+                <span
+                  className="text-xs font-bold px-2 py-0.5 rounded-full"
+                  style={on
+                    ? { background: 'var(--teal)', color: '#fff' }
+                    : { background: '#f3f4f6', color: '#9ca3af' }}
+                >
+                  {on ? 'ON' : 'OFF'}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {!canEdit && (
+        <p className="text-xs mt-4" style={{ color: 'var(--text-secondary)' }}>
+          Read-only — an admin account is required to change these.
+        </p>
+      )}
+      {msg && (
+        <p className="text-xs mt-3" style={{ color: msg.kind === 'ok' ? 'var(--teal)' : '#dc2626' }}>
+          {msg.text}
+        </p>
+      )}
+    </div>
+  )
 }
