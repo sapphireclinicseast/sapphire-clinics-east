@@ -9,7 +9,7 @@ import {
   paymentStatusFor, currentPeriodPaymentStatusFor, inferPaymentPlanFor,
   hydrateFrontDeskPayments,
   uploadDocumentBlob,
-  levelLabel,
+  levelLabel, branchShortLabel,
   type StoredUser, type EnrollmentLevel, type Branch, type WaiverRecord,
   type PaymentPlan,
 } from '@/lib/session'
@@ -280,7 +280,7 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
                 // but this month's / this half's payment hasn't landed
                 // yet. Front-desk should be actively charging DUE rows.
                 const ps = currentPeriodPaymentStatusFor(s.id)
-                const branchLabel = s.branch === 'EAST' ? 'East' : s.branch === 'GREENHILLS' ? 'Greenhills' : '—'
+                const branchLabel = branchShortLabel(s.branch)
                 // Inferred from the student's latest PaymentRecord.
                 // Undefined for students who have never had a payment
                 // recorded (fresh enrolees) — front desk sees "—" as

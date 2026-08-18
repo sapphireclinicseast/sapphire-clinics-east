@@ -281,9 +281,23 @@ export type AuthRole = UserRole | 'ADMIN'
 /** Clinic branch a record is scoped to. */
 export type Branch = 'EAST' | 'GREENHILLS'
 
+/** The 2 branches, in display order. Was independently re-declared as
+ *  ALL_BRANCHES in classes/page.tsx and AssignmentsPanel.tsx, and as
+ *  BRANCH_ORDER in admin/page.tsx — this is the one copy. */
+export const ALL_BRANCHES: Branch[] = ['EAST', 'GREENHILLS']
+
 export function branchLabel(b: Branch | undefined | null): string {
   if (b === 'EAST') return 'East Branch'
   if (b === 'GREENHILLS') return 'Greenhills Branch'
+  return '—'
+}
+
+/** Short form ("East"/"Greenhills") — table cells, chips, anywhere the full
+ *  "X Branch" wording is too long. Was independently duplicated in
+ *  lib/calendar.ts and inline in StudentListPanel.tsx; this is the one copy. */
+export function branchShortLabel(b: Branch | undefined | null): string {
+  if (b === 'EAST') return 'East'
+  if (b === 'GREENHILLS') return 'Greenhills'
   return '—'
 }
 
@@ -3517,8 +3531,6 @@ export interface FeeSchedule {
   updatedBy: string | null
 }
 
-const ALL_BRANCHES_ARR: Branch[] = ['EAST', 'GREENHILLS']
-
 /** Fall-back values used when no row exists yet so the pay page is never
  *  empty. These match the historical hardcoded constants. Centavos = PHP × 100. */
 export const DEFAULT_FEE_VALUES = {
@@ -3541,7 +3553,7 @@ function defaultFeeForBranch(branch: Branch): FeeSchedule {
 }
 
 function defaultFees(): FeeSchedule[] {
-  return ALL_BRANCHES_ARR.map(defaultFeeForBranch)
+  return ALL_BRANCHES.map(defaultFeeForBranch)
 }
 
 export function getFees(): FeeSchedule[] {
@@ -3552,7 +3564,7 @@ export function getFees(): FeeSchedule[] {
     const parsed = JSON.parse(raw) as FeeSchedule[]
     if (!Array.isArray(parsed) || parsed.length === 0) return defaultFees()
     // Ensure every branch has a row, even if the cache is partial.
-    return ALL_BRANCHES_ARR.map(b => parsed.find(p => p.branch === b) ?? defaultFeeForBranch(b))
+    return ALL_BRANCHES.map(b => parsed.find(p => p.branch === b) ?? defaultFeeForBranch(b))
   } catch { return defaultFees() }
 }
 
@@ -3569,7 +3581,7 @@ export async function hydrateFees(): Promise<FeeSchedule[]> {
   if (!getToken()) return getFees()
   try {
     const { fees } = await backendJson<{ fees: FeeSchedule[] }>('/api/public/class-portal/fees')
-    const merged = ALL_BRANCHES_ARR.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
+    const merged = ALL_BRANCHES.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
     writeFees(merged)
     return merged
   } catch { return getFees() }
@@ -3581,7 +3593,7 @@ export async function saveFees(next: FeeSchedule[]): Promise<FeeSchedule[]> {
     method: 'PUT',
     body: JSON.stringify({ fees: next }),
   })
-  const merged = ALL_BRANCHES_ARR.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
+  const merged = ALL_BRANCHES.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
   writeFees(merged)
   return merged
 }

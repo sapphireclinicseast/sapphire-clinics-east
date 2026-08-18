@@ -9,15 +9,6 @@ import path from 'path'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 
-// Map a Staff.branch enum value to a label for the email
-const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'Sandbox East',
-  SBGH: 'Sandbox Greenhills',
-  SANDBOX_EAST: 'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
-  VERDANA_STORE: 'Verdana Store',
-}
-
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; docId: string }> }

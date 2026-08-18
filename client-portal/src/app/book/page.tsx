@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSession } from '@/lib/session'
+import { branchLabel } from '@/lib/branch-label'
 
 // At both branches the "Medical Doctor" service is delivered through specific
 // sub-specialties — there's no generic-MD tile any more. SBEA splits across
@@ -112,7 +113,7 @@ export default function BookStep1Page() {
                 className={`pill ${branch === b ? 'pill-active' : ''}`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70"></span>
-                {b === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
+                {branchLabel(b)}
               </button>
             ))}
           </div>

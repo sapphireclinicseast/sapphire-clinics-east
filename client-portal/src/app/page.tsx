@@ -18,6 +18,7 @@ import {
   type SessionStats,
   type PatientDocuments,
 } from '@/lib/api'
+import { branchLabel } from '@/lib/branch-label'
 import { getSession, setSession, clearSession } from '@/lib/session'
 import Chatbot from '@/components/Chatbot'
 import { Hero3D } from '@/components/landing/Hero3D'
@@ -343,8 +344,8 @@ function AuthCard({
             </Field>
             <Field label="Branch">
               <select required name="branch" className="select" defaultValue="SANDBOX_EAST">
-                <option value="SANDBOX_EAST">East Branch</option>
-                <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
+                <option value="SANDBOX_EAST">{branchLabel('SANDBOX_EAST')}</option>
+                <option value="SANDBOX_GREENHILLS">{branchLabel('SANDBOX_GREENHILLS')}</option>
               </select>
             </Field>
           </div>

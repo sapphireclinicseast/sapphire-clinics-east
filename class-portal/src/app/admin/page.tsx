@@ -13,7 +13,7 @@ import {
   getAuth, getUsers, hydrateUsers, addUser, updateUser, deleteUser,
   setUserDisabled,
   sendPasswordResetLink, startImpersonation,
-  levelLabel, branchLabel, roleLabel, generatePassword,
+  levelLabel, branchLabel, roleLabel, generatePassword, ALL_BRANCHES,
   getFees, hydrateFees, saveFees, DEFAULT_FEE_VALUES,
   getVouchers, hydrateVouchers, saveVouchers,
   type StoredUser, type UserRole, type Branch, type FeeSchedule, type FeeExtraItem, type Voucher,
@@ -486,8 +486,7 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
             <span className="label">Branch {needsBranch ? '' : <span className="text-[color:var(--mid-gray)]">(not required for teachers)</span>}</span>
             <select className="select" value={newBranch} onChange={e => setNewBranch(e.target.value as Branch | '')} disabled={viewerRole === 'BRANCH_ADMIN'}>
               <option value="">—</option>
-              <option value="EAST">East Branch</option>
-              <option value="GREENHILLS">Greenhills Branch</option>
+              {ALL_BRANCHES.map(b => <option key={b} value={b}>{branchLabel(b)}</option>)}
             </select>
           </label>
           <label className="block">
@@ -594,8 +593,7 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                 <span className="label">Branch</span>
                 <select name="branch" className="select" defaultValue={editing.branch ?? ''}>
                   <option value="">—</option>
-                  <option value="EAST">East Branch</option>
-                  <option value="GREENHILLS">Greenhills Branch</option>
+                  {ALL_BRANCHES.map(b => <option key={b} value={b}>{branchLabel(b)}</option>)}
                 </select>
               </label>
               {/* Grade level is meaningful for STUDENT rows only — staff
@@ -680,8 +678,6 @@ function CreateTeacherInlineForm({ onCreate, disabled }: { onCreate: (pw: string
 
 /* ─────────────────────── FEES PANEL ─────────────────────── */
 
-const BRANCH_ORDER: Branch[] = ['EAST', 'GREENHILLS']
-
 function pesoToCentavos(s: string): number {
   const n = Number(String(s).replace(/[^\d.]/g, ''))
   if (!Number.isFinite(n) || n < 0) return 0
@@ -706,7 +702,7 @@ function FeesPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANCH
   // Branch admin only sees + edits their own branch row.
   const visibleBranches = useMemo<Branch[]>(() => {
     if (viewerRole === 'BRANCH_ADMIN' && viewerBranch) return [viewerBranch]
-    return BRANCH_ORDER
+    return ALL_BRANCHES
   }, [viewerRole, viewerBranch])
 
   function patch(branch: Branch, next: Partial<FeeSchedule>) {
