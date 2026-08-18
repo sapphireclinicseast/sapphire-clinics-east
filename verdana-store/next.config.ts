@@ -2,6 +2,9 @@ import type { NextConfig } from 'next'
 import { resolve } from 'path'
 
 const nextConfig: NextConfig = {
+  // googleapis is a large CJS package that must not be bundled into the
+  // server build — Gmail sending pulls it in.
+  serverExternalPackages: ['googleapis'],
   turbopack: {
     root: resolve(import.meta.dirname ?? '.'),
   },
