@@ -75,6 +75,32 @@ export async function listStaff(opts: { branch?: string; department?: string } =
   return data.staff
 }
 
+export interface Branch {
+  id: string
+  shortCode: string
+  name: string
+  brandName: string | null
+  address: string | null
+  phone: string | null
+  emailMain: string | null
+  departmentsOffered: string[]
+  operatingDays: string[]
+  operatingHoursOpen: string | null
+  operatingHoursClose: string | null
+}
+
+/**
+ * Pulls the Branches Registry from HR Platform via marketing's synced
+ * cache, through the same-origin booking-proxy → GET /api/public/branches.
+ * HR Platform is the source of truth; this is a read-only mirror.
+ */
+export async function listBranches(): Promise<Branch[]> {
+  const res = await fetch(`${API_BASE}/branches`)
+  if (!res.ok) throw new Error('Failed to load branches (' + res.status + ')')
+  const data = await res.json() as { branches: Branch[] }
+  return data.branches
+}
+
 export async function submitDocuments(token: string, payload: {
   documents: Record<string, { name: string; size: number }>
   waiverSignedAt?: string

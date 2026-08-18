@@ -74,6 +74,29 @@ export function listTherapists(branch: string, department: string) {
   return jsonFetch<{ therapists: Therapist[] }>(`/therapists?${qs}`)
 }
 
+export interface Branch {
+  id: string
+  shortCode: string
+  name: string
+  brandName: string | null
+  address: string | null
+  phone: string | null
+  emailMain: string | null
+  departmentsOffered: string[]
+  operatingDays: string[]
+  operatingHoursOpen: string | null
+  operatingHoursClose: string | null
+}
+
+/**
+ * Pulls the Branches Registry from HR Platform via marketing's synced
+ * cache. HR Platform is the source of truth; this is a read-only mirror.
+ */
+export async function listBranches(): Promise<Branch[]> {
+  const { branches } = await jsonFetch<{ branches: Branch[] }>('/branches')
+  return branches
+}
+
 export function listAvailableSlots(
   branch: string,
   department: string,

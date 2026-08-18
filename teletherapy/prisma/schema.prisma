@@ -171,6 +171,42 @@ model BranchCCEmail {
   updatedAt DateTime @updatedAt
 }
 
+// HR Branch Registry (synced cache) — HR Platform is the source of truth
+// (see HR Platform's `modules/branches`). Populated via admin-triggered
+// POST /api/branches/sync (full replace, Bearer HR_API_KEY against
+// HR_API_BASE, same working pair /api/staff/sync-hr already uses). Do not
+// edit rows here directly — edits belong in HR Platform.
+//
+// NOTE: teletherapy shares its Postgres database (sapphire_marketing) with
+// Operations Hub — same physical table as Operations Hub's own HrBranch
+// model, same convention already established by BranchCCEmail above. Keep
+// this model's columns in lockstep with Operations Hub's prisma/schema.prisma
+// HrBranch — Operations Hub's migration is what actually creates the table.
+model HrBranch {
+  id                       String   @id
+  shortCode                String
+  aliases                  String[] @default([])
+  opsHubBranch             String?
+  opsHubClassPortalBranch  String?
+  acctHubBranch            String?
+  acctHubServiceBranch     String?
+  teletherapyBranch        String?
+  name                     String
+  brandName                String?
+  tin                      String?
+  address                  String?
+  phone                    String?
+  emailMain                String?
+  emailHr                  String?
+  emailAccounting          String?
+  departmentsOffered       String[] @default([])
+  operatingDays            String[] @default([])
+  operatingHoursOpen       String?
+  operatingHoursClose      String?
+  active                   Boolean  @default(true)
+  syncedAt                 DateTime @default(now())
+}
+
 // Staff directory — admin-managed contact list shown to everyone.
 // `departments` holds one or more StaffDepartment values (multi-select).
 model DirectoryEntry {

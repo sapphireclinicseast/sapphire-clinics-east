@@ -46,6 +46,39 @@ enum NormalBalance {
   CREDIT
 }
 
+// ── HR Branch Registry (synced cache) ───────────────────────────
+// Local read-only cache of HR Platform's Branches Registry — HR Platform is
+// the source of truth (see HR Platform's `modules/branches`). Populated via
+// admin-triggered POST /api/branches/sync (full replace, direct connection
+// via HR_PLATFORM_URL + EXTERNAL_API_KEY, same plumbing as
+// src/lib/external-staff.ts). Do not edit rows here directly — edits belong
+// in HR Platform. Note: Branch.ALL / ServiceBranch.ALL are pseudo-branch
+// sentinels ("applies to every branch") and never get an HrBranch row.
+model HrBranch {
+  id                       String   @id // HR Platform's kebab-case branch id — the sync key
+  shortCode                String
+  aliases                  String[] @default([])
+  opsHubBranch             String?
+  opsHubClassPortalBranch  String?
+  acctHubBranch            String?
+  acctHubServiceBranch     String?
+  teletherapyBranch        String?
+  name                     String
+  brandName                String?
+  tin                      String?
+  address                  String?
+  phone                    String?
+  emailMain                String?
+  emailHr                  String?
+  emailAccounting          String?
+  departmentsOffered       String[] @default([])
+  operatingDays            String[] @default([])
+  operatingHoursOpen       String?
+  operatingHoursClose      String?
+  active                   Boolean  @default(true)
+  syncedAt                 DateTime @default(now())
+}
+
 // ── User ─────────────────────────────────────────────────────
 
 model User {

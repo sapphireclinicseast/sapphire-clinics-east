@@ -88,6 +88,40 @@ model BranchCCEmail {
   updatedAt   DateTime @default(now()) @updatedAt
 }
 
+// ── HR Branch Registry (synced cache) ─────────────────────────────────────
+// Local read-only cache of HR Platform's Branches Registry — HR Platform is
+// the source of truth (see HR Platform's `modules/branches`). Populated via
+// admin-triggered POST /api/branches/sync (full replace, same pattern as
+// /api/staff/sync); read by unauthenticated GET /api/public/branches, which
+// is what Class Portal and Client Portal hit through their booking-proxy
+// relay. Do not edit rows here directly — edits belong in HR Platform.
+model HrBranch {
+  id                       String   @id // HR Platform's kebab-case branch id — the sync key
+  shortCode                String
+  aliases                  String[] @default([])
+  // Per-system identity this branch maps to — null when it doesn't
+  // participate in that system (e.g. Verdana has no ClassPortalBranch value).
+  opsHubBranch             String?
+  opsHubClassPortalBranch  String?
+  acctHubBranch            String?
+  acctHubServiceBranch     String?
+  teletherapyBranch        String?
+  name                     String
+  brandName                String?
+  tin                      String?
+  address                  String?
+  phone                    String?
+  emailMain                String?
+  emailHr                  String?
+  emailAccounting          String?
+  departmentsOffered       String[] @default([])
+  operatingDays            String[] @default([])
+  operatingHoursOpen       String?
+  operatingHoursClose      String?
+  active                   Boolean  @default(true)
+  syncedAt                 DateTime @default(now())
+}
+
 enum Role {
   ADMIN
   MARKETING_ADMIN

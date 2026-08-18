@@ -19,6 +19,7 @@ import {
   Search,
   X,
   RefreshCw,
+  Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -599,6 +600,9 @@ export default function AdminPage() {
         })()}
       </div>
 
+      {/* ─── HR Branches Registry sync ─────────────────────────────────────────── */}
+      <div className="mb-8"><HrBranchesCard /></div>
+
       {/* ─── Branch CC Emails for IE tracking ─────────────────────────────────── */}
       <div className="card-static">
         <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[var(--light-gray)]">
@@ -664,6 +668,110 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── HR Branches Registry sync ───────────────────────────────────────────────
+// HR Platform is the source of truth for branch identity/contact config.
+// This pulls a local cache via POST /api/branches/sync — same admin-
+// triggered pattern as "Sync from HR" above for staff/interns.
+
+interface HrBranchRow {
+  id: string
+  shortCode: string
+  name: string
+  brandName: string | null
+  emailMain: string | null
+  active: boolean
+  syncedAt: string
+}
+
+function HrBranchesCard() {
+  const [branches, setBranches] = useState<HrBranchRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/branches')
+      if (r.ok) {
+        const d = await r.json()
+        setBranches(d.branches ?? [])
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { load() }, [])
+
+  async function handleSync() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/branches/sync', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMsg(data.error || 'Sync failed')
+      } else {
+        setMsg(`Synced ${data.synced} of ${data.total} (${data.created} new, ${data.updated} updated, ${data.deleted} removed)`)
+        await load()
+      }
+    } catch {
+      setMsg('Could not reach HR — try again')
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setMsg(null), 5000)
+    }
+  }
+
+  return (
+    <div className="card-static">
+      <div className="flex items-start justify-between gap-3 mb-4 pb-4 border-b border-[var(--light-gray)]">
+        <div className="flex items-start gap-3">
+          <Building2 size={20} className="text-[var(--teal)] mt-0.5" />
+          <div>
+            <h2 className="font-bold text-[var(--charcoal)] text-[16px]" style={{ fontFamily: 'var(--font-display)' }}>
+              Branches Registry
+            </h2>
+            <p className="text-[12px] text-[var(--mid-gray)] mt-1 leading-relaxed">
+              Synced from HR Platform — edit branch details there, not here.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleSync}
+          disabled={syncing}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-semibold text-[var(--teal)] border border-[var(--teal)]/30 hover:bg-[var(--teal)]/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+        >
+          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Syncing…' : 'Sync Branches'}
+        </button>
+      </div>
+
+      {msg && <p className="text-[12px] text-[var(--mid-gray)] mb-3">{msg}</p>}
+
+      {loading ? (
+        <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-4">Loading…</p>
+      ) : branches.length === 0 ? (
+        <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-4">
+          No branches synced yet — click &ldquo;Sync Branches&rdquo;.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {branches.map((b) => (
+            <span
+              key={b.id}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px]"
+              style={{ background: b.active ? '#EAF6F4' : '#F3F4F6', color: b.active ? 'var(--charcoal)' : 'var(--mid-gray)' }}
+            >
+              <strong>{b.shortCode}</strong> {b.name}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
