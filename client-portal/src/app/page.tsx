@@ -882,7 +882,12 @@ function SessionsSection({ sessions, stats, token }: { sessions: MeResult['sessi
                           className="border-t border-[color:var(--light-gray)] cursor-pointer hover:bg-[color:var(--pale-teal)]/40 transition-colors"
                         >
                           <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--deep-teal)]">{fmtDate(s.date)}</td>
-                          <td className="py-2.5 pr-4 text-[color:var(--mid-gray)]">{s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}</td>
+                          <td className="py-2.5 pr-4 text-[color:var(--mid-gray)]">
+                            {s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}
+                            {s.branch && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] align-middle">{s.branch}</span>
+                            )}
+                          </td>
                           <td className="py-2.5 pr-4"><StatusBadge status={s.status} /></td>
                           <td className="py-2.5 text-right text-[color:var(--teal)]">›</td>
                         </tr>
@@ -942,7 +947,7 @@ function SessionDetailModal({ session, token, onClose }: { session: PatientSessi
             </span>
             <div className="text-sm text-[color:var(--deep-teal)] font-semibold mt-1.5">{fmtDate(session.date)}</div>
             <div className="text-[12px] text-[color:var(--mid-gray)]">
-              {session.clinician}{session.isTeletherapy ? ' · Teletherapy' : ' · In-clinic'} · <StatusInline status={session.status} />
+              {session.clinician}{session.isTeletherapy ? ' · Teletherapy' : ' · In-clinic'}{session.branch ? ` · ${session.branch}` : ''} · <StatusInline status={session.status} />
             </div>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
@@ -1062,11 +1067,15 @@ function FolderIcon() {
 function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase()
   const tone =
-    s === 'COMPLETED' || s === 'PAID'
+    s === 'CONFIRMED' || s === 'COMPLETED' || s === 'PAID'
       ? 'bg-emerald-50 text-emerald-700'
-      : s === 'CANCELLED' || s === 'NO_SHOW' || s === 'REJECTED'
-        ? 'bg-rose-50 text-rose-700'
-        : 'bg-[color:var(--pale-teal)] text-[color:var(--teal)]'
+      : s === 'PENDING'
+        ? 'bg-amber-100 text-amber-800'
+        : s === 'RESCHEDULED'
+          ? 'bg-sky-100 text-sky-800'
+          : s === 'CANCELLED' || s === 'NO_SHOW' || s === 'REJECTED'
+            ? 'bg-rose-50 text-rose-700'
+            : 'bg-[color:var(--pale-teal)] text-[color:var(--teal)]'
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${tone}`} style={{ fontFamily: 'var(--font-display)' }}>
       {fmtStatus(status)}

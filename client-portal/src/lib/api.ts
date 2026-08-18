@@ -177,6 +177,7 @@ export interface PatientSessionRecord {
   clinician: string
   department: string
   departmentCode?: string
+  branch?: string
   status: string
   isTeletherapy: boolean
   notes?: string | null
