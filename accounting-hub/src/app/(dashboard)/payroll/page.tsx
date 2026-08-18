@@ -2548,6 +2548,8 @@ export default function PayrollPage() {
           consultantName: p.consultantName,
           firstName,
           branch: (BRANCH_INFO[p.branch]?.name || p.branch).replace('Sapphire Clinics East Inc.', 'Aura Health Rehab'),
+          // Raw code — the server routes the payslip to that branch's HR mailbox.
+          branchCode: p.branch,
           cutoffPeriod,
           netPay: formatCurrency(totals.net),
           email,

@@ -1,19 +1,9 @@
 import { NextResponse } from 'next/server'
-import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/prisma'
+import { sendGmail } from '@/lib/gmail'
 
-// Resend SMTP relay — same API key used across all SCEI apps
-function createTransport() {
-  return nodemailer.createTransport({
-    host: 'smtp.resend.com',
-    port: 465,
-    secure: true,
-    auth: {
-      user: 'resend',
-      pass: process.env.RESEND_API_KEY || '',
-    },
-  })
-}
+// Was an SMTP relay on port 465, which the VPS blocks outbound — the send hung
+// and no reset code ever arrived. Now goes over the Gmail API (HTTPS).
 
 export async function POST(req: Request) {
   try {
@@ -38,10 +28,7 @@ export async function POST(req: Request) {
       data: { resetToken: code, resetTokenExpiry: expiry },
     })
 
-    // Send email via Resend SMTP
-    const transporter = createTransport()
-    await transporter.sendMail({
-      from: 'SCEI Accounting <noreply@do-not-reply.sapphireclinicseast.org>',
+    const sent = await sendGmail({
       to: email,
       subject: 'Accounting Hub — Password Reset Code',
       html: `
@@ -62,7 +49,11 @@ export async function POST(req: Request) {
       `,
     })
 
-    console.log(`[forgot-password] Reset code sent to ${email}`)
+    // The response stays identical either way — telling the caller the send
+    // failed would leak that the address exists. Log it for the admin instead.
+    if (sent.ok) console.log(`[forgot-password] Reset code sent to ${email}`)
+    else console.error(`[forgot-password] Gmail send failed for ${email}: ${sent.error}`)
+
     return NextResponse.json({ message: 'If the email exists, a reset code has been sent.' })
   } catch (e: unknown) {
     console.error('[forgot-password] error:', e)
