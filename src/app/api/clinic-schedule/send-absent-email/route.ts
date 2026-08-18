@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Resend } from 'resend'
 import { getGmailClient } from '@/lib/email'
 
 const BRANCH_CONFIG: Record<string, { subject: string; ccEmail: string; location: string; phone: string; teamName: string; branchName: string }> = {
@@ -173,24 +172,6 @@ function makeRawEmail(opts: {
 async function sendEmail(opts: {
   to: string; subject: string; html: string; text: string; cc: string
 }): Promise<void> {
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const resend = new Resend(process.env.RESEND_API_KEY)
-      const { error } = await resend.emails.send({
-        from: 'Aura Health Rehab <noreply@do-not-reply.sapphireclinicseast.org>',
-        to: [opts.to],
-        cc: [opts.cc],
-        subject: opts.subject,
-        html: opts.html,
-        text: opts.text,
-      })
-      if (error) throw new Error(error.message)
-      return
-    } catch (err) {
-      console.error('[send-absent-email] Resend failed, falling back to Gmail API:', err)
-    }
-  }
-
   const gmailAcct = await prisma.gmailAccount.findFirst()
   if (gmailAcct) {
     const raw = makeRawEmail({
