@@ -29,6 +29,7 @@ import {
   UserCog,
   Sparkles,
   NotebookPen,
+  Target,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -74,6 +75,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: '/intern-supervision', label: 'Intern Supervision', icon: UserCog },
     { href: '/mentorship', label: 'Mentorship', icon: Sparkles },
     { href: '/balik-tanaw', label: 'Balik-Tanaw', icon: NotebookPen },
+    { href: '/learning-outcomes', label: 'Learning Outcomes & Preferences', icon: Target },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
 

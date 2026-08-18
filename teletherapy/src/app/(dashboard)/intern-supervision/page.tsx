@@ -1,15 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
 
 interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null }
 interface GradeInfo { grade: string; note: string | null; fileName: string | null; filePath: string | null; gradedByName: string | null; updatedAt: string }
+interface Doc { id: string; title: string; description: string | null; fileName: string; filePath: string; uploadedByName: string; uploadedByAccountId: string; createdAt: string }
 
-// Upload a grade computation file with real progress (fetch has no upload
+// Upload a file to a given folder with real progress (fetch has no upload
 // progress event). Returns the saved attachment descriptor.
-function uploadGradeFile(file: File, internId: string, onProgress: (pct: number) => void): Promise<{ fileName: string; filePath: string; mimeType: string }> {
+function uploadWithProgress(file: File, folder: string, onProgress: (pct: number) => void): Promise<{ fileName: string; filePath: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/upload')
@@ -21,7 +24,7 @@ function uploadGradeFile(file: File, internId: string, onProgress: (pct: number)
     xhr.onerror = () => reject(new Error('Upload failed — network error'))
     const fd = new FormData()
     fd.append('file', file)
-    fd.append('folder', `intern-grades/${internId}`)
+    fd.append('folder', folder)
     xhr.send(fd)
   })
 }
@@ -40,7 +43,7 @@ function GradeCard({ intern, existing, onSaved, onToast }: { intern: Intern; exi
       let fileMeta: { fileName?: string; filePath?: string; mimeType?: string } = {}
       if (file) {
         setProgress(0)
-        fileMeta = await uploadGradeFile(file, intern.id, setProgress)
+        fileMeta = await uploadWithProgress(file, `intern-grades/${intern.id}`, setProgress)
         setProgress(100)
       }
       const res = await fetch('/api/intern-supervision/grades', {
@@ -121,34 +124,156 @@ function weekSortTs(label: string, fallbackIso: string): number {
   return isNaN(t) ? (new Date(fallbackIso).getTime() || 0) : t
 }
 
-type Tab = 'interns' | 'balik-tanaw' | 'grades'
+// Read-only display of one intern's Learning Outcomes & Preferences.
+function LearningProfileView({ data }: { data: LearningProfileData }) {
+  const chips = (arr: string[], other?: string) => {
+    const all = [...(arr ?? []), ...(other?.trim() ? [`Others: ${other.trim()}`] : [])]
+    return all.length ? all.map((c, i) => <span key={i} className="inline-block text-[12px] bg-[var(--pale-teal)] text-[var(--deep-teal)] px-2 py-0.5 rounded-full mr-1.5 mb-1.5">{c}</span>) : <span className="text-[12px] italic text-[var(--mid-gray)]">—</span>
+  }
+  const line = (label: string, val?: string) => (
+    <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-0.5">{label}</p><p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{val?.trim() || <span className="italic text-[var(--mid-gray)]">—</span>}</p></div>
+  )
+  return (
+    <div className="space-y-3 pt-1">
+      {line('Expectations for the rotation', data.outcomes?.expectations)}
+      {line('Most looking forward to learning', data.outcomes?.lookingForward)}
+      {line('Wants to improve on', data.outcomes?.improve)}
+      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Learns best by</p>{chips(data.learnBest, data.learnBestOther)}</div>
+      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Preferred feedback</p>{chips(data.feedback, data.feedbackOther)}</div>
+      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Prepares for duty by</p>{chips(data.prep)}</div>
+      {line('Challenges in learning', data.challenges)}
+    </div>
+  )
+}
+
+// Department-scoped internship document library (supervisor uploads).
+function DocumentsPanel({ docs, myAccountId, isAdmin, onChanged, onToast }: {
+  docs: Doc[]; myAccountId?: string; isAdmin: boolean; onChanged: () => void; onToast: (m: string) => void
+}) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function upload() {
+    if (!title.trim()) { onToast('Please add a title.'); return }
+    if (!file) { onToast('Please attach a file.'); return }
+    setSaving(true)
+    try {
+      setProgress(0)
+      const meta = await uploadWithProgress(file, 'internship-documents', setProgress)
+      setProgress(100)
+      const res = await fetch('/api/intern-supervision/documents', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, ...meta }),
+      })
+      if (res.ok) { onToast('Document uploaded'); setTitle(''); setDescription(''); setFile(null); onChanged() }
+      else { const d = await res.json().catch(() => ({})); onToast(d.error ?? 'Failed to upload') }
+    } catch (e) { onToast(e instanceof Error ? e.message : 'Failed to upload') }
+    setSaving(false)
+    setTimeout(() => setProgress(null), 600)
+  }
+  async function remove(id: string) {
+    if (!confirm('Remove this document?')) return
+    const res = await fetch(`/api/intern-supervision/documents/${id}`, { method: 'DELETE' })
+    if (res.ok) onChanged(); else { const d = await res.json().catch(() => ({})); onToast(d.error ?? 'Failed to remove') }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex gap-2.5">
+        <Info size={18} className="text-blue-600 shrink-0 mt-0.5" />
+        <p className="text-[12.5px] text-blue-700 leading-relaxed">
+          Upload only documents <span className="font-semibold">specific to the internship</span> (e.g. supervision guides). Please do <span className="font-semibold">not duplicate</span> template forms already available in the <span className="font-semibold">Templates &amp; Forms</span> section. These are shared with supervisors in your department.
+        </p>
+      </div>
+
+      <div className="card-static">
+        <h3 className="font-bold text-[var(--charcoal)] mb-3 text-[14px]" style={{ fontFamily: 'var(--font-display)' }}>Upload a document</h3>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} className="input mb-2" placeholder="Title (e.g. PT Internship Supervision Guide)" />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="input resize-y !rounded-xl mb-2" placeholder="Description (optional)" />
+        <div className="flex items-center gap-2 mb-3">
+          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--light-gray)] text-[13px] font-semibold text-[var(--mid-gray)] hover:border-[var(--teal)] hover:text-[var(--teal)] cursor-pointer transition-colors whitespace-nowrap">
+            <Upload size={14} /> {file ? 'Change' : 'Attach'} file
+            <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} />
+          </label>
+          {file && <span className="text-[12px] text-[var(--charcoal)] truncate flex items-center gap-1"><Paperclip size={12} className="text-[var(--teal)]" />{file.name}</span>}
+        </div>
+        {progress !== null && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--mid-gray)] mb-1"><span>Uploading…</span><span className="tabular-nums">{progress}%</span></div>
+            <div className="h-2 rounded-full bg-[var(--light-gray)] overflow-hidden"><div className="h-full bg-[var(--teal)] transition-[width] duration-200" style={{ width: `${progress}%` }} /></div>
+          </div>
+        )}
+        <button onClick={upload} disabled={saving} className="btn-primary px-5 py-2.5 rounded-xl text-[13px]">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {progress !== null ? `Uploading… ${progress}%` : 'Upload'}
+        </button>
+      </div>
+
+      {docs.length === 0 ? (
+        <div className="card-static text-center py-10 text-[13px] text-[var(--mid-gray)]">No internship documents yet.</div>
+      ) : (
+        <div className="space-y-2">
+          {docs.map((d) => (
+            <div key={d.id} className="card-static flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <a href={`/api/upload/${d.filePath}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[var(--teal)] hover:underline">
+                  <FileText size={15} className="shrink-0" /> {d.title}
+                </a>
+                {d.description && <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">{d.description}</p>}
+                <p className="text-[11px] text-[var(--mid-gray)] mt-1">Uploaded by <span className="font-semibold text-[var(--charcoal)]">{d.uploadedByName}</span> · {new Date(d.createdAt).toLocaleDateString()}</p>
+              </div>
+              {(isAdmin || d.uploadedByAccountId === myAccountId) && (
+                <button onClick={() => remove(d.id)} className="text-[var(--mid-gray)] hover:text-red-500 shrink-0" title="Remove"><Trash2 size={16} /></button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type Tab = 'interns' | 'balik-tanaw' | 'grades' | 'documents' | 'learning'
 
 export default function InternSupervisionPage() {
   const [loading, setLoading] = useState(true)
   const [interns, setInterns] = useState<Intern[]>([])
   const [bt, setBt] = useState<BT[]>([])
   const [grades, setGrades] = useState<Record<string, GradeInfo>>({})
+  const [docs, setDocs] = useState<Doc[]>([])
+  const [profiles, setProfiles] = useState<Record<string, { data: LearningProfileData; updatedAt: string }>>({})
   const [tab, setTab] = useState<Tab>('interns')
   const [signing, setSigning] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [openProfile, setOpenProfile] = useState<string | null>(null)
   // Balik-Tanaw browsing: sort weeks by date, drill week -> intern -> entry.
   const [btSort, setBtSort] = useState<'desc' | 'asc'>('desc')
   const [openWeek, setOpenWeek] = useState<string | null>(null)
   const [openEntry, setOpenEntry] = useState<string | null>(null)
+
+  const { data: sess } = useSession()
+  const myAccountId = (sess?.user as { id?: string } | undefined)?.id
+  const isAdmin = (sess?.user as { role?: string } | undefined)?.role === 'ADMIN'
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(null), 4000) }
 
   async function load() {
     setLoading(true)
     try {
-      const [iRes, bRes, gRes] = await Promise.all([
+      const [iRes, bRes, gRes, dRes, pRes] = await Promise.all([
         fetch('/api/intern-supervision/interns'),
         fetch('/api/intern-supervision/balik-tanaw'),
         fetch('/api/intern-supervision/grades'),
+        fetch('/api/intern-supervision/documents'),
+        fetch('/api/intern-supervision/learning-profiles'),
       ])
       if (iRes.ok) setInterns((await iRes.json()).interns ?? [])
       if (bRes.ok) setBt((await bRes.json()).entries ?? [])
       if (gRes.ok) setGrades((await gRes.json()).grades ?? {})
+      if (dRes.ok) setDocs((await dRes.json()).documents ?? [])
+      if (pRes.ok) setProfiles((await pRes.json()).profiles ?? {})
     } catch {}
     setLoading(false)
   }
@@ -193,10 +318,10 @@ export default function InternSupervisionPage() {
       ) : (
         <>
           {/* Tabs */}
-          <div className="flex gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] mb-6">
-            {([['interns', 'List of Interns'], ['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades']] as [Tab, string][]).map(([t, label]) => (
+          <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] mb-6">
+            {([['interns', 'List of Interns'], ['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles']] as [Tab, string][]).map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)}
-                className={cn('flex-1 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
+                className={cn('flex-1 min-w-[110px] px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
                   tab === t ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]')}>
                 {label}
               </button>
@@ -321,6 +446,38 @@ export default function InternSupervisionPage() {
               {interns.map((i) => (
                 <GradeCard key={i.id} intern={i} existing={grades[i.id]} onSaved={load} onToast={showToast} />
               ))}
+            </div>
+          )}
+
+          {tab === 'documents' && (
+            <DocumentsPanel docs={docs} myAccountId={myAccountId} isAdmin={isAdmin} onChanged={load} onToast={showToast} />
+          )}
+
+          {tab === 'learning' && (
+            <div className="space-y-2">
+              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Each intern's Learning Outcomes &amp; Preferences (self-submitted).</p>
+              {interns.map((i) => {
+                const prof = profiles[i.id]
+                const open = openProfile === i.id
+                return (
+                  <div key={i.id} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
+                    <button onClick={() => setOpenProfile(open ? null : i.id)} disabled={!prof}
+                      className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)] disabled:cursor-default">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-[var(--charcoal)] text-[14px]">{i.name}</span>
+                        <span className="text-[11px] text-[var(--mid-gray)]">{i.department}</span>
+                        {!prof && <span className="text-[10px] italic text-[var(--mid-gray)]">not submitted yet</span>}
+                      </div>
+                      {prof && (open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />)}
+                    </button>
+                    {open && prof && (
+                      <div className="px-4 pb-4 border-t border-[var(--light-gray)]">
+                        <LearningProfileView data={prof.data} />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </>
