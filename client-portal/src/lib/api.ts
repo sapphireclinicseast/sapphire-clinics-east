@@ -349,3 +349,78 @@ export function listMyTickets(token: string) {
     `/patients/tickets?token=${encodeURIComponent(token)}`,
   )
 }
+
+// ── Home Progress (patient-uploaded voice / video / photo log) ───────────────
+export interface HomeProgressFileRow {
+  id: string
+  kind: string // AUDIO | VIDEO | PHOTO
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+}
+export interface HomeProgressEntryRow {
+  id: string
+  date: string
+  remarks: string | null
+  createdAt: string
+  files: HomeProgressFileRow[]
+}
+
+export function listHomeProgress(token: string) {
+  return jsonFetch<{ entries: HomeProgressEntryRow[] }>(
+    `/patients/home-progress?token=${encodeURIComponent(token)}`,
+  )
+}
+
+export function createHomeProgressEntry(token: string, date: string, remarks: string) {
+  return jsonFetch<{ ok: boolean; entryId: string }>(`/patients/home-progress`, {
+    method: 'POST',
+    body: JSON.stringify({ token, date, remarks }),
+  })
+}
+
+export function deleteHomeProgressEntry(token: string, entryId: string) {
+  return jsonFetch<{ ok: boolean }>(
+    `/patients/home-progress/${encodeURIComponent(entryId)}?token=${encodeURIComponent(token)}`,
+    { method: 'DELETE' },
+  )
+}
+
+// Same-origin URL for playing back / viewing a Home Progress media file.
+export function homeProgressFileUrl(fileId: string, token: string) {
+  return `${API_BASE}/patients/home-progress/file/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`
+}
+
+// Multipart upload of one media file with progress (%), via XHR.
+export function uploadHomeProgressFile(
+  token: string,
+  entryId: string,
+  kind: 'AUDIO' | 'VIDEO' | 'PHOTO',
+  file: Blob,
+  fileName: string,
+  onProgress: (pct: number) => void,
+): Promise<{ ok: boolean }> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData()
+    fd.append('token', token)
+    fd.append('kind', kind)
+    fd.append('file', file, fileName)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/patients/home-progress/${encodeURIComponent(entryId)}/file`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100)
+        try { resolve(JSON.parse(xhr.responseText || '{}')) } catch { resolve({ ok: true }) }
+      } else {
+        let msg = `HTTP ${xhr.status}`
+        try { msg = JSON.parse(xhr.responseText).error || msg } catch { /* ignore */ }
+        reject(new Error(msg))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Upload failed — check your connection.'))
+    xhr.send(fd)
+  })
+}

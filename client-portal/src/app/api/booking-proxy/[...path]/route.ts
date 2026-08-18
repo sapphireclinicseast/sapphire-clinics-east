@@ -5,16 +5,22 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const UPSTREAM = process.env.MARKETING_URL ?? 'https://operations.sapphireclinicseast.org'
 
-async function proxy(req: NextRequest, method: 'GET' | 'POST', path: string[]) {
+async function proxy(req: NextRequest, method: 'GET' | 'POST' | 'DELETE', path: string[]) {
   const url = new URL(`${UPSTREAM}/api/public/${path.join('/')}`)
   for (const [k, v] of req.nextUrl.searchParams.entries()) url.searchParams.set(k, v)
 
-  const init: RequestInit = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-  }
+  const init: RequestInit = { method }
   if (method === 'POST') {
-    init.body = await req.text()
+    const ct = req.headers.get('content-type') ?? 'application/json'
+    if (ct.startsWith('multipart/')) {
+      // Forward file uploads verbatim (raw bytes + the boundary content-type)
+      // so the upstream can parse the multipart form.
+      init.body = await req.arrayBuffer()
+      init.headers = { 'Content-Type': ct }
+    } else {
+      init.body = await req.text()
+      init.headers = { 'Content-Type': 'application/json' }
+    }
   }
   const res = await fetch(url.toString(), init)
   // Pass the body through as bytes so binary responses (document/image/PDF
@@ -36,4 +42,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
 export async function POST(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params
   return proxy(req, 'POST', path)
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+  const { path } = await params
+  return proxy(req, 'DELETE', path)
 }
