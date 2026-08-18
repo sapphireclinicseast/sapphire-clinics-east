@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { sendEmail } from '@/lib/email'
+import { sendEmail, branchFromAddress } from '@/lib/email'
 import { loadEmailLogo, emailHeader } from '@/lib/email-branding'
 import { readFile } from 'fs/promises'
 
@@ -335,6 +335,7 @@ export async function POST(
     await sendEmail({
       to: schedule.patient.email,
       cc: ccEmail ? [ccEmail] : undefined,
+      from: branchFromAddress(rawBranch),
       subject: `Session Notes - ${sessionDate}`,
       html,
       attachments: emailAttachments,
