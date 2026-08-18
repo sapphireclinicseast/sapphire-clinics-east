@@ -7,7 +7,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { isRotationLapsed } from '@/lib/intern-access'
+import { isRotationLapsed, maybeSweepExpiredInterns } from '@/lib/intern-access'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
 const HR_KEY = process.env.HR_API_KEY ?? ''
@@ -31,6 +31,10 @@ function fmtMonth(d?: string | null): string | null {
 export async function GET() {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Drive the auto-disable sweep from normal supervisor traffic (throttled,
+  // fire-and-forget) so it works without a cron.
+  maybeSweepExpiredInterns()
 
   const user = session.user as { role?: string; staffId?: string; branches?: { staffId: string }[] }
   const isAdmin = user.role === 'ADMIN'
