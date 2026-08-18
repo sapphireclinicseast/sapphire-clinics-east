@@ -826,13 +826,15 @@ interface PlushToyCandidate {
   lastName: string
   isVip: boolean
   isMilestone: boolean
+  /** ISO timestamp once handed over; null = still pending. */
+  givenAt: string | null
+  givenBy: string | null
 }
 
 function PlushToyEligible({ branch }: { branch?: string }) {
   const [list, setList] = useState<PlushToyCandidate[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [givenIds, setGivenIds] = useState<Set<string>>(new Set())
 
   const load = async () => {
     if (!branch) { setLoading(false); return }
@@ -851,56 +853,85 @@ function PlushToyEligible({ branch }: { branch?: string }) {
     try {
       const r = await fetch(`/api/patients/${c.id}/plush-toy`, { method: 'PATCH' })
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Failed') }
-      // Remove from the list immediately rather than refetching — this
-      // patient no longer belongs to "not yet given" for this front desk.
-      setGivenIds(s => new Set([...s, c.id]))
+      const d = await r.json()
+      // Flip the row to its given state rather than hiding it. The server is
+      // the source of truth (Patient.plushToyGivenAt), so this same green card
+      // reappears for every user, on every sign-in, indefinitely — which is
+      // what stops a second toy being handed out.
+      setList(prev => prev.map(x => x.id === c.id
+        ? { ...x, givenAt: d.plushToyGivenAt ?? new Date().toISOString(), givenBy: d.plushToyGivenBy ?? null }
+        : x))
     } catch (e) { alert((e as Error).message) }
     finally { setBusyId(null) }
   }
 
-  const visible = list.filter(c => !givenIds.has(c.id))
+  // Header count shows what still needs action, not the total on screen.
+  const pendingCount = list.filter(c => !c.givenAt).length
 
   return (
     <div className="w-full" style={{ background: '#F5F0FF', border: '1px solid #DDD0FA', borderRadius: '0.875rem', padding: '0.85rem 1rem' }}>
       <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6D28D9', marginBottom: '0.55rem' }}>
-        🧸 Plush Toy Perk ({visible.length})
+        🧸 Plush Toy Perk ({pendingCount})
       </div>
       {loading ? (
         <div style={{ fontSize: '0.75rem', color: '#6D28D9', fontStyle: 'italic' }}>Loading…</div>
-      ) : visible.length === 0 ? (
+      ) : list.length === 0 ? (
         <div style={{ fontSize: '0.78rem', color: '#6D28D9', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {visible.map(c => (
-            <div key={c.id} style={{ background: '#fff', border: '1px solid #DDD0FA', borderRadius: '0.6rem', padding: '0.55rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {list.map(c => (
+            <div key={c.id} style={{
+              background: c.givenAt ? '#F0FDF4' : '#fff',
+              border: `1px solid ${c.givenAt ? '#86EFAC' : '#DDD0FA'}`,
+              borderRadius: '0.6rem', padding: '0.55rem 0.65rem',
+              display: 'flex', flexDirection: 'column', gap: '0.4rem',
+            }}>
               <div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4C1D95', lineHeight: 1.25 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: c.givenAt ? '#166534' : '#4C1D95', lineHeight: 1.25 }}>
                   {c.lastName}, {c.firstName}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: 3 }}>
                   {c.isVip && (
-                    <span style={{ background: '#EDE9FE', color: '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
+                    <span style={{ background: c.givenAt ? '#DCFCE7' : '#EDE9FE', color: c.givenAt ? '#166534' : '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
                       VIP Card
                     </span>
                   )}
                   {c.isMilestone && (
-                    <span style={{ background: '#EDE9FE', color: '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
+                    <span style={{ background: c.givenAt ? '#DCFCE7' : '#EDE9FE', color: c.givenAt ? '#166534' : '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
                       100th Session
                     </span>
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => markGiven(c)}
-                disabled={busyId === c.id}
-                style={{
-                  padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: 'none', width: '100%',
-                  background: '#7C3AED', color: '#fff', fontSize: '0.72rem', fontWeight: 700,
-                  cursor: busyId === c.id ? 'not-allowed' : 'pointer', opacity: busyId === c.id ? 0.6 : 1,
-                }}
-              >
-                🧸 Given the plush toy already
-              </button>
+              {c.givenAt ? (
+                // Locked record — no onClick, so it cannot be re-triggered.
+                <div
+                  title={`Given${c.givenBy ? ' by ' + c.givenBy : ''} on ${new Date(c.givenAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                  style={{
+                    padding: '0.4rem 0.6rem', borderRadius: '0.4rem', width: '100%',
+                    background: '#16A34A', color: '#fff', fontSize: '0.72rem', fontWeight: 700,
+                    textAlign: 'center', cursor: 'default',
+                  }}
+                >
+                  ✓ Plush toy given
+                  <div style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.9, marginTop: 1 }}>
+                    {new Date(c.givenAt).toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {c.givenBy ? ` · ${c.givenBy}` : ''}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => markGiven(c)}
+                  disabled={busyId === c.id}
+                  style={{
+                    padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: 'none', width: '100%',
+                    background: '#7C3AED', color: '#fff', fontSize: '0.72rem', fontWeight: 700,
+                    cursor: busyId === c.id ? 'not-allowed' : 'pointer', opacity: busyId === c.id ? 0.6 : 1,
+                  }}
+                >
+                  🧸 Mark plush toy as given
+                </button>
+              )}
             </div>
           ))}
         </div>

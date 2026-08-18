@@ -6,7 +6,9 @@
 // Schedule sessions since 2026-04-01 (decking-originated visits are already
 // counted here — see project note in FrontDeskWelcome.tsx PlushToyEligible).
 //
-// Front-desk dashboard widget only; excludes patients with plushToyGivenAt set.
+// Front-desk dashboard widget only. Includes patients who have ALREADY been
+// given a toy, flagged with givenAt/givenBy, so the widget can show a locked
+// record instead of the row silently disappearing.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
@@ -24,6 +26,8 @@ interface Candidate {
   id: string
   firstName: string
   lastName: string
+  plushToyGivenAt: Date | string | null
+  plushToyGivenBy: string | null
 }
 
 export async function GET(req: NextRequest) {
@@ -37,12 +41,18 @@ export async function GET(req: NextRequest) {
 
   // Raw SQL for the branch/branches enum-array filter — PrismaPg driver
   // adapter doesn't support `has` on Postgres enum arrays (same workaround
-  // as getBirthdayPatients in dashboard/page.tsx). Only NOT-yet-given
-  // patients are candidates at all.
+  // as getBirthdayPatients in dashboard/page.tsx).
+  //
+  // Already-given patients are deliberately INCLUDED. They used to be filtered
+  // out here, which meant the card simply vanished once marked: the record
+  // persisted in the DB, but front desk had no way to tell "already received
+  // one" apart from "never qualified", so a returning patient could be handed
+  // a second toy on a hunch. They now come back flagged and render as a locked
+  // green card.
   const candidates = await prisma.$queryRawUnsafe<Candidate[]>(
-    `SELECT id, "firstName", "lastName" FROM "Patient"
-     WHERE "plushToyGivenAt" IS NULL
-       AND (branch::text = $1 OR $1 = ANY("branches"::text[]))`,
+    `SELECT id, "firstName", "lastName", "plushToyGivenAt", "plushToyGivenBy"
+     FROM "Patient"
+     WHERE (branch::text = $1 OR $1 = ANY("branches"::text[]))`,
     branchEnum,
   )
   if (candidates.length === 0) return NextResponse.json({ eligible: [] })
@@ -103,15 +113,23 @@ export async function GET(req: NextRequest) {
   }
 
   const eligible = candidates
-    .filter(c => milestoneIds.has(c.id) || vipIds.has(c.id))
+    // Someone already given a toy stays listed even if their VIP wallet has
+    // since lapsed — the point of the row is the permanent record that they
+    // received one, not current eligibility.
+    .filter(c => milestoneIds.has(c.id) || vipIds.has(c.id) || c.plushToyGivenAt)
     .map(c => ({
       id:        c.id,
       firstName: c.firstName,
       lastName:  c.lastName,
       isVip:       vipIds.has(c.id),
       isMilestone: milestoneIds.has(c.id),
+      givenAt:     c.plushToyGivenAt ? new Date(c.plushToyGivenAt).toISOString() : null,
+      givenBy:     c.plushToyGivenBy ?? null,
     }))
-    .sort((a, b) => a.lastName.localeCompare(b.lastName))
+    // Pending first, then given — the actionable rows stay at the top.
+    .sort((a, b) =>
+      (a.givenAt ? 1 : 0) - (b.givenAt ? 1 : 0) ||
+      a.lastName.localeCompare(b.lastName))
 
   return NextResponse.json({ eligible })
 }
