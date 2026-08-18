@@ -30,6 +30,7 @@ export const ALL_SECTIONS = [
   '/intern-supervision',
   '/mentorship',
   '/balik-tanaw',
+  '/learning-outcomes',
   '/settings',
 ]
 
@@ -49,7 +50,7 @@ const PRESETS: Record<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'INTERN', str
   INTERN: [
     '/', '/clinic-schedule', '/patients', '/patients-love', '/peers-love',
     '/seminars', '/templates', '/manuals', '/directory', '/wellness-check',
-    '/payroll', '/loans-perks', '/balik-tanaw', '/settings',
+    '/payroll', '/loans-perks', '/balik-tanaw', '/learning-outcomes', '/settings',
   ],
   FRONT_DESK: [
     '/patients-love', '/peers-love', '/seminars', '/templates', '/manuals',

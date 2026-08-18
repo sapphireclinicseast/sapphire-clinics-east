@@ -497,3 +497,31 @@ model InternGrade {
   @@unique([internStaffId, supervisorAccountId])
   @@index([internStaffId])
 }
+
+// An intern's Learning Outcomes & Preferences intake (one per intern, editable).
+// Stored as a flexible JSON blob (open-text outcomes + multi-select preferences).
+model LearningProfile {
+  id            String   @id @default(cuid())
+  internStaffId String   @unique
+  data          Json     // { outcomes: {...}, learnBest: [], learnBestOther, feedback: [], feedbackOther, prep: [], challenges }
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Internship documents supervisors upload (supervision guides, forms, etc.).
+// Department-scoped: visible to supervisors in the same department (+ admins).
+model InternshipDocument {
+  id                  String   @id @default(cuid())
+  department          String
+  title               String
+  description         String?
+  fileName            String
+  filePath            String
+  mimeType            String?
+  uploadedByAccountId String
+  uploadedByName      String
+  createdAt           DateTime @default(now())
+
+  @@index([department])
+  @@index([createdAt])
+}

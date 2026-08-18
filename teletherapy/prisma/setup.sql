@@ -180,3 +180,29 @@ CREATE TABLE IF NOT EXISTS "InternGrade" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "InternGrade_internStaffId_supervisorAccountId_key" ON "InternGrade"("internStaffId", "supervisorAccountId");
 CREATE INDEX IF NOT EXISTS "InternGrade_internStaffId_idx" ON "InternGrade"("internStaffId");
+
+-- ── Intern Learning Outcomes & Preferences (one per intern, editable) ──
+CREATE TABLE IF NOT EXISTS "LearningProfile" (
+  "id" TEXT PRIMARY KEY,
+  "internStaffId" TEXT NOT NULL,
+  "data" JSONB NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "LearningProfile_internStaffId_key" ON "LearningProfile"("internStaffId");
+
+-- ── Internship documents (supervisor uploads, department-scoped) ──
+CREATE TABLE IF NOT EXISTS "InternshipDocument" (
+  "id" TEXT PRIMARY KEY,
+  "department" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "description" TEXT,
+  "fileName" TEXT NOT NULL,
+  "filePath" TEXT NOT NULL,
+  "mimeType" TEXT,
+  "uploadedByAccountId" TEXT NOT NULL,
+  "uploadedByName" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "InternshipDocument_department_idx" ON "InternshipDocument"("department");
+CREATE INDEX IF NOT EXISTS "InternshipDocument_createdAt_idx" ON "InternshipDocument"("createdAt");
