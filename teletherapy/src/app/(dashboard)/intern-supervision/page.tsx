@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText } from 'lucide-react'
+import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null }
@@ -112,6 +112,13 @@ interface BT {
   answers: { question: string; answer: string }[]
   internSignedName: string; internSignedAt: string
   supervisorSignedName: string | null; supervisorSignedAt: string | null
+  createdAt: string
+}
+
+// Sort key for a week group: parse "Week of <date>", else fall back to a timestamp.
+function weekSortTs(label: string, fallbackIso: string): number {
+  const t = new Date(label.replace(/^week of\s*/i, '')).getTime()
+  return isNaN(t) ? (new Date(fallbackIso).getTime() || 0) : t
 }
 
 type Tab = 'interns' | 'balik-tanaw' | 'grades'
@@ -124,6 +131,10 @@ export default function InternSupervisionPage() {
   const [tab, setTab] = useState<Tab>('interns')
   const [signing, setSigning] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  // Balik-Tanaw browsing: sort weeks by date, drill week -> intern -> entry.
+  const [btSort, setBtSort] = useState<'desc' | 'asc'>('desc')
+  const [openWeek, setOpenWeek] = useState<string | null>(null)
+  const [openEntry, setOpenEntry] = useState<string | null>(null)
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(null), 4000) }
 
@@ -218,44 +229,89 @@ export default function InternSupervisionPage() {
             bt.length === 0 ? (
               <div className="card-static text-center py-12 text-[13px] text-[var(--mid-gray)]">No Balik-Tanaw reflections submitted yet.</div>
             ) : (
-              <div className="space-y-3">
-                {bt.map((e) => (
-                  <div key={e.id} className="card-static">
-                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                      <div>
-                        <p className="font-semibold text-[var(--charcoal)] text-[14px]">{e.internName}</p>
-                        <p className="text-[12px] text-[var(--mid-gray)]">{e.periodLabel}</p>
-                      </div>
-                      {e.supervisorSignedName ? (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
-                          <CheckCircle2 size={12} /> Signed {e.supervisorSignedAt ? new Date(e.supervisorSignedAt).toLocaleDateString() : ''}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                          <Clock size={12} /> Not yet signed
-                        </span>
-                      )}
-                    </div>
-                    <div className="space-y-3">
-                      {e.answers.map((a, i) => (
-                        <div key={i}>
-                          <p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">{i + 1}. {a.question}</p>
-                          <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{a.answer || <span className="italic text-[var(--mid-gray)]">—</span>}</p>
+              <>
+                <div className="flex justify-end mb-3">
+                  <button onClick={() => setBtSort((s) => (s === 'desc' ? 'asc' : 'desc'))}
+                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[var(--mid-gray)] hover:text-[var(--teal)] border border-[var(--light-gray)] rounded-lg px-3 py-1.5 transition-colors">
+                    <ArrowUpDown size={13} /> {btSort === 'desc' ? 'Newest first' : 'Oldest first'}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {(() => {
+                    const map = new Map<string, BT[]>()
+                    for (const e of bt) { const arr = map.get(e.periodLabel) ?? []; arr.push(e); map.set(e.periodLabel, arr) }
+                    const weeks = [...map.entries()].map(([label, entries]) => ({
+                      label,
+                      entries: [...entries].sort((a, b) => a.internName.localeCompare(b.internName)),
+                      ts: weekSortTs(label, entries[0]?.createdAt ?? entries[0]?.internSignedAt ?? ''),
+                      signed: entries.filter((e) => e.supervisorSignedName).length,
+                    }))
+                    weeks.sort((a, b) => (btSort === 'desc' ? b.ts - a.ts : a.ts - b.ts))
+                    return weeks.map((w) => {
+                      const wOpen = openWeek === w.label
+                      const allSigned = w.signed === w.entries.length
+                      return (
+                        <div key={w.label} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
+                          <button onClick={() => setOpenWeek(wOpen ? null : w.label)}
+                            className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Calendar size={14} className="text-[var(--teal)]" />
+                              <span className="font-semibold text-[var(--charcoal)] text-[14px]">{w.label}</span>
+                              <span className="text-[11px] text-[var(--mid-gray)]">{w.entries.length} intern{w.entries.length === 1 ? '' : 's'}</span>
+                              <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', allSigned ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200')}>{w.signed}/{w.entries.length} signed</span>
+                            </div>
+                            {wOpen ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+                          </button>
+                          {wOpen && (
+                            <div className="border-t border-[var(--light-gray)] p-2 space-y-2">
+                              {w.entries.map((e) => {
+                                const eOpen = openEntry === e.id
+                                return (
+                                  <div key={e.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
+                                    <button onClick={() => setOpenEntry(eOpen ? null : e.id)}
+                                      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]">
+                                      <span className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-semibold text-[var(--charcoal)] text-[13.5px]">{e.internName}</span>
+                                        {e.supervisorSignedName ? (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full"><CheckCircle2 size={11} /> Signed</span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full"><Clock size={11} /> Not signed</span>
+                                        )}
+                                      </span>
+                                      {eOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
+                                    </button>
+                                    {eOpen && (
+                                      <div className="px-3 pb-3 border-t border-[var(--light-gray)] pt-3 space-y-3">
+                                        {e.answers.map((a, i) => (
+                                          <div key={i}>
+                                            <p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">{i + 1}. {a.question}</p>
+                                            <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{a.answer || <span className="italic text-[var(--mid-gray)]">—</span>}</p>
+                                          </div>
+                                        ))}
+                                        <div className="flex items-center justify-between gap-2 pt-3 border-t border-[var(--light-gray)] flex-wrap">
+                                          <p className="text-[11px] text-[var(--mid-gray)]">Intern's signature: <span className="font-semibold text-[var(--charcoal)]">{e.internSignedName}</span>
+                                            {e.supervisorSignedName && <> · CT: <span className="font-semibold text-[var(--charcoal)]">{e.supervisorSignedName}</span></>}
+                                          </p>
+                                          {!e.supervisorSignedName && (
+                                            <button onClick={() => sign(e.id)} disabled={signing === e.id}
+                                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--teal)] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">
+                                              {signing === e.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Sign as Coordinating Teacher
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[var(--light-gray)] flex-wrap">
-                      <p className="text-[11px] text-[var(--mid-gray)]">Intern's signature: <span className="font-semibold text-[var(--charcoal)]">{e.internSignedName}</span></p>
-                      {!e.supervisorSignedName && (
-                        <button onClick={() => sign(e.id)} disabled={signing === e.id}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--teal)] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">
-                          {signing === e.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Sign as Coordinating Teacher
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      )
+                    })
+                  })()}
+                </div>
+              </>
             )
           )}
 
