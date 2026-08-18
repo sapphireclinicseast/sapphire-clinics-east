@@ -8,6 +8,7 @@ import {
   DollarSign, Shield, ShieldOff, Star, Mail, FileDown, ArrowUpDown, Landmark
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { BRANCH_INFO } from '@/lib/branch-info'
 
 const toNum = (v: unknown) => Number(v) || 0
 const peso = (v: unknown) => `₱${toNum(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -29,33 +30,6 @@ const BRANCHES = [
 // Short branch code for exports/filenames (current AHEA/AHGH naming; enum keys unchanged).
 const BRANCH_SHORT: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VERD', VERDANA_STORE: 'VERD' }
 const branchShort = (b?: string | null) => (b ? (BRANCH_SHORT[b] || b) : '')
-
-const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
-  SBEA: {
-    name: 'Sapphire Clinics East Inc. – East Branch',
-    address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
-    phone: '0917 118 9289 | (02) 5310-4991',
-    tin: 'TIN 010-817-642-00000',
-  },
-  SBGH: {
-    name: 'Sapphire Clinics East Inc. – Greenhills Branch',
-    address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    tin: 'TIN 010-817-642-00001',
-  },
-  VERDANA: {
-    name: 'Verdana Store',
-    address: 'Metro Manila, Philippines',
-    phone: '',
-    tin: '',
-  },
-  '': {
-    name: 'Sapphire Clinics East Inc.',
-    address: 'Metro Manila, Philippines',
-    phone: '',
-    tin: '',
-  },
-}
 
 const DAYS_OF_WEEK = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
 

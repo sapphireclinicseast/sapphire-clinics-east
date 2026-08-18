@@ -3,6 +3,7 @@
 import React, { Fragment, useState, useEffect, useCallback } from 'react'
 import { AccountPicker } from '@/components/AccountPicker'
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
+import { BRANCH_INFO } from '@/lib/branch-info'
 import { useSession } from 'next-auth/react'
 import {
   BadgeDollarSign, Users, Settings, FileText, Plus, Pencil, Save,
@@ -267,33 +268,6 @@ const POSITION_LABELS: Record<string, string> = {
   PSYCHOLOGY: 'Psychologist',
   ORTHOSIS: 'Orthotist & Prosthetist',
   ADMINISTRATION: 'Administrative Staff',
-}
-
-const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
-  SBEA: {
-    name: 'Sapphire Clinics East Inc. – East Branch',
-    address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
-    phone: '0917 118 9289 | (02) 5310-4991',
-    tin: 'TIN 010-817-642-00000',
-  },
-  SBGH: {
-    name: 'Sapphire Clinics East Inc. – Greenhills Branch',
-    address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    tin: 'TIN 010-817-642-00001',
-  },
-  VERDANA_STORE: {
-    name: 'Verdana Store',
-    address: 'Metro Manila, Philippines',
-    phone: '',
-    tin: '',
-  },
-  '': {
-    name: 'Sapphire Clinics East Inc.',
-    address: 'Metro Manila, Philippines',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    tin: '',
-  },
 }
 
 const BRANCHES = [
