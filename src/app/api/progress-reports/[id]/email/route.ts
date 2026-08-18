@@ -9,6 +9,20 @@ import path from 'path'
 
 const FROM = 'Sapphire Clinics East <noreply@do-not-reply.sapphireclinicseast.org>'
 
+// Branch-specific From for the Progress Report email. Requires the root domain
+// sapphireclinicseast.org to be verified in Resend (SPF/DKIM); if it isn't, the
+// send below falls back to FROM so the report still reaches the patient.
+function branchFrom(branch?: string | null): string {
+  switch (branch) {
+    case 'SBEA':
+      return process.env.RESEND_FROM_EAST ?? 'Aura Health East <east@sapphireclinicseast.org>'
+    case 'SBGH':
+      return process.env.RESEND_FROM_GREENHILLS ?? 'Aura Health Greenhills <greenhills@sapphireclinicseast.org>'
+    default:
+      return FROM
+  }
+}
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -62,25 +76,37 @@ export async function POST(
     }
   }
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: FROM,
-      to: [doc.patient.email],
-      ...(ccList.length > 0 ? { cc: ccList } : {}),
-      subject,
-      html,
-      attachments: [{
-        filename: doc.fileName,
-        content: fileBuffer.toString('base64'),
-      }],
-    }),
-    signal: AbortSignal.timeout(15_000),
-  })
+  const sendViaResend = (fromAddr: string) =>
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromAddr,
+        to: [doc.patient.email],
+        ...(ccList.length > 0 ? { cc: ccList } : {}),
+        subject,
+        html,
+        attachments: [{
+          filename: doc.fileName,
+          content: fileBuffer.toString('base64'),
+        }],
+      }),
+      signal: AbortSignal.timeout(15_000),
+    })
+
+  // Try the branch address first; if Resend rejects it (e.g. the root domain
+  // isn't verified yet), fall back to the always-verified FROM so the patient
+  // still receives their report.
+  const branchFromAddr = branchFrom(patientBranch)
+  let res = await sendViaResend(branchFromAddr)
+  if (!res.ok && branchFromAddr !== FROM) {
+    const body = await res.text().catch(() => '')
+    console.error('Resend send from', branchFromAddr, 'failed:', res.status, body.slice(0, 200), '— retrying from default')
+    res = await sendViaResend(FROM)
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '')
