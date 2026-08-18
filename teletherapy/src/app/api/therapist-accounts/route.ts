@@ -119,6 +119,9 @@ export async function PATCH(req: NextRequest) {
 
   if (typeof isActive === 'boolean') {
     updateData.isActive = isActive
+    // Re-enabling overrides the intern auto-disable sweep so it stays on
+    // (e.g. a re-rotation); disabling clears the override.
+    updateData.internAccessOverride = isActive
   }
 
   // Change the access preset (and keep role in sync).
