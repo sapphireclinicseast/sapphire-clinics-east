@@ -2,25 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient } from '@/lib/email'
-
-const BRANCH_CONFIG: Record<string, { subject: string; ccEmail: string; location: string; phone: string; teamName: string; branchName: string }> = {
-  SBEA: {
-    subject:    'Important: Session Cancellation — Aura Health Rehab East',
-    ccEmail:    'east@sapphireclinicseast.org',
-    location:   'Aura Health Rehab – East Branch, Level 4, Robinsons MetroEast, Marcos Highway, Brgy. Dela Paz, Pasig City',
-    phone:      '0917 118 9289 | (02) 5310-4991',
-    teamName:   'The Aura Health Rehab – East Team',
-    branchName: 'East Branch',
-  },
-  SBGH: {
-    subject:    'Important: Session Cancellation — Aura Health Rehab Greenhills',
-    ccEmail:    'greenhills@sapphireclinicseast.org',
-    location:   'Aura Health Rehab – Greenhills Branch, Unit 8L, GH Tower Offices at Greenhills, South Drive, Brgy. Greenhills, Ortigas Avenue, San Juan City',
-    phone:      '0917 770 1686 | (02) 8529-1590',
-    teamName:   'The Aura Health Rehab – Greenhills Team',
-    branchName: 'Greenhills Branch',
-  },
-}
+import { getBranchNotifyConfig, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
 const LOGO_URL = 'https://operations.sapphireclinicseast.org/brand/aura-logo-cream.png'
 
@@ -42,9 +24,9 @@ function buildAbsentEmailHtml(opts: {
   startTime:          string
   endTime:            string
   sessionType:        string
-  branch:             string
+  cfg:                BranchNotifyConfig
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   const phone1 = cfg.phone.split('|')[0].trim()
 
   return `<!DOCTYPE html>
@@ -112,9 +94,9 @@ function buildAbsentEmailText(opts: {
   startTime:          string
   endTime:            string
   sessionType:        string
-  branch:             string
+  cfg:                BranchNotifyConfig
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   return [
     `Dear ${opts.patientName},`,
     '',
@@ -214,7 +196,8 @@ export async function POST(req: NextRequest) {
 
   const branch             = reqBranch || schedules[0].staff.branch
   const clinicianFullName  = `${schedules[0].staff.firstName} ${schedules[0].staff.lastName}`
-  const cfg                = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg                = await getBranchNotifyConfig(branch)
+  const subject             = `Important: Session Cancellation — Aura Health Rehab ${cfg.brandShort}`
   let sent = 0
 
   for (const s of schedules) {
@@ -222,7 +205,7 @@ export async function POST(req: NextRequest) {
     try {
       await sendEmail({
         to:      s.patient.email,
-        subject: cfg.subject,
+        subject,
         html:    buildAbsentEmailHtml({
           patientName:       `${s.patient.firstName} ${s.patient.lastName}`,
           clinicianFullName,
@@ -230,7 +213,7 @@ export async function POST(req: NextRequest) {
           startTime:         s.startTime,
           endTime:           s.endTime,
           sessionType:       s.sessionType,
-          branch,
+          cfg,
         }),
         text:    buildAbsentEmailText({
           patientName:       `${s.patient.firstName} ${s.patient.lastName}`,
@@ -239,7 +222,7 @@ export async function POST(req: NextRequest) {
           startTime:         s.startTime,
           endTime:           s.endTime,
           sessionType:       s.sessionType,
-          branch,
+          cfg,
         }),
         cc: cfg.ccEmail,
       })

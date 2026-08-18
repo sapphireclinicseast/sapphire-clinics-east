@@ -2,23 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient } from '@/lib/email'
+import { getBranchNotifyConfig, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
-// ─── Branch config ────────────────────────────────────────────────────────────
-const BRANCH_CONFIG: Record<string, { subject: string; ccEmail: string; location: string; phone: string; teamName: string }> = {
-  SBEA: {
-    subject: 'Appointment Confirmation - Aura Health Rehab East',
-    ccEmail: 'east@sapphireclinicseast.org',
-    location: 'Aura Health Rehab – East Branch, Level 4, Robinsons MetroEast, Marcos Highway, Brgy. Dela Paz, Pasig City',
-    phone: '0917 118 9289 | (02) 5310-4991',
-    teamName: 'The Aura Health Rehab – East Team',
-  },
-  SBGH: {
-    subject: 'Appointment Confirmation - Aura Health Rehab Greenhills',
-    ccEmail: 'greenhills@sapphireclinicseast.org',
-    location: 'Aura Health Rehab – Greenhills Branch, Unit 8L, GH Tower Offices at Greenhills, South Drive, Brgy. Greenhills, Ortigas Avenue, San Juan City',
-    phone: '0917 770 1686 | (02) 8529-1590',
-    teamName: 'The Aura Health Rehab – Greenhills Team',
-  },
+function subjectFor(cfg: BranchNotifyConfig): string {
+  return `Appointment Confirmation - Aura Health Rehab ${cfg.brandShort}`
 }
 
 function formatDate(dateStr: string): string {
@@ -41,10 +28,10 @@ function buildEmailHtml(opts: {
   startTime: string
   endTime: string
   sessionType: string
-  branch: string
+  cfg: BranchNotifyConfig
   meetLink?: string | null
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   const ccEmail = cfg.ccEmail
   const phone1 = cfg.phone.split('|')[0].trim()
 
@@ -122,10 +109,10 @@ function buildEmailPlainText(opts: {
   startTime: string
   endTime: string
   sessionType: string
-  branch: string
+  cfg: BranchNotifyConfig
   meetLink?: string | null
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   const ccEmail = cfg.ccEmail
 
   return [
@@ -235,20 +222,20 @@ export async function POST(req: NextRequest) {
     const dateStr = schedule.date.toISOString().split('T')[0]
     // Use scheduling branch (for interbranch consultants) if provided, else staff home branch
     const branch = reqBranch || schedule.staff.branch
-    const cfg = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
+    const cfg = await getBranchNotifyConfig(branch)
     const emailOpts = {
       patientName: `${schedule.patient.firstName} ${schedule.patient.lastName}`,
       date: dateStr,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
       sessionType: schedule.sessionType,
-      branch,
+      cfg,
       meetLink: (schedule as Record<string, unknown>).meetLink as string | null,
     }
 
     await sendEmail({
       to: schedule.patient.email,
-      subject: cfg.subject,
+      subject: subjectFor(cfg),
       html: buildEmailHtml(emailOpts),
       text: buildEmailPlainText(emailOpts),
       cc: cfg.ccEmail,
@@ -281,21 +268,21 @@ export async function POST(req: NextRequest) {
       if (!schedule.patient?.email) continue
       // Use scheduling branch (for interbranch consultants) if provided, else staff home branch
       const branch = reqBranch || schedule.staff.branch
-      const cfg = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
+      const cfg = await getBranchNotifyConfig(branch)
       const emailOpts = {
         patientName: `${schedule.patient.firstName} ${schedule.patient.lastName}`,
         date,
         startTime: schedule.startTime,
         endTime: schedule.endTime,
         sessionType: schedule.sessionType,
-        branch,
+        cfg,
         meetLink: (schedule as Record<string, unknown>).meetLink as string | null,
       }
 
       try {
         await sendEmail({
           to: schedule.patient.email,
-          subject: cfg.subject,
+          subject: subjectFor(cfg),
           html: buildEmailHtml(emailOpts),
           text: buildEmailPlainText(emailOpts),
           cc: cfg.ccEmail,
