@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPatientToken } from '@/lib/patient-session'
+import { branchLabel } from '@/lib/branch-label'
 import { linkedPatientIds } from '@/lib/patient-links'
 import { preflight, withCors } from '../../_cors'
 
@@ -32,11 +33,6 @@ const DEPT_LABEL: Record<string, string> = {
 // Departments that aren't clinical services and shouldn't appear under "availed".
 const NON_SERVICE = new Set(['FRONT_DESK', 'ADMINISTRATION'])
 
-const BRANCH_LABEL: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-}
 
 function titleCase(s: string): string {
   return s
@@ -228,7 +224,7 @@ export async function GET(req: NextRequest) {
     patientType: patient.patientType === 'PEDIATRIC' ? 'Pediatric' : 'Adult',
     diagnosis: patient.diagnosis ? titleCase(patient.diagnosis) : null,
     city: patient.city ? titleCase(patient.city) : null,
-    branch: patient.branch ? (BRANCH_LABEL[patient.branch] ?? patient.branch) : null,
+    branch: patient.branch ? (branchLabel(patient.branch) ?? patient.branch) : null,
     // Contact + ID fields for the patient-facing portal profile section.
     email: patient.email ? patient.email.trim() : null,
     phone: patient.phone ? patient.phone.trim() : null,

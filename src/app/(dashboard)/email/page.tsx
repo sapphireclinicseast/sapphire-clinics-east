@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw, Zap, Code, Monitor, FlaskConical, Check } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 const BRANCH_FILTERS = [
-  { value: 'SANDBOX_EAST',       label: 'East Branch' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
-  { value: 'VERDANA_STORE',      label: 'Verdana Store' },
+  { value: 'SANDBOX_EAST',       label: branchLabel('SANDBOX_EAST') },
+  { value: 'SANDBOX_GREENHILLS', label: branchLabel('SANDBOX_GREENHILLS') },
+  { value: 'VERDANA_STORE',      label: branchLabel('VERDANA_STORE') },
 ]
 
 const RECIPIENT_GROUPS = [

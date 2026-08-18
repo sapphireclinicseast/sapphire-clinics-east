@@ -4,13 +4,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { branchLabel } from '@/lib/branch-label'
 import { checkAdminToken } from '@/lib/aurora-admin'
 
-const BRANCH_LABEL: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-}
 function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).trim()
 }
@@ -41,7 +37,7 @@ export async function GET(req: NextRequest) {
     createdAt: t.createdAt.toISOString(),
     patientName: titleCase(`${t.patient?.firstName ?? ''} ${t.patient?.lastName ?? ''}`.trim()) || '—',
     patientEmail: t.patient?.email ?? null,
-    branch: t.patient?.branch ? (BRANCH_LABEL[t.patient.branch] ?? t.patient.branch) : '—',
+    branch: t.patient?.branch ? (branchLabel(t.patient.branch) ?? t.patient.branch) : '—',
   }))
 
   const openCount = rows.filter((r) => r.status !== 'RESOLVED').length

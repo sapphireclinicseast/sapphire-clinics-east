@@ -8,6 +8,7 @@ import {
   QrCode, FileText, Camera, Loader2, Star,
 } from 'lucide-react'
 import { isLikelyChinoy } from '@/lib/chinoy-surnames'
+import { branchLabel } from '@/lib/branch-label'
 
 interface Patient {
   id: string
@@ -36,9 +37,9 @@ interface Patient {
 }
 
 const BRANCHES = [
-  { value: 'SANDBOX_EAST',       label: 'East Branch' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
-  { value: 'VERDANA_STORE',      label: 'Verdana Store' },
+  { value: 'SANDBOX_EAST',       label: branchLabel('SANDBOX_EAST') },
+  { value: 'SANDBOX_GREENHILLS', label: branchLabel('SANDBOX_GREENHILLS') },
+  { value: 'VERDANA_STORE',      label: branchLabel('VERDANA_STORE') },
 ]
 
 interface DuplicateEntry {

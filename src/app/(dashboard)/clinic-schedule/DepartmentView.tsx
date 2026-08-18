@@ -4,12 +4,8 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { localTodayStr, localTomorrowStr } from '@/lib/utils'
+import { branchLabel } from '@/lib/branch-label'
 
-// ─── Branch display labels (enum values must stay SBEA / SBGH in the DB) ────
-const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-}
 
 // ─── Session types per department ────────────────────────────────────────────
 const SESSION_TYPES: Record<string, string[]> = {
@@ -659,7 +655,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
             : isSBEA
               ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
               : { background: '#FFF3CD', color: '#92400E' }}>
-          {isMultiBranch ? 'Both Branches' : (BRANCH_LABEL[staff.branch] ?? staff.branch)}
+          {isMultiBranch ? 'Both Branches' : (branchLabel(staff.branch) ?? staff.branch)}
         </span>
         {open ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
       </button>
@@ -1020,7 +1016,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                 style={activeBranch === b
                   ? { background: 'var(--teal)', color: '#fff' }
                   : { background: '#fff', color: 'var(--mid-gray)' }}>
-                {BRANCH_LABEL[b] ?? b}
+                {branchLabel(b) ?? b}
               </button>
             ))}
           </div>
@@ -1081,7 +1077,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                   Clinicians tomorrow · {fmtDateShort(tomorrowDate)}
                 </h3>
                 <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  {tomorrowClinicians.length} on schedule · {BRANCH_LABEL[activeBranch] ?? activeBranch}
+                  {tomorrowClinicians.length} on schedule · {branchLabel(activeBranch) ?? activeBranch}
                 </span>
               </div>
               {tomorrowClinicians.length === 0 ? (

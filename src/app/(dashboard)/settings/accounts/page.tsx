@@ -18,6 +18,7 @@ import {
   KeyRound,
   Building2,
 } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 interface SocialAccount {
   id: string
@@ -901,12 +902,6 @@ interface BranchCCRow {
   updatedAt: string
 }
 
-const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-}
-
 function BranchCCEmailsSection() {
   const [allowed, setAllowed] = useState(true)
   const [knownBranches, setKnownBranches] = useState<string[]>([])
@@ -959,7 +954,7 @@ function BranchCCEmailsSection() {
   }
 
   async function remove(branch: string) {
-    if (!confirm(`Remove CC emails for ${BRANCH_LABELS[branch] ?? branch}?`)) return
+    if (!confirm(`Remove CC emails for ${branchLabel(branch) ?? branch}?`)) return
     setSaving(branch)
     try {
       const r = await fetch('/api/admin/branch-cc-emails?branch=' + encodeURIComponent(branch), { method: 'DELETE' })
@@ -998,7 +993,7 @@ function BranchCCEmailsSection() {
               <div key={branch} className="rounded-lg p-3" style={{ background: '#fafafa', border: '1px solid var(--light-gray)' }}>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#ED6823' }}>
-                    {BRANCH_LABELS[branch] ?? branch}
+                    {branchLabel(branch) ?? branch}
                   </span>
                   {existed && !dirty && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#D1FAE5', color: '#065F46' }}>

@@ -9,12 +9,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkAdminToken } from '@/lib/aurora-admin'
+import { branchLabel } from '@/lib/branch-label'
 
-const BRANCH_LABEL: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-}
 function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).trim()
 }
@@ -67,7 +63,7 @@ export async function GET(req: NextRequest) {
     if (!g) {
       g = {
         branch: key,
-        branchLabel: p.branch ? (BRANCH_LABEL[p.branch] ?? p.branch) : 'Unassigned',
+        branchLabel: p.branch ? (branchLabel(p.branch) ?? p.branch) : 'Unassigned',
         users: [],
       }
       groups.set(key, g)

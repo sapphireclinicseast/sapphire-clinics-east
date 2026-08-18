@@ -6,6 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 import DeptBreakdownSection from './DeptBreakdownSection'
 
@@ -51,11 +52,10 @@ interface InterdeptStats {
 const ALL_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'] as const
 type Branch = typeof ALL_BRANCHES[number]
 
-const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST:       'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE:      'Verdana Store',
-  UNASSIGNED:         'Unassigned',
+// UNASSIGNED has no Branches Registry row — it's a dashboard-only bucket
+// for patients with no branch set, not a real branch.
+function dashboardBranchLabel(b: string): string {
+  return b === 'UNASSIGNED' ? 'Unassigned' : branchLabel(b)
 }
 
 const BRANCH_COLORS: Record<string, string> = {
@@ -287,7 +287,7 @@ export default function PatientDashboardPage() {
                   cursor: 'pointer',
                 }}
               >
-                {BRANCH_LABELS[branch]}
+                {dashboardBranchLabel(branch)}
               </button>
             )
           })}
@@ -450,7 +450,7 @@ export default function PatientDashboardPage() {
                     {count}
                   </p>
                   <p className="text-xs font-semibold mt-1" style={{ color }}>
-                    {BRANCH_LABELS[branch] ?? branch}
+                    {dashboardBranchLabel(branch)}
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                     {pct}% of total

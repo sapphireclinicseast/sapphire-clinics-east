@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 const ALL_DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS']
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -30,7 +31,6 @@ function formatTime(t: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
-const BRANCH_LABEL: Record<string, string> = { SBEA: 'East Branch', SBGH: 'Greenhills Branch' }
 
 function visibleBranches(role: string): string[] {
   if (role.startsWith('SBEA_')) return ['SBEA']
@@ -191,7 +191,7 @@ export default function CalendarView({ role }: { role: string }) {
                     style={activeBranch === b
                       ? { background: 'var(--teal)', color: '#fff' }
                       : { background: '#fff', color: 'var(--mid-gray)' }}>
-                    {BRANCH_LABEL[b] ?? b}
+                    {branchLabel(b) ?? b}
                   </button>
                 ))}
               </div>

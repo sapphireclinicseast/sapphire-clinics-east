@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react'
 import { Pencil, X, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 const ALL_STATUSES = ['PENDING', 'CONFIRMED', 'CANCELLED', 'RESCHEDULED']
 
@@ -18,7 +19,6 @@ function formatTime(t: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
-const BRANCH_LABEL: Record<string, string> = { SBEA: 'East Branch', SBGH: 'Greenhills Branch' }
 
 function visibleBranches(role: string): string[] {
   if (role.startsWith('SBEA_')) return ['SBEA']
@@ -205,7 +205,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
                     style={activeBranch === b
                       ? { background: 'var(--teal)', color: '#fff' }
                       : { background: '#fff', color: 'var(--mid-gray)' }}>
-                    {BRANCH_LABEL[b] ?? b}
+                    {branchLabel(b) ?? b}
                   </button>
                 ))}
               </div>
