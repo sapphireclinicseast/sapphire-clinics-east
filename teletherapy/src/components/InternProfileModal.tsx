@@ -7,6 +7,7 @@ import type { LearningProfileData } from '@/lib/learning-profile'
 interface ProfileData {
   intern: { id: string; name: string; department: string; branch: string }
   hr: Record<string, string> | null
+  photoUrl: string | null
   learningProfile: LearningProfileData | null
   learningUpdatedAt: string | null
 }
@@ -57,8 +58,10 @@ function buildPrintHTML(d: ProfileData): string {
   td.k { color:#5b7772; width:180px; font-weight:600; } td.v { color:#1f2a30; }
   .qa { margin-bottom:12px; } .q { font-size:12.5px; font-weight:600; color:#5b7772; margin:0 0 3px; } .a { font-size:13.5px; margin:0; white-space:pre-wrap; }
   .foot { margin-top:28px; color:#8aa; font-size:11px; }
+  .photo { float:right; width:1.9in; height:1.9in; object-fit:cover; border:1px solid #ccc; border-radius:6px; margin:0 0 12px 18px; }
   @media print { body { padding:0.6in; } }
 </style></head><body><div class="doc">
+  ${d.photoUrl ? `<img class="photo" src="${esc(d.photoUrl)}" alt="2x2 photo">` : ''}
   <h1>Intern Profile</h1>
   <p class="sub">${esc(d.intern.name)} · Aura Health Rehab</p>
   <h2>HR Information</h2>
@@ -126,13 +129,26 @@ export default function InternProfileModal({ internId, onClose }: { internId: st
           <div className="space-y-6">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--teal)] mb-2">HR Information</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                {hrRows(data).map(([k, v]) => (
-                  <div key={k} className="flex justify-between gap-3 border-b border-[var(--light-gray)]/60 py-1">
-                    <span className="text-[12.5px] font-semibold text-[var(--mid-gray)]">{k}</span>
-                    <span className="text-[12.5px] text-[var(--charcoal)] text-right">{v}</span>
-                  </div>
-                ))}
+              <div className="flex gap-5 flex-col sm:flex-row">
+                <div className="shrink-0">
+                  {data.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={data.photoUrl} alt={`${data.intern.name} photo`} className="w-28 h-28 object-cover rounded-lg border border-[var(--light-gray)] bg-[var(--off-white)]" />
+                  ) : (
+                    <div className="w-28 h-28 rounded-lg bg-[var(--pale-teal)] flex items-center justify-center text-[var(--teal)] font-bold text-2xl border border-[var(--light-gray)]">
+                      {data.intern.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-center text-[var(--mid-gray)] mt-1">2×2 photo</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 flex-1 self-start">
+                  {hrRows(data).map(([k, v]) => (
+                    <div key={k} className="flex justify-between gap-3 border-b border-[var(--light-gray)]/60 py-1">
+                      <span className="text-[12.5px] font-semibold text-[var(--mid-gray)]">{k}</span>
+                      <span className="text-[12.5px] text-[var(--charcoal)] text-right">{v}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 

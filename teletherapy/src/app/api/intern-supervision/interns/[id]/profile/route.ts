@@ -34,6 +34,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   // HR sign-up record (display-safe subset).
   let hr: Record<string, unknown> | null = null
+  let photoUrl: string | null = null
   if (HR_KEY && staff.hrPlatformId) {
     try {
       const res = await fetch(`${HR_API_BASE}/staff/external`, {
@@ -42,7 +43,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       if (res.ok) {
         const data = await res.json()
         const rec = (data.staff ?? []).find((s: { hrId?: string }) => s.hrId === staff.hrPlatformId)
-        if (rec) { hr = {}; for (const f of HR_FIELDS) if (rec[f] != null && rec[f] !== '') hr[f] = rec[f] }
+        if (rec) {
+          hr = {}
+          for (const f of HR_FIELDS) if (rec[f] != null && rec[f] !== '') hr[f] = rec[f]
+          if (rec.photo) photoUrl = `${HR_API_BASE}/staff-photos/${encodeURIComponent(String(rec.photo))}`
+        }
       }
     } catch { /* HR unavailable */ }
   }
@@ -53,6 +58,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({
     intern: { id: staff.id, name: `${staff.firstName} ${staff.lastName}`, department: staff.department, branch: staff.branch },
     hr,
+    photoUrl,
     learningProfile: lp?.data ?? null,
     learningUpdatedAt: lp?.updatedAt ?? null,
   })
