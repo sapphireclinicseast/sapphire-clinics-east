@@ -131,7 +131,19 @@ export default async function DashboardPage() {
     'SBEA'
   const userName = session?.user?.name ?? undefined
   const birthdayPatients = await getBirthdayPatients(branch)
-  return <FrontDeskWelcome name={userName} branch={branch} birthdayPatients={birthdayPatients} />
+  // Main admins aren't tied to a clinic. `branch` above still drives the
+  // branch-specific widgets (reminders, birthdays, no-shows), which genuinely
+  // need one clinic; this flag only widens the plush-toy perk list, where a
+  // main admin is meant to see VIP holders across both branches.
+  const seesAllBranches = role === 'ADMIN' || role === 'MARKETING_ADMIN'
+  return (
+    <FrontDeskWelcome
+      name={userName}
+      branch={branch}
+      seesAllBranches={seesAllBranches}
+      birthdayPatients={birthdayPatients}
+    />
+  )
 
   // (Marketing-hub stats view below is kept as dead code in case we ever want
   // a separate route for it; remove if unused after a few weeks.)

@@ -28,6 +28,7 @@ interface Candidate {
   lastName: string
   plushToyGivenAt: Date | string | null
   plushToyGivenBy: string | null
+  branchCode: string | null
 }
 
 export async function GET(req: NextRequest) {
@@ -37,7 +38,18 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const branch = searchParams.get('branch')?.toUpperCase() ?? ''
   const branchEnum = BRANCH_ENUM[branch]
-  if (!branchEnum) return NextResponse.json({ error: 'branch must be SBEA or SBGH' }, { status: 400 })
+  // Main admins are not scoped to one clinic, so they may request both. Branch
+  // admins and front desk stay pinned to their own branch — the widget hands
+  // out a physical item, so who can see whose patients matters.
+  const role = (session.user as { role?: string })?.role ?? ''
+  const MAIN_ADMIN_ROLES = ['ADMIN', 'MARKETING_ADMIN']
+  const wantsAll = branch === 'ALL'
+  if (wantsAll && !MAIN_ADMIN_ROLES.includes(role)) {
+    return NextResponse.json({ error: 'Not permitted to view all branches' }, { status: 403 })
+  }
+  if (!wantsAll && !branchEnum) {
+    return NextResponse.json({ error: 'branch must be SBEA, SBGH or ALL' }, { status: 400 })
+  }
 
   // Raw SQL for the branch/branches enum-array filter — PrismaPg driver
   // adapter doesn't support `has` on Postgres enum arrays (same workaround
@@ -49,12 +61,21 @@ export async function GET(req: NextRequest) {
   // one" apart from "never qualified", so a returning patient could be handed
   // a second toy on a hunch. They now come back flagged and render as a locked
   // green card.
-  const candidates = await prisma.$queryRawUnsafe<Candidate[]>(
-    `SELECT id, "firstName", "lastName", "plushToyGivenAt", "plushToyGivenBy"
-     FROM "Patient"
-     WHERE (branch::text = $1 OR $1 = ANY("branches"::text[]))`,
-    branchEnum,
-  )
+  const candidates = wantsAll
+    ? await prisma.$queryRawUnsafe<Candidate[]>(
+        `SELECT id, "firstName", "lastName", "plushToyGivenAt", "plushToyGivenBy",
+                COALESCE(branch::text, ("branches"::text[])[1]) AS "branchCode"
+         FROM "Patient"
+         WHERE branch::text IN ('SANDBOX_EAST','SANDBOX_GREENHILLS')
+            OR "branches"::text[] && ARRAY['SANDBOX_EAST','SANDBOX_GREENHILLS']`,
+      )
+    : await prisma.$queryRawUnsafe<Candidate[]>(
+        `SELECT id, "firstName", "lastName", "plushToyGivenAt", "plushToyGivenBy",
+                $1::text AS "branchCode"
+         FROM "Patient"
+         WHERE (branch::text = $1 OR $1 = ANY("branches"::text[]))`,
+        branchEnum,
+      )
   if (candidates.length === 0) return NextResponse.json({ eligible: [] })
 
   const candidateIds = candidates.map(c => c.id)
@@ -125,6 +146,11 @@ export async function GET(req: NextRequest) {
       isMilestone: milestoneIds.has(c.id),
       givenAt:     c.plushToyGivenAt ? new Date(c.plushToyGivenAt).toISOString() : null,
       givenBy:     c.plushToyGivenBy ?? null,
+      // Only meaningful in the all-branches view; lets a main admin see which
+      // clinic each patient belongs to before handing anything over.
+      branch:      c.branchCode === 'SANDBOX_EAST' ? 'East'
+                 : c.branchCode === 'SANDBOX_GREENHILLS' ? 'Greenhills'
+                 : null,
     }))
     // Pending first, then given — the actionable rows stay at the top.
     .sort((a, b) =>

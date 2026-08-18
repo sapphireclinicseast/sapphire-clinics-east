@@ -372,10 +372,12 @@ function PactCancellationReminder() {
 export default function FrontDeskWelcome({
   name,
   branch,
+  seesAllBranches,
   birthdayPatients = [],
 }: {
   name?: string
   branch?: string
+  seesAllBranches?: boolean
   birthdayPatients?: BirthdayPatient[]
 }) {
   const [quote, setQuote] = useState<{ text: string; author: string } | null>(null)
@@ -542,7 +544,7 @@ export default function FrontDeskWelcome({
           <PactCancellationReminder />
 
           {/* Plush Toy Perk — VIP wallet holders + 100-session milestone patients */}
-          <PlushToyEligible branch={branch} />
+          <PlushToyEligible branch={branch} seesAllBranches={seesAllBranches} />
         </div>
 
       {/* ── Birthday Reminder ── */}
@@ -829,23 +831,28 @@ interface PlushToyCandidate {
   /** ISO timestamp once handed over; null = still pending. */
   givenAt: string | null
   givenBy: string | null
+  /** 'East' | 'Greenhills' — only populated in the all-branches view. */
+  branch: string | null
 }
 
-function PlushToyEligible({ branch }: { branch?: string }) {
+function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAllBranches?: boolean }) {
   const [list, setList] = useState<PlushToyCandidate[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = async () => {
-    if (!branch) { setLoading(false); return }
+    // A main admin isn't scoped to one clinic — ask for both branches rather
+    // than the single branch the rest of this dashboard is pinned to.
+    const scope = seesAllBranches ? 'ALL' : branch
+    if (!scope) { setLoading(false); return }
     setLoading(true)
     try {
-      const r = await fetch(`/api/plush-toy-eligible?branch=${branch}`)
+      const r = await fetch(`/api/plush-toy-eligible?branch=${scope}`)
       const d = await r.json()
       setList(d.eligible || [])
     } finally { setLoading(false) }
   }
-  React.useEffect(() => { load() }, [branch]) // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { load() }, [branch, seesAllBranches]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function markGiven(c: PlushToyCandidate) {
     if (!confirm(`Confirm: give the Aura the Alpaca plush toy to ${c.firstName} ${c.lastName}?`)) return
@@ -899,6 +906,11 @@ function PlushToyEligible({ branch }: { branch?: string }) {
                   {c.isMilestone && (
                     <span style={{ background: c.givenAt ? '#DCFCE7' : '#EDE9FE', color: c.givenAt ? '#166534' : '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
                       100th Session
+                    </span>
+                  )}
+                  {seesAllBranches && c.branch && (
+                    <span style={{ background: '#F1F5F9', color: '#475569', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
+                      {c.branch}
                     </span>
                   )}
                 </div>
