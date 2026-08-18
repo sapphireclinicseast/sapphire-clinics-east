@@ -58,10 +58,6 @@ type SortCol = 'name' | 'type' | 'branch' | 'sex' | 'city' | 'barangay' | 'diagn
 type SortDir = 'asc' | 'desc'
 type FilterableCol = 'type' | 'branch' | 'sex' | 'city' | 'barangay' | 'diagnosis'
 
-// ── Helper: branch label ──────────────────────────────────────────────────────
-function branchLabel(b?: string) {
-  return BRANCHES.find((x) => x.value === b)?.label ?? b ?? '—'
-}
 
 function patientBranchDisplay(p: Patient) {
   const bs = p.branches?.length ? p.branches : (p.branch ? [p.branch] : [])
