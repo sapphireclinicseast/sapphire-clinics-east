@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info } from 'lucide-react'
+import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info, IdCard } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
+import InternProfileModal from '@/components/InternProfileModal'
 
 interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null }
 interface GradeInfo { grade: string; note: string | null; fileName: string | null; filePath: string | null; gradedByName: string | null; updatedAt: string }
@@ -248,6 +249,7 @@ export default function InternSupervisionPage() {
   const [signing, setSigning] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [openProfile, setOpenProfile] = useState<string | null>(null)
+  const [profileFor, setProfileFor] = useState<string | null>(null)
   // Balik-Tanaw browsing: sort weeks by date, drill week -> intern -> entry.
   const [btSort, setBtSort] = useState<'desc' | 'asc'>('desc')
   const [openWeek, setOpenWeek] = useState<string | null>(null)
@@ -298,6 +300,7 @@ export default function InternSupervisionPage() {
   return (
     <div className="max-w-4xl mx-auto">
       {toast && <div className="toast">{toast}</div>}
+      {profileFor && <InternProfileModal internId={profileFor} onClose={() => setProfileFor(null)} />}
 
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-8">
         <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Intern Supervision</h1>
@@ -341,9 +344,15 @@ export default function InternSupervisionPage() {
                       <p className="text-[12px] text-[var(--mid-gray)]">{i.department} · {i.branch}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[12px] text-[var(--mid-gray)]">
-                    <Calendar size={13} />
-                    {i.startMonth || '—'} to {i.endMonth || '—'}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="flex items-center gap-1.5 text-[12px] text-[var(--mid-gray)]">
+                      <Calendar size={13} />
+                      {i.startMonth || '—'} to {i.endMonth || '—'}
+                    </span>
+                    <button onClick={() => setProfileFor(i.id)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--teal)]/30 text-[var(--teal)] text-[12.5px] font-semibold hover:bg-[var(--teal)]/5 transition-colors">
+                      <IdCard size={14} /> Intern Profile
+                    </button>
                   </div>
                 </div>
               ))}
