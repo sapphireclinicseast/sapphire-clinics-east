@@ -64,11 +64,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'File too large. Max 100MB.' }, { status: 400 })
   }
 
-  const dir = path.join(UPLOAD_DIR, 'session-notes', scheduleId)
+  // Destination subfolder: an explicit `folder` (e.g. intern-grades/<id>) or the
+  // default session-notes/<scheduleId>. Sanitised to a safe relative path.
+  const rawFolder = (formData.get('folder') as string) || `session-notes/${scheduleId ?? 'misc'}`
+  const subdir = rawFolder.replace(/\.\.+/g, '').replace(/^\/+/, '').replace(/[^a-zA-Z0-9/_-]/g, '_')
+  const dir = path.join(UPLOAD_DIR, subdir)
   await mkdir(dir, { recursive: true })
 
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext || 'bin'}`
-  const filePath = path.join('session-notes', scheduleId, fileName)
+  const filePath = path.join(subdir, fileName)
   const fullPath = path.join(UPLOAD_DIR, filePath)
 
   // Stream the upload straight to disk instead of buffering the whole file via
