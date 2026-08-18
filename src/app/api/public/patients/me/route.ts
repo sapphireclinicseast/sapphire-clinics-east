@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPatientToken } from '@/lib/patient-session'
+import { linkedPatientIds } from '@/lib/patient-links'
 import { preflight, withCors } from '../../_cors'
 
 export async function OPTIONS(req: NextRequest) {
@@ -77,27 +78,31 @@ export async function GET(req: NextRequest) {
 
   const now = new Date()
 
+  // Combine interbranch records (same person, one Patient row per branch) so the
+  // portal shows all their sessions across branches.
+  const patientIds = await linkedPatientIds(patient.id)
+
   const [schedules, bookings, assignments] = await Promise.all([
     prisma.schedule.findMany({
       // All statuses (incl. CANCELLED / RESCHEDULED) so the portal can show the
       // patient's full attendance record.
-      where: { patientId: patient.id },
+      where: { patientId: { in: patientIds } },
       orderBy: { date: 'desc' },
       take: 300,
       select: {
         id: true, date: true, startTime: true, endTime: true, status: true,
         isTeletherapy: true, notes: true,
-        staff: { select: { firstName: true, lastName: true, department: true } },
+        staff: { select: { firstName: true, lastName: true, department: true, branch: true } },
       },
     }),
     prisma.patientBooking.findMany({
-      where: { patientId: patient.id, status: { in: ['PAID', 'COMPLETED'] } },
+      where: { patientId: { in: patientIds }, status: { in: ['PAID', 'COMPLETED'] } },
       orderBy: { date: 'desc' },
       take: 200,
       select: {
         id: true, date: true, startTime: true, endTime: true, status: true,
-        department: true, isTeletherapy: true, notes: true,
-        staff: { select: { firstName: true, lastName: true, department: true } },
+        department: true, branch: true, isTeletherapy: true, notes: true,
+        staff: { select: { firstName: true, lastName: true, department: true, branch: true } },
       },
     }),
     prisma.surveyAssignment.findMany({
@@ -132,6 +137,7 @@ export async function GET(req: NextRequest) {
     clinician: string
     department: string
     departmentCode: string
+    branch: string
     status: string
     isTeletherapy: boolean
     notes: string | null
@@ -139,6 +145,14 @@ export async function GET(req: NextRequest) {
   }
   const clin = (f?: string | null, l?: string | null) =>
     titleCase(`${f ?? ''} ${l ?? ''}`.trim()) || 'Clinician'
+  // Normalise branch across sources: Schedule staff use "SBEA"/"SBGH";
+  // PatientBooking uses "SANDBOX_EAST"/"SANDBOX_GREENHILLS".
+  const branchShort = (b?: string | null): string => {
+    const v = (b ?? '').toUpperCase()
+    if (v === 'SBEA' || v === 'SANDBOX_EAST') return 'East'
+    if (v === 'SBGH' || v === 'SANDBOX_GREENHILLS') return 'Greenhills'
+    return ''
+  }
 
   const sessions: Session[] = [
     ...schedules.map((s): Session => {
@@ -151,6 +165,7 @@ export async function GET(req: NextRequest) {
         clinician: clin(s.staff?.firstName, s.staff?.lastName),
         department: code ? (DEPT_LABEL[code] ?? titleCase(code)) : '',
         departmentCode: code,
+        branch: branchShort(s.staff?.branch),
         status: s.status,
         isTeletherapy: s.isTeletherapy,
         notes: s.notes ?? null,
@@ -167,6 +182,7 @@ export async function GET(req: NextRequest) {
         clinician: clin(b.staff?.firstName, b.staff?.lastName),
         department: code ? (DEPT_LABEL[code] ?? titleCase(code)) : '',
         departmentCode: code,
+        branch: branchShort(b.staff?.branch ?? b.branch),
         status: b.status,
         isTeletherapy: b.isTeletherapy,
         notes: b.notes ?? null,

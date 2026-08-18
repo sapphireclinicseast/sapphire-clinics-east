@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPatientToken } from '@/lib/patient-session'
+import { linkedPatientIds } from '@/lib/patient-links'
 import { preflight, withCors } from '../../_cors'
 
 export async function OPTIONS(req: NextRequest) {
@@ -34,9 +35,11 @@ export async function GET(req: NextRequest) {
     return withCors(NextResponse.json({ error: 'Invalid token' }, { status: 401 }), origin)
   }
 
+  // Combine documents across the person's interbranch records.
+  const patientIds = await linkedPatientIds(session.patientId)
   const docs = await prisma.patientDocument.findMany({
     where: {
-      patientId: session.patientId,
+      patientId: { in: patientIds },
       ...(scheduleId ? { scheduleId } : department ? { department } : {}),
     },
     orderBy: { createdAt: 'desc' },

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPatientToken } from '@/lib/patient-session'
+import { linkedPatientIds } from '@/lib/patient-links'
 import path from 'path'
 import fs from 'fs/promises'
 
@@ -22,7 +23,9 @@ export async function GET(
     where: { id },
     select: { patientId: true, filePath: true, mimeType: true, fileName: true },
   })
-  if (!doc || doc.patientId !== session.patientId) {
+  // Ownership: the doc may sit on any of the person's interbranch records.
+  const patientIds = await linkedPatientIds(session.patientId)
+  if (!doc || !patientIds.includes(doc.patientId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
