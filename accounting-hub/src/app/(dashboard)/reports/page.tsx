@@ -1974,17 +1974,32 @@ export default function ReportsPage() {
             if (activeTab === 'income-statement' && v2.incomeStatement) {
               const t = v2.incomeStatement
               rows.push([`Income Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
+              // Section totals and summary lines carry monthly columns too —
+              // summed from the section rows' monthly arrays.
+              const secM: Record<string, number[]> = {}
               for (const sec of t.sections || []) {
+                const m12 = Array.from({ length: 12 }, (_, i) =>
+                  (sec.rows || []).reduce((s: number, r: { monthly?: number[] }) => s + (r.monthly?.[i] || 0), 0))
+                secM[sec.key] = m12
                 rows.push([sec.label, ...blank(), ''])
                 for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, ...mrow(r.monthly), num(r.closing)])
-                rows.push([`Total ${sec.label}`, ...blank(), num(sec.total)])
+                rows.push([`Total ${sec.label}`, ...mrow(m12), num(sec.total)])
               }
-              const summary: [string, number][] = [
-                ['Net Sales', t.netSales], ['Total Cost of Sales', t.totalCOGS], ['Gross Profit', t.grossProfit],
-                ['Total Operating Expenses', t.totalOpex], ['EBITDA', t.ebitda], ['Depreciation', t.depreciation],
-                ['Interest', t.interest], ['Net Income', t.netIncome],
+              const z = () => Array(12).fill(0) as number[]
+              const sub = (a: number[], b: number[]) => a.map((v, i) => v - (b[i] || 0))
+              const rev = secM['REVENUE'] || z(), disc = secM['DISCOUNTS'] || z(), cogs = secM['COGS'] || z()
+              const opex = secM['OPEX'] || z(), dep = secM['DEPRECIATION'] || z(), intr = secM['INTEREST'] || z()
+              const nonop = secM['NON_OPERATING'] || secM['NONOP'] || z()
+              const nsM = sub(rev, disc)
+              const gpM = sub(nsM, cogs)
+              const ebitdaM = sub(gpM, opex)
+              const niM = sub(sub(sub(ebitdaM, dep), intr), nonop)
+              const summary: [string, number[], number][] = [
+                ['Net Sales', nsM, t.netSales], ['Total Cost of Sales', cogs, t.totalCOGS], ['Gross Profit', gpM, t.grossProfit],
+                ['Total Operating Expenses', opex, t.totalOpex], ['EBITDA', ebitdaM, t.ebitda], ['Depreciation', dep, t.depreciation],
+                ['Interest', intr, t.interest], ['Net Income', niM, t.netIncome],
               ]
-              for (const [l, v] of summary) rows.push([l, ...blank(), num(v)])
+              for (const [l, m, v] of summary) rows.push([l, ...mrow(m), num(v)])
             } else if (activeTab === 'balance-sheet' && v2.balanceSheet) {
               const t = v2.balanceSheet
               rows.push([`Balance Sheet — ${year} — ${branchLbl}`, ...mcols, withMonths ? 'Closing' : `Amount (${dispCcy})`])
@@ -2000,20 +2015,33 @@ export default function ReportsPage() {
             } else if (activeTab === 'cash-flow' && v2.cashFlow) {
               const cf = v2.cashFlow
               rows.push([`Cash Flow Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
-              rows.push(['Net Income', ...mrow(cf.monthly?.netIncome), num(cf.netIncome)])
-              rows.push(['Depreciation', ...mrow(cf.monthly?.depreciation), num(cf.depreciation)])
+              const z12 = () => Array(12).fill(0) as number[]
+              const sumRows = (rs?: { monthly?: number[] }[]) => (rs || []).reduce((acc, r) =>
+                acc.map((v, i) => v + (r.monthly?.[i] || 0)), z12())
+              const niM = (cf.monthly?.netIncome as number[] | undefined) || z12()
+              const depM = (cf.monthly?.depreciation as number[] | undefined) || z12()
+              const wcM = sumRows(cf.workingCapital)
+              const invM = sumRows(cf.investing)
+              const finM = sumRows(cf.financing)
+              const opM = niM.map((v, i) => v + depM[i] + wcM[i])
+              const deltaM = (cf.monthly?.cashDelta as number[] | undefined) || z12()
+              const beginM = z12(); const endM = z12()
+              let run = Number(cf.beginningCash) || 0
+              for (let i = 0; i < 12; i++) { beginM[i] = run; endM[i] = run + (deltaM[i] || 0); run = endM[i] }
+              rows.push(['Net Income', ...mrow(niM), num(cf.netIncome)])
+              rows.push(['Depreciation', ...mrow(depM), num(cf.depreciation)])
               rows.push(['Working capital changes', ...blank(), ''])
               for (const r of cf.workingCapital || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
-              rows.push(['Net Cash from Operating Activities', ...blank(), num(cf.netOperating)])
+              rows.push(['Net Cash from Operating Activities', ...mrow(opM), num(cf.netOperating)])
               rows.push(['Investing activities', ...blank(), ''])
               for (const r of cf.investing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
-              rows.push(['Net Cash from Investing Activities', ...blank(), num(cf.netInvesting)])
+              rows.push(['Net Cash from Investing Activities', ...mrow(invM), num(cf.netInvesting)])
               rows.push(['Financing activities', ...blank(), ''])
               for (const r of cf.financing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
-              rows.push(['Net Cash from Financing Activities', ...blank(), num(cf.netFinancing)])
-              rows.push(['Net Change in Cash', ...mrow(cf.monthly?.cashDelta), num(cf.netChange)])
-              rows.push(['Beginning Cash', ...blank(), num(cf.beginningCash)])
-              rows.push(['Ending Cash', ...blank(), num(cf.endingCash)])
+              rows.push(['Net Cash from Financing Activities', ...mrow(finM), num(cf.netFinancing)])
+              rows.push(['Net Change in Cash', ...mrow(deltaM), num(cf.netChange)])
+              rows.push(['Beginning Cash', ...mrow(beginM), num(cf.beginningCash)])
+              rows.push(['Ending Cash', ...mrow(endM), num(cf.endingCash)])
             }
             if (rows.length > 1) exportRows(rows, fmt)
           } catch (err) {
