@@ -145,3 +145,38 @@ CREATE INDEX IF NOT EXISTS "Ticket_status_idx" ON "Ticket"("status");
 
 -- Session note edit history (intern author + supervisor edits, with timestamps)
 ALTER TABLE "SessionNote" ADD COLUMN IF NOT EXISTS "editHistory" JSONB;
+
+-- ── Intern Supervision: Balik-Tanaw (weekly intern reflections) ──
+CREATE TABLE IF NOT EXISTS "BalikTanaw" (
+  "id" TEXT PRIMARY KEY,
+  "internStaffId" TEXT NOT NULL,
+  "department" TEXT NOT NULL,
+  "periodLabel" TEXT NOT NULL,
+  "answers" JSONB NOT NULL,
+  "internSignedName" TEXT NOT NULL,
+  "internSignedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "supervisorSignedName" TEXT,
+  "supervisorSignedAt" TIMESTAMP(3),
+  "supervisorSignatureUrl" TEXT,
+  "supervisorAccountId" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "BalikTanaw_internStaffId_idx" ON "BalikTanaw"("internStaffId");
+
+-- ── Intern Supervision: Grades (one grade + computation file per intern) ──
+CREATE TABLE IF NOT EXISTS "InternGrade" (
+  "id" TEXT PRIMARY KEY,
+  "internStaffId" TEXT NOT NULL,
+  "supervisorAccountId" TEXT NOT NULL,
+  "grade" TEXT NOT NULL,
+  "note" TEXT,
+  "fileName" TEXT,
+  "filePath" TEXT,
+  "mimeType" TEXT,
+  "gradedByName" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "InternGrade_internStaffId_supervisorAccountId_key" ON "InternGrade"("internStaffId", "supervisorAccountId");
+CREATE INDEX IF NOT EXISTS "InternGrade_internStaffId_idx" ON "InternGrade"("internStaffId");

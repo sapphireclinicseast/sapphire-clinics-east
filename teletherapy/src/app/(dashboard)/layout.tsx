@@ -26,6 +26,9 @@ import {
   User,
   HandCoins,
   LifeBuoy,
+  UserCog,
+  Sparkles,
+  NotebookPen,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -68,6 +71,9 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: '/wellness-check', label: 'Wellness Check', icon: HeartPulse },
     { href: '/payroll', label: 'Payroll', icon: Wallet },
     { href: '/loans-perks', label: 'Loans & Perks', icon: HandCoins },
+    { href: '/intern-supervision', label: 'Intern Supervision', icon: UserCog },
+    { href: '/mentorship', label: 'Mentorship', icon: Sparkles },
+    { href: '/balik-tanaw', label: 'Balik-Tanaw', icon: NotebookPen },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
 

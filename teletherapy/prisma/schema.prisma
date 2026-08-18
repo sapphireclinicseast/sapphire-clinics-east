@@ -457,3 +457,43 @@ model Ticket {
   @@index([raisedByAccountId])
   @@index([status])
 }
+
+// ── Intern Supervision ───────────────────────────────────────────
+// Balik-Tanaw: an intern's weekly reflection. The intern submits (their typed
+// name is stamped as the signature); their supervisor reads it in the portal
+// and "signs" (Coordinating Teacher's signature) with their name + timestamp.
+model BalikTanaw {
+  id                     String    @id @default(cuid())
+  internStaffId          String
+  department             String
+  periodLabel            String    // e.g. "Week of Aug 18, 2026"
+  answers                Json      // [{ question: string, answer: string }]
+  internSignedName       String
+  internSignedAt         DateTime  @default(now())
+  supervisorSignedName   String?
+  supervisorSignedAt     DateTime?
+  supervisorSignatureUrl String?
+  supervisorAccountId    String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([internStaffId])
+}
+
+// A supervisor's grade for an intern: one grade + an attached computation file.
+model InternGrade {
+  id                  String   @id @default(cuid())
+  internStaffId       String
+  supervisorAccountId String
+  grade               String   // number/percentage or short remark
+  note                String?
+  fileName            String?
+  filePath            String?
+  mimeType            String?
+  gradedByName        String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([internStaffId, supervisorAccountId])
+  @@index([internStaffId])
+}
