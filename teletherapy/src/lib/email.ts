@@ -166,6 +166,22 @@ function buildRawMessage(opts: {
   return Buffer.from(message, 'utf-8').toString('base64url')
 }
 
+// Branch-specific From header for patient-facing reports (Initial Evaluation,
+// Progress Report). Falls back to the default mailbox for unknown branches.
+// NOTE: for Gmail to accept these, east@/greenhills@ must be verified
+// "Send mail as" aliases on the authenticated (main@) mailbox — otherwise the
+// send is retried from FROM_EMAIL by sendEmail() below.
+export function branchFromAddress(branch?: string | null): string {
+  switch (branch) {
+    case 'SBEA':
+      return process.env.GMAIL_FROM_EAST ?? 'Aura Health East <east@sapphireclinicseast.org>'
+    case 'SBGH':
+      return process.env.GMAIL_FROM_GREENHILLS ?? 'Aura Health Greenhills <greenhills@sapphireclinicseast.org>'
+    default:
+      return FROM_EMAIL
+  }
+}
+
 export async function sendEmail({
   to,
   cc,
@@ -173,6 +189,7 @@ export async function sendEmail({
   html,
   attachments,
   inlineImages,
+  from,
 }: {
   to: string
   cc?: string | string[]
@@ -180,26 +197,33 @@ export async function sendEmail({
   html: string
   attachments?: Attachment[]
   inlineImages?: InlineImage[]
+  from?: string
 }) {
   const ccList = !cc ? undefined : Array.isArray(cc) ? cc : [cc]
-  const raw = buildRawMessage({
-    from: FROM_EMAIL,
-    to,
-    cc: ccList,
-    subject,
-    html,
-    attachments,
-    inlineImages,
-  })
-
-  try {
-    const res = await getGmail().users.messages.send({
-      userId: 'me',
-      requestBody: { raw },
-    })
+  const send = async (fromAddr: string) => {
+    const raw = buildRawMessage({ from: fromAddr, to, cc: ccList, subject, html, attachments, inlineImages })
+    const res = await getGmail().users.messages.send({ userId: 'me', requestBody: { raw } })
     return res.data
+  }
+
+  const primaryFrom = from ?? FROM_EMAIL
+  try {
+    return await send(primaryFrom)
   } catch (err) {
     const e = err as { message?: string; code?: number }
+    // A branch From that isn't a verified send-as alias will be rejected by
+    // Gmail. Don't let that stop the report reaching the patient — retry once
+    // from the default mailbox.
+    if (primaryFrom !== FROM_EMAIL) {
+      console.error('Gmail send from', primaryFrom, 'failed:', e?.code, e?.message, '— retrying from default')
+      try {
+        return await send(FROM_EMAIL)
+      } catch (err2) {
+        const e2 = err2 as { message?: string; code?: number }
+        console.error('Gmail send error (fallback):', e2?.code, e2?.message)
+        throw new Error(`Email send failed: ${e2?.message ?? 'unknown error'}`)
+      }
+    }
     console.error('Gmail send error:', e?.code, e?.message)
     throw new Error(`Email send failed: ${e?.message ?? 'unknown error'}`)
   }

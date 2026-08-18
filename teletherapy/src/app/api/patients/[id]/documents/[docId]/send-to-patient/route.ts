@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { sendEmail } from '@/lib/email'
+import { sendEmail, branchFromAddress } from '@/lib/email'
 import { loadEmailLogo, emailHeader } from '@/lib/email-branding'
 import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
@@ -155,6 +155,7 @@ export async function POST(
     await sendEmail({
       to: patient.email,
       cc: ccEmail ? [ccEmail] : undefined,
+      from: branchFromAddress(branchKey),
       subject: `Initial Evaluation Report — ${patientName}`,
       html,
       attachments: [{ filename: doc.fileName, content: fileBuffer }],
