@@ -57,6 +57,15 @@ export interface StaffMember {
   jobTitle: string
   department: string
   branch: string
+  /** HR employmentType — "employee" | "consultant" | "intern". Empty
+   *  string when unset upstream. Only "intern" is meaningful today; it
+   *  drives the INTERN badge and the auto-disable date the admin sees
+   *  in the Staff Module prefill panel. */
+  employmentType?: string
+  /** ISO timestamp of the HR contract end date. For interns this is
+   *  the End-of-Internship-Month date; the class portal auto-disables
+   *  the account 15 days after this. Null when unset. */
+  contractExpiry?: string | null
 }
 
 /**

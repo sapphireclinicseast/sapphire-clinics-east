@@ -47,24 +47,55 @@ export async function GET(req: Request) {
       where,
       orderBy: [{ createdAt: 'desc' }],
     })
+
+    // For every intern-linked TEACHER row, look up the ops-hub Staff
+    // record's contractExpiry so the admin UI can display the
+    // auto-disable date (contract-end month + 15 days) without needing
+    // a second round trip. Done in one bulk lookup, not per-row.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const internStaffIds: string[] = Array.from(new Set(
+      (rows as any[])
+        .filter(r => r.isIntern && typeof r.linkedStaffId === 'string' && r.linkedStaffId)
+        .map(r => r.linkedStaffId as string)
+    ))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const staffById = new Map<string, any>()
+    if (internStaffIds.length > 0) {
+      const staff = await prisma.staff.findMany({
+        where: { id: { in: internStaffIds } },
+        select: { id: true, contractExpiry: true, active: true, employmentType: true },
+      })
+      for (const s of staff) staffById.set(s.id, s)
+    }
+
     return withCors(NextResponse.json({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      users: rows.map((r: any) => ({
-        id: r.id,
-        role: r.role,
-        email: r.email,
-        firstName: r.firstName,
-        lastName: r.lastName,
-        level: r.level,
-        branch: r.branch,
-        enrollment: r.enrollment,
-        passwordSetAt: r.passwordSetAt ? r.passwordSetAt.toISOString() : null,
-        passwordSetBy: r.passwordSetBy ?? null,
-        disabledAt: r.disabledAt ? r.disabledAt.toISOString() : null,
-        disabledBy: r.disabledBy ?? null,
-        createdAt: r.createdAt.toISOString(),
-        updatedAt: r.updatedAt.toISOString(),
-      })),
+      users: rows.map((r: any) => {
+        const linked = r.linkedStaffId ? staffById.get(r.linkedStaffId) : null
+        return {
+          id: r.id,
+          role: r.role,
+          email: r.email,
+          firstName: r.firstName,
+          lastName: r.lastName,
+          level: r.level,
+          branch: r.branch,
+          enrollment: r.enrollment,
+          passwordSetAt: r.passwordSetAt ? r.passwordSetAt.toISOString() : null,
+          passwordSetBy: r.passwordSetBy ?? null,
+          disabledAt: r.disabledAt ? r.disabledAt.toISOString() : null,
+          disabledBy: r.disabledBy ?? null,
+          isIntern: !!r.isIntern,
+          linkedStaffId: r.linkedStaffId ?? null,
+          // Live contract end (from ops-hub Staff) — the client uses
+          // this to compute the auto-disable date. Null for non-intern
+          // rows or if the linked Staff row was deleted.
+          internContractExpiry: linked?.contractExpiry ? linked.contractExpiry.toISOString() : null,
+          internStaffActive: linked ? !!linked.active : null,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        }
+      }),
     }), origin)
   } catch (e) {
     if (e instanceof Response) {
@@ -93,6 +124,12 @@ export async function POST(req: Request) {
       level?: string
       branch?: 'EAST' | 'GREENHILLS' | null
       enrollment?: Record<string, unknown>
+      /** Set when minting a teacher account from an HR-hub intern row.
+       *  The intern-lifecycle cron uses linkedStaffId to look up the
+       *  ops-hub Staff.contractExpiry and auto-disable the account 15
+       *  days after the end of the contract-end month. */
+      isIntern?: boolean
+      linkedStaffId?: string | null
     }
     auditEmail = body.email
     auditRole = body.role
@@ -149,6 +186,12 @@ export async function POST(req: Request) {
         passwordSetByEmail = adminAuth.email
       } catch { /* leave as the target email — staff role auth-checked above */ }
     }
+    // Intern link is only meaningful for TEACHER rows and only from an
+    // authenticated staff caller. Silently drop it on other roles /
+    // self-signup to keep the field trustworthy.
+    const isIntern = body.role === 'TEACHER' && !!body.isIntern
+    const linkedStaffId = body.role === 'TEACHER' && body.linkedStaffId ? String(body.linkedStaffId) : null
+
     const created = await prisma.classPortalUser.create({
       data: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -165,6 +208,8 @@ export async function POST(req: Request) {
         enrollment: (body.enrollment ?? null) as any,
         passwordSetAt: new Date(),
         passwordSetBy: passwordSetByEmail,
+        isIntern,
+        linkedStaffId,
       },
     })
 
@@ -205,6 +250,8 @@ export async function POST(req: Request) {
         enrollment: created.enrollment,
         passwordSetAt: created.passwordSetAt ? created.passwordSetAt.toISOString() : null,
         passwordSetBy: created.passwordSetBy ?? null,
+        isIntern: !!created.isIntern,
+        linkedStaffId: created.linkedStaffId ?? null,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),
       },
