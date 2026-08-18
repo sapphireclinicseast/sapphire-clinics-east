@@ -2053,36 +2053,8 @@ export default function ReportsPage() {
       exportEngineStatement(isBranchSel)
       return
     }
-    if (data.historical) {
-      const h = data.historical
-      const stmt = activeTab === 'income-statement' ? h.incomeStatement
-        : activeTab === 'balance-sheet' ? h.balanceSheet
-        : h.cashFlow
-      if (!stmt) { exportEngineStatement(); return }
-      const stmtHasMonthly = stmt.rows.some(r => {
-        const m = (r as { monthly?: number[] }).monthly
-        return Array.isArray(m) && m.some(v => v)
-      })
-      // Monthly columns requested but the manual statement is annual-only
-      // (all manual balance sheets; some cash flows) — export the engine view.
-      if (viewMode === 'monthly' && !stmtHasMonthly) { exportEngineStatement(); return }
-      const withMonths = viewMode === 'monthly' && stmtHasMonthly
-      const rows: string[][] = []
-      const title = 'title' in stmt ? stmt.title : ''
-      rows.push([`${title} — ${year}`, ...(withMonths ? FULL_MONTHS : []), activeTab === 'balance-sheet' ? `Amount (${dispCcy})` : 'FY Total'])
-      if (dispCcy !== 'PHP') rows.push([`Shown in ${dispCcy} at ₱${dispRateNum.toLocaleString('en-PH')} = 1 ${dispCcy}. Books are maintained in Philippine pesos.`])
-      for (const r of stmt.rows) {
-        if (r.kind === 'header') {
-          rows.push([r.label, ...(withMonths ? Array(12).fill('') : []), r.total !== null ? r.total.toFixed(2) : ''])
-        } else {
-          const label = r.kind === 'line' ? `  ${r.label}` : r.label
-          const months = withMonths ? (r.monthly ?? Array(12).fill(0)).map((v: number) => v.toFixed(2)) : []
-          rows.push([label, ...months, r.total !== null ? r.total.toFixed(2) : ''])
-        }
-      }
-      exportRows(rows, fmt)
-      return
-    }
+    // All years export from the ledger engine — the manual FY2024–FY2025
+    // package is display metadata only; downloads always match the screen.
     // Live years: every statement exports from the ledger engine — the same
     // derivation the screen shows (the legacy /api/reports builder diverged).
     exportEngineStatement()
