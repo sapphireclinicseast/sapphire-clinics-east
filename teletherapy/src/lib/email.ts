@@ -172,10 +172,14 @@ function buildRawMessage(opts: {
 // "Send mail as" aliases on the authenticated (main@) mailbox — otherwise the
 // send is retried from FROM_EMAIL by sendEmail() below.
 export function branchFromAddress(branch?: string | null): string {
+  // Handle both branch representations: Patient.branch uses SANDBOX_EAST/
+  // SANDBOX_GREENHILLS, while Staff.branch uses SBEA/SBGH.
   switch (branch) {
     case 'SBEA':
+    case 'SANDBOX_EAST':
       return process.env.GMAIL_FROM_EAST ?? 'Aura Health East <east@sapphireclinicseast.org>'
     case 'SBGH':
+    case 'SANDBOX_GREENHILLS':
       return process.env.GMAIL_FROM_GREENHILLS ?? 'Aura Health Greenhills <greenhills@sapphireclinicseast.org>'
     default:
       return FROM_EMAIL

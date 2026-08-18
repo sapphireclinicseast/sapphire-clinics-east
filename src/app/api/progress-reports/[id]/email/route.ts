@@ -16,10 +16,16 @@ import path from 'path'
 // which is why it carried a fallback. If the branch mailbox isn't connected,
 // sendTransactionalEmail falls back to the default transactional account.
 function branchSenderAccount(branch?: string | null): string | undefined {
+  // Patient.branch uses SANDBOX_EAST/SANDBOX_GREENHILLS (Staff.branch uses SBEA/SBGH).
   switch (branch) {
-    case 'SBEA': return process.env.GMAIL_FROM_EAST ?? 'east@sapphireclinicseast.org'
-    case 'SBGH': return process.env.GMAIL_FROM_GREENHILLS ?? 'greenhills@sapphireclinicseast.org'
-    default:     return undefined
+    case 'SBEA':
+    case 'SANDBOX_EAST':
+      return process.env.GMAIL_FROM_EAST ?? 'east@sapphireclinicseast.org'
+    case 'SBGH':
+    case 'SANDBOX_GREENHILLS':
+      return process.env.GMAIL_FROM_GREENHILLS ?? 'greenhills@sapphireclinicseast.org'
+    default:
+      return undefined
   }
 }
 
