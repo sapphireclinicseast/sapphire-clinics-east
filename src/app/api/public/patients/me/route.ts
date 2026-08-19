@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
   // portal shows all their sessions across branches.
   const patientIds = await linkedPatientIds(patient.id)
 
-  const [schedules, bookings, assignments] = await Promise.all([
+  const [schedules, bookings, assignments, linkedRecords] = await Promise.all([
     prisma.schedule.findMany({
       // All statuses (incl. CANCELLED / RESCHEDULED) so the portal can show the
       // patient's full attendance record.
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
       orderBy: { date: 'desc' },
       take: 300,
       select: {
-        id: true, date: true, startTime: true, endTime: true, status: true,
+        id: true, patientId: true, date: true, startTime: true, endTime: true, status: true,
         isTeletherapy: true, notes: true,
         staff: { select: { firstName: true, lastName: true, department: true, branch: true } },
       },
@@ -110,7 +110,15 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
       select: { id: true, surveyType: true, expiresAt: true, createdAt: true },
     }),
+    // Branch per interbranch record — a session's real branch is the branch of
+    // the Patient row that owns it, NOT the consultant's home branch (an
+    // interbranch consultant staffs both branches under one Staff.branch).
+    prisma.patient.findMany({
+      where: { id: { in: patientIds } },
+      select: { id: true, branch: true },
+    }),
   ])
+  const branchByPatientId = new Map(linkedRecords.map((r) => [r.id, r.branch as string | null]))
 
   // ── Services availed (distinct departments across both session sources) ──
   const deptSet = new Set<string>()
@@ -161,7 +169,7 @@ export async function GET(req: NextRequest) {
         clinician: clin(s.staff?.firstName, s.staff?.lastName),
         department: code ? (DEPT_LABEL[code] ?? titleCase(code)) : '',
         departmentCode: code,
-        branch: branchShort(s.staff?.branch),
+        branch: branchShort(branchByPatientId.get(s.patientId ?? '') ?? s.staff?.branch),
         status: s.status,
         isTeletherapy: s.isTeletherapy,
         notes: s.notes ?? null,
@@ -178,7 +186,7 @@ export async function GET(req: NextRequest) {
         clinician: clin(b.staff?.firstName, b.staff?.lastName),
         department: code ? (DEPT_LABEL[code] ?? titleCase(code)) : '',
         departmentCode: code,
-        branch: branchShort(b.staff?.branch ?? b.branch),
+        branch: branchShort(b.branch ?? b.staff?.branch),
         status: b.status,
         isTeletherapy: b.isTeletherapy,
         notes: b.notes ?? null,
