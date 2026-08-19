@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isNoteAgeLocked, NOTE_AGE_LOCK_MESSAGE } from '@/lib/note-age-lock'
 
 export async function PATCH(
   req: NextRequest,
@@ -43,6 +44,12 @@ export async function PATCH(
         { error: 'This note is locked. Notes become read-only after the author is endorsed or discharged off the patient.' },
         { status: 403 },
       )
+    }
+    // Age lock — documentation for a session this old is read-only until the
+    // clinician deliberately re-opens it. Checked after the permanent
+    // endorsement lock above, which is never re-openable.
+    if (isNoteAgeLocked(schedule)) {
+      return NextResponse.json({ error: NOTE_AGE_LOCK_MESSAGE, ageLocked: true }, { status: 403 })
     }
   }
 

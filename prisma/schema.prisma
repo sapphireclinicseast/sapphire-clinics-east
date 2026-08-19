@@ -588,6 +588,14 @@ model Schedule {
   // supervisor. Null for every non-intern session.
   internStaffId String?
   internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
+  // Documentation age lock — owned by the staff portal (teletherapy), which
+  // shares this physical table. Sessions past the documentation window are
+  // read-only there until a clinician deliberately re-opens one; these record
+  // that decision. Declared here purely to keep the two schemas in lockstep —
+  // nothing in Operations Hub reads or writes them.
+  // See teletherapy/src/lib/note-age-lock.ts.
+  noteUnlockedAt   DateTime?
+  noteUnlockedById String?
   createdAt     DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   surveyAssignments SurveyAssignment[]
