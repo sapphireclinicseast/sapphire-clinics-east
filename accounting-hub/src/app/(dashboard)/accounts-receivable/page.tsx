@@ -362,10 +362,15 @@ function ProofCell({ orderId, currentUrl, onChange }: {
 export default function AccountsReceivablePage() {
   const { data: session } = useSession()
   const isHmoOfficer = session?.user?.role === 'HMO_OFFICER'
+  // Branch front desk see AR read-only, and only the HMO tab's Per HMO and
+  // SOA Report views — no Overview, no GL, no Other Customers.
+  const isFrontdesk = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(session?.user?.role as string)
+  const hmoOnly = isHmoOfficer || isFrontdesk
+  const canWrite = !isFrontdesk
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const searchParams = useSearchParams()
-  // HMO Officers are locked to the HMO tab only
-  const initialType = !isHmoOfficer && ['GL', 'OTHERS'].includes(searchParams.get('type') || '') ? (searchParams.get('type') as 'GL' | 'OTHERS') : 'HMO'
+  // HMO Officers and front desk are locked to the HMO tab only
+  const initialType = !hmoOnly && ['GL', 'OTHERS'].includes(searchParams.get('type') || '') ? (searchParams.get('type') as 'GL' | 'OTHERS') : 'HMO'
   const initialWallet = searchParams.get('wallet') || ''
 
   const [tab, setTab] = useState<'HMO' | 'GL' | 'OTHERS'>(initialType as 'HMO' | 'GL' | 'OTHERS')
@@ -446,6 +451,13 @@ export default function AccountsReceivablePage() {
 
   // HMO sub-tab state
   const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report'>('overview')
+  // useSession resolves after the first render, so the initial tab/sub-tab are
+  // picked before the role is known. Snap them back once it arrives — a ?type=
+  // link or a stale sub-tab must not park a restricted user on a hidden view.
+  useEffect(() => {
+    if (hmoOnly && tab !== 'HMO') { setTab('HMO'); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel('') }
+    if (isFrontdesk && hmoSubTab === 'overview') setHmoSubTab('per-hmo')
+  }, [hmoOnly, isFrontdesk, tab, hmoSubTab])
   // Per HMO sub-tab state
   const [perHmoWallet, setPerHmoWallet] = useState('')
   const [perHmoFrom, setPerHmoFrom] = useState('')
@@ -876,17 +888,19 @@ export default function AccountsReceivablePage() {
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total Receivable ({tab})</p>
             <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalReceivable)}</p>
           </div>
+          {canWrite && (
           <button onClick={openPaymentModal} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
             <DollarSign size={16} /> Record Payment
           </button>
+          )}
         </div>
         )}
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {(['HMO', 'GL', 'OTHERS'] as const).filter(t => !(isHmoOfficer && t !== 'HMO')).map(t => (
-          <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab('overview') }}
+        {(['HMO', 'GL', 'OTHERS'] as const).filter(t => !(hmoOnly && t !== 'HMO')).map(t => (
+          <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab(isFrontdesk ? 'per-hmo' : 'overview') }}
             className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
             style={tab === t
               ? { background: 'var(--teal)', color: 'white' }
@@ -925,7 +939,7 @@ export default function AccountsReceivablePage() {
             { key: 'overview', label: 'Overview' },
             { key: 'per-hmo', label: 'Per HMO' },
             { key: 'soa-report', label: 'SOA Report' },
-          ] as const).map(st => (
+          ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
               style={hmoSubTab === st.key
@@ -2046,6 +2060,7 @@ export default function AccountsReceivablePage() {
         <SoaReport
           wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName, branch: w.branch }))}
           isAdmin={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes((session?.user as { role?: string })?.role || '')}
+          canWrite={canWrite}
         />
       )}
 

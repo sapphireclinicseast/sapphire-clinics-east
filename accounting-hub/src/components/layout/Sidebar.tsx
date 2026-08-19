@@ -45,8 +45,9 @@ const SERVICES_POS_ACCESS = [...FULL_ACCESS, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const SERVICES_POS_PAYROLL = [...SERVICES_POS_ACCESS, 'PAYROLL_OFFICER']
 // Roles that see the Dashboard overview
 const DASHBOARD_ACCESS = SERVICES_POS_ACCESS
-// Roles that can view Accounts Receivable
-const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
+// Roles that can view Accounts Receivable. Branch front desk get a read-only
+// slice of it — HMO only, Per HMO and SOA Report sub-tabs (see the page).
+const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 // Roles that can view Chart of Accounts (full access only — HMO Officer gets it via COA_WITH_HMO)
 const COA_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 // Taxes module: main admin, accountant, bookkeeper.

@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
-const READ_ROLES = [...WRITE_ROLES, 'HMO_OFFICER']
+const READ_ROLES = [...WRITE_ROLES, 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 export async function GET() {
   const session = await auth()

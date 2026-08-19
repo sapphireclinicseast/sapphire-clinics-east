@@ -49,6 +49,7 @@ interface AROrder {
 interface SoaReportProps {
   wallets: ARWallet[]
   isAdmin: boolean // can edit settings
+  canWrite?: boolean // can generate/delete SOAs (front desk view them only)
 }
 
 /* ─── Month options ────────────────────────────────────────── */
@@ -584,7 +585,7 @@ function DuplicateDialog({
 }
 
 /* ─── Main Component ───────────────────────────────────────── */
-export default function SoaReport({ wallets, isAdmin }: SoaReportProps) {
+export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaReportProps) {
   const [settings, setSettings] = useState<SoaSettings>({})
   const [showSettings, setShowSettings] = useState(false)
   const [records, setRecords] = useState<SoaListRecord[]>([])
@@ -781,6 +782,7 @@ export default function SoaReport({ wallets, isAdmin }: SoaReportProps) {
       </div>
 
       {/* ── Generate SOA Report ─────────────────────────────────── */}
+      {canWrite && (
       <div className="rounded-2xl border p-5 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
         <div>
           <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Generate SOA Report</h2>
@@ -834,6 +836,7 @@ export default function SoaReport({ wallets, isAdmin }: SoaReportProps) {
           </p>
         )}
       </div>
+      )}
 
       {/* ── SOA History ────────────────────────────────────────── */}
       <div className="rounded-2xl border p-5 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
@@ -889,7 +892,7 @@ export default function SoaReport({ wallets, isAdmin }: SoaReportProps) {
                 </td></tr>
               ) : filteredRecords.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  No SOA records found. Generate your first SOA above.
+                  {canWrite ? 'No SOA records found. Generate your first SOA above.' : 'No SOA records found.'}
                 </td></tr>
               ) : filteredRecords.map(r => (
                 <tr key={r.id}
@@ -928,11 +931,13 @@ export default function SoaReport({ wallets, isAdmin }: SoaReportProps) {
                         style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
                         <Download size={11} /> Download
                       </button>
+                      {canWrite && (
                       <button onClick={() => deleteSoa(r.id)} disabled={deletingId === r.id}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-medium hover:bg-red-50 disabled:opacity-50"
                         style={{ borderColor: '#fca5a5', color: '#dc2626' }}>
                         {deletingId === r.id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Delete
                       </button>
+                      )}
                     </div>
                   </td>
                 </tr>
