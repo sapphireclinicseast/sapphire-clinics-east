@@ -27,6 +27,7 @@ import {
   Eye,
   Lock,
   ShieldX,
+  Unlock,
 } from 'lucide-react'
 import { formatTime, formatDate, cn } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
@@ -35,6 +36,7 @@ import SLPNoteDisplay from '@/components/SLPNoteDisplay'
 import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
 import PatientWidgets from '@/components/PatientWidgets'
+import { NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
 
 interface PatientDetail {
   id: string
@@ -74,8 +76,13 @@ interface SessionItem {
   } | null
   // Server-computed: true iff the logged-in clinician is the staff who
   // delivered this session AND is currently the active owner of the
-  // patient AND the note is not locked. Admins always get true.
+  // patient AND the note is neither signed nor aged out. Admins always
+  // get true.
   canEdit?: boolean
+  // Server-computed: the session is past the documentation window and
+  // nobody has re-opened it. Unlike lockedAt this is reversible, so the
+  // footer points at the session page where the re-enable lives.
+  ageLocked?: boolean
 }
 
 interface StaffOption {
@@ -910,7 +917,20 @@ export default function PatientDetailPage() {
                   {expanded && !s.sessionNote && (
                     <div className="px-4 pb-4 pt-0 border-t border-[var(--light-gray)]">
                       <div className="pt-3">
-                        {!s.canEdit ? (
+                        {s.ageLocked ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] text-[var(--mid-gray)] italic">
+                              No notes recorded. This session is over {NOTE_WINDOW_MONTHS} months old, so documentation is closed.
+                            </span>
+                            <button
+                              onClick={() => router.push(`/session/${s.id}`)}
+                              className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors shrink-0"
+                            >
+                              <Unlock size={13} />
+                              Enable editing
+                            </button>
+                          </div>
+                        ) : !s.canEdit ? (
                           <p className="text-[13px] text-[var(--mid-gray)] italic">
                             No notes recorded yet. Only {s.staff.firstName} {s.staff.lastName} can add notes for this session.
                           </p>
@@ -1032,6 +1052,20 @@ export default function PatientDetailPage() {
                             >
                               <Trash2 size={13} />
                               Delete note
+                            </button>
+                          </div>
+                        ) : s.ageLocked && !s.sessionNote.lockedAt ? (
+                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">
+                              <Lock size={12} />
+                              Read-only — over {NOTE_WINDOW_MONTHS} months old.
+                            </span>
+                            <button
+                              onClick={() => router.push(`/session/${s.id}`)}
+                              className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors shrink-0"
+                            >
+                              <Unlock size={13} />
+                              Enable editing
                             </button>
                           </div>
                         ) : s.sessionNote.lockedAt ? (

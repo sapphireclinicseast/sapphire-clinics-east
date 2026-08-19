@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isNoteAgeLocked } from '@/lib/note-age-lock'
 
 export async function GET(
   req: NextRequest,
@@ -260,13 +261,22 @@ export async function GET(
   //      stay frozen at the signature point. New notes they write
   //      after re-endorsement start unlocked again.
   // Admins always get edit access.
+  //   4. The session hasn't aged out of the documentation window
+  //      (see @/lib/note-age-lock). Unlike lockedAt this one is
+  //      reversible — the clinician re-opens it on the session page —
+  //      so it's surfaced separately as ageLocked rather than being
+  //      folded invisibly into canEdit.
   const mineSet = new Set(effectiveStaffIds)
-  const sessionsWithPerms = ownSessions.map((s) => ({
-    ...s,
-    canEdit:
-      isAdmin ||
-      (!readOnly && mineSet.has(s.staffId) && !s.sessionNote?.lockedAt),
-  }))
+  const sessionsWithPerms = ownSessions.map((s) => {
+    const ageLocked = isNoteAgeLocked(s)
+    return {
+      ...s,
+      ageLocked,
+      canEdit:
+        isAdmin ||
+        (!readOnly && mineSet.has(s.staffId) && !s.sessionNote?.lockedAt && !ageLocked),
+    }
+  })
 
   return NextResponse.json({
     patient,

@@ -269,6 +269,19 @@ model Schedule {
   // exists in the shared DB (Ops Hub migration 20260815_schedule_intern_staff).
   internStaffId String?
   internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
+  // Age lock (see src/lib/note-age-lock.ts). Notes on sessions older than the
+  // documentation window are read-only by default; a clinician can deliberately
+  // re-open one, and that decision is recorded here rather than held in the
+  // browser so the server can actually enforce the lock.
+  //
+  // Lives on Schedule, not SessionNote, because a stale session may have no
+  // note yet — writing the first note on an old session is exactly the case
+  // the lock is meant to catch.
+  //
+  // Distinct from SessionNote.lockedAt, which is the permanent endorsement
+  // freeze and is NOT re-openable by anyone.
+  noteUnlockedAt   DateTime?
+  noteUnlockedById String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   sessionNote SessionNote?

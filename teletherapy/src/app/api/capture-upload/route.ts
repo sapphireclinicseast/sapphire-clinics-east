@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+import { isNoteAgeLocked, NOTE_AGE_LOCK_MESSAGE } from '@/lib/note-age-lock'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 
@@ -33,6 +34,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Save file
+    // Age lock — this route writes session notes on a token, with no user
+    // session behind it, so without this check a QR capture would be a way
+    // around the documentation window that the portal enforces everywhere
+    // else. Re-opening the session in the portal lifts it here too.
+    const captureSchedule = await prisma.schedule.findUnique({
+      where: { id: scheduleId },
+      select: { date: true, noteUnlockedAt: true },
+    })
+    if (captureSchedule && isNoteAgeLocked(captureSchedule)) {
+      return NextResponse.json({ error: NOTE_AGE_LOCK_MESSAGE }, { status: 403 })
+    }
+
     const dir = path.join(UPLOAD_DIR, 'session-notes', scheduleId)
     await mkdir(dir, { recursive: true })
 

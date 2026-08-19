@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isNoteAgeLocked, NOTE_AGE_LOCK_MESSAGE } from '@/lib/note-age-lock'
 
 // Append-only note audit trail. Each entry records who touched the note and
 // when (interns author; supervisors edit), so both are visible.
@@ -49,6 +50,12 @@ export async function POST(
         { error: 'This note is locked and cannot be modified.' },
         { status: 403 },
       )
+    }
+    // Age lock — documentation for a session this old is read-only until the
+    // clinician deliberately re-opens it. Checked after the permanent
+    // endorsement lock above, which is never re-openable.
+    if (isNoteAgeLocked(schedule)) {
+      return NextResponse.json({ error: NOTE_AGE_LOCK_MESSAGE, ageLocked: true }, { status: 403 })
     }
   }
 

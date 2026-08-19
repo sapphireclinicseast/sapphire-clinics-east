@@ -28,6 +28,8 @@ import {
   Camera,
   Trash2,
   Film,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
@@ -41,6 +43,7 @@ import SPEDNoteForm, { type SPEDFormData } from '@/components/SPEDNoteForm'
 import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteForm, { type PTFormData } from '@/components/PTNoteForm'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
+import { isPastNoteWindow, NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
 
 // In-portal voice / video recorder. Records via the browser MediaRecorder API
 // (on a phone this opens the mic/camera), then hands the finished clip to the
@@ -296,6 +299,7 @@ interface SessionDetail {
   status: string
   meetLink: string | null
   notes: string | null
+  noteUnlockedAt: string | null
   patient: {
     id: string
     firstName: string
@@ -322,6 +326,7 @@ interface SessionDetail {
     emailSentAt: string | null
     emailSentTo: string | null
     isInitialEvaluation: boolean
+    lockedAt: string | null
     editHistory?: { name: string; accountType: string; action: string; at: string }[] | null
   } | null
 }
@@ -628,6 +633,30 @@ export default function SessionDetailPage() {
     setSubmitting(false)
   }
 
+  // Re-open (or re-close) documentation on a session past the editing window.
+  // Deliberately a server round-trip, not local state: the write routes
+  // enforce the same lock, so a purely client-side toggle would just produce
+  // a 403 at save time.
+  async function toggleNoteLock(unlocked: boolean) {
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/sessions/${scheduleId}/note-lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unlocked }),
+      })
+      if (res.ok) {
+        showToast(unlocked ? 'Editing re-enabled for this session' : 'Session locked again')
+        await fetchSession()
+      } else {
+        const e = await res.json().catch(() => ({}))
+        showToast(e.error || 'Could not change the lock')
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   async function handleEdit() {
     setSubmitting(true)
     try {
@@ -833,6 +862,14 @@ export default function SessionDetailPage() {
   }
 
   const hasNote = !!session.sessionNote
+  // Permanent endorsement freeze — never re-openable here.
+  const permaLocked = !!session.sessionNote?.lockedAt
+  // Age lock — read-only because the session has passed the documentation
+  // window, unless someone deliberately re-opened it.
+  const pastWindow = isPastNoteWindow(session.date)
+  const ageLocked = !permaLocked && pastWindow && !session.noteUnlockedAt
+  const reopened = pastWindow && !!session.noteUnlockedAt
+  const readOnly = permaLocked || ageLocked
   const patientName = session.patient ? `${session.patient.firstName} ${session.patient.lastName}` : 'Walk-in Patient'
 
   return (
@@ -964,6 +1001,70 @@ export default function SessionDetailPage() {
         </div>
       )}
 
+      {/* Documentation window notice — a session past the window is read-only
+          until the clinician deliberately re-opens it. The permanent
+          endorsement freeze is handled separately and is never re-openable. */}
+      {ageLocked && (
+        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-amber-500">
+          <div className="flex items-start gap-3">
+            <Lock size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Notes are read-only</p>
+              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
+                This session is more than {NOTE_WINDOW_MONTHS} months old. Documentation closes
+                automatically after that so notes aren&apos;t written or changed long after the fact.
+              </p>
+              <button
+                onClick={() => toggleNoteLock(true)}
+                disabled={submitting}
+                className="mt-3 flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-semibold transition-colors disabled:opacity-50"
+              >
+                <Unlock size={14} />
+                Enable editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reopened && (
+        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-[var(--teal)]">
+          <div className="flex items-start gap-3">
+            <Unlock size={18} className="text-[var(--teal)] mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Editing re-enabled</p>
+              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
+                This session is past the {NOTE_WINDOW_MONTHS}-month window but was re-opened on{' '}
+                {new Date(session.noteUnlockedAt!).toLocaleDateString()}.
+              </p>
+              <button
+                onClick={() => toggleNoteLock(false)}
+                disabled={submitting}
+                className="mt-3 flex items-center gap-1.5 text-[13px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] font-semibold transition-colors disabled:opacity-50"
+              >
+                <Lock size={14} />
+                Lock again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {permaLocked && (
+        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-[var(--mid-gray)]">
+          <div className="flex items-start gap-3">
+            <Lock size={18} className="text-[var(--mid-gray)] mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Note signed</p>
+              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
+                Notes are frozen once the author is endorsed or discharged off the patient, and
+                cannot be re-opened.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Existing note display */}
       {hasNote && actionMode !== 'edit' && (
         <div className="card-static mb-6 animate-fade-up stagger-5">
@@ -978,13 +1079,15 @@ export default function SessionDetailPage() {
                 Session {session.sessionNote!.status === 'COMPLETED' ? 'Completed' : 'Discontinued'}
               </h2>
             </div>
-            <button
-              onClick={startEdit}
-              className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-medium transition-colors"
-            >
-              <Pencil size={14} />
-              Edit
-            </button>
+            {!readOnly && (
+              <button
+                onClick={startEdit}
+                className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-medium transition-colors"
+              >
+                <Pencil size={14} />
+                Edit
+              </button>
+            )}
           </div>
 
           {/* Attachments — show FIRST so they're always visible */}
@@ -1482,7 +1585,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* Action buttons */}
-      {!hasNote && actionMode === null && (
+      {!hasNote && actionMode === null && !readOnly && (
         <div className="flex gap-3 animate-fade-up stagger-6">
           <button onClick={() => setActionMode('complete')} className="btn-primary flex-1 py-3.5 rounded-xl text-[15px] !bg-gradient-to-r !from-green-600 !to-green-700 !shadow-[0_2px_8px_rgba(22,163,74,0.3)]">
             <CheckCircle2 size={20} />
