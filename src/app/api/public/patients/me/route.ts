@@ -195,10 +195,22 @@ export async function GET(req: NextRequest) {
     }),
   ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.startTime < b.startTime ? 1 : -1))
 
+  // Collapse exact-duplicate rows — the same session entered twice in the source
+  // (identical date, time, clinician, department, status and branch). Keeps
+  // genuinely distinct rows (e.g. an East PENDING vs a Greenhills CANCELLED for
+  // the same slot) so real cross-branch discrepancies stay visible.
+  const seen = new Set<string>()
+  const dedupedSessions = sessions.filter((s) => {
+    const key = `${s.date}|${s.startTime}|${s.endTime}|${s.clinician}|${s.departmentCode}|${s.status}|${s.branch}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
   // ── Attendance stats (Confirmed vs Cancelled/Rescheduled; PENDING excluded) ──
   const CONFIRMED = new Set(['CONFIRMED', 'PAID', 'COMPLETED'])
   const CANCELLED_RESCHED = new Set(['CANCELLED', 'RESCHEDULED'])
-  const counted = sessions.filter((s) => CONFIRMED.has(s.status) || CANCELLED_RESCHED.has(s.status))
+  const counted = dedupedSessions.filter((s) => CONFIRMED.has(s.status) || CANCELLED_RESCHED.has(s.status))
   const confirmedCount = counted.filter((s) => CONFIRMED.has(s.status)).length
   const cancelledCount = counted.filter((s) => CANCELLED_RESCHED.has(s.status)).length
   const totalCounted = counted.length
@@ -245,5 +257,5 @@ export async function GET(req: NextRequest) {
     pwdIdUrl: patient.pwdIdUrl ?? null,
   }
 
-  return withCors(NextResponse.json({ profile, servicesAvailed, sessions, surveys, stats }), origin)
+  return withCors(NextResponse.json({ profile, servicesAvailed, sessions: dedupedSessions, surveys, stats }), origin)
 }
