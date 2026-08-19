@@ -209,3 +209,6 @@ CREATE INDEX IF NOT EXISTS "InternshipDocument_createdAt_idx" ON "InternshipDocu
 
 -- Intern auto-disable: manual re-enable overrides the daily sweep
 ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "internAccessOverride" BOOLEAN NOT NULL DEFAULT false;
+
+-- Fallback staff photo (URL or data URI) for interns without an HR photo
+ALTER TABLE "Staff" ADD COLUMN IF NOT EXISTS "photoPath" TEXT;

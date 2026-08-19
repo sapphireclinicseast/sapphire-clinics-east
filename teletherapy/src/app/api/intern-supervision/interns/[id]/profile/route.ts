@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const staff = await prisma.staff.findUnique({
     where: { id },
-    select: { id: true, firstName: true, lastName: true, department: true, branch: true, hrPlatformId: true },
+    select: { id: true, firstName: true, lastName: true, department: true, branch: true, hrPlatformId: true, photoPath: true },
   })
   if (!staff) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -51,6 +51,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       }
     } catch { /* HR unavailable */ }
   }
+
+  // Fall back to a locally-stored photo (e.g. sample interns) when HR has none.
+  if (!photoUrl && staff.photoPath) photoUrl = staff.photoPath
 
   // @ts-ignore — learningProfile
   const lp = await prisma.learningProfile.findUnique({ where: { internStaffId: id } })
