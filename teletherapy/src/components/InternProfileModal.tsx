@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { X, Loader2, FileDown } from 'lucide-react'
 import type { LearningProfileData } from '@/lib/learning-profile'
+import { AURA_HEALTH_REHAB_LOGO, ALAGA_LOGO } from '@/lib/brand-logos'
 
 interface ProfileData {
   intern: { id: string; name: string; department: string; branch: string }
@@ -48,22 +49,46 @@ function buildPrintHTML(d: ProfileData): string {
   const rows = hrRows(d).map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td class="v">${esc(v)}</td></tr>`).join('')
   const outcome = (q: string, a?: string) => `<div class="qa"><p class="q">${esc(q)}</p><p class="a">${esc(a?.trim() || '—')}</p></div>`
   const pref = (label: string, val: string) => `<div class="qa"><p class="q">${esc(label)}</p><p class="a">${esc(val)}</p></div>`
+  const hr = d.hr ?? {}
+  const branchLabel = BRANCH_LABEL[hr.branch ?? d.intern.branch] ?? hr.branch ?? d.intern.branch
+  const dept = hr.department ?? d.intern.department
+  const start = fmtMonth(hr.dateHired), end = fmtMonth(hr.contractExpiry)
+  const rotation = start && end ? `${start} – ${end}` : (start || end || '')
+  const fact = (label: string, val?: string) => (val ? `<span class="fact">${esc(label)} <b>${esc(val)}</b></span>` : '')
+  const facts = [fact('Department', dept), fact('Branch', branchLabel), fact('Rotation', rotation)].join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>Intern Profile — ${esc(d.intern.name)}</title>
 <style>
   * { box-sizing: border-box; } body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color:#1f2a30; margin:0; padding:32px; }
   .doc { max-width: 720px; margin: 0 auto; }
-  h1 { font-size: 22px; margin:0 0 2px; } .sub { color:#5b7772; font-size:13px; margin:0 0 20px; }
-  h2 { font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:#2f8f7f; border-bottom:1px solid #d9e3e0; padding-bottom:6px; margin:24px 0 12px; }
+  .brandbar { display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #2f8f7f; padding-bottom:14px; margin-bottom:18px; }
+  .brandbar img.aura { height:46px; width:auto; }
+  .brandbar img.alaga { height:34px; width:auto; }
+  .titlebar { display:flex; justify-content:space-between; align-items:flex-start; gap:26px; margin-bottom:6px; }
+  .idblock { flex:1; min-width:0; }
+  h1 { font-size:23px; margin:0 0 3px; line-height:1.15; } .role { color:#2f8f7f; font-size:13.5px; font-weight:600; margin:0 0 14px; }
+  .facts { display:flex; flex-wrap:wrap; gap:7px 8px; }
+  .fact { background:#eef5f2; border:1px solid #d7e6e0; border-radius:999px; padding:4px 12px; font-size:11.5px; color:#4a6a63; }
+  .fact b { color:#1f2a30; font-weight:700; }
+  h2 { font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:#2f8f7f; border-bottom:1px solid #d9e3e0; padding-bottom:6px; margin:22px 0 12px; }
   table { width:100%; border-collapse:collapse; } td { padding:5px 0; vertical-align:top; font-size:13.5px; }
   td.k { color:#5b7772; width:180px; font-weight:600; } td.v { color:#1f2a30; }
   .qa { margin-bottom:12px; } .q { font-size:12.5px; font-weight:600; color:#5b7772; margin:0 0 3px; } .a { font-size:13.5px; margin:0; white-space:pre-wrap; }
   .foot { margin-top:28px; color:#8aa; font-size:11px; }
-  .photo { float:right; width:1.9in; height:1.9in; object-fit:cover; border:1px solid #ccc; border-radius:6px; margin:0 0 12px 18px; }
+  .photo { width:1.7in; height:1.7in; object-fit:cover; border:1px solid #ccc; border-radius:8px; flex-shrink:0; }
   @media print { body { padding:0.6in; } }
 </style></head><body><div class="doc">
-  ${d.photoUrl ? `<img class="photo" src="${esc(d.photoUrl)}" alt="2x2 photo">` : ''}
-  <h1>Intern Profile</h1>
-  <p class="sub">${esc(d.intern.name)} · Aura Health Rehab</p>
+  <div class="brandbar">
+    <img class="aura" src="${AURA_HEALTH_REHAB_LOGO}" alt="Aura Health Rehab">
+    <img class="alaga" src="${ALAGA_LOGO}" alt="Alaga">
+  </div>
+  <div class="titlebar">
+    <div class="idblock">
+      <h1>${esc(d.intern.name)}</h1>
+      <p class="role">Internship${branchLabel ? ` · ${esc(branchLabel)}` : ''}</p>
+      <div class="facts">${facts}</div>
+    </div>
+    ${d.photoUrl ? `<img class="photo" src="${esc(d.photoUrl)}" alt="2x2 photo">` : ''}
+  </div>
   <h2>HR Information</h2>
   <table>${rows}</table>
   ${lp ? `
