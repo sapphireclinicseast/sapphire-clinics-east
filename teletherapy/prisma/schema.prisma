@@ -54,6 +54,9 @@ model Staff {
   jobTitle        String?
   employmentType  String?
   hrPlatformId    String?
+  // Fallback profile photo (URL or data URI) used when there is no HR photo —
+  // e.g. sample/demo interns that aren't real HR records.
+  photoPath       String?
   createdById     String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
