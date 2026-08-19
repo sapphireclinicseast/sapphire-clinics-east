@@ -36,11 +36,29 @@ interface Patient {
   smsUnsubscribed?: boolean
 }
 
-const BRANCHES = [
+// Seed list, shown for the moment before /api/branches/options answers so the
+// pickers are never briefly empty. The fetched list replaces it — a branch
+// created in HR Platform appears here without a code change, which is the
+// whole point of Patient.branches being text rather than a Prisma enum.
+const FALLBACK_BRANCHES: BranchOption[] = [
   { value: 'SANDBOX_EAST',       label: branchLabel('SANDBOX_EAST') },
   { value: 'SANDBOX_GREENHILLS', label: branchLabel('SANDBOX_GREENHILLS') },
   { value: 'VERDANA_STORE',      label: branchLabel('VERDANA_STORE') },
 ]
+
+interface BranchOption { value: string; label: string; shortCode?: string }
+
+/** Branch list from the HrBranch registry (hourly sync from HR Platform). */
+function useBranchOptions(): BranchOption[] {
+  const [opts, setOpts] = useState<BranchOption[]>(FALLBACK_BRANCHES)
+  useEffect(() => {
+    fetch('/api/branches/options')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.branches?.length) setOpts(d.branches) })
+      .catch(() => { /* keep the seed list — never leave the picker empty */ })
+  }, [])
+  return opts
+}
 
 interface DuplicateEntry {
   csvRow: Record<string, string>
@@ -149,9 +167,10 @@ function FilterDropdown({
 function BranchCheckboxes({
   selected, onChange, lockedTo,
 }: { selected: string[]; onChange: (b: string[]) => void; lockedTo?: string }) {
+  const branches = useBranchOptions()
   return (
     <div className="flex flex-wrap gap-2">
-      {BRANCHES.map((b) => {
+      {branches.map((b) => {
         const active   = selected.includes(b.value)
         const disabled = !!lockedTo && b.value !== lockedTo
         return (
@@ -207,6 +226,7 @@ const ROLE_TO_BRANCH: Record<string, string> = {
 }
 
 export default function PatientsPage({ role = '', userEmail = '' }: { role?: string; userEmail?: string }) {
+  const branchOptions = useBranchOptions()
   const isMainAdmin = userEmail.toLowerCase() === 'main@sapphireclinicseast.org'
   const isFrontDesk  = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
   const forcedBranch = ROLE_TO_BRANCH[role] ?? ''
@@ -219,7 +239,10 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   const [chinoyFilter, setChinoyFilter] = useState(false)
   const [showAddForm, setShowAddForm]   = useState(false)
   const [csvFile, setCsvFile]           = useState<File | null>(null)
-  const [importBranch, setImportBranch] = useState(forcedBranch || 'SANDBOX_EAST')
+  // CSV rows land at every branch ticked here. Single-select was one of the two
+  // paths that made interbranch patients impossible to import, forcing a second
+  // patient record instead of a second branch on the same one.
+  const [importBranches, setImportBranches] = useState<string[]>([forcedBranch || 'SANDBOX_EAST'])
   const [importing, setImporting]       = useState(false)
   const [importMsg, setImportMsg]       = useState('')
   const [duplicates, setDuplicates]     = useState<DuplicateEntry[]>([])
@@ -277,19 +300,19 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       const saved = localStorage.getItem('pending-duplicates')
       const savedBranch = localStorage.getItem('pending-duplicates-branch')
       if (saved) setDuplicates(JSON.parse(saved))
-      if (savedBranch) setImportBranch(savedBranch)
+      if (savedBranch) setImportBranches(JSON.parse(savedBranch))
     } catch {}
   }, [])
 
   useEffect(() => {
     if (duplicates.length > 0) {
       localStorage.setItem('pending-duplicates', JSON.stringify(duplicates))
-      localStorage.setItem('pending-duplicates-branch', importBranch)
+      localStorage.setItem('pending-duplicates-branch', JSON.stringify(importBranches))
     } else {
       localStorage.removeItem('pending-duplicates')
       localStorage.removeItem('pending-duplicates-branch')
     }
-  }, [duplicates, importBranch])
+  }, [duplicates, importBranches])
 
   // ── Close filter dropdown on outside click ────────────────────────────────
   useEffect(() => {
@@ -544,7 +567,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
     setImporting(true)
     const fd = new FormData()
     fd.append('file', csvFile)
-    fd.append('branch', importBranch)
+    fd.append('branches', JSON.stringify(importBranches))
     const res  = await fetch('/api/patients', { method: 'POST', body: fd })
     const data = await res.json()
     setImporting(false)
@@ -574,7 +597,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
     const tempFile = new File([csvContent], 'accept.csv', { type: 'text/csv' })
     const fd = new FormData()
     fd.append('file', tempFile)
-    fd.append('branch', importBranch)
+    fd.append('branches', JSON.stringify(importBranches))
     fd.append('force', 'true')
     setImporting(true)
     await fetch('/api/patients', { method: 'POST', body: fd })
@@ -694,7 +717,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
             className="px-3 py-2 rounded-lg text-sm outline-none"
             style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
             <option value="">All Branches</option>
-            {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+            {branchOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
         )}
 
@@ -726,11 +749,11 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
         {/* CSV Import */}
         <div className="flex items-center gap-2">
           {!isFrontDesk && (
-            <select value={importBranch} onChange={(e) => setImportBranch(e.target.value)}
-              className="px-2 py-2 rounded-lg text-sm outline-none"
-              style={{ background: 'var(--pale-teal)', border: '1px solid rgba(26,123,138,0.3)', color: 'var(--teal)' }}>
-              {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
+            <BranchCheckboxes
+              selected={importBranches}
+              onChange={setImportBranches}
+              lockedTo={forcedBranch || undefined}
+            />
           )}
           <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer"
             style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
@@ -763,7 +786,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--mid-gray)' }}>
                 Download Branches
               </p>
-              {BRANCHES.map((b) => (
+              {branchOptions.map((b) => (
                 <label key={b.value} className="flex items-center gap-2 cursor-pointer">
                   <span onClick={() => setExportBranches((prev) => {
                     const next = new Set(prev)
@@ -1234,6 +1257,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                         <BranchCheckboxes
                           selected={editForm.branches}
                           onChange={(b) => setEditForm((f) => ({ ...f, branches: b }))}
+                          lockedTo={forcedBranch || undefined}
                         />
                       </div>
                       {/* ── Doctor's Referral (optional) ──────────────────── */}
@@ -1553,6 +1577,7 @@ function PatientRegisterQrModal({
   forcedBranch: string
   onClose: () => void
 }) {
+  const branchOptions = useBranchOptions()
   const [branch, setBranch] = useState(forcedBranch || '')
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [loading, setLoading] = useState(false)
@@ -1637,7 +1662,7 @@ function PatientRegisterQrModal({
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
               >
                 <option value="">— Let patient choose —</option>
-                {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                {branchOptions.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
               </select>
             </div>
           )}
