@@ -53,7 +53,6 @@ const SITE_CONFIG = {
   hmos: [
     { name: 'ValuCare',                      imgSrc: 'HMO Logos/1.png' },
     { name: 'Sun Life GREPA Healthcare',      imgSrc: 'HMO Logos/2.png' },
-    { name: 'PhilCare',                       imgSrc: 'HMO Logos/3.png' },
     { name: 'PhilBritish Insurance',          imgSrc: 'HMO Logos/4.png' },
     { name: 'Pacific Cross Insurance',        imgSrc: 'HMO Logos/5.png' },
     { name: 'MEDOCare Health System',         imgSrc: 'HMO Logos/6.png' },
@@ -74,8 +73,8 @@ const SITE_CONFIG = {
   partners: [
     { name: 'Asian Institute of Management',  imgSrc: 'PARTNERS/ASIAN INSTITUTE OF MANAGEMENT.png' },
     { name: 'National University East Ortigas', imgSrc: 'PARTNERS/NATIONAL UNIVERSITY EAST ORTIGAS.png' },
-    { name: "The Abba's Orchard",             imgSrc: "PARTNERS/THE ABBA'S ORCHARD.png" },
-    { name: 'Xavier School',                  imgSrc: 'PARTNERS/XAVIER SCHOOL.png' },
+    { name: "The Abba's Orchard",             imgSrc: "PARTNERS/THE ABBA'S ORCHARD.png", big: true },
+    { name: 'Xavier School',                  imgSrc: 'PARTNERS/XAVIER SCHOOL.png', big: true },
     { name: 'Bomba Pilipinas',                imgSrc: 'PARTNERS/BOMBA PILIPINAS.png' },
     { name: 'Light Bearer Christian Academy', imgSrc: 'PARTNERS/LIGHT BEARER CHRISTIAN ACADEMY.png' },
     { name: 'Reedley International School',    imgSrc: 'PARTNERS/REEDLEY INTERNATIONAL SCHOOL.png' },
@@ -281,7 +280,7 @@ function buildPartners() {
   const wrap = document.getElementById('partnerLogos');
   if (!wrap) return;
   wrap.innerHTML = SITE_CONFIG.partners.map(p => `
-    <div class="partner-logo-card">
+    <div class="partner-logo-card${p.big ? ' big' : ''}">
       ${p.imgSrc
         ? `<img src="${p.imgSrc}" alt="${p.name}" loading="lazy">`
         : `<span>${p.name}</span>`}
