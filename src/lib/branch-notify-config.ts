@@ -74,3 +74,30 @@ export async function getBranchNotifyConfig(branch: string): Promise<BranchNotif
     return fallback
   }
 }
+
+/**
+ * The Gmail account a branch's patient/clinician emails should be sent FROM.
+ *
+ * HR Platform's Branches page is the source of truth for a branch's main
+ * email (synced into HrBranch.emailMain by /api/branches/sync, surfaced above
+ * as ccEmail), so changing it there changes who these emails come from on the
+ * next sync — no code change, no reconnecting anything here.
+ *
+ * Falls back to any connected account so a branch whose mailbox has not been
+ * OAuth-connected yet still gets its schedule emails out rather than silently
+ * dropping them; the caller logs when that happens.
+ */
+export async function getBranchSender(
+  cfg: BranchNotifyConfig,
+): Promise<{ email: string; refreshToken: string; isBranchMailbox: boolean } | null> {
+  const branded = await prisma.gmailAccount.findUnique({ where: { email: cfg.ccEmail } })
+  if (branded) return { ...branded, isBranchMailbox: true }
+  const any = await prisma.gmailAccount.findFirst()
+  return any ? { ...any, isBranchMailbox: false } : null
+}
+
+/** CC the branch mailbox only when it isn't already the sender — a message
+ *  from east@ CC'd to east@ just lands in that inbox twice. */
+export function branchCc(cfg: BranchNotifyConfig, fromEmail: string): string {
+  return fromEmail.toLowerCase() === cfg.ccEmail.toLowerCase() ? '' : cfg.ccEmail
+}

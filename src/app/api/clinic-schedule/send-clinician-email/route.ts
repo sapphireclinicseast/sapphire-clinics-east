@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient } from '@/lib/email'
-import { getBranchNotifyConfig, type BranchNotifyConfig } from '@/lib/branch-notify-config'
+import { getBranchNotifyConfig, getBranchSender, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
 // This file wants the SHORT display forms — "Aura Health Rehab – East" as
 // the team label, "Aura Health Rehab – East Branch" as the location line —
@@ -171,11 +171,11 @@ function buildClinicianEmailPlainText(opts: {
 }
 
 function makeRawEmail(opts: {
-  to: string; from: string; subject: string; html: string; text: string
+  to: string; from: string; fromName: string; subject: string; html: string; text: string
 }): string {
   const boundary = 'ah_boundary_' + Date.now()
   const message = [
-    `From: Aura Health Rehab <${opts.from}>`,
+    `From: ${opts.fromName} <${opts.from}>`,
     `To: ${opts.to}`,
     `Subject: =?UTF-8?B?${Buffer.from(opts.subject).toString('base64')}?=`,
     'MIME-Version: 1.0',
@@ -241,14 +241,20 @@ export async function POST(req: NextRequest) {
   const subject = `Your Schedule for ${formatDate(date)} – ${cfg.brandName}`
 
   // Prefer the branch inbox; fall back to any connected Gmail account
-  const gmailAcct =
-    await prisma.gmailAccount.findUnique({ where: { email: cfg.ccEmail } }) ??
-    await prisma.gmailAccount.findFirst()
+  // Same branch-mailbox resolution as the patient-facing routes, so a
+  // Greenhills clinician's schedule arrives from greenhills@, not main@.
+  const gmailAcct = await getBranchSender(cfg)
   if (!gmailAcct) {
     return NextResponse.json({ error: 'No Gmail account configured for sending' }, { status: 500 })
   }
 
-  const raw = makeRawEmail({ to: staffMember.email, from: gmailAcct.email, subject, html, text })
+  if (!gmailAcct.isBranchMailbox) {
+    console.warn(
+      `[send-clinician-email] ${cfg.ccEmail} is not a connected Gmail account — ` +
+      `sending as ${gmailAcct.email} instead. Connect it under Settings → Email.`,
+    )
+  }
+  const raw = makeRawEmail({ to: staffMember.email, from: gmailAcct.email, fromName: cfg.brandName, subject, html, text })
   const gmail = await getGmailClient(gmailAcct.refreshToken)
   await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
 

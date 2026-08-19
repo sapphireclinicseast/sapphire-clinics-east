@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient } from '@/lib/email'
-import { getBranchNotifyConfig, type BranchNotifyConfig } from '@/lib/branch-notify-config'
+import { getBranchNotifyConfig, getBranchSender, branchCc, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
 function subjectFor(cfg: BranchNotifyConfig): string {
   return `Appointment Confirmation - Aura Health Rehab ${cfg.brandShort}`
@@ -156,13 +156,13 @@ function buildEmailPlainText(opts: {
 }
 
 function makeRawEmail(opts: {
-  to: string; cc: string; from: string; subject: string; html: string; text: string
+  to: string; cc: string; from: string; fromName: string; subject: string; html: string; text: string
 }): string {
   const boundary = 'sb_boundary_' + Date.now()
   const message = [
-    `From: Aura Health Rehab <${opts.from}>`,
+    `From: ${opts.fromName} <${opts.from}>`,
     `To: ${opts.to}`,
-    `Cc: ${opts.cc}`,
+    ...(opts.cc ? [`Cc: ${opts.cc}`] : []),
     `Subject: ${opts.subject}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -183,20 +183,29 @@ function makeRawEmail(opts: {
 }
 
 async function sendEmail(opts: {
-  to: string; subject: string; html: string; text: string; cc: string
+  to: string; subject: string; html: string; text: string; cfg: BranchNotifyConfig
 }): Promise<void> {
-  // Fallback: Gmail API
-  const gmailAcct = await prisma.gmailAccount.findFirst()
-  if (gmailAcct) {
+  // Sender is the branch's own mailbox (HR Platform → Branches → main email),
+  // not whichever account happens to be first in the table — a Greenhills
+  // appointment must not arrive from main@.
+  const sender = await getBranchSender(opts.cfg)
+  if (sender) {
+    if (!sender.isBranchMailbox) {
+      console.warn(
+        `[send-reminder] ${opts.cfg.ccEmail} is not a connected Gmail account — ` +
+        `sending as ${sender.email} instead. Connect it under Settings → Email.`,
+      )
+    }
     const raw = makeRawEmail({
       to: opts.to,
-      cc: opts.cc,
-      from: gmailAcct.email,
+      cc: branchCc(opts.cfg, sender.email),
+      from: sender.email,
+      fromName: opts.cfg.brandName,
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
     })
-    const gmail = await getGmailClient(gmailAcct.refreshToken)
+    const gmail = await getGmailClient(sender.refreshToken)
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
   }
 }
@@ -238,7 +247,7 @@ export async function POST(req: NextRequest) {
       subject: subjectFor(cfg),
       html: buildEmailHtml(emailOpts),
       text: buildEmailPlainText(emailOpts),
-      cc: cfg.ccEmail,
+      cfg,
     })
     console.log(`[send-reminder] Sent to ${schedule.patient.email}, CC: ${cfg.ccEmail}`)
     return NextResponse.json({ ok: true, sent: 1 })
@@ -285,7 +294,7 @@ export async function POST(req: NextRequest) {
           subject: subjectFor(cfg),
           html: buildEmailHtml(emailOpts),
           text: buildEmailPlainText(emailOpts),
-          cc: cfg.ccEmail,
+          cfg,
         })
         sent++
       } catch (err) {
