@@ -15,11 +15,12 @@ export default function PortalConcerns({ token }: { token: string }) {
 
   return (
     <>
-      {/* Launcher — bottom-left so it doesn't collide with the chatbot (bottom-right) */}
+      {/* Launcher — bottom-right, stacked ABOVE the chatbot bubble (bottom-5 right-5)
+          so it never overlaps the signed-in sidebar nav on the left. */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 left-5 z-40 inline-flex items-center gap-2 px-4 py-3 rounded-full text-white font-semibold shadow-[0_10px_30px_rgba(27,63,56,0.28)] hover:opacity-95 transition-opacity"
+          className="fixed bottom-24 right-5 z-40 inline-flex items-center gap-2 px-4 py-3 rounded-full text-white font-semibold shadow-[0_10px_30px_rgba(27,63,56,0.28)] hover:opacity-95 transition-opacity"
           style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))', fontFamily: 'var(--font-display)' }}
           aria-label="Report a portal concern"
         >
@@ -29,7 +30,7 @@ export default function PortalConcerns({ token }: { token: string }) {
       )}
 
       {open && (
-        <div className="fixed bottom-5 left-5 right-5 sm:right-auto z-40 w-auto sm:w-[420px] max-w-[calc(100vw-2.5rem)] rounded-2xl bg-white shadow-[0_24px_60px_rgba(27,63,56,0.28)] border border-[color:var(--paper-3)] overflow-hidden animate-fade-up">
+        <div className="fixed bottom-24 left-5 right-5 sm:left-auto z-40 w-auto sm:w-[420px] max-w-[calc(100vw-2.5rem)] rounded-2xl bg-white shadow-[0_24px_60px_rgba(27,63,56,0.28)] border border-[color:var(--paper-3)] overflow-hidden animate-fade-up">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3.5 text-white" style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}>
             <div className="flex items-center gap-2 font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
