@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     where: { id: session.patientId },
     select: {
       id: true, firstName: true, lastName: true, dob: true, sex: true,
-      patientType: true, diagnosis: true, city: true, branch: true,
+      patientType: true, diagnosis: true, city: true, branch: true, branches: true,
       email: true, phone: true, address: true, civilStatus: true,
       pwdSeniorId: true, username: true, profilePhoto: true,
       referralUrl: true, pwdIdUrl: true,
@@ -118,10 +118,13 @@ export async function GET(req: NextRequest) {
     // interbranch consultant staffs both branches under one Staff.branch).
     prisma.patient.findMany({
       where: { id: { in: patientIds } },
-      select: { id: true, branch: true },
+      select: { id: true, branch: true, branches: true },
     }),
   ])
-  const branchByPatientId = new Map(linkedRecords.map((r) => [r.id, r.branch as string | null]))
+  // Prefer the CRM's multi-branch `branches[]` (primary) over legacy `branch`.
+  const branchByPatientId = new Map(
+    linkedRecords.map((r) => [r.id, (r.branches?.[0] ?? r.branch) as string | null]),
+  )
 
   // ── Services availed (distinct departments across both session sources) ──
   const deptSet = new Set<string>()
@@ -247,7 +250,9 @@ export async function GET(req: NextRequest) {
     patientType: patient.patientType === 'PEDIATRIC' ? 'Pediatric' : 'Adult',
     diagnosis: patient.diagnosis ? titleCase(patient.diagnosis) : null,
     city: patient.city ? titleCase(patient.city) : null,
-    branch: patient.branch ? (branchLabel(patient.branch) ?? patient.branch) : null,
+    branch: (patient.branches?.[0] ?? patient.branch)
+      ? (branchLabel(patient.branches?.[0] ?? patient.branch) ?? (patient.branches?.[0] ?? patient.branch))
+      : null,
     // Contact + ID fields for the patient-facing portal profile section.
     email: patient.email ? patient.email.trim() : null,
     phone: patient.phone ? patient.phone.trim() : null,

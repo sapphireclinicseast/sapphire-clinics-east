@@ -36,17 +36,17 @@ export async function GET(req: NextRequest) {
   }
 
   const branchQ = new URL(req.url).searchParams.get('branch')
-  const where: { passwordHash: { not: null }; branch?: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' } = {
+  const where: { passwordHash: { not: null }; branches?: { has: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' } } = {
     passwordHash: { not: null },
   }
-  if (branchQ === 'SANDBOX_EAST' || branchQ === 'SANDBOX_GREENHILLS') where.branch = branchQ
+  if (branchQ === 'SANDBOX_EAST' || branchQ === 'SANDBOX_GREENHILLS') where.branches = { has: branchQ }
 
   const patients = await prisma.patient.findMany({
     where,
     orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     select: {
       id: true, firstName: true, lastName: true, email: true, username: true,
-      branch: true, createdAt: true,
+      branch: true, branches: true, createdAt: true,
       schedules: {
         where: { status: { not: 'CANCELLED' } },
         orderBy: { date: 'desc' },
@@ -58,12 +58,13 @@ export async function GET(req: NextRequest) {
   const order = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
   const groups = new Map<string, BranchGroup>()
   for (const p of patients) {
-    const key = p.branch ?? 'UNASSIGNED'
+    const b = p.branches?.[0] ?? p.branch
+    const key = b ?? 'UNASSIGNED'
     let g = groups.get(key)
     if (!g) {
       g = {
         branch: key,
-        branchLabel: p.branch ? (branchLabel(p.branch) ?? p.branch) : 'Unassigned',
+        branchLabel: b ? (branchLabel(b) ?? b) : 'Unassigned',
         users: [],
       }
       groups.set(key, g)
