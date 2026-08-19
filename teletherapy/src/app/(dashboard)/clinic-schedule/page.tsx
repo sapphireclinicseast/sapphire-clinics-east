@@ -20,8 +20,10 @@ import {
   User as UserIcon,
   GraduationCap,
 } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import { useBranchSwitcher } from '@/components/BranchSwitcher'
+import SessionTrends from '@/components/SessionTrends'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -120,6 +122,9 @@ export default function ClinicSchedulePage() {
   const [profilePatient, setProfilePatient] = useState<PatientInfo | null>(null)
   const [moreDay, setMoreDay] = useState<string | null>(null)
   const { isMultiBranch, sharedStaffId, activeStaffId, activeBranch } = useBranchSwitcher()
+  const { data: session } = useSession()
+  const isAdmin = session?.user?.role === 'ADMIN'
+  const [adminTab, setAdminTab] = useState<'calendar' | 'trends'>('calendar')
 
   const range = useMemo(() => {
     if (view === 'day') return { start: anchor, end: anchor }
@@ -206,6 +211,29 @@ export default function ClinicSchedulePage() {
           </div>
         </div>
       </div>
+
+      {/* Admin-only: switch between the personal calendar and org-wide session trends */}
+      {isAdmin && (
+        <div className="mb-6 inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+          {(['calendar', 'trends'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setAdminTab(t)}
+              className={cn(
+                'rounded-lg px-4 py-1.5 text-sm font-medium transition-colors',
+                adminTab === t ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+              )}
+            >
+              {t === 'calendar' ? 'Calendar' : 'Session Trends'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && adminTab === 'trends' ? (
+        <SessionTrends />
+      ) : (
+      <>
 
       {/* Summary cards — lifetime totals (since the very start) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -310,6 +338,9 @@ export default function ClinicSchedulePage() {
 
       {profilePatient && (
         <PatientProfileModal patient={profilePatient} onClose={() => setProfilePatient(null)} />
+      )}
+
+      </>
       )}
     </div>
   )
