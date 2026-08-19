@@ -34,7 +34,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   // HR sign-up record (display-safe subset).
   let hr: Record<string, unknown> | null = null
-  let photoUrl: string | null = null
+  let hrPhoto: string | null = null
   if (HR_KEY && staff.hrPlatformId) {
     try {
       const res = await fetch(`${HR_API_BASE}/staff/external`, {
@@ -46,14 +46,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         if (rec) {
           hr = {}
           for (const f of HR_FIELDS) if (rec[f] != null && rec[f] !== '') hr[f] = rec[f]
-          if (rec.photo) photoUrl = `${HR_API_BASE}/staff-photos/${encodeURIComponent(String(rec.photo))}`
+          if (rec.photo) hrPhoto = String(rec.photo)
         }
       }
     } catch { /* HR unavailable */ }
   }
 
-  // Fall back to a locally-stored photo (e.g. sample interns) when HR has none.
-  if (!photoUrl && staff.photoPath) photoUrl = staff.photoPath
+  // Prefer the locally-stored photo (a data URI — always reachable by the browser,
+  // survives HR redeploys, and needs no HR auth). The HR-served URL is only a
+  // last resort: that endpoint requires auth and the /staff/external `photo` field
+  // is a direct edit that HR deploys periodically revert.
+  let photoUrl: string | null = null
+  if (staff.photoPath) photoUrl = staff.photoPath
+  else if (hrPhoto) photoUrl = `${HR_API_BASE}/staff-photos/${encodeURIComponent(hrPhoto)}`
 
   // @ts-ignore — learningProfile
   const lp = await prisma.learningProfile.findUnique({ where: { internStaffId: id } })
