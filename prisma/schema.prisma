@@ -160,12 +160,6 @@ enum PatientType {
   ADULT
 }
 
-enum Branch {
-  SANDBOX_EAST
-  SANDBOX_GREENHILLS
-  VERDANA_STORE
-}
-
 enum StaffDepartment {
   OT
   PT
@@ -238,6 +232,18 @@ model Template {
   updatedAt  DateTime     @updatedAt
 }
 
+// NOTE: patient branches are plain strings, not a Prisma enum.
+//
+// They used to be `enum Branch`, which meant a branch created in HR Platform
+// could never become a patient option without a schema change and a deploy —
+// a Postgres enum cannot grow at runtime. Staff already stored its branches as
+// text (Staff.branch / Staff.extraBranches), which is why interbranch staff
+// worked and interbranch patients did not.
+//
+// Valid values are the `opsHubBranch` codes in the HrBranch registry, which
+// syncs hourly from HR Platform. Validate against that (see
+// @/lib/branch-options), never against a hardcoded list.
+
 model Patient {
   id          String      @id @default(cuid())
   firstName   String
@@ -247,8 +253,8 @@ model Patient {
   passwordHash String?         // optional self-service portal login (bcrypt); null = no portal account yet
   dob         DateTime?
   patientType PatientType
-  branch      Branch?          // legacy single-branch (kept for backward compat)
-  branches    Branch[]    @default([])  // multi-branch (primary)
+  branch      String?          // legacy single-branch (kept for backward compat)
+  branches    String[]    @default([])  // multi-branch (primary)
   sex         String?
   civilStatus String?
   religion    String?

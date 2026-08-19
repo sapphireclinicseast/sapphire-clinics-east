@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   // silently disappear). Legacy per-branch-staffId consultants never send it.
   const requestedBranch = (searchParams.get('patientBranch') ?? '').trim()
   const branchWhere = requestedBranch
-    ? scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
+    ? await scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
     : {}
 
   const dayStart = new Date(`${startDate}T00:00:00.000Z`)

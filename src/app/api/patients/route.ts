@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Papa from 'papaparse'
+import { validateBranches } from '@/lib/branch-options'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -186,6 +187,11 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Needed by both arms below (CSV import and single create), so it is resolved
+  // once here rather than separately inside each.
+  const role = (session.user as { role?: string }).role ?? ''
+  const forcedBranch = ROLE_BRANCH[role] ?? null
+
   const contentType = req.headers.get('content-type') || ''
 
   if (contentType.includes('multipart/form-data')) {
@@ -193,7 +199,28 @@ export async function POST(req: NextRequest) {
     const file = form.get('file') as File | null
     if (!file) return NextResponse.json({ error: 'File required' }, { status: 400 })
 
-    const branch = (form.get('branch') as string | null) || null
+    // Multi-branch: CSV rows land at every branch the importer ticked. The
+    // single `branch` field is still accepted so an older client (or a saved
+    // duplicate-review payload) keeps working.
+    const rawBranches = form.get('branches') as string | null
+    let submittedBranches: string[] = []
+    if (rawBranches) {
+      try { submittedBranches = JSON.parse(rawBranches) } catch { submittedBranches = [] }
+    } else {
+      const single = (form.get('branch') as string | null) || null
+      if (single) submittedBranches = [single]
+    }
+    // A front-desk user imports to their own branch, whatever the form said.
+    if (forcedBranch) submittedBranches = [forcedBranch]
+
+    const { valid: importBranches, invalid } = await validateBranches(submittedBranches)
+    if (invalid.length > 0) {
+      return NextResponse.json(
+        { error: `Unknown branch: ${invalid.join(', ')}` },
+        { status: 400 },
+      )
+    }
+
     const force = form.get('force') === 'true'
 
     const text = await file.text()
@@ -270,7 +297,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const branchEnum = branch as any
+      // branch stays the legacy first-of-list; branches is the real answer.
       await prisma.patient.create({
         data: {
           firstName,
@@ -279,8 +306,8 @@ export async function POST(req: NextRequest) {
           phone:       phone       || null,
           dob:         dob         ?? null,
           patientType: patientType as any,
-          branch:      branchEnum  || null,
-          branches:    branchEnum  ? [branchEnum] : [],
+          branch:      importBranches[0] || null,
+          branches:    importBranches,
           sex:         rawSex         || null,
           civilStatus: rawCivilStatus || null,
           religion:    rawReligion    || null,
@@ -298,8 +325,6 @@ export async function POST(req: NextRequest) {
 
   // Single patient creation
   const body = await req.json()
-  const role = (session.user as { role?: string }).role ?? ''
-  const forcedBranch = ROLE_BRANCH[role] ?? null
 
   const dob = body.dob ? new Date(body.dob) : null
   const patientType = dob ? computePatientType(dob) : (body.patientType || 'ADULT')
@@ -307,6 +332,11 @@ export async function POST(req: NextRequest) {
   const branches: string[] = forcedBranch
     ? [forcedBranch]
     : (body.branches ?? (body.branch ? [body.branch] : []))
+
+  const { invalid: invalidCreate } = await validateBranches(branches)
+  if (invalidCreate.length > 0) {
+    return NextResponse.json({ error: `Unknown branch: ${invalidCreate.join(', ')}` }, { status: 400 })
+  }
 
   const patient = await prisma.patient.create({
     data: {
@@ -342,6 +372,8 @@ export async function PUT(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const forcedBranchPut = ROLE_BRANCH[(session.user as { role?: string }).role ?? ''] ?? null
+
   const body = await req.json()
   const {
     id, firstName, lastName, email, phone, dob, branches,
@@ -364,8 +396,17 @@ export async function PUT(req: NextRequest) {
     if (patientType) updateData.patientType = patientType
   }
   if (branches     !== undefined) {
-    updateData.branches = branches
-    updateData.branch   = branches[0] || null   // keep legacy field in sync
+    // A front-desk user is locked to their own branch on edit, exactly as on
+    // create. Without this the PUT accepted whatever the client sent, so a
+    // branch user could move a patient to the other branch — the Add form
+    // disabled the other checkboxes but nothing enforced it server-side.
+    const wanted: string[] = forcedBranchPut ? [forcedBranchPut] : branches
+    const { valid, invalid } = await validateBranches(wanted)
+    if (invalid.length > 0) {
+      return NextResponse.json({ error: `Unknown branch: ${invalid.join(', ')}` }, { status: 400 })
+    }
+    updateData.branches = valid
+    updateData.branch   = valid[0] || null   // keep legacy field in sync
   }
   if (sex          !== undefined) updateData.sex          = uc(sex)          || null
   if (civilStatus  !== undefined) updateData.civilStatus  = uc(civilStatus)  || null

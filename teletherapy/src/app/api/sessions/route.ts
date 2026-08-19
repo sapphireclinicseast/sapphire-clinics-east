@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   // consultants never send it, so their behaviour is unchanged.)
   const requestedBranch = (searchParams.get('patientBranch') ?? '').trim()
   const branchWhere = requestedBranch
-    ? scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
+    ? await scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
     : {}
 
   // Non-admin users see sessions where they're the supervising therapist OR

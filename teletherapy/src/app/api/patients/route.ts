@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
   // consultants never send it, so their behaviour is unchanged.
   const requestedBranch = (req.nextUrl.searchParams.get('patientBranch') ?? '').trim()
   const primaryBranch = (session.user as { branch?: string }).branch ?? ''
-  const scheduleBranch = requestedBranch ? scheduleBranchWhere(requestedBranch, primaryBranch) : {}
-  const patientBranch = requestedBranch ? patientBranchWhere(requestedBranch, primaryBranch) : {}
+  const scheduleBranch = requestedBranch ? await scheduleBranchWhere(requestedBranch, primaryBranch) : {}
+  const patientBranch = requestedBranch ? await patientBranchWhere(requestedBranch, primaryBranch) : {}
 
   // 1. Get patients from direct sessions (staffId match)
   const staffFilter = isAdmin ? {} : { staffId: effectiveStaffId }
