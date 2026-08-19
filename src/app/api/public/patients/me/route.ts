@@ -84,7 +84,10 @@ export async function GET(req: NextRequest) {
       // patient's full attendance record.
       where: { patientId: { in: patientIds } },
       orderBy: { date: 'desc' },
-      take: 300,
+      // High headroom for full session-history backfills (2024→): a multi-year,
+      // multi-department patient can accumulate many hundreds of schedules and
+      // the newest-N cap would silently hide their oldest sessions.
+      take: 2000,
       select: {
         id: true, patientId: true, date: true, startTime: true, endTime: true, status: true,
         isTeletherapy: true, notes: true,
@@ -94,7 +97,7 @@ export async function GET(req: NextRequest) {
     prisma.patientBooking.findMany({
       where: { patientId: { in: patientIds }, status: { in: ['PAID', 'COMPLETED'] } },
       orderBy: { date: 'desc' },
-      take: 200,
+      take: 500,
       select: {
         id: true, date: true, startTime: true, endTime: true, status: true,
         department: true, branch: true, isTeletherapy: true, notes: true,
