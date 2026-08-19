@@ -9,13 +9,26 @@
 //
 // Resolution order for the sending account's refresh token:
 //   1. UGAT_GMAIL_REFRESH_TOKEN env (explicit override)
-//   2. GmailAccount row whose email == UGAT_MAIL_FROM_ADDRESS
+//   2. First connected GmailAccount matching ACCOUNT_CANDIDATES below
 // The message shows "From: UGAT Fellowship <that address>".
 
 import { getGmailClient } from './email'
 import { prisma } from './prisma'
 
+// What recipients see. Unchanged: applicants have always been written to from
+// scholarship@, and it is a send-as alias on the underlying mailbox.
 const FROM_ADDRESS = process.env.UGAT_MAIL_FROM_ADDRESS || 'scholarship@sapphireclinicseast.org'
+
+// Which connected mailbox actually holds the OAuth token. The account was
+// registered under the scholarship@ label but authenticates as fellowship@ —
+// its real Google mailbox — so the row has been corrected to fellowship@.
+// Both are tried, in order, so this keeps working whichever label the row
+// carries and no UGAT mail is lost to a renamed account.
+const ACCOUNT_CANDIDATES = [
+  process.env.UGAT_GMAIL_ACCOUNT,
+  'fellowship@sapphireclinicseast.org',
+  'scholarship@sapphireclinicseast.org',
+].filter(Boolean) as string[]
 const FROM_NAME = 'UGAT Fellowship'
 
 // Brand palette (mirrors the /ugatfellow landing page).
@@ -27,13 +40,16 @@ const CREAM = '#edf3d9'
 /** Find the refresh token for the scholarship@ mailbox. */
 async function resolveRefreshToken(): Promise<string> {
   if (process.env.UGAT_GMAIL_REFRESH_TOKEN) return process.env.UGAT_GMAIL_REFRESH_TOKEN
-  const acct = await prisma.gmailAccount.findUnique({
-    where: { email: FROM_ADDRESS },
-    select: { refreshToken: true },
-  })
-  if (acct?.refreshToken) return acct.refreshToken
+  for (const email of ACCOUNT_CANDIDATES) {
+    const acct = await prisma.gmailAccount.findUnique({
+      where: { email },
+      select: { refreshToken: true },
+    })
+    if (acct?.refreshToken) return acct.refreshToken
+  }
   throw new Error(
-    `No Gmail account connected for ${FROM_ADDRESS}. Connect it once at /api/auth/google (Settings ▸ Accounts), signing in as ${FROM_ADDRESS}.`,
+    `No Gmail account connected for any of: ${ACCOUNT_CANDIDATES.join(', ')}. ` +
+    'Connect it once at /api/auth/google (Settings ▸ Accounts).',
   )
 }
 
