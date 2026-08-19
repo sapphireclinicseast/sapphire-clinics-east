@@ -78,6 +78,7 @@ const SITE_CONFIG = {
     { name: 'Xavier School',                  imgSrc: 'PARTNERS/XAVIER SCHOOL.png' },
     { name: 'Bomba Pilipinas',                imgSrc: 'PARTNERS/BOMBA PILIPINAS.png' },
     { name: 'Light Bearer Christian Academy', imgSrc: 'PARTNERS/LIGHT BEARER CHRISTIAN ACADEMY.png' },
+    { name: 'Reedley International School',    imgSrc: 'PARTNERS/REEDLEY INTERNATIONAL SCHOOL.png' },
   ],
 
   /* ── Branches ── */
