@@ -208,6 +208,9 @@ model HrBranch {
   emailMain                String?
   emailHr                  String?
   emailAccounting          String?
+  emailPayslips            String?
+  emailSchedules           String?
+  emailSessionNotes        String?
   departmentsOffered       String[] @default([])
   operatingDays            String[] @default([])
   operatingHoursOpen       String?

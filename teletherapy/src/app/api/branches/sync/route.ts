@@ -1,9 +1,17 @@
 /**
  * Branches Sync — Pull the Branches Registry from HR Platform
  *
- * Uses teletherapy's existing HR credentials (HR_API_BASE + HR_API_KEY),
- * the same pair /api/staff/sync-hr uses. Full-replace: delete rows no
- * longer present in HR Platform, upsert the rest by id.
+ * Auth: sends BOTH x-api-key (TELETHERAPY_HR_API_KEY — the same key
+ * teletherapy already sends to /manuals/*, confirmed provisioned by
+ * deploy.yml) and, if set, Authorization: Bearer HR_API_KEY. HR
+ * Platform's /branches/external accepts either — HR_API_KEY was never
+ * actually written into teletherapy's .env by deploy.yml (only
+ * TELETHERAPY_HR_API_KEY is), so this was failing with "HR_API_KEY is
+ * not configured" in production; sending both means it now works
+ * regardless of which one turns out to be set, no deploy.yml change
+ * needed, and nothing to regress if HR_API_KEY is set some other way.
+ * Full-replace: delete rows no longer present in HR Platform, upsert
+ * the rest by id.
  *
  * NOTE: this writes to the "HrBranch" table in the sapphire_marketing
  * database, which teletherapy shares with Operations Hub — Operations
@@ -16,6 +24,7 @@ import { prisma } from '@/lib/prisma'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
 const HR_KEY = process.env.HR_API_KEY ?? ''
+const SERVICE_KEY = process.env.TELETHERAPY_HR_API_KEY ?? 'scei-teletherapy-hr-2026'
 const HR_BRANCH_URLS = [
   `${HR_API_BASE}/branches/external`,
   'http://127.0.0.1:3457/branches/external', // direct pm2 fallback (same key)
@@ -37,7 +46,10 @@ interface HRBranch {
   tin: string
   address: string
   phone: string
-  emails: { main: string; hr: string; accounting: string }
+  emails: {
+    main: string; hr: string; accounting: string
+    payslips: string | null; schedules: string | null; sessionNotes: string | null
+  }
   departmentsOffered: string[]
   operatingDays: string[]
   operatingHours: { open: string; close: string }
@@ -49,9 +61,6 @@ export async function POST() {
   if (!session?.user || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
-  if (!HR_KEY) {
-    return NextResponse.json({ error: 'HR_API_KEY is not configured on the server' }, { status: 500 })
-  }
 
   let hrBranches: HRBranch[] = []
   let fetched = false
@@ -59,7 +68,10 @@ export async function POST() {
   for (const url of HR_BRANCH_URLS) {
     try {
       const res = await fetch(url, {
-        headers: { Authorization: 'Bearer ' + HR_KEY },
+        headers: {
+          'x-api-key': SERVICE_KEY,
+          ...(HR_KEY ? { Authorization: 'Bearer ' + HR_KEY } : {}),
+        },
         cache: 'no-store',
         signal: AbortSignal.timeout(8000),
       })
@@ -99,6 +111,9 @@ export async function POST() {
       emailMain: b.emails?.main || null,
       emailHr: b.emails?.hr || null,
       emailAccounting: b.emails?.accounting || null,
+      emailPayslips: b.emails?.payslips || null,
+      emailSchedules: b.emails?.schedules || null,
+      emailSessionNotes: b.emails?.sessionNotes || null,
       departmentsOffered: b.departmentsOffered ?? [],
       operatingDays: b.operatingDays ?? [],
       operatingHoursOpen: b.operatingHours?.open || null,

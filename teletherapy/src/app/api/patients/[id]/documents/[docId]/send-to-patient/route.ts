@@ -146,7 +146,7 @@ export async function POST(
     await sendEmail({
       to: patient.email,
       cc: ccEmail ? [ccEmail] : undefined,
-      from: branchFromAddress(branchKey),
+      from: await branchFromAddress(branchKey),
       subject: `Initial Evaluation Report — ${patientName}`,
       html,
       attachments: [{ filename: doc.fileName, content: fileBuffer }],

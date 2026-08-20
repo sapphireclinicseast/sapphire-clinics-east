@@ -332,7 +332,7 @@ export async function POST(
     await sendEmail({
       to: schedule.patient.email,
       cc: ccEmail ? [ccEmail] : undefined,
-      from: branchFromAddress(rawBranch),
+      from: await branchFromAddress(rawBranch),
       subject: `Session Notes - ${sessionDate}`,
       html,
       attachments: emailAttachments,
