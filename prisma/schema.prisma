@@ -114,6 +114,12 @@ model HrBranch {
   emailMain                String?
   emailHr                  String?
   emailAccounting          String?
+  // Automation sender addresses — null means "fall back to emailHr, then
+  // emailMain" (the consuming app's job, not the sync's). See HR Platform's
+  // Branches Registry "Email Automation" section.
+  emailPayslips            String?
+  emailSchedules           String?
+  emailSessionNotes        String?
   departmentsOffered       String[] @default([])
   operatingDays            String[] @default([])
   operatingHoursOpen       String?

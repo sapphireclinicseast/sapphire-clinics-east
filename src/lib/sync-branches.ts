@@ -41,7 +41,10 @@ export interface HRBranch {
   tin: string
   address: string
   phone: string
-  emails: { main: string; hr: string; accounting: string }
+  emails: {
+    main: string; hr: string; accounting: string
+    payslips: string | null; schedules: string | null; sessionNotes: string | null
+  }
   departmentsOffered: string[]
   operatingDays: string[]
   operatingHours: { open: string; close: string }
@@ -123,6 +126,9 @@ export async function syncBranchesFromHr(): Promise<BranchSyncResult> {
       emailMain: b.emails?.main || null,
       emailHr: b.emails?.hr || null,
       emailAccounting: b.emails?.accounting || null,
+      emailPayslips: b.emails?.payslips || null,
+      emailSchedules: b.emails?.schedules || null,
+      emailSessionNotes: b.emails?.sessionNotes || null,
       departmentsOffered: b.departmentsOffered ?? [],
       operatingDays: b.operatingDays ?? [],
       operatingHoursOpen: b.operatingHours?.open || null,
