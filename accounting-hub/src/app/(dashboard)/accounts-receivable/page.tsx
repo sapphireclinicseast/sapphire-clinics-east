@@ -16,6 +16,7 @@ import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
 import OthersTab from './OthersTab'
+import ExpandablePanel from './ExpandablePanel'
 
 interface ARWallet {
   id: string
@@ -32,6 +33,9 @@ interface ARWallet {
   // Lifetime settled by this agency (cash + tax withheld), and how long it took.
   paidTotal?: number
   commissionTotal?: number
+  // When the letter/SOA was obtained (dateObtained, else the record's createdAt).
+  // monthsToPay counts from this date, so the two always reconcile.
+  soaDate?: string | null
   lastPaymentDate?: string | null
   monthsToPay?: number | null
   // Total consumed (paid + unpaid, GL only)
@@ -613,6 +617,11 @@ export default function AccountsReceivablePage() {
         case 'branch': return branchLabel(w.branch)
         case 'approved': return toNum(w.balance)
         case 'paid': return toNum(w.paidTotal)
+        // Undated rows sort to the end rather than to 1970.
+        case 'soaDate': return w.soaDate ? String(w.soaDate) : '￿'
+        case 'paidDate': return w.lastPaymentDate ? String(w.lastPaymentDate) : '￿'
+        // What the agency still owes: approved less what it has settled.
+        case 'ar': return Math.max(0, toNum(w.balance) - toNum(w.paidTotal))
         case 'commission': return toNum(w.commissionTotal)
         // Unpaid agencies sort to the end either way rather than as zero.
         case 'months': return typeof w.monthsToPay === 'number' ? w.monthsToPay : Number.MAX_SAFE_INTEGER
@@ -624,6 +633,8 @@ export default function AccountsReceivablePage() {
     const filterGet = (w: ARWallet, k: string): string | number => {
       switch (k) {
         case 'months': return typeof w.monthsToPay === 'number' ? `${w.monthsToPay.toFixed(1)} mo` : 'unpaid'
+        case 'soaDate': return w.soaDate ? formatDate(w.soaDate) : '—'
+        case 'paidDate': return w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid'
         case 'pct': return w.perSession ? 'per session' : `${pctOf(w).toFixed(1)}%`
         default: return sortGet(w, k)
       }
@@ -641,9 +652,12 @@ export default function AccountsReceivablePage() {
       { key: 'name', label: 'Agency / Name' },
       { key: 'branch', label: 'Branch' },
       { key: 'approved', label: 'Approved SOA' },
+      { key: 'soaDate', label: 'Date of SOA' },
       { key: 'paid', label: 'Paid' },
+      { key: 'paidDate', label: 'Date Paid' },
       { key: 'commission', label: 'Commission' },
       { key: 'months', label: 'Months to pay' },
+      { key: 'ar', label: 'AR Balance' },
       { key: 'consumed', label: 'Consumed' },
       { key: 'pct', label: '% Consumed' },
     ]
@@ -900,8 +914,13 @@ export default function AccountsReceivablePage() {
       const pct = approved > 0 ? (consumed / approved) * 100 : 0
       const base = [w.patientName, branchLabel(w.branch) || '—']
       return isGL
-        ? [...base, money(approved), money(toNum(w.paidTotal)), money(toNum(w.commissionTotal)),
+        ? [...base, money(approved),
+           w.soaDate ? formatDate(w.soaDate) : '—',
+           money(toNum(w.paidTotal)),
+           w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid',
+           money(toNum(w.commissionTotal)),
            typeof w.monthsToPay === 'number' ? `${w.monthsToPay.toFixed(1)} mo` : 'unpaid',
+           money(Math.max(0, approved - toNum(w.paidTotal))),
            money(consumed), w.perSession ? 'per session' : `${pct.toFixed(1)}%`]
         : [...base, money(approved)]
     })
@@ -1536,8 +1555,7 @@ export default function AccountsReceivablePage() {
         {/* AR Days per wallet — sortable table */}
         {agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
           <div id="ar-days-per-agency">
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>AR Days per {tab === 'HMO' ? 'HMO' : 'Agency'}</p>
-            <div className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
+            <ExpandablePanel title={`AR Days per ${tab === 'HMO' ? 'HMO' : 'Agency'}`} maxHeight={260}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
@@ -1565,7 +1583,7 @@ export default function AccountsReceivablePage() {
                   }
                 </tbody>
               </table>
-            </div>
+            </ExpandablePanel>
           </div>
         )}
 
@@ -1582,7 +1600,7 @@ export default function AccountsReceivablePage() {
               </button>
             )}
           </div>
-          <div className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '280px' }}>
+          <ExpandablePanel title="Aging Receivable Details" subtitle="Click an amount to see the transactions included" maxHeight={280}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
@@ -1648,7 +1666,7 @@ export default function AccountsReceivablePage() {
                 })()}
               </tbody>
             </table>
-          </div>
+          </ExpandablePanel>
         </div>
       </div>
 
@@ -1663,7 +1681,7 @@ export default function AccountsReceivablePage() {
               {arPayments.length}
             </span>
           </h3>
-          <div className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '320px' }}>
+          <ExpandablePanel title={`Payment History — ${tab}`} maxHeight={320}>
             <table className="w-full text-xs">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
@@ -1734,7 +1752,7 @@ export default function AccountsReceivablePage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ExpandablePanel>
         </div>
       )}
 
@@ -1770,7 +1788,8 @@ export default function AccountsReceivablePage() {
           </p>
         )}
       </div>
-      <div id="ar-utilization" className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
+      <div id="ar-utilization">
+      <ExpandablePanel title="Consumption" subtitle={tab === 'GL' ? 'Months to pay counts from the SOA date to the latest payment, in 30-day months.' : undefined} maxHeight={260}>
         <table className="w-full text-sm">
           <SortFilterHead
             cols={consumptionCols}
@@ -1814,8 +1833,14 @@ export default function AccountsReceivablePage() {
                     {formatCurrency(approved)}
                   </td>
                   {tab === 'GL' && <>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: w.soaDate ? 'var(--charcoal)' : 'var(--light-gray)' }}>
+                      {w.soaDate ? formatDate(w.soaDate) : '—'}
+                    </td>
                     <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: paid > 0 ? '#166534' : 'var(--light-gray)' }}>
                       {paid > 0 ? formatCurrency(paid) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: w.lastPaymentDate ? 'var(--charcoal)' : 'var(--light-gray)' }}>
+                      {w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid'}
                     </td>
                     <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: toNum(w.commissionTotal) > 0 ? 'var(--mid-gray)' : 'var(--light-gray)' }}>
                       {toNum(w.commissionTotal) > 0 ? formatCurrency(toNum(w.commissionTotal)) : '—'}
@@ -1824,6 +1849,11 @@ export default function AccountsReceivablePage() {
                       {typeof w.monthsToPay === 'number'
                         ? `${w.monthsToPay.toFixed(1)} mo`
                         : <span style={{ color: 'var(--light-gray)' }}>unpaid</span>}
+                    </td>
+                    {/* What this person's agency still owes: approved less settled. */}
+                    <td className="px-3 py-2 text-right text-xs font-bold tabular-nums"
+                      style={{ color: Math.max(0, approved - paid) > 0 ? '#dc2626' : '#166534' }}>
+                      {formatCurrency(Math.max(0, approved - paid))}
                     </td>
                     <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
                       {consumed > 0 ? formatCurrency(consumed) : <span style={{ color: 'var(--light-gray)' }}>—</span>}
@@ -1840,6 +1870,7 @@ export default function AccountsReceivablePage() {
             })}
           </tbody>
         </table>
+      </ExpandablePanel>
       </div>
 
 
