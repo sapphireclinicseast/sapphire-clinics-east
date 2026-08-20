@@ -13,12 +13,22 @@
  */
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 
+// Was independently duplicated (byte-for-byte) in
+// /api/internal/my-payslips/pdf/route.ts, which reimplements this whole PDF
+// builder rather than calling buildEmployeePayslipPdf() below despite this
+// file's own header comment claiming to be the single source of truth —
+// that's a bigger refactor than a label-map dedup, so only the label lookup
+// is shared here; the route keeps its independent PDF logic for now.
 const BRANCH_LABEL: Record<string, string> = {
   SBEA: 'East Branch',
   SBGH: 'Greenhills Branch',
   SANDBOX_EAST: 'East Branch',
   SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
+}
+export function payslipBranchLabel(branch?: string | null): string {
+  if (!branch) return ''
+  return BRANCH_LABEL[branch] ?? branch
 }
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']

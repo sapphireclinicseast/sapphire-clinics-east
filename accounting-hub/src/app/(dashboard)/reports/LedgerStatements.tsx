@@ -11,6 +11,12 @@ import { formatCurrency } from '@/lib/utils'
 import { formatDisplay, displayCode, displayRate, inDisplay } from './display-currency'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import type { V2Statements, V2AccountRow, V2CollectedLine } from '@/lib/reports/v2/engine'
+import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
+
+// Labels for the income-statement branch tickboxes' combined-view note.
+const BRANCH_NAMES: Record<string, string> = {
+  SBEA: 'East Branch', SBGH: 'Greenhills Branch', VERDANA_STORE: 'Verdana Store', AURA_INSTITUTE: 'Aura Health Institute',
+}
 
 // Investor mode: statements render normally but no amount is clickable — the
 // drill-down reaches patient-level lines. Provided by the page, consumed at the
@@ -354,12 +360,20 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
 
   useEffect(() => {
     let live = true
-    fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
-      .then(async r => {
-        const j = await r.json()
+    // "SBEA+SBGH" = income-statement branch tickboxes: fetch each ticked
+    // branch and sum the payloads (mergeLedgerStatements).
+    const parts = branch.split('+')
+    Promise.all(parts.map(b =>
+      fetch(`/api/reports/v2?year=${year}&branch=${b}`).then(async r => ({ ok: r.ok, j: await r.json() }))
+    ))
+      .then(res => {
         if (!live) return
-        if (!r.ok) setResult({ key, data: null, error: j.error || 'Failed to load' })
-        else setResult({ key, data: j, error: null })
+        const bad = res.find(r => !r.ok)
+        if (bad) { setResult({ key, data: null, error: bad.j.error || 'Failed to load' }); return }
+        const data = parts.length > 1
+          ? mergeLedgerStatements(res.map(r => r.j), parts.map(p => BRANCH_NAMES[p] || p))
+          : res[0].j
+        setResult({ key, data, error: null })
       })
       .catch(() => live && setResult({ key, data: null, error: 'Failed to load' }))
     return () => { live = false }
@@ -913,7 +927,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
     <ReadOnlyCtx.Provider value={!!readOnly}>
     <div className="pb-2">
       {body}
-      {readOnly ? null : integrity}
+      {readOnly || branch.includes('+') ? null : integrity}
       <p className="px-5 pt-1 text-[0.68rem]" style={{ color: '#9ca3af' }}>
         * derived account (not yet in the Chart of Accounts).{readOnly ? '' : ' Click any amount to see the entries behind it.'}
       </p>
