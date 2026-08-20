@@ -964,19 +964,24 @@ export default function AccountsReceivablePage() {
       kpis,
       sections: [
         { heading: 'Consumption', headers: consumptionHeaders, rows: consumptionRowsOut },
-        {
-          heading: `AR Days per ${isGL ? 'Agency' : 'HMO'}`,
-          headers: [isGL ? 'Agency' : 'HMO', 'Total AR', `Revenue (${agingPeriodDays}d)`, 'AR Days'],
-          rows: arDaysRows,
-        },
-        {
-          heading: 'Aging Receivable Details',
-          headers: [isGL ? 'Agency' : 'HMO', '0–30 days', '31–60 days', '61–90 days', '>90 days', 'Total'],
-          rows: agingRows.map(w => [w.walletName, money(w.aging.b0_30), money(w.aging.b31_60),
-                                    money(w.aging.b61_90), money(w.aging.b90plus), money(w.ar)]),
-          totalRow: ['TOTAL', money(bucketTotals.b0_30), money(bucketTotals.b31_60),
-                     money(bucketTotals.b61_90), money(bucketTotals.b90plus), money(bucketTotals.ar)],
-        },
+        // AR Days and Aging Receivable Details are HMO-only, matching the screen:
+        // both panels are hidden on the GL tab, so the GL export must not carry
+        // sections the user can no longer see.
+        ...(isGL ? [] : [
+          {
+            heading: `AR Days per ${isGL ? 'Agency' : 'HMO'}`,
+            headers: [isGL ? 'Agency' : 'HMO', 'Total AR', `Revenue (${agingPeriodDays}d)`, 'AR Days'],
+            rows: arDaysRows,
+          },
+          {
+            heading: 'Aging Receivable Details',
+            headers: [isGL ? 'Agency' : 'HMO', '0–30 days', '31–60 days', '61–90 days', '>90 days', 'Total'],
+            rows: agingRows.map(w => [w.walletName, money(w.aging.b0_30), money(w.aging.b31_60),
+                                      money(w.aging.b61_90), money(w.aging.b90plus), money(w.ar)]),
+            totalRow: ['TOTAL', money(bucketTotals.b0_30), money(bucketTotals.b31_60),
+                       money(bucketTotals.b61_90), money(bucketTotals.b90plus), money(bucketTotals.ar)],
+          },
+        ]),
         {
           heading: 'Payment History',
           headers: ['Date', 'SI Number', isGL ? 'Agency' : 'Provider', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By'],
@@ -1583,8 +1588,9 @@ export default function AccountsReceivablePage() {
           </div>
         </div>
 
-        {/* AR Days per wallet — sortable table */}
-        {agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
+        {/* AR Days per wallet — sortable table. Hidden on the GL tab; HMO still
+            shows it (as "AR Days per HMO") off this same block. */}
+        {tab !== 'GL' && agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
           <div id="ar-days-per-agency">
             <ExpandablePanel title={`AR Days per ${tab === 'HMO' ? 'HMO' : 'Agency'}`} maxHeight={260}>
               <table className="w-full text-sm">
@@ -1618,7 +1624,10 @@ export default function AccountsReceivablePage() {
           </div>
         )}
 
-        {/* Aging Receivable Details */}
+        {/* Aging Receivable Details. Hidden on the GL tab; HMO still shows it,
+            where clicking a bucket amount still filters the transactions table
+            below via setBucketFilterIds. */}
+        {tab !== 'GL' && (
         <div id="ar-aging-details">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
@@ -1699,6 +1708,7 @@ export default function AccountsReceivablePage() {
             </table>
           </ExpandablePanel>
         </div>
+        )}
       </div>
 
       {/* Payment History — always shown, on both wallet tabs. Hiding it when empty made
