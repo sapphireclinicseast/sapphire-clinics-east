@@ -144,7 +144,22 @@ async function dispatchReminder(opts: {
   branch:    string
   message:   string
 }): Promise<'viber' | 'sms'> {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  // No silent fallback to another branch. Each branch sends from its OWN
+  // Android phone and Viber bot, so defaulting an unrecognised branch to SBEA
+  // would text a Greenhills patient their Greenhills schedule from the East
+  // clinic's number — the patient sees the wrong clinic, and replies land at
+  // the wrong front desk. An interbranch patient makes this easy to hit, and a
+  // branch newly created in HR Platform has no SMS config here at all, so it
+  // would have been silently absorbed by East. Refuse instead.
+  const cfg = BRANCH_CONFIG[opts.branch]
+  if (!cfg) {
+    throw new Error(
+      `No SMS/Viber sender configured for branch "${opts.branch}". ` +
+      `Install httpSMS on that branch's Android phone and set ` +
+      `HTTPSMS_API_KEY_${opts.branch} in the server environment. ` +
+      `Refusing to send from a different branch's number.`,
+    )
+  }
 
   // ── Try Viber first (if patient has subscribed to the bot) ──────────────────
   if (cfg.viberToken) {
@@ -180,7 +195,11 @@ export async function POST(req: NextRequest) {
     if (!schedule)         return NextResponse.json({ error: 'Schedule not found' }, { status: 404 })
     if (!schedule.patient) return NextResponse.json({ error: 'No patient on this schedule' }, { status: 400 })
 
-    // Use scheduling branch (for interbranch consultants) if provided, else staff home branch
+    // The branch being scheduled in is authoritative — NOT the clinician's home
+    // branch. An interbranch consultant seeing a Greenhills patient still has
+    // staff.branch = SBEA, so falling back to it would send that patient their
+    // Greenhills schedule from the East phone. The UI always passes the branch;
+    // the fallback only covers direct API callers.
     const branch  = reqBranch || schedule.staff.branch
     const dateStr = schedule.date.toISOString().split('T')[0]
 
@@ -234,6 +253,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // As above: scheduling branch wins over the clinician's home branch.
     const branch = reqBranch || schedules[0].staff.branch
     let sent      = 0
     let viber     = 0
