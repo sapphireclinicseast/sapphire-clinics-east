@@ -12,9 +12,12 @@ import {
   Download, Filter, FileText, Settings, Maximize2, Minimize2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
 import OthersTab from './OthersTab'
+import ExpandablePanel from './ExpandablePanel'
+import DetailedGl from './DetailedGl'
 
 interface ARWallet {
   id: string
@@ -31,6 +34,9 @@ interface ARWallet {
   // Lifetime settled by this agency (cash + tax withheld), and how long it took.
   paidTotal?: number
   commissionTotal?: number
+  // When the letter/SOA was obtained (dateObtained, else the record's createdAt).
+  // monthsToPay counts from this date, so the two always reconcile.
+  soaDate?: string | null
   lastPaymentDate?: string | null
   monthsToPay?: number | null
   // Total consumed (paid + unpaid, GL only)
@@ -415,6 +421,10 @@ export default function AccountsReceivablePage() {
   const [bucketFilterIds, setBucketFilterIds] = useState<string[] | null>(null)
   const [bucketFilterLabel, setBucketFilterLabel] = useState('')
   const [arDaysSort, setArDaysSort] = useState<'asc' | 'desc'>('desc')
+  // Download menu for the summary dashboard (separate from the Per HMO one).
+  const [showSummaryDownload, setShowSummaryDownload] = useState(false)
+  // GL sub-tab: the dashboard, or the full case sheet.
+  const [glSubTab, setGlSubTab] = useState<'overview' | 'detailed'>('overview')
 
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -610,6 +620,11 @@ export default function AccountsReceivablePage() {
         case 'branch': return branchLabel(w.branch)
         case 'approved': return toNum(w.balance)
         case 'paid': return toNum(w.paidTotal)
+        // Undated rows sort to the end rather than to 1970.
+        case 'soaDate': return w.soaDate ? String(w.soaDate) : '￿'
+        case 'paidDate': return w.lastPaymentDate ? String(w.lastPaymentDate) : '￿'
+        // What the agency still owes: approved less what it has settled.
+        case 'ar': return Math.max(0, toNum(w.balance) - toNum(w.paidTotal))
         case 'commission': return toNum(w.commissionTotal)
         // Unpaid agencies sort to the end either way rather than as zero.
         case 'months': return typeof w.monthsToPay === 'number' ? w.monthsToPay : Number.MAX_SAFE_INTEGER
@@ -621,6 +636,8 @@ export default function AccountsReceivablePage() {
     const filterGet = (w: ARWallet, k: string): string | number => {
       switch (k) {
         case 'months': return typeof w.monthsToPay === 'number' ? `${w.monthsToPay.toFixed(1)} mo` : 'unpaid'
+        case 'soaDate': return w.soaDate ? formatDate(w.soaDate) : '—'
+        case 'paidDate': return w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid'
         case 'pct': return w.perSession ? 'per session' : `${pctOf(w).toFixed(1)}%`
         default: return sortGet(w, k)
       }
@@ -638,9 +655,12 @@ export default function AccountsReceivablePage() {
       { key: 'name', label: 'Agency / Name' },
       { key: 'branch', label: 'Branch' },
       { key: 'approved', label: 'Approved SOA' },
+      { key: 'soaDate', label: 'Date of SOA' },
       { key: 'paid', label: 'Paid' },
+      { key: 'paidDate', label: 'Date Paid' },
       { key: 'commission', label: 'Commission' },
       { key: 'months', label: 'Months to pay' },
+      { key: 'ar', label: 'AR Balance' },
       { key: 'consumed', label: 'Consumed' },
       { key: 'pct', label: '% Consumed' },
     ]
@@ -864,6 +884,139 @@ export default function AccountsReceivablePage() {
     }
   }
 
+  /* ── Summary dashboard export ──────────────────────────────────
+     Builds the four tables on this screen once, so the Excel workbook and
+     the PDF always carry the same figures. Everything reflects the filters
+     currently applied — the file should match what the screen shows, not a
+     second, unfiltered version of the truth. */
+  const buildSummaryExport = () => {
+    const isGL = tab === 'GL'
+    const money = (n: number) => Number(n || 0).toFixed(2)
+
+    const scopeBits = [
+      branch ? branchLabel(branch) : 'All branches',
+      `last ${agingPeriodDays} days`,
+      dateFrom || dateTo ? `orders ${dateFrom || 'start'} → ${dateTo || 'today'}` : null,
+      walletFilter ? (wallets.find(w => w.id === walletFilter)?.patientName || null) : null,
+    ].filter(Boolean)
+
+    const kpis = [
+      { label: 'AR Days (Overall)', value: agingData ? `${agingData.arDaysOverall.toFixed(1)} days` : '—' },
+      { label: 'Total AR', value: agingData ? formatCurrency(agingData.totalAR) : '—' },
+      { label: `Revenue (${agingPeriodDays}d)`, value: agingData ? formatCurrency(agingData.totalRevenue) : '—' },
+      ...(!isGL && agingData?.totalAllDeptRevenue != null
+        ? [{ label: 'All-dept revenue', value: formatCurrency(agingData.totalAllDeptRevenue) }]
+        : []),
+    ]
+
+    // 1) Consumption — same columns and order as the on-screen table.
+    const consumptionHeaders = consumptionCols.map(c => c.label)
+    const consumptionRowsOut = consumptionRows.map(w => {
+      const approved = toNum(w.balance)
+      const consumed = typeof w.consumedOutstanding === 'number' ? w.consumedOutstanding : 0
+      const pct = approved > 0 ? (consumed / approved) * 100 : 0
+      const base = [w.patientName, branchLabel(w.branch) || '—']
+      return isGL
+        ? [...base, money(approved),
+           w.soaDate ? formatDate(w.soaDate) : '—',
+           money(toNum(w.paidTotal)),
+           w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid',
+           money(toNum(w.commissionTotal)),
+           typeof w.monthsToPay === 'number' ? `${w.monthsToPay.toFixed(1)} mo` : 'unpaid',
+           money(Math.max(0, approved - toNum(w.paidTotal))),
+           money(consumed), w.perSession ? 'per session' : `${pct.toFixed(1)}%`]
+        : [...base, money(approved)]
+    })
+
+    // 2) AR Days per wallet
+    const arDaysRows = (agingData?.perWallet || [])
+      .filter(w => w.ar > 0 || w.revenue > 0)
+      .sort((a, b) => arDaysSort === 'asc' ? a.arDays - b.arDays : b.arDays - a.arDays)
+      .map(w => [w.walletName, money(w.ar), money(w.revenue), w.arDays.toFixed(1)])
+
+    // 3) Aging buckets, with the same TOTAL line the screen shows
+    const agingRows = (agingData?.perWallet || []).filter(w => w.ar > 0)
+    const bucketTotals = agingRows.reduce(
+      (acc, r) => ({
+        b0_30: acc.b0_30 + r.aging.b0_30, b31_60: acc.b31_60 + r.aging.b31_60,
+        b61_90: acc.b61_90 + r.aging.b61_90, b90plus: acc.b90plus + r.aging.b90plus,
+        ar: acc.ar + r.ar,
+      }),
+      { b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0, ar: 0 },
+    )
+
+    // 4) Payment history
+    const paymentRows = arPayments.map(p => [
+      formatDate(p.paymentDate),
+      p.salesInvoiceNumber || '—',
+      wallets.find(w => w.id === p.walletId)?.patientName || '—',
+      money(toNum(p.amount)),
+      money(toNum(p.discount)),
+      p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—',
+      String(p.items?.length ?? 0),
+      p.notes || '',
+      p.createdBy?.name || '—',
+    ])
+
+    return {
+      label: isGL ? 'Guarantee Letters (GL)' : 'HMO Providers',
+      scope: scopeBits.join(' · '),
+      kpis,
+      sections: [
+        { heading: 'Consumption', headers: consumptionHeaders, rows: consumptionRowsOut },
+        {
+          heading: `AR Days per ${isGL ? 'Agency' : 'HMO'}`,
+          headers: [isGL ? 'Agency' : 'HMO', 'Total AR', `Revenue (${agingPeriodDays}d)`, 'AR Days'],
+          rows: arDaysRows,
+        },
+        {
+          heading: 'Aging Receivable Details',
+          headers: [isGL ? 'Agency' : 'HMO', '0–30 days', '31–60 days', '61–90 days', '>90 days', 'Total'],
+          rows: agingRows.map(w => [w.walletName, money(w.aging.b0_30), money(w.aging.b31_60),
+                                    money(w.aging.b61_90), money(w.aging.b90plus), money(w.ar)]),
+          totalRow: ['TOTAL', money(bucketTotals.b0_30), money(bucketTotals.b31_60),
+                     money(bucketTotals.b61_90), money(bucketTotals.b90plus), money(bucketTotals.ar)],
+        },
+        {
+          heading: 'Payment History',
+          headers: ['Date', 'SI Number', isGL ? 'Agency' : 'Provider', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By'],
+          rows: paymentRows,
+        },
+      ],
+    }
+  }
+
+  const downloadSummaryExcel = () => {
+    const x = buildSummaryExport()
+    const stamp = new Date().toISOString().slice(0, 10)
+    downloadXlsx(`ar-summary-${tab.toLowerCase()}-${stamp}`, [
+      // The headline figures ride in their own sheet — putting them above a
+      // table would break the header row every other tool expects on row 1.
+      { name: 'Summary', headers: ['Figure', 'Value'], rows: [
+        ['Scope', x.scope],
+        ...x.kpis.map(k => [k.label, k.value]),
+      ] },
+      ...x.sections.map(s => ({
+        name: s.heading,
+        headers: s.headers,
+        rows: s.totalRow ? [...s.rows, s.totalRow] : s.rows,
+      })),
+    ])
+    setShowSummaryDownload(false)
+  }
+
+  const downloadSummaryPdf = () => {
+    const x = buildSummaryExport()
+    downloadReportPdf({
+      title: `Accounts Receivable Summary — ${x.label}`,
+      subtitle: x.scope,
+      kpis: x.kpis,
+      sections: x.sections,
+      landscape: true,
+    })
+    setShowSummaryDownload(false)
+  }
+
   const toggleOrderSelect = (orderId: string) => {
     setPaySelectedOrders(prev =>
       prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
@@ -949,6 +1102,34 @@ export default function AccountsReceivablePage() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* GL Sub-tabs */}
+      {tab === 'GL' && (
+        <div className="flex gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
+          {([{ key: 'overview', label: 'Overview' }, { key: 'detailed', label: 'Detailed GL' }] as const).map(st => (
+            <button key={st.key} onClick={() => setGlSubTab(st.key)}
+              className="px-4 py-2 text-sm font-medium transition-colors"
+              style={glSubTab === st.key
+                ? { color: 'var(--teal)', borderBottom: '2px solid var(--teal)' }
+                : { color: 'var(--mid-gray)', borderBottom: '2px solid transparent' }}>
+              {st.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Detailed GL: every letter in the OPGL summary layout ── */}
+      {tab === 'GL' && glSubTab === 'detailed' && (
+        <DetailedGl
+          canWrite={canWrite}
+          onSaved={fetchData}
+          wallets={wallets.map(w => ({
+            ...w,
+            // "Rendered service?" — has anything actually been billed to the letter.
+            hasOrders: orders.some(o => o.payments.some(p => p.walletId === w.id)),
+          }))}
+        />
       )}
 
       {/* ── GL Summary: % consumed, % paid, department pie chart ── */}
@@ -1333,7 +1514,7 @@ export default function AccountsReceivablePage() {
       {tab === 'OTHERS' && <OthersTab branch={branch} canWrite={!isHmoOfficer} />}
 
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
-      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && <>
+      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
 
       {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
       <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -1354,6 +1535,25 @@ export default function AccountsReceivablePage() {
               <option value={180}>Last 180 days</option>
               <option value={365}>Last 365 days</option>
             </select>
+            <div className="relative">
+              <button
+                onClick={() => setShowSummaryDownload(v => !v)}
+                disabled={!agingData}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium border bg-white disabled:opacity-50"
+                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                <Download size={14} /> Download
+              </button>
+              {showSummaryDownload && (
+                <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border bg-white shadow-lg" style={{ borderColor: 'var(--light-gray)', minWidth: 170 }}>
+                  <button onClick={downloadSummaryExcel} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl" style={{ color: 'var(--charcoal)' }}>
+                    Download as Excel
+                  </button>
+                  <button onClick={downloadSummaryPdf} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-b-xl" style={{ color: 'var(--charcoal)' }}>
+                    Download as PDF
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1386,8 +1586,7 @@ export default function AccountsReceivablePage() {
         {/* AR Days per wallet — sortable table */}
         {agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
           <div id="ar-days-per-agency">
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>AR Days per {tab === 'HMO' ? 'HMO' : 'Agency'}</p>
-            <div className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
+            <ExpandablePanel title={`AR Days per ${tab === 'HMO' ? 'HMO' : 'Agency'}`} maxHeight={260}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
@@ -1415,7 +1614,7 @@ export default function AccountsReceivablePage() {
                   }
                 </tbody>
               </table>
-            </div>
+            </ExpandablePanel>
           </div>
         )}
 
@@ -1432,7 +1631,7 @@ export default function AccountsReceivablePage() {
               </button>
             )}
           </div>
-          <div className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '280px' }}>
+          <ExpandablePanel title="Aging Receivable Details" subtitle="Click an amount to see the transactions included" maxHeight={280}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
@@ -1498,7 +1697,7 @@ export default function AccountsReceivablePage() {
                 })()}
               </tbody>
             </table>
-          </div>
+          </ExpandablePanel>
         </div>
       </div>
 
@@ -1513,7 +1712,7 @@ export default function AccountsReceivablePage() {
               {arPayments.length}
             </span>
           </h3>
-          <div className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '320px' }}>
+          <ExpandablePanel title={`Payment History — ${tab}`} maxHeight={320}>
             <table className="w-full text-xs">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
@@ -1584,7 +1783,7 @@ export default function AccountsReceivablePage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ExpandablePanel>
         </div>
       )}
 
@@ -1620,7 +1819,8 @@ export default function AccountsReceivablePage() {
           </p>
         )}
       </div>
-      <div id="ar-utilization" className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
+      <div id="ar-utilization">
+      <ExpandablePanel title="Consumption" subtitle={tab === 'GL' ? 'Months to pay counts from the SOA date to the latest payment, in 30-day months.' : undefined} maxHeight={260}>
         <table className="w-full text-sm">
           <SortFilterHead
             cols={consumptionCols}
@@ -1664,8 +1864,14 @@ export default function AccountsReceivablePage() {
                     {formatCurrency(approved)}
                   </td>
                   {tab === 'GL' && <>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: w.soaDate ? 'var(--charcoal)' : 'var(--light-gray)' }}>
+                      {w.soaDate ? formatDate(w.soaDate) : '—'}
+                    </td>
                     <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: paid > 0 ? '#166534' : 'var(--light-gray)' }}>
                       {paid > 0 ? formatCurrency(paid) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: w.lastPaymentDate ? 'var(--charcoal)' : 'var(--light-gray)' }}>
+                      {w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid'}
                     </td>
                     <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: toNum(w.commissionTotal) > 0 ? 'var(--mid-gray)' : 'var(--light-gray)' }}>
                       {toNum(w.commissionTotal) > 0 ? formatCurrency(toNum(w.commissionTotal)) : '—'}
@@ -1674,6 +1880,11 @@ export default function AccountsReceivablePage() {
                       {typeof w.monthsToPay === 'number'
                         ? `${w.monthsToPay.toFixed(1)} mo`
                         : <span style={{ color: 'var(--light-gray)' }}>unpaid</span>}
+                    </td>
+                    {/* What this person's agency still owes: approved less settled. */}
+                    <td className="px-3 py-2 text-right text-xs font-bold tabular-nums"
+                      style={{ color: Math.max(0, approved - paid) > 0 ? '#dc2626' : '#166534' }}>
+                      {formatCurrency(Math.max(0, approved - paid))}
                     </td>
                     <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
                       {consumed > 0 ? formatCurrency(consumed) : <span style={{ color: 'var(--light-gray)' }}>—</span>}
@@ -1690,6 +1901,7 @@ export default function AccountsReceivablePage() {
             })}
           </tbody>
         </table>
+      </ExpandablePanel>
       </div>
 
 

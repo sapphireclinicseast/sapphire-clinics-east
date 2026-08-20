@@ -30,6 +30,16 @@ export async function GET(req: Request) {
     const wallets = await prisma.digitalWallet.findMany({
       where: { walletType: type as 'HMO' | 'GL', isActive: true },
       select: { id: true, patientName: true, balance: true, totalGlAmount: true, accountId: true, approvedServices: true,
+        // When the letter/SOA was actually obtained — the aging calc already
+        // prefers this over createdAt, and the Consumption table now shows it.
+        dateObtained: true,
+        branch: true,
+        agency: true,
+        // GL case tracking (Detailed GL)
+        glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
+        soaAmount: true, soaSubmittedAt: true, guardianName: true,
+        soaCommissionRate: true, payoutBatch: true, qbEntry: true,
+        attachmentUrls: true, attachmentUrl: true, soaStatus: true,
         createdAt: true,
         account: { select: { accountNumber: true, accountTitle: true } } },
       orderBy: { patientName: 'asc' },
@@ -178,14 +188,21 @@ export async function GET(req: Request) {
       const consumedOutstanding = isGL && !perSession
         ? Math.max(0, approved - Number(w.balance))
         : ordersOutstanding
-      // How long the agency took to settle: from the letter being recorded to its
-      // latest payment, in months of 30 days.
+      // How long the agency took to settle: from the SOA date to its latest
+      // payment, in months of 30 days.
+      //
+      // The clock starts at dateObtained when it is set, falling back to
+      // createdAt — the same basis the aging endpoint already uses, and the
+      // date the Consumption table now shows as "Date of SOA". Counting from a
+      // different date than the one displayed would leave the three columns
+      // unable to reconcile against each other.
       const pay = paidByWallet.get(w.id)
       const paidTotal = pay?.paid ?? 0
       const commissionTotal = pay?.commission ?? 0
       const lastPaymentDate = pay?.lastPaymentDate ?? null
+      const soaDate = w.soaSubmittedAt ?? w.dateObtained ?? w.createdAt
       const monthsToPay = lastPaymentDate
-        ? (lastPaymentDate.getTime() - new Date(w.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 30)
+        ? (lastPaymentDate.getTime() - new Date(soaDate).getTime()) / (1000 * 60 * 60 * 24 * 30)
         : null
       return {
         ...w,
@@ -196,6 +213,7 @@ export async function GET(req: Request) {
         totalConsumedAmount,
         paidTotal,
         commissionTotal,
+        soaDate,
         lastPaymentDate,
         monthsToPay,
       }
