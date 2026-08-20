@@ -600,6 +600,12 @@ model Schedule {
   // supervisor. Null for every non-intern session.
   internStaffId String?
   internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
+  // Where the session actually happens ("SBEA" | "SBGH" | "VER"), captured
+  // from the branch calendar it was booked on. Interbranch clinicians hold one
+  // staff profile pinned to a single branch, so staff.branch cannot attribute
+  // their cross-branch sessions; this field can. Null = legacy row — consumers
+  // (POS cashier queue) fall back to patient/staff-branch inference.
+  branch        String?
   // Documentation age lock — owned by the staff portal (teletherapy), which
   // shares this physical table. Sessions past the documentation window are
   // read-only there until a clinician deliberately re-opens one; these record

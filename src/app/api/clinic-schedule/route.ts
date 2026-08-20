@@ -75,7 +75,11 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, internStaffId } = await req.json()
+  const { staffId, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, internStaffId, branch } = await req.json()
+  // Where the session happens — the branch calendar it was booked on. Needed
+  // because interbranch clinicians hold one staff profile pinned to a single
+  // branch, so staff.branch cannot attribute their cross-branch sessions.
+  const sessionBranch = ['SBEA', 'SBGH', 'VER'].includes(branch) ? branch : null
 
   if (!staffId || !date || !startTime || !endTime || !duration || !sessionType) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -94,6 +98,7 @@ export async function POST(req: NextRequest) {
       notes: notes || null,
       isTeletherapy: isTeletherapy || false,
       internStaffId: internStaffId || null,
+      branch: sessionBranch,
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
@@ -128,7 +133,7 @@ export async function PUT(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, meetLink, internStaffId } = await req.json()
+  const { id, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, meetLink, internStaffId, branch } = await req.json()
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
   const data: Record<string, unknown> = {}
@@ -143,6 +148,7 @@ export async function PUT(req: NextRequest) {
   if (isTeletherapy !== undefined) data.isTeletherapy = isTeletherapy
   if (meetLink !== undefined) data.meetLink = meetLink || null
   if (internStaffId !== undefined) data.internStaffId = internStaffId || null
+  if (branch !== undefined) data.branch = ['SBEA', 'SBGH', 'VER'].includes(branch) ? branch : null
 
   // Auto-generate a Jitsi link when teletherapy is being TOGGLED ON during an
   // edit (POST creates a link on initial save, but the PUT path used to leave
