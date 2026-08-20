@@ -12,6 +12,7 @@ import {
   Download, Filter, FileText, Settings, Maximize2, Minimize2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
 import OthersTab from './OthersTab'
@@ -415,6 +416,8 @@ export default function AccountsReceivablePage() {
   const [bucketFilterIds, setBucketFilterIds] = useState<string[] | null>(null)
   const [bucketFilterLabel, setBucketFilterLabel] = useState('')
   const [arDaysSort, setArDaysSort] = useState<'asc' | 'desc'>('desc')
+  // Download menu for the summary dashboard (separate from the Per HMO one).
+  const [showSummaryDownload, setShowSummaryDownload] = useState(false)
 
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -862,6 +865,134 @@ export default function AccountsReceivablePage() {
       setChangeDateBusy(null)
       setChangeDateEditId(null)
     }
+  }
+
+  /* ── Summary dashboard export ──────────────────────────────────
+     Builds the four tables on this screen once, so the Excel workbook and
+     the PDF always carry the same figures. Everything reflects the filters
+     currently applied — the file should match what the screen shows, not a
+     second, unfiltered version of the truth. */
+  const buildSummaryExport = () => {
+    const isGL = tab === 'GL'
+    const money = (n: number) => Number(n || 0).toFixed(2)
+
+    const scopeBits = [
+      branch ? branchLabel(branch) : 'All branches',
+      `last ${agingPeriodDays} days`,
+      dateFrom || dateTo ? `orders ${dateFrom || 'start'} → ${dateTo || 'today'}` : null,
+      walletFilter ? (wallets.find(w => w.id === walletFilter)?.patientName || null) : null,
+    ].filter(Boolean)
+
+    const kpis = [
+      { label: 'AR Days (Overall)', value: agingData ? `${agingData.arDaysOverall.toFixed(1)} days` : '—' },
+      { label: 'Total AR', value: agingData ? formatCurrency(agingData.totalAR) : '—' },
+      { label: `Revenue (${agingPeriodDays}d)`, value: agingData ? formatCurrency(agingData.totalRevenue) : '—' },
+      ...(!isGL && agingData?.totalAllDeptRevenue != null
+        ? [{ label: 'All-dept revenue', value: formatCurrency(agingData.totalAllDeptRevenue) }]
+        : []),
+    ]
+
+    // 1) Consumption — same columns and order as the on-screen table.
+    const consumptionHeaders = consumptionCols.map(c => c.label)
+    const consumptionRowsOut = consumptionRows.map(w => {
+      const approved = toNum(w.balance)
+      const consumed = typeof w.consumedOutstanding === 'number' ? w.consumedOutstanding : 0
+      const pct = approved > 0 ? (consumed / approved) * 100 : 0
+      const base = [w.patientName, branchLabel(w.branch) || '—']
+      return isGL
+        ? [...base, money(approved), money(toNum(w.paidTotal)), money(toNum(w.commissionTotal)),
+           typeof w.monthsToPay === 'number' ? `${w.monthsToPay.toFixed(1)} mo` : 'unpaid',
+           money(consumed), w.perSession ? 'per session' : `${pct.toFixed(1)}%`]
+        : [...base, money(approved)]
+    })
+
+    // 2) AR Days per wallet
+    const arDaysRows = (agingData?.perWallet || [])
+      .filter(w => w.ar > 0 || w.revenue > 0)
+      .sort((a, b) => arDaysSort === 'asc' ? a.arDays - b.arDays : b.arDays - a.arDays)
+      .map(w => [w.walletName, money(w.ar), money(w.revenue), w.arDays.toFixed(1)])
+
+    // 3) Aging buckets, with the same TOTAL line the screen shows
+    const agingRows = (agingData?.perWallet || []).filter(w => w.ar > 0)
+    const bucketTotals = agingRows.reduce(
+      (acc, r) => ({
+        b0_30: acc.b0_30 + r.aging.b0_30, b31_60: acc.b31_60 + r.aging.b31_60,
+        b61_90: acc.b61_90 + r.aging.b61_90, b90plus: acc.b90plus + r.aging.b90plus,
+        ar: acc.ar + r.ar,
+      }),
+      { b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0, ar: 0 },
+    )
+
+    // 4) Payment history
+    const paymentRows = arPayments.map(p => [
+      formatDate(p.paymentDate),
+      p.salesInvoiceNumber || '—',
+      wallets.find(w => w.id === p.walletId)?.patientName || '—',
+      money(toNum(p.amount)),
+      money(toNum(p.discount)),
+      p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—',
+      String(p.items?.length ?? 0),
+      p.notes || '',
+      p.createdBy?.name || '—',
+    ])
+
+    return {
+      label: isGL ? 'Guarantee Letters (GL)' : 'HMO Providers',
+      scope: scopeBits.join(' · '),
+      kpis,
+      sections: [
+        { heading: 'Consumption', headers: consumptionHeaders, rows: consumptionRowsOut },
+        {
+          heading: `AR Days per ${isGL ? 'Agency' : 'HMO'}`,
+          headers: [isGL ? 'Agency' : 'HMO', 'Total AR', `Revenue (${agingPeriodDays}d)`, 'AR Days'],
+          rows: arDaysRows,
+        },
+        {
+          heading: 'Aging Receivable Details',
+          headers: [isGL ? 'Agency' : 'HMO', '0–30 days', '31–60 days', '61–90 days', '>90 days', 'Total'],
+          rows: agingRows.map(w => [w.walletName, money(w.aging.b0_30), money(w.aging.b31_60),
+                                    money(w.aging.b61_90), money(w.aging.b90plus), money(w.ar)]),
+          totalRow: ['TOTAL', money(bucketTotals.b0_30), money(bucketTotals.b31_60),
+                     money(bucketTotals.b61_90), money(bucketTotals.b90plus), money(bucketTotals.ar)],
+        },
+        {
+          heading: 'Payment History',
+          headers: ['Date', 'SI Number', isGL ? 'Agency' : 'Provider', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By'],
+          rows: paymentRows,
+        },
+      ],
+    }
+  }
+
+  const downloadSummaryExcel = () => {
+    const x = buildSummaryExport()
+    const stamp = new Date().toISOString().slice(0, 10)
+    downloadXlsx(`ar-summary-${tab.toLowerCase()}-${stamp}`, [
+      // The headline figures ride in their own sheet — putting them above a
+      // table would break the header row every other tool expects on row 1.
+      { name: 'Summary', headers: ['Figure', 'Value'], rows: [
+        ['Scope', x.scope],
+        ...x.kpis.map(k => [k.label, k.value]),
+      ] },
+      ...x.sections.map(s => ({
+        name: s.heading,
+        headers: s.headers,
+        rows: s.totalRow ? [...s.rows, s.totalRow] : s.rows,
+      })),
+    ])
+    setShowSummaryDownload(false)
+  }
+
+  const downloadSummaryPdf = () => {
+    const x = buildSummaryExport()
+    downloadReportPdf({
+      title: `Accounts Receivable Summary — ${x.label}`,
+      subtitle: x.scope,
+      kpis: x.kpis,
+      sections: x.sections,
+      landscape: true,
+    })
+    setShowSummaryDownload(false)
   }
 
   const toggleOrderSelect = (orderId: string) => {
@@ -1354,6 +1485,25 @@ export default function AccountsReceivablePage() {
               <option value={180}>Last 180 days</option>
               <option value={365}>Last 365 days</option>
             </select>
+            <div className="relative">
+              <button
+                onClick={() => setShowSummaryDownload(v => !v)}
+                disabled={!agingData}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium border bg-white disabled:opacity-50"
+                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                <Download size={14} /> Download
+              </button>
+              {showSummaryDownload && (
+                <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border bg-white shadow-lg" style={{ borderColor: 'var(--light-gray)', minWidth: 170 }}>
+                  <button onClick={downloadSummaryExcel} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl" style={{ color: 'var(--charcoal)' }}>
+                    Download as Excel
+                  </button>
+                  <button onClick={downloadSummaryPdf} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-b-xl" style={{ color: 'var(--charcoal)' }}>
+                    Download as PDF
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
