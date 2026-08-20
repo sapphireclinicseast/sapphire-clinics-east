@@ -454,7 +454,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
     const res = await fetch('/api/clinic-schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, ...form, isTeletherapy: form.isTeletherapy }),
+      body: JSON.stringify({ staffId: staff.id, ...form, isTeletherapy: form.isTeletherapy, branch: schedulingBranch }),
     })
     setSaving(false)
     if (res.ok) { closeAddForm(); loadSchedules() }
@@ -484,7 +484,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
     const res = await fetch('/api/clinic-schedule', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editId, ...editForm }),
+      body: JSON.stringify({ id: editId, ...editForm, branch: schedulingBranch }),
     })
     setEditSaving(false)
     if (res.ok) { setEditId(null); loadSchedules() }

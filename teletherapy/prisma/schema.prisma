@@ -277,6 +277,9 @@ model Schedule {
   // writes the note; staffId above stays the supervisor. Column already
   // exists in the shared DB (Ops Hub migration 20260815_schedule_intern_staff).
   internStaffId String?
+  // Where the session happens (SBEA|SBGH|VER) — owned by Operations Hub;
+  // declared here to keep the shared table's schemas in lockstep.
+  branch        String?
   internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
   // Age lock (see src/lib/note-age-lock.ts). Notes on sessions older than the
   // documentation window are read-only by default; a clinician can deliberately
