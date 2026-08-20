@@ -989,11 +989,11 @@ function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayR
   // Past installments default to their due date (not today) so backfilled
   // payments land in the month they actually happened.
   const [paidDate, setPaidDate] = useState(() => {
-  const [memo, setMemo] = useState('')
     const due = String(occ.dueDate).slice(0, 10)
     const today = new Date().toISOString().slice(0, 10)
     return due < today ? due : today
   })
+  const [memo, setMemo] = useState('')
   const [bankAccountId, setBankAccountId] = useState(occ.paymentBankAccountId || occ.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [otherExp, setOtherExp] = useState<OtherExp[]>([])
