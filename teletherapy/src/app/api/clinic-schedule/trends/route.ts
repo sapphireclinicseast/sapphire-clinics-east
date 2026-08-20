@@ -3,13 +3,15 @@ import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-// GET /api/clinic-schedule/trends?department=all|<DEPT>&staffId=all|<id>&year=all|<yyyy>
-// Admin-only. Returns a session-count time series (per-year when year=all,
-// per-month when a single year is chosen) plus the filter option lists.
-// A "session" is any non-cancelled, non-rescheduled schedule row, counted
-// against the owning clinician (staffId) and their department.
+// GET /api/clinic-schedule/trends?department=&staffId=&branch=&fromYear=&toYear=
+// Admin-only. Returns a monthly session-count time series across the chosen
+// [fromYear, toYear] range (capped at the current month so future months don't
+// drag the line to zero) plus the filter option lists. A "session" is any
+// non-cancelled, non-rescheduled schedule row, counted against the owning
+// clinician (staffId) and their department/branch.
 
 const COUNTED_STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED'] as const
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -21,24 +23,53 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const department = (searchParams.get('department') ?? 'all').trim()
   const staffId = (searchParams.get('staffId') ?? 'all').trim()
-  const yearRaw = (searchParams.get('year') ?? 'all').trim()
-  const year = /^\d{4}$/.test(yearRaw) ? Number(yearRaw) : null
+  const branch = (searchParams.get('branch') ?? 'all').trim()
+  const fromRaw = (searchParams.get('fromYear') ?? '').trim()
+  const toRaw = (searchParams.get('toYear') ?? '').trim()
+
+  // Filter option lists (only clinicians/departments/branches/years that have
+  // sessions), fetched first so year defaults can fall back to the real span.
+  const [deptRows, clinicianRows, branchRows, yearRows] = await Promise.all([
+    prisma.$queryRaw<{ department: string }[]>(Prisma.sql`
+      SELECT DISTINCT st."department"::text AS department
+      FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
+      ORDER BY 1`),
+    prisma.$queryRaw<{ id: string; name: string; department: string; branch: string }[]>(Prisma.sql`
+      SELECT st.id, (st."firstName" || ' ' || st."lastName") AS name, st."department"::text AS department, st."branch" AS branch
+      FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
+      ORDER BY st."lastName", st."firstName"`),
+    prisma.$queryRaw<{ branch: string }[]>(Prisma.sql`
+      SELECT DISTINCT b AS branch FROM (
+        SELECT st."branch" AS b FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
+        UNION
+        SELECT unnest(st."extraBranches") FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
+      ) t WHERE b IS NOT NULL AND b <> '' ORDER BY 1`),
+    prisma.$queryRaw<{ year: number }[]>(Prisma.sql`
+      SELECT DISTINCT EXTRACT(YEAR FROM s."date")::int AS year FROM "Schedule" s ORDER BY 1`),
+  ])
+
+  const availYears = yearRows.map((r) => Number(r.year))
+  const nowY = new Date().getUTCFullYear()
+  const minY = availYears[0] ?? nowY
+  const maxY = availYears[availYears.length - 1] ?? nowY
+  let fromY = /^\d{4}$/.test(fromRaw) ? Number(fromRaw) : minY
+  let toY = /^\d{4}$/.test(toRaw) ? Number(toRaw) : maxY
+  if (fromY > toY) [fromY, toY] = [toY, fromY]
 
   // WHERE fragments, composed under AND.
   const conds: Prisma.Sql[] = [
     Prisma.sql`s."status"::text IN (${Prisma.join([...COUNTED_STATUSES])})`,
+    Prisma.sql`EXTRACT(YEAR FROM s."date") BETWEEN ${fromY} AND ${toY}`,
   ]
   if (department && department !== 'all') conds.push(Prisma.sql`st."department"::text = ${department}`)
   if (staffId && staffId !== 'all') conds.push(Prisma.sql`s."staffId" = ${staffId}`)
-  if (year) conds.push(Prisma.sql`EXTRACT(YEAR FROM s."date") = ${year}`)
+  if (branch && branch !== 'all') {
+    conds.push(Prisma.sql`(st."branch" = ${branch} OR ${branch} = ANY(st."extraBranches"))`)
+  }
   const where = Prisma.join(conds, ' AND ')
 
-  // Per-month within a chosen year; per-year across the whole history.
-  const grain = year ? 'month' : 'year'
-  const fmt = year ? 'YYYY-MM' : 'YYYY'
-
   const seriesRows = await prisma.$queryRaw<{ period: string; count: number }[]>(Prisma.sql`
-    SELECT to_char(date_trunc(${grain}, s."date"), ${fmt}) AS period, COUNT(*)::int AS count
+    SELECT to_char(date_trunc('month', s."date"), 'YYYY-MM') AS period, COUNT(*)::int AS count
     FROM "Schedule" s
     JOIN "Staff" st ON st.id = s."staffId"
     WHERE ${where}
@@ -46,53 +77,37 @@ export async function GET(req: NextRequest) {
     ORDER BY 1
   `)
 
-  // Fill gaps so the line is continuous.
-  const series = year ? fillMonths(year, seriesRows) : fillYears(seriesRows)
-  const total = seriesRows.reduce((n, r) => n + Number(r.count), 0)
-
-  // Filter option lists (only clinicians/departments/years that have sessions).
-  const [deptRows, clinicianRows, yearRows] = await Promise.all([
-    prisma.$queryRaw<{ department: string }[]>(Prisma.sql`
-      SELECT DISTINCT st."department"::text AS department
-      FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
-      ORDER BY 1`),
-    prisma.$queryRaw<{ id: string; name: string; department: string }[]>(Prisma.sql`
-      SELECT st.id, (st."firstName" || ' ' || st."lastName") AS name, st."department"::text AS department
-      FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
-      ORDER BY st."lastName", st."firstName"`),
-    prisma.$queryRaw<{ year: number }[]>(Prisma.sql`
-      SELECT DISTINCT EXTRACT(YEAR FROM s."date")::int AS year FROM "Schedule" s ORDER BY 1 DESC`),
-  ])
+  const series = fillMonths(fromY, toY, seriesRows)
+  const total = series.reduce((n, r) => n + r.count, 0)
 
   return NextResponse.json({
     series,
     total,
-    grain,
+    range: { from: fromY, to: toY },
     filters: {
       departments: deptRows.map((r) => r.department),
       clinicians: clinicianRows,
-      years: yearRows.map((r) => Number(r.year)),
+      branches: branchRows.map((r) => r.branch),
+      years: availYears,
     },
   })
 }
 
-const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-function fillMonths(year: number, rows: { period: string; count: number }[]) {
+// Continuous monthly buckets from Jan(fromY) to Dec(toY) — but never past the
+// current month, so an in-progress or future year doesn't tail off to zero.
+function fillMonths(fromY: number, toY: number, rows: { period: string; count: number }[]) {
   const map = new Map(rows.map((r) => [r.period, Number(r.count)]))
-  return Array.from({ length: 12 }, (_, i) => {
-    const key = `${year}-${String(i + 1).padStart(2, '0')}`
-    return { period: key, label: MONTH_ABBR[i], count: map.get(key) ?? 0 }
-  })
-}
-
-function fillYears(rows: { period: string; count: number }[]) {
-  if (rows.length === 0) return []
-  const years = rows.map((r) => Number(r.period))
-  const min = Math.min(...years), max = Math.max(...years)
-  const map = new Map(rows.map((r) => [Number(r.period), Number(r.count)]))
-  return Array.from({ length: max - min + 1 }, (_, i) => {
-    const y = min + i
-    return { period: String(y), label: String(y), count: map.get(y) ?? 0 }
-  })
+  const now = new Date()
+  const curY = now.getUTCFullYear(), curM = now.getUTCMonth() + 1
+  const endY = toY >= curY ? curY : toY
+  const endM = toY >= curY ? curM : 12
+  const out: { period: string; label: string; count: number }[] = []
+  for (let y = fromY; y <= endY; y++) {
+    const lastM = y === endY ? endM : 12
+    for (let m = 1; m <= lastM; m++) {
+      const key = `${y}-${String(m).padStart(2, '0')}`
+      out.push({ period: key, label: MONTH_ABBR[m - 1], count: map.get(key) ?? 0 })
+    }
+  }
+  return out
 }
