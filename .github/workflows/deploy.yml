@@ -683,11 +683,18 @@ jobs:
           # longer leave the portal with a half-written .next (the cause of the
           # intermittent 500 "Internal Server Error" / 502 during deploy storms).
           # If the build fails on missing modules anyway, self-heal and retry once.
+          # Heap headroom, same reason as accounting-hub/docker/Dockerfile (#570):
+          # Node's default old-space cap in this environment is ~2GB, and a Next
+          # build of this size can exceed it and die with "Ineffective
+          # mark-compacts near heap limit". That is a V8 ceiling, not host memory
+          # pressure — the box has 7.8G RAM and 10G swap — so the fix is to raise
+          # the cap rather than to shrink the build. Set explicitly here so the
+          # teletherapy build cannot hit the wall the accounting build already hit.
           echo "→ Building teletherapy Next.js app (atomic → .next.new)..."
           tt_build_ok=false
           for tt_attempt in 1 2; do
             rm -rf .next.new
-            if NEXT_DIST_DIR=.next.new NEXT_TELEMETRY_DISABLED=1 npm run build > /tmp/tt-build.log 2>&1; then
+            if NODE_OPTIONS=--max-old-space-size=4096 NEXT_DIST_DIR=.next.new NEXT_TELEMETRY_DISABLED=1 npm run build > /tmp/tt-build.log 2>&1; then
               tt_build_ok=true
               break
             fi
