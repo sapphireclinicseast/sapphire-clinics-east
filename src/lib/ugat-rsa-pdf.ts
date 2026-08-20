@@ -115,7 +115,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     para('UGAT FELLOWSHIP AGREEMENT', { center: true, bold: true, size: 11, gap: 0.5 })
     para('(Educational Assistance with Full Condonation through Professional Service)', { center: true, size: 8, gap: 0.5 })
     para(loanSubtitle(isTindig), { center: true, size: 8, gap: 3 })
-    if (isTindig) para('Your award: review-support of up to PHP 30,000 (review fees, or PHP 5,000/month for 6 months), treated as a simple, fully-condonable loan — you pay nothing if you serve 1,500 hours (Option A), else repay only what you received, interest-free (Option B). Interest / a penalty applies only on default or restructuring.', { size: 8.5, gap: 3 })
+    if (isTindig) para('Your award: review-support of up to PHP 30,000 (review fees, or PHP 5,000/month for 6 months), treated as a simple, fully-condonable loan — you pay nothing if you serve 600 hours (Option A), else repay only what you received, interest-free (Option B). Interest / a penalty applies only on default or restructuring.', { size: 8.5, gap: 3 })
     else para(`Your award: a monthly allowance of ${m ? `PHP ${m.toLocaleString()} for ${n} months (about PHP ${(m * (n || 0)).toLocaleString()})` : 'a monthly allowance'}, treated as a simple, fully-condonable loan — you pay nothing if you serve 1,500 hours (Option A), else repay only what you received, interest-free (Option B). Interest / a penalty applies only on default or restructuring.`, { size: 8.5, gap: 3 })
 
     // ── Body (shared source of truth) ──
