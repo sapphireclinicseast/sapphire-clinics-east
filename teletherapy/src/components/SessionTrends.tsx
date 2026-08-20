@@ -61,27 +61,19 @@ export default function SessionTrends() {
 
   const years = data?.filters.years ?? []
 
-  // Clinicians narrowed to the selected department + branch for the person dropdown.
+  // Clinicians narrowed to the selected department. (Branch is the patient's
+  // branch, so it doesn't map to a clinician's home branch — an interbranch
+  // consultant sees patients at more than one branch.)
   const clinicianOptions = useMemo(() => {
-    let all = data?.filters.clinicians ?? []
-    if (department !== 'all') all = all.filter((c) => c.department === department)
-    if (branch !== 'all') all = all.filter((c) => c.branch === branch)
-    return all
-  }, [data, department, branch])
+    const all = data?.filters.clinicians ?? []
+    return department === 'all' ? all : all.filter((c) => c.department === department)
+  }, [data, department])
 
   function onDepartment(v: string) {
     setDepartment(v)
-    dropInvalidClinician(v, branch)
-  }
-  function onBranch(v: string) {
-    setBranch(v)
-    dropInvalidClinician(department, v)
-  }
-  function dropInvalidClinician(dept: string, br: string) {
     if (staffId === 'all') return
     const c = (data?.filters.clinicians ?? []).find((x) => x.id === staffId)
-    if (!c) return
-    if ((dept !== 'all' && c.department !== dept) || (br !== 'all' && c.branch !== br)) setStaffId('all')
+    if (c && v !== 'all' && c.department !== v) setStaffId('all')
   }
 
   const series = data?.series ?? []
@@ -98,7 +90,7 @@ export default function SessionTrends() {
           </select>
         </Field>
         <Field label="Branch">
-          <select value={branch} onChange={(e) => onBranch(e.target.value)} className={selectCls}>
+          <select value={branch} onChange={(e) => setBranch(e.target.value)} className={selectCls}>
             <option value="all">All branches</option>
             {(data?.filters.branches ?? []).map((b) => (
               <option key={b} value={b}>{branchLabel(b)}</option>

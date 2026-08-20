@@ -8,7 +8,10 @@ import { prisma } from '@/lib/prisma'
 // [fromYear, toYear] range (capped at the current month so future months don't
 // drag the line to zero) plus the filter option lists. A "session" is any
 // non-cancelled, non-rescheduled schedule row, counted against the owning
-// clinician (staffId) and their department/branch.
+// clinician (staffId) + their department. Branch is attributed by the
+// PATIENT's branch (where care actually happened) — NOT the clinician's home
+// branch, so an interbranch consultant's East sessions aren't miscounted as
+// their other branch.
 
 const COUNTED_STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED'] as const
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -39,11 +42,10 @@ export async function GET(req: NextRequest) {
       FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
       ORDER BY st."lastName", st."firstName"`),
     prisma.$queryRaw<{ branch: string }[]>(Prisma.sql`
-      SELECT DISTINCT b AS branch FROM (
-        SELECT st."branch" AS b FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
-        UNION
-        SELECT unnest(st."extraBranches") FROM "Staff" st WHERE EXISTS (SELECT 1 FROM "Schedule" s WHERE s."staffId" = st.id)
-      ) t WHERE b IS NOT NULL AND b <> '' ORDER BY 1`),
+      SELECT DISTINCT p."branch" AS branch
+      FROM "Schedule" s JOIN "Patient" p ON p.id = s."patientId"
+      WHERE p."branch" IS NOT NULL AND p."branch" <> '' AND p."branch" <> 'VERDANA_STORE'
+      ORDER BY 1`),
     prisma.$queryRaw<{ year: number }[]>(Prisma.sql`
       SELECT DISTINCT EXTRACT(YEAR FROM s."date")::int AS year FROM "Schedule" s ORDER BY 1`),
   ])
@@ -63,15 +65,16 @@ export async function GET(req: NextRequest) {
   ]
   if (department && department !== 'all') conds.push(Prisma.sql`st."department"::text = ${department}`)
   if (staffId && staffId !== 'all') conds.push(Prisma.sql`s."staffId" = ${staffId}`)
-  if (branch && branch !== 'all') {
-    conds.push(Prisma.sql`(st."branch" = ${branch} OR ${branch} = ANY(st."extraBranches"))`)
-  }
+  // Branch = the patient's branch (where the session happened). LEFT JOIN below
+  // keeps patient-less rows in the "all" view; a specific branch filters them out.
+  if (branch && branch !== 'all') conds.push(Prisma.sql`p."branch" = ${branch}`)
   const where = Prisma.join(conds, ' AND ')
 
   const seriesRows = await prisma.$queryRaw<{ period: string; count: number }[]>(Prisma.sql`
     SELECT to_char(date_trunc('month', s."date"), 'YYYY-MM') AS period, COUNT(*)::int AS count
     FROM "Schedule" s
     JOIN "Staff" st ON st.id = s."staffId"
+    LEFT JOIN "Patient" p ON p.id = s."patientId"
     WHERE ${where}
     GROUP BY 1
     ORDER BY 1
