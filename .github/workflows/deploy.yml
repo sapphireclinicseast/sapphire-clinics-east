@@ -789,20 +789,27 @@ jobs:
             echo "   accounting_app health: HTTP $HTTP"
 
       # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
-      # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
+      # RE-ENABLED 2026-08-20 (was `if: false` from 2026-08-17).
+      #
+      # It was disabled because it rsynced origin/main over /opt/accounting and
+      # reverted approved production work that existed only on the server. That
+      # premise has been removed rather than worked around: PR #567 merged
+      # server-fixes-20260816 into main, and /opt/accounting was verified to
+      # contain no file absent from main. Its stated reason — main "missing the
+      # INVESTOR Role" — was already untrue when written (42c526bc, 2026-08-16).
+      #
+      # Note the consequence of leaving it off: deploy runs reported success
+      # because this step was SKIPPED, not run, so nothing merged to main
+      # reached the live Accounting Hub for three days.
       - name: Deploy Accounting Hub
-        # DISABLED 2026-08-17: this repo's origin/main accounting-hub/ is stale
-        # (e.g. missing the INVESTOR Role) and this step was reverting approved
-        # production work in /opt/accounting on EVERY merge to main. The
-        # accounting hub is deployed from its own pipeline / golden copy; do NOT
-        # sync it from here. The "Restart Accounting Hub" step above still keeps
-        # the running (good) accounting container up without touching its source.
-        if: false
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # Every neighbouring SSH step sets this; this one did not, so it died
+          # at the 600s default on cold builds (a full Next build here is slow).
+          command_timeout: 30m
           script: |
             set -eo pipefail
             ACCT_DIR="/opt/sapphire-marketing-hub"
@@ -813,6 +820,24 @@ jobs:
             # which causes container hijacking and credential mismatches.
             DEPLOY_DIR="/opt/accounting"
             DOCKER_DIR="$DEPLOY_DIR/docker"
+            GOLDEN="/var/lib/accounting-golden"
+
+            # ── Hold the source-guard lock for the whole deploy ────────────
+            # /usr/local/bin/scei-accounting-source-guard.sh runs every minute and
+            # restores src/ and prisma/ from $GOLDEN whenever its fingerprint
+            # strings go missing. An rsync that transiently removes a fingerprinted
+            # file would trip it mid-deploy. The guard takes `flock -n 9` on this
+            # lock, so holding it here makes the guard skip instead of fighting us.
+            # The lock releases automatically when this shell exits, including on
+            # failure.
+            exec 9>/var/run/scei-accounting-source-guard.lock
+            if flock -w 120 9; then
+              echo "→ Source-guard lock held for the duration of this deploy."
+            else
+              echo "❌ Could not acquire the source-guard lock within 120s — aborting"
+              echo "   rather than racing the guard. Check for a stuck guard run."
+              exit 1
+            fi
 
             echo "→ Pulling latest accounting-hub code into git mirror..."
             cd "$ACCT_DIR"
@@ -830,9 +855,12 @@ jobs:
             echo "   teletherapy/    synced to: $(git log -1 --oneline origin/main -- teletherapy/)"
 
             echo "→ Syncing git mirror to live deploy directory ($DEPLOY_DIR)..."
-            # Excludes: .env files (authoritative versions live in DEPLOY_DIR/docker/),
-            # build artifacts, and user-uploaded files.
-            rsync -a --delete \
+            # Excludes: .env files (authoritative versions live in DEPLOY_DIR/docker/
+            # and are NOT in git — losing them costs NEXTAUTH_SECRET, EXTERNAL_API_KEY
+            # and the DB URL), build artifacts, and user-uploaded files.
+            # --delay-updates moves everything into place at the end, so the tree is
+            # never half-old/half-new on disk.
+            rsync -a --delete --delay-updates \
               --exclude='docker/.env' \
               --exclude='docker/.env.production' \
               --exclude='node_modules' \
@@ -841,19 +869,30 @@ jobs:
               "$ACCT_DIR/accounting-hub/" "$DEPLOY_DIR/"
             echo "   Source synced OK."
 
-            echo "→ Running DB migrations on accounting_db..."
-            MIGRATION_DIR="$DEPLOY_DIR/prisma/migrations"
-            for sql_file in "$MIGRATION_DIR"/*/migration.sql; do
-              [ -f "$sql_file" ] && docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$sql_file" 2>&1 || true
-            done
+            # ── DB schema ─────────────────────────────────────────────────
+            # There is deliberately NO migration loop here. This step used to run
+            #   for sql_file in "$DEPLOY_DIR"/prisma/migrations/*/migration.sql
+            # and psql every one of them with `|| true` on every deploy. That is
+            # unsafe for this database:
+            #   * /opt/accounting carried 1 migration folder; git carries 199. The
+            #     migration history in git does not describe this DB, which has been
+            #     live for 2+ years and takes schema changes out-of-band.
+            #   * 20260402_reset_admin_password and 20260402_set_password_scei are
+            #     unconditional `UPDATE "User" SET "passwordHash" = '<literal hash>'`
+            #     — replaying them overwrites the CURRENT admin password with an old
+            #     one on every single deploy.
+            # Schema changes are applied by docker/redeploy.sh's additive-schema
+            # block instead. Do not reintroduce a blanket replay loop; if a specific
+            # migration must run, run that one deliberately.
+            echo "→ Skipping migration replay by design (schema is applied out-of-band"
+            echo "  via docker/redeploy.sh's additive block)."
 
-            echo "→ Ensuring admin password is set correctly (password: SCEI)..."
-            docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "
-              UPDATE \"User\"
-              SET \"passwordHash\" = '\$2b\$12\$pvRG7Pt7vNui/r5QQGTn7uZfaqlqNBUloSe8NSKBhqXHOr423JRcO',
-                  \"updatedAt\" = NOW()
-              WHERE email IN ('main@sapphireclinicseast.org', 'admin@sapphireclinicseast.org');
-            " 2>&1 && echo "   Password updated OK (SCEI)" || echo "   Password update failed"
+            # NOTE: the admin-password reset that used to live here has been removed
+            # on the owner's instruction (2026-08-20). It hardcoded a bcrypt hash for
+            # the password "SCEI" and reapplied it to main@ and admin@ on every
+            # deploy, silently reverting any password change made since. If admin
+            # access is ever lost, reset it deliberately with a one-off psql command
+            # rather than restoring an automatic reset here.
 
             echo "→ Enabling GL auto-posting flag..."
             if grep -q "^ENABLE_GL_POSTING=" "$DOCKER_DIR/.env" 2>/dev/null; then
@@ -886,10 +925,34 @@ jobs:
               UPDATE \"DigitalWallet\" SET balance = 33312.5  WHERE id = 'cmo9hyiww00i901nz3rz8gs9z' AND balance = 41612.5;
             " 2>&1 && echo "   GL balance restore done (0 rows = already correct)." || echo "   GL balance restore skipped/failed (non-fatal)."
 
+            # Reclaim build cache BEFORE building — a full Next build here needs
+            # ~8-15GB and this VPS has run out of disk mid-deploy before. Never
+            # prune between the build and the container swap: that can drop the
+            # image we are about to run.
+            echo "→ Pruning docker build cache before building..."
+            df -h / | tail -1
+            docker builder prune -af 2>&1 | tail -2 || true
+            df -h / | tail -1
+
             echo "→ Rebuilding and restarting via docker compose (from $DOCKER_DIR)..."
             cd "$DOCKER_DIR"
             docker compose build app 2>&1
             echo "   Image built successfully."
+            # Clear orphaned rename-artefact containers before the swap. When a
+            # previous recreate is interrupted, docker leaves the old container
+            # renamed to "<hash>_accounting_app"; the next `up` then dies with
+            # 'container name is already in use'. That is exactly how the guard's
+            # recovery redeploy failed at 2026-08-17T07:44:33Z ("manual
+            # intervention needed"). Only matches the hash-prefixed artefact, so
+            # the real accounting_app is never touched.
+            ORPHANS=$(docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{8,}_accounting_app$' || true)
+            if [ -n "$ORPHANS" ]; then
+              echo "   Removing orphaned container(s): $ORPHANS"
+              echo "$ORPHANS" | xargs -r docker rm -f 2>&1 || true
+            else
+              echo "   No orphaned accounting_app containers."
+            fi
+
             docker compose up -d --force-recreate app 2>&1
             echo "   Container started."
 
@@ -900,30 +963,24 @@ jobs:
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>&1 || echo "000")
             echo "   HTTP $HTTP_CODE"
 
-            echo "→ Testing DB connectivity via app API..."
+            echo "→ Testing DB connectivity..."
+            # Credential-free: the old check POSTed email/password=SCEI, which only
+            # passed because the deploy had just reset the password to SCEI. With
+            # that reset gone the login test would warn on every run and prove
+            # nothing, so connectivity is checked directly instead.
+            docker exec accounting_db psql -U sapphire -d sapphire_accounting \
+              -tAc 'SELECT count(*) FROM "User";' 2>&1 \
+              | sed 's/^/   User rows: /' \
+              || echo "   ⚠ DB connectivity check failed"
             CSRF_JSON=$(curl -s http://localhost:3001/api/auth/csrf 2>/dev/null || echo '{}')
-            CSRF=$(echo "$CSRF_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('csrfToken',''))" 2>/dev/null || echo "")
-            if [ -n "$CSRF" ]; then
-              LOGIN_RESULT=$(curl -s -X POST http://localhost:3001/api/auth/callback/credentials \
-                -H "Content-Type: application/x-www-form-urlencoded" \
-                -b <(echo "") \
-                -c /tmp/acct_test_cookie \
-                -d "email=main%40sapphireclinicseast.org&password=SCEI&csrfToken=$CSRF" \
-                -w "%{redirect_url}" -o /dev/null 2>&1 || echo "FAIL")
-              if echo "$LOGIN_RESULT" | grep -q "error="; then
-                echo "   ⚠ Login test FAILED — redirect: $LOGIN_RESULT"
-                echo "   → App container DATABASE_URL:"
-                docker exec accounting_app env 2>/dev/null | grep DATABASE_URL | sed "s|://[^:]*:[^@]*@|://USER:PASS@|g"
-              else
-                echo "   ✅ Login test passed — redirect: $LOGIN_RESULT"
-              fi
+            if echo "$CSRF_JSON" | grep -q csrfToken; then
+              echo "   ✅ Auth endpoint responding"
             else
-              echo "   ⚠ Could not get CSRF token"
+              echo "   ⚠ Auth endpoint did not return a CSRF token"
             fi
 
             echo "→ Container logs (last 40 lines):"
             docker logs accounting_app --tail 40 2>&1 || true
-
 
             echo "→ Container env (auth-related, masked):"
             docker exec accounting_app env 2>/dev/null | grep -E "NEXTAUTH_URL|AUTH_TRUST|NODE_ENV" || true
@@ -932,6 +989,19 @@ jobs:
               echo "❌ Health check failed"
               exit 1
             fi
+
+            # ── Refresh the golden copy ───────────────────────────────────
+            # The source guard restores src/ and prisma/ from $GOLDEN. Its hourly
+            # refresh cron is disabled (#DISABLED-20260817, "poisoned golden with
+            # wiped source"), so golden is frozen — as of 2026-08-20 its prisma/
+            # dated from May. Without this step the next guard restore would roll
+            # the app back to pre-deploy source. Only runs after the health check
+            # passes, so a failed deploy can never poison golden.
+            echo "→ Refreshing source-guard golden copy from the deployed tree..."
+            mkdir -p "$GOLDEN"
+            rsync -a --delete "$DEPLOY_DIR/src/"    "$GOLDEN/src/"    2>&1 && echo "   golden src/ refreshed"
+            rsync -a --delete "$DEPLOY_DIR/prisma/" "$GOLDEN/prisma/" 2>&1 && echo "   golden prisma/ refreshed"
+            cp "$DEPLOY_DIR/package.json" "$GOLDEN/package.json"      2>&1 && echo "   golden package.json refreshed"
 
             echo ""
             echo "✅ Accounting Hub deployed."
