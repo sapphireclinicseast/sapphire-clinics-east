@@ -61,7 +61,7 @@ function arRunningDays(w: GlCaseWallet): number | null {
 type ColKey =
   | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'status' | 'paidDate' | 'arDays' | 'perMonths'
-  | 'guardian' | 'drive' | 'commission' | 'threePct' | 'payout' | 'qb'
+  | 'guardian' | 'drive' | 'commission' | 'processorFee' | 'threePct' | 'payout' | 'qb'
 
 interface Col { key: ColKey; label: string; numeric?: boolean }
 
@@ -83,6 +83,7 @@ const COLS: Col[] = [
   { key: 'guardian', label: 'Guardian Name' },
   { key: 'drive', label: 'Files' },
   { key: 'commission', label: '20% / 25% of SOA', numeric: true },
+  { key: 'processorFee', label: 'GL Processor Fee (25%)', numeric: true },
   { key: 'threePct', label: '3%', numeric: true },
   { key: 'payout', label: 'Payout' },
   { key: 'qb', label: 'QB entry' },
@@ -108,10 +109,23 @@ function sortValue(w: GlCaseWallet, k: ColKey): string | number {
     case 'guardian': return w.guardianName || ''
     case 'drive': return fileUrls(w).length
     case 'commission': return commissionOf(w)
+    case 'processorFee': return processorFeeOf(w)
     case 'threePct': return num(w.soaAmount) * 0.03
     case 'payout': return w.payoutBatch || ''
     case 'qb': return w.qbEntry || ''
   }
+}
+
+/**
+ * Fee paid to the GL processor: 25% of the gross (approved) GL amount.
+ *
+ * Note this is a different basis from the sheet's "20% / 25% of SOA" column,
+ * which is computed on the SOA amount — both columns are shown so the two can
+ * be compared rather than silently reconciled.
+ */
+const PROCESSOR_FEE_RATE = 0.25
+function processorFeeOf(w: GlCaseWallet): number {
+  return num(w.totalGlAmount) * PROCESSOR_FEE_RATE
 }
 
 /** The agency's cut of the SOA. Blank until a rate is recorded — never assumed. */
@@ -140,6 +154,7 @@ function cellText(w: GlCaseWallet, k: ColKey): string {
     case 'guardian': return w.guardianName || '—'
     case 'drive': { const n = fileUrls(w).length; return n ? `${n} file${n === 1 ? '' : 's'}` : '—' }
     case 'commission': { const c = commissionOf(w); return c ? `${formatCurrency(c)} (${num(w.soaCommissionRate)}%)` : '—' }
+    case 'processorFee': return num(w.totalGlAmount) ? formatCurrency(processorFeeOf(w)) : '—'
     case 'threePct': return num(w.soaAmount) ? formatCurrency(num(w.soaAmount) * 0.03) : '—'
     case 'payout': return w.payoutBatch || '—'
     case 'qb': return w.qbEntry || '—'
