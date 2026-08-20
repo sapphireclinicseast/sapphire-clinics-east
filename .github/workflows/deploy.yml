@@ -802,6 +802,14 @@ jobs:
       # because this step was SKIPPED, not run, so nothing merged to main
       # reached the live Accounting Hub for three days.
       - name: Deploy Accounting Hub
+        # Do not let an unrelated app's failure skip this step. On 2026-08-20
+        # "Deploy Teletherapy" exited 1 (its Prisma client would not resolve, so
+        # it correctly refused to serve a broken client) and this step was
+        # SKIPPED as a result — the accounting hub stayed on old code because a
+        # different app failed. The neighbouring "Restart Accounting Hub (fast
+        # recovery)" step already carries if: always() for the same reason.
+        # !cancelled() runs on earlier failure but still honours a cancelled run.
+        if: ${{ !cancelled() }}
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
