@@ -827,6 +827,24 @@ model DigitalWallet {
   diagnosis        String? // GL wallets: patient diagnosis from CRM (snapshot at creation)
   approvedServices Json? // GL wallets: approved service types (e.g. ["PT","OT","SLP"])
   soaStatus        String?      @default("With GL/No SOA") // GL wallets: "With GL/No SOA" blocks checkout; "With GL and SOA" allows it
+
+  // ── GL case tracking (the "Detailed GL" sheet) ──────────────────────────
+  // A Guarantee Letter is a paper trail before it is a receivable: documents go
+  // in, an amount is requested, a smaller amount is approved and released, an
+  // SOA is filed, and only then does a cheque arrive. None of that fitted in
+  // totalGlAmount alone, so it was being kept in a spreadsheet outside the app.
+  // All optional — existing letters keep working with these blank.
+  glRequestedAmount Decimal? // Requested GL, before approval trimmed it
+  glDocsSubmittedAt DateTime? // Date the supporting documents were submitted
+  glReleasedAt      DateTime? // Date the approved GL was released
+  soaAmount         Decimal? // Amount billed on the SOA (differs from the approved GL)
+  soaSubmittedAt    DateTime? // Date the SOA was submitted to the agency
+  guardianName      String? // Parent/guardian who signed for the patient
+  // Agency commission withheld from the SOA amount — the rate varies by case
+  // (20% or 25%), so it is stored per letter rather than assumed.
+  soaCommissionRate Decimal?
+  payoutBatch       String? // Payout cutoff the professional fee went out on
+  qbEntry           String? // QuickBooks reference (e.g. AR25-0027)
   branch           String       @default("ALL") // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
   dateObtained     DateTime? // Date patient originally obtained the wallet/card
   paymentModeId    String? // How the initial load was paid
@@ -3512,23 +3530,4 @@ model IssuedCheque {
   @@index([accountId])
   @@index([date])
   @@index([status])
-}
-
-model TiktokCancellation {
-  id            String    @id @default(cuid())
-  orderId       String    @unique
-  branch        String    @default("VERDANA_STORE")
-  status        String
-  cancelType    String?
-  cancelBy      String?
-  cancelReason  String?
-  orderAmount   Decimal?
-  cancelledTime DateTime?
-  sourceFile    String
-  createdById   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  @@index([branch])
-  @@index([cancelReason])
 }

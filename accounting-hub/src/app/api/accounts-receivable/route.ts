@@ -33,6 +33,13 @@ export async function GET(req: Request) {
         // When the letter/SOA was actually obtained — the aging calc already
         // prefers this over createdAt, and the Consumption table now shows it.
         dateObtained: true,
+        branch: true,
+        agency: true,
+        // GL case tracking (Detailed GL)
+        glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
+        soaAmount: true, soaSubmittedAt: true, guardianName: true,
+        soaCommissionRate: true, payoutBatch: true, qbEntry: true,
+        attachmentUrls: true, attachmentUrl: true, soaStatus: true,
         createdAt: true,
         account: { select: { accountNumber: true, accountTitle: true } } },
       orderBy: { patientName: 'asc' },
@@ -193,7 +200,7 @@ export async function GET(req: Request) {
       const paidTotal = pay?.paid ?? 0
       const commissionTotal = pay?.commission ?? 0
       const lastPaymentDate = pay?.lastPaymentDate ?? null
-      const soaDate = w.dateObtained ?? w.createdAt
+      const soaDate = w.soaSubmittedAt ?? w.dateObtained ?? w.createdAt
       const monthsToPay = lastPaymentDate
         ? (lastPaymentDate.getTime() - new Date(soaDate).getTime()) / (1000 * 60 * 60 * 24 * 30)
         : null

@@ -17,6 +17,7 @@ import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
 import OthersTab from './OthersTab'
 import ExpandablePanel from './ExpandablePanel'
+import DetailedGl from './DetailedGl'
 
 interface ARWallet {
   id: string
@@ -422,6 +423,8 @@ export default function AccountsReceivablePage() {
   const [arDaysSort, setArDaysSort] = useState<'asc' | 'desc'>('desc')
   // Download menu for the summary dashboard (separate from the Per HMO one).
   const [showSummaryDownload, setShowSummaryDownload] = useState(false)
+  // GL sub-tab: the dashboard, or the full case sheet.
+  const [glSubTab, setGlSubTab] = useState<'overview' | 'detailed'>('overview')
 
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -1101,6 +1104,34 @@ export default function AccountsReceivablePage() {
         </div>
       )}
 
+      {/* GL Sub-tabs */}
+      {tab === 'GL' && (
+        <div className="flex gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
+          {([{ key: 'overview', label: 'Overview' }, { key: 'detailed', label: 'Detailed GL' }] as const).map(st => (
+            <button key={st.key} onClick={() => setGlSubTab(st.key)}
+              className="px-4 py-2 text-sm font-medium transition-colors"
+              style={glSubTab === st.key
+                ? { color: 'var(--teal)', borderBottom: '2px solid var(--teal)' }
+                : { color: 'var(--mid-gray)', borderBottom: '2px solid transparent' }}>
+              {st.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Detailed GL: every letter in the OPGL summary layout ── */}
+      {tab === 'GL' && glSubTab === 'detailed' && (
+        <DetailedGl
+          canWrite={canWrite}
+          onSaved={fetchData}
+          wallets={wallets.map(w => ({
+            ...w,
+            // "Rendered service?" — has anything actually been billed to the letter.
+            hasOrders: orders.some(o => o.payments.some(p => p.walletId === w.id)),
+          }))}
+        />
+      )}
+
       {/* ── GL Summary: % consumed, % paid, department pie chart ── */}
       {tab === 'GL' && (() => {
         // Per-session agencies have no approved amount, so they are left out of the
@@ -1483,7 +1514,7 @@ export default function AccountsReceivablePage() {
       {tab === 'OTHERS' && <OthersTab branch={branch} canWrite={!isHmoOfficer} />}
 
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
-      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && <>
+      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
 
       {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
       <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
