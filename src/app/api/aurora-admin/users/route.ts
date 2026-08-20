@@ -47,13 +47,45 @@ export async function GET(req: NextRequest) {
     select: {
       id: true, firstName: true, lastName: true, email: true, username: true,
       branch: true, branches: true, createdAt: true,
-      schedules: {
-        where: { status: { not: 'CANCELLED' } },
-        orderBy: { date: 'desc' },
-        select: { date: true },
-      },
     },
   })
+
+  // Count sessions across ALL of a patient's interbranch records (same email +
+  // first + last name), matching what the portal shows via linkedPatientIds —
+  // otherwise an East login would miss its Greenhills sessions. The count uses
+  // the portal's "total" definition: CONFIRMED + CANCELLED + RESCHEDULED
+  // (PENDING excluded); LAST SESSION is the most recent CONFIRMED date.
+  const idKey = (p: { email: string | null; firstName: string; lastName: string }) =>
+    `${(p.email ?? '').toLowerCase().trim()}|${p.firstName.toLowerCase().trim()}|${p.lastName.toLowerCase().trim()}`
+  const identityRecords = await prisma.patient.findMany({
+    select: { id: true, email: true, firstName: true, lastName: true },
+  })
+  const idsByIdentity = new Map<string, string[]>()
+  for (const r of identityRecords) {
+    if (!r.email || !r.email.trim()) continue
+    const k = idKey(r)
+    const arr = idsByIdentity.get(k)
+    if (arr) arr.push(r.id)
+    else idsByIdentity.set(k, [r.id])
+  }
+  const linkedOf = (p: { id: string; email: string | null; firstName: string; lastName: string }) =>
+    p.email && p.email.trim() ? (idsByIdentity.get(idKey(p)) ?? [p.id]) : [p.id]
+
+  const unionIds = [...new Set(patients.flatMap(linkedOf))]
+  const [counts, lasts] = await Promise.all([
+    prisma.schedule.groupBy({
+      by: ['patientId'],
+      where: { patientId: { in: unionIds }, status: { in: ['CONFIRMED', 'CANCELLED', 'RESCHEDULED'] } },
+      _count: { _all: true },
+    }),
+    prisma.schedule.groupBy({
+      by: ['patientId'],
+      where: { patientId: { in: unionIds }, status: 'CONFIRMED' },
+      _max: { date: true },
+    }),
+  ])
+  const countByPid = new Map(counts.map((c) => [c.patientId, c._count._all]))
+  const lastByPid = new Map(lasts.map((c) => [c.patientId, c._max.date]))
 
   const order = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
   const groups = new Map<string, BranchGroup>()
@@ -69,14 +101,22 @@ export async function GET(req: NextRequest) {
       }
       groups.set(key, g)
     }
+    const ids = linkedOf(p)
+    const sessionCount = ids.reduce((n, id) => n + (countByPid.get(id) ?? 0), 0)
+    const lastDates = ids
+      .map((id) => lastByPid.get(id))
+      .filter((d): d is Date => !!d)
+    const lastSession = lastDates.length
+      ? new Date(Math.max(...lastDates.map((d) => d.getTime()))).toISOString().slice(0, 10)
+      : null
     g.users.push({
       id: p.id,
       name: titleCase(`${p.firstName} ${p.lastName}`),
       email: p.email,
       username: p.username,
       createdAt: p.createdAt.toISOString().slice(0, 10),
-      lastSession: p.schedules[0]?.date.toISOString().slice(0, 10) ?? null,
-      sessionCount: p.schedules.length,
+      lastSession,
+      sessionCount,
     })
   }
 

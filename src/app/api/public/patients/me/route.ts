@@ -201,13 +201,22 @@ export async function GET(req: NextRequest) {
     }),
   ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.startTime < b.startTime ? 1 : -1))
 
-  // Collapse exact-duplicate rows — the same session entered twice in the source
-  // (identical date, time, clinician, department, status and branch). Keeps
-  // genuinely distinct rows (e.g. an East PENDING vs a Greenhills CANCELLED for
-  // the same slot) so real cross-branch discrepancies stay visible.
+  // The same appointment slot (person + date + time + clinician + department)
+  // can appear as duplicate rows across the interbranch records — e.g. a session
+  // first booked PENDING under one branch, then moved and RESOLVED (confirmed /
+  // cancelled / rescheduled) under another. Drop the stale PENDING copy when the
+  // slot already has a resolved outcome, then collapse any remaining exact
+  // duplicates. A slot with only PENDING rows (no resolved twin) still shows.
+  const resolvedSlots = new Set(
+    sessions
+      .filter((s) => s.status !== 'PENDING')
+      .map((s) => `${s.date}|${s.startTime}|${s.endTime}|${s.clinician}|${s.departmentCode}`),
+  )
   const seen = new Set<string>()
   const dedupedSessions = sessions.filter((s) => {
-    const key = `${s.date}|${s.startTime}|${s.endTime}|${s.clinician}|${s.departmentCode}|${s.status}|${s.branch}`
+    const slot = `${s.date}|${s.startTime}|${s.endTime}|${s.clinician}|${s.departmentCode}`
+    if (s.status === 'PENDING' && resolvedSlots.has(slot)) return false
+    const key = `${slot}|${s.status}|${s.branch}`
     if (seen.has(key)) return false
     seen.add(key)
     return true
