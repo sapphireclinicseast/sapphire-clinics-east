@@ -1832,6 +1832,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           consultantName: `${p.employee.lastName}, ${p.employee.firstName}`,
           firstName: p.employee.firstName,
           branch: (BRANCH_INFO[p.branch]?.name || branchLabel).replace('Sapphire Clinics East Inc.', 'Aura Health Rehab'),
+          // Raw code — the server routes the payslip to that branch's HR mailbox.
+          branchCode: p.branch,
           cutoffPeriod: p.cutoffPeriod,
           netPay: formatCurrency(toNum(p.netPay)),
           email,

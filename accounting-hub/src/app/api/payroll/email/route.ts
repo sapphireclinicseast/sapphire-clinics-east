@@ -1,7 +1,30 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { sendGmail, gmailConfigured, mailboxAddress, type Mailbox } from '@/lib/gmail'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+
+/**
+ * Payslips go out from the branch's own HR mailbox so a staff reply reaches the
+ * officer who ran the payroll, not the corporate inbox. Branch arrives as the
+ * payroll code (SBEA/SBGH); the accounting and display codes are accepted too
+ * so a caller that sends either still routes correctly. Anything else — Verdana,
+ * the Institute — has no HR mailbox and stays on main@.
+ */
+const HR_MAILBOX: Record<string, Mailbox> = {
+  SBEA: 'hr.east', SANDBOX_EAST: 'hr.east', AHEA: 'hr.east',
+  SBGH: 'hr.gh', SANDBOX_GREENHILLS: 'hr.gh', AHGH: 'hr.gh',
+}
+
+function mailboxForBranch(branchCode?: string, branchLabel?: string): Mailbox {
+  const direct = HR_MAILBOX[String(branchCode || '').toUpperCase()]
+  if (direct) return direct
+  // Back-compat: older callers send only the display name ("… – East Branch").
+  const label = String(branchLabel || '').toLowerCase()
+  if (label.includes('greenhills')) return 'hr.gh'
+  if (label.includes('east')) return 'hr.east'
+  return 'main'
+}
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -112,15 +135,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
 
-  if (!process.env.RESEND_API_KEY) {
+  if (!gmailConfigured()) {
     return NextResponse.json(
-      { error: 'Email is not configured. Please set RESEND_API_KEY in your environment.' },
+      { error: 'Email is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN in your environment.' },
       { status: 503 }
     )
   }
 
   try {
-    const { consultantName, firstName, branch, cutoffPeriod, netPay, email, pdfBase64 } = await req.json()
+    const { consultantName, firstName, branch, branchCode, cutoffPeriod, netPay, email, pdfBase64 } = await req.json()
 
     if (!email || !pdfBase64 || !cutoffPeriod) {
       return NextResponse.json({ error: 'email, pdfBase64, and cutoffPeriod are required' }, { status: 400 })
@@ -132,33 +155,26 @@ export async function POST(req: Request) {
     const safeName = (consultantName || 'clinician').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
     const pdfData = pdfBase64.includes('base64,') ? pdfBase64.split('base64,')[1] : pdfBase64
 
-    // Use Resend HTTP API (SMTP ports blocked on this VPS)
-    const resendRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'Aura Health Rehab Payroll <noreply@do-not-reply.sapphireclinicseast.org>',
-        to: [email],
-        subject: `Your Payslip — ${periodLabel} | Aura Health Rehab`,
-        html: buildEmailHtml(displayName, periodLabel, branch || ''),
-        attachments: [
-          {
-            filename: `payslip-${safeName}-${cutoffPeriod}.pdf`,
-            content: pdfData,
-          },
-        ],
-      }),
+    const mailbox = mailboxForBranch(branchCode, branch)
+    const res = await sendGmail({
+      to: email,
+      mailbox,
+      subject: `Your Payslip — ${periodLabel} | Aura Health Rehab`,
+      html: buildEmailHtml(displayName, periodLabel, branch || ''),
+      attachments: [{ filename: `payslip-${safeName}-${cutoffPeriod}.pdf`, content: pdfData }],
     })
 
-    if (!resendRes.ok) {
-      const errData = await resendRes.json().catch(() => ({}))
-      throw new Error(errData.message || `Resend API error (${resendRes.status})`)
-    }
+    if (!res.ok) throw new Error(res.error || 'Gmail send failed')
 
-    return NextResponse.json({ sent: true, to: email })
+    // fellBack means the branch HR mailbox has no refresh token yet and main@
+    // sent instead — the payslip went out, but say so rather than imply the
+    // staff member can reply to their branch HR.
+    return NextResponse.json({
+      sent: true,
+      to: email,
+      from: res.from,
+      ...(res.fellBack ? { warning: `${mailboxAddress(mailbox)} is not connected yet — sent from ${res.from} instead.` } : {}),
+    })
   } catch (err) {
     console.error('Payslip email error:', err)
     return NextResponse.json({ error: String(err) || 'Failed to send email' }, { status: 500 })
