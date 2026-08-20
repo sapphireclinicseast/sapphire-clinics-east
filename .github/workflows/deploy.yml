@@ -938,6 +938,21 @@ jobs:
             cd "$DOCKER_DIR"
             docker compose build app 2>&1
             echo "   Image built successfully."
+            # Clear orphaned rename-artefact containers before the swap. When a
+            # previous recreate is interrupted, docker leaves the old container
+            # renamed to "<hash>_accounting_app"; the next `up` then dies with
+            # 'container name is already in use'. That is exactly how the guard's
+            # recovery redeploy failed at 2026-08-17T07:44:33Z ("manual
+            # intervention needed"). Only matches the hash-prefixed artefact, so
+            # the real accounting_app is never touched.
+            ORPHANS=$(docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{8,}_accounting_app$' || true)
+            if [ -n "$ORPHANS" ]; then
+              echo "   Removing orphaned container(s): $ORPHANS"
+              echo "$ORPHANS" | xargs -r docker rm -f 2>&1 || true
+            else
+              echo "   No orphaned accounting_app containers."
+            fi
+
             docker compose up -d --force-recreate app 2>&1
             echo "   Container started."
 
