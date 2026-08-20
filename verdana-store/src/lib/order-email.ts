@@ -1,6 +1,8 @@
 // Sends a warm order-confirmation / thank-you email to the customer after a
 // successful PayMongo payment. Best-effort: never throws to the webhook caller.
 
+import { sendGmail, gmailConfigured } from './gmail'
+
 interface OrderLike {
   id: string
   amount: number
@@ -21,7 +23,6 @@ interface OrderLike {
   }>
 }
 
-const DEFAULT_FROM = 'Verdana Rehab Solutions <noreply@do-not-reply.sapphireclinicseast.org>'
 // Team gets a blind copy so every paid order lands in an inbox too.
 const DEFAULT_NOTIFY = 'verdanatrading@gmail.com'
 
@@ -99,10 +100,9 @@ function buildHtml(order: OrderLike): string {
 }
 
 export async function sendOrderConfirmation(order: OrderLike): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY
   const to = (order.customerEmail || '').trim()
-  if (!apiKey) {
-    console.error('Order email: RESEND_API_KEY not set')
+  if (!gmailConfigured()) {
+    console.error('Order email: Gmail is not configured (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN)')
     return
   }
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
@@ -110,30 +110,25 @@ export async function sendOrderConfirmation(order: OrderLike): Promise<void> {
     return
   }
 
-  const from = process.env.RESEND_FROM || DEFAULT_FROM
   const bcc = (process.env.ORDER_NOTIFY || DEFAULT_NOTIFY)
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  // The from-address is a no-reply sender, but the email invites a reply — so route
-  // replies to a monitored inbox where a real person can answer.
-  const replyTo = process.env.ORDER_REPLY_TO || 'verdanatrading@gmail.com'
+  // Gmail sends as the connected mailbox, so the sender is already a monitored
+  // inbox rather than the old no-reply relay. Reply-To stays overridable for
+  // the case where replies should go somewhere other than the sending account.
+  const replyTo = process.env.ORDER_REPLY_TO
 
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        ...(bcc.length ? { bcc } : {}),
-        reply_to: replyTo,
-        subject: `Thank you for your order! 🌱 (${order.id})`,
-        html: buildHtml(order),
-      }),
+    const res = await sendGmail({
+      to,
+      ...(bcc.length ? { bcc } : {}),
+      ...(replyTo ? { replyTo } : {}),
+      subject: `Thank you for your order! 🌱 (${order.id})`,
+      html: buildHtml(order),
     })
     if (!res.ok) {
-      console.error('Order email Resend error:', res.status, await res.text().catch(() => ''))
+      console.error('Order email Gmail error:', res.error)
     } else {
       console.log('Order confirmation email sent to', to)
     }
