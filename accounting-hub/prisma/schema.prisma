@@ -3070,6 +3070,7 @@ model AdvancePayout {
   paidDate         DateTime?
   bankAccountId    String?
   proofUrls        Json?
+  memo             String?
   emailedAt        DateTime?
   journalEntryId   String?
   createdById      String?
@@ -3166,6 +3167,7 @@ model LoanPayout {
   paidDate         DateTime?
   bankAccountId    String?
   proofUrls        Json?
+  memo             String?
   emailedAt        DateTime?
   journalEntryId   String?
   createdById      String?

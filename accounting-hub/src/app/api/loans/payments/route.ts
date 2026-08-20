@@ -125,12 +125,15 @@ export async function POST(req: Request) {
       ? (parent.branchAllocations as any[]).filter(a => a?.branch && Number(a?.amount) > 0)
       : []
     const jeBranch = allocs.length === 1 ? String(allocs[0].branch) : 'ALL'
+    // Free-text memo from the recording form — stored on the payout and carried
+    // into the journal-entry description so it reads in the books.
+    const memo = typeof b.memo === 'string' && b.memo.trim() ? b.memo.trim().slice(0, 500) : null
     let jeId: string | null = null
     if (lines.length >= 2 && parent.creditAccountId) {
-      const je = await postJournalEntry(prisma as never, { entryDate: paidDate, description: `${isLoan ? 'Loan' : 'Advance'} amortization — ${parent.name}`, referenceType: isLoan ? 'LOAN_PAYMENT' : 'ADVANCE_PAYMENT', referenceId: b.parentId, branch: jeBranch, createdById: userId, lines })
+      const je = await postJournalEntry(prisma as never, { entryDate: paidDate, description: `${isLoan ? 'Loan' : 'Advance'} amortization — ${parent.name}${memo ? ` — ${memo}` : ''}`.slice(0, 250), referenceType: isLoan ? 'LOAN_PAYMENT' : 'ADVANCE_PAYMENT', referenceId: b.parentId, branch: jeBranch, createdById: userId, lines })
       jeId = je.id
     }
-    const data = { dueDate: new Date(b.dueDate), principalPortion, interestPortion, amount, status: 'PAID', paidDate, bankAccountId: b.bankAccountId, proofUrls, journalEntryId: jeId, createdById: userId }
+    const data = { dueDate: new Date(b.dueDate), principalPortion, interestPortion, amount, status: 'PAID', paidDate, bankAccountId: b.bankAccountId, proofUrls, memo, journalEntryId: jeId, createdById: userId }
     const rec = isLoan
       ? await prisma.loanPayout.create({ data: { loanId: b.parentId, ...data } })
       : await prisma.advancePayout.create({ data: { advanceId: b.parentId, ...data } })
