@@ -450,6 +450,54 @@ export async function PATCH(req: Request) {
     }
 
     if (action === 'match') {
+      // An A/P bill candidate is an accrual with no bank leg — the bank line IS
+      // its payment. Post the settlement (Dr the bill's payable account / Cr
+      // this bank account) so the payable is relieved and the cash movement is
+      // in the ledger. Pre-2026 payments post as QB_IMPORT_JE — the report
+      // engine reads only that type for QB-era years — and since settling a
+      // pre-2026 bill moves the 2025 closings, the 2026 opening balances are
+      // adjusted in step (payable down, retained earnings up, staying balanced).
+      let apJournalId: string | null = null
+      if (body.matchType === 'AP_BILL' && body.matchId) {
+        const bill = await prisma.journalEntry.findUnique({
+          where: { id: body.matchId as string },
+          include: { lines: { include: { account: { select: { accountNumber: true } } } } },
+        })
+        const payLine = bill?.lines.find(l => Number(l.credit) > 0 && ['4010', '5040'].includes(l.account.accountNumber))
+        const isSpentAp = Number(txn.spent) > 0
+        const bankAmt = isSpentAp ? Number(txn.spent) : Number(txn.received)
+        if (!bill || !payLine) return NextResponse.json({ error: 'That record is not an open payable bill.' }, { status: 400 })
+        if (!isSpentAp || !(bankAmt > 0)) return NextResponse.json({ error: 'An A/P bill settles a money-out bank line.' }, { status: 400 })
+        const already = await prisma.journalEntry.findFirst({ where: { referenceId: `APSETTLE:${bill.id}` } })
+        if (already) return NextResponse.json({ error: 'That bill is already settled by another bank line.' }, { status: 400 })
+        const preQb = txn.date < new Date(Date.UTC(2026, 0, 1))
+        const je = await prisma.journalEntry.create({
+          data: {
+            entryDate: txn.date,
+            description: `A/P settlement — ${bill.description || 'bill'} — bank: ${txn.description}`.slice(0, 250),
+            referenceType: preQb ? 'QB_IMPORT_JE' : 'AP_SETTLEMENT',
+            referenceId: `APSETTLE:${bill.id}`,
+            branch: bill.branch, totalAmount: bankAmt,
+            createdById: session.user!.id as string,
+            lines: { create: [
+              { accountId: payLine.accountId, debit: bankAmt, credit: 0, description: `Settles: ${bill.description || ''}`.slice(0, 250) },
+              { accountId: txn.bankAccountId, debit: 0, credit: bankAmt, description: (txn.description || '').slice(0, 250) },
+            ] },
+          },
+        })
+        apJournalId = je.id
+        if (preQb) {
+          const re = await prisma.account.findFirst({ where: { accountNumber: '6030' }, select: { id: true } })
+          const bumps: Array<[string, number]> = [[payLine.accountId, -bankAmt]]
+          if (re) bumps.push([re.id, bankAmt])
+          for (const [acctId, delta] of bumps) {
+            await prisma.beginningBalance.updateMany({
+              where: { accountId: acctId, periodYear: 2026 },
+              data: { amount: { increment: delta } },
+            })
+          }
+        }
+      }
       // A deposit rarely lands to the centavo: ₱1,000,000.43 arrives against a
       // ₱1,000,000.00 equity record because the bank added interest, or took a
       // charge. Matching alone would leave that sliver unexplained — the ledger
@@ -499,7 +547,7 @@ export async function PATCH(req: Request) {
           diffJournalId = je.id
         }
       }
-      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: diffJournalId } })
+      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: apJournalId ?? diffJournalId } })
       return NextResponse.json({ success: true, differenceJournalEntryId: diffJournalId })
     }
     // Cash drawn from a branch's petty cash account into the officer's hands.

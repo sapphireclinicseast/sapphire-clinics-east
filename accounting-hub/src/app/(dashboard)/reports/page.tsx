@@ -15,6 +15,7 @@ import HistoricalReport from './HistoricalReport'
 import LedgerStatements from './LedgerStatements'
 import GraphsView from './GraphsView'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
+import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1650,6 +1651,22 @@ export default function ReportsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('annual')
   const [branch, setBranch] = useState(scope.short || 'ALL')
   useEffect(() => { if (scope.short && branch !== scope.short) setBranch(scope.short) }, [scope.short]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Income-statement branch tickboxes: tick a subset and the statement totals
+  // only those branches (each branch's derived statement, summed). All ticked
+  // = the combined books. Kept in sync with `branch` when the selection
+  // resolves to ALL or a single branch, so the other tabs and exports behave
+  // exactly as the dropdown did.
+  const TICK_BRANCHES = BRANCHES.filter(b => b.value !== 'ALL')
+  const [isTicked, setIsTicked] = useState<string[]>(TICK_BRANCHES.map(b => b.value))
+  const toggleIsBranch = (v: string) => {
+    setIsTicked(prev => {
+      const next = prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]
+      if (next.length === 0) return prev // at least one branch stays ticked
+      if (next.length === TICK_BRANCHES.length) setBranch('ALL')
+      else if (next.length === 1) setBranch(next[0])
+      return next
+    })
+  }
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
@@ -1679,6 +1696,13 @@ export default function ReportsPage() {
   const effDrill: OnDrillDown = (isMedrep || isInvestor) ? () => {} : handleDrillDown
   const branchLocked = isInvestor && effTab !== 'income-statement' && effTab !== 'graphs'
   const effBranch = branchLocked ? 'ALL' : branch
+  // Tickboxes replace the dropdown on the income-statement tab (whole-company
+  // users only — branch-scoped admins keep their pinned branch, med-reps keep
+  // the dropdown-driven restricted view).
+  const isTickboxes = effTab === 'income-statement' && !isMedrep && !scope.short
+  const allIsTicked = isTicked.length === TICK_BRANCHES.length
+  const isBranchSel = allIsTicked ? 'ALL' : isTicked.length === 1 ? isTicked[0] : isTicked.join('+')
+  const effIsBranch = isTickboxes ? isBranchSel : effBranch
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
@@ -1702,13 +1726,20 @@ export default function ReportsPage() {
     fetchData()
   }, [fetchData])
 
+  // Export filename branch tag — reflects the income-statement tickboxes
+  // when they drive the view (e.g. "AHEA+AHGH"), else the dropdown branch.
+  const exportBranchTag = () => {
+    const bsel = (activeTab === 'income-statement' && isTickboxes) ? isBranchSel : branch
+    return bsel.split('+').map(p => branchCode(p)).join('+').replace(/\s+/g, '-')
+  }
+
   const downloadRowsAsCSV = (rows: string[][]) => {
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.csv`
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1782,7 +1813,7 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.xlsx`
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1906,7 +1937,7 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branchCode(branch).replace(/\s+/g, '-')}.pdf`
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.pdf`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1915,38 +1946,60 @@ export default function ReportsPage() {
 
   const handleDownloadCSV = (fmt: 'csv' | 'xls' | 'pdf' = 'csv') => {
     if (!data) return
+    // Ticked subset of branches on the income statement: export the summed
+    // engine statements (matches the screen).
+    // (defined below; invoked after exportEngineStatement exists)
     // Export the derived ledger-engine statement (what LedgerStatements shows
     // on screen). Used when the manual FY2024–FY2025 package has no statement
     // for this tab/branch (Verdana 2025, any 2024 cash flow), when monthly
     // columns are requested but the manual statement is annual-only, and for
     // live-year balance sheet / cash flow exports.
-    const exportEngineStatement = () => {
+    const exportEngineStatement = (branchOverride?: string) => {
         void (async () => {
           try {
-            const res = await fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
-            if (!res.ok) return
-            const v2 = await res.json()
+            const bsel = branchOverride || branch
+            const parts = bsel.split('+')
+            const resps = await Promise.all(parts.map(p => fetch(`/api/reports/v2?year=${year}&branch=${p}`)))
+            if (resps.some(r => !r.ok)) return
+            const payloads = await Promise.all(resps.map(r => r.json()))
+            const v2 = parts.length > 1 ? mergeLedgerStatements(payloads) : payloads[0]
             const rows: string[][] = []
             const withMonths = viewMode === 'monthly'
             const mcols = withMonths ? FULL_MONTHS : []
             const blank = () => (withMonths ? Array(12).fill('') : [])
             const num = (v: number) => (Number(v) || 0).toFixed(2)
             const mrow = (m?: number[]) => (withMonths ? (m && m.length === 12 ? m.map(num) : Array(12).fill('')) : [])
-            const branchLbl = branch === 'ALL' ? 'All Branches' : BRANCHES.find(b => b.value === branch)?.label || branch
+            const branchLbl = bsel === 'ALL' ? 'All Branches'
+              : parts.map(p => BRANCHES.find(b => b.value === p)?.label || p).join(' + ')
             if (activeTab === 'income-statement' && v2.incomeStatement) {
               const t = v2.incomeStatement
               rows.push([`Income Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
+              // Section totals and summary lines carry monthly columns too —
+              // summed from the section rows' monthly arrays.
+              const secM: Record<string, number[]> = {}
               for (const sec of t.sections || []) {
+                const m12 = Array.from({ length: 12 }, (_, i) =>
+                  (sec.rows || []).reduce((s: number, r: { monthly?: number[] }) => s + (r.monthly?.[i] || 0), 0))
+                secM[sec.key] = m12
                 rows.push([sec.label, ...blank(), ''])
                 for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, ...mrow(r.monthly), num(r.closing)])
-                rows.push([`Total ${sec.label}`, ...blank(), num(sec.total)])
+                rows.push([`Total ${sec.label}`, ...mrow(m12), num(sec.total)])
               }
-              const summary: [string, number][] = [
-                ['Net Sales', t.netSales], ['Total Cost of Sales', t.totalCOGS], ['Gross Profit', t.grossProfit],
-                ['Total Operating Expenses', t.totalOpex], ['EBITDA', t.ebitda], ['Depreciation', t.depreciation],
-                ['Interest', t.interest], ['Net Income', t.netIncome],
+              const z = () => Array(12).fill(0) as number[]
+              const sub = (a: number[], b: number[]) => a.map((v, i) => v - (b[i] || 0))
+              const rev = secM['REVENUE'] || z(), disc = secM['DISCOUNTS'] || z(), cogs = secM['COGS'] || z()
+              const opex = secM['OPEX'] || z(), dep = secM['DEPRECIATION'] || z(), intr = secM['INTEREST'] || z()
+              const nonop = secM['NON_OPERATING'] || secM['NONOP'] || z()
+              const nsM = sub(rev, disc)
+              const gpM = sub(nsM, cogs)
+              const ebitdaM = sub(gpM, opex)
+              const niM = sub(sub(sub(ebitdaM, dep), intr), nonop)
+              const summary: [string, number[], number][] = [
+                ['Net Sales', nsM, t.netSales], ['Total Cost of Sales', cogs, t.totalCOGS], ['Gross Profit', gpM, t.grossProfit],
+                ['Total Operating Expenses', opex, t.totalOpex], ['EBITDA', ebitdaM, t.ebitda], ['Depreciation', dep, t.depreciation],
+                ['Interest', intr, t.interest], ['Net Income', niM, t.netIncome],
               ]
-              for (const [l, v] of summary) rows.push([l, ...blank(), num(v)])
+              for (const [l, m, v] of summary) rows.push([l, ...mrow(m), num(v)])
             } else if (activeTab === 'balance-sheet' && v2.balanceSheet) {
               const t = v2.balanceSheet
               rows.push([`Balance Sheet — ${year} — ${branchLbl}`, ...mcols, withMonths ? 'Closing' : `Amount (${dispCcy})`])
@@ -1962,20 +2015,33 @@ export default function ReportsPage() {
             } else if (activeTab === 'cash-flow' && v2.cashFlow) {
               const cf = v2.cashFlow
               rows.push([`Cash Flow Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
-              rows.push(['Net Income', ...mrow(cf.monthly?.netIncome), num(cf.netIncome)])
-              rows.push(['Depreciation', ...mrow(cf.monthly?.depreciation), num(cf.depreciation)])
+              const z12 = () => Array(12).fill(0) as number[]
+              const sumRows = (rs?: { monthly?: number[] }[]) => (rs || []).reduce((acc, r) =>
+                acc.map((v, i) => v + (r.monthly?.[i] || 0)), z12())
+              const niM = (cf.monthly?.netIncome as number[] | undefined) || z12()
+              const depM = (cf.monthly?.depreciation as number[] | undefined) || z12()
+              const wcM = sumRows(cf.workingCapital)
+              const invM = sumRows(cf.investing)
+              const finM = sumRows(cf.financing)
+              const opM = niM.map((v, i) => v + depM[i] + wcM[i])
+              const deltaM = (cf.monthly?.cashDelta as number[] | undefined) || z12()
+              const beginM = z12(); const endM = z12()
+              let run = Number(cf.beginningCash) || 0
+              for (let i = 0; i < 12; i++) { beginM[i] = run; endM[i] = run + (deltaM[i] || 0); run = endM[i] }
+              rows.push(['Net Income', ...mrow(niM), num(cf.netIncome)])
+              rows.push(['Depreciation', ...mrow(depM), num(cf.depreciation)])
               rows.push(['Working capital changes', ...blank(), ''])
               for (const r of cf.workingCapital || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
-              rows.push(['Net Cash from Operating Activities', ...blank(), num(cf.netOperating)])
+              rows.push(['Net Cash from Operating Activities', ...mrow(opM), num(cf.netOperating)])
               rows.push(['Investing activities', ...blank(), ''])
               for (const r of cf.investing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
-              rows.push(['Net Cash from Investing Activities', ...blank(), num(cf.netInvesting)])
+              rows.push(['Net Cash from Investing Activities', ...mrow(invM), num(cf.netInvesting)])
               rows.push(['Financing activities', ...blank(), ''])
               for (const r of cf.financing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
-              rows.push(['Net Cash from Financing Activities', ...blank(), num(cf.netFinancing)])
-              rows.push(['Net Change in Cash', ...mrow(cf.monthly?.cashDelta), num(cf.netChange)])
-              rows.push(['Beginning Cash', ...blank(), num(cf.beginningCash)])
-              rows.push(['Ending Cash', ...blank(), num(cf.endingCash)])
+              rows.push(['Net Cash from Financing Activities', ...mrow(finM), num(cf.netFinancing)])
+              rows.push(['Net Change in Cash', ...mrow(deltaM), num(cf.netChange)])
+              rows.push(['Beginning Cash', ...mrow(beginM), num(cf.beginningCash)])
+              rows.push(['Ending Cash', ...mrow(endM), num(cf.endingCash)])
             }
             if (rows.length > 1) exportRows(rows, fmt)
           } catch (err) {
@@ -1983,183 +2049,15 @@ export default function ReportsPage() {
           }
         })()
     }
-    if (data.historical) {
-      const h = data.historical
-      const stmt = activeTab === 'income-statement' ? h.incomeStatement
-        : activeTab === 'balance-sheet' ? h.balanceSheet
-        : h.cashFlow
-      if (!stmt) { exportEngineStatement(); return }
-      const stmtHasMonthly = stmt.rows.some(r => {
-        const m = (r as { monthly?: number[] }).monthly
-        return Array.isArray(m) && m.some(v => v)
-      })
-      // Monthly columns requested but the manual statement is annual-only
-      // (all manual balance sheets; some cash flows) — export the engine view.
-      if (viewMode === 'monthly' && !stmtHasMonthly) { exportEngineStatement(); return }
-      const withMonths = viewMode === 'monthly' && stmtHasMonthly
-      const rows: string[][] = []
-      const title = 'title' in stmt ? stmt.title : ''
-      rows.push([`${title} — ${year}`, ...(withMonths ? FULL_MONTHS : []), activeTab === 'balance-sheet' ? `Amount (${dispCcy})` : 'FY Total'])
-      if (dispCcy !== 'PHP') rows.push([`Shown in ${dispCcy} at ₱${dispRateNum.toLocaleString('en-PH')} = 1 ${dispCcy}. Books are maintained in Philippine pesos.`])
-      for (const r of stmt.rows) {
-        if (r.kind === 'header') {
-          rows.push([r.label, ...(withMonths ? Array(12).fill('') : []), r.total !== null ? r.total.toFixed(2) : ''])
-        } else {
-          const label = r.kind === 'line' ? `  ${r.label}` : r.label
-          const months = withMonths ? (r.monthly ?? Array(12).fill(0)).map((v: number) => v.toFixed(2)) : []
-          rows.push([label, ...months, r.total !== null ? r.total.toFixed(2) : ''])
-        }
-      }
-      exportRows(rows, fmt)
+    if (activeTab === 'income-statement' && isTickboxes && isBranchSel.includes('+')) {
+      exportEngineStatement(isBranchSel)
       return
     }
-    const t = computeIncomeStatementTotals(data)
-    const { monthly, accounts } = data
-    const allRevSubs = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
-    const grossRevAccts = allRevSubs.filter(a => a.normalBalance !== 'DEBIT')
-    const discAccts = allRevSubs.filter(a => a.normalBalance === 'DEBIT')
-    const dirExpAccts = accounts.EXPENSE?.DIRECT_EXPENSES || []
-    const indirExpAccts = accounts.EXPENSE?.INDIRECT_EXPENSES || []
-
-    const acctAmt = (n: string, t: string) => sumMonths(monthly, m => (m.revenueByAccount || {})[`${n} ${t}`] || 0)
-    const expAmt = (n: string, t: string) => sumMonths(monthly, m => (m.expenseByAccount || {})[`${n} ${t}`] || 0)
-
-    const totalGross = grossRevAccts.reduce((s, a) => s + acctAmt(a.accountNumber, a.accountTitle), 0)
-    const totalDisc = discAccts.reduce((s, a) => s + acctAmt(a.accountNumber, a.accountTitle), 0)
-    const ns = totalGross - totalDisc
-    const totalDirExp = dirExpAccts.reduce((s, a) => s + expAmt(a.accountNumber, a.accountTitle), 0)
-    const tCOGS = sumMonths(monthly, m => m.cogs) + totalDirExp
-    const gp = ns - tCOGS
-    const tOpex = indirExpAccts.reduce((s, a) => s + expAmt(a.accountNumber, a.accountTitle), 0)
-    const ebda = gp - tOpex
-    const branchLbl = branch === 'ALL' ? 'All Branches' : BRANCHES.find(b => b.value === branch)?.label || branch
-
-    const rows: string[][] = []
-
-    // Per-month helpers for CSV
-    const mGross = (m: MonthData) => {
-      const r = grossRevAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-      const u = Object.keys(m.revenueByAccount || {}).filter(k =>
-        !grossRevAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k) &&
-        !discAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k)
-      ).reduce((s, k) => s + ((m.revenueByAccount || {})[k] || 0), 0)
-      return (r + u) > 0 ? (r + u) : (m.serviceRevenue + m.productRevenue)
-    }
-    const mDisc = (m: MonthData) => discAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-    const mDirExp = (m: MonthData) => dirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-    const mIndirExp = (m: MonthData) => indirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-
-    if (activeTab === 'income-statement') {
-      if (viewMode === 'annual') {
-        rows.push([`Income Statement — ${year} — ${branchLbl}`, `Amount (${dispCcy})`])
-        if (dispCcy !== 'PHP') rows.push([`Shown in ${dispCcy} at ₱${dispRateNum.toLocaleString('en-PH')} = 1 ${dispCcy}. Books are maintained in Philippine pesos.`])
-        rows.push(['7000 GROSS REVENUE', ''])
-        grossRevAccts.forEach(a => {
-          const amt = acctAmt(a.accountNumber, a.accountTitle)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
-        })
-        rows.push(['Total for 7000 Gross Revenue', totalGross.toFixed(2)])
-        rows.push(['7002 DISCOUNTS AND REFUNDS', ''])
-        discAccts.forEach(a => {
-          const amt = acctAmt(a.accountNumber, a.accountTitle)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, (-amt).toFixed(2)])
-        })
-        rows.push(['Total for 7002 Discounts and Refunds', (-totalDisc).toFixed(2)])
-        rows.push(['TOTAL FOR NET SALES', ns.toFixed(2)])
-        rows.push(['COST OF SALES', ''])
-        // COGS by account
-        const cogsByAcctCSV: Record<string, number> = {}
-        for (let m = 1; m <= 12; m++) {
-          for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
-            cogsByAcctCSV[key] = (cogsByAcctCSV[key] || 0) + val
-          }
-        }
-        Object.keys(cogsByAcctCSV).sort().forEach(key => rows.push([`  ${key}`, cogsByAcctCSV[key].toFixed(2)]))
-        dirExpAccts.forEach(a => {
-          const amt = expAmt(a.accountNumber, a.accountTitle)
-          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
-        })
-        rows.push(['Total for Cost of Sales', tCOGS.toFixed(2)])
-        rows.push(['GROSS PROFIT', gp.toFixed(2)])
-        rows.push(['EXPENSES', ''])
-        indirExpAccts.forEach(a => {
-          const amt = expAmt(a.accountNumber, a.accountTitle)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
-        })
-        rows.push(['Total for Expenses', tOpex.toFixed(2)])
-        rows.push(['EBITDA', ebda.toFixed(2)])
-        rows.push(['Depreciation', t.totalDepreciation.toFixed(2)])
-        rows.push(['Interest', t.totalInterest.toFixed(2)])
-        if (t.totalNonOperating !== 0) rows.push(['Non-Operating Expenses', t.totalNonOperating.toFixed(2)])
-        rows.push(['EBT', t.ebt.toFixed(2)])
-        rows.push(['Provision for Income Tax (20%)', t.taxProvision.toFixed(2)])
-        rows.push(['NET INCOME', t.netIncome.toFixed(2)])
-      } else {
-        const mv = (getter: (m: MonthData) => number) =>
-          Array.from({ length: 12 }, (_, i) => getter(monthly[i + 1]).toFixed(2))
-        const mAcctRev = (n: string, t: string) =>
-          Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].revenueByAccount || {})[`${n} ${t}`] || 0).toFixed(2))
-        const mAcctExp = (n: string, t: string) =>
-          Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].expenseByAccount || {})[`${n} ${t}`] || 0).toFixed(2))
-
-        rows.push([`Income Statement — ${year} — ${branchLbl}`, ...FULL_MONTHS, 'Total'])
-        // Gross Revenue section
-        rows.push(['7000 GROSS REVENUE', ...Array(12).fill(''), ''])
-        grossRevAccts.forEach(a => {
-          const mVals = mAcctRev(a.accountNumber, a.accountTitle)
-          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
-        })
-        rows.push(['Total for 7000 Gross Revenue', ...mv(mGross), totalGross.toFixed(2)])
-        // Discounts section
-        rows.push(['7002 DISCOUNTS AND REFUNDS', ...Array(12).fill(''), ''])
-        discAccts.forEach(a => {
-          const mVals = mAcctRev(a.accountNumber, a.accountTitle).map(v => (-parseFloat(v)).toFixed(2))
-          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
-        })
-        rows.push(['Total for 7002 Discounts and Refunds', ...mv(m => -mDisc(m)), (-totalDisc).toFixed(2)])
-        rows.push(['TOTAL FOR NET SALES', ...mv(m => mGross(m) - mDisc(m)), ns.toFixed(2)])
-        // Cost of Sales section
-        rows.push(['COST OF SALES', ...Array(12).fill(''), ''])
-        const cogsByAcctCSV: Record<string, number> = {}
-        for (let m = 1; m <= 12; m++) {
-          for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
-            cogsByAcctCSV[key] = (cogsByAcctCSV[key] || 0) + val
-          }
-        }
-        Object.keys(cogsByAcctCSV).sort().forEach(key => {
-          const mVals = Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].cogsByAccount || {})[key] || 0).toFixed(2))
-          rows.push([`  ${key}`, ...mVals, cogsByAcctCSV[key].toFixed(2)])
-        })
-        dirExpAccts.forEach(a => {
-          const mVals = mAcctExp(a.accountNumber, a.accountTitle)
-          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
-          if (tot > 0) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
-        })
-        rows.push(['Total for Cost of Sales', ...mv(m => m.cogs + mDirExp(m)), tCOGS.toFixed(2)])
-        rows.push(['GROSS PROFIT', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m)), gp.toFixed(2)])
-        // Expenses section
-        rows.push(['EXPENSES', ...Array(12).fill(''), ''])
-        indirExpAccts.forEach(a => {
-          const mVals = mAcctExp(a.accountNumber, a.accountTitle)
-          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
-        })
-        rows.push(['Total for Expenses', ...mv(mIndirExp), tOpex.toFixed(2)])
-        rows.push(['EBITDA', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m) - mIndirExp(m)), ebda.toFixed(2)])
-        rows.push(['EBT', ...Array(12).fill(''), t.ebt.toFixed(2)])
-        rows.push(['Provision for Income Tax (20%)', ...Array(12).fill(''), t.taxProvision.toFixed(2)])
-        rows.push(['NET INCOME', ...Array(12).fill(''), t.netIncome.toFixed(2)])
-      }
-    } else {
-      // Balance sheet / cash flow for live years: export the engine statement
-      // (monthly columns included when the monthly view is active).
-      exportEngineStatement()
-      return
-    }
-
-    exportRows(rows, fmt)
+    // All years export from the ledger engine — the manual FY2024–FY2025
+    // package is display metadata only; downloads always match the screen.
+    // Live years: every statement exports from the ledger engine — the same
+    // derivation the screen shows (the legacy /api/reports builder diverged).
+    exportEngineStatement()
   }
 
   const reportTitle = activeTab === 'balance-sheet'
@@ -2321,7 +2219,32 @@ export default function ReportsPage() {
         </div>
         )}
 
-        {/* Branch */}
+        {/* Branch — tickboxes on the income statement (tick a subset to total
+            only those branches); dropdown elsewhere. */}
+        {isTickboxes ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
+            {TICK_BRANCHES.map(b => (
+              <label
+                key={b.value}
+                className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-medium cursor-pointer select-none"
+                style={{
+                  border: `1px solid ${isTicked.includes(b.value) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`,
+                  color: 'var(--charcoal)',
+                  background: isTicked.includes(b.value) ? '#f0f7f2' : 'white',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isTicked.includes(b.value)}
+                  onChange={() => toggleIsBranch(b.value)}
+                  className="accent-current"
+                />
+                {b.label}
+              </label>
+            ))}
+          </div>
+        ) : (
         <div className="flex items-center gap-2">
           <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
           <div className="relative">
@@ -2341,6 +2264,7 @@ export default function ReportsPage() {
             <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
           </div>
         </div>
+        )}
 
       </div>
 
@@ -2387,7 +2311,7 @@ export default function ReportsPage() {
 
         {/* Report content */}
         {!loading && data?.historical && !isMedrep && (
-          <LedgerStatements year={year} branch={effBranch} tab={effTab} view={effView} readOnly={isInvestor} />
+          <LedgerStatements year={year} branch={effIsBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
         {!loading && data?.historical && isMedrep && (
           <HistoricalReport
@@ -2398,7 +2322,7 @@ export default function ReportsPage() {
           />
         )}
         {!loading && !data?.historical && !isMedrep && (
-          <LedgerStatements year={year} branch={effBranch} tab={effTab} view={effView} readOnly={isInvestor} />
+          <LedgerStatements year={year} branch={effIsBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
         {!loading && data && !data.historical && isMedrep && (
           <div className="py-2">

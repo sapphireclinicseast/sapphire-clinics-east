@@ -1,5 +1,7 @@
 -- Local synced cache of HR Platform's Branches Registry. Idempotent
--- (replayed on every deploy). Populated by POST /api/branches/sync.
+-- (also embedded directly in docker/redeploy.sh's additive-schema block,
+-- since this app applies schema changes out-of-band, not via
+-- `prisma migrate deploy`). Populated by POST /api/branches/sync.
 CREATE TABLE IF NOT EXISTS "HrBranch" (
   "id"                      TEXT NOT NULL,
   "shortCode"               TEXT NOT NULL,

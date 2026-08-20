@@ -350,6 +350,41 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       dir: 'in',
     })
   }
+  // Open payable bills — accruals (Dr expense-or-asset / Cr A-P) whose payment
+  // was never recorded, mostly QB-era imports. They carry no bank leg, so the
+  // matcher could never offer them; the AP_BILL match action posts the
+  // settlement (Dr the payable / Cr the reconciled bank account) when picked.
+  const payableAccts = await prisma.account.findMany({
+    where: { accountNumber: { in: ['4010', '5040'] } }, select: { id: true },
+  })
+  if (payableAccts.length) {
+    const billLines = await prisma.journalEntryLine.findMany({
+      where: {
+        accountId: { in: payableAccts.map(p => p.id) },
+        credit: { gt: 0 },
+        journalEntry: { entryDate: range, referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] } },
+      },
+      select: {
+        credit: true,
+        journalEntry: { select: { id: true, entryDate: true, description: true } },
+      },
+    })
+    if (billLines.length) {
+      const settled = new Set((await prisma.journalEntry.findMany({
+        where: { referenceId: { in: billLines.map(l => `APSETTLE:${l.journalEntry.id}`) } },
+        select: { referenceId: true },
+      })).map(j => (j.referenceId || '').slice('APSETTLE:'.length)))
+      for (const l of billLines) {
+        if (settled.has(l.journalEntry.id)) continue
+        out.push({
+          type: 'AP_BILL', id: l.journalEntry.id,
+          label: `${(l.journalEntry.description || 'Payable bill').slice(0, 140)} · unpaid A/P bill`,
+          date: l.journalEntry.entryDate, amount: num(l.credit), dir: 'out',
+        })
+      }
+    }
+  }
+
   return out
 }
 

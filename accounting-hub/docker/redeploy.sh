@@ -849,6 +849,34 @@ DO $$ BEGIN
     ALTER TABLE "ScholarRelease" ADD CONSTRAINT "ScholarRelease_awardId_fkey" FOREIGN KEY ("awardId") REFERENCES "ScholarAward"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- Local synced cache of HR Platform's Branches Registry (Branches Registry
+-- Phase 2). Populated by POST /api/branches/sync.
+CREATE TABLE IF NOT EXISTS "HrBranch" (
+  "id"                      TEXT NOT NULL,
+  "shortCode"               TEXT NOT NULL,
+  "aliases"                 TEXT[] NOT NULL DEFAULT '{}',
+  "opsHubBranch"            TEXT,
+  "opsHubClassPortalBranch" TEXT,
+  "acctHubBranch"           TEXT,
+  "acctHubServiceBranch"    TEXT,
+  "teletherapyBranch"       TEXT,
+  "name"                    TEXT NOT NULL,
+  "brandName"               TEXT,
+  "tin"                     TEXT,
+  "address"                 TEXT,
+  "phone"                   TEXT,
+  "emailMain"               TEXT,
+  "emailHr"                 TEXT,
+  "emailAccounting"         TEXT,
+  "departmentsOffered"      TEXT[] NOT NULL DEFAULT '{}',
+  "operatingDays"           TEXT[] NOT NULL DEFAULT '{}',
+  "operatingHoursOpen"      TEXT,
+  "operatingHoursClose"     TEXT,
+  "active"                  BOOLEAN NOT NULL DEFAULT true,
+  "syncedAt"                TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "HrBranch_pkey" PRIMARY KEY ("id")
+);
 SQL
 
 echo "Redeploy complete."
