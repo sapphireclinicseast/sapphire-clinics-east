@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reward Points — Sapphire Clinics East, Inc.</title>
+  <meta name="description" content="Check your Aura Health Rehab VIP or Prepaid card reward points, and see where you can spend them." />
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #f7faf1; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .embed-frame { display: block; border: 0; width: 100vw; height: 100vh; }
+    .fallback {
+      display: none; padding: 48px 24px; max-width: 640px; margin: 0 auto; text-align: center; color: #223841;
+    }
+    .fallback h1 { font-size: 22px; margin: 0 0 12px; }
+    .fallback a {
+      display: inline-block; margin-top: 16px; padding: 12px 22px; border-radius: 8px;
+      background: #4a8073; color: #fff; text-decoration: none; font-weight: 600;
+    }
+    @media (max-width: 600px) {
+      .embed-frame { height: 100dvh; }
+    }
+  </style>
+</head>
+<body>
+  <iframe
+    id="rewardsFrame"
+    class="embed-frame"
+    title="Sapphire Clinics East — Reward Points"
+    allow="clipboard-write; fullscreen"
+    referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  <noscript>
+    <div class="fallback" style="display:block">
+      <h1>Reward Points — Sapphire Clinics East</h1>
+      <p>Open the reward points portal to continue.</p>
+      <a href="https://client.sapphireclinicseast.org/rewards">Open Reward Points →</a>
+    </div>
+  </noscript>
+  <div class="fallback" id="fallback">
+    <h1>Reward Points — Sapphire Clinics East</h1>
+    <p>If the reward points portal does not load below, open it directly:</p>
+    <a href="https://client.sapphireclinicseast.org/rewards" target="_blank" rel="noopener">Open Reward Points →</a>
+  </div>
+  <script>
+    // Cache-bust the embed so /reward-points/ always loads the LATEST
+    // client-portal rewards build instead of a stale cached version.
+    (function () {
+      var f = document.getElementById('rewardsFrame');
+      if (f) f.src = 'https://client.sapphireclinicseast.org/rewards?embedded=1&t=' + Date.now();
+    })();
+  </script>
+</body>
+</html>
