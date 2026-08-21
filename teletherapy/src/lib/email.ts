@@ -238,6 +238,12 @@ function hardcodedBranchFrom(branch?: string | null): string {
 // authenticated (main@) mailbox — otherwise the send is retried from
 // FROM_EMAIL by sendEmail() below.
 export async function branchFromAddress(branch?: string | null): Promise<string> {
+  // Opportunistically refresh the branch cache from HR Hub (throttled,
+  // fire-and-forget) so a sender changed there propagates without a manual
+  // "Sync Branches". This send uses the current cache; the next one gets any
+  // update. Import lazily to avoid a module cycle (branch-sync → prisma only).
+  void import('./branch-sync').then((m) => m.maybeSyncBranches()).catch(() => {})
+
   // Handle both branch representations: Patient.branch uses SANDBOX_EAST/
   // SANDBOX_GREENHILLS, while Staff.branch uses SBEA/SBGH.
   const normalized = branch === 'SBEA' ? 'SANDBOX_EAST' : branch === 'SBGH' ? 'SANDBOX_GREENHILLS' : branch
