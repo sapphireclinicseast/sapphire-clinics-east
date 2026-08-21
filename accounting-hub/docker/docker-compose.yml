@@ -41,6 +41,18 @@ services:
       HR_PLATFORM_URL: ${HR_PLATFORM_URL:-http://host.docker.internal:3457}
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
       RESEND_API_KEY: ${RESEND_API_KEY}
+      # Gmail API for outbound mail (src/lib/gmail.ts), replacing Resend. As with
+      # PayMongo below, only the NAMES appear here — the values live in
+      # DEPLOY_DIR/docker/.env. Compose passes variables through explicitly, so
+      # adding a key to .env alone leaves it invisible inside the container.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN:-}
+      # Per-mailbox refresh tokens. Gmail only sends as the mailbox its token
+      # authenticates, so hr.east@/hr.gh@ each need their own; when one is unset
+      # gmail.ts falls back to main@ rather than failing the send.
+      GMAIL_REFRESH_TOKEN_HR_EAST: ${GMAIL_REFRESH_TOKEN_HR_EAST:-}
+      GMAIL_REFRESH_TOKEN_HR_GH: ${GMAIL_REFRESH_TOKEN_HR_GH:-}
       TELETHERAPY_HUB_URL: ${TELETHERAPY_HUB_URL:-https://teletherapy.sapphireclinicseast.org}
       TELETHERAPY_INTERNAL_API_KEY: ${TELETHERAPY_INTERNAL_API_KEY}
       # PayMongo POS integration (test-mode-first). Values live in DEPLOY_DIR/docker/.env.
