@@ -1,53 +1,227 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reward Points — Sapphire Clinics East, Inc.</title>
-  <meta name="description" content="Check your Aura Health Rehab VIP or Prepaid card reward points, and see where you can spend them." />
-  <link rel="icon" type="image/png" href="/images/favicon.png" />
-  <style>
-    html, body { margin: 0; padding: 0; height: 100%; background: #f7faf1; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    .embed-frame { display: block; border: 0; width: 100vw; height: 100vh; }
-    .fallback {
-      display: none; padding: 48px 24px; max-width: 640px; margin: 0 auto; text-align: center; color: #223841;
-    }
-    .fallback h1 { font-size: 22px; margin: 0 0 12px; }
-    .fallback a {
-      display: inline-block; margin-top: 16px; padding: 12px 22px; border-radius: 8px;
-      background: #4a8073; color: #fff; text-decoration: none; font-weight: 600;
-    }
-    @media (max-width: 600px) {
-      .embed-frame { height: 100dvh; }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index, follow">
+<title>Reward Points — VIP &amp; Prepaid Cards · Sapphire Clinics East, Inc.</title>
+<meta name="description" content="Aura Health Rehab VIP membership and reloadable prepaid cards — tiers, discounts, how points work, and where to spend them.">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#4a8073; --primary-dark:#244952; --primary-darker:#18353c;
+    --xlight:#edf3d9; --gold:#c69849; --gold-deep:#b8892f; --clay:#cf9d88;
+    --text:#223841; --muted:#5d6f6a; --light:#9aa89f;
+    --border:#dde6d4; --bg:#f7faf1; --card:#fff;
+    --radius:18px; --radius-sm:12px;
+    --shadow:0 1px 3px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.05);
+    --shadow-lg:0 16px 40px -12px rgba(0,0,0,.18);
+    --font:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    --head:'DM Sans','Inter',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);color:var(--text);background:var(--bg);line-height:1.6}
+  h1,h2,h3{font-family:var(--head);line-height:1.15}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+
+  header{background:linear-gradient(135deg,var(--primary-darker),var(--primary-dark));color:#fff;padding:18px 0}
+  .head-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .brand .mark{width:38px;height:38px;flex:0 0 auto;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;padding:5px}
+  .brand .mark img{max-width:100%;max-height:100%;object-fit:contain}
+  .brand b{font-family:var(--head);font-size:16px;font-weight:800;display:block}
+  .brand span{font-size:11.5px;opacity:.72;letter-spacing:.02em}
+  .head-back{color:#fff;font-size:13px;font-weight:600;opacity:.9;border:1px solid rgba(255,255,255,.35);padding:8px 15px;border-radius:999px;white-space:nowrap}
+  .head-back:hover{background:rgba(255,255,255,.12)}
+
+  .intro{text-align:center;padding:52px 0 10px}
+  .intro .tag{display:inline-block;background:var(--xlight);color:var(--primary);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:100px;border:1px solid rgba(74,128,115,.3);margin-bottom:14px}
+  .intro h1{font-size:clamp(30px,5vw,44px);font-weight:800;letter-spacing:-.5px;margin-bottom:14px}
+  .intro p{font-size:17px;color:var(--muted);max-width:600px;margin:0 auto}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;padding:36px 0 8px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)}
+  .panel h2{font-size:22px;font-weight:800;margin:18px 0 6px}
+  .panel .lede{font-size:14px;color:var(--muted);line-height:1.6}
+
+  /* Card mockups */
+  .mock{border-radius:16px;border:1px solid rgba(0,0,0,.06);background:#fff;box-shadow:var(--shadow-lg);padding:18px 20px;aspect-ratio:1.585/1;display:flex;flex-direction:column;justify-content:space-between}
+  .mock-top{display:flex;align-items:flex-start;justify-content:space-between}
+  .mock .num{font-family:'DM Sans',monospace;letter-spacing:.14em;font-weight:700}
+  .mock .row{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+  .lbl{font-size:8px;letter-spacing:.2em;color:var(--light);font-weight:700;text-transform:uppercase}
+  /* VIP */
+  .vip .tier{font-family:var(--head);font-size:12px;font-weight:800;letter-spacing:.22em;color:var(--gold-deep)}
+  .vip .center{text-align:center}
+  .vip .k1{font-size:9px;letter-spacing:.35em;color:var(--gold-deep);font-weight:800}
+  .vip .k2{font-size:30px;font-weight:900;letter-spacing:.16em;color:#1a1a1a;line-height:.9}
+  .vip .k3{font-size:8px;letter-spacing:.3em;color:#7a8a86;font-weight:700}
+  .vip .num{font-size:15px;color:#5b6b6a}
+  .vip .name{font-size:13px;font-weight:800;color:var(--gold-deep)}
+  /* Prepaid */
+  .pre .kicker b{font-size:9px;letter-spacing:.15em;color:#4a5a58;font-weight:800;display:block}
+  .pre .kicker span{font-size:17px;font-weight:900;letter-spacing:-.01em;color:var(--gold-deep);line-height:.95;display:block}
+  .pre .num{font-size:16px;color:var(--primary-dark)}
+  .pre .name{font-size:13px;font-weight:800;color:var(--primary-dark)}
+
+  /* tier table */
+  table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  thead th{background:var(--xlight);color:var(--primary-dark);font-family:var(--head);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;text-align:right;padding:9px 12px;font-weight:700}
+  thead th:first-child,thead th:nth-child(2){text-align:left}
+  tbody td{padding:9px 12px;border-top:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tbody td:first-child{text-align:left;font-weight:700;color:var(--primary-dark)}
+  tbody td:nth-child(2){text-align:left;font-weight:600}
+  .fine{font-size:11.5px;color:var(--light);margin-top:10px}
+  .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 9px;border-radius:100px;background:var(--xlight);color:var(--primary)}
+  .feat{list-style:none;margin-top:16px;display:flex;flex-direction:column;gap:10px}
+  .feat li{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--text)}
+  .feat .ic{flex:0 0 auto;width:22px;height:22px;border-radius:7px;background:var(--xlight);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;margin-top:1px}
+  .feat b{color:var(--primary-dark)}
+
+  /* where to use + cta */
+  .use{padding:34px 0 10px}
+  .use h2{font-size:24px;font-weight:800;text-align:center;margin-bottom:6px}
+  .use .sub{text-align:center;color:var(--muted);font-size:15px;margin-bottom:24px}
+  .use-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  .use-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px}
+  .use-card h3{font-size:16px;font-weight:800;margin-bottom:5px}
+  .use-card p{font-size:13px;color:var(--muted);line-height:1.55}
+  .use-card a{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--clay)}
+
+  .cta{text-align:center;padding:38px 0 8px}
+  .cta a{display:inline-flex;align-items:center;gap:8px;background:var(--primary);color:#fff;font-weight:700;font-size:16px;padding:15px 30px;border-radius:100px;box-shadow:var(--shadow-lg);transition:.2s}
+  .cta a:hover{background:var(--primary-dark);transform:translateY(-2px)}
+  .cta p{font-size:13px;color:var(--muted);margin-top:12px}
+
+  footer{color:var(--light);font-size:12.5px;text-align:center;padding:30px 0 46px}
+</style>
 </head>
 <body>
-  <iframe
-    id="rewardsFrame"
-    class="embed-frame"
-    title="Sapphire Clinics East — Reward Points"
-    allow="clipboard-write; fullscreen"
-    referrerpolicy="strict-origin-when-cross-origin"></iframe>
-  <noscript>
-    <div class="fallback" style="display:block">
-      <h1>Reward Points — Sapphire Clinics East</h1>
-      <p>Open the reward points portal to continue.</p>
-      <a href="https://client.sapphireclinicseast.org/rewards">Open Reward Points →</a>
+<header>
+  <div class="wrap head-row">
+    <div class="brand">
+      <div class="mark"><img src="/BRANDS/AURA HEALTH REHAB.png" alt="" onerror="this.style.display='none'"></div>
+      <div><b>Aura Health Rehab</b><span>Reward Points · Sapphire Clinics East, Inc.</span></div>
     </div>
-  </noscript>
-  <div class="fallback" id="fallback">
-    <h1>Reward Points — Sapphire Clinics East</h1>
-    <p>If the reward points portal does not load below, open it directly:</p>
-    <a href="https://client.sapphireclinicseast.org/rewards" target="_blank" rel="noopener">Open Reward Points →</a>
+    <a class="head-back" href="/">← Back to site</a>
   </div>
-  <script>
-    // Cache-bust the embed so /reward-points/ always loads the LATEST
-    // client-portal rewards build instead of a stale cached version.
-    (function () {
-      var f = document.getElementById('rewardsFrame');
-      if (f) f.src = 'https://client.sapphireclinicseast.org/rewards?embedded=1&t=' + Date.now();
-    })();
-  </script>
+</header>
+
+<div class="wrap">
+  <div class="intro">
+    <span class="tag">Reward Points</span>
+    <h1>Your VIP or Prepaid Card</h1>
+    <p>Members earn reward points and unlock exclusive perks. Here's how each card works — and where you can spend your points.</p>
+  </div>
+
+  <div class="cards">
+    <!-- VIP -->
+    <div class="panel">
+      <div class="mock vip">
+        <div class="mock-top">
+          <svg viewBox="-100 -100 200 200" width="26" height="26" aria-hidden="true">
+            <polygon fill="none" stroke="#244952" stroke-width="6" points="0,-88 88,0 0,88 -88,0"/>
+            <polygon fill="none" stroke="#244952" stroke-width="5" points="44,-44 44,44 -44,44 -44,-44"/>
+            <polygon fill="#244952" points="0,-16 16,0 0,16 -16,0"/>
+          </svg>
+          <span class="tier">GOLD</span>
+        </div>
+        <div class="center">
+          <div class="k1">EXCLUSIVE</div>
+          <div class="k2">VIP</div>
+          <div class="k3">MEMBER CARD</div>
+        </div>
+        <div>
+          <div class="num">SCEI V123 456</div>
+          <div class="row"><span class="name">JUAN DELA CRUZ</span><span><span class="lbl">EXP</span><br><b style="font-size:11px;color:#5b6b6a">08/29</b></span></div>
+        </div>
+      </div>
+
+      <h2>VIP Membership Card</h2>
+      <p class="lede">An exclusive membership you unlock with an <b>upfront load</b>. The more you load, the higher your tier — and the bigger your discount on services. VIP members also earn reward points on every visit.</p>
+
+      <table>
+        <thead>
+          <tr><th>Upfront load</th><th>Tier</th><th>Therapy</th><th>MD · Psych</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>₱100,000</td><td>Silver</td><td>25%</td><td>5%</td></tr>
+          <tr><td>₱200,000</td><td>Gold</td><td>27.5%</td><td>7.5%</td></tr>
+          <tr><td>₱300,000</td><td>Gold</td><td>30%</td><td>10%</td></tr>
+          <tr><td>₱400,000</td><td>Platinum</td><td>40%</td><td>12.5%</td></tr>
+          <tr><td>₱500,000</td><td>Platinum</td><td>50%</td><td>15%</td></tr>
+        </tbody>
+      </table>
+      <p class="fine"><span class="pill">Therapy</span> = OT · PT · SLP · SPED. Discounts apply to eligible services; loaded value is used toward your sessions.</p>
+    </div>
+
+    <!-- Prepaid -->
+    <div class="panel">
+      <div class="mock pre">
+        <div class="mock-top">
+          <svg viewBox="0 0 104 56" width="46" height="25" aria-hidden="true">
+            <path d="M6 52 A46 46 0 0 1 98 52" fill="none" stroke="#2c5545" stroke-width="11"/>
+            <path d="M25 52 A27 27 0 0 1 79 52" fill="none" stroke="#8fb573" stroke-width="11"/>
+            <path d="M43 52 A9 9 0 0 1 61 52" fill="none" stroke="#6f8a86" stroke-width="11"/>
+          </svg>
+          <div class="kicker" style="text-align:right">
+            <b>RELOADABLE</b><span>PREPAID CARD</span>
+          </div>
+        </div>
+        <div>
+          <div class="num">SCEI R123 456</div>
+          <div class="row">
+            <span><span class="lbl">Cardholder</span><br><span class="name">MARIA SANTOS</span></span>
+            <span style="text-align:right"><span class="lbl">Valid thru</span><br><b style="font-size:11px;color:var(--primary-dark)">04/29</b></span>
+          </div>
+        </div>
+      </div>
+
+      <h2>Reloadable Prepaid Card</h2>
+      <p class="lede">A reloadable stored-value card. Load it up and use it to conveniently pay for services and products at Aura Health Rehab — and earn reward points as you go.</p>
+
+      <ul class="feat">
+        <li><span class="ic">₱</span><div>Reloads in <b>₱500 increments</b> — top up any time at the clinic.</div></li>
+        <li><span class="ic">★</span><div>Earn <b>1 reward point for every ₱100</b> you spend on services or products.</div></li>
+        <li><span class="ic">✓</span><div>Present your card each visit to collect points and redeem exclusive rewards and merchandise.</div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Where to use -->
+  <div class="use">
+    <h2>Where to use your points</h2>
+    <p class="sub">Your reward points are redeemable at three places:</p>
+    <div class="use-grid">
+      <div class="use-card">
+        <h3>Clinic seminars</h3>
+        <p>Attend Aura Health Rehab seminars that accept reward points as payment. Browse upcoming events on our seminars site.</p>
+        <a href="https://seminars.sapphireclinicseast.org" target="_blank" rel="noopener">Visit seminars.sapphireclinicseast.org →</a>
+      </div>
+      <div class="use-card">
+        <h3>Verdana Store — therapy toys</h3>
+        <p>Our partner brand inside the clinic. Shop occupational-therapy toys, sensory tools, and learning aids.</p>
+        <a href="https://verdanarehab.com/" target="_blank" rel="noopener">Visit verdanarehab.com →</a>
+      </div>
+      <div class="use-card">
+        <h3>Clinic merchandise</h3>
+        <p>Aura Health Rehab–branded merchandise — apparel, mugs, and seasonal items — handpicked by the clinic.</p>
+        <a href="https://verdanarehab.com/collections/merch-resources" target="_blank" rel="noopener">Shop merchandise →</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta">
+    <a href="https://client.sapphireclinicseast.org/rewards" target="_blank" rel="noopener">Check your reward points balance →</a>
+    <p>Enter your VIP or Prepaid card number to see your points and balance.</p>
+  </div>
+
+  <footer>Sapphire Clinics East, Inc. · operating Aura Health Rehab branches</footer>
+</div>
 </body>
 </html>
