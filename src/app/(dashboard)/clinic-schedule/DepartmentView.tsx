@@ -53,7 +53,13 @@ interface StaffMember {
   employmentType: string | null; active: boolean
   dateHired: string | null; contractExpiry: string | null // interns: Start Month / End Month
 }
-interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
+interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null; branches?: string[] }
+
+// Staff.branch codes -> Patient.branches enum values
+const BRANCH_ENUM: Record<string, string> = {
+  SBEA: 'SANDBOX_EAST',
+  SBGH: 'SANDBOX_GREENHILLS',
+}
 interface InternStaff { id: string; firstName: string; lastName: string }
 interface Schedule {
   id: string; staffId: string; patientId: string | null; patient: Patient | null
@@ -107,9 +113,10 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
 }
 
 // ─── Patient search typeahead ─────────────────────────────────────────────────
-function PatientSearch({ value, label, onChange }: {
+function PatientSearch({ value, label, onChange, branchEnum }: {
   value: string; label: string
   onChange: (id: string, label: string) => void
+  branchEnum: string
 }) {
   const [query, setQuery] = useState(label)
   const [results, setResults] = useState<Patient[]>([])
@@ -158,6 +165,23 @@ function PatientSearch({ value, label, onChange }: {
                 setOpen(false)
               }}>
               <span className="font-medium">{p.lastName}, {p.firstName}</span>
+              {(p.branches ?? []).map(b => (
+                <span key={b} className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ background: b === 'SANDBOX_GREENHILLS' ? '#ede9fe' : '#d1fae5',
+                           color: b === 'SANDBOX_GREENHILLS' ? '#5b21b6' : '#065f46' }}>
+                  {b === 'SANDBOX_GREENHILLS' ? 'GH' : b === 'SANDBOX_EAST' ? 'East' : b}
+                </span>
+              ))}
+              {/* Search spans both branches on purpose: a patient registered at
+                  one branch is routinely seen at the other, and booking them
+                  here adds this branch to their record. The badges say where
+                  they are already registered so the front desk can tell an
+                  existing patient from a same-named stranger. */}
+              {!(p.branches ?? []).includes(branchEnum) && (
+                <span className="ml-1.5 text-[10px] font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                  · will be added to this branch
+                </span>
+              )}
               {p.email && <span className="ml-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{p.email}</span>}
             </button>
           ))}
@@ -168,8 +192,9 @@ function PatientSearch({ value, label, onChange }: {
 }
 
 // ─── Schedule form ─────────────────────────────────────────────────────────────
-function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, error, submitting, submitLabel }: {
+function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, error, submitting, submitLabel, branchEnum }: {
   dept: string
+  branchEnum: string
   allStaff: StaffMember[]
   values: typeof EMPTY_FORM
   onChange: (v: typeof EMPTY_FORM) => void
@@ -223,6 +248,7 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
           <PatientSearch
             value={values.patientId}
             label={values.patientLabel}
+            branchEnum={branchEnum}
             onChange={(id, lbl) => onChange({ ...values, patientId: id, patientLabel: lbl })}
           />
         </div>
@@ -376,10 +402,17 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true)
-    // Multi-branch consultant in extra branch: only show patients registered at that branch
-    const isExtraBranch = staff.branch !== schedulingBranch
-    const params = new URLSearchParams({ staffId: staff.id, date: selectedDate })
-    if (isExtraBranch) params.set('patientBranch', schedulingBranch)
+    // Always scope to the branch calendar being viewed — not just when the
+    // clinician is visiting from another branch. Sessions carry the branch they
+    // were booked on, so an East-registered patient booked by the Greenhills
+    // front desk belongs to Greenhills. Filtering only on the "extra" branch
+    // left the clinician's HOME calendar unfiltered, which is why sessions
+    // booked at the other branch showed up there.
+    const params = new URLSearchParams({
+      staffId: staff.id,
+      date: selectedDate,
+      branch: schedulingBranch,
+    })
     const res = await fetch(`/api/clinic-schedule?${params}`)
     if (res.ok) setSchedules(await res.json())
     setLoadingSchedules(false)
@@ -408,9 +441,11 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
     d.setDate(d.getDate() - 7)
     const lastWeekDate = d.toISOString().split('T')[0]
     try {
-      const isExtraBranch = staff.branch !== schedulingBranch
-      const lwParams = new URLSearchParams({ staffId: staff.id, date: lastWeekDate })
-      if (isExtraBranch) lwParams.set('patientBranch', schedulingBranch)
+      const lwParams = new URLSearchParams({
+        staffId: staff.id,
+        date: lastWeekDate,
+        branch: schedulingBranch,
+      })
       const res = await fetch(`/api/clinic-schedule?${lwParams}`)
       if (res.ok) setLastWeekSuggestions(await res.json())
     } catch { /* silent */ }
@@ -742,7 +777,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                   </div>
                 </div>
               )}
-              <ScheduleForm dept={staff.department} allStaff={allStaff} values={form} onChange={setForm}
+              <ScheduleForm dept={staff.department} branchEnum={BRANCH_ENUM[schedulingBranch] ?? ''} allStaff={allStaff} values={form} onChange={setForm}
                 onSubmit={handleAdd} onCancel={closeAddForm}
                 error={formError} submitting={saving} submitLabel="Save Schedule" />
             </div>
@@ -819,7 +854,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                       {editId === s.id && (
                         <tr key={`${s.id}-edit`} style={{ borderBottom: '1px solid var(--light-gray)' }}>
                           <td colSpan={5} className="px-3 py-3" style={{ background: 'var(--pale-teal)' }}>
-                            <ScheduleForm dept={staff.department} allStaff={allStaff} values={editForm} onChange={setEditForm}
+                            <ScheduleForm dept={staff.department} branchEnum={BRANCH_ENUM[schedulingBranch] ?? ''} allStaff={allStaff} values={editForm} onChange={setEditForm}
                               onSubmit={handleEdit} onCancel={() => { setEditId(null); setEditError('') }}
                               error={editError} submitting={editSaving} submitLabel="Save Changes" />
                           </td>
