@@ -306,7 +306,23 @@ export async function GET(req: Request) {
       },
     })
 
-    return NextResponse.json({ wallets: walletsOut, orders, arPayments, summary })
+    // Detailed GL entries accounting created without a POS wallet behind them,
+    // plus the wallet figures for any that have since been tagged. GL only —
+    // the HMO tab has no equivalent sheet.
+    const glCases = type === 'GL'
+      ? await prisma.glCase.findMany({
+          select: {
+            id: true, walletId: true, patientName: true, branch: true,
+            glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
+            approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
+            guardianName: true, soaCommissionRate: true, payoutBatch: true,
+            qbEntry: true, paidAt: true, notes: true,
+          },
+          orderBy: { patientName: 'asc' },
+        })
+      : []
+
+    return NextResponse.json({ wallets: walletsOut, orders, arPayments, summary, glCases })
   } catch (err) {
     console.error('AR API error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
