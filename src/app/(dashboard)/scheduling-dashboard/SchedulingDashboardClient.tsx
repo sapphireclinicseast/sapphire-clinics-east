@@ -308,6 +308,42 @@ function DashboardContent({ role }: { role: string }) {
     })
   }, [schedules, startDate, endDate, activeBranches, activeDepts, maxSessions])
 
+  // ── Trendline equations ──
+  // Least-squares fit y = mx + b over the same x index the chart plots (x = 0 is
+  // the first day in range), so the printed equation describes the dashed line
+  // on the chart rather than a separate calculation. Utilization is fitted on
+  // its own series instead of being scaled off the session fit: daily capacity
+  // shifts with the branch/department filters, so the two slopes are not a
+  // fixed multiple of each other.
+  const trendStats = useMemo(() => {
+    const n = chartData.length
+    if (n < 2) return null
+
+    const fit = (ys: number[]) => {
+      let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0
+      ys.forEach((y, i) => { sumX += i; sumY += y; sumXY += i * y; sumX2 += i * i })
+      const denom = n * sumX2 - sumX * sumX
+      const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0
+      const intercept = (sumY - slope * sumX) / n
+      // R² — how much of the movement the straight line actually explains. A
+      // steep slope over scattered data is not a trend worth acting on.
+      const meanY = sumY / n
+      let ssTot = 0, ssRes = 0
+      ys.forEach((y, i) => {
+        ssTot += (y - meanY) ** 2
+        ssRes += (y - (slope * i + intercept)) ** 2
+      })
+      const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
+      return { slope, intercept, r2, change: slope * (n - 1) }
+    }
+
+    return {
+      n,
+      sessions: fit(chartData.map(d => d.total)),
+      utilization: fit(chartData.map(d => d.utilization)),
+    }
+  }, [chartData])
+
   // ── Top therapists ──
   const topTherapists = useMemo(() => {
     const confirmed = schedules.filter(s => s.status === 'CONFIRMED')
@@ -516,7 +552,8 @@ function DashboardContent({ role }: { role: string }) {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
         <div className={`${cardStyle} p-5`}>
-          <h3 className={`${sectionH} mb-4`}>Total Number of Sessions Over Time</h3>
+          <h3 className={`${sectionH} mb-2`}>Total Number of Sessions Over Time</h3>
+          <TrendEquation fit={trendStats?.sessions ?? null} unit="sessions" />
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -533,7 +570,8 @@ function DashboardContent({ role }: { role: string }) {
         </div>
 
         <div className={`${cardStyle} p-5`}>
-          <h3 className={`${sectionH} mb-4`}>Clinic Utilization Rate Over Time</h3>
+          <h3 className={`${sectionH} mb-2`}>Clinic Utilization Rate Over Time</h3>
+          <TrendEquation fit={trendStats?.utilization ?? null} unit="pp" />
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -541,6 +579,10 @@ function DashboardContent({ role }: { role: string }) {
               <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${v.toFixed(0)}%`} />
               <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
               <Area type="monotone" dataKey="utilization" stroke="#3b82f6" fill="rgba(59,130,246,0.12)" strokeWidth={2} name="Utilization" />
+              <ReferenceLine stroke="#94a3b8" strokeDasharray="6 3" segment={trendStats ? [
+                { x: chartData[0]?.label, y: Math.max(0, trendStats.utilization.intercept) },
+                { x: chartData[chartData.length - 1]?.label, y: Math.max(0, trendStats.utilization.slope * (trendStats.n - 1) + trendStats.utilization.intercept) },
+              ] : undefined} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -646,6 +688,41 @@ function KpiCard({ icon, value, label, color }: { icon: React.ReactNode; value: 
       <div className={`w-10 h-10 rounded-lg ${colors.iconBg} ${colors.iconColor} flex items-center justify-center mx-auto mb-2`}>{icon}</div>
       <div className="text-2xl font-extrabold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+    </div>
+  )
+}
+
+// Prints the fitted line as an equation plus a plain-language reading of it.
+// `unit` is the y-axis unit per day — "sessions", or "pp" (percentage points)
+// for the utilization chart, where "%/week" would be ambiguous between a
+// relative change and a change in the rate itself.
+function TrendEquation({ fit, unit }: {
+  fit: { slope: number; intercept: number; r2: number; change: number } | null
+  unit: string
+}) {
+  if (!fit) return <div className="text-[11px] text-gray-400 mb-3">Not enough days in range to fit a trend</div>
+
+  const { slope, intercept, r2, change } = fit
+  // "Flat" is judged on total movement across the whole range, not on the raw
+  // slope: 0.02/day reads as flat over a week and as real over a quarter. Less
+  // than one unit of net change across the period is noise, not direction.
+  const flat = Math.abs(change) < 1
+  const dir = flat ? 'Flat' : change > 0 ? 'Rising' : 'Falling'
+  const dirColor = flat ? 'text-gray-500' : change > 0 ? 'text-emerald-600' : 'text-rose-600'
+  const arrow = flat ? '→' : change > 0 ? '↑' : '↓'
+
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-3">
+      <code className="text-[12px] font-semibold text-gray-800 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
+        y = {slope.toFixed(2)}x {intercept < 0 ? '−' : '+'} {Math.abs(intercept).toFixed(2)}
+      </code>
+      <span className={`text-[11px] font-bold ${dirColor}`}>{arrow} {dir}</span>
+      {!flat && (
+        <span className="text-[11px] text-gray-500">
+          {slope > 0 ? '+' : '−'}{Math.abs(slope * 7).toFixed(1)} {unit}/week
+        </span>
+      )}
+      <span className="text-[11px] text-gray-400" title="How closely the points follow the line (1.00 = perfect fit)">R² {r2.toFixed(2)}</span>
     </div>
   )
 }
