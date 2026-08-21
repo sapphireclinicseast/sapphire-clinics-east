@@ -6,13 +6,13 @@
 :root{--teal:#244952;--cream:#f4f7e6;--cream2:#edf3d9;--clay:#cf9d88;--gold:#c69849;--green:#4a8073;--sage:#a7cf8f;--ink:#3f5a54}
 html,body{height:100%}
 body{font-family:'Poppins',sans-serif;background:radial-gradient(circle at 50% 0%,#2f5e69,#183138);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;color:var(--ink)}
-.stage{position:relative;width:min(92vw,760px);aspect-ratio:3/4;perspective:2600px}
-.leaf{position:absolute;inset:0;opacity:0;pointer-events:none;transform:rotateY(-12deg)}
+.stage{position:relative;height:min(78vh,calc(92vw*4/3));aspect-ratio:3/4}
+.leaf{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .3s ease}
 .leaf.active{opacity:1;pointer-events:auto;transform:none;z-index:2}
 .leaf.flip-out{animation:flipOut .62s cubic-bezier(.4,.05,.25,1) forwards;transform-origin:left center;z-index:3}
 .leaf.flip-out-back{animation:flipOutBack .62s cubic-bezier(.4,.05,.25,1) forwards;transform-origin:left center;z-index:3}
-@keyframes flipOut{from{transform:rotateY(0)}to{transform:rotateY(-165deg)}}
-@keyframes flipOutBack{from{transform:rotateY(-165deg)}to{transform:rotateY(0)}}
+@keyframes flipOut{from{opacity:1}to{opacity:0}}
+@keyframes flipOutBack{from{opacity:0}to{opacity:1}}
 .pg{position:absolute;inset:0;border-radius:14px;overflow:hidden;box-shadow:0 26px 60px rgba(0,0,0,.42);background:var(--cream);display:flex;flex-direction:column}
 .pg.light{background:linear-gradient(160deg,#fbfdf4 0%,var(--cream) 100%);padding:42px 44px 34px}
 .pg.teal{background:linear-gradient(160deg,#2b5560,#1c3b43);color:#fff;padding:42px 44px 34px}
@@ -87,7 +87,7 @@ body{font-family:'Poppins',sans-serif;background:radial-gradient(circle at 50% 0
 .team.six{gap:11px}
 .tcard{display:flex;gap:15px;align-items:center;background:#fff;border:1px solid #e7eed4;border-radius:14px;padding:14px 16px;box-shadow:0 4px 12px rgba(36,73,82,.05)}
 .tcard.small{padding:10px 14px}
-.tphoto{flex:0 0 64px;width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--teal);border:3px solid var(--sage);box-shadow:0 3px 8px rgba(36,73,82,.2)}
+.tphoto{flex:0 0 64px;width:64px;height:64px;border-radius:50%;overflow:hidden;background:#e39a5b;border:3px solid var(--sage);box-shadow:0 3px 8px rgba(36,73,82,.2)}
 .tcard.small .tphoto{flex-basis:52px;width:52px;height:52px;border-width:2.5px}
 .tphoto img{width:100%;height:100%;object-fit:cover;display:block}
 .tname{font-size:14.5px;font-weight:700;color:var(--teal);line-height:1.15}
