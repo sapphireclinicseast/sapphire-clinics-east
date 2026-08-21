@@ -94,13 +94,16 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const role = (session.user as { role?: string }).role ?? ''
-  const forcedBranch = ROLE_BRANCH[role] ?? null  // non-null → front desk, lock to this branch
+  const forcedBranch = ROLE_BRANCH[role] ?? null  // non-null → front desk (still governs WRITES)
 
   const { searchParams } = new URL(req.url)
   const type = searchParams.get('type')
   const search = searchParams.get('search')
-  // Front desk users are always scoped to their branch regardless of query param
-  const branch = forcedBranch ?? searchParams.get('branch')
+  // READS are not branch-scoped. Front desk needs the whole register: a patient
+  // registered at one branch is routinely seen at the other, and hiding them
+  // was what produced 31 duplicate name groups — the desk looked, found
+  // nothing, and created a second record. Writes stay scoped below.
+  const branch = searchParams.get('branch')
   const exportCsv = searchParams.get('export') === 'csv'
   if (exportCsv) {
     const userEmail = (session.user as { email?: string }).email ?? ''
@@ -114,10 +117,8 @@ export async function GET(req: NextRequest) {
   // Branch filter — front desk is locked to their branch; otherwise honor the
   // singular `branch` or comma-separated `branches` query param. Applies to all
   // requests (count, listing, export), not just CSV export.
-  const requestedBranches = forcedBranch
-    ? [forcedBranch]
-    : (searchParams.get('branches')?.split(',').filter(Boolean)
-        ?? (branch ? [branch] : []))
+  const requestedBranches = searchParams.get('branches')?.split(',').filter(Boolean)
+        ?? (branch ? [branch] : [])
 
   // Raw SQL pre-filter for branch (avoids enum array type mismatch with PrismaPg driver adapter)
   let branchFilterIds: string[] | null = null
@@ -421,11 +422,23 @@ export async function PUT(req: NextRequest) {
     if (patientType) updateData.patientType = patientType
   }
   if (branches     !== undefined) {
-    // A front-desk user is locked to their own branch on edit, exactly as on
-    // create. Without this the PUT accepted whatever the client sent, so a
-    // branch user could move a patient to the other branch — the Add form
-    // disabled the other checkboxes but nothing enforced it server-side.
-    const wanted: string[] = forcedBranchPut ? [forcedBranchPut] : branches
+    // A front-desk user may ADD their own branch but never remove another.
+    // This used to overwrite the set with [theirBranch], which was harmless
+    // only because they could not see the other branch's patients. Now that
+    // reads span both branches, overwriting would silently strip a patient's
+    // other branch the first time the wrong desk edited them — turning a
+    // routine edit into data loss for an interbranch patient.
+    let wanted: string[] = branches
+    if (forcedBranchPut) {
+      const current = await prisma.patient.findUnique({
+        where: { id },
+        select: { branches: true, branch: true },
+      })
+      const existing = current
+        ? (current.branches.length > 0 ? current.branches : (current.branch ? [current.branch] : []))
+        : []
+      wanted = [...new Set([...existing, forcedBranchPut])]
+    }
     const { valid, invalid } = await validateBranches(wanted)
     if (invalid.length > 0) {
       return NextResponse.json({ error: `Unknown branch: ${invalid.join(', ')}` }, { status: 400 })

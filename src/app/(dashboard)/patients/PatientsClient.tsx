@@ -235,7 +235,10 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
   const [typeFilter, setTypeFilter]     = useState('')
-  const [branchFilter, setBranchFilter] = useState(forcedBranch)
+  // Front desk now reads the whole register, so the listing defaults to every
+  // branch. `forcedBranch` still seeds the ADD form, since a new patient is
+  // normally registered at the desk taking them in.
+  const [branchFilter, setBranchFilter] = useState('')
   const [chinoyFilter, setChinoyFilter] = useState(false)
   const [showAddForm, setShowAddForm]   = useState(false)
   const [csvFile, setCsvFile]           = useState<File | null>(null)
@@ -724,8 +727,10 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
           <option value="ADULT">Adult</option>
         </select>
 
-        {/* Branch filter — hidden for front desk (locked to their branch) */}
-        {!isFrontDesk && (
+        {/* Branch filter — shown to everyone. Front desk reads across branches so
+            they can find a patient registered at the other one instead of
+            creating a duplicate. */}
+        {(
           <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}
             className="px-3 py-2 rounded-lg text-sm outline-none"
             style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
