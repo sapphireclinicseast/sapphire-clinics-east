@@ -287,6 +287,11 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   // Staged files for the Add Patient form (uploaded after patient creation)
   const [addReferralFile, setAddReferralFile] = useState<File | null>(null)
   const [addPwdIdFile, setAddPwdIdFile] = useState<File | null>(null)
+  // Same-name matches returned by the API (409) — shown before a duplicate is made.
+  const [dupMatches, setDupMatches] = useState<Array<{
+    id: string; firstName: string; lastName: string; dob: string | null
+    phone: string | null; email: string | null; branches: string[]; branch: string | null
+  }> | null>(null)
   const addReferralInputRef = useRef<HTMLInputElement>(null)
   const addPwdIdInputRef = useRef<HTMLInputElement>(null)
 
@@ -425,14 +430,22 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   useEffect(() => { fetchPatients() }, [search, typeFilter, branchFilter])
 
   // ── Add / Edit / Delete ───────────────────────────────────────────────────
-  async function handleAddPatient(e: React.FormEvent) {
+  async function handleAddPatient(e: React.FormEvent, confirmDuplicate = false) {
     e.preventDefault()
-    const payload = forcedBranch ? { ...form, branches: [forcedBranch] } : form
+    const base = forcedBranch ? { ...form, branches: [forcedBranch] } : form
+    const payload = confirmDuplicate ? { ...base, confirmDuplicate: true } : base
     const res = await fetch('/api/patients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
+    // Someone with this exact name already exists — show them before creating
+    // a second record rather than after.
+    if (res.status === 409) {
+      const data = await res.json().catch(() => null)
+      if (data?.duplicateWarning) { setDupMatches(data.matches ?? []); return }
+    }
+    setDupMatches(null)
     if (res.ok) {
       const { patient: created } = await res.json()
       if (created?.id) {
@@ -975,6 +988,58 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       )}
 
       {/* ── Add patient form ──────────────────────────────────────────────── */}
+      {/* Same-name warning — shown instead of silently creating a duplicate.
+          Deliberately blocks on the FIRST attempt only; genuine namesakes are
+          created by confirming past it. */}
+      {dupMatches && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+             onClick={() => setDupMatches(null)}>
+          <div className="bg-white rounded-xl w-full max-w-[560px] shadow-2xl overflow-hidden"
+               onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-gray-200" style={{ background: '#FEF3C7' }}>
+              <h3 className="text-sm font-extrabold" style={{ color: '#92400E' }}>
+                {dupMatches.length === 1 ? 'A patient with this name already exists' : 'Patients with this name already exist'}
+              </h3>
+              <p className="text-[11px] mt-0.5" style={{ color: '#92400E' }}>
+                Check whether this is the same person before adding a new record. Matches are searched across both branches.
+              </p>
+            </div>
+            <div className="max-h-[45vh] overflow-y-auto">
+              {dupMatches.map(m => (
+                <div key={m.id} className="px-5 py-3 border-b border-gray-100 last:border-b-0">
+                  <div className="text-sm font-semibold text-gray-900">{m.lastName}, {m.firstName}</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    {m.dob ? `DOB ${new Date(m.dob).toISOString().split('T')[0]}` : 'No DOB on file'}
+                    {m.phone ? ` · ${m.phone}` : ''}
+                    {m.email ? ` · ${m.email}` : ''}
+                  </div>
+                  <div className="mt-1 flex gap-1">
+                    {(m.branches?.length ? m.branches : (m.branch ? [m.branch] : [])).map(b => (
+                      <span key={b} className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: b === 'SANDBOX_GREENHILLS' ? '#ede9fe' : '#d1fae5',
+                                 color: b === 'SANDBOX_GREENHILLS' ? '#5b21b6' : '#065f46' }}>
+                        {branchLabel(b)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-3 flex flex-wrap gap-2 justify-end border-t border-gray-200 bg-gray-50">
+              <button type="button" onClick={() => setDupMatches(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-300 bg-white text-gray-700">
+                Cancel — use the existing record
+              </button>
+              <button type="button"
+                onClick={e => { setDupMatches(null); handleAddPatient(e as unknown as React.FormEvent, true) }}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: '#B45309' }}>
+                Different person — add anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAddForm && (
         <div className="rounded-xl p-6" style={{ background: '#fff', border: '1px solid var(--teal)' }}>
           <div className="flex items-center justify-between mb-5">

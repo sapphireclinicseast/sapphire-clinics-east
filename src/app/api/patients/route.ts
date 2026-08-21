@@ -338,6 +338,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Unknown branch: ${invalidCreate.join(', ')}` }, { status: 400 })
   }
 
+  // Same-name guard. The register already holds 31 name collisions, most of
+  // them one person entered twice — usually because the front desk could not
+  // see a record held at the other branch and re-created it. Search across ALL
+  // branches (not just this user's) so a cross-branch duplicate is caught,
+  // and answer 409 with the matches so the UI can offer the existing record
+  // before a second one is made. `confirmDuplicate` is the deliberate override
+  // for genuine namesakes, which do exist.
+  if (!body.confirmDuplicate) {
+    const first = (uc(body.firstName) ?? '').trim()
+    const last  = (uc(body.lastName)  ?? '').trim()
+    if (first && last) {
+      const sameName = await prisma.patient.findMany({
+        where: {
+          firstName: { equals: first, mode: 'insensitive' },
+          lastName:  { equals: last,  mode: 'insensitive' },
+        },
+        select: { id: true, firstName: true, lastName: true, dob: true, phone: true, email: true, branches: true, branch: true },
+        take: 10,
+      })
+      if (sameName.length > 0) {
+        return NextResponse.json({ duplicateWarning: true, matches: sameName }, { status: 409 })
+      }
+    }
+  }
+
   const patient = await prisma.patient.create({
     data: {
       firstName:   uc(body.firstName) ?? '',
