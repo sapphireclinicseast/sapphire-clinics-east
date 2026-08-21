@@ -17,7 +17,7 @@ import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
 import OthersTab from './OthersTab'
 import ExpandablePanel from './ExpandablePanel'
-import DetailedGl from './DetailedGl'
+import DetailedGl, { type GlCaseRow } from './DetailedGl'
 
 interface ARWallet {
   id: string
@@ -401,6 +401,8 @@ export default function AccountsReceivablePage() {
   const [wallets, setWallets] = useState<ARWallet[]>([])
   const [orders, setOrders] = useState<AROrder[]>([])
   const [arPayments, setArPayments] = useState<ARPaymentRecord[]>([])
+  // Detailed GL entries created without a POS wallet behind them.
+  const [glCases, setGlCases] = useState<GlCaseRow[]>([])
   // Full-history totals from the API. The `orders` list is capped at 500, so
   // summary figures must come from here or older years drop out silently.
   const [summary, setSummary] = useState<ARSummary | null>(null)
@@ -513,9 +515,11 @@ export default function AccountsReceivablePage() {
       setWallets(data.wallets || [])
       setOrders(data.orders || [])
       setArPayments(data.arPayments || [])
+      setGlCases(data.glCases || [])
       setSummary(data.summary || null)
     } catch {
       setOrders([])
+      setGlCases([])
       setSummary(null)
     } finally {
       setLoading(false)
@@ -1129,6 +1133,7 @@ export default function AccountsReceivablePage() {
         <DetailedGl
           canWrite={canWrite}
           onSaved={fetchData}
+          glCases={glCases}
           wallets={wallets.map(w => ({
             ...w,
             // "Rendered service?" — has anything actually been billed to the letter.

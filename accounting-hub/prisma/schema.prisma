@@ -119,6 +119,7 @@ model User {
   payrollEntries   PayrollEntry[]    @relation("PayrollCreatedBy")
   incentiveRules   IncentiveRule[]   @relation("IncentiveCreatedBy")
   assets           Asset[]           @relation("AssetCreatedBy")
+  glCases          GlCase[]          @relation("GlCaseCreatedBy")
 
   @@index([email])
   @@index([role])
@@ -857,6 +858,7 @@ model DigitalWallet {
   logs       WalletLog[]
   payments   OrderPayment[]
   arPayments ARPayment[]
+  glCase     GlCase?        @relation("WalletGlCase")
 
   @@index([patientId, walletType])
   @@index([patientName])
@@ -864,6 +866,49 @@ model DigitalWallet {
   @@index([walletType])
   @@index([accountId])
   @@index([paymentModeId])
+  @@index([branch])
+}
+
+/// A Guarantee Letter case entered by accounting, which may not have a POS
+/// wallet behind it yet — a second application filed before the wallet exists,
+/// or a letter still awaiting approval. Once POS does have the wallet, staff tag
+/// the case to it and the live figures (balance drawn down, payments) come from
+/// there instead of being retyped.
+///
+/// walletId is unique so a wallet can back at most one case; Detailed GL renders
+/// every case plus the wallets no case has claimed, which keeps a tagged letter
+/// from appearing twice.
+model GlCase {
+  id       String         @id @default(cuid())
+  walletId String?        @unique
+  wallet   DigitalWallet? @relation("WalletGlCase", fields: [walletId], references: [id], onDelete: SetNull)
+
+  patientName String
+  branch      String @default("ALL")
+
+  // The same paper trail the wallet-backed rows carry. Held here too, because an
+  // untagged case has no wallet to read them from.
+  glRequestedAmount Decimal?
+  glDocsSubmittedAt DateTime?
+  glReleasedAt      DateTime?
+  /// Approved GL for an untagged case. Once tagged, the wallet's totalGlAmount wins.
+  approvedAmount    Decimal?
+  soaAmount         Decimal?
+  soaSubmittedAt    DateTime?
+  guardianName      String?
+  soaCommissionRate Decimal?
+  payoutBatch       String?
+  qbEntry           String?
+  /// Cheque date for an untagged case. A tagged one takes its payment from ARPayment.
+  paidAt            DateTime?
+  notes             String?
+
+  createdById String
+  createdBy   User     @relation("GlCaseCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([patientName])
   @@index([branch])
 }
 

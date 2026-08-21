@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, X, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Download } from 'lucide-react'
+import { Search, X, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Download, Plus, Link2, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
@@ -35,6 +35,30 @@ export interface GlCaseWallet {
   hasOrders?: boolean
 }
 
+/**
+ * A Detailed GL entry accounting created itself, which may have no POS wallet
+ * behind it yet. Tagging one to a wallet makes the live figures — balance drawn
+ * down, payments — come from that wallet instead of being retyped here.
+ */
+export interface GlCaseRow {
+  id: string
+  walletId?: string | null
+  patientName: string
+  branch?: string | null
+  glRequestedAmount?: number | string | null
+  glDocsSubmittedAt?: string | null
+  glReleasedAt?: string | null
+  approvedAmount?: number | string | null
+  soaAmount?: number | string | null
+  soaSubmittedAt?: string | null
+  guardianName?: string | null
+  soaCommissionRate?: number | string | null
+  payoutBatch?: string | null
+  qbEntry?: string | null
+  paidAt?: string | null
+  notes?: string | null
+}
+
 const num = (v: unknown) => Number(v ?? 0) || 0
 const fmtDate = (v?: string | null) =>
   v ? new Date(v).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' }) : ''
@@ -53,15 +77,105 @@ function fileUrls(w: GlCaseWallet): string[] {
 }
 
 /**
+ * One line of the sheet, from either source, with every field already resolved.
+ * A tagged case takes its live figures from the wallet and its paper trail from
+ * itself; an untagged one has only what was typed into it.
+ */
+interface Row {
+  key: string
+  /** Set when this line is a standalone entry — the only kind that can be deleted. */
+  caseId: string | null
+  /** The wallet backing this line, if any. Untagged entries have none. */
+  wallet: GlCaseWallet | null
+  source: GlCaseRow | null
+  patientName: string
+  branch?: string | null
+  glRequestedAmount?: number | string | null
+  glDocsSubmittedAt?: string | null
+  glReleasedAt?: string | null
+  approved: number
+  soaAmount?: number | string | null
+  soaSubmittedAt?: string | null
+  guardianName?: string | null
+  soaCommissionRate?: number | string | null
+  payoutBatch?: string | null
+  qbEntry?: string | null
+  /** Remaining on the tagged wallet in POS; null when nothing is tagged. */
+  posBalance: number | null
+  /** Has the letter actually been drawn down — balance below the approved amount. */
+  rendered: boolean
+  paid: boolean
+  lastPaymentDate?: string | null
+  monthsToPay?: number | null
+  files: string[]
+}
+
+/**
+ * "Rendered service?" means the letter has actually been consumed, so it reads
+ * the balance rather than the presence of an order: an order billed at zero, or
+ * fully discounted, leaves the letter untouched and should still say NO. An
+ * untagged entry has no wallet to draw down, so it is always NO.
+ */
+function drawnDown(w: GlCaseWallet | null): boolean {
+  if (!w) return false
+  const approved = num(w.totalGlAmount)
+  if (approved <= 0) return false
+  return num(w.balance) < approved
+}
+
+function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
+  // A case's own paper trail wins over the wallet's — it is the record staff
+  // maintain — but the live figures below always come from the wallet.
+  const pick = <T,>(a: T | null | undefined, b: T | null | undefined) => (a ?? b ?? null)
+  return {
+    key: c ? `case:${c.id}` : `wallet:${w!.id}`,
+    caseId: c?.id ?? null,
+    wallet: w,
+    source: c,
+    patientName: c?.patientName ?? w!.patientName,
+    branch: pick(c?.branch, w?.branch),
+    glRequestedAmount: pick(c?.glRequestedAmount, w?.glRequestedAmount),
+    glDocsSubmittedAt: pick(c?.glDocsSubmittedAt, w?.glDocsSubmittedAt),
+    glReleasedAt: pick(c?.glReleasedAt, w?.glReleasedAt),
+    approved: w ? num(w.totalGlAmount) : num(c?.approvedAmount),
+    soaAmount: pick(c?.soaAmount, w?.soaAmount),
+    soaSubmittedAt: pick(c?.soaSubmittedAt, w?.soaSubmittedAt),
+    guardianName: pick(c?.guardianName, w?.guardianName),
+    soaCommissionRate: pick(c?.soaCommissionRate, w?.soaCommissionRate),
+    payoutBatch: pick(c?.payoutBatch, w?.payoutBatch),
+    qbEntry: pick(c?.qbEntry, w?.qbEntry),
+    posBalance: w && w.balance != null ? num(w.balance) : null,
+    rendered: drawnDown(w),
+    paid: w ? num(w.paidTotal) > 0 : !!c?.paidAt,
+    lastPaymentDate: w ? (w.lastPaymentDate ?? null) : (c?.paidAt ?? null),
+    monthsToPay: w?.monthsToPay ?? null,
+    files: w ? fileUrls(w) : [],
+  }
+}
+
+/**
+ * Every case, plus the wallets no case has claimed. Tagging a case to a wallet
+ * therefore replaces that wallet's line rather than adding a second one.
+ */
+function buildRows(wallets: GlCaseWallet[], cases: GlCaseRow[]): Row[] {
+  const byId = new Map(wallets.map(w => [w.id, w]))
+  const claimed = new Set(cases.map(c => c.walletId).filter((v): v is string => !!v))
+  return [
+    ...cases.map(c => rowOf(c, c.walletId ? byId.get(c.walletId) ?? null : null)),
+    ...wallets.filter(w => !claimed.has(w.id)).map(w => rowOf(null, w)),
+  ]
+}
+
+/**
  * Row tint. Paid wins over SOA-submitted: a settled letter almost always has an
  * SOA behind it, and "has it been paid" is the question the sheet is read for.
  * Tints are deliberately pale — every cell still carries its own text colour,
  * and a saturated fill makes the greyed-out em-dashes unreadable.
  */
 type RowTone = 'paid' | 'soa' | null
-function rowTone(w: GlCaseWallet): RowTone {
-  if (num(w.paidTotal) > 0) return 'paid'
-  if (w.soaSubmittedAt) return 'soa'
+function rowTone(r: Row): RowTone {
+  if (r.paid) return 'paid'
+  if (r.soaSubmittedAt) return 'soa'
   return null
 }
 const TONE_BG: Record<'paid' | 'soa', string> = {
@@ -70,10 +184,15 @@ const TONE_BG: Record<'paid' | 'soa', string> = {
 }
 
 /** Whole days between SOA submission and payment — the sheet's "AR running days". */
-function arRunningDays(w: GlCaseWallet): number | null {
-  if (!w.soaSubmittedAt || !w.lastPaymentDate) return null
-  const ms = new Date(w.lastPaymentDate).getTime() - new Date(w.soaSubmittedAt).getTime()
+function arRunningDays(r: Row): number | null {
+  if (!r.soaSubmittedAt || !r.lastPaymentDate) return null
+  const ms = new Date(r.lastPaymentDate).getTime() - new Date(r.soaSubmittedAt).getTime()
   return Math.round(ms / 86_400_000)
+}
+
+function commissionOf(r: Row): number {
+  const rate = num(r.soaCommissionRate)
+  return rate > 0 ? num(r.soaAmount) * (rate / 100) : 0
 }
 
 /** Columns in the order the OPGL SUMMARY sheet uses, with Branch added. */
@@ -81,13 +200,14 @@ type ColKey =
   | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'status' | 'paidDate' | 'arDays' | 'perMonths'
-  | 'guardian' | 'drive' | 'commission' | 'threePct' | 'payout' | 'qb'
+  | 'guardian' | 'drive' | 'commission' | 'threePct' | 'payout' | 'qb' | 'linked'
 
 interface Col { key: ColKey; label: string; numeric?: boolean }
 
 const COLS: Col[] = [
   { key: 'name', label: 'Name' },
   { key: 'branch', label: 'Branch' },
+  { key: 'linked', label: 'POS wallet' },
   { key: 'docsDate', label: 'Date submission of documents' },
   { key: 'requested', label: 'Requested GL', numeric: true },
   { key: 'released', label: 'Status/ GL release date' },
@@ -110,76 +230,65 @@ const COLS: Col[] = [
   { key: 'qb', label: 'QB entry' },
 ]
 
-/** Value used for sorting: numbers sort numerically, blanks sort last. */
-function sortValue(w: GlCaseWallet, k: ColKey): string | number {
+function cellText(r: Row, k: ColKey): string {
   switch (k) {
-    case 'name': return w.patientName || ''
-    case 'branch': return branchLabel(w.branch) || ''
-    case 'docsDate': return dayKey(w.glDocsSubmittedAt) || '￿'
-    case 'requested': return num(w.glRequestedAmount)
-    case 'released': return dayKey(w.glReleasedAt) || '￿'
-    case 'approved': return num(w.totalGlAmount)
-    case 'soaAmount': return num(w.soaAmount)
-    case 'posBalance': return num(w.balance)
-    case 'rendered': return w.hasOrders ? 'YES' : 'NO'
-    case 'soaSubmitted': return w.soaSubmittedAt ? 'YES' : 'NO'
-    case 'soaDate': return dayKey(w.soaSubmittedAt) || '￿'
-    case 'status': return num(w.paidTotal) > 0 ? 'PAID' : 'UNPAID'
-    case 'paidDate': return dayKey(w.lastPaymentDate) || '￿'
-    case 'arDays': return arRunningDays(w) ?? Number.MAX_SAFE_INTEGER
-    case 'perMonths': return typeof w.monthsToPay === 'number' ? w.monthsToPay : Number.MAX_SAFE_INTEGER
-    case 'guardian': return w.guardianName || ''
-    case 'drive': return fileUrls(w).length
-    case 'commission': return commissionOf(w)
-    case 'threePct': return num(w.soaAmount) * 0.03
-    case 'payout': return w.payoutBatch || ''
-    case 'qb': return w.qbEntry || ''
+    case 'name': return r.patientName || ''
+    case 'branch': return branchLabel(r.branch) || '—'
+    case 'linked': return r.wallet ? 'tagged' : (r.caseId ? 'not tagged' : 'POS')
+    case 'docsDate': return fmtDate(r.glDocsSubmittedAt) || '—'
+    case 'requested': return num(r.glRequestedAmount) ? formatCurrency(num(r.glRequestedAmount)) : '—'
+    case 'released': return fmtDate(r.glReleasedAt) || '—'
+    case 'approved': return r.approved ? formatCurrency(r.approved) : '—'
+    case 'soaAmount': return num(r.soaAmount) ? formatCurrency(num(r.soaAmount)) : '—'
+    case 'posBalance': return r.posBalance == null ? '—' : formatCurrency(r.posBalance)
+    case 'rendered': return r.rendered ? 'YES' : 'NO'
+    case 'soaSubmitted': return r.soaSubmittedAt ? 'YES' : 'NO'
+    case 'soaDate': return fmtDate(r.soaSubmittedAt) || '—'
+    case 'status': return r.paid ? 'PAID' : 'UNPAID'
+    case 'paidDate': return fmtDate(r.lastPaymentDate) || 'unpaid'
+    case 'arDays': { const d = arRunningDays(r); return d == null ? '—' : String(d) }
+    case 'perMonths': return typeof r.monthsToPay === 'number' ? `${r.monthsToPay.toFixed(2)}` : '—'
+    case 'guardian': return r.guardianName || '—'
+    case 'drive': { const n = r.files.length; return n ? `${n} file${n === 1 ? '' : 's'}` : '—' }
+    case 'commission': { const c = commissionOf(r); return c ? `${formatCurrency(c)} (${num(r.soaCommissionRate)}%)` : '—' }
+    case 'threePct': return num(r.soaAmount) ? formatCurrency(num(r.soaAmount) * 0.03) : '—'
+    case 'payout': return r.payoutBatch || '—'
+    case 'qb': return r.qbEntry || '—'
   }
 }
 
-/**
- * Fee paid to the GL processor: a percentage of the SOA amount.
- *
- * The rate is typed per letter rather than hardcoded — it is 25% now and was
- * 20% on older letters, so a single constant would silently restate history.
- * Blank until a rate is recorded; never assumed.
- */
-function commissionOf(w: GlCaseWallet): number {
-  const rate = num(w.soaCommissionRate)
-  return rate > 0 ? num(w.soaAmount) * (rate / 100) : 0
-}
-
-/** Text shown in the cell — also what the search box and column filters match. */
-function cellText(w: GlCaseWallet, k: ColKey): string {
+function sortValue(r: Row, k: ColKey): string | number {
   switch (k) {
-    case 'name': return w.patientName || ''
-    case 'branch': return branchLabel(w.branch) || '—'
-    case 'docsDate': return fmtDate(w.glDocsSubmittedAt) || '—'
-    case 'requested': return num(w.glRequestedAmount) ? formatCurrency(num(w.glRequestedAmount)) : '—'
-    case 'released': return fmtDate(w.glReleasedAt) || '—'
-    case 'approved': return formatCurrency(num(w.totalGlAmount))
-    case 'soaAmount': return num(w.soaAmount) ? formatCurrency(num(w.soaAmount)) : '—'
-    case 'posBalance': return w.balance == null ? '—' : formatCurrency(num(w.balance))
-    case 'rendered': return w.hasOrders ? 'YES' : 'NO'
-    case 'soaSubmitted': return w.soaSubmittedAt ? 'YES' : 'NO'
-    case 'soaDate': return fmtDate(w.soaSubmittedAt) || '—'
-    case 'status': return num(w.paidTotal) > 0 ? 'PAID' : 'UNPAID'
-    case 'paidDate': return fmtDate(w.lastPaymentDate) || 'unpaid'
-    case 'arDays': { const d = arRunningDays(w); return d == null ? '—' : String(d) }
-    case 'perMonths': return typeof w.monthsToPay === 'number' ? `${w.monthsToPay.toFixed(2)}` : '—'
-    case 'guardian': return w.guardianName || '—'
-    case 'drive': { const n = fileUrls(w).length; return n ? `${n} file${n === 1 ? '' : 's'}` : '—' }
-    case 'commission': { const c = commissionOf(w); return c ? `${formatCurrency(c)} (${num(w.soaCommissionRate)}%)` : '—' }
-    case 'threePct': return num(w.soaAmount) ? formatCurrency(num(w.soaAmount) * 0.03) : '—'
-    case 'payout': return w.payoutBatch || '—'
-    case 'qb': return w.qbEntry || '—'
+    case 'name': return r.patientName || ''
+    case 'branch': return branchLabel(r.branch) || ''
+    case 'linked': return r.wallet ? 'tagged' : (r.caseId ? 'not tagged' : 'POS')
+    case 'docsDate': return dayKey(r.glDocsSubmittedAt) || '￿'
+    case 'requested': return num(r.glRequestedAmount)
+    case 'released': return dayKey(r.glReleasedAt) || '￿'
+    case 'approved': return r.approved
+    case 'soaAmount': return num(r.soaAmount)
+    case 'posBalance': return r.posBalance ?? Number.MAX_SAFE_INTEGER
+    case 'rendered': return r.rendered ? 'YES' : 'NO'
+    case 'soaSubmitted': return r.soaSubmittedAt ? 'YES' : 'NO'
+    case 'soaDate': return dayKey(r.soaSubmittedAt) || '￿'
+    case 'status': return r.paid ? 'PAID' : 'UNPAID'
+    case 'paidDate': return dayKey(r.lastPaymentDate) || '￿'
+    case 'arDays': return arRunningDays(r) ?? Number.MAX_SAFE_INTEGER
+    case 'perMonths': return typeof r.monthsToPay === 'number' ? r.monthsToPay : Number.MAX_SAFE_INTEGER
+    case 'guardian': return r.guardianName || ''
+    case 'drive': return r.files.length
+    case 'commission': return commissionOf(r)
+    case 'threePct': return num(r.soaAmount) * 0.03
+    case 'payout': return r.payoutBatch || ''
+    case 'qb': return r.qbEntry || ''
   }
 }
 
 export default function DetailedGl({
-  wallets, canWrite, onSaved,
+  wallets, glCases = [], canWrite, onSaved,
 }: {
   wallets: GlCaseWallet[]
+  glCases?: GlCaseRow[]
   canWrite: boolean
   onSaved: () => void
 }) {
@@ -188,18 +297,21 @@ export default function DetailedGl({
   const [sortKey, setSortKey] = useState<ColKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [editing, setEditing] = useState<GlCaseWallet | null>(null)
+  const [editingCase, setEditingCase] = useState<GlCaseRow | 'new' | null>(null)
+
+  const allRows = useMemo(() => buildRows(wallets, glCases), [wallets, glCases])
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    let out = wallets
+    let out = allRows
     if (q) {
       // One box, every column — staff search by guardian or QB ref as often as by name.
-      out = out.filter(w => COLS.some(c => cellText(w, c.key).toLowerCase().includes(q)))
+      out = out.filter(r => COLS.some(c => cellText(r, c.key).toLowerCase().includes(q)))
     }
     for (const [k, v] of Object.entries(filters)) {
       const needle = (v || '').trim().toLowerCase()
       if (!needle) continue
-      out = out.filter(w => cellText(w, k as ColKey).toLowerCase().includes(needle))
+      out = out.filter(r => cellText(r, k as ColKey).toLowerCase().includes(needle))
     }
     return [...out].sort((a, b) => {
       const av = sortValue(a, sortKey), bv = sortValue(b, sortKey)
@@ -208,7 +320,7 @@ export default function DetailedGl({
         : String(av).localeCompare(String(bv))
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [wallets, search, filters, sortKey, sortDir])
+  }, [allRows, search, filters, sortKey, sortDir])
 
   const toggleSort = (k: ColKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -216,7 +328,15 @@ export default function DetailedGl({
   }
 
   const activeFilters = Object.values(filters).filter(v => (v || '').trim()).length
-  const exportRows = () => rows.map(w => COLS.map(c => cellText(w, c.key)))
+  const exportRows = () => rows.map(r => COLS.map(c => cellText(r, c.key)))
+
+  /** Wallets already spoken for. The picker excludes these, except the one the
+   *  entry being edited is itself tagged to — otherwise editing a tagged entry
+   *  would show its own wallet as missing and silently offer to untag it. */
+  const claimedWalletIds = useMemo(
+    () => new Set(glCases.map(c => c.walletId).filter((v): v is string => !!v)),
+    [glCases],
+  )
 
   const table = (
     <table className="w-full text-xs">
@@ -249,15 +369,18 @@ export default function DetailedGl({
             No Guarantee Letters match the current search and filters.
           </td></tr>
         )}
-        {rows.map(w => {
-          const tone = rowTone(w)
+        {rows.map(r => {
+          const tone = rowTone(r)
           return (
-          <tr key={w.id}
+          <tr key={r.key}
             className={`border-t ${tone ? '' : 'hover:bg-gray-50'}`}
             style={{ borderColor: 'var(--light-gray)', background: tone ? TONE_BG[tone] : undefined }}>
             {canWrite && (
               <td className="px-2 py-1.5">
-                <button onClick={() => setEditing(w)} className="p-1 rounded hover:bg-teal-50" title="Edit case details">
+                <button
+                  onClick={() => (r.source ? setEditingCase(r.source) : setEditing(r.wallet))}
+                  className="p-1 rounded hover:bg-teal-50"
+                  title={r.source ? 'Edit entry' : 'Edit case details'}>
                   <Pencil size={12} style={{ color: 'var(--teal)' }} />
                 </button>
               </td>
@@ -265,17 +388,23 @@ export default function DetailedGl({
             {COLS.map(c => (
               <td key={c.key}
                 className={`px-2 py-1.5 whitespace-nowrap ${c.numeric ? 'text-right tabular-nums' : ''}`}
-                style={{ color: cellText(w, c.key) === '—' ? 'var(--light-gray)' : 'var(--charcoal)' }}>
+                style={{ color: cellText(r, c.key) === '—' ? 'var(--light-gray)' : 'var(--charcoal)' }}>
                 {c.key === 'drive'
-                  ? (fileUrls(w).length
-                      ? fileUrls(w).map((u, i) => (
+                  ? (r.files.length
+                      ? r.files.map((u, i) => (
                           <a key={u + i} href={u} target="_blank" rel="noreferrer"
                             className="underline mr-1.5" style={{ color: 'var(--teal)' }}>
                             file {i + 1}
                           </a>
                         ))
                       : '—')
-                  : cellText(w, c.key)}
+                  : c.key === 'linked'
+                    ? (r.wallet
+                        ? <span className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}>
+                            <Link2 size={11} /> {r.caseId ? 'tagged' : 'POS'}
+                          </span>
+                        : <span style={{ color: '#c44b00' }}>not tagged</span>)
+                    : cellText(r, c.key)}
               </td>
             ))}
           </tr>
@@ -289,7 +418,7 @@ export default function DetailedGl({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -303,7 +432,7 @@ export default function DetailedGl({
           )}
         </div>
         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-          {rows.length} of {wallets.length} letters
+          {rows.length} of {allRows.length} letters
         </span>
         {/* Without a key the tints are just decoration — say what they mean. */}
         <span className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
@@ -323,6 +452,13 @@ export default function DetailedGl({
             className="text-xs font-semibold px-2.5 py-1.5 rounded-lg"
             style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
             Clear {activeFilters} filter{activeFilters === 1 ? '' : 's'}
+          </button>
+        )}
+        {canWrite && (
+          <button onClick={() => setEditingCase('new')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+            style={{ background: 'var(--teal)' }}>
+            <Plus size={13} /> Add entry
           </button>
         )}
         <button
@@ -350,6 +486,213 @@ export default function DetailedGl({
       {editing && (
         <GlCaseModal wallet={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onSaved() }} />
       )}
+      {editingCase && (
+        <GlEntryModal
+          entry={editingCase === 'new' ? null : editingCase}
+          wallets={wallets}
+          claimedWalletIds={claimedWalletIds}
+          onClose={() => setEditingCase(null)}
+          onSaved={() => { setEditingCase(null); onSaved() }}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ── Add / edit a standalone entry, including which POS wallet it is tagged to ── */
+function GlEntryModal({
+  entry, wallets, claimedWalletIds, onClose, onSaved,
+}: {
+  entry: GlCaseRow | null
+  wallets: GlCaseWallet[]
+  claimedWalletIds: Set<string>
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState({
+    patientName: entry?.patientName || '',
+    branch: entry?.branch || 'SANDBOX_EAST',
+    walletId: entry?.walletId || '',
+    glDocsSubmittedAt: dayKey(entry?.glDocsSubmittedAt),
+    glRequestedAmount: entry?.glRequestedAmount != null ? String(num(entry.glRequestedAmount)) : '',
+    glReleasedAt: dayKey(entry?.glReleasedAt),
+    approvedAmount: entry?.approvedAmount != null ? String(num(entry.approvedAmount)) : '',
+    soaAmount: entry?.soaAmount != null ? String(num(entry.soaAmount)) : '',
+    soaSubmittedAt: dayKey(entry?.soaSubmittedAt),
+    soaCommissionRate: entry?.soaCommissionRate != null ? String(num(entry.soaCommissionRate)) : '25',
+    guardianName: entry?.guardianName || '',
+    payoutBatch: entry?.payoutBatch || '',
+    qbEntry: entry?.qbEntry || '',
+    paidAt: dayKey(entry?.paidAt),
+    notes: entry?.notes || '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [walletSearch, setWalletSearch] = useState('')
+
+  const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  // Free wallets, plus the one this entry already holds — without that exception
+  // an edit would show its own wallet as missing and quietly offer to untag it.
+  const available = useMemo(
+    () => wallets.filter(w => !claimedWalletIds.has(w.id) || w.id === entry?.walletId),
+    [wallets, claimedWalletIds, entry?.walletId],
+  )
+  const options = useMemo(() => {
+    const q = walletSearch.trim().toLowerCase()
+    const list = q ? available.filter(w => w.patientName.toLowerCase().includes(q)) : available
+    // The tagged wallet stays in the list even when the search would exclude it,
+    // so the select never renders a value it has no option for.
+    const shown = list.slice(0, 40)
+    const current = available.find(w => w.id === form.walletId)
+    return current && !shown.some(w => w.id === current.id) ? [current, ...shown] : shown
+  }, [available, walletSearch, form.walletId])
+
+  const save = async () => {
+    if (!form.patientName.trim()) { setError('Name is required'); return }
+    setBusy(true); setError('')
+    try {
+      const body = { ...form, walletId: form.walletId || null }
+      const res = await fetch('/api/accounts-receivable/gl-case', {
+        method: entry ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry ? { caseId: entry.id, ...body } : body),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || `Save failed (${res.status})`)
+      }
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally { setBusy(false) }
+  }
+
+  const remove = async () => {
+    if (!entry) return
+    if (!confirm(`Delete the Detailed GL entry for ${entry.patientName}? The POS wallet, if tagged, is not touched.`)) return
+    setBusy(true); setError('')
+    try {
+      const res = await fetch(`/api/accounts-receivable/gl-case?caseId=${encodeURIComponent(entry.id)}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || `Delete failed (${res.status})`)
+      }
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+    } finally { setBusy(false) }
+  }
+
+  const field = (label: string, k: keyof typeof form, type: 'text' | 'date' | 'number' = 'text', hint?: string) => (
+    <div>
+      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
+      <input type={type} value={form[k]} onChange={e => set(k, e.target.value)}
+        step={type === 'number' ? '0.01' : undefined}
+        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+      {hint && <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
+    </div>
+  )
+
+  const tagged = available.find(w => w.id === form.walletId) || null
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl mt-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>
+              {entry ? entry.patientName : 'New Detailed GL entry'}
+            </h2>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              For a letter POS has no wallet for yet — a second application, or one still awaiting approval.
+              Tag it to a wallet whenever one exists.
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+          {field('Name', 'patientName')}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+            <select value={form.branch} onChange={e => set('branch', e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="SANDBOX_EAST">Aura Health East</option>
+              <option value="SANDBOX_GREENHILLS">Aura Health Greenhills</option>
+              <option value="ALL">All branches</option>
+            </select>
+          </div>
+        </div>
+
+        {/* ── Tagging ── */}
+        <div className="mt-4 p-3 rounded-xl border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+            Tag to a POS GL wallet
+          </label>
+          <p className="text-[10px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+            Once tagged, “Rendered service?”, “Balance left (POS)”, “Approved GL” and the payment status all come
+            from that wallet. Leave blank while the letter has no wallet yet.
+          </p>
+          <input
+            value={walletSearch}
+            onChange={e => setWalletSearch(e.target.value)}
+            placeholder="Search wallets by patient name…"
+            className="w-full px-3 py-2 rounded-xl border text-sm outline-none mb-2" style={{ borderColor: 'var(--light-gray)' }} />
+          <select value={form.walletId} onChange={e => set('walletId', e.target.value)}
+            className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <option value="">— not tagged —</option>
+            {options.map(w => (
+              <option key={w.id} value={w.id}>
+                {w.patientName} · {branchLabel(w.branch) || 'no branch'} · {formatCurrency(num(w.balance))} left
+              </option>
+            ))}
+          </select>
+          {tagged && (
+            <p className="text-[11px] mt-2" style={{ color: 'var(--deep-teal)' }}>
+              Approved {formatCurrency(num(tagged.totalGlAmount))} · {formatCurrency(num(tagged.balance))} left ·
+              {' '}{drawnDown(tagged) ? 'drawn down, so “Rendered service?” reads YES' : 'not drawn down yet, so “Rendered service?” reads NO'}
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+          {field('Date submission of documents', 'glDocsSubmittedAt', 'date')}
+          {field('Requested GL (₱)', 'glRequestedAmount', 'number')}
+          {field('GL release date', 'glReleasedAt', 'date')}
+          {field('Approved GL (₱)', 'approvedAmount', 'number', 'Ignored once tagged — the wallet’s approved amount wins.')}
+          {field('Amount in SOA (₱)', 'soaAmount', 'number')}
+          {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
+          {field('GL processor fee rate (%)', 'soaCommissionRate', 'number', '25% currently; older letters were 20%.')}
+          {field('Guardian name', 'guardianName')}
+          {field('Date of payment', 'paidAt', 'date', 'Ignored once tagged — payments come from the wallet.')}
+          {field('Payout', 'payoutBatch', 'text', 'e.g. 3/26-4/10')}
+          {field('QB entry', 'qbEntry', 'text', 'e.g. AR25-0027')}
+          {field('Notes', 'notes')}
+        </div>
+
+        {error && (
+          <p className="mt-3 text-xs px-3 py-2 rounded-lg" style={{ background: '#fef2f2', color: '#dc2626' }}>{error}</p>
+        )}
+
+        <div className="flex justify-between gap-2 mt-5">
+          {entry ? (
+            <button onClick={remove} disabled={busy}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border disabled:opacity-50"
+              style={{ borderColor: '#fecaca', color: '#dc2626' }}>
+              <Trash2 size={14} /> Delete entry
+            </button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium border"
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+            <button onClick={save} disabled={busy}
+              className="px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+              {busy ? 'Saving…' : entry ? 'Save' : 'Create entry'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
