@@ -140,6 +140,7 @@ export async function GET(req: NextRequest) {
     cancelled: number
     pending: number
     blank: number
+    overbooked: number
   }
 
   const therapistMap = new Map<string, TherapistData>()
@@ -187,6 +188,7 @@ export async function GET(req: NextRequest) {
       cancelled: 0,
       pending: 0,
       blank: 0,
+      overbooked: 0,
     })
   }
 
@@ -213,10 +215,27 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── 5. Compute blank slots ─────────────────────────────────────────────────
+  // ── 5. Compute blank and over-capacity slots ───────────────────────────────
+  // Capacity is one slot per (day, hour) — the decking module can seat more
+  // than one patient in a timeslot, but the hour itself is still one slot.
+  //
+  // Over-capacity counts only bookings that actually OCCUPY the hour, which is
+  // CONFIRMED + PENDING. A CANCELLED session releases its slot, and a
+  // RESCHEDULED one has been moved to a different time (where it exists as its
+  // own row), so neither holds the original hour. Counting them would flag a
+  // therapist as double-decked purely for having had churn in the period —
+  // eight slots with eight confirmed sessions and four earlier cancellations
+  // is a full day, not an over-booked one.
+  //
+  // `blank` keeps its existing definition (every non-blank status consumes a
+  // slot) so historical figures do not shift under a change scoped to
+  // over-capacity. Note this leaves the two deliberately asymmetric: a period
+  // with heavy cancellation can report 0 blank and 0 overbooked at once.
   for (const t of therapistMap.values()) {
     const used = t.confirmed + t.rescheduled + t.cancelled + t.pending
+    const occupied = t.confirmed + t.pending
     t.blank = Math.max(0, t.totalSlots - used)
+    t.overbooked = Math.max(0, occupied - t.totalSlots)
   }
 
   // Sort by real name first (better alphabetical grouping), mask last —
@@ -235,6 +254,7 @@ export async function GET(req: NextRequest) {
     cancelled: 0,
     pending: 0,
     blank: 0,
+    overbooked: 0,
   }
   for (const t of therapists) {
     summary.totalSlots  += t.totalSlots
@@ -243,6 +263,7 @@ export async function GET(req: NextRequest) {
     summary.cancelled   += t.cancelled
     summary.pending     += t.pending
     summary.blank       += t.blank
+    summary.overbooked  += t.overbooked
   }
 
   return NextResponse.json({ therapists, summary })
