@@ -675,6 +675,7 @@ interface TherapistUtil {
   cancelled: number
   pending: number
   blank: number
+  overbooked: number
 }
 
 interface UtilSummary {
@@ -684,6 +685,7 @@ interface UtilSummary {
   cancelled: number
   pending: number
   blank: number
+  overbooked: number
 }
 
 function pct(n: number, total: number): string {
@@ -695,6 +697,17 @@ function UtilBar({ confirmed, rescheduled, cancelled, pending, blank, total }: {
   confirmed: number; rescheduled: number; cancelled: number; pending: number; blank: number; total: number
 }) {
   if (total === 0) return <div className="h-5 bg-gray-100 rounded-full" />
+  const used = confirmed + rescheduled + cancelled + pending
+  // Only CONFIRMED + PENDING actually hold the hour — a cancelled session
+  // releases its slot and a rescheduled one has moved elsewhere — so this,
+  // not `used`, is what counts as over capacity.
+  const occupied = confirmed + pending
+  // Widths still scale by `used` so the bar can show cancelled/rescheduled
+  // history without overflowing: as flex children the segments would otherwise
+  // shrink to fit, quietly renormalising the proportions so an over-full bar
+  // looked exactly like a perfectly full one. flexShrink is pinned off for the
+  // same reason.
+  const scale = Math.max(total, used)
   const segments = [
     { value: confirmed,   color: '#10b981', label: 'Confirmed' },
     { value: rescheduled, color: '#f59e0b', label: 'Rescheduled' },
@@ -703,18 +716,28 @@ function UtilBar({ confirmed, rescheduled, cancelled, pending, blank, total }: {
     { value: blank,       color: '#e5e7eb', label: 'Blank' },
   ]
   return (
-    <div className="flex h-5 rounded-full overflow-hidden" style={{ background: '#f3f4f6' }}>
+    <div className="relative flex h-5 rounded-full overflow-hidden" style={{ background: '#f3f4f6' }}>
       {segments.map(seg => {
-        const w = (seg.value / total) * 100
+        const w = (seg.value / scale) * 100
         if (w === 0) return null
         return (
           <div
             key={seg.label}
             title={`${seg.label}: ${seg.value} (${pct(seg.value, total)}%)`}
-            style={{ width: `${w}%`, background: seg.color, transition: 'width 0.3s' }}
+            style={{ width: `${w}%`, background: seg.color, flexShrink: 0, transition: 'width 0.3s' }}
           />
         )
       })}
+      {occupied > total && (
+        <div
+          title={`Capacity ${total} slots — ${occupied - total} live booking${occupied - total === 1 ? '' : 's'} beyond it (confirmed + pending; cancelled and rescheduled do not hold a slot)`}
+          style={{
+            position: 'absolute', top: 0, bottom: 0,
+            left: `${(total / scale) * 100}%`,
+            width: 2, background: '#881337',
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -759,7 +782,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
   const byDept = useMemo(() => {
     const map = new Map<string, { therapists: TherapistUtil[]; totals: UtilSummary }>()
     for (const t of data) {
-      if (!map.has(t.department)) map.set(t.department, { therapists: [], totals: { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0 } })
+      if (!map.has(t.department)) map.set(t.department, { therapists: [], totals: { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0 } })
       const g = map.get(t.department)!
       g.therapists.push(t)
       g.totals.totalSlots  += t.totalSlots
@@ -768,6 +791,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
       g.totals.cancelled   += t.cancelled
       g.totals.pending     += t.pending
       g.totals.blank       += t.blank
+      g.totals.overbooked  += t.overbooked
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   }, [data])
@@ -775,7 +799,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
   const byBranch = useMemo(() => {
     const map = new Map<string, UtilSummary>()
     for (const t of data) {
-      if (!map.has(t.branch)) map.set(t.branch, { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0 })
+      if (!map.has(t.branch)) map.set(t.branch, { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0 })
       const g = map.get(t.branch)!
       g.totalSlots  += t.totalSlots
       g.confirmed   += t.confirmed
@@ -783,6 +807,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
       g.cancelled   += t.cancelled
       g.pending     += t.pending
       g.blank       += t.blank
+      g.overbooked  += t.overbooked
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   }, [data])
@@ -898,10 +923,14 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
                         <UtilBar {...t} total={t.totalSlots} />
                       </div>
                       <div className="text-right min-w-[60px]">
-                        <div className="text-base font-extrabold" style={{ color: utilizationPct >= 80 ? '#10b981' : utilizationPct >= 50 ? '#f59e0b' : '#ef4444' }}>
+                        <div className="text-base font-extrabold" style={{ color: utilizationPct > 100 ? '#be123c' : utilizationPct >= 80 ? '#10b981' : utilizationPct >= 50 ? '#f59e0b' : '#ef4444' }}>
                           {pct(t.confirmed, t.totalSlots)}%
                         </div>
-                        <div className="text-[10px] text-gray-400">confirmed</div>
+                        <div className="text-[10px] text-gray-400">
+                          {t.overbooked > 0
+                            ? <span className="text-rose-700 font-bold">over capacity</span>
+                            : 'confirmed'}
+                        </div>
                       </div>
                       {isExpanded ? <ChevronUp size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />}
                     </button>
@@ -913,6 +942,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
                           {statBox('Cancelled', t.cancelled, t.totalSlots, '#ef4444')}
                           {statBox('Pending', t.pending, t.totalSlots, '#6366f1')}
                           {statBox('Blank', t.blank, t.totalSlots, '#9ca3af')}
+                          {t.overbooked > 0 && statBox('Over capacity', t.overbooked, t.totalSlots, '#be123c')}
                         </div>
                       </div>
                     )}
