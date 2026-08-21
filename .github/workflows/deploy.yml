@@ -462,6 +462,11 @@ jobs:
               grep "^GOOGLE_CLIENT_SECRET" "$MENV" >> .env 2>/dev/null || true
               grep "^GOOGLE_REDIRECT_URI" "$MENV" >> .env 2>/dev/null || true
               grep "^GOOGLE_REFRESH_TOKEN" "$MENV" >> .env 2>/dev/null || true
+              # Service account for Gmail domain-wide delegation — lets the staff
+              # portal send patient reports AS the branch address (east@/greenhills@)
+              # with no per-address "Send mail as" alias. Optional: if absent, sends
+              # fall back to the refresh-token mailbox. Add it to $MENV to enable.
+              grep "^GOOGLE_SERVICE_ACCOUNT_KEY" "$MENV" >> .env 2>/dev/null || true
               grep "^GMAIL_FROM_EMAIL" "$MENV" >> .env 2>/dev/null || true
               echo "UPLOAD_DIR=./uploads" >> .env
               echo "TELETHERAPY_HR_API_KEY=scei-teletherapy-hr-2026" >> .env
