@@ -12,6 +12,8 @@ export interface GlCaseWallet {
   id: string
   patientName: string
   branch?: string | null
+  /** What is still left on the letter's wallet in POS, after consumption. */
+  balance?: number | string | null
   totalGlAmount?: number | string | null
   paidTotal?: number
   lastPaymentDate?: string | null
@@ -50,6 +52,23 @@ function fileUrls(w: GlCaseWallet): string[] {
   return out
 }
 
+/**
+ * Row tint. Paid wins over SOA-submitted: a settled letter almost always has an
+ * SOA behind it, and "has it been paid" is the question the sheet is read for.
+ * Tints are deliberately pale — every cell still carries its own text colour,
+ * and a saturated fill makes the greyed-out em-dashes unreadable.
+ */
+type RowTone = 'paid' | 'soa' | null
+function rowTone(w: GlCaseWallet): RowTone {
+  if (num(w.paidTotal) > 0) return 'paid'
+  if (w.soaSubmittedAt) return 'soa'
+  return null
+}
+const TONE_BG: Record<'paid' | 'soa', string> = {
+  paid: '#f0fdf4',  // green-50
+  soa: '#fefce8',   // yellow-50
+}
+
 /** Whole days between SOA submission and payment — the sheet's "AR running days". */
 function arRunningDays(w: GlCaseWallet): number | null {
   if (!w.soaSubmittedAt || !w.lastPaymentDate) return null
@@ -60,6 +79,7 @@ function arRunningDays(w: GlCaseWallet): number | null {
 /** Columns in the order the OPGL SUMMARY sheet uses, with Branch added. */
 type ColKey =
   | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
+  | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'status' | 'paidDate' | 'arDays' | 'perMonths'
   | 'guardian' | 'drive' | 'commission' | 'threePct' | 'payout' | 'qb'
 
@@ -73,6 +93,8 @@ const COLS: Col[] = [
   { key: 'released', label: 'Status/ GL release date' },
   { key: 'approved', label: 'Approved GL', numeric: true },
   { key: 'soaAmount', label: 'Amount in SOA', numeric: true },
+  // What POS still has on the wallet, next to the approved figure it draws down from.
+  { key: 'posBalance', label: 'Balance left (POS)', numeric: true },
   { key: 'rendered', label: 'Rendered service?' },
   { key: 'soaSubmitted', label: 'SOA submitted' },
   { key: 'soaDate', label: 'Date submission of SOA' },
@@ -98,6 +120,7 @@ function sortValue(w: GlCaseWallet, k: ColKey): string | number {
     case 'released': return dayKey(w.glReleasedAt) || '￿'
     case 'approved': return num(w.totalGlAmount)
     case 'soaAmount': return num(w.soaAmount)
+    case 'posBalance': return num(w.balance)
     case 'rendered': return w.hasOrders ? 'YES' : 'NO'
     case 'soaSubmitted': return w.soaSubmittedAt ? 'YES' : 'NO'
     case 'soaDate': return dayKey(w.soaSubmittedAt) || '￿'
@@ -136,6 +159,7 @@ function cellText(w: GlCaseWallet, k: ColKey): string {
     case 'released': return fmtDate(w.glReleasedAt) || '—'
     case 'approved': return formatCurrency(num(w.totalGlAmount))
     case 'soaAmount': return num(w.soaAmount) ? formatCurrency(num(w.soaAmount)) : '—'
+    case 'posBalance': return w.balance == null ? '—' : formatCurrency(num(w.balance))
     case 'rendered': return w.hasOrders ? 'YES' : 'NO'
     case 'soaSubmitted': return w.soaSubmittedAt ? 'YES' : 'NO'
     case 'soaDate': return fmtDate(w.soaSubmittedAt) || '—'
@@ -225,8 +249,12 @@ export default function DetailedGl({
             No Guarantee Letters match the current search and filters.
           </td></tr>
         )}
-        {rows.map(w => (
-          <tr key={w.id} className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+        {rows.map(w => {
+          const tone = rowTone(w)
+          return (
+          <tr key={w.id}
+            className={`border-t ${tone ? '' : 'hover:bg-gray-50'}`}
+            style={{ borderColor: 'var(--light-gray)', background: tone ? TONE_BG[tone] : undefined }}>
             {canWrite && (
               <td className="px-2 py-1.5">
                 <button onClick={() => setEditing(w)} className="p-1 rounded hover:bg-teal-50" title="Edit case details">
@@ -251,7 +279,8 @@ export default function DetailedGl({
               </td>
             ))}
           </tr>
-        ))}
+          )
+        })}
       </tbody>
     </table>
   )
@@ -275,6 +304,19 @@ export default function DetailedGl({
         </div>
         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
           {rows.length} of {wallets.length} letters
+        </span>
+        {/* Without a key the tints are just decoration — say what they mean. */}
+        <span className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm border"
+              style={{ background: TONE_BG.paid, borderColor: 'var(--light-gray)' }} />
+            Paid
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm border"
+              style={{ background: TONE_BG.soa, borderColor: 'var(--light-gray)' }} />
+            SOA submitted
+          </span>
         </span>
         {activeFilters > 0 && (
           <button onClick={() => setFilters({})}
