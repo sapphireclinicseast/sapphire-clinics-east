@@ -2166,11 +2166,53 @@ export default function ReportsPage() {
       )}
 
       {effTab === 'contribution' ? (
-        <ContributionMargin
-          year={year}
-          branch={isTickboxes ? isBranchSel : effBranch}
-          onData={setCmData}
-        />
+        <>
+          {/* Year + branch filters — the shared filter row lives in the
+              statements branch below, so this tab carries its own. */}
+          <div className="flex flex-wrap items-center gap-3 mb-5 px-4 pt-4 print:hidden">
+            <div className="flex items-center gap-2">
+              <Calendar size={16} style={{ color: 'var(--mid-gray)' }} />
+              <div className="relative">
+                <select
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                  style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
+                >
+                  {years.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
+              {TICK_BRANCHES.map(b => (
+                <label
+                  key={b.value}
+                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-medium cursor-pointer select-none"
+                  style={{
+                    border: `1px solid ${isTicked.includes(b.value) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`,
+                    color: 'var(--charcoal)',
+                    background: isTicked.includes(b.value) ? '#f0f7f2' : 'white',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isTicked.includes(b.value)}
+                    onChange={() => toggleIsBranch(b.value)}
+                    className="accent-current"
+                  />
+                  {b.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <ContributionMargin
+            year={year}
+            branch={isTickboxes ? isBranchSel : effBranch}
+            onData={setCmData}
+          />
+        </>
       ) : effTab === 'graphs' ? <GraphsView /> : <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-5 print:hidden">
