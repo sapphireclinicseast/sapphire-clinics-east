@@ -907,6 +907,26 @@ jobs:
             echo "→ Skipping migration replay by design (schema is applied out-of-band"
             echo "  via docker/redeploy.sh's additive block)."
 
+            # ONE migration, run deliberately — per the guidance above, and not a
+            # replay loop. redeploy.sh's additive block is a manual script this
+            # workflow never invokes, so a column added only there never reaches
+            # the database. These three are read by /api/accounts-receivable, so
+            # the Guarantee Letters tab fails to load without them.
+            # The file is idempotent (IF NOT EXISTS throughout, FK guarded), so
+            # re-running on every deploy is harmless.
+            GLP_SQL="$DEPLOY_DIR/prisma/migrations/20260821_gl_processor_payout/migration.sql"
+            if [ -f "$GLP_SQL" ]; then
+              echo "→ Applying GL processor payout columns..."
+              docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$GLP_SQL" \
+                && echo "   GL processor columns applied." \
+                || echo "   ⚠ GL processor column apply failed (non-fatal) — Detailed GL payout will error until fixed."
+              docker exec accounting_db psql -U sapphire -d sapphire_accounting -tAc \
+                "SELECT count(*) FROM information_schema.columns WHERE table_name='GlCase' AND column_name IN ('processorRfpId','processorPaidAt','processorProofUrl');" \
+                | sed 's/^/   GlCase processor columns present: /' || true
+            else
+              echo "   (GL processor migration file not found — skipped.)"
+            fi
+
             # NOTE: the admin-password reset that used to live here has been removed
             # on the owner's instruction (2026-08-20). It hardcoded a bcrypt hash for
             # the password "SCEI" and reapplied it to main@ and admin@ on every
