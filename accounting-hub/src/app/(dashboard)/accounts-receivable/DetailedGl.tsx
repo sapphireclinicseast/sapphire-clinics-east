@@ -185,8 +185,10 @@ const TONE_BG: Record<'paid' | 'soa', string> = {
 
 /** Whole days between SOA submission and payment — the sheet's "AR running days". */
 function arRunningDays(r: Row): number | null {
-  if (!r.soaSubmittedAt || !r.lastPaymentDate) return null
-  const ms = new Date(r.lastPaymentDate).getTime() - new Date(r.soaSubmittedAt).getTime()
+  if (!r.soaSubmittedAt) return null
+  // Paid letters stop at the payment date; unpaid ones keep running to today.
+  const end = r.lastPaymentDate ? new Date(r.lastPaymentDate) : new Date()
+  const ms = end.getTime() - new Date(r.soaSubmittedAt).getTime()
   return Math.round(ms / 86_400_000)
 }
 
@@ -307,9 +309,24 @@ export default function DetailedGl({
 
   const allRows = useMemo(() => buildRows(wallets, glCases), [wallets, glCases])
 
+  // Branch tickboxes: tick a subset and both the table and the totals above it
+  // cover only those branches.
+  const branchOptions = useMemo(() => {
+    const set = new Set(allRows.map(r => r.branch || ''))
+    return Array.from(set).sort((a, b) => (a || 'zz').localeCompare(b || 'zz'))
+  }, [allRows])
+  const [branchTicked, setBranchTicked] = useState<string[] | null>(null)
+  const ticked = branchTicked ?? branchOptions
+  const toggleBranch = (b: string) => {
+    const next = ticked.includes(b) ? ticked.filter(x => x !== b) : [...ticked, b]
+    if (next.length === 0) return
+    setBranchTicked(next)
+  }
+
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     let out = allRows
+    if (ticked.length !== branchOptions.length) out = out.filter(r => ticked.includes(r.branch || ''))
     if (q) {
       // One box, every column — staff search by guardian or QB ref as often as by name.
       out = out.filter(r => COLS.some(c => cellText(r, c.key).toLowerCase().includes(q)))
@@ -326,7 +343,7 @@ export default function DetailedGl({
         : String(av).localeCompare(String(bv))
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [allRows, search, filters, sortKey, sortDir])
+  }, [allRows, search, filters, sortKey, sortDir, ticked, branchOptions])
 
   const toggleSort = (k: ColKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -420,8 +437,32 @@ export default function DetailedGl({
     </table>
   )
 
+  const totals = rows.reduce((a, r) => ({
+    requested: a.requested + num(r.glRequestedAmount),
+    approved: a.approved + num(r.approved),
+    soa: a.soa + num(r.soaAmount),
+  }), { requested: 0, approved: 0, soa: 0 })
+
   return (
     <div className="space-y-3">
+      {/* Branch filter + headline totals for the ticked branches */}
+      <div className="flex flex-wrap items-center gap-2">
+        {branchOptions.map(b => (
+          <label key={b || 'none'} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+            style={{ border: `1px solid ${ticked.includes(b) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`, background: ticked.includes(b) ? '#f0f7f2' : 'white', color: 'var(--charcoal)' }}>
+            <input type="checkbox" checked={ticked.includes(b)} onChange={() => toggleBranch(b)} className="accent-current" />
+            {b ? branchLabel(b) || b : 'No branch'}
+          </label>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {([['Requested GL', totals.requested], ['Approved GL', totals.approved], ['Amount in SOA', totals.soa]] as [string, number][]).map(([label, v]) => (
+          <div key={label} className="rounded-xl px-4 py-3" style={{ border: '1px solid var(--light-gray)', background: '#f8fafc' }}>
+            <div className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>{label}</div>
+            <div className="text-lg font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatCurrency(v)}</div>
+          </div>
+        ))}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
@@ -799,6 +840,10 @@ function GlCaseModal({ wallet, cases, onClose, onSaved }: { wallet: GlCaseWallet
           {field('Guardian name', 'guardianName')}
           {field('Payout', 'payoutBatch', 'text', 'e.g. 3/26-4/10')}
           {field('QB entry', 'qbEntry', 'text', 'e.g. AR25-0027')}
+          <div className="sm:col-span-2 rounded-xl px-3 py-2 text-xs" style={{ background: '#f8fafc', border: '1px solid var(--light-gray)' }}>
+            <span className="font-semibold" style={{ color: '#334155' }}>Live from POS (not edited here): </span>
+            approved {formatCurrency(num(wallet.totalGlAmount))} · balance {wallet.balance != null ? formatCurrency(num(wallet.balance)) : '—'} · {num(wallet.paidTotal) > 0 ? `paid — last payment ${wallet.lastPaymentDate ? dayKey(wallet.lastPaymentDate) : '—'}` : 'unpaid'}
+          </div>
           <div>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Tagged recorded entry</label>
             <select value={linkCaseId} onChange={e => setLinkCaseId(e.target.value)}
