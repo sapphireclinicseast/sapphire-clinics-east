@@ -190,9 +190,15 @@ function arRunningDays(r: Row): number | null {
   return Math.round(ms / 86_400_000)
 }
 
+/** Effective processor-fee rate: the stored per-letter rate, else the current
+ *  25% default — the modal shows 25 pre-filled, so unsaved rows must not read
+ *  as "no fee". Older 20% letters keep their stored rate once saved. */
+function commissionRateOf(r: Row): number {
+  const stored = num(r.soaCommissionRate)
+  return stored > 0 ? stored : 25
+}
 function commissionOf(r: Row): number {
-  const rate = num(r.soaCommissionRate)
-  return rate > 0 ? num(r.soaAmount) * (rate / 100) : 0
+  return num(r.soaAmount) * (commissionRateOf(r) / 100)
 }
 
 /** Columns in the order the OPGL SUMMARY sheet uses, with Branch added. */
@@ -250,7 +256,7 @@ function cellText(r: Row, k: ColKey): string {
     case 'perMonths': return typeof r.monthsToPay === 'number' ? `${r.monthsToPay.toFixed(2)}` : '—'
     case 'guardian': return r.guardianName || '—'
     case 'drive': { const n = r.files.length; return n ? `${n} file${n === 1 ? '' : 's'}` : '—' }
-    case 'commission': { const c = commissionOf(r); return c ? `${formatCurrency(c)} (${num(r.soaCommissionRate)}%)` : '—' }
+    case 'commission': { const c = commissionOf(r); return c ? `${formatCurrency(c)} (${commissionRateOf(r)}%)` : '—' }
     case 'threePct': return num(r.soaAmount) ? formatCurrency(num(r.soaAmount) * 0.03) : '—'
     case 'payout': return r.payoutBatch || '—'
     case 'qb': return r.qbEntry || '—'
@@ -484,7 +490,7 @@ export default function DetailedGl({
       </ExpandablePanel>
 
       {editing && (
-        <GlCaseModal wallet={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onSaved() }} />
+        <GlCaseModal wallet={editing} cases={glCases} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onSaved() }} />
       )}
       {editingCase && (
         <GlEntryModal
@@ -698,7 +704,7 @@ function GlEntryModal({
 }
 
 /* ── Edit modal — only the case-tracking fields, never the amounts the ledger uses ── */
-function GlCaseModal({ wallet, onClose, onSaved }: { wallet: GlCaseWallet; onClose: () => void; onSaved: () => void }) {
+function GlCaseModal({ wallet, cases, onClose, onSaved }: { wallet: GlCaseWallet; cases: GlCaseRow[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({
     glDocsSubmittedAt: dayKey(wallet.glDocsSubmittedAt),
     glRequestedAmount: wallet.glRequestedAmount != null ? String(num(wallet.glRequestedAmount)) : '',
@@ -714,6 +720,12 @@ function GlCaseModal({ wallet, onClose, onSaved }: { wallet: GlCaseWallet; onClo
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // A standalone recorded entry (from the OPGL sheet) can be tagged to this
+  // wallet from here, merging the duplicate rows — the inverse of tagging a
+  // wallet from the entry's own modal.
+  const currentCase = cases.find(c => c.walletId === wallet.id) || null
+  const [linkCaseId, setLinkCaseId] = useState(currentCase?.id || '')
+  const linkable = cases.filter(c => !c.walletId || c.walletId === wallet.id)
 
   const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -728,6 +740,25 @@ function GlCaseModal({ wallet, onClose, onSaved }: { wallet: GlCaseWallet; onClo
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         throw new Error(d.error || `Save failed (${res.status})`)
+      }
+      // Apply the entry link/unlink when it changed.
+      if ((linkCaseId || '') !== (currentCase?.id || '')) {
+        if (currentCase && !linkCaseId) {
+          await fetch('/api/accounts-receivable/gl-case', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caseId: currentCase.id, walletId: null }),
+          })
+        }
+        if (linkCaseId) {
+          const r2 = await fetch('/api/accounts-receivable/gl-case', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caseId: linkCaseId, walletId: wallet.id }),
+          })
+          if (!r2.ok) {
+            const d2 = await r2.json().catch(() => ({}))
+            throw new Error(d2.error || 'Linking the entry failed')
+          }
+        }
       }
       onSaved()
     } catch (e) {
@@ -768,6 +799,17 @@ function GlCaseModal({ wallet, onClose, onSaved }: { wallet: GlCaseWallet; onClo
           {field('Guardian name', 'guardianName')}
           {field('Payout', 'payoutBatch', 'text', 'e.g. 3/26-4/10')}
           {field('QB entry', 'qbEntry', 'text', 'e.g. AR25-0027')}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Tagged recorded entry</label>
+            <select value={linkCaseId} onChange={e => setLinkCaseId(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm" style={{ border: '1px solid var(--light-gray)' }}>
+              <option value="">— none —</option>
+              {linkable.map(c => (
+                <option key={c.id} value={c.id}>{c.patientName}{c.guardianName ? ` · ${c.guardianName}` : ''}</option>
+              ))}
+            </select>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Links a standalone recorded entry to this POS wallet so they show as one row.</p>
+          </div>
         </div>
 
         {error && (
