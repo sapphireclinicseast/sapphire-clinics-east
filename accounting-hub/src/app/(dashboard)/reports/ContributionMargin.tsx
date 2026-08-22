@@ -61,25 +61,37 @@ export default function ContributionMargin({ year, branch, onData }: {
         <table className="w-full">
           <thead>
             <tr style={{ background: '#f8fafc' }}>
-              {['Department', 'Gross Sales', 'Discounts (allocated)', 'Net Sales', 'Professional Fees', 'Contribution Margin', 'CM %'].map((h, i) => (
-                <th key={h} className={`px-3 py-2 text-xs font-semibold ${i === 0 ? 'text-left' : 'text-right'}`} style={{ color: '#334155' }}>{h}</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold" style={{ color: '#334155' }}>Line Item</th>
+              {shown.map(r => (
+                <th key={r.key} className="px-3 py-2 text-right text-xs font-semibold whitespace-nowrap" style={{ color: '#334155' }}>{r.label}</th>
               ))}
+              <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: '#334155', borderLeft: '2px solid #94a3b8' }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            {shown.map(r => (
-              <tr key={r.key} style={{ borderTop: '1px solid var(--light-gray)' }}>
-                <td className="px-3 py-2 text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{r.label}</td>
-                {num(r.gross)}{num(-r.discounts)}{num(r.net)}{num(-r.fees)}{num(r.cm, true)}
-                <td className="px-3 py-2 text-right font-mono text-sm" style={{ color: r.cmPct != null && r.cmPct < 0 ? '#b91c1c' : 'var(--mid-gray)' }}>
-                  {r.cmPct != null ? `${r.cmPct.toFixed(1)}%` : '—'}
+            {([
+              ['Gross Sales', (r: CmRow) => r.gross, tot.gross, false],
+              ['Discounts (allocated)', (r: CmRow) => -r.discounts, -tot.discounts, false],
+              ['Net Sales', (r: CmRow) => r.net, tot.net, true],
+              ['Professional Fees', (r: CmRow) => -r.fees, -tot.fees, false],
+              ['Contribution Margin', (r: CmRow) => r.cm, tot.cm, true],
+            ] as [string, (r: CmRow) => number, number, boolean][]).map(([label, get, total, bold]) => (
+              <tr key={label} style={{ borderTop: bold ? '2px solid #94a3b8' : '1px solid var(--light-gray)', background: bold ? '#f8fafc' : undefined }}>
+                <td className={`px-3 py-2 text-sm ${bold ? 'font-bold' : 'font-medium'}`} style={{ color: 'var(--charcoal)' }}>{label}</td>
+                {shown.map(r => num(get(r), bold))}
+                <td className="px-3 py-2 text-right font-mono text-sm font-bold" style={{ color: total < 0 ? '#b91c1c' : 'var(--charcoal)', borderLeft: '2px solid #94a3b8' }}>
+                  {total < 0 ? `(${formatCurrency(Math.abs(total))})` : formatCurrency(total)}
                 </td>
               </tr>
             ))}
-            <tr style={{ borderTop: '2px solid #94a3b8', background: '#f8fafc' }}>
-              <td className="px-3 py-2 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Total — all departments</td>
-              {num(tot.gross, true)}{num(-tot.discounts, true)}{num(tot.net, true)}{num(-tot.fees, true)}{num(tot.cm, true)}
-              <td className="px-3 py-2 text-right font-mono text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+            <tr style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <td className="px-3 py-2 text-sm font-medium" style={{ color: 'var(--charcoal)' }}>CM % of Net Sales</td>
+              {shown.map(r => (
+                <td key={r.key} className="px-3 py-2 text-right font-mono text-sm" style={{ color: r.cmPct != null && r.cmPct < 0 ? '#b91c1c' : 'var(--mid-gray)' }}>
+                  {r.cmPct != null ? `${r.cmPct.toFixed(1)}%` : '—'}
+                </td>
+              ))}
+              <td className="px-3 py-2 text-right font-mono text-sm font-bold" style={{ color: 'var(--charcoal)', borderLeft: '2px solid #94a3b8' }}>
                 {tot.net > 0 ? `${((tot.cm / tot.net) * 100).toFixed(1)}%` : '—'}
               </td>
             </tr>
