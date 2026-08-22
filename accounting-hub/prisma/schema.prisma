@@ -903,6 +903,17 @@ model GlCase {
   paidAt            DateTime?
   notes             String?
 
+  // ── GL processor payout ────────────────────────────────────────────────
+  // The fee we owe the GL processor (soaAmount × soaCommissionRate) is settled
+  // in batches through an RFP. Recording the RFP here is what stops a letter
+  // being paid twice: a case with processorRfpId set is excluded from the next
+  // batch. Nullable throughout — nothing is owed until an SOA amount and a rate
+  // both exist.
+  processorRfpId    String?
+  processorRfp      ReimbursementReport? @relation("GlProcessorRfp", fields: [processorRfpId], references: [id], onDelete: SetNull)
+  processorPaidAt   DateTime?
+  processorProofUrl String?
+
   createdById String
   createdBy   User     @relation("GlCaseCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -910,6 +921,7 @@ model GlCase {
 
   @@index([patientName])
   @@index([branch])
+  @@index([processorRfpId])
 }
 
 model WalletPackage {
@@ -2492,6 +2504,7 @@ model ReimbursementReport {
   entries                  PettyCashEntry[]
   adjBatchesAsManufacturer InventoryAdjustmentBatch[] @relation("AdjBatchManufacturerRfp")
   adjBatchesAsFreight      InventoryAdjustmentBatch[] @relation("AdjBatchFreightRfp")
+  glProcessorCases         GlCase[]                   @relation("GlProcessorRfp")
 
   @@unique([branch, refNumber])
   @@index([branch])

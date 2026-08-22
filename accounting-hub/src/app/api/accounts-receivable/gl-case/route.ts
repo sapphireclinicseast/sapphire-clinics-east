@@ -123,6 +123,7 @@ const CASE_SELECT = {
   approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
   guardianName: true, soaCommissionRate: true, payoutBatch: true,
   qbEntry: true, paidAt: true, notes: true, createdAt: true,
+  processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
 } as const
 
 /**

@@ -319,6 +319,8 @@ export async function GET(req: Request) {
             approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
             guardianName: true, soaCommissionRate: true, payoutBatch: true,
             qbEntry: true, paidAt: true, notes: true,
+            // Processor payout — drives the "already paid" exclusion in the batch.
+            processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
           },
           orderBy: { patientName: 'asc' },
         })
