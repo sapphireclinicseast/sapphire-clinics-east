@@ -49,6 +49,17 @@ const MAILBOXES: Record<Mailbox, MailboxConfig> = {
 }
 
 /** Resolve a mailbox to the one that actually has a token, falling back to main@. */
+/** True when a service-account key is present and parseable — i.e. delegation can be attempted. */
+export function delegationConfigured(): boolean {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+  return !!(raw && raw.trim())
+}
+
+/**
+ * Which mailbox the refresh-token transport can actually send as. Delegation is
+ * resolved separately in sendGmail(), because it can send as any address and so
+ * never falls back.
+ */
 export function resolveMailbox(want: Mailbox): { mailbox: Mailbox; config: MailboxConfig; fellBack: boolean } {
   const wanted = MAILBOXES[want] || MAILBOXES.main
   if (process.env[wanted.tokenEnv]) return { mailbox: want, config: wanted, fellBack: false }
@@ -60,6 +71,53 @@ export function mailboxAddress(m: Mailbox): string {
 }
 
 const clients = new Map<string, gmail_v1.Gmail>()
+
+/**
+ * Domain-wide delegation. One service account impersonates any mailbox on
+ * sapphireclinicseast.org, so a new branch address needs no OAuth consent and no
+ * new secret — which is the whole point, since the per-mailbox refresh tokens
+ * below have to be minted by hand one at a time.
+ *
+ * Requires GOOGLE_SERVICE_ACCOUNT_KEY (the service-account JSON, as one line)
+ * and that account's numeric Client ID authorized for
+ * https://www.googleapis.com/auth/gmail.send in Workspace Admin Console →
+ * Security → Access and data control → API controls → Domain-wide delegation.
+ *
+ * Returns null rather than throwing when the key is absent or unparseable, so
+ * sendGmail() simply carries on to the refresh-token transport. That makes this
+ * safe to ship before the key exists — which today it does not: the variable is
+ * present but empty on the server.
+ */
+const delegated = new Map<string, gmail_v1.Gmail>()
+
+function getDelegatedGmail(address: string): gmail_v1.Gmail | null {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+  // An empty value is the normal not-configured state here, not a mistake.
+  if (!raw || !raw.trim() || !address) return null
+
+  const cached = delegated.get(address)
+  if (cached) return cached
+  try {
+    const key = JSON.parse(raw)
+    if (!key.client_email || !key.private_key) {
+      console.error('[Gmail] service account key is missing client_email or private_key')
+      return null
+    }
+    const auth = new google.auth.JWT({
+      email: key.client_email,
+      // Keys pasted into .env arrive with literal \n rather than real newlines.
+      key: String(key.private_key).replace(/\\n/g, '\n'),
+      scopes: ['https://www.googleapis.com/auth/gmail.send'],
+      subject: address,
+    })
+    const client = google.gmail({ version: 'v1', auth })
+    delegated.set(address, client)
+    return client
+  } catch (e) {
+    console.error('[Gmail] service account key parse failed:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
 
 function getGmail(tokenEnv: string): gmail_v1.Gmail {
   const cached = clients.get(tokenEnv)
@@ -177,16 +235,41 @@ export async function sendGmail(opts: {
   attachments?: GmailAttachment[]
   mailbox?: Mailbox
 }): Promise<SendResult> {
-  const { mailbox, config, fellBack } = resolveMailbox(opts.mailbox || 'main')
-  const from = `${config.displayName} <${config.address}>`
+  const want = opts.mailbox || 'main'
+  const wanted = MAILBOXES[want] || MAILBOXES.main
   const to = Array.isArray(opts.to) ? opts.to : [opts.to]
   const cc = opts.cc ? (Array.isArray(opts.cc) ? opts.cc : [opts.cc]) : undefined
+  const rawFor = (fromAddr: string, displayName: string) => buildRawMessage({
+    from: `${displayName} <${fromAddr}>`,
+    to, cc, replyTo: opts.replyTo, subject: opts.subject,
+    html: opts.html, attachments: opts.attachments || [],
+  })
 
+  // 1) Domain-wide delegation, impersonating the mailbox actually asked for.
+  //    No fallback is involved: the service account can send as any address on
+  //    the domain, so a branch mailbox needs no token of its own.
+  const impersonated = getDelegatedGmail(wanted.address)
+  if (impersonated) {
+    try {
+      await impersonated.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: rawFor(wanted.address, wanted.displayName) },
+      })
+      return { ok: true, from: wanted.address, fellBack: false }
+    } catch (err) {
+      // Most likely the gmail.send scope is not authorized for this service
+      // account's Client ID yet. Log it and try the refresh-token transport
+      // rather than failing the send outright.
+      const e = err as { message?: string; code?: number }
+      console.error(`[Gmail] delegated send as ${wanted.address} failed:`, e?.code, e?.message)
+    }
+  }
+
+  // 2) Refresh-token transport — one mailbox per token, main@ when the wanted
+  //    mailbox has none.
+  const { mailbox, config, fellBack } = resolveMailbox(want)
   try {
-    const raw = buildRawMessage({
-      from, to, cc, replyTo: opts.replyTo, subject: opts.subject,
-      html: opts.html, attachments: opts.attachments || [],
-    })
+    const raw = rawFor(config.address, config.displayName)
     await getGmail(config.tokenEnv).users.messages.send({ userId: 'me', requestBody: { raw } })
     return { ok: true, from: config.address, fellBack }
   } catch (err) {
@@ -196,7 +279,11 @@ export async function sendGmail(opts: {
   }
 }
 
-/** True when at least the default mailbox can send — used for config checks. */
+/**
+ * True when at least one transport can send: a service-account key (any mailbox)
+ * or the default mailbox's refresh token.
+ */
 export function gmailConfigured(): boolean {
+  if (delegationConfigured()) return true
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN)
 }
