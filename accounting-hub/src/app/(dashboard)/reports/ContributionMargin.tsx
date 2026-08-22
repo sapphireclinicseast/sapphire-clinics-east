@@ -2,8 +2,8 @@
 
 // Contribution-margin analysis per department — a full department P&L down to
 // net margin. Every department always shows; the page's branch tickboxes
-// filter by branch. Rent is allocated per branch by configurable percentages
-// (the "Rent allocation" button); other expenses split equally.
+// filter by branch. Rent AND other expenses are each allocated per branch by
+// configurable percentages (the "Expense allocation" button, one tab each).
 import { useEffect, useState } from 'react'
 import { Loader2, SlidersHorizontal, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
@@ -17,7 +17,9 @@ export type CmPayload = {
   year: number; branch: string; rows: CmRow[]
   adminFees: number; untaggedFees: number
   rentTotal: number; rentByBranch: Record<string, number>; rentUnallocated: number
+  otherUnallocated: number
   branchesMissingConfig: string[]
+  branchesMissingOtherConfig: string[]
   notes: string[]
 }
 
@@ -33,42 +35,60 @@ const DEPT_SHORT: Record<string, string> = {
   PSYCHOLOGY: 'Psych', ORTHOSIS: 'Ortho', TRAINING: 'Training', RETAIL: 'Retail',
 }
 
+const CATEGORIES = [
+  { value: 'RENT', label: 'Rent (8210 + 8211)' },
+  { value: 'OTHER', label: 'Other expenses' },
+]
+
 function RentAllocationModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [alloc, setAlloc] = useState<Record<string, Record<string, string>>>({})
+  // alloc[category][branch][dept] = "pct"
+  const [alloc, setAlloc] = useState<Record<string, Record<string, Record<string, string>>>>({})
+  const [cat, setCat] = useState('RENT')
   const [loading, setLoading] = useState(true)
+  const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     fetch('/api/reports/contribution/rent-allocation')
-      .then(r => r.ok ? r.json() : { allocations: {} })
+      .then(r => r.ok ? r.json() : null)
       .then(j => {
-        const a: Record<string, Record<string, string>> = {}
-        for (const b of ALLOC_BRANCHES) {
-          a[b.value] = {}
-          for (const d of ALLOC_DEPTS) a[b.value][d] = j.allocations?.[b.value]?.[d] != null ? String(j.allocations[b.value][d]) : ''
+        if (!j) return
+        const a: Record<string, Record<string, Record<string, string>>> = {}
+        for (const c of CATEGORIES) {
+          a[c.value] = {}
+          for (const b of ALLOC_BRANCHES) {
+            a[c.value][b.value] = {}
+            for (const d of ALLOC_DEPTS) {
+              const v = j.allocations?.[c.value]?.[b.value]?.[d]
+              a[c.value][b.value][d] = v != null ? String(v) : ''
+            }
+          }
         }
-        setAlloc(a)
+        setAlloc(a); setLoaded(true)
       })
       .finally(() => setLoading(false))
   }, [])
 
-  const sumOf = (b: string) => ALLOC_DEPTS.reduce((s, d) => s + (parseFloat(alloc[b]?.[d] || '') || 0), 0)
+  const sumOf = (c: string, b: string) => ALLOC_DEPTS.reduce((s, d) => s + (parseFloat(alloc[c]?.[b]?.[d] || '') || 0), 0)
 
   const save = async () => {
+    if (!loaded) { setError('The saved percentages did not load — not saving over them. Close and retry.'); return }
     setBusy(true); setError('')
     try {
-      for (const b of ALLOC_BRANCHES) {
-        const allocation: Record<string, number> = {}
-        for (const d of ALLOC_DEPTS) {
-          const v = parseFloat(alloc[b.value]?.[d] || '')
-          if (Number.isFinite(v) && v > 0) allocation[d] = v
+      for (const c of CATEGORIES) {
+        for (const b of ALLOC_BRANCHES) {
+          const allocation: Record<string, number> = {}
+          for (const d of ALLOC_DEPTS) {
+            const v = parseFloat(alloc[c.value]?.[b.value]?.[d] || '')
+            if (Number.isFinite(v) && v > 0) allocation[d] = v
+          }
+          const r = await fetch('/api/reports/contribution/rent-allocation', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch: b.value, category: c.value, allocation }),
+          })
+          if (!r.ok) { const j = await r.json().catch(() => ({})); setError(`${c.label} · ${b.label}: ${j.error || 'save failed'}`); setBusy(false); return }
         }
-        const r = await fetch('/api/reports/contribution/rent-allocation', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ branch: b.value, allocation }),
-        })
-        if (!r.ok) { const j = await r.json().catch(() => ({})); setError(`${b.label}: ${j.error || 'save failed'}`); setBusy(false); return }
       }
       onSaved(); onClose()
     } finally { setBusy(false) }
@@ -78,21 +98,31 @@ function RentAllocationModal({ onClose, onSaved }: { onClose: () => void; onSave
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
       <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6">
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Rent allocation by department</h3>
+          <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Expense allocation by department</h3>
           <button onClick={onClose}><X size={18} /></button>
         </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-          Per branch: what % of that branch&apos;s rent (direct 8211 + indirect 8210) each department carries.
-          Each branch should total 100%; anything unallocated stays on an &quot;unallocated rent&quot; line.
+        <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+          Per branch: what % each department carries. Rent (direct 8211 + indirect 8210) and the
+          remaining expenses each have their own percentages. Each branch should total 100%;
+          anything unallocated stays on its own line.
         </p>
+        <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: 'var(--light-gray)' }}>
+          {CATEGORIES.map(c => (
+            <button key={c.value} onClick={() => setCat(c.value)}
+              className="flex-1 py-2 px-3 rounded-lg text-sm font-medium"
+              style={{ background: cat === c.value ? 'white' : 'transparent', color: cat === c.value ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              {c.label}
+            </button>
+          ))}
+        </div>
         {loading ? <div className="py-10 text-center"><Loader2 className="animate-spin inline" size={18} /></div> : (
           <div className="space-y-4">
             {ALLOC_BRANCHES.map(b => (
               <div key={b.value} className="rounded-xl p-3" style={{ border: '1px solid var(--light-gray)' }}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{b.label}</span>
-                  <span className="text-xs tabular-nums" style={{ color: Math.abs(sumOf(b.value) - 100) < 0.01 ? '#15803d' : sumOf(b.value) > 100 ? '#b91c1c' : 'var(--mid-gray)' }}>
-                    total {sumOf(b.value).toFixed(1)}%
+                  <span className="text-xs tabular-nums" style={{ color: Math.abs(sumOf(cat, b.value) - 100) < 0.01 ? '#15803d' : sumOf(cat, b.value) > 100 ? '#b91c1c' : 'var(--mid-gray)' }}>
+                    total {sumOf(cat, b.value).toFixed(1)}%
                   </span>
                 </div>
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
@@ -101,8 +131,8 @@ function RentAllocationModal({ onClose, onSaved }: { onClose: () => void; onSave
                       {DEPT_SHORT[d]}
                       <div className="flex items-center gap-1">
                         <input
-                          value={alloc[b.value]?.[d] ?? ''}
-                          onChange={e => setAlloc(a => ({ ...a, [b.value]: { ...a[b.value], [d]: e.target.value } }))}
+                          value={alloc[cat]?.[b.value]?.[d] ?? ''}
+                          onChange={e => setAlloc(a => ({ ...a, [cat]: { ...a[cat], [b.value]: { ...a[cat]?.[b.value], [d]: e.target.value } } }))}
                           inputMode="decimal" placeholder="0"
                           className="w-full px-2 py-1.5 rounded-lg text-sm tabular-nums text-right"
                           style={{ border: '1px solid var(--light-gray)' }}
@@ -181,7 +211,7 @@ export default function ContributionMargin({ year, branch, onData }: {
     ['Net Sales', r => r.net, tot.net, true],
     ['Professional Fees', r => -r.fees, -tot.fees, false],
     ['Contribution Margin', r => r.cm, tot.cm, true],
-    ['Other Expenses (equal split)', r => -r.other, -tot.other, false],
+    ['Other Expenses (allocated)', r => -r.other, -tot.other, false],
     ['Rent (allocated)', r => -r.rent, -tot.rent, false],
     ['Net Margin', r => r.nm, tot.nm, true],
   ]
@@ -193,7 +223,7 @@ export default function ContributionMargin({ year, branch, onData }: {
         <button onClick={() => setShowAlloc(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
           style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
-          <SlidersHorizontal size={13} /> Rent allocation
+          <SlidersHorizontal size={13} /> Expense allocation
         </button>
       </div>
 
@@ -238,9 +268,15 @@ export default function ContributionMargin({ year, branch, onData }: {
         {data.adminFees > 0 && <div>Administration consultants (overhead, no department): <span className="tabular-nums">{formatCurrency(data.adminFees)}</span></div>}
         {Math.abs(data.untaggedFees) > 0.5 && <div>Professional fees not yet department-tagged (pre-April-2026 cutoffs, manual entries): <span className="tabular-nums">{formatCurrency(data.untaggedFees)}</span></div>}
         {data.rentUnallocated > 0.5 && <div>Rent not covered by the allocation percentages: <span className="tabular-nums">{formatCurrency(data.rentUnallocated)}</span></div>}
+        {data.otherUnallocated > 0.5 && <div>Other expenses not covered by the allocation percentages: <span className="tabular-nums">{formatCurrency(data.otherUnallocated)}</span></div>}
         {data.branchesMissingConfig.length > 0 && (
           <div style={{ color: '#b45309' }}>
-            No rent allocation configured for {data.branchesMissingConfig.join(', ')} — their rent is split equally for now. Set it via the &quot;Rent allocation&quot; button.
+            No rent allocation configured for {data.branchesMissingConfig.join(', ')} — split equally for now (&quot;Expense allocation&quot; button, Rent tab).
+          </div>
+        )}
+        {(data.branchesMissingOtherConfig || []).length > 0 && (
+          <div style={{ color: '#b45309' }}>
+            No other-expense allocation configured for {(data.branchesMissingOtherConfig || []).join(', ')} — split equally for now (&quot;Expense allocation&quot; button, Other tab).
           </div>
         )}
       </div>

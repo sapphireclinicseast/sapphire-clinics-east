@@ -3600,7 +3600,10 @@ model ContributionRentAllocation {
   branch     String
   department String
   pct        Decimal  @default(0)
+  // 'RENT' (8210+8211) or 'OTHER' (every remaining expense) — each category
+  // carries its own per-branch percentages.
+  category   String   @default("RENT")
   updatedAt  DateTime @default(now()) @updatedAt
 
-  @@unique([branch, department])
+  @@unique([branch, department, category])
 }
