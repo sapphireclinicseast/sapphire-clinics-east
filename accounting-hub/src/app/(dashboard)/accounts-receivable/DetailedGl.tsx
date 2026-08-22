@@ -33,6 +33,8 @@ export interface GlCaseWallet {
   qbEntry?: string | null
   /** True when any order has been billed against the letter. */
   hasOrders?: boolean
+  dateObtained?: string | null
+  createdAt?: string | null
 }
 
 /**
@@ -65,6 +67,15 @@ const fmtDate = (v?: string | null) =>
 const dayKey = (v?: string | null) => (v ? String(v).slice(0, 10) : '')
 
 /** POS stores GL proof as a JSON array, with a legacy single-URL field alongside. */
+/**
+ * Identity tag for a wallet: opened date + approved amount. Two applications
+ * for the same patient share a name; this pair is what tells them apart.
+ */
+function walletTag(w: GlCaseWallet): string {
+  const opened = dayKey(w.dateObtained ?? w.createdAt ?? null)
+  return `${opened ? `opened ${opened} · ` : ''}approved ${formatCurrency(num(w.totalGlAmount))}`
+}
+
 function fileUrls(w: GlCaseWallet): string[] {
   const out: string[] = []
   if (Array.isArray(w.attachmentUrls)) out.push(...w.attachmentUrls.filter((u): u is string => typeof u === 'string' && !!u))
@@ -423,7 +434,7 @@ export default function DetailedGl({
                       : '—')
                   : c.key === 'linked'
                     ? (r.wallet
-                        ? <span className="inline-flex items-center gap-1 whitespace-nowrap" title={`POS GL wallet: ${r.wallet.patientName} · approved ${formatCurrency(num(r.wallet.totalGlAmount))}`} style={{ color: 'var(--teal)' }}>
+                        ? <span className="inline-flex items-center gap-1 whitespace-nowrap" title={`POS GL wallet: ${r.wallet.patientName} · ${walletTag(r.wallet)}`} style={{ color: 'var(--teal)' }}>
                             <Link2 size={11} /> {r.wallet.patientName.length > 26 ? `${r.wallet.patientName.slice(0, 24)}…` : r.wallet.patientName}
                           </span>
                         : <span style={{ color: '#c44b00' }}>not tagged</span>)
@@ -691,7 +702,7 @@ function GlEntryModal({
             <option value="">— not tagged —</option>
             {options.map(w => (
               <option key={w.id} value={w.id}>
-                {w.patientName} · {branchLabel(w.branch) || 'no branch'} · {formatCurrency(num(w.balance))} left
+                {w.patientName} · {branchLabel(w.branch) || 'no branch'} · {walletTag(w)} · {formatCurrency(num(w.balance))} left
               </option>
             ))}
           </select>
@@ -841,7 +852,7 @@ function GlCaseModal({ wallet, cases, onClose, onSaved }: { wallet: GlCaseWallet
           {field('Payout', 'payoutBatch', 'text', 'e.g. 3/26-4/10')}
           {field('QB entry', 'qbEntry', 'text', 'e.g. AR25-0027')}
           <div className="sm:col-span-2 rounded-xl px-3 py-2 text-xs" style={{ background: '#f8fafc', border: '1px solid var(--light-gray)' }}>
-            <span className="font-semibold" style={{ color: '#334155' }}>POS GL wallet — this row IS the wallet &quot;{wallet.patientName}&quot;, already linked. Live figures (not edited here): </span>
+            <span className="font-semibold" style={{ color: '#334155' }}>POS GL wallet — this row IS the wallet &quot;{wallet.patientName}&quot; ({walletTag(wallet)}), already linked. Live figures (not edited here): </span>
             approved {formatCurrency(num(wallet.totalGlAmount))} · balance {wallet.balance != null ? formatCurrency(num(wallet.balance)) : '—'} · {num(wallet.paidTotal) > 0 ? `paid — last payment ${wallet.lastPaymentDate ? dayKey(wallet.lastPaymentDate) : '—'}` : 'unpaid'}
           </div>
           <div>
