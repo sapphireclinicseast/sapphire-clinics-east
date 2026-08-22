@@ -3578,3 +3578,16 @@ model IssuedCheque {
   @@index([date])
   @@index([status])
 }
+
+// Rent allocation for the Contribution Margin analysis: per branch, what % of
+// that branch's rent (8210 indirect + 8211 direct) each department carries.
+// Managed from the Contribution Margin tab.
+model ContributionRentAllocation {
+  id         String   @id @default(cuid())
+  branch     String
+  department String
+  pct        Decimal  @default(0)
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([branch, department])
+}
