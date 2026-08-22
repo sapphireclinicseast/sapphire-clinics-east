@@ -443,6 +443,16 @@ export default function DetailedGl({
     soa: a.soa + num(r.soaAmount),
   }), { requested: 0, approved: 0, soa: 0 })
 
+  // Average AR running days over the letters where it is defined — an SOA has to
+  // have been submitted for the clock to have started, so letters without one are
+  // excluded rather than counted as zero, which would drag the average down.
+  // Months are derived from the same average (30.44 days, the mean calendar month)
+  // rather than averaging the Per months column, so the two figures always agree.
+  const arDaysValues = rows.map(arRunningDays).filter((d): d is number => d != null)
+  const avgArDays = arDaysValues.length
+    ? arDaysValues.reduce((a, b) => a + b, 0) / arDaysValues.length
+    : null
+
   return (
     <div className="space-y-3">
       {/* Branch filter + headline totals for the ticked branches */}
@@ -455,13 +465,26 @@ export default function DetailedGl({
           </label>
         ))}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {([['Requested GL', totals.requested], ['Approved GL', totals.approved], ['Amount in SOA', totals.soa]] as [string, number][]).map(([label, v]) => (
           <div key={label} className="rounded-xl px-4 py-3" style={{ border: '1px solid var(--light-gray)', background: '#f8fafc' }}>
             <div className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>{label}</div>
             <div className="text-lg font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatCurrency(v)}</div>
           </div>
         ))}
+        <div className="rounded-xl px-4 py-3" style={{ border: '1px solid var(--light-gray)', background: '#f8fafc' }}>
+          <div className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>Avg AR running days</div>
+          <div className="text-lg font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>
+            {avgArDays == null ? '—' : `${avgArDays.toFixed(1)} days`}
+          </div>
+          {/* The count matters: this averages only the letters whose SOA has been
+              submitted, which is usually well short of the rows on screen. */}
+          <div className="text-[10px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+            {avgArDays == null
+              ? 'no SOA submitted yet'
+              : `${(avgArDays / 30.44).toFixed(2)} months · ${arDaysValues.length} of ${rows.length} letters`}
+          </div>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
