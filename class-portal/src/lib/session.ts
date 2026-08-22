@@ -1510,6 +1510,29 @@ export async function patchFrontDeskPayment(
       const msg = (j?.error as string) || `HTTP ${res.status}`
       return { ok: false, error: msg }
     }
+    // Mirror the patch into the local cache immediately so downstream
+    // badge readers (paymentStatusFor / paymentBadgeInfoFor /
+    // PaymentsGrouped) see the new state on the very next render,
+    // instead of waiting for the next hydrateFrontDeskPayments cycle.
+    // Without this the parent tree sees the row still labelled with
+    // the old period even after the edit modal closes.
+    try {
+      const local = getPayments()
+      const idx = local.findIndex(r => r.id === classPortalPaymentId)
+      if (idx >= 0) {
+        const cur = local[idx]
+        const merged: PaymentRecord = {
+          ...cur,
+          ...(patch.plan            !== undefined ? { plan: patch.plan as PaymentPlan } : {}),
+          ...(patch.period          !== undefined ? { period: patch.period } : {}),
+          ...(patch.tuitionCentavos !== undefined ? { tuitionAmount: patch.tuitionCentavos } : {}),
+          ...(patch.miscCentavos    !== undefined ? { miscAmount: patch.miscCentavos } : {}),
+          ...(patch.method          !== undefined ? { method: patch.method ?? undefined } : {}),
+        }
+        local[idx] = merged
+        writePayments(local)
+      }
+    } catch { /* non-fatal — hydrate will catch up */ }
     return { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
@@ -1653,14 +1676,35 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
       const existing = localById.get(remote.classPortalPaymentId)
       const targetStatus: PaymentStatus = remote.status === 'CONVERTED' ? 'PAID' : 'PENDING'
       if (existing) {
-        // Update status if it drifted from the server's view.
+        // Reconcile every mutable field, not just status. Without this the
+        // local cache silently keeps stale period / plan / amount / method
+        // whenever an admin edits the row server-side — which broke badge
+        // logic ("Owes for June 2026" persisting after the period was
+        // re-tagged from "AY 2026 - 2027" to "June 2026").
         const idx = next.findIndex(r => r.id === existing.id)
-        if (existing.status !== targetStatus) {
+        const remotePlan = (remote.plan as PaymentPlan) ?? existing.plan
+        const remoteMethod = remote.method ?? undefined
+        const drifted =
+          existing.status !== targetStatus ||
+          existing.period !== remote.period ||
+          existing.plan !== remotePlan ||
+          existing.tuitionAmount !== remote.tuitionCentavos ||
+          existing.miscAmount !== remote.miscCentavos ||
+          existing.method !== remoteMethod
+        if (drifted) {
           mutated = true
+          const base: PaymentRecord = {
+            ...existing,
+            plan: remotePlan,
+            period: remote.period,
+            tuitionAmount: remote.tuitionCentavos,
+            miscAmount: remote.miscCentavos,
+            method: remoteMethod,
+          }
           if (targetStatus === 'PAID') {
-            next[idx] = { ...existing, status: 'PAID', paidAt: remote.convertedAt ?? new Date().toISOString() }
+            next[idx] = { ...base, status: 'PAID', paidAt: remote.convertedAt ?? existing.paidAt ?? new Date().toISOString() }
           } else {
-            const { paidAt: _drop, ...rest } = existing
+            const { paidAt: _drop, ...rest } = base
             void _drop
             next[idx] = { ...rest, status: 'PENDING' }
           }
