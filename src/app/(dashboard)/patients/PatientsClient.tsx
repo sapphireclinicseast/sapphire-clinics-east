@@ -234,6 +234,11 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   const [patients, setPatients]         = useState<Patient[]>([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
+  // Patients matching the search but registered at another branch. Shown read-only
+  // beneath the empty result, so a front desk stops short of re-creating someone
+  // who already exists.
+  const [outOfBranch, setOutOfBranch]   = useState<Patient[]>([])
+  const [addingBranchId, setAddingBranchId] = useState<string | null>(null)
   const [typeFilter, setTypeFilter]     = useState('')
   // Front desk now reads the whole register, so the listing defaults to every
   // branch. `forcedBranch` still seeds the ADD form, since a new patient is
@@ -423,14 +428,40 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       const res  = await fetch(`/api/patients?${params}`)
       const data = await res.json()
       setPatients(data.patients || [])
+      // Only ever populated for a branch-locked user whose scoped search found
+      // nothing — see the cross-branch note in /api/patients.
+      setOutOfBranch(data.outOfBranch || [])
     } catch {
       setPatients([])
+      setOutOfBranch([])
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => { fetchPatients() }, [search, typeFilter, branchFilter])
+
+  /** Attach this front desk's own branch to a patient already registered elsewhere. */
+  async function addMyBranch(patientId: string) {
+    if (!forcedBranch) return
+    setAddingBranchId(patientId)
+    try {
+      const res = await fetch('/api/patients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: patientId, addBranch: forcedBranch }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Could not add this branch')
+        return
+      }
+      // Re-running the search moves them out of outOfBranch and into the real list.
+      await fetchPatients()
+    } finally {
+      setAddingBranchId(null)
+    }
+  }
 
   // ── Add / Edit / Delete ───────────────────────────────────────────────────
   async function handleAddPatient(e: React.FormEvent, confirmDuplicate = false) {
@@ -1228,8 +1259,45 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
               </tr>
             ) : displayPatients.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  No patients found
+                <td colSpan={9} className="py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                  <p className="text-center">No patients found</p>
+                  {outOfBranch.length > 0 && (
+                    <div className="mx-auto mt-5 max-w-2xl rounded-xl border p-4 text-left"
+                      style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <p className="text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                        Already registered at another branch
+                      </p>
+                      <p className="text-[11px] mb-3">
+                        {outOfBranch.length === 1 ? 'This patient exists' : 'These patients exist'} but
+                        {' '}{outOfBranch.length === 1 ? 'is' : 'are'} not registered at your branch. Add your branch
+                        instead of creating a new record — creating one makes a duplicate.
+                      </p>
+                      <ul className="space-y-2">
+                        {outOfBranch.map(p => (
+                          <li key={p.id} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 border"
+                            style={{ borderColor: 'var(--light-gray)' }}>
+                            <span>
+                              <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>
+                                {p.firstName} {p.lastName}
+                              </span>
+                              <span className="ml-2 text-[11px]">
+                                registered at {patientBranchDisplay(p)}
+                              </span>
+                            </span>
+                            {forcedBranch && (
+                              <button
+                                onClick={() => addMyBranch(p.id)}
+                                disabled={addingBranchId === p.id}
+                                className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white disabled:opacity-50"
+                                style={{ background: 'var(--teal)' }}>
+                                {addingBranchId === p.id ? 'Adding…' : `Add ${branchLabel(forcedBranch)}`}
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </td>
               </tr>
             ) : displayPatients.slice((page - 1) * pageSize, page * pageSize).map((p) => (

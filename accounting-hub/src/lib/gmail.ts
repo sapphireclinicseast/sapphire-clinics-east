@@ -48,7 +48,6 @@ const MAILBOXES: Record<Mailbox, MailboxConfig> = {
   },
 }
 
-/** Resolve a mailbox to the one that actually has a token, falling back to main@. */
 /** True when a service-account key is present and parseable — i.e. delegation can be attempted. */
 export function delegationConfigured(): boolean {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
