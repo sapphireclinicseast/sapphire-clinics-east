@@ -54,6 +54,9 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const year = Number(searchParams.get('year') || new Date().getFullYear())
+  // Month range within the year (1-12); defaults to the whole year.
+  const fromM = Math.min(12, Math.max(1, Number(searchParams.get('from') || 1)))
+  const toM = Math.min(12, Math.max(fromM, Number(searchParams.get('to') || 12)))
   const branchSel = searchParams.get('branch') || 'ALL'
   // Rent is allocated per branch, so 'ALL' expands to the real branches.
   const branches = branchSel === 'ALL'
@@ -68,23 +71,31 @@ export async function GET(req: Request) {
     const rentByBranch: Record<string, number> = {}
     const otherByBranch: Record<string, number> = {}
 
+    const inRange = (monthly: number[] | undefined, closing: number) => {
+      if (fromM === 1 && toM === 12) return closing
+      if (!monthly || monthly.length !== 12) return closing // no monthly detail — whole-year value
+      let s = 0
+      for (let m = fromM - 1; m <= toM - 1; m++) s += monthly[m] || 0
+      return s
+    }
     for (const b of branches) {
       const st = await computeLedgerStatements(year, b)
       for (const sec of st.incomeStatement.sections) {
         for (const r of sec.rows) {
+          const v = inRange(r.monthly, r.closing)
           if (sec.key === 'REVENUE') {
             const dept = ACCOUNT_DEPT[r.number] || 'OTHER'
-            gross[dept] = (gross[dept] || 0) + r.closing
+            gross[dept] = (gross[dept] || 0) + v
           } else if (sec.key === 'DISCOUNTS') {
-            discountsTotal += r.closing
+            discountsTotal += v
           } else if (RENT_ACCOUNTS.has(r.number)) {
-            rentByBranch[b] = (rentByBranch[b] || 0) + r.closing
+            rentByBranch[b] = (rentByBranch[b] || 0) + v
           } else if (r.number === PROF_FEE_ACCOUNT) {
-            profFees8190 += r.closing
+            profFees8190 += v
           } else if (r.number === PRODUCT_COGS_ACCOUNT) {
-            retailCogs += r.closing
+            retailCogs += v
           } else if (sec.key === 'COGS' || sec.key === 'OPEX' || sec.key === 'DEPRECIATION' || sec.key === 'INTEREST') {
-            otherByBranch[b] = (otherByBranch[b] || 0) + r.closing
+            otherByBranch[b] = (otherByBranch[b] || 0) + v
           }
         }
       }
@@ -99,14 +110,18 @@ export async function GET(req: Request) {
         cutoffPeriod: { startsWith: `${year}-` },
         status: { in: ['FINAL', 'LOCKED'] },
       },
-      select: { grossPay: true, consultant: { select: { department: true } } },
+      // cutoffPeriod is `${year}-${month}-${half}`; month filtering happens below.
+      select: { grossPay: true, cutoffPeriod: true, consultant: { select: { department: true } } },
     })
     const fees: Record<string, number> = {}
     let adminFees = 0
     let liveFeesTotal = 0
+    const cutoffMonth = (cp: string) => Number((cp.split('-')[1] || '0'))
     for (const e of entries) {
       const g = Number(e.grossPay)
       if (!g) continue
+      const m = cutoffMonth((e as unknown as { cutoffPeriod?: string }).cutoffPeriod || '')
+      if (m && (m < fromM || m > toM)) continue
       liveFeesTotal += g
       const dept = CONSULTANT_DEPT[e.consultant?.department || '']
       if (dept) fees[dept] = (fees[dept] || 0) + g
@@ -140,8 +155,57 @@ export async function GET(req: Request) {
       }
       return { out, unallocated, missing }
     }
+    // Department-tagged expense entries (petty cash / RFP expense rows and
+    // tagged journal entries): each charges its own department(s), split
+    // equally when several are ticked. Everything untagged — including all
+    // history — follows the RENT percentages, per the owner's rule.
+    const rangeStart = new Date(Date.UTC(year, fromM - 1, 1))
+    const rangeEnd = new Date(Date.UTC(year, toM, 1))
+    const ORDER_BRANCH: Record<string, string> = {
+      SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS',
+      VERDANA_STORE: 'VERDANA_STORE', AURA_INSTITUTE: 'AURA_INSTITUTE',
+    }
+    const ledgerBranches = branches.map(b => ORDER_BRANCH[b] || b)
+    const tagged: Record<string, number> = {}
+    let taggedTotal = 0
+    const addTagged = (depts: string[], amount: number) => {
+      const ds = depts.filter(d => DEPT_LABEL[d])
+      if (!ds.length || !(amount > 0)) return
+      taggedTotal += amount
+      for (const d of ds) tagged[d] = (tagged[d] || 0) + amount / ds.length
+    }
+    const taggedPcv = await prisma.pettyCashEntry.findMany({
+      where: {
+        branch: { in: ledgerBranches },
+        date: { gte: rangeStart, lt: rangeEnd },
+        departments: { isEmpty: false },
+      },
+      select: { grossAmount: true, departments: true },
+    })
+    for (const e of taggedPcv) addTagged(e.departments as string[], Number(e.grossAmount))
+    const taggedJes = await prisma.journalEntry.findMany({
+      where: {
+        entryDate: { gte: rangeStart, lt: rangeEnd },
+        departments: { isEmpty: false },
+        ...(branchSel === 'ALL' ? {} : { branch: { in: [...ledgerBranches, 'ALL'] } }),
+      },
+      select: { departments: true, lines: { select: { debit: true, credit: true, account: { select: { accountType: true, accountNumber: true } } } } },
+    })
+    for (const je of taggedJes) {
+      const exp = je.lines.reduce((s, l) =>
+        l.account.accountType === 'EXPENSE' && !RENT_ACCOUNTS.has(l.account.accountNumber) && l.account.accountNumber !== PROF_FEE_ACCOUNT
+          ? s + Number(l.debit) - Number(l.credit) : s, 0)
+      addTagged(je.departments as string[], exp)
+    }
+
     const rentAlloc = allocate(rentByBranch, 'RENT')
-    const otherAlloc = allocate(otherByBranch, 'OTHER')
+    // Untagged expenses = the books' other-expense total less the tagged detail
+    // (clamped at zero if tagging ever outruns the ledger), allocated by the
+    // same RENT percentages.
+    const otherTotalAll = Object.values(otherByBranch).reduce((s, v) => s + v, 0)
+    const untaggedScale = otherTotalAll > 0 ? Math.max(0, otherTotalAll - taggedTotal) / otherTotalAll : 0
+    const untaggedByBranch = Object.fromEntries(Object.entries(otherByBranch).map(([k, v]) => [k, v * untaggedScale]))
+    const otherAlloc = allocate(untaggedByBranch, 'RENT')
     const rent = rentAlloc.out
     const rentUnallocated = rentAlloc.unallocated
     const branchesMissingConfig = rentAlloc.missing
@@ -154,7 +218,7 @@ export async function GET(req: Request) {
       const net = round2(g - disc)
       const f = round2(fees[k] || 0)
       const cm = round2(net - f)
-      const other = round2((otherAlloc.out[k] || 0) + (k === 'RETAIL' ? retailCogs : 0))
+      const other = round2((tagged[k] || 0) + (otherAlloc.out[k] || 0) + (k === 'RETAIL' ? retailCogs : 0))
       const rentK = round2(rent[k] || 0)
       const nm = round2(cm - other - rentK)
       return {
@@ -167,7 +231,8 @@ export async function GET(req: Request) {
     })
 
     return NextResponse.json({
-      year, branch: branchSel, rows,
+      year, from: fromM, to: toM, branch: branchSel, rows,
+      taggedExpenses: Math.round(taggedTotal * 100) / 100,
       adminFees: round2(adminFees),
       untaggedFees,
       rentTotal: round2(rentTotal),
@@ -175,11 +240,11 @@ export async function GET(req: Request) {
       rentUnallocated: round2(rentUnallocated),
       otherUnallocated: round2(otherAlloc.unallocated),
       branchesMissingConfig,
-      branchesMissingOtherConfig: otherAlloc.missing,
+      branchesMissingOtherConfig: [],
       notes: [
         'Revenue, discounts and every expense figure come from the ledger engine (identical to the income statement). Discounts are allocated pro-rata by gross-sales share.',
         'Professional fees are the consultant payroll gross by department (from the 2026-04-1 cutoff); fees beyond the tagged payroll are on the "not yet department-tagged" line so the total ties to account 8190.',
-        'Other expenses (all remaining cost of sales, operating expenses, depreciation and interest) are allocated per branch using the configured percentages (\'Expense allocation\' button, Other tab); branches without a configuration split equally across departments with sales. Product Cost of Sales (8320) is charged to Retail.',
+        'Other expenses: entries tagged to departments (petty cash, expense rows, journal entries) charge those departments directly — split equally when several are ticked. Everything untagged, including all historical entries, is allocated per branch by the RENT percentages. Product Cost of Sales (8320) is charged to Retail.',
         'Rent (8210 indirect + 8211 direct) is allocated per branch using the configured percentages — the "Rent allocation" button. Branches without a configuration are split equally across active departments.',
       ],
     })
