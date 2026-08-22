@@ -1183,14 +1183,24 @@ export default function AccountsReceivablePage() {
         // Per-session agencies have no approved amount, so they are left out of the
         // approved-basis percentages — including them would divide a consumed figure
         // by a denominator that does not contain it.
-        const approvedWallets = wallets.filter(w => !w.perSession)
-        const perSessionWallets = wallets.filter(w => w.perSession)
+        // The branch chips above filter the orders query server-side, but the wallet
+        // query is not branch-scoped, so GL Summary was reporting every branch no
+        // matter which chip was lit. Scope it here, on the same [branch, 'ALL']
+        // convention the order filter uses, so a company-wide letter still shows in
+        // the branch views it funds.
+        const inBranch = (w: ARWallet) => !branch || w.branch === branch || w.branch === 'ALL'
+        const branchWallets = wallets.filter(inBranch)
+        const branchWalletIds = new Set(branchWallets.map(w => w.id))
+        const approvedWallets = branchWallets.filter(w => !w.perSession)
+        const perSessionWallets = branchWallets.filter(w => w.perSession)
         const perSessionOutstanding = perSessionWallets.reduce((s, w) => s + toNum(w.balance), 0)
         const totalApproved = approvedWallets.reduce((s, w) => s + toNum(w.totalGlAmount), 0)
         // Use consumedOutstanding (= totalGlAmount − remaining balance) so that
         // zero-balance wallets and partially-consumed wallets are included correctly.
         const totalConsumed = approvedWallets.reduce((s, w) => s + (w.consumedOutstanding ?? 0), 0)
-        const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
+        const totalPaid = arPayments
+          .filter(p => !branch || !p.walletId || branchWalletIds.has(p.walletId))
+          .reduce((s, p) => s + toNum(p.amount), 0)
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
 
@@ -1209,7 +1219,7 @@ export default function AccountsReceivablePage() {
         // Service type breakdown from approvedServices field on GL wallets
         // Each wallet may approve multiple service types; count applications per type.
         const svcTypeMap = new Map<string, number>()
-        for (const w of wallets) {
+        for (const w of branchWallets) {
           const svcs = (w as unknown as { approvedServices?: string[] | null }).approvedServices
           if (Array.isArray(svcs)) {
             for (const s of svcs) svcTypeMap.set(s, (svcTypeMap.get(s) || 0) + 1)
