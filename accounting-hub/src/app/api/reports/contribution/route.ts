@@ -64,9 +64,9 @@ export async function GET(req: Request) {
     const gross: Record<string, number> = {}
     let discountsTotal = 0
     let profFees8190 = 0
-    let otherExpTotal = 0
     let retailCogs = 0
     const rentByBranch: Record<string, number> = {}
+    const otherByBranch: Record<string, number> = {}
 
     for (const b of branches) {
       const st = await computeLedgerStatements(year, b)
@@ -84,7 +84,7 @@ export async function GET(req: Request) {
           } else if (r.number === PRODUCT_COGS_ACCOUNT) {
             retailCogs += r.closing
           } else if (sec.key === 'COGS' || sec.key === 'OPEX' || sec.key === 'DEPRECIATION' || sec.key === 'INTEREST') {
-            otherExpTotal += r.closing
+            otherByBranch[b] = (otherByBranch[b] || 0) + r.closing
           }
         }
       }
@@ -114,35 +114,38 @@ export async function GET(req: Request) {
     }
     const untaggedFees = Math.round((profFees8190 - liveFeesTotal) * 100) / 100
 
-    // ── Rent allocation: per branch, by configured % (equal split fallback) ──
+    // ── Allocation: per branch, by configured % per category (equal split fallback) ──
     const allocRows = await prisma.contributionRentAllocation.findMany({
       where: { branch: { in: branches } },
     })
     const deptKeys = Array.from(new Set([...Object.keys(gross), ...Object.keys(fees)]))
       .sort((a, b) => (gross[b] || 0) - (gross[a] || 0))
     const activeDepts = deptKeys.filter(k => (gross[k] || 0) > 0)
-    const rent: Record<string, number> = {}
-    let rentUnallocated = 0
-    const branchesMissingConfig: string[] = []
-    for (const b of branches) {
-      const total = rentByBranch[b] || 0
-      if (!total) continue
-      const cfg = allocRows.filter(a => a.branch === b && Number(a.pct) > 0)
-      const cfgSum = cfg.reduce((s, a) => s + Number(a.pct), 0)
-      if (cfgSum > 0) {
-        for (const a of cfg) {
-          rent[a.department] = (rent[a.department] || 0) + total * Number(a.pct) / 100
+    const allocate = (byBranch: Record<string, number>, category: string) => {
+      const out: Record<string, number> = {}
+      let unallocated = 0
+      const missing: string[] = []
+      for (const b of branches) {
+        const total = byBranch[b] || 0
+        if (!total) continue
+        const cfg = allocRows.filter(a => a.branch === b && (a.category || 'RENT') === category && Number(a.pct) > 0)
+        const cfgSum = cfg.reduce((s, a) => s + Number(a.pct), 0)
+        if (cfgSum > 0) {
+          for (const a of cfg) out[a.department] = (out[a.department] || 0) + total * Number(a.pct) / 100
+          if (cfgSum < 99.995) unallocated += total * (100 - cfgSum) / 100
+        } else {
+          missing.push(b)
+          for (const k of activeDepts) out[k] = (out[k] || 0) + total / (activeDepts.length || 1)
         }
-        if (cfgSum < 99.995) rentUnallocated += total * (100 - cfgSum) / 100
-      } else {
-        branchesMissingConfig.push(b)
-        for (const k of activeDepts) rent[k] = (rent[k] || 0) + total / (activeDepts.length || 1)
       }
+      return { out, unallocated, missing }
     }
+    const rentAlloc = allocate(rentByBranch, 'RENT')
+    const otherAlloc = allocate(otherByBranch, 'OTHER')
+    const rent = rentAlloc.out
+    const rentUnallocated = rentAlloc.unallocated
+    const branchesMissingConfig = rentAlloc.missing
     const rentTotal = Object.values(rentByBranch).reduce((s, v) => s + v, 0)
-
-    // ── Other expenses: equal split across departments with sales ──
-    const perDeptOther = activeDepts.length ? otherExpTotal / activeDepts.length : 0
 
     const round2 = (v: number) => Math.round(v * 100) / 100
     const rows = deptKeys.map(k => {
@@ -151,7 +154,7 @@ export async function GET(req: Request) {
       const net = round2(g - disc)
       const f = round2(fees[k] || 0)
       const cm = round2(net - f)
-      const other = round2((activeDepts.includes(k) ? perDeptOther : 0) + (k === 'RETAIL' ? retailCogs : 0))
+      const other = round2((otherAlloc.out[k] || 0) + (k === 'RETAIL' ? retailCogs : 0))
       const rentK = round2(rent[k] || 0)
       const nm = round2(cm - other - rentK)
       return {
@@ -170,11 +173,13 @@ export async function GET(req: Request) {
       rentTotal: round2(rentTotal),
       rentByBranch: Object.fromEntries(Object.entries(rentByBranch).map(([k, v]) => [k, round2(v)])),
       rentUnallocated: round2(rentUnallocated),
+      otherUnallocated: round2(otherAlloc.unallocated),
       branchesMissingConfig,
+      branchesMissingOtherConfig: otherAlloc.missing,
       notes: [
         'Revenue, discounts and every expense figure come from the ledger engine (identical to the income statement). Discounts are allocated pro-rata by gross-sales share.',
         'Professional fees are the consultant payroll gross by department (from the 2026-04-1 cutoff); fees beyond the tagged payroll are on the "not yet department-tagged" line so the total ties to account 8190.',
-        'Other expenses (all remaining cost of sales, operating expenses, depreciation and interest) are split equally across the departments with sales; product Cost of Sales (8320) is charged to Retail.',
+        'Other expenses (all remaining cost of sales, operating expenses, depreciation and interest) are allocated per branch using the configured percentages (\'Expense allocation\' button, Other tab); branches without a configuration split equally across departments with sales. Product Cost of Sales (8320) is charged to Retail.',
         'Rent (8210 indirect + 8211 direct) is allocated per branch using the configured percentages — the "Rent allocation" button. Branches without a configuration are split equally across active departments.',
       ],
     })

@@ -1960,7 +1960,7 @@ export default function ReportsPage() {
       rows.push(['Net Sales', ...shown.map(r => r.net.toFixed(2)), t.net.toFixed(2)])
       rows.push(['Professional Fees', ...shown.map(r => (-r.fees).toFixed(2)), (-t.fees).toFixed(2)])
       rows.push(['Contribution Margin', ...shown.map(r => r.cm.toFixed(2)), t.cm.toFixed(2)])
-      rows.push(['Other Expenses (equal split)', ...shown.map(r => (-r.other).toFixed(2)), (-t.other).toFixed(2)])
+      rows.push(['Other Expenses (allocated)', ...shown.map(r => (-r.other).toFixed(2)), (-t.other).toFixed(2)])
       rows.push(['Rent (allocated)', ...shown.map(r => (-r.rent).toFixed(2)), (-t.rent).toFixed(2)])
       rows.push(['Net Margin', ...shown.map(r => r.nm.toFixed(2)), t.nm.toFixed(2)])
       rows.push(['Net Margin % of Net Sales', ...shown.map(r => r.nmPct != null ? `${r.nmPct.toFixed(1)}%` : ''), t.net > 0 ? `${((t.nm / t.net) * 100).toFixed(1)}%` : ''])
