@@ -1660,8 +1660,7 @@ export default function ReportsPage() {
   // exactly as the dropdown did.
   const TICK_BRANCHES = BRANCHES.filter(b => b.value !== 'ALL')
   const [isTicked, setIsTicked] = useState<string[]>(TICK_BRANCHES.map(b => b.value))
-  // Contribution-margin department tickboxes + the latest payload (for exports).
-  const [cmTicked, setCmTicked] = useState<string[]>([])
+  // Contribution-margin: the latest payload (for exports).
   const [cmData, setCmData] = useState<CmPayload | null>(null)
   const toggleIsBranch = (v: string) => {
     setIsTicked(prev => {
@@ -1952,7 +1951,7 @@ export default function ReportsPage() {
   const handleDownloadCSV = (fmt: 'csv' | 'xls' | 'pdf' = 'csv') => {
     if (activeTab === 'contribution') {
       if (!cmData) return
-      const shown = cmData.rows.filter(r => cmTicked.includes(r.key))
+      const shown = cmData.rows
       const rows: string[][] = [[`Contribution Margin — ${year} — ${(isTickboxes ? isBranchSel : effBranch).split('+').map(p => BRANCHES.find(b => b.value === p)?.label || (p === 'ALL' ? 'All Branches' : p)).join(' + ')}`,
         'Gross Sales', 'Discounts (allocated)', 'Net Sales', 'Professional Fees', 'Contribution Margin', 'CM %']]
       for (const r of shown) rows.push([`  ${r.label}`, r.gross.toFixed(2), (-r.discounts).toFixed(2), r.net.toFixed(2), (-r.fees).toFixed(2), r.cm.toFixed(2), r.cmPct != null ? `${r.cmPct.toFixed(1)}%` : ''])
@@ -2166,8 +2165,6 @@ export default function ReportsPage() {
         <ContributionMargin
           year={year}
           branch={isTickboxes ? isBranchSel : effBranch}
-          ticked={cmTicked}
-          onTickedChange={(keys) => setCmTicked(keys)}
           onData={setCmData}
         />
       ) : effTab === 'graphs' ? <GraphsView /> : <>
