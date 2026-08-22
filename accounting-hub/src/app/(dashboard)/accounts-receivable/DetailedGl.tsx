@@ -1,11 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Search, X, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Download, Plus, Link2, Trash2 } from 'lucide-react'
+import { Search, X, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Download, Plus, Link2, Trash2, Banknote } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import ExpandablePanel from './ExpandablePanel'
+import { processorFeeOf, processorRateOf } from '@/lib/gl-processor-fee'
+import PayGlProcessorModal, { type PayableLetter } from './PayGlProcessorModal'
 
 /** One GL letter, as the AR endpoint returns it. */
 export interface GlCaseWallet {
@@ -57,6 +59,10 @@ export interface GlCaseRow {
   qbEntry?: string | null
   paidAt?: string | null
   notes?: string | null
+  /** Set once the processor fee for this letter has gone out on an RFP. */
+  processorRfpId?: string | null
+  processorPaidAt?: string | null
+  processorProofUrl?: string | null
 }
 
 const num = (v: unknown) => Number(v ?? 0) || 0
@@ -108,6 +114,9 @@ interface Row {
   lastPaymentDate?: string | null
   monthsToPay?: number | null
   files: string[]
+  /** The processor fee for this letter has already been paid out. */
+  processorPaid: boolean
+  processorPaidAt?: string | null
 }
 
 /**
@@ -150,6 +159,9 @@ function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
     lastPaymentDate: w ? (w.lastPaymentDate ?? null) : (c?.paidAt ?? null),
     monthsToPay: w?.monthsToPay ?? null,
     files: w ? fileUrls(w) : [],
+    // Only a case records the payout — an untagged wallet row has never been paid.
+    processorPaid: !!c?.processorRfpId,
+    processorPaidAt: c?.processorPaidAt ?? null,
   }
 }
 
@@ -196,11 +208,10 @@ function arRunningDays(r: Row): number | null {
  *  25% default — the modal shows 25 pre-filled, so unsaved rows must not read
  *  as "no fee". Older 20% letters keep their stored rate once saved. */
 function commissionRateOf(r: Row): number {
-  const stored = num(r.soaCommissionRate)
-  return stored > 0 ? stored : 25
+  return processorRateOf(r.soaCommissionRate)
 }
 function commissionOf(r: Row): number {
-  return num(r.soaAmount) * (commissionRateOf(r) / 100)
+  return processorFeeOf(r.soaAmount, r.soaCommissionRate)
 }
 
 /** Columns in the order the OPGL SUMMARY sheet uses, with Branch added. */
@@ -306,6 +317,8 @@ export default function DetailedGl({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [editing, setEditing] = useState<GlCaseWallet | null>(null)
   const [editingCase, setEditingCase] = useState<GlCaseRow | 'new' | null>(null)
+  const [payingProcessor, setPayingProcessor] = useState(false)
+  const [payNotice, setPayNotice] = useState('')
 
   const allRows = useMemo(() => buildRows(wallets, glCases), [wallets, glCases])
 
@@ -502,6 +515,13 @@ export default function DetailedGl({
           </button>
         )}
         {canWrite && (
+          <button onClick={() => setPayingProcessor(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
+            style={{ borderColor: 'var(--deep-teal)', color: 'var(--deep-teal)' }}>
+            <Banknote size={13} /> Pay GL Processor
+          </button>
+        )}
+        {canWrite && (
           <button onClick={() => setEditingCase('new')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
             style={{ background: 'var(--teal)' }}>
@@ -526,6 +546,14 @@ export default function DetailedGl({
         </button>
       </div>
 
+      {payNotice && (
+        <div className="flex items-start justify-between gap-3 px-3 py-2 rounded-xl text-xs"
+          style={{ background: '#f0fdf4', color: '#166534' }}>
+          <span>{payNotice} It is now under Expenses → RFP.</span>
+          <button onClick={() => setPayNotice('')} className="shrink-0"><X size={13} /></button>
+        </div>
+      )}
+
       <ExpandablePanel title="Detailed GL" subtitle="Every Guarantee Letter, in the OPGL summary layout" maxHeight={520}>
         {table}
       </ExpandablePanel>
@@ -540,6 +568,25 @@ export default function DetailedGl({
           claimedWalletIds={claimedWalletIds}
           onClose={() => setEditingCase(null)}
           onSaved={() => { setEditingCase(null); onSaved() }}
+        />
+      )}
+      {payingProcessor && (
+        <PayGlProcessorModal
+          // The rows currently in view, so search and the branch ticks decide the
+          // batch — paying "everything on screen" is what the button reads as.
+          letters={rows.map((r): PayableLetter => ({
+            caseId: r.caseId,
+            walletId: r.wallet?.id ?? null,
+            name: r.patientName,
+            branch: r.branch,
+            soaAmount: num(r.soaAmount),
+            rate: commissionRateOf(r),
+            fee: commissionOf(r),
+            alreadyPaid: r.processorPaid,
+          }))}
+          defaultBranch={ticked.length === 1 ? ticked[0] : undefined}
+          onClose={() => setPayingProcessor(false)}
+          onDone={(msg) => { setPayingProcessor(false); setPayNotice(msg); onSaved() }}
         />
       )}
     </div>
