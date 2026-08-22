@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
-  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp,
+  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp, Percent,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { DISPLAY_CURRENCIES, type DisplayCurrency, setDisplay, inDisplay, fmt, fmtSigned } from './display-currency'
@@ -14,6 +14,7 @@ import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
 import HistoricalReport from './HistoricalReport'
 import LedgerStatements from './LedgerStatements'
 import GraphsView from './GraphsView'
+import ContributionMargin, { type CmPayload } from './ContributionMargin'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
 import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
@@ -100,7 +101,7 @@ interface ReportData {
   unearnedRevenueFromAR?: number
 }
 
-type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow' | 'graphs'
+type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow' | 'graphs' | 'contribution'
 // 'quarterly' is offered on the full statements only; the med-rep revenue view
 // treats it as 'annual' if it ever reaches it.
 type ViewMode = 'annual' | 'quarterly' | 'monthly'
@@ -142,6 +143,7 @@ const TABS: { key: ReportTab; label: string; icon: typeof FileText }[] = [
   { key: 'income-statement', label: 'Income Statement', icon: BarChart3 },
   { key: 'cash-flow', label: 'Cash Flow Statement', icon: LayoutList },
   { key: 'graphs', label: 'Graphs', icon: TrendingUp },
+  { key: 'contribution', label: 'Contribution Margin', icon: Percent },
 ]
 
 const DEPT_LABELS: Record<string, string> = {
@@ -1658,6 +1660,9 @@ export default function ReportsPage() {
   // exactly as the dropdown did.
   const TICK_BRANCHES = BRANCHES.filter(b => b.value !== 'ALL')
   const [isTicked, setIsTicked] = useState<string[]>(TICK_BRANCHES.map(b => b.value))
+  // Contribution-margin department tickboxes + the latest payload (for exports).
+  const [cmTicked, setCmTicked] = useState<string[]>([])
+  const [cmData, setCmData] = useState<CmPayload | null>(null)
   const toggleIsBranch = (v: string) => {
     setIsTicked(prev => {
       const next = prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]
@@ -1699,7 +1704,7 @@ export default function ReportsPage() {
   // Tickboxes replace the dropdown on the income-statement tab (whole-company
   // users only — branch-scoped admins keep their pinned branch, med-reps keep
   // the dropdown-driven restricted view).
-  const isTickboxes = effTab === 'income-statement' && !isMedrep && !scope.short
+  const isTickboxes = (effTab === 'income-statement' || effTab === 'contribution') && !isMedrep && !scope.short
   const allIsTicked = isTicked.length === TICK_BRANCHES.length
   const isBranchSel = allIsTicked ? 'ALL' : isTicked.length === 1 ? isTicked[0] : isTicked.join('+')
   const effIsBranch = isTickboxes ? isBranchSel : effBranch
@@ -1729,7 +1734,7 @@ export default function ReportsPage() {
   // Export filename branch tag — reflects the income-statement tickboxes
   // when they drive the view (e.g. "AHEA+AHGH"), else the dropdown branch.
   const exportBranchTag = () => {
-    const bsel = (activeTab === 'income-statement' && isTickboxes) ? isBranchSel : branch
+    const bsel = ((activeTab === 'income-statement' || activeTab === 'contribution') && isTickboxes) ? isBranchSel : branch
     return bsel.split('+').map(p => branchCode(p)).join('+').replace(/\s+/g, '-')
   }
 
@@ -1945,6 +1950,19 @@ export default function ReportsPage() {
     fmt === 'xls' ? downloadRowsAsExcel(rows) : fmt === 'pdf' ? downloadRowsAsPDF(rows) : downloadRowsAsCSV(rows)
 
   const handleDownloadCSV = (fmt: 'csv' | 'xls' | 'pdf' = 'csv') => {
+    if (activeTab === 'contribution') {
+      if (!cmData) return
+      const shown = cmData.rows.filter(r => cmTicked.includes(r.key))
+      const rows: string[][] = [[`Contribution Margin — ${year} — ${(isTickboxes ? isBranchSel : effBranch).split('+').map(p => BRANCHES.find(b => b.value === p)?.label || (p === 'ALL' ? 'All Branches' : p)).join(' + ')}`,
+        'Gross Sales', 'Discounts (allocated)', 'Net Sales', 'Professional Fees', 'Contribution Margin', 'CM %']]
+      for (const r of shown) rows.push([`  ${r.label}`, r.gross.toFixed(2), (-r.discounts).toFixed(2), r.net.toFixed(2), (-r.fees).toFixed(2), r.cm.toFixed(2), r.cmPct != null ? `${r.cmPct.toFixed(1)}%` : ''])
+      const t = shown.reduce((a, r) => ({ gross: a.gross + r.gross, discounts: a.discounts + r.discounts, net: a.net + r.net, fees: a.fees + r.fees, cm: a.cm + r.cm }), { gross: 0, discounts: 0, net: 0, fees: 0, cm: 0 })
+      rows.push(['Total', t.gross.toFixed(2), (-t.discounts).toFixed(2), t.net.toFixed(2), (-t.fees).toFixed(2), t.cm.toFixed(2), t.net > 0 ? `${((t.cm / t.net) * 100).toFixed(1)}%` : ''])
+      if (cmData.adminFees > 0) rows.push(['Administration consultants (overhead)', '', '', '', (-cmData.adminFees).toFixed(2), '', ''])
+      if (Math.abs(cmData.untaggedFees) > 0.5) rows.push(['Professional fees not yet department-tagged', '', '', '', (-cmData.untaggedFees).toFixed(2), '', ''])
+      exportRows(rows, fmt)
+      return
+    }
     if (!data) return
     // Ticked subset of branches on the income statement: export the summed
     // engine statements (matches the screen).
@@ -2090,7 +2108,7 @@ export default function ReportsPage() {
         <div className="flex gap-2" style={{ display: (isMedrep || isInvestor || effTab === 'graphs') ? 'none' : undefined }}>
           <button
             onClick={() => handleDownloadCSV('csv')}
-            disabled={loading || !data}
+            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -2099,7 +2117,7 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => handleDownloadCSV('xls')}
-            disabled={loading || !data}
+            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -2108,7 +2126,7 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => handleDownloadCSV('pdf')}
-            disabled={loading || !data}
+            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -2121,7 +2139,7 @@ export default function ReportsPage() {
       {/* ── Tab Navigation ─────────────────────────────────────── */}
       {!isMedrep && (
       <div className="flex gap-1 mb-4 p-1 rounded-xl print:hidden" style={{ background: 'var(--light-gray)' }}>
-        {TABS.map((tab) => {
+        {TABS.filter(t => !(isInvestor && t.key === 'contribution')).map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
           return (
@@ -2144,7 +2162,15 @@ export default function ReportsPage() {
       </div>
       )}
 
-      {effTab === 'graphs' ? <GraphsView /> : <>
+      {effTab === 'contribution' ? (
+        <ContributionMargin
+          year={year}
+          branch={isTickboxes ? isBranchSel : effBranch}
+          ticked={cmTicked}
+          onTickedChange={(keys) => setCmTicked(keys)}
+          onData={setCmData}
+        />
+      ) : effTab === 'graphs' ? <GraphsView /> : <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-5 print:hidden">
         {/* Presentation currency — display only, the ledger stays in pesos */}
