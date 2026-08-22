@@ -568,7 +568,10 @@ export async function computeLedgerStatements(
      the normal journal fold instead. The ALL view is untouched (no double count). */
   if (branchValues) {
     const allocJes = await prisma.journalEntry.findMany({
-      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: { in: ['LOAN_PAYMENT', 'ADVANCE_PAYMENT'] } },
+      // The interest accruals belong here too: a late payment books its expense
+      // at the due date against Interest Payable, and that entry is as invisible
+      // to a branch view as the payment JE it precedes.
+      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: { in: ['LOAN_PAYMENT', 'ADVANCE_PAYMENT', 'LOAN_INTEREST_ACCRUAL', 'ADVANCE_INTEREST_ACCRUAL'] } },
       select: {
         referenceId: true, referenceType: true, entryDate: true, description: true,
         lines: { select: { debit: true, credit: true, account: { select: { accountNumber: true, accountType: true } } } },
