@@ -433,6 +433,10 @@ export default function AccountsReceivablePage() {
   // When user clicks a cell, filter the orders table to that bucket's ids
   const [bucketFilterIds, setBucketFilterIds] = useState<string[] | null>(null)
   const [bucketFilterLabel, setBucketFilterLabel] = useState('')
+  // Drill-down popup: the actual sessions behind an aging figure.
+  const [sessionModal, setSessionModal] = useState<{ label: string; ids: string[] } | null>(null)
+  // Free-text filter over Payment History (both wallet tabs).
+  const [paySearch, setPaySearch] = useState('')
   const [arDaysSort, setArDaysSort] = useState<'asc' | 'desc'>('desc')
   // Download menu for the summary dashboard (separate from the Per HMO one).
   const [showSummaryDownload, setShowSummaryDownload] = useState(false)
@@ -685,6 +689,26 @@ export default function AccountsReceivablePage() {
       { key: 'branch', label: 'Branch' },
       { key: 'approved', label: 'Outstanding' },
     ]
+
+  // Payment History search — matches the text actually on the row, so what the
+  // user reads is what they can search for.
+  const shownPayments = useMemo(() => {
+    const q = paySearch.trim().toLowerCase()
+    if (!q) return arPayments
+    return arPayments.filter(p => {
+      const wallet = wallets.find(w => w.id === p.walletId)
+      return [
+        formatDate(p.paymentDate),
+        p.salesInvoiceNumber || '',
+        wallet?.patientName || '',
+        String(toNum(p.amount)), formatCurrency(toNum(p.amount)),
+        String(toNum(p.discount)),
+        p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '',
+        p.notes || '',
+        p.createdBy?.name || '',
+      ].join(' ').toLowerCase().includes(q)
+    })
+  }, [arPayments, wallets, paySearch])
 
   const totalReceivable = wallets.reduce((s, w) => s + toNum(w.balance), 0)
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
@@ -1681,14 +1705,12 @@ export default function AccountsReceivablePage() {
                   const clickCell = (w: AgingRow, b: AgingBucket) => {
                     const ids = w.orderIdsByBucket[b]
                     if (!ids || ids.length === 0) return
+                    // Show the sessions themselves. This used to scroll to
+                    // [data-ar-transactions-table], a selector that matches no
+                    // element, so the click appeared to do nothing.
                     setBucketFilterIds(ids)
                     setBucketFilterLabel(`${w.walletName} · ${bucketLabels[b]}`)
-                    setWalletFilter(w.walletId)
-                    // Nudge the user to the table below
-                    setTimeout(() => {
-                      const el = document.querySelector('[data-ar-transactions-table]')
-                      if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }, 50)
+                    setSessionModal({ label: `${w.walletName} · ${bucketLabels[b]}`, ids })
                   }
                   const totals = buckets.reduce((acc, b) => ({ ...acc, [b]: rows.reduce((s, r) => s + r.aging[b], 0) }), {} as Record<AgingBucket, number>)
                   const grandTotal = rows.reduce((s, r) => s + r.ar, 0)
@@ -1733,12 +1755,28 @@ export default function AccountsReceivablePage() {
           payment had been recorded (the one that was is since reversed). */}
       {(
         <div id="ar-payment-history">
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
-            Payment History — {tab}
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              {arPayments.length}
-            </span>
-          </h3>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+              Payment History — {tab}
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                {shownPayments.length === arPayments.length ? arPayments.length : `${shownPayments.length} of ${arPayments.length}`}
+              </span>
+            </h3>
+            <div className="relative ml-auto min-w-[240px] flex-1 max-w-sm">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+              <input
+                value={paySearch}
+                onChange={e => setPaySearch(e.target.value)}
+                placeholder={`Search ${tab === 'GL' ? 'agency' : 'provider'}, SI number, amount, notes…`}
+                className="w-full pl-8 pr-7 py-1.5 rounded-lg border text-xs outline-none"
+                style={{ borderColor: 'var(--light-gray)' }} />
+              {paySearch && (
+                <button onClick={() => setPaySearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <X size={12} style={{ color: 'var(--mid-gray)' }} />
+                </button>
+              )}
+            </div>
+          </div>
           <ExpandablePanel title={`Payment History — ${tab}`} maxHeight={320}>
             <table className="w-full text-xs">
               <thead>
@@ -1749,12 +1787,14 @@ export default function AccountsReceivablePage() {
                 </tr>
               </thead>
               <tbody>
-                {arPayments.length === 0 && (
+                {shownPayments.length === 0 && (
                   <tr><td colSpan={11} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                    No {tab} payments recorded yet. Payments recorded against {tab === 'HMO' ? 'an HMO provider' : 'a Guarantee Letter agency'} appear here, newest first.
+                    {arPayments.length > 0
+                      ? `No payment matches “${paySearch.trim()}”.`
+                      : `No ${tab} payments recorded yet. Payments recorded against ${tab === 'HMO' ? 'an HMO provider' : 'a Guarantee Letter agency'} appear here, newest first.`}
                   </td></tr>
                 )}
-                {arPayments.map(p => {
+                {shownPayments.map(p => {
                   const wallet = wallets.find(w => w.id === p.walletId)
                   const proofFiles = parseProofUrls(p.proofUrl)
                   return (
@@ -2302,6 +2342,74 @@ export default function AccountsReceivablePage() {
           canWrite={canWrite}
         />
       )}
+
+      {/* ── Sessions behind an aging figure ──────────────────────────────
+          The orders list is capped by the API, so a bucket can reference an
+          order that was never loaded. Say so rather than quietly showing a
+          shorter list than the figure that was clicked. */}
+      {sessionModal && (() => {
+        const found = orders.filter(o => sessionModal.ids.includes(o.id))
+        const missing = sessionModal.ids.length - found.length
+        const amountOf = (o: AROrder) => o.payments.reduce((s, p) => s + toNum(p.amount), 0)
+        const total = found.reduce((s, o) => s + amountOf(o), 0)
+        return (
+          <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-4 overflow-y-auto"
+            onClick={() => setSessionModal(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-3xl mt-10 overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between px-5 py-3 border-b"
+                style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Sessions included</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{sessionModal.label}</p>
+                </div>
+                <button onClick={() => setSessionModal(null)} className="p-1.5 rounded-lg hover:bg-gray-200">
+                  <X size={16} style={{ color: 'var(--mid-gray)' }} />
+                </button>
+              </div>
+
+              <div className="max-h-[60vh] overflow-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
+                      {['Date', 'Order #', 'Patient', 'Service', 'Clinician', 'Branch', 'Amount'].map(h => (
+                        <th key={h} className={`px-3 py-2 font-semibold ${h === 'Amount' ? 'text-right' : 'text-left'}`}
+                          style={{ color: 'var(--deep-teal)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {found.length === 0 && (
+                      <tr><td colSpan={7} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        These sessions are older than the loaded window, so their details aren&apos;t available here.
+                      </td></tr>
+                    )}
+                    {found.map(o => (
+                      <tr key={o.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-3 py-2 whitespace-nowrap">{formatDate(o.arCustomDate || o.transactionDate)}</td>
+                        <td className="px-3 py-2 font-mono">{o.orderNumber}</td>
+                        <td className="px-3 py-2">{o.patientName || '—'}</td>
+                        <td className="px-3 py-2">{o.items.map(i => i.name).join(', ') || '—'}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{o.clinicianName || '—'}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{branchLabel(o.branch) || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono">{formatCurrency(amountOf(o))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between px-5 py-3 border-t text-xs"
+                style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <span style={{ color: 'var(--mid-gray)' }}>
+                  {found.length} of {sessionModal.ids.length} session{sessionModal.ids.length === 1 ? '' : 's'}
+                  {missing > 0 && ` · ${missing} not loaded`}
+                </span>
+                <span className="font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(total)}</span>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Invoice Settings Modal */}
       {showInvoiceSettings && (
