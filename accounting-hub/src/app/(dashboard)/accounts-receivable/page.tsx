@@ -367,16 +367,27 @@ function ProofCell({ orderId, currentUrl, onChange }: {
 
 export default function AccountsReceivablePage() {
   const { data: session } = useSession()
-  const isHmoOfficer = session?.user?.role === 'HMO_OFFICER'
-  // Branch front desk see AR read-only, and only the HMO tab's Per HMO and
-  // SOA Report views — no Overview, no GL, no Other Customers.
-  const isFrontdesk = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(session?.user?.role as string)
-  const hmoOnly = isHmoOfficer || isFrontdesk
+  const role = (session?.user as { role?: string })?.role || ''
+  const isHmoOfficer = role === 'HMO_OFFICER'
+  // Branch front desk keep the HMO tab read-only (no Record Payment) and skip its
+  // Overview, but they maintain the Guarantee Letter paper trail, so the GL tab and
+  // its Detailed GL sheet are theirs to edit. Other Customers stays hidden.
+  const isFrontdesk = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(role)
+  const visibleTabs = (isHmoOfficer ? ['HMO'] : isFrontdesk ? ['HMO', 'GL'] : ['HMO', 'GL', 'OTHERS']) as readonly ('HMO' | 'GL' | 'OTHERS')[]
+  // Money: recording a payment against an agency or provider stays with the roles
+  // that reconcile it.
   const canWrite = !isFrontdesk
+  // Detailed GL case tracking. Mirrors WRITE_ROLES in
+  // src/app/api/accounts-receivable/gl-case/route.ts — the API is the real gate, and
+  // showing a pencil to someone whose save would 403 is worse than hiding it.
+  const canEditGlCase = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN',
+    'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(role)
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const searchParams = useSearchParams()
   // HMO Officers and front desk are locked to the HMO tab only
-  const initialType = !hmoOnly && ['GL', 'OTHERS'].includes(searchParams.get('type') || '') ? (searchParams.get('type') as 'GL' | 'OTHERS') : 'HMO'
+  const initialType = ['GL', 'OTHERS'].includes(searchParams.get('type') || '')
+    && (isHmoOfficer ? false : !(isFrontdesk && searchParams.get('type') === 'OTHERS'))
+    ? (searchParams.get('type') as 'GL' | 'OTHERS') : 'HMO'
   const initialWallet = searchParams.get('wallet') || ''
 
   const [tab, setTab] = useState<'HMO' | 'GL' | 'OTHERS'>(initialType as 'HMO' | 'GL' | 'OTHERS')
@@ -467,9 +478,10 @@ export default function AccountsReceivablePage() {
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
   useEffect(() => {
-    if (hmoOnly && tab !== 'HMO') { setTab('HMO'); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel('') }
+    if (!visibleTabs.includes(tab)) { setTab('HMO'); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel('') }
     if (isFrontdesk && hmoSubTab === 'overview') setHmoSubTab('per-hmo')
-  }, [hmoOnly, isFrontdesk, tab, hmoSubTab])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFrontdesk, tab, hmoSubTab, visibleTabs.join(',')])
   // Per HMO sub-tab state
   const [perHmoWallet, setPerHmoWallet] = useState('')
   const [perHmoFrom, setPerHmoFrom] = useState('')
@@ -1061,7 +1073,7 @@ export default function AccountsReceivablePage() {
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {(['HMO', 'GL', 'OTHERS'] as const).filter(t => !(hmoOnly && t !== 'HMO')).map(t => (
+        {visibleTabs.map(t => (
           <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab(isFrontdesk ? 'per-hmo' : 'overview') }}
             className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
             style={tab === t
@@ -1131,7 +1143,7 @@ export default function AccountsReceivablePage() {
       {/* ── Detailed GL: every letter in the OPGL summary layout ── */}
       {tab === 'GL' && glSubTab === 'detailed' && (
         <DetailedGl
-          canWrite={canWrite}
+          canWrite={canEditGlCase}
           onSaved={fetchData}
           glCases={glCases}
           wallets={wallets.map(w => ({
