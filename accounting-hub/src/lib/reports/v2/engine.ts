@@ -530,11 +530,6 @@ export async function computeLedgerStatements(
   })
   const glRefIds = new Map<string, Set<string>>() // referenceType → refIds
   const glRefTypes = new Set<string>()
-  // "type|refId|month" for everything folded in below. Section 2b consults it so
-  // it never adds a branch share for a payment this branch already posted itself
-  // that month. Keyed per MONTH, not per reference: a loan whose earlier months
-  // exist only as branch='ALL' must keep flowing through 2b for those months.
-  const glRefMonths = new Set<string>()
   for (const je of journalEntries) {
     // exclude prior-year payroll JEs dated inside this year (mirror of the window above)
     if (
@@ -555,7 +550,6 @@ export async function computeLedgerStatements(
       const cm = parseInt(je.referenceId?.split('-')[1] ?? '', 10)
       if (je.referenceId?.startsWith(`${year}-`) && cm >= 1 && cm <= 12) jeMonth = cm
     }
-    if (je.referenceId) glRefMonths.add(`${je.referenceType || ''}|${je.referenceId}|${jeMonth}`)
     postBalanced(`journal:${je.referenceType || 'manual'}`, jeMonth, je.description || `Journal entry ${je.id.slice(-6)}`, je.lines.map(l => ({
       acct: l.account ? (byNumber.get(l.account.accountNumber) || virt(l.account.accountNumber, 'Unknown account', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT')) : virt('9998', 'Unmapped journal line', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT'),
       debit: Number(l.debit), credit: Number(l.credit),
@@ -596,11 +590,6 @@ export async function computeLedgerStatements(
         if (total > 0 && mine > 0) shareByLoan.set(l.id, mine / total)
       }
       for (const je of allocJes) {
-        // Already posted on this branch for this month — adding a share on top is
-        // the double count seen in July 2026, where a backfill wrote the payment
-        // as branch='ALL' and the branch-aware posting wrote it again as
-        // SANDBOX_GREENHILLS. Skip rather than allocate.
-        if (je.referenceId && glRefMonths.has(`${je.referenceType || ''}|${je.referenceId}|${monthOf(je.entryDate)}`)) continue
         const share = shareByLoan.get(je.referenceId || '') || 0
         if (!share) continue
         const expLines = je.lines.filter(l => Number(l.debit) > 0 && l.account?.accountType === 'EXPENSE')
@@ -613,8 +602,9 @@ export async function computeLedgerStatements(
         })).filter(i => i.debit > 0)
         const totalShare = round2(items.reduce((s, i) => s + i.debit, 0))
         if (!totalShare) continue
-        // Source keyed by what the entry actually is — an advance amortization
-        // reported under "Loan payments" is what made this hard to read.
+        // Keyed by what the entry actually is. Reporting an advance amortization
+        // under "Loan payments" while its sibling months appear under "Advance
+        // payments" is what made the July drill-down read as a duplicate.
         postBalanced(`journal:${je.referenceType || 'LOAN_PAYMENT'}`, monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
           ...items, { acct: bankAcct, credit: totalShare },
         ])
