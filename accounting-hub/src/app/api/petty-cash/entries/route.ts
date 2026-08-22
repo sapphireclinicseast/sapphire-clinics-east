@@ -213,9 +213,12 @@ export async function PUT(req: Request) {
         else if (f === 'recurDeadlineDay') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
         else if (f === 'distributeMonthly' || f === 'amountVaries' || f === 'hasEwt') data[f] = !!body[f]
         else if (f === 'ewtRate') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
-        else if (f === 'departments') data.departments = Array.isArray(body.departments)
-          ? [...new Set(body.departments.map((d: unknown) => String(d).toUpperCase()).filter((d: string) => VALID_DEPTS.has(d)))]
-          : []
+        else if (f === 'departments') {
+          const raw: unknown = body.departments
+          data.departments = Array.isArray(raw)
+            ? Array.from(new Set(raw.map(d => String(d).toUpperCase()).filter(d => VALID_DEPTS.has(d))))
+            : []
+        }
         else data[f] = body[f] === '' ? null : body[f]
       }
     }
