@@ -120,7 +120,12 @@ function WaiverInner() {
         updatedAt: now.toISOString(),
       }
 
-      saveWaiver(record)
+      // Fire-and-forget on the parent flow — this page runs pre-sign-in
+      // as part of the public enrollment path, so the server push is
+      // expected to no-op until syncLocalWaiversToServer catches up on
+      // the next sign-in. saveWaiver never rejects (it returns an
+      // { ok, error? } shape), so `void` is safe here.
+      void saveWaiver(record)
       setDraft({ waiverSignedAt: now.toISOString() })
       try { localStorage.setItem('scei_class_waiver_signature_v1', JSON.stringify({ parentName: parentPrinted, signedAt: now.toISOString(), level: levelParam })) } catch { /* ignore */ }
       setSigned(record)
