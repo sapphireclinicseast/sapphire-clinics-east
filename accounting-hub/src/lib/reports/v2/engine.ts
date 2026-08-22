@@ -570,7 +570,7 @@ export async function computeLedgerStatements(
     const allocJes = await prisma.journalEntry.findMany({
       where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: { in: ['LOAN_PAYMENT', 'ADVANCE_PAYMENT'] } },
       select: {
-        referenceId: true, entryDate: true, description: true,
+        referenceId: true, referenceType: true, entryDate: true, description: true,
         lines: { select: { debit: true, credit: true, account: { select: { accountNumber: true, accountType: true } } } },
       },
     })
@@ -602,7 +602,10 @@ export async function computeLedgerStatements(
         })).filter(i => i.debit > 0)
         const totalShare = round2(items.reduce((s, i) => s + i.debit, 0))
         if (!totalShare) continue
-        postBalanced('journal:LOAN_PAYMENT', monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
+        // Keyed by what the entry actually is. Reporting an advance amortization
+        // under "Loan payments" while its sibling months appear under "Advance
+        // payments" is what made the July drill-down read as a duplicate.
+        postBalanced(`journal:${je.referenceType || 'LOAN_PAYMENT'}`, monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
           ...items, { acct: bankAcct, credit: totalShare },
         ])
       }
