@@ -693,6 +693,38 @@ BEGIN
 END$$;
 SQL
 
+# ── GL processor payout (Detailed GL → Pay GL Processor) ─────────────────────
+# The deploy step deliberately does not replay prisma/migrations, so a schema
+# change ships here or it does not ship at all. These three columns are read by
+# the AR endpoint, so without them the Guarantee Letters tab fails to load.
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+-- GlCase is created out-of-band like the rest of this schema, so guard on the
+-- table existing: on an environment that has not got it yet this is a no-op
+-- rather than an error that aborts the rest of the deploy.
+DO $$
+BEGIN
+  IF to_regclass('public."GlCase"') IS NULL THEN
+    RAISE NOTICE 'GlCase not present — skipping processor payout columns';
+    RETURN;
+  END IF;
+
+  ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorRfpId" TEXT;
+  ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorPaidAt" TIMESTAMP(3);
+  ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorProofUrl" TEXT;
+
+  CREATE INDEX IF NOT EXISTS "GlCase_processorRfpId_idx" ON "GlCase"("processorRfpId");
+
+  -- SET NULL, so deleting an RFP releases its letters for a fresh batch rather
+  -- than orphaning them as permanently unpayable.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'GlCase_processorRfpId_fkey') THEN
+    ALTER TABLE "GlCase"
+      ADD CONSTRAINT "GlCase_processorRfpId_fkey"
+      FOREIGN KEY ("processorRfpId") REFERENCES "ReimbursementReport"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END$$;
+SQL
+
 # ── Consumable form-stock tracking (control-number ranges) ────────────────────
 docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
 CREATE TABLE IF NOT EXISTS "FormReceipt" (
