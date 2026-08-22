@@ -1,13 +1,14 @@
 // POST /api/public/patients/home-progress/[entryId]/file
 // Multipart upload of ONE media file (voice / video / photo) onto an existing
 // Home Progress entry. One file per request keeps each request under the
-// client-portal's 20 MB nginx limit and lets the client show per-file progress.
+// client-portal's nginx limit and lets the client show per-file progress.
 // Form fields: token, kind (AUDIO|VIDEO|PHOTO), file.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPatientToken } from '@/lib/patient-session'
 import { linkedPatientIds } from '@/lib/patient-links'
+import { compressMedia } from '@/lib/media-compress'
 import { preflight, withCors } from '../../../../_cors'
 import path from 'path'
 import fs from 'fs/promises'
@@ -16,7 +17,7 @@ export async function OPTIONS(req: NextRequest) {
   return preflight(req.headers.get('origin'))
 }
 
-const MAX_BYTES = 18 * 1024 * 1024 // fits under the 20 MB client-portal nginx cap
+const MAX_BYTES = 18 * 1024 * 1024 // fits under the 25 MB client-portal nginx cap
 
 function extFor(mime: string): string {
   const m = mime.toLowerCase()
@@ -86,11 +87,17 @@ export async function POST(
     return withCors(NextResponse.json({ error: 'Only audio, video or image files are allowed.' }, { status: 400 }), origin)
   }
 
-  const ext = extFor(mime) || path.extname(file.name || '') || ''
+  const srcExt = extFor(mime) || path.extname(file.name || '') || ''
+  const original = Buffer.from(await file.arrayBuffer())
+  // Shrink before storing — photos via sharp, audio/video via ffmpeg. Falls back
+  // to the original bytes if compression can't help, so uploads never fail here.
+  const compressed = await compressMedia(original, kind, mime, srcExt)
+
+  const ext = compressed.ext || srcExt
   const filename = `hp-${entryId}-${kind}-${Date.now()}${ext}`.replace(/[^a-zA-Z0-9._-]/g, '')
   const uploadDir = path.join(process.cwd(), 'uploads', 'home-progress')
   await fs.mkdir(uploadDir, { recursive: true })
-  await fs.writeFile(path.join(uploadDir, filename), Buffer.from(await file.arrayBuffer()))
+  await fs.writeFile(path.join(uploadDir, filename), compressed.buffer)
 
   const saved = await prisma.homeProgressFile.create({
     data: {
@@ -98,8 +105,8 @@ export async function POST(
       kind,
       fileName: (file.name || filename).slice(0, 200),
       filePath: path.join('home-progress', filename),
-      mimeType: mime,
-      sizeBytes: file.size,
+      mimeType: compressed.mime,
+      sizeBytes: compressed.buffer.length,
     },
     select: { id: true, kind: true, fileName: true, mimeType: true, sizeBytes: true },
   })
