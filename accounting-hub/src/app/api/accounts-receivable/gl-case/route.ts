@@ -11,7 +11,13 @@ import { prisma } from '@/lib/prisma'
  * amount or an account. Those stay with the wallet endpoints that already
  * guard them.
  */
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
+// Branch front desk are included: they are the ones who chase the documents,
+// file the SOA and know the release dates, so they maintain this sheet. It stays
+// safe to hand them because the fields here are the paper trail only — this route
+// cannot move a balance, an approved amount or an account, and recording a payment
+// against an agency is a separate permission they do not have.
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN',
+  'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 const DATE_FIELDS = ['glDocsSubmittedAt', 'glReleasedAt', 'soaSubmittedAt'] as const
 const MONEY_FIELDS = ['glRequestedAmount', 'soaAmount', 'soaCommissionRate'] as const

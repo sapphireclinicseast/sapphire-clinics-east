@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-// Branch front desk are read-only and HMO-only (see HMO_ONLY_ROLES below).
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
-// These roles never see GL wallets, so ?type= is ignored for them rather than
+// This role never sees GL wallets, so ?type= is ignored for it rather than
 // trusted — the UI hides the GL tab, this is what actually enforces it.
-const HMO_ONLY_ROLES = ['HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+// Branch front desk are NOT here: they maintain the Guarantee Letter paper trail,
+// so they read GL as well. They remain read-only for money — recording a payment
+// is gated separately, in the UI and in the payment routes.
+const HMO_ONLY_ROLES = ['HMO_OFFICER']
 
 export async function GET(req: Request) {
   const session = await auth()
