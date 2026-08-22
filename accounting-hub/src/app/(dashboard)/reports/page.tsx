@@ -1952,13 +1952,17 @@ export default function ReportsPage() {
     if (activeTab === 'contribution') {
       if (!cmData) return
       const shown = cmData.rows
-      const rows: string[][] = [[`Contribution Margin — ${year} — ${(isTickboxes ? isBranchSel : effBranch).split('+').map(p => BRANCHES.find(b => b.value === p)?.label || (p === 'ALL' ? 'All Branches' : p)).join(' + ')}`,
-        'Gross Sales', 'Discounts (allocated)', 'Net Sales', 'Professional Fees', 'Contribution Margin', 'CM %']]
-      for (const r of shown) rows.push([`  ${r.label}`, r.gross.toFixed(2), (-r.discounts).toFixed(2), r.net.toFixed(2), (-r.fees).toFixed(2), r.cm.toFixed(2), r.cmPct != null ? `${r.cmPct.toFixed(1)}%` : ''])
+      const branchLbl = (isTickboxes ? isBranchSel : effBranch).split('+').map(pt => BRANCHES.find(b => b.value === pt)?.label || (pt === 'ALL' ? 'All Branches' : pt)).join(' + ')
       const t = shown.reduce((a, r) => ({ gross: a.gross + r.gross, discounts: a.discounts + r.discounts, net: a.net + r.net, fees: a.fees + r.fees, cm: a.cm + r.cm }), { gross: 0, discounts: 0, net: 0, fees: 0, cm: 0 })
-      rows.push(['Total', t.gross.toFixed(2), (-t.discounts).toFixed(2), t.net.toFixed(2), (-t.fees).toFixed(2), t.cm.toFixed(2), t.net > 0 ? `${((t.cm / t.net) * 100).toFixed(1)}%` : ''])
-      if (cmData.adminFees > 0) rows.push(['Administration consultants (overhead)', '', '', '', (-cmData.adminFees).toFixed(2), '', ''])
-      if (Math.abs(cmData.untaggedFees) > 0.5) rows.push(['Professional fees not yet department-tagged', '', '', '', (-cmData.untaggedFees).toFixed(2), '', ''])
+      const rows: string[][] = [[`Contribution Margin — ${year} — ${branchLbl}`, ...shown.map(r => r.label), 'Total']]
+      rows.push(['Gross Sales', ...shown.map(r => r.gross.toFixed(2)), t.gross.toFixed(2)])
+      rows.push(['Discounts (allocated)', ...shown.map(r => (-r.discounts).toFixed(2)), (-t.discounts).toFixed(2)])
+      rows.push(['Net Sales', ...shown.map(r => r.net.toFixed(2)), t.net.toFixed(2)])
+      rows.push(['Professional Fees', ...shown.map(r => (-r.fees).toFixed(2)), (-t.fees).toFixed(2)])
+      rows.push(['Contribution Margin', ...shown.map(r => r.cm.toFixed(2)), t.cm.toFixed(2)])
+      rows.push(['CM % of Net Sales', ...shown.map(r => r.cmPct != null ? `${r.cmPct.toFixed(1)}%` : ''), t.net > 0 ? `${((t.cm / t.net) * 100).toFixed(1)}%` : ''])
+      if (cmData.adminFees > 0) rows.push([`Administration consultants (overhead): ${(-cmData.adminFees).toFixed(2)}`])
+      if (Math.abs(cmData.untaggedFees) > 0.5) rows.push([`Professional fees not yet department-tagged: ${(-cmData.untaggedFees).toFixed(2)}`])
       exportRows(rows, fmt)
       return
     }
