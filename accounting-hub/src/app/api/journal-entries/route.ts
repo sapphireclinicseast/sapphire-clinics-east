@@ -236,8 +236,14 @@ export async function POST(req: Request) {
       // Departments this entry belongs to, for the contribution-margin
       // analysis. Empty = "All" (allocated by the configured rent percentages).
       departments: Array.isArray(b.departments)
-        ? [...new Set(b.departments.map((d: unknown) => String(d).toUpperCase())
-            .filter((d: string) => ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'].includes(d)))]
+        // Typed as string[] explicitly: the Set spread loses the inference from
+        // .filter() and lands back on unknown[], which Prisma's input type
+        // rejects — which is what broke the build.
+        ? Array.from(new Set<string>(
+            (b.departments as unknown[])
+              .map((d): string => String(d).toUpperCase())
+              .filter((d): boolean => ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'].includes(d)),
+          ))
         : [],
       lines: { create: lines },
     },
