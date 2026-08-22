@@ -613,21 +613,28 @@ function GlEntryModal({
 
   const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }))
 
-  // Free wallets, plus the one this entry already holds — without that exception
-  // an edit would show its own wallet as missing and quietly offer to untag it.
-  const available = useMemo(
-    () => wallets.filter(w => !claimedWalletIds.has(w.id) || w.id === entry?.walletId),
-    [wallets, claimedWalletIds, entry?.walletId],
-  )
+  // Every wallet is offered, including ones another entry already holds. Those are
+  // rendered disabled with the reason, because silently dropping them made the
+  // picker look broken: the wallet you wanted simply was not in the list and
+  // nothing said why. Re-tagging still requires untagging the other entry first —
+  // that is the unique constraint, and it is now visible rather than implied.
+  const claimedByOther = (w: GlCaseWallet) =>
+    claimedWalletIds.has(w.id) && w.id !== entry?.walletId
+
   const options = useMemo(() => {
     const q = walletSearch.trim().toLowerCase()
-    const list = q ? available.filter(w => w.patientName.toLowerCase().includes(q)) : available
-    // The tagged wallet stays in the list even when the search would exclude it,
-    // so the select never renders a value it has no option for.
-    const shown = list.slice(0, 40)
-    const current = available.find(w => w.id === form.walletId)
-    return current && !shown.some(w => w.id === current.id) ? [current, ...shown] : shown
-  }, [available, walletSearch, form.walletId])
+    // Search covers the branch and the identifying tag too — two applications for
+    // one patient share a name, so the name alone cannot separate them.
+    const list = q
+      ? wallets.filter(w =>
+          w.patientName.toLowerCase().includes(q)
+          || (branchLabel(w.branch) || '').toLowerCase().includes(q)
+          || walletTag(w).toLowerCase().includes(q))
+      : wallets
+    // Free wallets first: the ones that can actually be picked should not be
+    // buried under wallets that cannot.
+    return [...list].sort((a, b) => Number(claimedByOther(a)) - Number(claimedByOther(b)))
+  }, [wallets, walletSearch, claimedWalletIds, entry?.walletId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     if (!form.patientName.trim()) { setError('Name is required'); return }
@@ -675,7 +682,7 @@ function GlEntryModal({
     </div>
   )
 
-  const tagged = available.find(w => w.id === form.walletId) || null
+  const tagged = wallets.find(w => w.id === form.walletId) || null
 
   return (
     <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
@@ -724,11 +731,16 @@ function GlEntryModal({
             className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <option value="">— not tagged —</option>
             {options.map(w => (
-              <option key={w.id} value={w.id}>
+              <option key={w.id} value={w.id} disabled={claimedByOther(w)}>
                 {w.patientName} · {branchLabel(w.branch) || 'no branch'} · {walletTag(w)} · {formatCurrency(num(w.balance))} left
+                {claimedByOther(w) ? ' — already tagged to another entry' : ''}
               </option>
             ))}
           </select>
+          <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+            {options.length} of {wallets.length} wallets shown. Greyed-out ones are held by another
+            entry — untag it there first to move the wallet here.
+          </p>
           {tagged && (
             <p className="text-[11px] mt-2" style={{ color: 'var(--deep-teal)' }}>
               Approved {formatCurrency(num(tagged.totalGlAmount))} · {formatCurrency(num(tagged.balance))} left ·
