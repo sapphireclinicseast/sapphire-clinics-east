@@ -35,9 +35,10 @@ const DEPT_SHORT: Record<string, string> = {
   PSYCHOLOGY: 'Psych', ORTHOSIS: 'Ortho', TRAINING: 'Training', RETAIL: 'Retail',
 }
 
+// One set of percentages: it allocates rent (8210 + 8211) AND every expense
+// entry not tagged to specific departments, per the owner's rule.
 const CATEGORIES = [
-  { value: 'RENT', label: 'Rent (8210 + 8211)' },
-  { value: 'OTHER', label: 'Other expenses' },
+  { value: 'RENT', label: 'Rent & untagged expenses' },
 ]
 
 function RentAllocationModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -101,20 +102,11 @@ function RentAllocationModal({ onClose, onSaved }: { onClose: () => void; onSave
           <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Expense allocation by department</h3>
           <button onClick={onClose}><X size={18} /></button>
         </div>
-        <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
-          Per branch: what % each department carries. Rent (direct 8211 + indirect 8210) and the
-          remaining expenses each have their own percentages. Each branch should total 100%;
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+          Per branch: what % each department carries of rent (direct 8211 + indirect 8210) AND of
+          every expense entry not tagged to specific departments. Each branch should total 100%;
           anything unallocated stays on its own line.
         </p>
-        <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: 'var(--light-gray)' }}>
-          {CATEGORIES.map(c => (
-            <button key={c.value} onClick={() => setCat(c.value)}
-              className="flex-1 py-2 px-3 rounded-lg text-sm font-medium"
-              style={{ background: cat === c.value ? 'white' : 'transparent', color: cat === c.value ? 'var(--teal)' : 'var(--mid-gray)' }}>
-              {c.label}
-            </button>
-          ))}
-        </div>
         {loading ? <div className="py-10 text-center"><Loader2 className="animate-spin inline" size={18} /></div> : (
           <div className="space-y-4">
             {ALLOC_BRANCHES.map(b => (
@@ -157,19 +149,23 @@ function RentAllocationModal({ onClose, onSaved }: { onClose: () => void; onSave
   )
 }
 
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
 export default function ContributionMargin({ year, branch, onData }: {
   year: number
   branch: string
   onData?: (d: CmPayload | null) => void
 }) {
   const [reload, setReload] = useState(0)
-  const key = `${year}|${branch}|${reload}`
+  const [fromM, setFromM] = useState(1)
+  const [toM, setToM] = useState(12)
+  const key = `${year}|${branch}|${fromM}|${toM}|${reload}`
   const [result, setResult] = useState<{ key: string; data: CmPayload | null; error: string | null }>({ key: '', data: null, error: null })
   const [showAlloc, setShowAlloc] = useState(false)
 
   useEffect(() => {
     let live = true
-    fetch(`/api/reports/contribution?year=${year}&branch=${encodeURIComponent(branch)}`)
+    fetch(`/api/reports/contribution?year=${year}&branch=${encodeURIComponent(branch)}&from=${fromM}&to=${toM}`)
       .then(async r => {
         const j = await r.json()
         if (!live) return
@@ -211,15 +207,27 @@ export default function ContributionMargin({ year, branch, onData }: {
     ['Net Sales', r => r.net, tot.net, true],
     ['Professional Fees', r => -r.fees, -tot.fees, false],
     ['Contribution Margin', r => r.cm, tot.cm, true],
-    ['Other Expenses (allocated)', r => -r.other, -tot.other, false],
+    ['Other Expenses (tagged + allocated)', r => -r.other, -tot.other, false],
     ['Rent (allocated)', r => -r.rent, -tot.rent, false],
     ['Net Margin', r => r.nm, tot.nm, true],
   ]
 
   return (
     <div className="px-4 pb-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Amounts in whole pesos.</p>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>From</span>
+          <select value={fromM} onChange={e => { const v = Number(e.target.value); setFromM(v); if (v > toM) setToM(v) }}
+            className="px-2 py-1.5 rounded-lg text-xs" style={{ border: '1px solid var(--light-gray)' }}>
+            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+          <span className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>to</span>
+          <select value={toM} onChange={e => { const v = Number(e.target.value); setToM(v); if (v < fromM) setFromM(v) }}
+            className="px-2 py-1.5 rounded-lg text-xs" style={{ border: '1px solid var(--light-gray)' }}>
+            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+          <p className="text-[11px] ml-2" style={{ color: 'var(--mid-gray)' }}>Amounts in whole pesos.</p>
+        </div>
         <button onClick={() => setShowAlloc(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
           style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
@@ -267,18 +275,15 @@ export default function ContributionMargin({ year, branch, onData }: {
       <div className="mt-3 text-xs space-y-1" style={{ color: 'var(--mid-gray)' }}>
         {data.adminFees > 0 && <div>Administration consultants (overhead, no department): <span className="tabular-nums">{formatCurrency(data.adminFees)}</span></div>}
         {Math.abs(data.untaggedFees) > 0.5 && <div>Professional fees not yet department-tagged (pre-April-2026 cutoffs, manual entries): <span className="tabular-nums">{formatCurrency(data.untaggedFees)}</span></div>}
+        {(data as { taggedExpenses?: number }).taggedExpenses != null && ((data as { taggedExpenses?: number }).taggedExpenses || 0) > 0.5 && <div>Expenses charged directly via department tags: <span className="tabular-nums">{formatCurrency((data as { taggedExpenses?: number }).taggedExpenses || 0)}</span></div>}
         {data.rentUnallocated > 0.5 && <div>Rent not covered by the allocation percentages: <span className="tabular-nums">{formatCurrency(data.rentUnallocated)}</span></div>}
-        {data.otherUnallocated > 0.5 && <div>Other expenses not covered by the allocation percentages: <span className="tabular-nums">{formatCurrency(data.otherUnallocated)}</span></div>}
+        {data.otherUnallocated > 0.5 && <div>Untagged expenses not covered by the allocation percentages: <span className="tabular-nums">{formatCurrency(data.otherUnallocated)}</span></div>}
         {data.branchesMissingConfig.length > 0 && (
           <div style={{ color: '#b45309' }}>
             No rent allocation configured for {data.branchesMissingConfig.join(', ')} — split equally for now (&quot;Expense allocation&quot; button, Rent tab).
           </div>
         )}
-        {(data.branchesMissingOtherConfig || []).length > 0 && (
-          <div style={{ color: '#b45309' }}>
-            No other-expense allocation configured for {(data.branchesMissingOtherConfig || []).join(', ')} — split equally for now (&quot;Expense allocation&quot; button, Other tab).
-          </div>
-        )}
+
       </div>
 
       <div className="mt-4 space-y-1">

@@ -2076,6 +2076,8 @@ model JournalEntry {
   branch        String   @default("ALL")
   createdById   String
   createdAt     DateTime @default(now())
+  // Contribution-margin department tags: empty = "All" (allocated by rent %).
+  departments   String[] @default([])
 
   lines JournalEntryLine[]
 
@@ -2388,7 +2390,9 @@ model PettyCashEntry {
   pcvSeq              Int
   pcvSub              Int                  @default(1)
   requestor           String?
-  department          String? // ADMIN, PT, OT, SLP, SPED, PSYCH, MD, ORTHOSIS
+  department          String? // ADMIN, PT, OT, SLP, SPED, PSYCH, MD, ORTHOSIS (legacy single)
+  // Contribution-margin department tags: empty = "All" (allocated by rent %).
+  departments         String[]             @default([])
   pcfStatus           String? // Unliquidated | For Replenishment | Cancelled | Missing
   date                DateTime?
   description         String?
