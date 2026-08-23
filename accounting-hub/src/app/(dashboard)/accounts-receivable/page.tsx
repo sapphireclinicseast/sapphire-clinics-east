@@ -693,25 +693,60 @@ export default function AccountsReceivablePage() {
       { key: 'approved', label: 'Outstanding' },
     ]
 
+  /**
+   * One definition of each Payment History column, used by the free-text search,
+   * the per-column filters, the sort and nothing else — so what is displayed,
+   * what is searched and what is sorted can never drift apart.
+   *
+   * `sort` returns a number where the column is numeric or a date, so amounts
+   * order by value rather than by the text "1,000" sorting before "9".
+   */
+  const payCols = useMemo(() => ([
+    { key: 'date',    label: 'Date',            text: (p: ARPaymentRecord) => formatDate(p.paymentDate),
+      sort: (p: ARPaymentRecord) => new Date(p.paymentDate).getTime() },
+    { key: 'si',      label: 'SI Number',       text: (p: ARPaymentRecord) => p.salesInvoiceNumber || '' },
+    { key: 'agency',  label: 'Provider/Agency', text: (p: ARPaymentRecord) => wallets.find(w => w.id === p.walletId)?.patientName || '' },
+    { key: 'amount',  label: 'Amount',          text: (p: ARPaymentRecord) => formatCurrency(toNum(p.amount)),
+      sort: (p: ARPaymentRecord) => toNum(p.amount), numeric: true },
+    { key: 'discount', label: 'Discount',       text: (p: ARPaymentRecord) => toNum(p.discount) ? formatCurrency(toNum(p.discount)) : '',
+      sort: (p: ARPaymentRecord) => toNum(p.discount), numeric: true },
+    { key: 'account', label: 'Debit Account',   text: (p: ARPaymentRecord) => p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '' },
+    { key: 'orders',  label: 'Orders',          text: (p: ARPaymentRecord) => String(p.items?.length ?? 0),
+      sort: (p: ARPaymentRecord) => p.items?.length ?? 0, numeric: true },
+    { key: 'notes',   label: 'Notes',           text: (p: ARPaymentRecord) => p.notes || '' },
+    { key: 'proof',   label: 'Proof',           text: () => '' },
+    { key: 'by',      label: 'Recorded By',     text: (p: ARPaymentRecord) => p.createdBy?.name || '' },
+  ]), [wallets])
+
+  const [paySort, setPaySort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
+  const [payFilters, setPayFilters] = useState<Record<string, string>>({})
+
+  const togglePaySort = (key: string) =>
+    setPaySort(s => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
+
   // Payment History search — matches the text actually on the row, so what the
   // user reads is what they can search for.
   const shownPayments = useMemo(() => {
     const q = paySearch.trim().toLowerCase()
-    if (!q) return arPayments
-    return arPayments.filter(p => {
-      const wallet = wallets.find(w => w.id === p.walletId)
-      return [
-        formatDate(p.paymentDate),
-        p.salesInvoiceNumber || '',
-        wallet?.patientName || '',
-        String(toNum(p.amount)), formatCurrency(toNum(p.amount)),
-        String(toNum(p.discount)),
-        p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '',
-        p.notes || '',
-        p.createdBy?.name || '',
-      ].join(' ').toLowerCase().includes(q)
+    let out = arPayments
+    if (q) out = out.filter(p => payCols.map(c => c.text(p)).join(' ').toLowerCase().includes(q))
+    for (const c of payCols) {
+      const needle = (payFilters[c.key] || '').trim().toLowerCase()
+      if (needle) out = out.filter(p => c.text(p).toLowerCase().includes(needle))
+    }
+    const col = payCols.find(c => c.key === paySort.key)
+    if (!col) return out
+    return [...out].sort((a, b) => {
+      const av = col.sort ? col.sort(a) : col.text(a)
+      const bv = col.sort ? col.sort(b) : col.text(b)
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv))
+      return paySort.dir === 'asc' ? cmp : -cmp
     })
-  }, [arPayments, wallets, paySearch])
+  }, [arPayments, paySearch, payCols, payFilters, paySort])
+
+  const activePayFilters = Object.values(payFilters).filter(v => (v || '').trim()).length
 
   const totalReceivable = wallets.reduce((s, w) => s + toNum(w.balance), 0)
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
@@ -1791,21 +1826,52 @@ export default function AccountsReceivablePage() {
                 </button>
               )}
             </div>
+            {/* Column filters live in the header row and are easy to forget once
+                scrolled past, so the way out sits up here with the count. */}
+            {activePayFilters > 0 && (
+              <button onClick={() => setPayFilters({})}
+                className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg shrink-0"
+                style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                Clear {activePayFilters} filter{activePayFilters === 1 ? '' : 's'}
+              </button>
+            )}
           </div>
           <ExpandablePanel title={`Payment History — ${tab}`} maxHeight={320}>
             <table className="w-full text-xs">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
-                  {['Date', 'SI Number', 'Provider/Agency', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Proof', 'Recorded By', ''].map(h => (
-                    <th key={h} className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                  {payCols.map(c => (
+                    <th key={c.key} className="text-left px-3 py-2 align-top font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                      <button onClick={() => togglePaySort(c.key)}
+                        className="flex items-center gap-1 font-semibold hover:opacity-70"
+                        style={{ marginLeft: c.numeric ? 'auto' : undefined }}>
+                        {c.label}
+                        {paySort.key === c.key
+                          ? (paySort.dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
+                          : <ArrowUpDown size={10} style={{ opacity: 0.35 }} />}
+                      </button>
+                      {/* Proof holds links rather than text, so filtering it would
+                          match nothing — the header still sorts. */}
+                      {c.key !== 'proof' && (
+                        <input
+                          value={payFilters[c.key] || ''}
+                          onChange={e => setPayFilters(f => ({ ...f, [c.key]: e.target.value }))}
+                          placeholder="Filter…"
+                          className="mt-1 w-full min-w-[70px] px-1.5 py-0.5 rounded border text-[10px] outline-none font-normal"
+                          style={{ borderColor: 'var(--light-gray)' }} />
+                      )}
+                    </th>
                   ))}
+                  <th className="text-left px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {shownPayments.length === 0 && (
                   <tr><td colSpan={11} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
                     {arPayments.length > 0
-                      ? `No payment matches “${paySearch.trim()}”.`
+                      ? (paySearch.trim()
+                          ? `No payment matches “${paySearch.trim()}”.`
+                          : 'No payment matches the column filters.')
                       : `No ${tab} payments recorded yet. Payments recorded against ${tab === 'HMO' ? 'an HMO provider' : 'a Guarantee Letter agency'} appear here, newest first.`}
                   </td></tr>
                 )}
