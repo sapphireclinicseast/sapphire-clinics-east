@@ -1108,9 +1108,13 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
               onChange={e => setMoveSearch(e.target.value)}
               placeholder="Search letters by name, branch or approved amount…"
               className="w-full px-3 py-2 rounded-lg text-sm outline-none mb-2" style={{ border: '1px solid var(--light-gray)' }} />
-            <div className="flex gap-2">
+            {/* min-w-0 on the select: a flex child defaults to min-width:auto, which
+                is its content width — and these options are long ("NAME · BRANCH ·
+                opened ... · approved P49,912.50"), so the row grew past the modal
+                instead of the select shrinking. */}
+            <div className="flex gap-2 min-w-0">
               <select value={moveTo} onChange={e => setMoveTo(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg text-sm bg-white" style={{ border: '1px solid var(--light-gray)' }}>
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm bg-white truncate" style={{ border: '1px solid var(--light-gray)' }}>
                 <option value="">— pick the correct letter —</option>
                 {moveOptions.map(w => (
                   <option key={w.id} value={w.id}>
