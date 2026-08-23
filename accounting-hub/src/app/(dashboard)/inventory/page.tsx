@@ -1,6 +1,7 @@
 'use client'
 
 import React, { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
@@ -39,6 +40,7 @@ import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
+import BranchStockPanel from './BranchStockPanel'
 import SkuGuidePanel from './SkuGuidePanel'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
@@ -346,7 +348,7 @@ const CURRENCIES = [
   { value: 'INR', label: 'INR — Indian Rupee' },
 ]
 
-const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Adjustments', 'Consignments', 'Forms'] as const
+const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Supplier Request', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms'] as const
 type Tab = (typeof TABS)[number]
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -404,15 +406,18 @@ interface InventoryItem {
   sourceAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   expenseAccountId?: string | null
   expenseAccount?: { id: string; accountNumber: string; accountTitle: string } | null
-  variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null; unitCost?: string | number | null; sellingPrice?: string | number | null }[]
+  variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null; unitCost?: string | number | null; sellingPrice?: string | number | null; dimensionLength?: string | number | null; dimensionWidth?: string | number | null; dimensionHeight?: string | number | null; weightKg?: string | number | null }[]
   isBundle?: boolean
   issuedOfficialInvoice?: boolean
   isPreOrder?: boolean
   websiteClassification?: string | null
+  supplierProductName?: string | null
+  description?: string | null
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
   dimensionLength?: number | null
   dimensionWidth?: number | null
   dimensionHeight?: number | null
+  weightKg?: number | null
 }
 
 interface Adjustment {
@@ -442,6 +447,29 @@ function genAdjRef(adj: { id: string; adjustmentDate: string }): string {
     ? '00000000'
     : `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
   return `ADJ-${ymd}-${adj.id.slice(-5).toUpperCase()}`
+}
+
+interface SupplierRequestItemRow {
+  id: string
+  itemId: string
+  quantity: number
+  remarks: string | null
+  item: {
+    id: string; sku: string; name: string; supplierProductName: string | null; description: string | null
+    imageUrl: string | null; dimensionLength: number | null; dimensionWidth: number | null; dimensionHeight: number | null
+    weightKg: number | null; quantity: number; reorderLevel: number | null
+  }
+}
+
+interface SupplierRequest {
+  id: string
+  referenceNumber: string
+  requestDate: string
+  status: string
+  remarks: string | null
+  preparedByName: string
+  supplier: { id: string; supplierName: string; email?: string | null; contactNumber?: string | null; contactPerson?: string | null; address?: string | null }
+  items: SupplierRequestItemRow[]
 }
 
 interface FbRow {
@@ -535,6 +563,197 @@ function BarcodeDisplay({ value }: { value: string }) {
   return <svg ref={ref} />
 }
 
+/* ── Searchable picker (type to filter instead of scrolling a long <select>) ──
+   Used for item and RFP selection; options carry a code, a description and an
+   optional badge, and the query matches against code + description. */
+interface SearchOption {
+  id: string
+  code: string
+  description: string
+  badge?: string
+}
+
+function optionLabel(o: SearchOption) {
+  return o.description ? `${o.code} — ${o.description}` : o.code
+}
+
+function SearchSelect({ options, value, onChange, placeholder = 'Type to search...', emptyText = 'No matches found', required, compact }: {
+  options: SearchOption[]
+  value: string
+  onChange: (id: string) => void
+  placeholder?: string
+  emptyText?: string
+  required?: boolean
+  compact?: boolean
+}) {
+  const selected = options.find((o) => o.id === value) || null
+  const label = selected ? optionLabel(selected) : ''
+  const [query, setQuery] = useState(label)
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(0)
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // Follow the selection when it changes from outside (row reset, edit, clear),
+  // but never overwrite what the user is currently typing.
+  useEffect(() => { if (!open) setQuery(label) }, [label, open])
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q || q === label.toLowerCase()) return options.slice(0, 50)
+    return options.filter((o) => o.code.toLowerCase().includes(q) || o.description.toLowerCase().includes(q)).slice(0, 50)
+  }, [options, query, label])
+
+  // The picker lives inside modals and an overflow-x table, so the menu is
+  // portalled to <body> and positioned against the input to avoid clipping.
+  const place = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const below = window.innerHeight - r.bottom - 8
+    const above = r.top - 8
+    const dropUp = below < 160 && above > below
+    const maxHeight = Math.max(120, Math.min(240, dropUp ? above : below))
+    const width = Math.max(r.width, 280)
+    setRect({
+      top: dropUp ? r.top - 4 - maxHeight : r.bottom + 4,
+      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+      width,
+      maxHeight,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    place()
+    const reposition = () => place()
+    const onPointerDown = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (wrapRef.current?.contains(t) || listRef.current?.contains(t)) return
+      setOpen(false)
+      setQuery(label)
+    }
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    document.addEventListener('mousedown', onPointerDown)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+      document.removeEventListener('mousedown', onPointerDown)
+    }
+  }, [open, place, label])
+
+  useEffect(() => {
+    if (!open) return
+    ;(listRef.current?.children[highlight] as HTMLElement | undefined)?.scrollIntoView({ block: 'nearest' })
+  }, [highlight, open])
+
+  const choose = (o: SearchOption) => {
+    onChange(o.id)
+    setQuery(optionLabel(o))
+    setOpen(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) { setOpen(true); return }
+      if (!matches.length) return
+      setHighlight((h) => (e.key === 'ArrowDown' ? (h + 1) % matches.length : (h - 1 + matches.length) % matches.length))
+    } else if (e.key === 'Enter') {
+      // While the menu is open Enter picks; it must never reach the form and
+      // submit half-typed text that matches no option.
+      if (open) {
+        e.preventDefault()
+        if (matches[highlight]) choose(matches[highlight])
+      }
+    } else if (e.key === 'Escape') {
+      if (open) { e.preventDefault(); setOpen(false); setQuery(label) }
+    }
+  }
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <Search size={compact ? 12 : 14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+      <input ref={inputRef} type="text" value={query} placeholder={placeholder} required={required}
+        autoComplete="off"
+        onChange={(e) => { setQuery(e.target.value); setHighlight(0); setOpen(true) }}
+        onFocus={(e) => { setOpen(true); e.target.select() }}
+        onKeyDown={handleKeyDown}
+        className={compact
+          ? 'w-full pl-7 pr-6 py-1.5 rounded-lg border text-xs outline-none'
+          : 'w-full pl-8 pr-7 py-2.5 rounded-xl border text-sm outline-none'}
+        style={{ borderColor: 'var(--light-gray)' }} />
+      {selected && (
+        <button type="button" aria-label="Clear selection"
+          onClick={() => { onChange(''); setQuery(''); setOpen(false); inputRef.current?.focus() }}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100">
+          <X size={compact ? 11 : 13} style={{ color: 'var(--mid-gray)' }} />
+        </button>
+      )}
+      {open && rect && createPortal(
+        <div ref={listRef} className="fixed bg-white border rounded-xl shadow-lg z-[60] overflow-y-auto"
+          style={{ top: rect.top, left: rect.left, width: rect.width, maxHeight: rect.maxHeight, borderColor: 'var(--light-gray)' }}>
+          {matches.length === 0 ? (
+            <div className="px-3 py-3 text-xs text-center" style={{ color: 'var(--mid-gray)' }}>{emptyText}</div>
+          ) : matches.map((o, idx) => (
+            <button key={o.id} type="button"
+              onMouseEnter={() => setHighlight(idx)}
+              onClick={() => choose(o)}
+              className="w-full px-3 py-2 text-left text-xs flex items-center justify-between gap-2 border-b last:border-b-0"
+              style={{ borderColor: 'var(--light-gray)', background: idx === highlight ? 'var(--off-white)' : undefined }}>
+              <span className="truncate"><span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{o.code}</span>{o.description ? ` — ${o.description}` : ''}</span>
+              {o.badge && <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{o.badge}</span>}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </div>
+  )
+}
+
+function ItemSearchSelect({ items, value, onChange, required, compact }: {
+  items: InventoryItem[]
+  value: string
+  onChange: (item: InventoryItem | null) => void
+  required?: boolean
+  compact?: boolean
+}) {
+  const options = useMemo<SearchOption[]>(
+    () => items.map((i) => ({ id: i.id, code: i.sku, description: i.name, badge: `Stock: ${i.quantity}` })),
+    [items],
+  )
+  return (
+    <SearchSelect options={options} value={value} required={required} compact={compact}
+      placeholder="Type SKU or item name..." emptyText="No items found"
+      onChange={(id) => onChange(items.find((i) => i.id === id) || null)} />
+  )
+}
+
+function RfpSearchSelect({ rfps, value, onChange }: {
+  rfps: RfpOption[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const options = useMemo<SearchOption[]>(
+    () => rfps.map((r) => ({
+      id: r.id,
+      code: r.refNumber,
+      description: [r.payableTo, `₱${r.grossTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]
+        .filter(Boolean).join(' · '),
+      badge: r.status === 'PAID' ? 'Paid' : 'For Payment',
+    })),
+    [rfps],
+  )
+  return (
+    <SearchSelect options={options} value={value} onChange={onChange}
+      placeholder="Type RFP number or payee..." emptyText="No RFPs found" />
+  )
+}
+
 /* ═══════════════════════════════════════════════════════════
    PAGE COMPONENT
    ═══════════════════════════════════════════════════════════ */
@@ -575,7 +794,6 @@ function InventoryInner() {
   const [itemDeptFilter, setItemDeptFilter] = useState('')
   const [itemWebClassFilter, setItemWebClassFilter] = useState('')
   const [showDisabledItems, setShowDisabledItems] = useState(false)
-  const [downloadWithPhotos, setDownloadWithPhotos] = useState(false)
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null)
@@ -612,10 +830,13 @@ function InventoryInner() {
   const [fInitialQty, setFInitialQty] = useState('')
   const [fReorderLevel, setFReorderLevel] = useState('')
   const [fSupplierId, setFSupplierId] = useState('')
+  const [fSupplierProductName, setFSupplierProductName] = useState('')
+  const [fDescription, setFDescription] = useState('')
   const [fExchangeRate, setFExchangeRate] = useState('')
   const [fDimL, setFDimL] = useState('')
   const [fDimW, setFDimW] = useState('')
   const [fDimH, setFDimH] = useState('')
+  const [fWeightKg, setFWeightKg] = useState('')
   const [fRevenueAccountId, setFRevenueAccountId] = useState('')
   const [fRevenueAccountSearch, setFRevenueAccountSearch] = useState('')
   const [revenueAccounts, setRevenueAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
@@ -653,10 +874,98 @@ function InventoryInner() {
   const [invSortDir, setInvSortDir] = useState<'asc' | 'desc'>('asc')
   // Adjustment delete
   const [deleteAdjConfirm, setDeleteAdjConfirm] = useState<string | null>(null)
-  const [editAdj, setEditAdj] = useState<Adjustment | null>(null)
+  /* ── Supplier Request ──────────────────────────────────────────
+     Ask a supplier for stock. The printed sheet quotes their own product name,
+     photo and packed size, so they recognise what is being reordered. */
+  const [supReqs, setSupReqs] = useState<SupplierRequest[]>([])
+  const [supReqOpen, setSupReqOpen] = useState(false)
+  const [supReqEditId, setSupReqEditId] = useState<string | null>(null)
+  const [supReqSupplierId, setSupReqSupplierId] = useState('')
+  const [supReqDate, setSupReqDate] = useState(new Date().toISOString().slice(0, 10))
+  const [supReqRemarks, setSupReqRemarks] = useState('')
+  const [supReqRows, setSupReqRows] = useState<{ itemId: string; quantity: string; remarks: string }[]>([{ itemId: '', quantity: '', remarks: '' }])
+  const [supReqSaving, setSupReqSaving] = useState(false)
+  const [supReqDeleteId, setSupReqDeleteId] = useState<string | null>(null)
+
+  function openSupReqCreate() {
+    setSupReqEditId(null); setSupReqSupplierId(''); setSupReqDate(new Date().toISOString().slice(0, 10))
+    setSupReqRemarks(''); setSupReqRows([{ itemId: '', quantity: '', remarks: '' }]); setError('')
+    setSupReqOpen(true)
+  }
+
+  function openSupReqEdit(r: SupplierRequest) {
+    setSupReqEditId(r.id); setSupReqSupplierId(r.supplier.id)
+    setSupReqDate(String(r.requestDate).slice(0, 10)); setSupReqRemarks(r.remarks || '')
+    setSupReqRows(r.items.map(i => ({ itemId: i.itemId, quantity: String(i.quantity), remarks: i.remarks || '' })))
+    setError(''); setSupReqOpen(true)
+  }
+
+  async function handleSupReqSubmit() {
+    const rows = supReqRows.filter(r => r.itemId && Number(r.quantity) > 0)
+    if (!supReqSupplierId) { setError('Choose a supplier'); return }
+    if (rows.length === 0) { setError('Add at least one product with a quantity'); return }
+    setSupReqSaving(true); setError('')
+    try {
+      const res = await fetch('/api/inventory/supplier-requests', {
+        method: supReqEditId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(supReqEditId ? { id: supReqEditId } : {}),
+          supplierId: supReqSupplierId, requestDate: supReqDate, remarks: supReqRemarks || undefined,
+          items: rows.map(r => ({ itemId: r.itemId, quantity: Number(r.quantity), remarks: r.remarks || undefined })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to save'); setSupReqSaving(false); return }
+      setSupReqOpen(false); fetchSupplierRequests()
+    } catch { setError('Network error') } finally { setSupReqSaving(false) }
+  }
+
+  async function handleSupReqDelete(id: string) {
+    try {
+      const res = await fetch(`/api/inventory/supplier-requests?id=${id}`, { method: 'DELETE' })
+      if (res.ok) { setSupReqDeleteId(null); fetchSupplierRequests() }
+      else setError((await res.json()).error || 'Failed to delete')
+    } catch { setError('Network error') }
+  }
+
+  /* The request sheet. Photo first, then the supplier's own name for the
+     product — that is what they look it up by — with our SKU underneath for
+     our own reference, plus packed size and how many we want. */
+  function printSupplierRequest(r: SupplierRequest) {
+    const dims = (i: SupplierRequestItemRow['item']) => {
+      const l = i.dimensionLength, w = i.dimensionWidth, h = i.dimensionHeight
+      return l && w && h ? `${l} × ${w} × ${h}` : '—'
+    }
+    downloadPdf({
+      title: `Supplier Request — ${r.referenceNumber}`,
+      subtitle: [
+        r.supplier.supplierName,
+        `Requested ${formatDate(r.requestDate)}`,
+        `Prepared by ${r.preparedByName}`,
+        r.remarks || null,
+      ].filter(Boolean).join('  ·  '),
+      headers: ["Supplier's Product Name", 'Our SKU', 'Description', 'L × W × H (cm)', 'Weight (kg)', 'Qty Requested'],
+      rows: r.items.map(i => [
+        i.item.supplierProductName || i.item.name,
+        i.item.sku,
+        i.item.description || '—',
+        dims(i.item),
+        i.item.weightKg ?? '—',
+        i.quantity,
+      ]),
+      images: r.items.map(i => i.item.imageUrl || null),
+      imageHeader: 'Photo',
+      landscape: true,
+    })
+  }
+
+  // Shrinkage of Stocks — multi-item write-off; the id is set when editing one.
+  const [shrinkOpen, setShrinkOpen] = useState(false)
+  const [shrinkEditId, setShrinkEditId] = useState<string | null>(null)
   const [deletingAdj, setDeletingAdj] = useState(false)
   // Variants (color, size, material, etc.)
-  const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string; unitCost?: string | number | null; sellingPrice?: string | number | null }[]>([])
+  const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string; unitCost?: string | number | null; sellingPrice?: string | number | null; dimensionLength?: string | number | null; dimensionWidth?: string | number | null; dimensionHeight?: string | number | null; weightKg?: string | number | null }[]>([])
   const [variantSaved, setVariantSaved] = useState<string | null>(null)
   const [newVariantType, setNewVariantType] = useState('Color')
   const [newVariantLabel, setNewVariantLabel] = useState('')
@@ -728,7 +1037,9 @@ function InventoryInner() {
   const [bulkItemResult, setBulkItemResult] = useState<{ success: number; errors: number; items: { sku: string; name: string; barcode: string }[]; errorDetails: string[] } | null>(null)
   const itemFileRef = useRef<HTMLInputElement>(null)
   const [adjItemId, setAdjItemId] = useState('')
-  const [adjType, setAdjType] = useState<'SHRINKAGE' | 'INCREASE'>('SHRINKAGE')
+  // Stock-in only: the write-off path is its own multi-item modal now, and this
+  // one is reached solely from the petty-cash replenishment draft.
+  const [adjType, setAdjType] = useState<'SHRINKAGE' | 'INCREASE'>('INCREASE')
   const [adjQty, setAdjQty] = useState('')
   const [adjDate, setAdjDate] = useState(new Date().toISOString().split('T')[0])
   const [adjRemarks, setAdjRemarks] = useState('')
@@ -749,7 +1060,11 @@ function InventoryInner() {
   // ── Freight batch adjustment state
   const [fbOpen, setFbOpen] = useState(false)
   const [fbEditId, setFbEditId] = useState<string | null>(null)
+  // Set when the form is adding freight to a plain stock-in adjustment that has
+  // no batch yet — saving wraps that lot in a new freight batch.
+  const [fbAdoptAdjId, setFbAdoptAdjId] = useState<string | null>(null)
   const [fbLoadingEdit, setFbLoadingEdit] = useState(false)
+  const [notice, setNotice] = useState('')
   const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null)
   const [fbDate, setFbDate] = useState(new Date().toISOString().split('T')[0])
   const [fbRemarks, setFbRemarks] = useState('')
@@ -974,35 +1289,51 @@ function InventoryInner() {
 
   /* ── Fetchers ──────────────────────────────────────────── */
 
-  const fetchItems = useCallback(async () => {
+  // Every list below used to swallow failures and fall back to an empty array,
+  // so a server error or a database blip rendered as "No adjustments" — visually
+  // identical to the records having been deleted. Record the failure instead.
+  const [loadError, setLoadError] = useState('')
+
+  const fetchJson = useCallback(async (url: string) => {
     try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(String(res.status))
+      const data = await res.json()
+      setLoadError('')
+      return data
+    } catch {
+      setLoadError('Could not load data from the server — this is a connection or server problem, not missing records. Nothing has been deleted.')
+      return null
+    }
+  }, [])
+
+  const fetchSupplierRequests = useCallback(async () => {
+    const data = await fetchJson('/api/inventory/supplier-requests')
+    if (data) setSupReqs(data.data || [])
+  }, [fetchJson])
+
+  const fetchItems = useCallback(async () => {
+    {
       const params = new URLSearchParams({ pageSize: '500' })
       if (itemSearch) params.set('search', itemSearch)
       if (itemBranchFilter) params.set('branch', itemBranchFilter)
       if (itemDeptFilter) params.set('department', itemDeptFilter)
       if (itemWebClassFilter) params.set('websiteClassification', itemWebClassFilter)
       if (showDisabledItems) params.set('includeDisabled', 'true')
-      const res = await fetch(`/api/inventory?${params}`)
-      const data = await res.json()
-      setItems(data.data || [])
-    } catch { /* ignore */ }
-  }, [itemSearch, itemBranchFilter, itemDeptFilter, itemWebClassFilter, showDisabledItems])
+      const data = await fetchJson(`/api/inventory?${params}`)
+      if (data) setItems(data.data || [])
+    }
+  }, [fetchJson, itemSearch, itemBranchFilter, itemDeptFilter, itemWebClassFilter, showDisabledItems])
 
   const fetchAllItems = useCallback(async () => {
-    try {
-      const res = await fetch('/api/inventory?all=true')
-      const data = await res.json()
-      setAllItems(Array.isArray(data) ? data : data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/inventory?all=true')
+    if (data) setAllItems(Array.isArray(data) ? data : data.data || [])
+  }, [fetchJson])
 
   const fetchSuppliers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/suppliers?pageSize=100')
-      const data = await res.json()
-      setSuppliers(data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/suppliers?pageSize=100')
+    if (data) setSuppliers(data.data || [])
+  }, [fetchJson])
 
   // Client-side supplier search across the fields anyone would look one up by.
   const shownSuppliers = useMemo(() => {
@@ -1013,37 +1344,25 @@ function InventoryInner() {
   }, [suppliers, supSearch])
 
   const fetchAllSuppliers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/suppliers?all=true')
-      const data = await res.json()
-      setAllSuppliers(Array.isArray(data) ? data : data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/suppliers?all=true')
+    if (data) setAllSuppliers(Array.isArray(data) ? data : data.data || [])
+  }, [fetchJson])
 
   const fetchAdjustments = useCallback(async () => {
-    try {
-      const res = await fetch('/api/inventory/adjustments?pageSize=100')
-      const data = await res.json()
-      setAdjustments(data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/inventory/adjustments?pageSize=100')
+    if (data) setAdjustments(data.data || [])
+  }, [fetchJson])
 
   const fetchConsignments = useCallback(async () => {
-    try {
-      const res = await fetch('/api/inventory/consignments?pageSize=100')
-      const data = await res.json()
-      setConsignments(data.data || [])
-    } catch { /* ignore */ }
-  }, [])
+    const data = await fetchJson('/api/inventory/consignments?pageSize=100')
+    if (data) setConsignments(data.data || [])
+  }, [fetchJson])
 
   const fetchForms = useCallback(async () => {
-    try {
-      const qs = formsBranchFilter ? `?branch=${encodeURIComponent(formsBranchFilter)}` : ''
-      const res = await fetch(`/api/inventory/forms${qs}`)
-      const data = await res.json()
-      setForms(data.data || [])
-    } catch { /* ignore */ }
-  }, [formsBranchFilter])
+    const qs = formsBranchFilter ? `?branch=${encodeURIComponent(formsBranchFilter)}` : ''
+    const data = await fetchJson(`/api/inventory/forms${qs}`)
+    if (data) setForms(data.data || [])
+  }, [fetchJson, formsBranchFilter])
 
   const fetchFormTemplates = useCallback(async () => {
     try {
@@ -1063,7 +1382,7 @@ function InventoryInner() {
     }
     initialLoaded.current = true
     setLoading(true)
-    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates()])
+    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates(), fetchSupplierRequests()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
@@ -1235,13 +1554,14 @@ function InventoryInner() {
     setFName(''); setFSkuDept(''); setFSkuCat(''); setFSkuSub(''); setFSkuValue('')
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
+    setFSupplierProductName(''); setFDescription('')
     setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch(''); setFExpenseAccountId(''); setFExpenseAccountSearch('')
     setFFromPettyCash(false); setPcfSourceEntryId(null)
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(false)
     setIsPreOrder(false)
     setFWebsiteClass('')
-    setFDimL(''); setFDimW(''); setFDimH('')
+    setFDimL(''); setFDimW(''); setFDimH(''); setFWeightKg('')
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
@@ -1251,6 +1571,8 @@ function InventoryInner() {
     setEditingItem(item)
     setPcfSourceEntryId(null)
     setFName(item.name)
+    setFSupplierProductName(item.supplierProductName || '')
+    setFDescription(item.description || '')
     const parts = item.sku.split('-')
     setFSkuDept(parts[0] || ''); setFSkuCat(parts[1] || ''); setFSkuSub(parts[2] || '')
     setFSkuValue(item.sku)
@@ -1263,6 +1585,7 @@ function InventoryInner() {
     setFReorderLevel(item.reorderLevel != null ? String(item.reorderLevel) : '')
     setFSupplierId(item.supplierId || '')
     setFExchangeRate(item.supplierExchangeRate != null ? String(item.supplierExchangeRate) : '')
+    setFWeightKg(item.weightKg != null ? String(item.weightKg) : '')
     setFDimL(item.dimensionLength != null ? String(item.dimensionLength) : '')
     setFDimW(item.dimensionWidth != null ? String(item.dimensionWidth) : '')
     setFDimH(item.dimensionHeight != null ? String(item.dimensionHeight) : '')
@@ -1277,6 +1600,7 @@ function InventoryInner() {
     setVariants((item.variants || []).map((v: any) => ({
       id: v.id, variantType: v.variantType || 'Color', variantLabel: v.variantLabel || v.color || '', quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode || undefined,
       unitCost: v.unitCost ?? null, sellingPrice: v.sellingPrice ?? null,
+      dimensionLength: v.dimensionLength ?? null, dimensionWidth: v.dimensionWidth ?? null, dimensionHeight: v.dimensionHeight ?? null, weightKg: v.weightKg ?? null,
     })))
     setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(item.issuedOfficialInvoice || false)
@@ -1357,11 +1681,11 @@ function InventoryInner() {
     } catch { setError('Failed to add variant') }
   }
 
-  // Per-variant cost / price. Empty clears the override so the variant inherits the parent.
-  async function saveVariantPricing(variantId: string, field: 'unitCost' | 'sellingPrice', raw: string) {
+  // Per-variant cost / price / physical specs. Empty clears the override so the variant inherits the parent.
+  async function saveVariantPricing(variantId: string, field: 'unitCost' | 'sellingPrice' | 'dimensionLength' | 'dimensionWidth' | 'dimensionHeight' | 'weightKg', raw: string) {
     const value = raw.trim() === '' ? '' : raw.trim()
     const current = variants.find(v => v.id === variantId)
-    const existing = current ? (field === 'unitCost' ? current.unitCost : current.sellingPrice) : null
+    const existing = current ? current[field] : null
     if (String(existing ?? '') === String(value)) return   // unchanged — don't spam the API
     try {
       const res = await fetch('/api/inventory/variants', {
@@ -1429,6 +1753,9 @@ function InventoryInner() {
       quantity: isPcfCreate ? '0' : (fInitialQty || '0'),
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
+      supplierProductName: fSupplierProductName || null,
+      description: fDescription || null,
+      weightKg: fWeightKg || null,
       dimensionLength: fDimL || null,
       dimensionWidth: fDimW || null,
       dimensionHeight: fDimH || null,
@@ -1605,12 +1932,6 @@ function InventoryInner() {
      ADJUSTMENT TAB HANDLERS
      ═══════════════════════════════════════════════════════ */
 
-  function openAdjCreate() {
-    setAdjItemId(''); setAdjType('SHRINKAGE'); setAdjQty(''); setAdjRemarks('')
-    setAdjDate(new Date().toISOString().split('T')[0]); setError('')
-    setAdjModalOpen(true)
-  }
-
   async function handleAdjSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true); setError('')
@@ -1705,6 +2026,7 @@ function InventoryInner() {
 
   function openFbModal() {
     setFbEditId(null)
+    setFbAdoptAdjId(null)
     setFbDate(new Date().toISOString().split('T')[0])
     setFbRemarks(''); setFbHasForeign(true); setFbCurrency('CNY'); setFbExRate('')
     setFbFreight1(''); setFbFreight1Foreign(false)
@@ -1726,6 +2048,7 @@ function InventoryInner() {
       if (!res.ok) { setError(d.error || 'Failed to load batch'); return }
       const b = d.batch
       setFbEditId(b.id)
+      setFbAdoptAdjId(null)
       setFbDate(new Date(b.adjustmentDate).toISOString().split('T')[0])
       setFbRemarks(b.remarks || '')
       setFbHasForeign(!!b.hasForeignPurchase)
@@ -1755,6 +2078,48 @@ function InventoryInner() {
     } catch { setError('Network error') } finally { setFbLoadingEdit(false) }
   }
 
+  // Open the freight-purchase form on a plain stock-in adjustment that was
+  // recorded without freight (an ADJ-* row). Nothing is reversed: saving keeps
+  // the same lot and re-costs it, so any sales already made from it stand and
+  // their cost difference is restated into cost of sales.
+  async function openFbAdopt(adjustmentId: string) {
+    setFbLoadingEdit(true); setError(''); setNotice('')
+    try {
+      const res = await fetch(`/api/inventory/adjustments/batch?adjustmentId=${adjustmentId}`)
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to load adjustment'); return }
+      const a = d.adjustment
+      const currency = a.foreignCurrency || 'CNY'
+      const isForeign = a.foreignCost != null
+      setFbEditId(null)
+      setFbAdoptAdjId(a.id)
+      setFbDate(new Date(a.adjustmentDate).toISOString().split('T')[0])
+      setFbRemarks(a.remarks || '')
+      setFbHasForeign(isForeign)
+      setFbCurrency(currency)
+      setFbExRate(a.exchangeRate != null ? String(a.exchangeRate) : '')
+      setFbFreight1(''); setFbFreight1Foreign(false)
+      setFbFreight2(''); setFbFreight2Foreign(false)
+      setFbFreight3(''); setFbFreight3Foreign(false)
+      setFbFxAccountId(''); setFbManuRfpId(''); setFbFreightRfpId('')
+      setFbProofUrls([])
+      loadFbFxAndRfps(currency)
+      // The lot carries no freight yet, so its recorded cost is the whole
+      // manufacturer price — freight entered here is added on top of it.
+      const manPrice = isForeign ? Number(a.foreignCost) : Number(a.localCost ?? a.item?.unitCost ?? 0)
+      setFbRows([{
+        itemId: a.itemId, itemName: a.item?.name || '', itemSku: a.item?.sku || '',
+        dimL: a.item?.dimensionLength ? String(a.item.dimensionLength) : '',
+        dimW: a.item?.dimensionWidth ? String(a.item.dimensionWidth) : '',
+        dimH: a.item?.dimensionHeight ? String(a.item.dimensionHeight) : '',
+        manPrice: manPrice ? String(Number(manPrice.toFixed(4))) : '',
+        manPriceIsForeign: isForeign,
+        quantity: String(a.quantityChange || 0),
+      }])
+      setFbOpen(true)
+    } catch { setError('Network error') } finally { setFbLoadingEdit(false) }
+  }
+
   async function handleFbUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -1777,13 +2142,14 @@ function InventoryInner() {
 
   async function handleFbSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setFbSaving(true); setError('')
+    setFbSaving(true); setError(''); setNotice('')
     try {
       const res = await fetch('/api/inventory/adjustments/batch', {
         method: fbEditId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(fbEditId ? { id: fbEditId } : {}),
+          ...(fbAdoptAdjId ? { adoptAdjustmentId: fbAdoptAdjId } : {}),
           adjustmentDate: fbDate,
           hasForeignPurchase: fbHasForeign,
           foreignCurrency: fbCurrency,
@@ -1804,6 +2170,17 @@ function InventoryInner() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Something went wrong'); setFbSaving(false); return }
+      // Re-costing units that were already sold moves money between Inventory and
+      // Cost of Sales — say so, because it changes the income statement.
+      const cr = data.costRestatement
+      if (cr?.posted && cr.totalDelta) {
+        const amt = Math.abs(cr.totalDelta).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        setNotice(cr.totalDelta > 0
+          ? `Saved. ₱${amt} of this cost change belongs to units already sold — posted to Cost of Sales (out of Inventory).`
+          : `Saved. ₱${amt} of this cost change belongs to units already sold — reversed out of Cost of Sales (back into Inventory).`)
+      } else if (cr && !cr.posted && cr.reason && !cr.reason.startsWith('no cost change')) {
+        setNotice(`Saved, but the cost of units already sold could not be restated: ${cr.reason}`)
+      }
       setFbOpen(false)
       fetchAdjustments(); fetchItems(); fetchAllItems()
     } catch { setError('Network error') }
@@ -1927,24 +2304,74 @@ setTimeout(()=>window.print(),500);
   }
 
   /* ── Download Handlers ──────────────────────────────────── */
-  const handleDownloadInventory = (format: 'xlsx' | 'pdf', includePhotos = false) => {
-    const headers = ['SKU', 'Name', 'Branch', 'Department', 'Category', 'Subcategory', 'Qty', 'Unit Cost', 'Selling Price', 'Reward Pts Price', 'Reorder Level', 'Supplier']
+  // Every field captured on the product form, in roughly the order the form asks
+  // for them. Variants and bundle components are one-to-many, so they get their
+  // own sheets rather than being flattened into unreadable cells.
+  const handleDownloadInventory = (format: 'xlsx' | 'pdf') => {
+    const headers = [
+      'SKU', 'Barcode', 'Name', 'Supplier Product Name', 'Description',
+      'Branch', 'Status', 'Department', 'Category', 'Subcategory',
+      'Account Sub-Type', 'Website Classification',
+      'Qty', 'Reorder Level', 'Branch Stock',
+      'Unit Cost', 'Selling Price', 'Reward Pts Price',
+      'Supplier', 'Supplier Currency', 'Supplier FX Rate',
+      'Revenue Account', 'Source Account', 'Expense Account',
+      'L (cm)', 'W (cm)', 'H (cm)', 'CBM/unit', 'Weight (kg)',
+      'Bundle', 'Pre-Order', 'Official Invoice', 'Variants', 'Photo URL',
+    ]
+    const acctLabel = (a?: { accountNumber: string; accountTitle: string } | null) =>
+      a ? `${a.accountNumber} — ${a.accountTitle}` : ''
+    const cbmPerUnit = (i: InventoryItem) => {
+      const l = Number(i.dimensionLength || 0), w = Number(i.dimensionWidth || 0), h = Number(i.dimensionHeight || 0)
+      return l > 0 && w > 0 && h > 0 ? ((l * w * h) / 1_000_000).toFixed(6) : ''
+    }
     const rows = items.map(i => [
-      i.sku, i.name, BRANCH_LABELS[i.branch] || i.branch, i.skuDepartment, i.skuCategory, i.skuSubcategory,
-      i.quantity, formatCurrency(i.unitCost), formatCurrency(i.sellingPrice || 0),
-      i.rewardPointsPrice != null ? i.rewardPointsPrice : '', i.reorderLevel ?? '',
-      i.supplier?.supplierName || ''
+      i.sku, i.barcode || '', i.name, i.supplierProductName || '', i.description || '',
+      BRANCH_LABELS[i.branch] || i.branch, i.isActive === false ? 'Disabled' : 'Active',
+      i.skuDepartment, i.skuCategory, i.skuSubcategory,
+      i.accountSubType || '', i.websiteClassification || '',
+      i.quantity, i.reorderLevel ?? '',
+      i.branchStock ? Object.entries(i.branchStock).map(([b, q]) => `${BRANCH_LABELS[b] || b}: ${q}`).join(' · ') : '',
+      formatCurrency(i.unitCost), formatCurrency(i.sellingPrice || 0),
+      i.rewardPointsPrice != null ? i.rewardPointsPrice : '',
+      i.supplier?.supplierName || '', i.supplier?.currency || '', i.supplierExchangeRate ?? '',
+      acctLabel(i.revenueAccount), acctLabel(i.sourceAccount), acctLabel(i.expenseAccount),
+      i.dimensionLength ?? '', i.dimensionWidth ?? '', i.dimensionHeight ?? '', cbmPerUnit(i), i.weightKg ?? '',
+      i.isBundle ? 'Yes' : '', i.isPreOrder ? 'Yes' : '', i.issuedOfficialInvoice ? 'Yes' : '',
+      i.variants?.length ? i.variants.map(v => `${v.variantLabel} (${v.quantity})`).join(' · ') : '',
+      i.imageUrl || '',
     ])
     const subtitle = `${rows.length} items — ${itemBranchFilter ? BRANCH_LABELS[itemBranchFilter] || itemBranchFilter : 'All Branches'}`
+
     if (format === 'xlsx') {
-      // Excel can't embed images — include the photo URL column instead when requested.
-      if (includePhotos) {
-        downloadXlsx('Inventory_Items', [{ name: 'Inventory', headers: [...headers, 'Photo URL'], rows: rows.map((r, idx) => [...r, items[idx].imageUrl || '']) }])
-      } else {
-        downloadXlsx('Inventory_Items', [{ name: 'Inventory', headers, rows }])
+      const sheets = [{ name: 'Inventory', headers, rows }]
+      const variantRows = items.flatMap(i => (i.variants || []).map(v => [
+        i.sku, i.name, v.variantType, v.variantLabel, v.color || '', v.variantSku, v.barcode || '',
+        v.quantity,
+        v.unitCost != null ? formatCurrency(Number(v.unitCost)) : '',
+        v.sellingPrice != null ? formatCurrency(Number(v.sellingPrice)) : '',
+      ]))
+      if (variantRows.length) {
+        sheets.push({
+          name: 'Variants',
+          headers: ['Item SKU', 'Item', 'Variant Type', 'Label', 'Color', 'Variant SKU', 'Barcode', 'Qty', 'Unit Cost', 'Selling Price'],
+          rows: variantRows,
+        })
       }
+      const bundleRows = items.flatMap(i => (i.bundleComponents || []).map(b => [
+        i.sku, i.name, b.component.sku, b.component.name, b.quantity,
+      ]))
+      if (bundleRows.length) {
+        sheets.push({
+          name: 'Bundle Components',
+          headers: ['Bundle SKU', 'Bundle', 'Component SKU', 'Component', 'Qty per Bundle'],
+          rows: bundleRows,
+        })
+      }
+      // Excel can't embed images, so the photo travels as its URL column above.
+      downloadXlsx('Inventory_Items', sheets)
     } else {
-      downloadPdf({ title: 'Inventory Items', subtitle, headers, rows, landscape: true, images: includePhotos ? items.map(i => i.imageUrl || null) : undefined, imageHeader: 'Photo' })
+      downloadPdf({ title: 'Inventory Items', subtitle, headers, rows, landscape: true, images: items.map(i => i.imageUrl || null), imageHeader: 'Photo' })
     }
   }
 
@@ -2019,6 +2446,19 @@ setTimeout(()=>window.print(),500);
         <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
       )}
 
+      {/* A list failed to load. Say so across every tab, because an empty table
+          otherwise reads as "these records are gone". */}
+      {loadError && (
+        <div className="mb-4 p-3 rounded-xl text-sm flex items-start gap-2 border" style={{ background: '#fffbeb', borderColor: '#f59e0b', color: '#92400e' }}>
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+          <span className="flex-1">{loadError}</span>
+          <button onClick={() => { setLoadError(''); fetchItems(); fetchAllItems(); fetchAdjustments(); fetchConsignments(); fetchSuppliers() }}
+            className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: '#f59e0b' }}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* ════════════════════════════════════════════════════
          TAB 1: INVENTORY ITEMS
          ════════════════════════════════════════════════════ */}
@@ -2032,11 +2472,7 @@ setTimeout(()=>window.print(),500);
               Manage stock levels and item details
             </p>
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none whitespace-nowrap" style={{ color: 'var(--mid-gray)' }} title="Include the item photo in the download (embedded in PDF; photo URL column in Excel)">
-                <input type="checkbox" checked={downloadWithPhotos} onChange={(e) => setDownloadWithPhotos(e.target.checked)} className="w-4 h-4 accent-teal-600" />
-                Include photos
-              </label>
-              <DownloadMenu onDownload={(fmt) => handleDownloadInventory(fmt, downloadWithPhotos)} label="Download" />
+              <DownloadMenu onDownload={handleDownloadInventory} label="Download" />
               {canWrite && (<>
                 <button onClick={() => {
                   const csv = 'name,department,category,subcategory,branch,unit_cost,selling_price,reward_points_price,quantity,reorder_level\nPRODUCT NAME,OT,Equipment,Fine Motor,VERDANA_STORE,300,1200,,10,3'
@@ -2741,6 +3177,26 @@ setTimeout(()=>window.print(),500);
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
 
+                  {/* Supplier's own name for the item — what to quote when reordering */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Supplier Product Name <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(optional — how the supplier lists it)</span>
+                    </label>
+                    <input type="text" value={fSupplierProductName} onChange={(e) => setFSupplierProductName(e.target.value)}
+                      placeholder="e.g. Sensory Brush Set 4pcs (Model TB-204)"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Description of Product <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(optional)</span>
+                    </label>
+                    <textarea value={fDescription} onChange={(e) => setFDescription(e.target.value)} rows={3}
+                      placeholder="What it is, materials, contents, sizing — anything staff should know when selling or reordering."
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-y" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+
                   {/* SKU Generator */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>SKU Generator</label>
@@ -2874,6 +3330,16 @@ setTimeout(()=>window.print(),500);
                         CBM: {((parseFloat(fDimL) * parseFloat(fDimW) * parseFloat(fDimH)) / 1_000_000).toFixed(6)} m³
                       </p>
                     )}
+                  </div>
+
+                  {/* Shipping weight — couriers price by weight, so the store needs this. */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Weight <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(kg, inclusive of packaging — used for shipping on verdanarehab.com)</span>
+                    </label>
+                    <input type="number" step="0.01" min="0" value={fWeightKg} onChange={e => setFWeightKg(e.target.value)}
+                      placeholder="e.g. 0.4"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
 
                   {/* Supplier */}
@@ -3071,6 +3537,34 @@ setTimeout(()=>window.print(),500);
                                     onBlur={e => saveVariantPricing(v.id!, 'sellingPrice', e.target.value)}
                                     className="w-24 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                                   {variantSaved === v.id && <span style={{ color: 'var(--teal)' }}>saved</span>}
+                                </div>
+                              )}
+                              {/* Per-variant dims + weight (e.g. SMALL vs LARGE ship in different boxes).
+                                  Blank inherits the parent item; weight feeds the store's shipping fee. */}
+                              {v.id && (
+                                <div className="flex items-center gap-2">
+                                  <label className="shrink-0" style={{ color: 'var(--mid-gray)' }}>L×W×H cm</label>
+                                  <input type="number" step="0.01" min={0}
+                                    defaultValue={v.dimensionLength != null ? String(v.dimensionLength) : ''}
+                                    placeholder={fDimL || 'L'} title={`Length — blank inherits ${fDimL || '—'}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'dimensionLength', e.target.value)}
+                                    className="w-14 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                  <input type="number" step="0.01" min={0}
+                                    defaultValue={v.dimensionWidth != null ? String(v.dimensionWidth) : ''}
+                                    placeholder={fDimW || 'W'} title={`Width — blank inherits ${fDimW || '—'}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'dimensionWidth', e.target.value)}
+                                    className="w-14 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                  <input type="number" step="0.01" min={0}
+                                    defaultValue={v.dimensionHeight != null ? String(v.dimensionHeight) : ''}
+                                    placeholder={fDimH || 'H'} title={`Height — blank inherits ${fDimH || '—'}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'dimensionHeight', e.target.value)}
+                                    className="w-14 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                  <label className="shrink-0 ml-2" style={{ color: 'var(--mid-gray)' }}>Wt kg</label>
+                                  <input type="number" step="0.001" min={0}
+                                    defaultValue={v.weightKg != null ? String(v.weightKg) : ''}
+                                    placeholder={fWeightKg || '0'} title={`Weight — blank inherits ${fWeightKg || '—'}`}
+                                    onBlur={e => saveVariantPricing(v.id!, 'weightKg', e.target.value)}
+                                    className="w-16 px-2 py-1 rounded border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                                 </div>
                               )}
                             </div>
@@ -3578,8 +4072,209 @@ setTimeout(()=>window.print(),500);
       {/* ════════════════════════════════════════════════════
          TAB 3: ADJUSTMENTS
          ════════════════════════════════════════════════════ */}
+      {/* ════════════════════════════════════════════════════
+         SUPPLIER REQUEST — ask a supplier for stock
+         ════════════════════════════════════════════════════ */}
+      {activeTab === 'Supplier Request' && (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+              Request products from a supplier. The printed sheet shows each product&apos;s photo and the supplier&apos;s own name for it.
+            </p>
+            {canWrite && (
+              <button onClick={openSupReqCreate}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: 'var(--teal)' }}>
+                <Plus size={18} /> New Supplier Request
+              </button>
+            )}
+          </div>
+
+          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Ref #</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Supplier</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Products</th>
+                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Total Qty</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Prepared By</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supReqs.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                        <Truck size={32} className="mx-auto mb-2 opacity-40" />
+                        <p>{loadError ? 'Could not load supplier requests — see the message above. Your records are intact.' : 'No supplier requests yet'}</p>
+                      </td>
+                    </tr>
+                  ) : supReqs.map(r => (
+                    <tr key={r.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{r.referenceNumber}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(r.requestDate)}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>{r.supplier.supplierName}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.items.length} product{r.items.length === 1 ? '' : 's'}</td>
+                      <td className="px-4 py-3 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{r.items.reduce((sum, i) => sum + i.quantity, 0)}</td>
+                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.preparedByName}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 rounded-md text-xs font-medium"
+                          style={r.status === 'RECEIVED' ? { background: '#dcfce7', color: '#166534' }
+                            : r.status === 'CANCELLED' ? { background: '#fef2f2', color: '#dc2626' }
+                            : r.status === 'SENT' ? { background: '#e0f2fe', color: '#075985' }
+                            : { background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <button onClick={() => printSupplierRequest(r)} className="p-2 rounded-lg hover:bg-teal-50 transition-colors mr-1" title="Print request sheet (PDF)">
+                          <Printer size={15} style={{ color: 'var(--teal)' }} />
+                        </button>
+                        {canWrite && (<>
+                          <button onClick={() => openSupReqEdit(r)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors mr-1" title="Edit request">
+                            <Pencil size={15} style={{ color: 'var(--mid-gray)' }} />
+                          </button>
+                          <button onClick={() => setSupReqDeleteId(r.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete request">
+                            <Trash2 size={15} className="text-red-500" />
+                          </button>
+                        </>)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {supReqDeleteId && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Delete Request</h3>
+                <p className="text-sm mb-2" style={{ color: 'var(--mid-gray)' }}>Delete this supplier request? Nothing in stock changes — a request only records what was asked for.</p>
+                <div className="flex gap-3 justify-end mt-6">
+                  <button onClick={() => setSupReqDeleteId(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+                  <button onClick={() => handleSupReqDelete(supReqDeleteId)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Delete</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* New / edit supplier request */}
+      {supReqOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto p-4" onClick={() => setSupReqOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-4xl w-full shadow-xl mb-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                {supReqEditId ? 'Edit Supplier Request' : 'New Supplier Request'}
+              </h3>
+              <button onClick={() => setSupReqOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+              Pick the supplier and what to order. The printed sheet quotes each product the way that supplier lists it, with its photo and packed size.
+            </p>
+
+            {error && <div className="mb-3 p-2.5 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Supplier <span className="text-red-500">*</span></label>
+                <select value={supReqSupplierId} onChange={e => setSupReqSupplierId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">— Select supplier —</option>
+                  {allSuppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.supplierName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Date of Request <span className="text-red-500">*</span></label>
+                <input type="date" value={supReqDate} onChange={e => setSupReqDate(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Remarks <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(optional)</span></label>
+                <input value={supReqRemarks} onChange={e => setSupReqRemarks(e.target.value)} placeholder="e.g. for October restock"
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+            </div>
+
+            <div className="rounded-xl border mb-2" style={{ borderColor: 'var(--light-gray)' }}>
+              <table className="w-full text-sm">
+                <thead><tr style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                  <th className="px-3 py-2 text-left text-xs font-semibold" style={{ minWidth: 250 }}>Product</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold">Supplier&apos;s Name For It</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold w-20">On Hand</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold w-28">Qty to Request</th>
+                  <th className="px-2 py-2 w-8"></th>
+                </tr></thead>
+                <tbody>
+                  {supReqRows.map((row, i) => {
+                    const item = row.itemId ? allItems.find(it => it.id === row.itemId) : null
+                    return (
+                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            {item?.imageUrl && <img src={item.imageUrl} alt="" className="w-8 h-8 rounded object-cover border shrink-0" style={{ borderColor: 'var(--light-gray)' }} />}
+                            <div className="flex-1 min-w-0">
+                              <ItemSearchSelect items={allItems} value={row.itemId} compact
+                                onChange={it => setSupReqRows(rs => rs.map((r, idx) => idx === i ? { ...r, itemId: it?.id || '' } : r))} />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-xs" style={{ color: item?.supplierProductName ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+                          {item ? (item.supplierProductName || 'not recorded — the sheet will use our name') : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{item ? item.quantity : '—'}</td>
+                        <td className="px-3 py-2 text-right">
+                          <input type="number" min={1} value={row.quantity}
+                            onChange={e => setSupReqRows(rs => rs.map((r, idx) => idx === i ? { ...r, quantity: e.target.value } : r))}
+                            className="w-24 px-2 py-1.5 rounded-lg border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          {supReqRows.length > 1 && (
+                            <button type="button" onClick={() => setSupReqRows(rs => rs.filter((_, idx) => idx !== i))} className="p-1 rounded hover:bg-red-50">
+                              <X size={12} className="text-red-400" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" onClick={() => setSupReqRows(rs => [...rs, { itemId: '', quantity: '', remarks: '' }])}
+              className="text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+              <Plus size={12} /> Add Row
+            </button>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button type="button" onClick={() => setSupReqOpen(false)} className="px-4 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+              <button type="button" onClick={handleSupReqSubmit} disabled={supReqSaving}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2" style={{ background: 'var(--teal)' }}>
+                {supReqSaving && <Loader2 size={14} className="animate-spin" />}
+                {supReqSaving ? 'Saving…' : supReqEditId ? 'Save Changes' : 'Create Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'Adjustments' && (
         <>
+          {notice && (
+            <div className="mb-4 p-3 rounded-xl text-sm flex items-start gap-2" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+              <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+              <span className="flex-1">{notice}</span>
+              <button onClick={() => setNotice('')} className="shrink-0"><X size={15} /></button>
+            </div>
+          )}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Track inventory adjustments and corrections</p>
             <div className="flex items-center gap-2">
@@ -3602,10 +4297,10 @@ setTimeout(()=>window.print(),500);
                   style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'var(--pale-teal)' }}>
                   <Upload size={14} /> Bulk Upload
                 </button>
-                <button onClick={openAdjCreate}
+                <button onClick={() => { setShrinkEditId(null); setShrinkOpen(true) }}
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
                   style={{ borderColor: 'var(--light-gray)', color: '#dc2626' }}>
-                  <TrendingDown size={14} /> Adjust Stock
+                  <TrendingDown size={14} /> Shrinkage of Stocks
                 </button>
                 <button onClick={() => setBulkShrinkOpen(true)}
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
@@ -3615,7 +4310,7 @@ setTimeout(()=>window.print(),500);
                 <button onClick={openFbModal}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
                   style={{ background: 'var(--teal)' }}>
-                  <Plus size={18} /> New Adjustment
+                  <Plus size={18} /> Add Stocks
                 </button>
               </>)}
             </div>
@@ -3642,7 +4337,7 @@ setTimeout(()=>window.print(),500);
                     <tr>
                       <td colSpan={canWrite ? 9 : 8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <ArrowUpDown size={32} className="mx-auto mb-2 opacity-40" />
-                        <p>No adjustments</p>
+                        <p>{loadError ? 'Could not load adjustments — see the message above. Your records are intact.' : 'No adjustments'}</p>
                       </td>
                     </tr>
                   ) : groupedAdjustments.slice((adjPage - 1) * adjPageSize, adjPage * adjPageSize).map((g) => (
@@ -3674,7 +4369,15 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{adj.adjustedBy?.name || '—'}</td>
                       {canWrite && (
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <button onClick={() => setEditAdj(adj)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit Adjustment">
+                          {/* A stock-in opens the freight form so freight and exchange
+                              rate can be added to it; a write-off opens the multi-item
+                              shrinkage form with everything written off alongside it. */}
+                          <button onClick={() => adj.type === 'INCREASE'
+                            ? openFbAdopt(adj.id)
+                            : (setShrinkEditId(adj.id), setShrinkOpen(true))}
+                            disabled={fbLoadingEdit}
+                            className="p-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                            title={adj.type === 'INCREASE' ? 'Edit / add freight costs' : 'Edit shrinkage'}>
                             <Pencil size={15} style={{ color: 'var(--mid-gray)' }} />
                           </button>
                           <button onClick={() => setDeleteAdjConfirm(adj.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete Adjustment">
@@ -3738,10 +4441,11 @@ setTimeout(()=>window.print(),500);
             )}
           </div>
 
-          {/* Edit a single (non-batch) adjustment */}
-          {editAdj && (
-            <EditAdjustmentModal adj={editAdj} onClose={() => setEditAdj(null)}
-              onSaved={() => { setEditAdj(null); fetchAdjustments(); fetchItems(); fetchAllItems() }} />
+          {/* Shrinkage of Stocks — new write-off, or editing an existing one */}
+          {shrinkOpen && (
+            <ShrinkageModal items={allItems} editAdjustmentId={shrinkEditId}
+              onClose={() => { setShrinkOpen(false); setShrinkEditId(null) }}
+              onDone={() => { setShrinkOpen(false); setShrinkEditId(null); fetchAdjustments(); fetchItems(); fetchAllItems() }} />
           )}
 
           {/* Delete Adjustment Confirm */}
@@ -3760,7 +4464,7 @@ setTimeout(()=>window.print(),500);
             </div>
           )}
 
-          {/* New Adjustment Modal */}
+          {/* Add Stocks — replenishment recorded against a petty-cash entry */}
           {capOpen && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
@@ -3777,11 +4481,8 @@ setTimeout(()=>window.print(),500);
                 <form onSubmit={handleCapitalizeSubmit} className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item</label>
-                    <select value={capItemId} onChange={(e) => loadCapLots(e.target.value)} required
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— Select item —</option>
-                      {allItems.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
-                    </select>
+                    <ItemSearchSelect items={allItems} value={capItemId} required
+                      onChange={(it) => loadCapLots(it?.id || '')} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Stock batch (INCREASE lot)</label>
@@ -3813,7 +4514,7 @@ setTimeout(()=>window.print(),500);
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>New Adjustment</h3>
+                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Add Stocks — Replenishment</h3>
                   <button onClick={() => { setAdjModalOpen(false); setPcfSourceEntryId(null) }} className="p-1 hover:bg-gray-100 rounded-lg">
                     <X size={20} style={{ color: 'var(--mid-gray)' }} />
                   </button>
@@ -3824,22 +4525,8 @@ setTimeout(()=>window.print(),500);
                 <form onSubmit={handleAdjSubmit} className="space-y-4">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item</label>
-                    <select value={adjItemId} onChange={(e) => setAdjItemId(e.target.value)} required
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— Select item —</option>
-                      {allItems.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Type</label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
-                        <input type="radio" name="adjType" checked={adjType === 'SHRINKAGE'} onChange={() => setAdjType('SHRINKAGE')} /> Shrinkage
-                      </label>
-                      <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
-                        <input type="radio" name="adjType" checked={adjType === 'INCREASE'} onChange={() => setAdjType('INCREASE')} /> Increase
-                      </label>
-                    </div>
+                    <ItemSearchSelect items={allItems} value={adjItemId} required
+                      onChange={(it) => setAdjItemId(it?.id || '')} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Quantity Change</label>
@@ -4138,8 +4825,16 @@ setTimeout(()=>window.print(),500);
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
                   <div>
-                    <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{fbEditId ? 'Edit Adjustment — Freight Purchase' : 'New Adjustment — Freight Purchase'}</h3>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{fbEditId ? 'Editing reverses this batch and re-applies the rows below (blocked if any item was already sold). Unit costs recompute by CBM.' : 'Enter items, manufacturer prices, freight costs, and the system will compute unit costs proportionally by CBM.'}</p>
+                    <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                      {fbEditId ? 'Edit Stocks — Freight Purchase' : fbAdoptAdjId ? 'Add Freight — Stock-In Adjustment' : 'Add Stocks — Freight Purchase'}
+                    </h3>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                      {fbEditId
+                        ? 'Unit costs recompute by CBM. Units already sold keep their lot — the cost difference on them is posted to Cost of Sales, so no sale needs reversing. Quantities cannot drop below what was sold.'
+                        : fbAdoptAdjId
+                          ? 'Adds freight and exchange rate to this stock-in and files it as a freight batch. The existing stock lot is kept, so any sales made from it stand — their cost difference is posted to Cost of Sales.'
+                          : 'Enter items, manufacturer prices, freight costs, and the system will compute unit costs proportionally by CBM.'}
+                    </p>
                   </div>
                   <button onClick={() => setFbOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg ml-4">
                     <X size={20} style={{ color: 'var(--mid-gray)' }} />
@@ -4271,15 +4966,7 @@ setTimeout(()=>window.print(),500);
                         ].map(({ label, val, set }) => (
                           <div key={label}>
                             <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
-                            <select value={val} onChange={e => set(e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                              <option value="">— Not linked —</option>
-                              {fbRfpOptions.map(r => (
-                                <option key={r.id} value={r.id}>
-                                  {r.refNumber}{r.payableTo ? ` — ${r.payableTo}` : ''} · ₱{r.grossTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {r.status === 'PAID' ? 'Paid' : 'For Payment'}
-                                </option>
-                              ))}
-                            </select>
+                            <RfpSearchSelect rfps={fbRfpOptions} value={val} onChange={set} />
                           </div>
                         ))}
                       </div>
@@ -4347,23 +5034,18 @@ setTimeout(()=>window.print(),500);
                                     <td className="px-2 py-1.5">
                                       <div className="flex items-center gap-2">
                                       {(() => { const img = allItems.find(it => it.id === row.itemId)?.imageUrl; return img ? <img src={img} alt="" className="w-8 h-8 rounded object-cover border shrink-0" style={{ borderColor: 'var(--light-gray)' }} /> : null })()}
-                                      <select value={row.itemId}
-                                        onChange={e => {
-                                          const selected = allItems.find(it => it.id === e.target.value)
+                                      <ItemSearchSelect items={allItems} value={row.itemId} compact
+                                        onChange={selected => {
                                           setFbRows(prev => prev.map((r, idx) => idx !== i ? r : {
                                             ...r,
-                                            itemId: e.target.value,
+                                            itemId: selected?.id || '',
                                             itemName: selected?.name || '',
                                             itemSku: selected?.sku || '',
                                             dimL: selected?.dimensionLength != null ? String(selected.dimensionLength) : r.dimL,
                                             dimW: selected?.dimensionWidth != null ? String(selected.dimensionWidth) : r.dimW,
                                             dimH: selected?.dimensionHeight != null ? String(selected.dimensionHeight) : r.dimH,
                                           }))
-                                        }}
-                                        className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                                        <option value="">— Select item —</option>
-                                        {allItems.map(it => <option key={it.id} value={it.id}>{it.sku} — {it.name}</option>)}
-                                      </select>
+                                        }} />
                                       </div>
                                     </td>
                                     {/* Manufacturer price + currency toggle */}
@@ -4575,7 +5257,7 @@ setTimeout(()=>window.print(),500);
                     <tr>
                       <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <ArrowRightLeft size={32} className="mx-auto mb-2 opacity-40" />
-                        <p>No transfers</p>
+                        <p>{loadError ? 'Could not load transfers — see the message above. Your records are intact.' : 'No transfers'}</p>
                       </td>
                     </tr>
                   ) : (() => {
@@ -5249,6 +5931,8 @@ setTimeout(()=>window.print(),500);
       {/* ════════════════════════════════════════════════════
          TAB 5: CONSUMABLE FORMS (control-number stock)
          ════════════════════════════════════════════════════ */}
+      {activeTab === 'Branch Stock' && <BranchStockPanel />}
+
       {activeTab === 'Forms' && (() => {
         const summary = Array.from(
           forms.reduce((m, f) => {
@@ -5464,6 +6148,194 @@ setTimeout(()=>window.print(),500);
   )
 }
 
+/* ── Shrinkage of Stocks — write off several products in one go ──────
+   Also the editor: opening it on an existing row brings back everything
+   written off with it, so the whole write-off is corrected together. */
+function ShrinkageModal({ items, editAdjustmentId, onClose, onDone }: {
+  items: InventoryItem[]
+  editAdjustmentId: string | null
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [remarks, setRemarks] = useState('')
+  const [rows, setRows] = useState<{ itemId: string; quantity: string }[]>([{ itemId: '', quantity: '' }])
+  const [reference, setReference] = useState<string | null>(null)
+  // Units the rows being edited already gave up — added back to show true on-hand.
+  const [restoreByItem, setRestoreByItem] = useState<Record<string, number>>({})
+  const [loading, setLoading] = useState(!!editAdjustmentId)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const itemById = useMemo(() => new Map(items.map(i => [i.id, i])), [items])
+
+  useEffect(() => {
+    if (!editAdjustmentId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/inventory/adjustments/shrinkage?id=${editAdjustmentId}`)
+        const d = await res.json()
+        if (cancelled) return
+        if (!res.ok) { setErr(d.error || 'Failed to load this write-off'); return }
+        setDate(String(d.adjustmentDate).slice(0, 10))
+        setRemarks(d.remarks || '')
+        setReference(d.referenceNumber || null)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const loaded = (d.rows || []) as any[]
+        setRows(loaded.map(r => ({ itemId: r.itemId, quantity: String(r.quantity) })))
+        setRestoreByItem(loaded.reduce((m: Record<string, number>, r) => {
+          m[r.itemId] = (m[r.itemId] || 0) + Number(r.quantity)
+          return m
+        }, {}))
+      } catch { if (!cancelled) setErr('Network error') } finally { if (!cancelled) setLoading(false) }
+    })()
+    return () => { cancelled = true }
+  }, [editAdjustmentId])
+
+  const setRow = (i: number, patch: Partial<{ itemId: string; quantity: string }>) =>
+    setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  const addRow = () => setRows(rs => [...rs, { itemId: '', quantity: '' }])
+  const removeRow = (i: number) => setRows(rs => rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs)
+
+  const filled = rows.filter(r => r.itemId && Number(r.quantity) > 0)
+  const totalUnits = filled.reduce((s, r) => s + Number(r.quantity), 0)
+  const totalValue = filled.reduce((s, r) => s + Number(itemById.get(r.itemId)?.unitCost || 0) * Number(r.quantity), 0)
+
+  const submit = async () => {
+    setErr('')
+    if (!filled.length) { setErr('Add at least one item with a quantity greater than zero.'); return }
+    if (!remarks.trim()) { setErr('Enter remarks — why is this stock being written off?'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/inventory/adjustments/shrinkage', {
+        method: editAdjustmentId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(editAdjustmentId ? { id: editAdjustmentId } : {}),
+          adjustmentDate: date,
+          remarks: remarks.trim(),
+          rows: filled.map(r => ({ itemId: r.itemId, quantity: Number(r.quantity) })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setErr(d.error || 'Failed to save'); setBusy(false); return }
+      onDone()
+    } catch { setErr('Network error'); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 max-w-3xl w-full shadow-xl mb-8 relative" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
+        <h2 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          {editAdjustmentId ? 'Edit Shrinkage of Stocks' : 'Shrinkage of Stocks'}
+          {reference && <span className="ml-2 font-mono text-xs px-1.5 py-0.5 rounded align-middle" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{reference}</span>}
+        </h2>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+          {editAdjustmentId
+            ? 'Every product written off together is listed below — correcting one corrects the set. The old write-off is given back to stock and re-applied from these rows, and its journal entries are reversed and reposted.'
+            : 'Write off damaged, lost, or expired stock across as many products as you need. Each product’s cost comes off its oldest remaining batch (FIFO) and is posted to the shrinkage expense account.'}
+        </p>
+
+        {err && <div className="mb-3 p-2.5 rounded-lg text-sm bg-red-50 text-red-600">{err}</div>}
+
+        {loading ? (
+          <div className="py-12 text-center"><Loader2 size={22} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+        ) : (<>
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Date <span className="text-red-500">*</span></label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            <div className="flex-1 min-w-[240px]">
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Remarks <span className="text-red-500">*</span></label>
+              <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="e.g. Damaged in transit — supplier claim filed"
+                className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+          </div>
+
+          <div className="rounded-xl border mb-2" style={{ borderColor: 'var(--light-gray)' }}>
+            <table className="w-full text-sm">
+              <thead><tr style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                <th className="px-3 py-2 text-left text-xs font-semibold" style={{ minWidth: 260 }}>Product</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold w-24">On Hand</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold w-32">Write Off</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold w-24">Remaining</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold w-28">Cost</th>
+                <th className="px-2 py-2 w-8"></th>
+              </tr></thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const item = r.itemId ? itemById.get(r.itemId) : null
+                  // In edit mode the item's stored quantity already has the old
+                  // write-off taken out, so add it back to show real availability.
+                  const onHand = item ? item.quantity + (restoreByItem[r.itemId] || 0) : null
+                  const qty = Number(r.quantity) || 0
+                  const after = onHand != null && r.quantity !== '' ? onHand - qty : null
+                  const cost = item ? Number(item.unitCost || 0) * qty : 0
+                  return (
+                    <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-2">
+                        <ItemSearchSelect items={items} value={r.itemId} compact
+                          onChange={it => setRow(i, { itemId: it?.id || '' })} />
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{onHand ?? '—'}</td>
+                      <td className="px-3 py-2 text-right">
+                        <input type="number" min={1} value={r.quantity} onChange={e => setRow(i, { quantity: e.target.value })}
+                          className="w-24 px-2 py-1.5 rounded-lg border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs font-semibold"
+                        style={{ color: after == null ? 'var(--mid-gray)' : after < 0 ? '#dc2626' : 'var(--charcoal)' }}>
+                        {after ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        {qty > 0 && item ? `₱${cost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        {rows.length > 1 && (
+                          <button type="button" onClick={() => removeRow(i)} className="p-1 rounded hover:bg-red-50">
+                            <X size={12} className="text-red-400" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button type="button" onClick={addRow} className="text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1"
+            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+            <Plus size={12} /> Add Row
+          </button>
+
+          {filled.length > 0 && (
+            <div className="mt-4 p-3 rounded-xl flex items-center justify-between" style={{ background: 'var(--off-white)' }}>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                {filled.length} product{filled.length === 1 ? '' : 's'} · {totalUnits} unit{totalUnits === 1 ? '' : 's'}
+              </span>
+              <span className="text-sm font-bold" style={{ color: '#dc2626' }}>
+                −₱{totalValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 mt-5">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+            <button type="button" onClick={submit} disabled={busy}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center gap-2" style={{ background: '#dc2626' }}>
+              {busy && <Loader2 size={14} className="animate-spin" />}
+              {busy ? 'Saving…' : editAdjustmentId ? 'Save Changes' : 'Record Shrinkage'}
+            </button>
+          </div>
+        </>)}
+      </div>
+    </div>
+  )
+}
+
 /* ── Bulk physical-count shrinkage (add rows, auditor + e-signature) ── */
 function BulkShrinkageCountModal({ items, onClose, onDone }: {
   items: { id: string; name: string; sku: string; quantity: number }[]
@@ -5633,64 +6505,6 @@ function BulkShrinkageCountModal({ items, onClose, onDone }: {
             {busy ? 'Saving…' : 'Save Audit'}
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// Correct a single (non-batch) adjustment: its date, remarks, and — while none
-// of its units have been sold — the quantity. Freight batches keep their own
-// editor, which re-applies the whole shipment.
-function EditAdjustmentModal({ adj, onClose, onSaved }: { adj: Adjustment; onClose: () => void; onSaved: () => void }) {
-  const [date, setDate] = useState(String(adj.adjustmentDate).slice(0, 10))
-  const [qty, setQty] = useState(String(adj.quantityChange))
-  const [remarks, setRemarks] = useState(adj.remarks || '')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const consumed = adj.type === 'INCREASE' && (adj.remainingQuantity ?? adj.quantityChange) !== adj.quantityChange
-
-  const save = async () => {
-    setBusy(true); setErr('')
-    try {
-      const res = await fetch('/api/inventory/adjustments', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: adj.id, adjustmentDate: date, remarks, quantityChange: consumed ? undefined : parseInt(qty) }),
-      })
-      if (!res.ok) { setErr((await res.json()).error || 'Failed to save'); return }
-      onSaved()
-    } catch { setErr('Network error') } finally { setBusy(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Edit Adjustment</h3>
-          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-          {adj.item?.sku} — {adj.item?.name} · {adj.type === 'INCREASE' ? 'Increase' : 'Decrease'} of {adj.quantityChange}
-        </p>
-        {err && <p className="text-xs text-red-600 mb-2">{err}</p>}
-
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date</label>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
-
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Quantity</label>
-        <input type="number" min={1} value={qty} disabled={consumed} onChange={e => setQty(e.target.value)}
-          className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }} />
-        <p className="text-[11px] mt-1 mb-3" style={{ color: 'var(--mid-gray)' }}>
-          {consumed
-            ? 'Locked: units from this batch have already been sold, so changing the quantity would restate their cost of sales. Reverse those sales first.'
-            : 'Changing this adjusts the item’s stock by the difference.'}
-        </p>
-
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
-        <input value={remarks} onChange={e => setRemarks(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-4" style={{ borderColor: 'var(--light-gray)' }} />
-
-        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-          {busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Save changes'}
-        </button>
       </div>
     </div>
   )

@@ -233,6 +233,15 @@ export async function POST(req: Request) {
       totalAmount: Math.round(dr * 100) / 100,
       createdById: session.user.id as string,
       branch: ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA', 'VERDANA_STORE', 'ALL'].includes(b.branch) ? b.branch : 'ALL',
+      // Departments this entry belongs to, for the contribution-margin
+      // analysis. Empty = "All" (allocated by the configured rent percentages).
+      departments: ((): string[] => {
+        const raw: unknown = b.departments
+        if (!Array.isArray(raw)) return []
+        const cleaned = raw.map(d => String(d).toUpperCase())
+          .filter(d => ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'].includes(d))
+        return Array.from(new Set(cleaned))
+      })(),
       lines: { create: lines },
     },
   })

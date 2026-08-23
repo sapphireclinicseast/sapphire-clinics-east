@@ -1,13 +1,34 @@
 // POST /api/progress-reports/[id]/email — email the PR to the patient
-// using Resend HTTP API with the file as an attachment.
+// via Gmail OAuth with the file as an attachment.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sendTransactionalEmail } from '@/lib/transactional-email'
 import { promises as fs } from 'fs'
 import path from 'path'
 
-const FROM = 'Sapphire Clinics East <noreply@do-not-reply.sapphireclinicseast.org>'
+// Branch mailbox the report is sent from — preserves the behaviour added in
+// be21649d (send Initial Evaluation & Progress Report from the branch email).
+// These are real connected Gmail accounts, so the mail genuinely originates
+// from the branch address; the previous Resend implementation could only set a
+// From header and needed the root domain SPF/DKIM-verified for it to stick,
+// which is why it carried a fallback. If the branch mailbox isn't connected,
+// sendTransactionalEmail falls back to the default transactional account.
+function branchSenderAccount(branch?: string | null): string | undefined {
+  // Patient.branch uses SANDBOX_EAST/SANDBOX_GREENHILLS (Staff.branch uses SBEA/SBGH).
+  switch (branch) {
+    case 'SBEA':
+    case 'SANDBOX_EAST':
+      return process.env.GMAIL_FROM_EAST ?? 'east@sapphireclinicseast.org'
+    case 'SBGH':
+    case 'SANDBOX_GREENHILLS':
+      return process.env.GMAIL_FROM_GREENHILLS ?? 'greenhills@sapphireclinicseast.org'
+    default:
+      return undefined
+  }
+}
+
 
 export async function POST(
   _req: NextRequest,
@@ -26,8 +47,6 @@ export async function POST(
   if (!doc.paidForAt) return NextResponse.json({ error: 'Mark as paid first' }, { status: 400 })
   if (!doc.patient.email) return NextResponse.json({ error: 'Patient has no email on file' }, { status: 400 })
 
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return NextResponse.json({ error: 'RESEND_API_KEY not set' }, { status: 500 })
 
   // Read the file from the read-only teletherapy mount
   const filePath = path.join('/app/teletherapy-uploads', doc.filePath)
@@ -62,29 +81,21 @@ export async function POST(
     }
   }
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: FROM,
-      to: [doc.patient.email],
+  try {
+    await sendTransactionalEmail({
+      to: doc.patient.email,
       ...(ccList.length > 0 ? { cc: ccList } : {}),
       subject,
       html,
+      fromAccount: branchSenderAccount(patientBranch),
       attachments: [{
         filename: doc.fileName,
         content: fileBuffer.toString('base64'),
       }],
-    }),
-    signal: AbortSignal.timeout(15_000),
-  })
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    return NextResponse.json({ error: 'Resend error ' + res.status + ': ' + body.slice(0, 300) }, { status: 502 })
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: 'Email send failed: ' + msg.slice(0, 300) }, { status: 502 })
   }
 
   await prisma.patientDocument.update({

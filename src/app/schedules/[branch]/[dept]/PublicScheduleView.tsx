@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type CSSProperties } from 'react'
+import { localTodayStr } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ function formatTime(t: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
 }
 
-function todayStr() { return new Date().toISOString().split('T')[0] }
+const todayStr = localTodayStr
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface StaffInfo    { id: string; firstName: string; lastName: string; department: string; branch: string }

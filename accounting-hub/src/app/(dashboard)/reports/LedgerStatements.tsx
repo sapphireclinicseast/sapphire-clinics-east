@@ -5,12 +5,23 @@
 // underlying entries with Excel export), the Income Statement offers monthly /
 // quarterly columns and a vertical-analysis mode (every line as % of gross
 // revenue), and the integrity card sits at the bottom in plain language.
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, createContext, useContext, useEffect, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Loader2, X, Download, ChevronDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { formatDisplay, displayCode, displayRate, inDisplay } from './display-currency'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import type { V2Statements, V2AccountRow, V2CollectedLine } from '@/lib/reports/v2/engine'
+import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
+
+// Labels for the income-statement branch tickboxes' combined-view note.
+const BRANCH_NAMES: Record<string, string> = {
+  SBEA: 'East Branch', SBGH: 'Greenhills Branch', VERDANA_STORE: 'Verdana Store', AURA_INSTITUTE: 'Aura Health Institute',
+}
+
+// Investor mode: statements render normally but no amount is clickable — the
+// drill-down reaches patient-level lines. Provided by the page, consumed at the
+// single place every clickable amount goes through (Amt).
+const ReadOnlyCtx = createContext(false)
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4']
@@ -19,6 +30,7 @@ const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4']
 // engine's synthesized sources).
 const SOURCE_LABELS: Record<string, string> = {
   'opening': 'Opening balance',
+  'asset-reversal': 'Asset correction / reversal',
   'orders': 'POS sales (from orders)',
   'cogs': 'Cost of goods sold (from orders)',
   'ar-collections': 'HMO / guarantee-letter collections',
@@ -71,7 +83,9 @@ const SOURCE_LABELS: Record<string, string> = {
   'journal:TIKTOK_WHT': 'TikTok withholding tax',
 }
 const sourceLabel = (s: string) => SOURCE_LABELS[s]
-  || s.replace(/^journal:/, '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())
+  || (s.startsWith('history:')
+      ? `History — ${s.slice(8).replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())}`
+      : s.replace(/^journal:/, '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase()))
 
 /** Historical ledger labels/descriptions were stored with the pre-rebrand branch codes — sanitize at display time only. */
 const rebrand = (s: string) => s.replace(/\bSBEA\b/g, 'AHEA').replace(/\bSBGH\b/g, 'AHGH')
@@ -82,6 +96,8 @@ const fmtAmt = (v: number) => (v < 0 ? `(${formatDisplay(Math.abs(v))})` : forma
 const fmtPct = (v: number, base: number) => (Math.abs(base) < 0.005 ? '—' : `${(v / base * 100).toFixed(1)}%`)
 
 function Amt({ v, bold, onClick, pctBase }: { v: number; bold?: boolean; onClick?: () => void; pctBase?: number | null }) {
+  const readOnly = useContext(ReadOnlyCtx)
+  if (readOnly) onClick = undefined
   // Vertical analysis keeps the amount and appends the % beside it,
   // in bright blue so it stands out: ₱454,534.91 (11.9%)
   const usePct = pctBase !== undefined && pctBase !== null
@@ -173,8 +189,8 @@ function MultiRow({ label, indent, bold, rule, doubleRule, muted, ...cells }: {
 
 /* ── Drill-down modal ───────────────────────────────────────────── */
 
-function DrillDown({ year, branch, account, title, month, onClose }: {
-  year: number; branch: string; account: string; title: string; month: number | null; onClose: () => void
+function DrillDown({ year, branch, account, title, month, cumulative, onClose }: {
+  year: number; branch: string; account: string; title: string; month: number | null; cumulative?: boolean; onClose: () => void
 }) {
   const [lines, setLines] = useState<V2CollectedLine[] | null>(null)
   const [totals, setTotals] = useState<{ debit: number; credit: number } | null>(null)
@@ -185,6 +201,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
     let live = true
     const params = new URLSearchParams({ year: String(year), branch, account })
     if (month) params.set('month', String(month))
+    if (month && cumulative) params.set('cumulative', '1')
     fetch(`/api/reports/v2?${params}`)
       .then(async r => {
         const j = await r.json()
@@ -217,7 +234,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
       [],
       ['Month', 'Source', 'Detail', `Debit (${ccy})`, `Credit (${ccy})`],
       ...lines.map(l => [
-        l.month === 0 ? 'Opening' : MONTHS[l.month - 1],
+        l.period || (l.month === 0 ? 'Opening' : MONTHS[l.month - 1]),
         sourceLabel(l.source),
         rebrand(l.label),
         l.debit ? amt(l.debit) : '',
@@ -244,7 +261,8 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
           <div>
             <p className="font-semibold" style={{ color: '#111827' }}>{title}</p>
             <p className="text-xs" style={{ color: '#6b7280' }}>
-              {month ? MONTHS[month - 1] : 'Whole year'} · every underlying entry, from the ledger dataset
+              {month ? (cumulative ? `Through ${MONTHS[month - 1]} — the running balance you clicked` : MONTHS[month - 1]) : 'Whole year'} · every underlying entry, from the ledger dataset
+              {!month && ' · earlier years are listed first as History, and are not included in the totals — they are already embodied in the opening balance'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -283,7 +301,7 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
               <tbody>
                 {lines.map((l, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#6b7280' }}>{l.month === 0 ? 'Opening' : MONTHS[l.month - 1]}</td>
+                    <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#6b7280' }}>{l.period || (l.month === 0 ? 'Opening' : MONTHS[l.month - 1])}</td>
                     <td className="px-3 py-1 whitespace-nowrap" style={{ color: '#374151' }}>{sourceLabel(l.source)}</td>
                     <td className="px-3 py-1" style={{ color: '#111827' }}>{rebrand(l.label)}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{l.debit ? formatDisplay(l.debit) : ''}</td>
@@ -321,9 +339,10 @@ function DrillDown({ year, branch, account, title, month, onClose }: {
 
 /* ── Main component ─────────────────────────────────────────────── */
 
-export default function LedgerStatements({ year, branch, tab, view }: {
+export default function LedgerStatements({ year, branch, tab, view, readOnly }: {
   year: number
   branch: string
+  readOnly?: boolean
   tab: 'balance-sheet' | 'income-statement' | 'cash-flow'
   view: 'annual' | 'quarterly' | 'monthly'
 }) {
@@ -331,7 +350,7 @@ export default function LedgerStatements({ year, branch, tab, view }: {
   // never calls setState synchronously.
   const key = `${year}|${branch}`
   const [result, setResult] = useState<{ key: string; data: V2Statements | null; error: string | null }>({ key: '', data: null, error: null })
-  const [drill, setDrill] = useState<{ account: string; title: string; month: number | null } | null>(null)
+  const [drill, setDrill] = useState<{ account: string; title: string; month: number | null; cumulative?: boolean } | null>(null)
   const [verticalAnalysis, setVerticalAnalysis] = useState(false)
   // Balance sheet: bank/cash accounts collapse into one "Cash and Cash
   // Equivalents" line; toggle to see the individual accounts.
@@ -341,12 +360,20 @@ export default function LedgerStatements({ year, branch, tab, view }: {
 
   useEffect(() => {
     let live = true
-    fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
-      .then(async r => {
-        const j = await r.json()
+    // "SBEA+SBGH" = income-statement branch tickboxes: fetch each ticked
+    // branch and sum the payloads (mergeLedgerStatements).
+    const parts = branch.split('+')
+    Promise.all(parts.map(b =>
+      fetch(`/api/reports/v2?year=${year}&branch=${b}`).then(async r => ({ ok: r.ok, j: await r.json() }))
+    ))
+      .then(res => {
         if (!live) return
-        if (!r.ok) setResult({ key, data: null, error: j.error || 'Failed to load' })
-        else setResult({ key, data: j, error: null })
+        const bad = res.find(r => !r.ok)
+        if (bad) { setResult({ key, data: null, error: bad.j.error || 'Failed to load' }); return }
+        const data = parts.length > 1
+          ? mergeLedgerStatements(res.map(r => r.j), parts.map(p => BRANCH_NAMES[p] || p))
+          : res[0].j
+        setResult({ key, data, error: null })
       })
       .catch(() => live && setResult({ key, data: null, error: 'Failed to load' }))
     return () => { live = false }
@@ -368,8 +395,8 @@ export default function LedgerStatements({ year, branch, tab, view }: {
     return <p className="px-6 py-10 text-sm text-center" style={{ color: 'var(--mid-gray)' }}>{error || 'No data'}</p>
   }
 
-  const openDrill = (r: { number: string; title: string }, month: number | null = null) =>
-    setDrill({ account: r.number, title: `${r.number} ${r.title}`, month })
+  const openDrill = (r: { number: string; title: string }, month: number | null = null, cumulative = false) =>
+    setDrill({ account: r.number, title: `${r.number} ${r.title}`, month, cumulative })
 
   const v = data.validation
   const checks: { ok: boolean; label: string }[] = [
@@ -598,8 +625,10 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                   ))}
                 </Fragment>))}
                 <MultiRow label="EBT" values={ebtC} total={is.ebt} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
-                <MultiRow label="Provision for Income Tax (20%)" indent={1}
+                {INCOME_TAX_RATE > 0 && (
+                <MultiRow label={`Provision for Income Tax (${Math.round(INCOME_TAX_RATE * 100)}%)`} indent={1}
                   values={ebtC.map(e => e * INCOME_TAX_RATE)} total={is.taxProvision} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                )}
                 <MultiRow label="NET INCOME" values={ebtC.map(e => e * (1 - INCOME_TAX_RATE))} total={is.netIncome} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
               </tbody>
             </table>
@@ -652,7 +681,9 @@ export default function LedgerStatements({ year, branch, tab, view }: {
             ))}
           </Fragment>))}
           <Row label="EBT" amount={is.ebt} bold rule pctBase={vaBase} />
-          <Row label="Provision for Income Tax (20%)" amount={is.taxProvision} indent={1} pctBase={vaBase} />
+          {INCOME_TAX_RATE > 0 && (
+          <Row label={`Provision for Income Tax (${Math.round(INCOME_TAX_RATE * 100)}%)`} amount={is.taxProvision} indent={1} pctBase={vaBase} />
+          )}
           <Row label="NET INCOME" amount={is.netIncome} bold doubleRule pctBase={vaBase} />
         </div>
       )
@@ -663,7 +694,10 @@ export default function LedgerStatements({ year, branch, tab, view }: {
       // Month-end (or quarter-end) POSITIONS: engine sends cumulative
       // statement-signed balances in `monthly` for balance-sheet rows.
       const colLabels = cutCols(view === 'quarterly' ? QUARTERS : MONTHS)
-      const colIdx = view === 'quarterly' ? [2, 5, 8, 11] : Array.from({ length: 12 }, (_, i) => i)
+      // Must be cut the same way colLabels is: in the current year the header
+      // stops at the last real month, so emitting all twelve values shifted
+      // "Year End" into September's slot and left four columns unlabelled.
+      const colIdx = cutCols(view === 'quarterly' ? [2, 5, 8, 11] : Array.from({ length: 12 }, (_, i) => i))
       const pick = (m12: number[]) => colIdx.map(i => m12[i] || 0)
       // cumulative EBT per month → monthly NI / ITP / DTA (statement-signed)
       const isSec = (key: string) => data.incomeStatement.sections.find(s => s.key === key)
@@ -715,12 +749,12 @@ export default function LedgerStatements({ year, branch, tab, view }: {
                   {grouped && cashOpen && cashRows.map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={2} muted
                       values={pick(r.monthly || [])} total={r.closing}
-                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null)} />
+                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null, view === 'monthly')} />
                   ))}
                   {(grouped ? s.rows.filter(r => !r.cash) : s.rows).map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={1}
                       values={pick(r.monthly || [])} total={r.closing}
-                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null)} />
+                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null, view === 'monthly')} />
                   ))}
                   {s.key === 'CURRENT_ASSETS' && bs.deferredTaxAsset > 0 && (
                     <MultiRow label="Deferred Tax Asset (20% provision on loss)" indent={1} values={pick(dtaCum)} total={bs.deferredTaxAsset} />
@@ -796,6 +830,9 @@ export default function LedgerStatements({ year, branch, tab, view }: {
       // plain rather than pretending to be clickable.
       const cfCellMonth = (i: number | null): number | null => (view === 'monthly' ? i : null)
       const cfDrill = (label: string) => {
+        if (label.startsWith('Asset purchase corrections')) {
+          return (mo: number | null) => openDrill({ number: 'ASSET_CORRECTIONS', title: 'Asset purchase corrections / reversals' }, cfCellMonth(mo))
+        }
         const m = /^(\d{3,6})\s+(.+)$/.exec(label.trim())
         return m ? (mo: number | null) => openDrill({ number: m[1], title: m[2] }, cfCellMonth(mo)) : undefined
       }
@@ -887,15 +924,17 @@ export default function LedgerStatements({ year, branch, tab, view }: {
   }
 
   return (
+    <ReadOnlyCtx.Provider value={!!readOnly}>
     <div className="pb-2">
       {body}
-      {integrity}
+      {readOnly || branch.includes('+') ? null : integrity}
       <p className="px-5 pt-1 text-[0.68rem]" style={{ color: '#9ca3af' }}>
-        * derived account (not yet in the Chart of Accounts). Click any amount to see the entries behind it.
+        * derived account (not yet in the Chart of Accounts).{readOnly ? '' : ' Click any amount to see the entries behind it.'}
       </p>
-      {drill && (
-        <DrillDown year={year} branch={branch} account={drill.account} title={drill.title} month={drill.month} onClose={() => setDrill(null)} />
+      {drill && !readOnly && (
+        <DrillDown year={year} branch={branch} account={drill.account} title={drill.title} month={drill.month} cumulative={drill.cumulative} onClose={() => setDrill(null)} />
       )}
     </div>
+    </ReadOnlyCtx.Provider>
   )
 }

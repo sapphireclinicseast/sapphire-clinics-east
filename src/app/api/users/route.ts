@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-const VALID_ROLES = ['ADMIN', 'MARKETING_ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK']
+const VALID_ROLES = ['ADMIN', 'MARKETING_ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK', 'INVESTOR']
 function safeRole(role: unknown) {
   return typeof role === 'string' && VALID_ROLES.includes(role) ? role : 'MARKETING_ADMIN'
 }

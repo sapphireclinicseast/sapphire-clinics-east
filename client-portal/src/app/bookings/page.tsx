@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSession, clearSession } from '@/lib/session'
 import { InvalidTokenError, cancelBooking, listMyBookings, type Booking } from '@/lib/api'
+import { branchLabel } from '@/lib/branch-label'
 
 export default function MyBookingsPageWrapper() {
   return (
@@ -129,7 +130,7 @@ function MyBookingsPage() {
 function BookingCard({ b, i, onChange }: { b: Booking; i: number; onChange: (nb: { id: string; status: Booking['status'] }) => void }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
-  const branchName = b.branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
+  const branchName = branchLabel(b.branch)
   const dateNice = new Date(`${b.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   const canCancel = b.status === 'PENDING' || b.status === 'APPROVED'
 

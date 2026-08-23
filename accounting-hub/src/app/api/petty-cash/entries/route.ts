@@ -12,8 +12,12 @@ const EDITABLE = [
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'grossAmount',
   'accountTitle', 'referenceNumber', 'proofUrl', 'proofUrls', 'validity', 'finalized',
   'recurFrequency', 'recurDeadlineDay', 'distributeMonthly', 'amountVaries', 'distributeStart', 'distributeEnd',
-  'hasEwt', 'ewtRate',
+  'hasEwt', 'ewtRate', 'departments',
 ] as const
+
+// Departments this expense belongs to, for the contribution-margin analysis.
+// Empty array = "All" (allocated by the configured rent percentages).
+const VALID_DEPTS = new Set(['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'])
 
 const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD', CEO: 'CEO' }
 // Petty cash entries carry a "-NN" sub-sequence (entries sharing one PCV);
@@ -209,6 +213,12 @@ export async function PUT(req: Request) {
         else if (f === 'recurDeadlineDay') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
         else if (f === 'distributeMonthly' || f === 'amountVaries' || f === 'hasEwt') data[f] = !!body[f]
         else if (f === 'ewtRate') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
+        else if (f === 'departments') {
+          const raw: unknown = body.departments
+          data.departments = Array.isArray(raw)
+            ? Array.from(new Set(raw.map(d => String(d).toUpperCase()).filter(d => VALID_DEPTS.has(d))))
+            : []
+        }
         else data[f] = body[f] === '' ? null : body[f]
       }
     }

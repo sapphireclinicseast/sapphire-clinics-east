@@ -51,10 +51,10 @@ export async function POST(
     const msg = (err as Error).message ?? 'Unknown email-send failure'
     console.error('[decking send-payment-email] send failed:', msg)
     // Heuristic: surface the user-friendly cause for the most common case
-    // (Resend rejecting the key) so the front-desk doesn't waste time
-    // guessing.
-    const userMsg = /401|403|API key|unauthorized/i.test(msg)
-      ? 'Email service rejected the API key. Have an admin update RESEND_API_KEY in the server environment.'
+    // (the Gmail OAuth token being rejected or revoked) so the front desk
+    // doesn't waste time guessing.
+    const userMsg = /401|403|invalid_grant|unauthorized|API key/i.test(msg)
+      ? 'Email service rejected the sending account. Have an admin reconnect the Gmail account under Settings > Connected Accounts.'
       : 'Email service is unavailable right now. ' + msg
     return NextResponse.json({ error: userMsg, raw: msg }, { status: 502 })
   }

@@ -34,6 +34,10 @@ interface AcctInfo {
   subType: string
   normalBalance: 'DEBIT' | 'CREDIT'
   virtual: boolean
+  /** Owning branch of a bank account; null = shared/company-wide. */
+  branch?: string | null
+  /** Account currency; anything but PHP is converted at the bank-rec rate. */
+  currency?: string
 }
 
 interface Movement { debit: number; credit: number }
@@ -56,7 +60,9 @@ export interface V2AccountRow {
 
 /** One underlying line, returned when a drill-down is requested. */
 export interface V2CollectedLine {
-  month: number          // 1..12, or 0 for opening balances
+  month: number          // 1..12, or 0 for opening balances and prior-year history
+  /** "YYYY-MM" for a prior-year history line; absent for lines inside `year`. */
+  period?: string
   source: string         // engine source key (journal:<refType> or a synthesis key)
   label: string          // human context: JE description, order #, PCV, asset name…
   debit: number
@@ -164,8 +170,10 @@ const BS_SECTION: [key: string, label: string, match: (a: AcctInfo) => boolean][
 function isCashAccount(a: AcctInfo): boolean {
   if (a.type !== 'ASSET') return false
   const t = a.title.toLowerCase()
-  if (/receivable|input vat|withholding|prepaid|deposit|inventory|advances|due from/.test(t)) return false
-  return /cash|bank|gcash|paymaya|maya|fund/.test(t)
+  // 'deposit' used to exclude "UnDEPOSITed Funds" — the clearing account IS
+  // cash in transit and belongs in Cash and Cash Equivalents (user policy).
+  if (/receivable|input vat|withholding|prepaid|security deposit|deposit paid|inventory|advances|due from/.test(t)) return false
+  return /cash|bank|gcash|paymaya|maya|fund|clearing|undeposited/.test(t)
 }
 
 /**
@@ -183,10 +191,16 @@ const LIVE_STMT = { status: { in: ['PENDING', 'POSTED'] } }
 export async function computeLedgerStatements(
   year: number,
   branch: string,
-  collect?: { account: string; month?: number },
+  collect?: { account: string; month?: number; cumulative?: boolean },
 ): Promise<V2Statements> {
   const start = new Date(Date.UTC(year, 0, 1))
   const end = new Date(Date.UTC(year + 1, 0, 1))
+  /* Years before the hub went live read the imported QuickBooks GL as the one
+     and only ledger: module JEs and every synthesis family are suppressed —
+     QB's own journal already contains the sales, depreciation, petty cash,
+     transfers and asset purchases — leaving QB journals + opening balances +
+     the bank-statement true-up (the honesty check stays on in every era). */
+  const qbEra = year < 2026
   const collected: V2CollectedLine[] = []
   const monthOf = (d: Date | string) => {
     const dt = new Date(d)
@@ -205,7 +219,7 @@ export async function computeLedgerStatements(
   /* ── Account registry ── */
   const dbAccounts = await prisma.account.findMany({
     where: { isActive: true },
-    select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true, isBankAccount: true },
+    select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true, isBankAccount: true, branch: true, currency: true },
   })
   const byNumber = new Map<string, AcctInfo>()
   const byId = new Map<string, AcctInfo>()
@@ -215,6 +229,7 @@ export async function computeLedgerStatements(
       id: a.id, number: a.accountNumber, title: a.accountTitle,
       type: a.accountType as AcctInfo['type'], subType: a.subType || '',
       normalBalance: a.normalBalance as AcctInfo['normalBalance'], virtual: false,
+      branch: a.branch || null, currency: a.currency || 'PHP',
     }
     byNumber.set(info.number, info)
     byId.set(a.id, info)
@@ -297,7 +312,7 @@ export async function computeLedgerStatements(
     const mm = movMonthly.get(acct.number)!
     mm.debit[month] += debit
     mm.credit[month] += credit
-    if (collect && collect.account === acct.number && (!collect.month || collect.month === month) && (debit || credit)) {
+    if (collect && collect.account === acct.number && (!collect.month || collect.month === month || (collect.cumulative && month <= collect.month)) && (debit || credit)) {
       collected.push({ month, source, label, debit: round2(debit), credit: round2(credit) })
     }
   }
@@ -320,6 +335,86 @@ export async function computeLedgerStatements(
     }
   }
 
+  /* ── 0. Prior-year history for a drill-down ──
+     "Opening balance (2026)" on its own is a dead end: it says what the account
+     started at, never how it got there. When one account is drilled with no
+     month filter, every entry that predates the period is listed first, oldest
+     first, so the balance can be read all the way back to 2024 instead of
+     stopping at a figure someone typed in.
+
+     History lines are deliberately EXCLUDED from the drill-down totals — those
+     state this period's movement, and adding earlier years would double-count
+     the opening balance they already produced. */
+  if (collect && !collect.month) {
+    const drilled = byNumber.get(collect.account)
+    if (drilled?.id) {
+      const hist = await prisma.journalEntryLine.findMany({
+        where: {
+          accountId: drilled.id,
+          journalEntry: {
+            entryDate: { lt: start },
+            referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
+            ...(branchValues ? { branch: { in: branchValues as never[] } } : {}),
+            // QB-era history: pre-2026 the QB journal IS the ledger — module
+            // JEs from those years are suppressed here exactly as in §2.
+            OR: [{ entryDate: { gte: new Date(Date.UTC(2026, 0, 1)) } }, { referenceType: 'QB_IMPORT_JE' as never }],
+          },
+        },
+        select: {
+          debit: true, credit: true,
+          journalEntry: { select: { entryDate: true, description: true, referenceType: true } },
+        },
+        orderBy: { journalEntry: { entryDate: 'asc' } },
+        take: 3000,
+      })
+      for (const l of hist) {
+        const je = l.journalEntry
+        collected.push({
+          month: 0,
+          period: je.entryDate.toISOString().slice(0, 7),
+          source: `history:${je.referenceType || 'JOURNAL'}`,
+          label: je.description || '(no description)',
+          debit: round2(Number(l.debit) || 0),
+          credit: round2(Number(l.credit) || 0),
+        })
+      }
+    }
+  }
+
+  /* ── 0b. Drill-down for the corrections line ──
+     "Asset purchase corrections / reversals" spans several accounts, so it
+     cannot drill by account number. The special key ASSET_CORRECTIONS lists
+     the underlying reversal entries themselves — what was reversed, when, and
+     for how much — instead of one account's ledger. */
+  if (collect && collect.account === 'ASSET_CORRECTIONS') {
+    const revLines = await prisma.journalEntryLine.findMany({
+      where: {
+        credit: { gt: 0 },
+        account: { accountType: 'ASSET', subType: { in: ['PPE', 'INTANGIBLE_ASSETS', 'OTHER_NON_CURRENT_ASSETS'] } },
+        journalEntry: {
+          referenceType: 'ASSET_PURCHASE_REVERSAL',
+          entryDate: { gte: start, lt: end },
+          ...(branchValues ? { branch: { in: branchValues as never[] } } : {}),
+        },
+      },
+      select: {
+        credit: true,
+        account: { select: { accountNumber: true, accountTitle: true } },
+        journalEntry: { select: { entryDate: true, description: true } },
+      },
+      orderBy: { journalEntry: { entryDate: 'asc' } },
+    })
+    for (const l of revLines) {
+      const m = l.journalEntry.entryDate.getUTCMonth() + 1
+      if (collect.month && !(collect.month === m || (collect.cumulative && m <= collect.month))) continue
+      collected.push({
+        month: m, source: 'asset-reversal',
+        label: `${l.account?.accountNumber} ${l.account?.accountTitle} — ${l.journalEntry.description || ''}`,
+        debit: 0, credit: round2(Number(l.credit)),
+      })
+    }
+  }
+
   /* ── 1. Opening balances ── */
   if (branch === 'ALL') {
     const openingRows = await prisma.beginningBalance.findMany({
@@ -336,9 +431,20 @@ export async function computeLedgerStatements(
       opening.set(acct.number, (opening.get(acct.number) || 0) + amt)
       if (acct.normalBalance === 'DEBIT') openDr += amt
       else openCr += amt
-      if (collect && collect.account === acct.number && !collect.month) {
+      if (collect && collect.account === acct.number && (!collect.month || collect.cumulative)) {
         collected.push({
           month: 0, source: 'opening', label: `Opening balance (${year})`,
+          debit: acct.normalBalance === 'DEBIT' ? amt : 0,
+          credit: acct.normalBalance === 'CREDIT' ? amt : 0,
+        })
+      }
+      // Drilling the 3999 plug itself answers "what causes this": the plug is
+      // the amount by which the entered openings fail to balance, so its
+      // breakdown IS the openings — every one, on its normal side. The drill's
+      // net (debits − credits) then equals the plug figure exactly.
+      if (collect && collect.account === OPENING_PLUG && (!collect.month || collect.cumulative)) {
+        collected.push({
+          month: 0, source: 'opening-plug', label: `${acct.number} ${acct.title} — entered opening`,
           debit: acct.normalBalance === 'DEBIT' ? amt : 0,
           credit: acct.normalBalance === 'CREDIT' ? amt : 0,
         })
@@ -350,6 +456,14 @@ export async function computeLedgerStatements(
       const plug = virt(OPENING_PLUG, 'Opening Balance Equity (plug)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
       opening.set(plug.number, (opening.get(plug.number) || 0) + openDiff)
       validation.openingPlug = openDiff
+      if (collect && collect.account === OPENING_PLUG && (!collect.month || collect.cumulative)) {
+        collected.push({
+          month: 0, source: 'opening-plug',
+          label: `Opening Balance Equity plug — entered opening debits ${openDr.toLocaleString('en-PH', { minimumFractionDigits: 2 })} vs credits ${openCr.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
+          debit: openDiff < 0 ? -openDiff : 0,
+          credit: openDiff > 0 ? openDiff : 0,
+        })
+      }
     }
   } else {
     /* Company-wide opening balances cannot be split by branch, but the branch's
@@ -404,7 +518,7 @@ export async function computeLedgerStatements(
         referenceId: { startsWith: `${year}-` },
       },
     ],
-    referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
+    referenceType: qbEra ? 'QB_IMPORT_JE' as never : { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
     ...(branchValues ? { branch: { in: branchValues } } : {}),
   }
   const journalEntries = await prisma.journalEntry.findMany({
@@ -454,9 +568,12 @@ export async function computeLedgerStatements(
      the normal journal fold instead. The ALL view is untouched (no double count). */
   if (branchValues) {
     const allocJes = await prisma.journalEntry.findMany({
-      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: { in: ['LOAN_PAYMENT', 'ADVANCE_PAYMENT'] } },
+      // The interest accruals belong here too: a late payment books its expense
+      // at the due date against Interest Payable, and that entry is as invisible
+      // to a branch view as the payment JE it precedes.
+      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: { in: ['LOAN_PAYMENT', 'ADVANCE_PAYMENT', 'LOAN_INTEREST_ACCRUAL', 'ADVANCE_INTEREST_ACCRUAL'] } },
       select: {
-        referenceId: true, entryDate: true, description: true,
+        referenceId: true, referenceType: true, entryDate: true, description: true,
         lines: { select: { debit: true, credit: true, account: { select: { accountNumber: true, accountType: true } } } },
       },
     })
@@ -488,7 +605,10 @@ export async function computeLedgerStatements(
         })).filter(i => i.debit > 0)
         const totalShare = round2(items.reduce((s, i) => s + i.debit, 0))
         if (!totalShare) continue
-        postBalanced('journal:LOAN_PAYMENT', monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
+        // Keyed by what the entry actually is. Reporting an advance amortization
+        // under "Loan payments" while its sibling months appear under "Advance
+        // payments" is what made the July drill-down read as a duplicate.
+        postBalanced(`journal:${je.referenceType || 'LOAN_PAYMENT'}`, monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
           ...items, { acct: bankAcct, credit: totalShare },
         ])
       }
@@ -496,14 +616,14 @@ export async function computeLedgerStatements(
   }
 
   /* ── 3. Orders (synthesized when no POS_ORDER journal entry exists) ── */
-  const orders = await prisma.order.findMany({
+  const orders = qbEra ? [] : await prisma.order.findMany({
     where: {
       status: 'COMPLETED',
       transactionDate: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
     },
     select: {
-      id: true, orderNumber: true, patientName: true, transactionDate: true,
+      id: true, orderNumber: true, patientName: true, transactionDate: true, branch: true,
       netAmount: true, revenueType: true, discountAmount: true, discountLabel: true, discountType: true,
       items: {
         select: {
@@ -515,7 +635,7 @@ export async function computeLedgerStatements(
       payments: {
         select: {
           method: true, amount: true, walletId: true,
-          paymentMode: { select: { account: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, account: { select: { accountNumber: true } } } } } },
+          paymentMode: { select: { account: { select: { accountNumber: true } }, settlementBankAccount: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, account: { select: { accountNumber: true } } } } } },
         },
       },
     },
@@ -573,8 +693,12 @@ export async function computeLedgerStatements(
       const amt = Number(p.amount)
       if (!amt) continue
       paid += amt
-      if (p.walletId && ['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS'].includes(p.method as string)) {
-        lines.push({ acct: unearnedAccount(), debit: amt }) // wallet draw-down consumes the liability
+      /* Wallet/package/advance draws consume a liability the money already
+         funded when it was first received — they are NOT new cash. Routing
+         them to cash (worse: the no-branch default, which lands on the SCEI
+         Main corporate account) invented deposits the bank never saw. */
+      if (['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'PACKAGE', 'ADVANCE', 'DOWNPAYMENT'].includes(p.method as string)) {
+        lines.push({ acct: unearnedAccount(), debit: amt }) // draw-down consumes the liability
         continue
       }
       if (p.method === 'HMO' || p.method === 'GL') {
@@ -588,7 +712,12 @@ export async function computeLedgerStatements(
         lines.push({ acct: byNumber.get(d.account.accountNumber) || parseAccountKey(`${d.account.accountNumber} deduction`), debit: dAmt })
         net -= dAmt
       }
-      const cashA = p.paymentMode?.account ? (byNumber.get(p.paymentMode.account.accountNumber) || defaultCash()) : defaultCash()
+      /* Synthesized history: cash goes where it actually SETTLED. Modes now
+         point at a clearing account for sale-time posting (live JEs reclass
+         clearing -> bank on recon match), but synthesized orders have no
+         matching reclass — so use the mode's settlement bank when set. */
+      const pmAcctNum = p.paymentMode?.settlementBankAccount?.accountNumber || p.paymentMode?.account?.accountNumber
+      const cashA = pmAcctNum ? (byNumber.get(pmAcctNum) || defaultCash(o.branch || branch)) : defaultCash(o.branch || branch)
       lines.push({ acct: cashA, debit: net })
     }
     const unpaid = round2(Number(o.netAmount) - paid)
@@ -625,7 +754,7 @@ export async function computeLedgerStatements(
   if (synthesizedOrders) validation.synthesized.push(`orders (${synthesizedOrders})`)
 
   /* ── 4. AR collections (synthesized when no AR_PAYMENT JE) ── */
-  const arPayments = await prisma.aRPayment.findMany({
+  const arPayments = qbEra ? [] : await prisma.aRPayment.findMany({
     where: {
       paymentDate: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: { in: [branch, orderBranch] } } : {}),
@@ -705,7 +834,7 @@ export async function computeLedgerStatements(
     if (num && byNumber.get(num)) return byNumber.get(num)!
     return defaultCash(e.branch || branch)
   }
-  const pcEntries = await prisma.pettyCashEntry.findMany({
+  const pcEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: {
       date: { gte: start, lt: end },
       ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
@@ -737,7 +866,7 @@ export async function computeLedgerStatements(
   const pcSettings = await prisma.pettyCashSettings.findMany({ select: { branch: true, prepaidAccount: true } })
   const prepaidByBranch: Record<string, string | null> = {}
   for (const s of pcSettings) prepaidByBranch[s.branch] = s.prepaidAccount
-  const distEntries = await prisma.pettyCashEntry.findMany({
+  const distEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: {
       recordType: 'RECURRING', distributeMonthly: true,
       distributeStart: { not: null }, distributeEnd: { not: null },
@@ -777,7 +906,7 @@ export async function computeLedgerStatements(
   }
 
   // CEO petty cash allocated across branches
-  const ceoEntries = await prisma.pettyCashEntry.findMany({
+  const ceoEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: { branch: 'CEO', date: { gte: start, lt: end } },
     select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true, pcvNumber: true, description: true },
   })
@@ -809,7 +938,8 @@ export async function computeLedgerStatements(
   const depAcct = byNumber.get('8070') || virt('8070', 'Depreciation Expense', 'EXPENSE', 'NON_OPERATING_EXPENSES', 'DEBIT')
   const accumDep = byNumber.get('2010') || findByTitle(/accumulated dep/i) || virt('2010', 'Accumulated Depreciation', 'ASSET', 'PPE', 'CREDIT')
   const hasDepJEs = (glRefIds.get('DEPRECIATION')?.size || 0) > 0
-  if (!hasDepJEs) {
+  // QB era: the imported GL carries its own monthly depreciation JEs.
+  if (!hasDepJEs && !qbEra) {
     // Accrue only months that have actually elapsed: for the current year stop
     // at this month (matching Asset Management's depreciation-to-date), for
     // past years take all 12, for future years none.
@@ -840,7 +970,7 @@ export async function computeLedgerStatements(
 
   /* ── 7. Asset purchases this year (synthesized unless ASSET_PURCHASE JE) ── */
   let synthesizedAssets = 0
-  for (const a of assets) {
+  for (const a of qbEra ? [] : assets) {
     const d = new Date(a.dateBought)
     if (d < start || d >= end) continue
     if (hasRef('ASSET_PURCHASE', a.id)) continue
@@ -870,8 +1000,13 @@ export async function computeLedgerStatements(
      landing in whichever month happened to hold the last statement line.
      Months with no statement hold the previous month's true-up steady, so real
      ledger movement after the statements run out flows through untouched.
-     All-Branches only: statements are whole-account and cannot be split. */
-  if (branch === 'ALL') {
+     A statement is whole-account, so a branch may only be trued to the accounts
+     the Chart of Accounts says are ITS OWN (Account.branch). Every other cash
+     account is held at zero in that view — a branch does not hold a balance in
+     another branch's bank account. Without this a branch view had no statement
+     to lean on and no opening balance either, and read raw tagged movement:
+     Greenhills showed -P12.0M on its own checking account. */
+  {
     try {
       // Every statement line IN THIS PERIOD that carries a running balance, so
       // each month can be trued to the bank's own closing balance for THAT
@@ -879,6 +1014,40 @@ export async function computeLedgerStatements(
       // Scoped to the period on purpose: a balance from an earlier year says
       // nothing about this year's month ends, and monthOf would clamp it to
       // January, freezing cash at a stale figure for the whole year.
+      /* A foreign-currency account's statement balance is in ITS currency —
+         the CNY account's ¥23,643.59 was being summed into peso cash as
+         ₱23,643.59. Policy (user, 2026-08-10): value it at the bank-rec
+         conversion rate — the ExchangeRate rows the forex matches recorded —
+         using the latest rate on or before the statement date. An account
+         whose currency has no recorded rate at all is left raw and flagged in
+         the notes rather than silently guessed at. */
+      const fxAccts = [...byId.values()].filter(a => a.currency && a.currency !== 'PHP')
+      const fxRates = new Map<string, { date: Date; rate: number }[]>()
+      if (fxAccts.length) {
+        const rateRows = await prisma.exchangeRate.findMany({
+          where: { currency: { in: [...new Set(fxAccts.map(a => a.currency!))] } },
+          orderBy: { date: 'asc' },
+          select: { currency: true, date: true, phpPerUnit: true },
+        })
+        for (const r of rateRows) {
+          if (!fxRates.has(r.currency)) fxRates.set(r.currency, [])
+          fxRates.get(r.currency)!.push({ date: r.date, rate: Number(r.phpPerUnit) })
+        }
+        const missing = fxAccts.filter(a => !fxRates.has(a.currency!))
+        if (missing.length) validation.notes.push(
+          `No bank-rec exchange rate recorded for ${missing.map(a => `${a.currency} (${a.title})`).join(', ')} — ` +
+          `their statement balances are shown at face value until a currency exchange is matched in Bank Reconciliation.`,
+        )
+      }
+      const toPhp = (acctId: string, bal: number, asOf: Date): number => {
+        const acct = byId.get(acctId)
+        if (!acct?.currency || acct.currency === 'PHP') return bal
+        const rows = fxRates.get(acct.currency)
+        if (!rows?.length) return bal
+        let rate = rows[0].rate                       // before the first known rate, use it
+        for (const r of rows) { if (r.date <= asOf) rate = r.rate; else break }
+        return bal * rate
+      }
       const stmtLines = await prisma.bankTransaction.findMany({
         where: { date: { gte: start, lt: end }, statementBalance: { not: null }, ...LIVE_STMT },
         orderBy: [{ date: 'asc' }, { id: 'asc' }],
@@ -890,10 +1059,15 @@ export async function computeLedgerStatements(
       for (const t of stmtLines) {
         const m = t.date.getUTCMonth() + 1
         if (!byAcctMonth.has(t.bankAccountId)) byAcctMonth.set(t.bankAccountId, new Map())
-        byAcctMonth.get(t.bankAccountId)!.set(m, Number(t.statementBalance))
+        byAcctMonth.get(t.bankAccountId)!.set(m, toPhp(t.bankAccountId, Number(t.statementBalance), t.date))
         if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
       }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
+      /* Whose cash is this? All Branches owns everything; a branch owns only the
+         accounts tagged to it. An untagged (shared/corporate) account belongs to
+         no branch, so it shows in the All Branches view alone. */
+      const ownsBank = (a: AcctInfo): boolean =>
+        branch === 'ALL' ? true : !!a.branch && branchValues!.includes(a.branch)
 
       /* The period OPENING has to be trued too, not just the month ends.
          Every BeginningBalance row is dated 2026-01-01 while the statements run
@@ -906,21 +1080,34 @@ export async function computeLedgerStatements(
       // Only the LAST line before the period matters, so let Postgres pick it
       // rather than shipping every historical statement line to the app just to
       // overwrite it: the years before 2026 hold tens of thousands of rows.
-      const priorLines = await prisma.$queryRaw<{ bankAccountId: string; statementBalance: unknown }[]>`
-        SELECT DISTINCT ON ("bankAccountId") "bankAccountId", "statementBalance"
+      const priorLines = await prisma.$queryRaw<{ bankAccountId: string; statementBalance: unknown; date: Date }[]>`
+        SELECT DISTINCT ON ("bankAccountId") "bankAccountId", "statementBalance", date
         FROM "BankTransaction"
         WHERE date < ${start} AND "statementBalance" IS NOT NULL AND status IN ('PENDING','POSTED')
         ORDER BY "bankAccountId", date DESC, id DESC`
       const bankOpening = new Map<string, number>()
-      for (const t of priorLines) bankOpening.set(t.bankAccountId, Number(t.statementBalance))
+      for (const t of priorLines) bankOpening.set(t.bankAccountId, toPhp(t.bankAccountId, Number(t.statementBalance), t.date))
       let openingTrued = 0
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
         if (!acct?.id) continue
-        const bankOpen = bankOpening.get(acct.id)
+        // Not this branch's account -> it opens at zero here, not at the bank's
+        // balance, which belongs to whichever branch does own it.
+        const bankOpen = ownsBank(acct) ? bankOpening.get(acct.id) : 0
         if (bankOpen === undefined) continue
         const delta = round2(bankOpen - (opening.get(n) || 0))
         if (Math.abs(delta) < 0.01) continue
+        // Drilling 3990 should show its opening component too, not just the
+        // monthly true-ups: which account opened away from the bank, and by
+        // how much.
+        if (collect && collect.account === pendReconcile.number && (!collect.month || collect.cumulative)) {
+          collected.push({
+            month: 0, source: 'bank-opening-trueup',
+            label: `${acct.number} ${acct.title} — books opened at ${(opening.get(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}, bank read ${bankOpen.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
+            debit: delta < 0 ? -delta : 0,
+            credit: delta > 0 ? delta : 0,
+          })
+        }
         opening.set(n, bankOpen)                                             // cash: debit-normal
         opening.set(pendReconcile.number, round2((opening.get(pendReconcile.number) || 0) + delta)) // equity: credit-normal
         openingTrued++
@@ -931,19 +1118,22 @@ export async function computeLedgerStatements(
       for (const n of bankFlagged) {
         const acct = byNumber.get(n)
         if (!acct?.id) continue
-        const months = byAcctMonth.get(acct.id)
-        if (!months) continue
+        const owned = ownsBank(acct)
+        const months = owned ? byAcctMonth.get(acct.id) : undefined
+        if (owned && !months) continue
         const mm = movMonthly.get(n)
-        const firstM = firstMonth.get(acct.id) ?? 1
+        const firstM = owned ? (firstMonth.get(acct.id) ?? 1) : 1
         // Walk the year: at each month end the sheet should read what the bank
         // read. Only the CHANGE in the required adjustment is posted, so each
         // month carries its own correction and none carries the whole year's.
         let ledger = opening.get(n) || 0
         let carried = 0          // adjustment already posted in earlier months
-        let lastKnown: number | null = null
+        // A foreign account starts and stays at zero; an owned one waits for its
+        // first statement line before there is anything to true to.
+        let lastKnown: number | null = owned ? null : 0
         for (let m = 1; m <= 12; m++) {
           ledger += (mm?.debit[m] || 0) - (mm?.credit[m] || 0)   // cash is debit-normal
-          const stmt = months.get(m)
+          const stmt = months?.get(m)
           if (stmt !== undefined) lastKnown = stmt
           // Before the account's first statement line there is nothing to true
           // to. After the last one the account is HELD at the bank's last known
@@ -956,7 +1146,9 @@ export async function computeLedgerStatements(
           if (m < firstM || lastKnown === null) continue
           const want = round2(lastKnown - (ledger + carried))
           if (Math.abs(want) < 0.01) continue
-          postBalanced('bank-trueup', m, `True-up to bank statement — ${acct.title}`, [
+          postBalanced('bank-trueup', m, owned
+            ? `True-up to bank statement — ${acct.title}`
+            : `Not this branch's account — ${acct.title}`, [
             want < 0 ? { acct, credit: -want } : { acct, debit: want },
             want < 0 ? { acct: pendReconcile, debit: -want } : { acct: pendReconcile, credit: want },
           ])
@@ -978,6 +1170,12 @@ export async function computeLedgerStatements(
       for (const acct of byNumber.values()) {
         if (acct.virtual || !acct.id) continue
         if (!(bankFlagged.has(acct.number) || isCashAccount(acct))) continue
+        /* Clearing / undeposited / in-transit accounts group under Cash and
+           Cash Equivalents for DISPLAY, but they are net timing positions that
+           may legitimately run negative (e.g. 1170 at -200,000 across the
+           2024/25 year straddle) — flooring them invented 3990 noise. */
+        if (/clearing|undeposited|in transit/i.test(acct.title)) continue
+        if (!ownsBank(acct)) continue                 // zeroed above, not ours to floor
         if (byAcctMonth.has(acct.id)) continue        // has statements — trued above
         const mm = movMonthly.get(acct.number)
         let raw = opening.get(acct.number) || 0
@@ -1161,10 +1359,34 @@ export async function computeLedgerStatements(
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
       select: { bankAccountId: true, date: true, statementBalance: true },
     })
+    // Same currency policy as the true-up: a foreign account's statement
+    // balance is valued at the bank-rec exchange rate in force on that date.
+    const fxAccts2 = [...byId.values()].filter(a => a.currency && a.currency !== 'PHP')
+    const fxRates2 = new Map<string, { date: Date; rate: number }[]>()
+    if (fxAccts2.length) {
+      const rateRows = await prisma.exchangeRate.findMany({
+        where: { currency: { in: [...new Set(fxAccts2.map(a => a.currency!))] } },
+        orderBy: { date: 'asc' },
+        select: { currency: true, date: true, phpPerUnit: true },
+      })
+      for (const r of rateRows) {
+        if (!fxRates2.has(r.currency)) fxRates2.set(r.currency, [])
+        fxRates2.get(r.currency)!.push({ date: r.date, rate: Number(r.phpPerUnit) })
+      }
+    }
+    const toPhp2 = (acctId: string, bal: number, asOf: Date): number => {
+      const acct = byId.get(acctId)
+      if (!acct?.currency || acct.currency === 'PHP') return bal
+      const rows = fxRates2.get(acct.currency)
+      if (!rows?.length) return bal
+      let rate = rows[0].rate
+      for (const r of rows) { if (r.date <= asOf) rate = r.rate; else break }
+      return bal * rate
+    }
     const latestByAcct = new Map<string, { bal: number; asOf: string }>()
     for (const t of latest) {
       if (!latestByAcct.has(t.bankAccountId)) {
-        latestByAcct.set(t.bankAccountId, { bal: Number(t.statementBalance), asOf: t.date.toISOString().slice(0, 10) })
+        latestByAcct.set(t.bankAccountId, { bal: toPhp2(t.bankAccountId, Number(t.statementBalance), t.date), asOf: t.date.toISOString().slice(0, 10) })
       }
     }
     if (latestByAcct.size || pendingCount) {
@@ -1248,11 +1470,54 @@ export async function computeLedgerStatements(
   const investingRows = bsRows.filter(r => r.type === 'ASSET' && ['PPE', 'INTANGIBLE_ASSETS', 'OTHER_NON_CURRENT_ASSETS'].includes(r.subType) && r.number !== accumDep.number)
   const investing: { label: string; amount: number; monthly?: number[] }[] = []
   let invTotal = 0
+  /* ── Corrections are not disposals ──
+     Editing or deleting an asset (or removing a duplicate) posts an
+     ASSET_PURCHASE_REVERSAL that credits the asset-cost account. In a month
+     where corrections exceed new purchases the account's net cash effect goes
+     positive, which reads as "proceeds from selling assets" — but no asset was
+     sold; a recorded purchase was un-recorded. Pull those reversals out of each
+     account's line and show them once, by name, so purchases stay gross and a
+     reader never mistakes a data cleanup for disposal proceeds. */
+  const invRevM = new Map<string, number[]>() // account number -> monthly reversal cash effect (+)
+  try {
+    const invIds = new Map(investingRows.map(r => [byNumber.get(r.number)?.id, r.number]).filter(([id]) => id) as [string, string][])
+    if (invIds.size) {
+      const revLines = await prisma.journalEntryLine.findMany({
+        where: {
+          accountId: { in: [...invIds.keys()] },
+          journalEntry: {
+            referenceType: 'ASSET_PURCHASE_REVERSAL',
+            entryDate: { gte: start, lt: end },
+            ...(branchValues ? { branch: { in: branchValues as never[] } } : {}),
+          },
+        },
+        select: { accountId: true, debit: true, credit: true, journalEntry: { select: { entryDate: true } } },
+      })
+      for (const l of revLines) {
+        const n = invIds.get(l.accountId)
+        if (!n) continue
+        const m = l.journalEntry.entryDate.getUTCMonth()
+        if (!invRevM.has(n)) invRevM.set(n, Array(12).fill(0))
+        // a reversal CREDIT shrinks the asset -> positive cash effect on this line
+        invRevM.get(n)![m] = round2(invRevM.get(n)![m] + Number(l.credit) - Number(l.debit))
+      }
+    }
+  } catch { /* corrections line is presentational — never block the statement */ }
+  const corrMonthly = Array(12).fill(0)
+  for (const arr of invRevM.values()) for (let i = 0; i < 12; i++) corrMonthly[i] = round2(corrMonthly[i] + arr[i])
+  const corrTotal = round2(corrMonthly.reduce((a, b) => a + b, 0))
   for (const r of investingRows) {
-    const effect = delta(r) // cash effect (purchase = negative)
-    if (Math.abs(effect) < 0.005) continue
-    investing.push({ label: `${r.number} ${r.title}`, amount: round2(effect), monthly: effMonthly(r) })
+    const rev = invRevM.get(r.number)
+    const revTot = rev ? round2(rev.reduce((a, b) => a + b, 0)) : 0
+    const effect = round2(delta(r) - revTot) // gross purchases, corrections excluded
+    const monthly = effMonthly(r).map((v, i) => round2(v - (rev?.[i] || 0)))
+    if (Math.abs(effect) < 0.005 && Math.abs(revTot) < 0.005) continue
+    if (Math.abs(effect) >= 0.005) investing.push({ label: `${r.number} ${r.title}`, amount: effect, monthly })
     invTotal += effect
+  }
+  if (Math.abs(corrTotal) >= 0.005) {
+    investing.push({ label: 'Asset purchase corrections / reversals (edits, deletions, duplicates)', amount: corrTotal, monthly: corrMonthly.map(round2) })
+    invTotal += corrTotal
   }
   const financing: { label: string; amount: number; monthly?: number[] }[] = []
   let finTotal = 0
@@ -1433,9 +1698,12 @@ export async function computeLedgerStatements(
   collected.sort((a, b) => a.month - b.month)
   const COLLECT_CAP = 2000
   const collectedTruncated = collected.length > COLLECT_CAP
+  // Prior-year history is shown but not totalled: the totals describe THIS
+  // period, and the earlier years are already embodied in the opening balance.
+  const periodLines = collected.filter(l => !l.source.startsWith('history:'))
   const collectedTotals = {
-    debit: round2(collected.reduce((s, l) => s + l.debit, 0)),
-    credit: round2(collected.reduce((s, l) => s + l.credit, 0)),
+    debit: round2(periodLines.reduce((s, l) => s + l.debit, 0)),
+    credit: round2(periodLines.reduce((s, l) => s + l.credit, 0)),
   }
 
   return {

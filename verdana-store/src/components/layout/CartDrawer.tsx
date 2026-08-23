@@ -53,9 +53,9 @@ export function CartDrawer() {
             </Button>
           </div>
         ) : (
-          <div className="flex flex-1 flex-col">
+          <div className="flex flex-1 flex-col min-h-0">
             {/* Cart items */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4">
               {items.map((item) => {
                 const key = `${item.productId}-${item.variantId ?? "default"}`
                 return (

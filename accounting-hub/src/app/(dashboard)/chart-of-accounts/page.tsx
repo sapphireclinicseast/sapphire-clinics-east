@@ -34,7 +34,9 @@ interface Account {
   description: string | null
   isActive: boolean
   isBankAccount?: boolean
+  bankRetiredAt?: string | null
   isCheckingAccount?: boolean
+  branch?: string | null
   createdAt: string
   createdBy: { name: string }
 }
@@ -262,7 +264,9 @@ function ChartOfAccountsInner() {
   const [formDescription, setFormDescription] = useState('')
   const [formCurrency, setFormCurrency] = useState('PHP')
   const [formIsBankAccount, setFormIsBankAccount] = useState(false)
+  const [formBankRetired, setFormBankRetired] = useState(false)
   const [formIsChecking, setFormIsChecking] = useState(false)
+  const [formBranch, setFormBranch] = useState('')
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<Account | null>(null)
@@ -320,6 +324,7 @@ function ChartOfAccountsInner() {
     setFormDescription('')
     setFormIsBankAccount(false)
     setFormIsChecking(false)
+    setFormBranch('')
     setError('')
     setModalOpen(true)
   }
@@ -335,7 +340,9 @@ function ChartOfAccountsInner() {
     setFormCurrency(account.currency || 'PHP')
     setFormDescription(account.description || '')
     setFormIsBankAccount(!!account.isBankAccount)
+    setFormBankRetired(!!account.bankRetiredAt)
     setFormIsChecking(!!account.isCheckingAccount)
+    setFormBranch(account.branch || '')
     setError('')
     setModalOpen(true)
   }
@@ -347,12 +354,13 @@ function ChartOfAccountsInner() {
     setFormBalance(DEFAULT_BALANCE[type] || 'DEBIT')
     setFormIsBankAccount(false)
     setFormIsChecking(false)
+    setFormBranch('')
   }
 
   function handleSubTypeChange(subType: string) {
     setFormSubType(subType)
     setFormSubSubType('') // Reset sub-sub type when sub type changes
-    if (subType !== 'CURRENT_ASSETS') { setFormIsBankAccount(false); setFormIsChecking(false) }
+    if (subType !== 'CURRENT_ASSETS') { setFormIsBankAccount(false); setFormIsChecking(false); setFormBranch('') }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -360,7 +368,7 @@ function ChartOfAccountsInner() {
     setSaving(true)
     setError('')
 
-    const body: Record<string, string | boolean> = {
+    const body: Record<string, string | boolean | null> = {
       accountNumber: formNumber,
       accountTitle: formTitle,
       accountType: formType,
@@ -370,7 +378,9 @@ function ChartOfAccountsInner() {
       currency: formCurrency,
       description: formDescription,
       isBankAccount: formSubType === 'CURRENT_ASSETS' ? formIsBankAccount : false,
+      ...(editingAccount && editingAccount.isBankAccount ? { bankRetired: formBankRetired } : {}),
       isCheckingAccount: formSubType === 'CURRENT_ASSETS' && formIsBankAccount ? formIsChecking : false,
+      branch: formSubType === 'CURRENT_ASSETS' && formIsBankAccount ? (formBranch || null) : null,
     }
 
     if (editingAccount) body.id = editingAccount.id
@@ -678,6 +688,13 @@ function ChartOfAccountsInner() {
                     </td>
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                       {account.accountTitle}
+                      {account.bankRetiredAt && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold align-middle"
+                          style={{ background: '#fee2e2', color: '#991b1b' }}
+                          title={`Bank account retired ${new Date(account.bankRetiredAt).toLocaleDateString('en-PH')} — hidden from dropdowns and Bank Rec; ledger history unaffected`}>
+                          RETIRED BANK
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -877,7 +894,7 @@ function ChartOfAccountsInner() {
               {formSubType === 'CURRENT_ASSETS' && (
                 <div className="space-y-2">
                   <label className="flex items-start gap-2 rounded-xl border p-3 cursor-pointer" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                    <input type="checkbox" checked={formIsBankAccount} onChange={(e) => { setFormIsBankAccount(e.target.checked); if (!e.target.checked) setFormIsChecking(false) }} className="mt-0.5" />
+                    <input type="checkbox" checked={formIsBankAccount} onChange={(e) => { setFormIsBankAccount(e.target.checked); if (!e.target.checked) { setFormIsChecking(false); setFormBranch('') } }} className="mt-0.5" />
                     <span>
                       <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Is this a bank account?</span>
                       <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>If ticked, this account appears in the Fund Transfer &quot;From&quot; / &quot;To&quot; dropdowns.</span>
@@ -891,6 +908,37 @@ function ChartOfAccountsInner() {
                         <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>If ticked, checks drawn from this account appear in Fund Transfer &rarr; Check Release Monitoring.</span>
                       </span>
                     </label>
+                  )}
+                  {formIsBankAccount && editingAccount && (
+                    <label className="flex items-start gap-2 rounded-xl border p-3 cursor-pointer ml-6" style={{ borderColor: formBankRetired ? '#fecaca' : 'var(--light-gray)', background: formBankRetired ? '#fef2f2' : 'var(--off-white)' }}>
+                      <input type="checkbox" checked={formBankRetired} onChange={(e) => setFormBankRetired(e.target.checked)} className="mt-0.5" />
+                      <span>
+                        <span className="text-sm font-medium" style={{ color: formBankRetired ? '#991b1b' : 'var(--charcoal)' }}>Retire this bank account</span>
+                        <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          For closed accounts only: it disappears from every payment and transfer dropdown and from Bank Reconciliation, and no more statements can be uploaded. Allowed only when the last statement balance is zero and every bank line is matched — the ledger account itself stays active so history and reports are untouched.
+                        </span>
+                      </span>
+                    </label>
+                  )}
+                  {formIsBankAccount && (
+                    <div className="rounded-xl border p-3 ml-6" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <label className="block text-sm font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Which branch owns this account?</label>
+                      <span className="block text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
+                        A bank statement covers the whole account and cannot be split, so the branch Balance Sheet and Cash Flow can only state this account&apos;s cash as the bank&apos;s own balance if it knows the account belongs to that branch. Leave as Shared for company-wide accounts (SCEI Main, SCI) &mdash; those stay in the All Branches view only.
+                      </span>
+                      <select
+                        value={formBranch}
+                        onChange={(e) => setFormBranch(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-sm"
+                        style={{ borderColor: 'var(--light-gray)' }}
+                      >
+                        <option value="">Shared / company-wide</option>
+                        <option value="SANDBOX_EAST">Aura Health East</option>
+                        <option value="SANDBOX_GREENHILLS">Aura Health Greenhills</option>
+                        <option value="VERDANA_STORE">Verdana</option>
+                        <option value="AURA_INSTITUTE">Aura Health Institute</option>
+                      </select>
+                    </div>
                   )}
                 </div>
               )}

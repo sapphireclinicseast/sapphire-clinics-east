@@ -175,6 +175,33 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
   let rateLimitHit = false
   try {
     const gmail = await getGmailClient(refreshToken)
+
+    // ── Operator copy ────────────────────────────────────────────────────────
+    // Send ONE copy of the campaign to the requested address(es). Guarded on
+    // startFrom === 0 so it goes out only on the first tranche: campaigns are
+    // sent in daily tranches and resume via this same function, so an
+    // unguarded send here would deliver a fresh copy on every resume.
+    //
+    // Deliberately a separate message rather than a Cc header on each
+    // recipient's mail — a Cc would put one mail per recipient in the
+    // operator's inbox (thousands) and expose their address to every patient.
+    if (startFrom === 0 && campaign.ccEmails) {
+      const ccList = campaign.ccEmails.split(/[,;]/).map((e: string) => e.trim()).filter(Boolean)
+      for (const cc of ccList) {
+        try {
+          await gmail.users.messages.send({
+            userId: 'me',
+            requestBody: {
+              raw: makeEmailBody(cc, `[Copy] ${campaign.subject}`, campaign.body, senderEmail),
+            },
+          })
+        } catch (ccErr) {
+          // Never let the operator copy block the actual campaign.
+          console.error('[email] operator copy failed for', cc, ccErr)
+        }
+      }
+    }
+
     for (let i = startFrom; i < recipients.length; i++) {
       const patient = recipients[i]
       if (!patient.email) continue

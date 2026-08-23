@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+// This role never sees GL wallets, so ?type= is ignored for it rather than
+// trusted — the UI hides the GL tab, this is what actually enforces it.
+// Branch front desk are NOT here: they maintain the Guarantee Letter paper trail,
+// so they read GL as well. They remain read-only for money — recording a payment
+// is gated separately, in the UI and in the payment routes.
+const HMO_ONLY_ROLES = ['HMO_OFFICER']
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -11,7 +17,9 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url)
-  const type = searchParams.get('type') || 'HMO' // HMO or GL
+  const type = HMO_ONLY_ROLES.includes(session.user.role as string)
+    ? 'HMO'
+    : (searchParams.get('type') || 'HMO') // HMO or GL
   const branch = searchParams.get('branch') || ''
   const dateFrom = searchParams.get('dateFrom') || ''
   const dateTo = searchParams.get('dateTo') || ''
@@ -24,6 +32,16 @@ export async function GET(req: Request) {
     const wallets = await prisma.digitalWallet.findMany({
       where: { walletType: type as 'HMO' | 'GL', isActive: true },
       select: { id: true, patientName: true, balance: true, totalGlAmount: true, accountId: true, approvedServices: true,
+        // When the letter/SOA was actually obtained — the aging calc already
+        // prefers this over createdAt, and the Consumption table now shows it.
+        dateObtained: true,
+        branch: true,
+        agency: true,
+        // GL case tracking (Detailed GL)
+        glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
+        soaAmount: true, soaSubmittedAt: true, guardianName: true,
+        soaCommissionRate: true, payoutBatch: true, qbEntry: true,
+        attachmentUrls: true, attachmentUrl: true, soaStatus: true,
         createdAt: true,
         account: { select: { accountNumber: true, accountTitle: true } } },
       orderBy: { patientName: 'asc' },
@@ -172,14 +190,21 @@ export async function GET(req: Request) {
       const consumedOutstanding = isGL && !perSession
         ? Math.max(0, approved - Number(w.balance))
         : ordersOutstanding
-      // How long the agency took to settle: from the letter being recorded to its
-      // latest payment, in months of 30 days.
+      // How long the agency took to settle: from the SOA date to its latest
+      // payment, in months of 30 days.
+      //
+      // The clock starts at dateObtained when it is set, falling back to
+      // createdAt — the same basis the aging endpoint already uses, and the
+      // date the Consumption table now shows as "Date of SOA". Counting from a
+      // different date than the one displayed would leave the three columns
+      // unable to reconcile against each other.
       const pay = paidByWallet.get(w.id)
       const paidTotal = pay?.paid ?? 0
       const commissionTotal = pay?.commission ?? 0
       const lastPaymentDate = pay?.lastPaymentDate ?? null
+      const soaDate = w.soaSubmittedAt ?? w.dateObtained ?? w.createdAt
       const monthsToPay = lastPaymentDate
-        ? (lastPaymentDate.getTime() - new Date(w.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 30)
+        ? (lastPaymentDate.getTime() - new Date(soaDate).getTime()) / (1000 * 60 * 60 * 24 * 30)
         : null
       return {
         ...w,
@@ -190,6 +215,7 @@ export async function GET(req: Request) {
         totalConsumedAmount,
         paidTotal,
         commissionTotal,
+        soaDate,
         lastPaymentDate,
         monthsToPay,
       }
@@ -282,7 +308,25 @@ export async function GET(req: Request) {
       },
     })
 
-    return NextResponse.json({ wallets: walletsOut, orders, arPayments, summary })
+    // Detailed GL entries accounting created without a POS wallet behind them,
+    // plus the wallet figures for any that have since been tagged. GL only —
+    // the HMO tab has no equivalent sheet.
+    const glCases = type === 'GL'
+      ? await prisma.glCase.findMany({
+          select: {
+            id: true, walletId: true, patientName: true, branch: true,
+            glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
+            approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
+            guardianName: true, soaCommissionRate: true, payoutBatch: true,
+            qbEntry: true, paidAt: true, notes: true,
+            // Processor payout — drives the "already paid" exclusion in the batch.
+            processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
+          },
+          orderBy: { patientName: 'asc' },
+        })
+      : []
+
+    return NextResponse.json({ wallets: walletsOut, orders, arPayments, summary, glCases })
   } catch (err) {
     console.error('AR API error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

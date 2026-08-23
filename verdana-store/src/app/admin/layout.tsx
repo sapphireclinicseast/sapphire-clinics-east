@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ShieldCheck, Package, FolderOpen, Plus, Settings } from 'lucide-react'
+import { ShieldCheck, Package, FolderOpen, Plus, Settings, Ticket, Building2 } from 'lucide-react'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,6 +19,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Link href="/admin/collections" className="inline-flex items-center gap-1.5 hover:text-verdana-light-blue transition-colors">
                 <FolderOpen className="h-4 w-4" />
                 Categories
+              </Link>
+              <Link href="/admin/vouchers" className="inline-flex items-center gap-1.5 hover:text-verdana-light-blue transition-colors">
+                <Ticket className="h-4 w-4" />
+                Vouchers
+              </Link>
+              <Link href="/admin/partners" className="inline-flex items-center gap-1.5 hover:text-verdana-light-blue transition-colors">
+                <Building2 className="h-4 w-4" />
+                Partners
               </Link>
               <Link href="/admin/settings" className="inline-flex items-center gap-1.5 hover:text-verdana-light-blue transition-colors">
                 <Settings className="h-4 w-4" />

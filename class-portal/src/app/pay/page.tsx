@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  getAuth, getUsers, getPaymentsForStudent, savePayment, putFile,
+  getAuth, getUsers, hydrateUsers, getPaymentsForStudent, savePayment, putFile,
   levelLabel, getFeeFor, hydrateFees, hydrateFrontDeskPayments, validateVoucher,
   listPersonalVouchersFor,
   unpaidBackMonthsFor,
@@ -169,6 +169,16 @@ export default function PayPage() {
     setUser(u)
     setHistory(getPaymentsForStudent(u.id))
     setFee(getFeeFor(u.branch))
+    // The cached copy above can predate the branch being set on the account, or
+    // come from a browser that never had it — and branch decides which PayMongo
+    // merchant, and so which bank account, receives the tuition. Re-read the
+    // canonical record before the parent can reach checkout.
+    hydrateUsers()
+      .then(list => {
+        const fresh = list.find(x => x.id === u.id)
+        if (fresh) { setUser(fresh); setFee(getFeeFor(fresh.branch)) }
+      })
+      .catch(() => { /* keep the cached copy; the EAST fallback still applies */ })
     // Stream the freshest schedule from the API so admin edits on another device flow through.
     hydrateFees().then(() => setFee(getFeeFor(u.branch))).catch(() => { /* ignore */ })
     // Pull the marketing-hub view so any cashier-converted payment shows up
@@ -310,9 +320,12 @@ export default function PayPage() {
           period: effectivePeriod,
           voucherCode: appliedVoucher?.code,
           discountPercent: appliedVoucher ? discountPercent : undefined,
-          // Branch routes the charge to that branch's PayMongo account
-          // so the settlement bank matches. Fallback: legacy shared key.
-          branch: user.branch,
+          // Branch routes the charge to that branch's PayMongo account so the
+          // settlement bank matches. Defaulted the same way the recorded payment
+          // and the displayed bank details are, a few lines down: without it a
+          // student with no branch was recorded as EAST and shown East's bank
+          // while the money went to the shared account instead.
+          branch: user.branch ?? 'EAST',
         }),
       })
       if (!res.ok) {

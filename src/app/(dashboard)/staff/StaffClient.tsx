@@ -5,6 +5,7 @@ import {
   UserCog, X, Users, RefreshCw,
   ChevronUp, ChevronDown, ChevronsUpDown, CheckCircle2, AlertTriangle, GitMerge,
 } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'FRONT_DESK'] as const
 type Department = typeof DEPARTMENTS[number]
@@ -45,9 +46,13 @@ function branchFromRole(role: string): string | null {
   return null
 }
 
-const BRANCH_DISPLAY: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
+
+// Short Aura-era branch codes. SBEA/SBGH are the legacy Sandbox codes still
+// stored in the DB and used as filter values — these are display-only, so the
+// UI never surfaces the retired Sandbox naming.
+const BRANCH_CODE: Record<string, string> = {
+  SBEA: 'AHEA',
+  SBGH: 'AHGH',
 }
 
 function BranchChip({ branch }: { branch: string }) {
@@ -58,7 +63,7 @@ function BranchChip({ branch }: { branch: string }) {
         ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
         : { background: '#FFF3CD', color: '#92400E' }
     }>
-      {BRANCH_DISPLAY[branch] ?? branch}
+      {branchLabel(branch) ?? branch}
     </span>
   )
 }
@@ -159,7 +164,7 @@ function ExtraBranchToggle({
               />
               <span className="text-xs font-semibold"
                     style={{ color: checked ? 'var(--teal)' : 'var(--mid-gray)' }}>
-                {BRANCH_DISPLAY[b] ?? b}
+                {branchLabel(b) ?? b}
               </span>
             </label>
           )
@@ -334,7 +339,7 @@ export default function StaffClient({ role }: { role: string }) {
 
   const statCards = autoBranch
     ? [
-        { label: `${autoBranch} Staff`, value: staff.length, icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
+        { label: `${BRANCH_CODE[autoBranch] ?? autoBranch} Staff`, value: staff.length, icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
       ]
     : [
         { label: 'Total Staff', value: staff.length,  icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
@@ -530,11 +535,11 @@ export default function StaffClient({ role }: { role: string }) {
                         onChange={e => setFilters(f => ({ ...f, branch: e.target.value }))}
                         style={filterInputStyle}>
                         <option value="">All</option>
-                        <option value="SBEA">SBEA</option>
-                        <option value="SBGH">SBGH</option>
+                        <option value="SBEA">AHEA</option>
+                        <option value="SBGH">AHGH</option>
                       </select>
                     ) : (
-                      <span style={{ fontSize: '11px', color: 'var(--mid-gray)', paddingLeft: '6px' }}>{autoBranch}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--mid-gray)', paddingLeft: '6px' }}>{BRANCH_CODE[autoBranch] ?? autoBranch}</span>
                     )}
                   </th>
                   {/* Sex */}
@@ -611,7 +616,7 @@ export default function StaffClient({ role }: { role: string }) {
                                     <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>·</span>
                                     <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold"
                                       style={isSBEA ? { background: 'var(--pale-teal)', color: 'var(--teal)' } : { background: '#FFF3CD', color: '#92400E' }}>
-                                      {BRANCH_DISPLAY[br] ?? br}
+                                      {branchLabel(br) ?? br}
                                     </span>
                                   </div>
                                 )
@@ -735,7 +740,7 @@ export default function StaffClient({ role }: { role: string }) {
                   if (entries.length >= 2 && uniqueIds.size >= 2) {
                     return entries.map(([br, v]) => (
                       <DetailRow key={br}
-                        label={`Employee ID (${BRANCH_DISPLAY[br] ?? br})`}
+                        label={`Employee ID (${branchLabel(br) ?? br})`}
                         value={v.employeeId ?? null}
                         mono />
                     ))

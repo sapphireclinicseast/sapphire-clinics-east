@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Papa from 'papaparse'
+import { validateBranches } from '@/lib/branch-options'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -93,13 +94,16 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const role = (session.user as { role?: string }).role ?? ''
-  const forcedBranch = ROLE_BRANCH[role] ?? null  // non-null → front desk, lock to this branch
+  const forcedBranch = ROLE_BRANCH[role] ?? null  // non-null → front desk (still governs WRITES)
 
   const { searchParams } = new URL(req.url)
   const type = searchParams.get('type')
   const search = searchParams.get('search')
-  // Front desk users are always scoped to their branch regardless of query param
-  const branch = forcedBranch ?? searchParams.get('branch')
+  // READS are not branch-scoped. Front desk needs the whole register: a patient
+  // registered at one branch is routinely seen at the other, and hiding them
+  // was what produced 31 duplicate name groups — the desk looked, found
+  // nothing, and created a second record. Writes stay scoped below.
+  const branch = searchParams.get('branch')
   const exportCsv = searchParams.get('export') === 'csv'
   if (exportCsv) {
     const userEmail = (session.user as { email?: string }).email ?? ''
@@ -113,10 +117,8 @@ export async function GET(req: NextRequest) {
   // Branch filter — front desk is locked to their branch; otherwise honor the
   // singular `branch` or comma-separated `branches` query param. Applies to all
   // requests (count, listing, export), not just CSV export.
-  const requestedBranches = forcedBranch
-    ? [forcedBranch]
-    : (searchParams.get('branches')?.split(',').filter(Boolean)
-        ?? (branch ? [branch] : []))
+  const requestedBranches = searchParams.get('branches')?.split(',').filter(Boolean)
+        ?? (branch ? [branch] : [])
 
   // Raw SQL pre-filter for branch (avoids enum array type mismatch with PrismaPg driver adapter)
   let branchFilterIds: string[] | null = null
@@ -143,6 +145,28 @@ export async function GET(req: NextRequest) {
   }
 
   const patients = await prisma.patient.findMany({ where, orderBy: { lastName: 'asc' } })
+
+  // Cross-branch miss recovery. A front desk searching for someone registered at
+  // the other branch finds nothing and reasonably concludes they are new — which
+  // is how ROCHEL RAMOS ended up existing twice, once per branch. So when a
+  // scoped SEARCH returns nothing, look again across all branches and return the
+  // matches separately, flagged. They are never mixed into `patients`, never
+  // appear without a search term, and are not editable until the branch is added
+  // via PATCH below — the branch boundary still holds, the dead end does not.
+  let outOfBranch: typeof patients = []
+  if (forcedBranch && search && patients.length === 0 && !exportCsv) {
+    outOfBranch = await prisma.patient.findMany({
+      where: {
+        OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { lastName: 'asc' },
+      take: 25,
+    })
+  }
 
   if (exportCsv) {
     const now = new Date()
@@ -177,7 +201,63 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  return NextResponse.json({ patients })
+  return NextResponse.json({ patients, outOfBranch })
+}
+
+/**
+ * PATCH /api/patients  { id, addBranch }
+ *
+ * Adds one branch to an existing patient's branches[]. This is the front desk's
+ * way out of the cross-branch dead end: rather than re-creating someone who is
+ * already registered elsewhere, they attach their own branch to the existing
+ * record. Deliberately the only field this touches — it cannot rename a patient
+ * or move them, only widen where they are seen.
+ */
+export async function PATCH(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const role = (session.user as { role?: string }).role ?? ''
+  const forcedBranch = ROLE_BRANCH[role] ?? null
+
+  const body = await req.json().catch(() => ({}))
+  const id = String(body.id ?? '')
+  const addBranch = String(body.addBranch ?? '')
+  if (!id || !addBranch) {
+    return NextResponse.json({ error: 'id and addBranch are required' }, { status: 400 })
+  }
+  if (!validateBranches([addBranch])) {
+    return NextResponse.json({ error: 'Unknown branch' }, { status: 400 })
+  }
+  // Front desk may only add THEIR branch. Without this they could quietly add a
+  // patient to a branch they have no business touching.
+  if (forcedBranch && addBranch !== forcedBranch) {
+    return NextResponse.json({ error: 'You can only add your own branch' }, { status: 403 })
+  }
+
+  const patient = await prisma.patient.findUnique({
+    where: { id },
+    select: { id: true, branch: true, branches: true, firstName: true, lastName: true },
+  })
+  if (!patient) return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
+
+  // branches[] is the current field; `branch` is the legacy single one and most
+  // rows carry only branches[]. Seed from whichever is populated so a legacy row
+  // does not lose its original branch when the new one is appended.
+  const current = patient.branches?.length
+    ? patient.branches
+    : (patient.branch ? [patient.branch] : [])
+  if (current.includes(addBranch)) {
+    return NextResponse.json({ patient, alreadyPresent: true })
+  }
+
+  const updated = await prisma.patient.update({
+    where: { id },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: { branches: { set: [...current, addBranch] as any } },
+    select: { id: true, firstName: true, lastName: true, branch: true, branches: true },
+  })
+  return NextResponse.json({ patient: updated })
 }
 
 // ─── POST: import CSV or create single patient ────────────────────────────────
@@ -186,6 +266,11 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Needed by both arms below (CSV import and single create), so it is resolved
+  // once here rather than separately inside each.
+  const role = (session.user as { role?: string }).role ?? ''
+  const forcedBranch = ROLE_BRANCH[role] ?? null
+
   const contentType = req.headers.get('content-type') || ''
 
   if (contentType.includes('multipart/form-data')) {
@@ -193,7 +278,28 @@ export async function POST(req: NextRequest) {
     const file = form.get('file') as File | null
     if (!file) return NextResponse.json({ error: 'File required' }, { status: 400 })
 
-    const branch = (form.get('branch') as string | null) || null
+    // Multi-branch: CSV rows land at every branch the importer ticked. The
+    // single `branch` field is still accepted so an older client (or a saved
+    // duplicate-review payload) keeps working.
+    const rawBranches = form.get('branches') as string | null
+    let submittedBranches: string[] = []
+    if (rawBranches) {
+      try { submittedBranches = JSON.parse(rawBranches) } catch { submittedBranches = [] }
+    } else {
+      const single = (form.get('branch') as string | null) || null
+      if (single) submittedBranches = [single]
+    }
+    // A front-desk user imports to their own branch, whatever the form said.
+    if (forcedBranch) submittedBranches = [forcedBranch]
+
+    const { valid: importBranches, invalid } = await validateBranches(submittedBranches)
+    if (invalid.length > 0) {
+      return NextResponse.json(
+        { error: `Unknown branch: ${invalid.join(', ')}` },
+        { status: 400 },
+      )
+    }
+
     const force = form.get('force') === 'true'
 
     const text = await file.text()
@@ -270,7 +376,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const branchEnum = branch as any
+      // branch stays the legacy first-of-list; branches is the real answer.
       await prisma.patient.create({
         data: {
           firstName,
@@ -279,8 +385,8 @@ export async function POST(req: NextRequest) {
           phone:       phone       || null,
           dob:         dob         ?? null,
           patientType: patientType as any,
-          branch:      branchEnum  || null,
-          branches:    branchEnum  ? [branchEnum] : [],
+          branch:      importBranches[0] || null,
+          branches:    importBranches,
           sex:         rawSex         || null,
           civilStatus: rawCivilStatus || null,
           religion:    rawReligion    || null,
@@ -298,8 +404,6 @@ export async function POST(req: NextRequest) {
 
   // Single patient creation
   const body = await req.json()
-  const role = (session.user as { role?: string }).role ?? ''
-  const forcedBranch = ROLE_BRANCH[role] ?? null
 
   const dob = body.dob ? new Date(body.dob) : null
   const patientType = dob ? computePatientType(dob) : (body.patientType || 'ADULT')
@@ -307,6 +411,36 @@ export async function POST(req: NextRequest) {
   const branches: string[] = forcedBranch
     ? [forcedBranch]
     : (body.branches ?? (body.branch ? [body.branch] : []))
+
+  const { invalid: invalidCreate } = await validateBranches(branches)
+  if (invalidCreate.length > 0) {
+    return NextResponse.json({ error: `Unknown branch: ${invalidCreate.join(', ')}` }, { status: 400 })
+  }
+
+  // Same-name guard. The register already holds 31 name collisions, most of
+  // them one person entered twice — usually because the front desk could not
+  // see a record held at the other branch and re-created it. Search across ALL
+  // branches (not just this user's) so a cross-branch duplicate is caught,
+  // and answer 409 with the matches so the UI can offer the existing record
+  // before a second one is made. `confirmDuplicate` is the deliberate override
+  // for genuine namesakes, which do exist.
+  if (!body.confirmDuplicate) {
+    const first = (uc(body.firstName) ?? '').trim()
+    const last  = (uc(body.lastName)  ?? '').trim()
+    if (first && last) {
+      const sameName = await prisma.patient.findMany({
+        where: {
+          firstName: { equals: first, mode: 'insensitive' },
+          lastName:  { equals: last,  mode: 'insensitive' },
+        },
+        select: { id: true, firstName: true, lastName: true, dob: true, phone: true, email: true, branches: true, branch: true },
+        take: 10,
+      })
+      if (sameName.length > 0) {
+        return NextResponse.json({ duplicateWarning: true, matches: sameName }, { status: 409 })
+      }
+    }
+  }
 
   const patient = await prisma.patient.create({
     data: {
@@ -342,6 +476,8 @@ export async function PUT(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const forcedBranchPut = ROLE_BRANCH[(session.user as { role?: string }).role ?? ''] ?? null
+
   const body = await req.json()
   const {
     id, firstName, lastName, email, phone, dob, branches,
@@ -364,8 +500,29 @@ export async function PUT(req: NextRequest) {
     if (patientType) updateData.patientType = patientType
   }
   if (branches     !== undefined) {
-    updateData.branches = branches
-    updateData.branch   = branches[0] || null   // keep legacy field in sync
+    // A front-desk user may ADD their own branch but never remove another.
+    // This used to overwrite the set with [theirBranch], which was harmless
+    // only because they could not see the other branch's patients. Now that
+    // reads span both branches, overwriting would silently strip a patient's
+    // other branch the first time the wrong desk edited them — turning a
+    // routine edit into data loss for an interbranch patient.
+    let wanted: string[] = branches
+    if (forcedBranchPut) {
+      const current = await prisma.patient.findUnique({
+        where: { id },
+        select: { branches: true, branch: true },
+      })
+      const existing = current
+        ? (current.branches.length > 0 ? current.branches : (current.branch ? [current.branch] : []))
+        : []
+      wanted = [...new Set([...existing, forcedBranchPut])]
+    }
+    const { valid, invalid } = await validateBranches(wanted)
+    if (invalid.length > 0) {
+      return NextResponse.json({ error: `Unknown branch: ${invalid.join(', ')}` }, { status: 400 })
+    }
+    updateData.branches = valid
+    updateData.branch   = valid[0] || null   // keep legacy field in sync
   }
   if (sex          !== undefined) updateData.sex          = uc(sex)          || null
   if (civilStatus  !== undefined) updateData.civilStatus  = uc(civilStatus)  || null

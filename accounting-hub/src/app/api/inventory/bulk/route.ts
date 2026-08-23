@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { resolveProductAccounts } from '@/lib/inventory-accounts'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -67,6 +68,10 @@ export async function POST(req: Request) {
         })
         const nextSequence = (lastItem?.skuSequence || 0) + 1
 
+        // Same GL wiring as a single create — a bulk-imported product is postable
+        // on arrival instead of silently missing its revenue/COGS accounts.
+        const acct = await resolveProductAccounts(prisma, row.department, { accountSubType: row.accountSubType })
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const item = await prisma.inventoryItem.create({
           data: {
@@ -78,7 +83,10 @@ export async function POST(req: Request) {
             skuSequence: nextSequence,
             barcode: sku,
             branch: row.branch as any,
-            accountSubType: row.accountSubType || null,
+            accountSubType: acct.accountSubType,
+            revenueAccountId: acct.revenueAccountId,
+            expenseAccountId: acct.expenseAccountId,
+            sourceAccountId: acct.sourceAccountId,
             unitCost: row.unitCost ? parseFloat(row.unitCost) : 0,
             sellingPrice: row.sellingPrice ? parseFloat(row.sellingPrice) : null,
             rewardPointsPrice: row.rewardPointsPrice ? parseInt(row.rewardPointsPrice) : null,

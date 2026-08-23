@@ -11,6 +11,7 @@ datasource db {
 
 enum Role {
   ADMIN
+  INVESTOR
   ACCOUNTANT
   BOOKKEEPER
   PAYROLL_OFFICER
@@ -45,6 +46,39 @@ enum NormalBalance {
   CREDIT
 }
 
+// ── HR Branch Registry (synced cache) ───────────────────────────
+// Local read-only cache of HR Platform's Branches Registry — HR Platform is
+// the source of truth (see HR Platform's `modules/branches`). Populated via
+// admin-triggered POST /api/branches/sync (full replace, direct connection
+// via HR_PLATFORM_URL + EXTERNAL_API_KEY, same plumbing as
+// src/lib/external-staff.ts). Do not edit rows here directly — edits belong
+// in HR Platform. Note: Branch.ALL / ServiceBranch.ALL are pseudo-branch
+// sentinels ("applies to every branch") and never get an HrBranch row.
+model HrBranch {
+  id                       String   @id // HR Platform's kebab-case branch id — the sync key
+  shortCode                String
+  aliases                  String[] @default([])
+  opsHubBranch             String?
+  opsHubClassPortalBranch  String?
+  acctHubBranch            String?
+  acctHubServiceBranch     String?
+  teletherapyBranch        String?
+  name                     String
+  brandName                String?
+  tin                      String?
+  address                  String?
+  phone                    String?
+  emailMain                String?
+  emailHr                  String?
+  emailAccounting          String?
+  departmentsOffered       String[] @default([])
+  operatingDays            String[] @default([])
+  operatingHoursOpen       String?
+  operatingHoursClose      String?
+  active                   Boolean  @default(true)
+  syncedAt                 DateTime @default(now())
+}
+
 // ── User ─────────────────────────────────────────────────────
 
 model User {
@@ -68,7 +102,10 @@ model User {
 
   servicesCreated      Service[]                  @relation("ServiceCreatedBy")
   suppliersCreated     Supplier[]                 @relation("SupplierCreatedBy")
+  supplierRequests     SupplierRequest[]          @relation("SupplierRequestPreparedBy")
   inventoryItems       InventoryItem[]            @relation("ItemCreatedBy")
+  quotationsCreated    Quotation[]                @relation("QuotationCreatedBy")
+  quotationTemplates   QuotationTemplate[]        @relation("QuotationTemplateUploadedBy")
   inventoryAdjustments InventoryAdjustment[]      @relation("AdjustmentBy")
   inventoryAdjBatches  InventoryAdjustmentBatch[] @relation("AdjBatchCreatedBy")
   transfersRequested   ConsignmentTransfer[]      @relation("TransferRequestedBy")
@@ -79,9 +116,11 @@ model User {
   ordersCreated    Order[]           @relation("OrderCreatedBy")
   discountSettings DiscountSetting[] @relation("DiscountCreatedBy")
   arPayments       ARPayment[]       @relation("ARPaymentCreatedBy")
+  soaSubmissions   SoaSubmission[]   @relation("SoaSubmissionCreatedBy")
   payrollEntries   PayrollEntry[]    @relation("PayrollCreatedBy")
   incentiveRules   IncentiveRule[]   @relation("IncentiveCreatedBy")
   assets           Asset[]           @relation("AssetCreatedBy")
+  glCases          GlCase[]          @relation("GlCaseCreatedBy")
 
   @@index([email])
   @@index([role])
@@ -124,42 +163,57 @@ model Account {
   // are paired when matching a currency exchange, so unrelated accounts that
   // merely happen to hold another currency are not offered.
   isForexAccount    Boolean       @default(false)
+  // A closed bank account, retired from all bank behavior: it leaves every
+  // payment/transfer dropdown and the Bank Rec section, and no statements can
+  // be uploaded to it. The GL account itself stays ACTIVE so reports, history
+  // and opening balances are untouched (deactivating drops openings silently).
+  // Only settable when the last statement balance is zero and no line is
+  // PENDING — enforced server-side.
+  bankRetiredAt     DateTime?
+  // The branch a bank account belongs to. A bank statement is whole-account and
+  // cannot be split, so without this a branch view has no way to say which cash
+  // is its own: it fell back to "movement tagged to this branch", which carries
+  // no opening balance and cannot be trued to any statement — Greenhills read
+  // -P12.0M on its own checking account. Null means shared/corporate (SCEI Main,
+  // SCI) and belongs to no single branch.
+  branch            Branch?
   createdById       String
   createdBy         User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  services              Service[]
-  inventoryItems        InventoryItem[]            @relation("InventoryRevenueAccount")
-  inventorySourceItems  InventoryItem[]            @relation("InventorySourceAccount")
-  inventoryExpenseItems InventoryItem[]            @relation("InventoryExpenseAccount")
-  discountSettings      DiscountSetting[]
-  voucherDiscounts      Voucher[]                  @relation("VoucherDiscountAccount")
-  wallets               DigitalWallet[]            @relation("WalletAccount")
-  arPaymentDiscounts    ARPayment[]                @relation("ARPaymentDiscountAccount")
-  arPaymentCashAccounts ARPayment[]                @relation("ARPaymentCashAccount")
-  arPaymentOverpayments ARPayment[]                @relation("ARPaymentOverpaymentAccount")
-  unitPaysExpense       UnitPay[]                  @relation("UnitPayExpense")
-  taxPaymentsFrom       TaxPayment[]               @relation("TaxPaymentFrom")
-  taxSettings           PayrollTaxSettings[]       @relation("TaxLiability")
-  paymentModes          PaymentMode[]              @relation("PaymentModeAccount")
-  paymentModeSettlements PaymentMode[]             @relation("PaymentModeSettlementAccount")
-  paymentModeDeductions PaymentModeDeduction[]     @relation("DeductionAccount")
-  journalLines          JournalEntryLine[]
-  salaryPaymentsFrom    SalaryPayment[]            @relation("SalaryPaymentFrom")
-  benefitPaymentsFrom   BenefitPayment[]           @relation("BenefitPaymentFrom")
+  services               Service[]
+  quotations             Quotation[]                @relation("QuotationBankAccount")
+  inventoryItems         InventoryItem[]            @relation("InventoryRevenueAccount")
+  inventorySourceItems   InventoryItem[]            @relation("InventorySourceAccount")
+  inventoryExpenseItems  InventoryItem[]            @relation("InventoryExpenseAccount")
+  discountSettings       DiscountSetting[]
+  voucherDiscounts       Voucher[]                  @relation("VoucherDiscountAccount")
+  wallets                DigitalWallet[]            @relation("WalletAccount")
+  arPaymentDiscounts     ARPayment[]                @relation("ARPaymentDiscountAccount")
+  arPaymentCashAccounts  ARPayment[]                @relation("ARPaymentCashAccount")
+  arPaymentOverpayments  ARPayment[]                @relation("ARPaymentOverpaymentAccount")
+  unitPaysExpense        UnitPay[]                  @relation("UnitPayExpense")
+  taxPaymentsFrom        TaxPayment[]               @relation("TaxPaymentFrom")
+  taxSettings            PayrollTaxSettings[]       @relation("TaxLiability")
+  paymentModes           PaymentMode[]              @relation("PaymentModeAccount")
+  paymentModeSettlements PaymentMode[]              @relation("PaymentModeSettlementAccount")
+  paymentModeDeductions  PaymentModeDeduction[]     @relation("DeductionAccount")
+  journalLines           JournalEntryLine[]
+  salaryPaymentsFrom     SalaryPayment[]            @relation("SalaryPaymentFrom")
+  benefitPaymentsFrom    BenefitPayment[]           @relation("BenefitPaymentFrom")
   // PayrollCOAMapping relations
-  coaSalaryExpense      PayrollCOAMapping[]        @relation("COASalaryExpense")
-  coaProfessionalFees   PayrollCOAMapping[]        @relation("COAProfFees")
-  coaSssER              PayrollCOAMapping[]        @relation("COASSSER")
-  coaHdmfER             PayrollCOAMapping[]        @relation("COAHdmfER")
-  coaPhilhealthER       PayrollCOAMapping[]        @relation("COAPhilER")
-  coaSalariesPayable    PayrollCOAMapping[]        @relation("COASalPayable")
-  coaBenefitsPayable    PayrollCOAMapping[]        @relation("COABenPayable")
-  coaTaxPayable         PayrollCOAMapping[]        @relation("COATaxPayable")
-  beginningBalances     BeginningBalance[]
-  adjBatchFxSources     InventoryAdjustmentBatch[] @relation("AdjBatchFxSource")
-  issuedCheques         IssuedCheque[]
+  coaSalaryExpense       PayrollCOAMapping[]        @relation("COASalaryExpense")
+  coaProfessionalFees    PayrollCOAMapping[]        @relation("COAProfFees")
+  coaSssER               PayrollCOAMapping[]        @relation("COASSSER")
+  coaHdmfER              PayrollCOAMapping[]        @relation("COAHdmfER")
+  coaPhilhealthER        PayrollCOAMapping[]        @relation("COAPhilER")
+  coaSalariesPayable     PayrollCOAMapping[]        @relation("COASalPayable")
+  coaBenefitsPayable     PayrollCOAMapping[]        @relation("COABenPayable")
+  coaTaxPayable          PayrollCOAMapping[]        @relation("COATaxPayable")
+  beginningBalances      BeginningBalance[]
+  adjBatchFxSources      InventoryAdjustmentBatch[] @relation("AdjBatchFxSource")
+  issuedCheques          IssuedCheque[]
 
   @@index([accountType])
   @@index([isActive])
@@ -304,9 +358,87 @@ model Supplier {
 
   inventoryItems InventoryItem[]
   assets         Asset[]
+  requests       SupplierRequest[]
 
   @@index([isActive])
   @@index([createdById])
+}
+
+/// Per-branch .docx letterhead a quotation is generated onto. The uploaded file is
+/// kept verbatim — generation clones it and writes the body inside, so the header,
+/// footer and artwork stay exactly as the branch designed them.
+model QuotationTemplate {
+  id           String   @id @default(cuid())
+  branch       String   @unique // AHEA | AHGH | VERDANA | INSTITUTE
+  fileName     String // original upload name, shown in Settings
+  storedName   String // file in uploads/, served via /api/files/[filename]
+  uploadedById String
+  uploadedBy   User     @relation("QuotationTemplateUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Quotation {
+  id                  String   @id @default(cuid())
+  quotationNumber     String   @unique
+  branch              String // AHEA | AHGH | VERDANA | INSTITUTE
+  recipientName       String
+  recipientEmail      String?
+  recipientPhone      String?
+  contactPerson       String?
+  datePrepared        DateTime
+  validityDays        Int // 30 | 45 | 60 | 90
+  usePwdRate          Boolean  @default(false)
+  globalDiscountType  String? // PERCENT | AMOUNT — "special discount for all"
+  globalDiscountValue Decimal?
+  remarks             String?
+  /// Downpayment required to reserve the booking: 20 | 30 | 40 | 50 (percent).
+  downpaymentPercent  Int?
+  /// Where the downpayment is to be deposited. The name/number/bank are copied
+  /// alongside so a quotation already sent still reads correctly if the account
+  /// is later renamed or retired.
+  bankAccountId       String?
+  bankAccount         Account? @relation("QuotationBankAccount", fields: [bankAccountId], references: [id], onDelete: SetNull)
+  bankAccountName     String?
+  bankAccountNumber   String?
+  bankName            String?
+  preparedByName      String
+  preparedByPosition  String
+  signatureUrl        String? // uploaded e-sig or a drawn signature, both stored as images
+  subtotalGross       Decimal  @default(0)
+  grandTotal          Decimal  @default(0)
+  createdById         String
+  createdBy           User     @relation("QuotationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  items QuotationItem[]
+
+  @@index([branch])
+  @@index([createdAt])
+}
+
+/// A line on the quotation. Name/price/department are copied at generation time so a
+/// later price change never rewrites a quotation that has already gone out.
+model QuotationItem {
+  id              String    @id @default(cuid())
+  quotationId     String
+  quotation       Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  kind            String // SERVICE | PRODUCT
+  serviceId       String?
+  inventoryItemId String?
+  name            String
+  department      String? // services
+  sku             String? // products
+  imageUrl        String? // products — the photo printed on the quotation
+  grossPrice      Decimal
+  discountedPrice Decimal? // null when the line carries no discount
+  discountLabel   String? // PWD, 10%, ₱500 off — printed so the reader sees why
+  quantity        Int       @default(1)
+  lineTotal       Decimal
+  sortOrder       Int       @default(0)
+
+  @@index([quotationId])
 }
 
 model InventoryItem {
@@ -330,10 +462,13 @@ model InventoryItem {
   reorderLevel          Int?
   supplierId            String?
   supplier              Supplier? @relation(fields: [supplierId], references: [id])
+  supplierProductName   String? // what the supplier calls this item on their catalogue/invoice — our `name` is the internal one, so this is how you find it when reordering
+  description           String? // free-text description of the product (materials, contents, what it is for)
   supplierExchangeRate  Decimal?
   dimensionLength       Decimal? // cm — length inclusive of packaging (for CBM)
   dimensionWidth        Decimal? // cm — width inclusive of packaging (for CBM)
   dimensionHeight       Decimal? // cm — height inclusive of packaging (for CBM)
+  weightKg              Decimal? // kg — shipping weight inclusive of packaging (drives store shipping rates)
   revenueAccountId      String?
   revenueAccount        Account?  @relation("InventoryRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: SetNull)
   sourceAccountId       String?
@@ -367,6 +502,7 @@ model InventoryItem {
   @@index([revenueAccountId])
   @@index([sourceAccountId])
   @@index([expenseAccountId])
+  supplierRequestItems SupplierRequestItem[]
 }
 
 model BundleComponent {
@@ -397,6 +533,13 @@ model InventoryVariant {
   // (e.g. The Petite Pouf in polyester vs cotton — different landed cost and price).
   unitCost     Decimal?      @db.Decimal(12, 2)
   sellingPrice Decimal?      @db.Decimal(12, 2)
+  // Per-variant physical specs, NULL = inherit the parent item's figure. Size
+  // variants (e.g. a SMALL vs LARGE pouf) ship in genuinely different boxes,
+  // and weight drives the verdanarehab.com shipping fee at checkout.
+  dimensionLength Decimal?   @db.Decimal(10, 2)  // cm, inclusive of packaging
+  dimensionWidth  Decimal?   @db.Decimal(10, 2)  // cm
+  dimensionHeight Decimal?   @db.Decimal(10, 2)  // cm
+  weightKg        Decimal?   @db.Decimal(10, 3)  // kg, inclusive of packaging
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -442,6 +585,45 @@ model InventoryAdjustment {
   @@index([adjustmentDate])
   @@index([batchId])
   @@index([batchRefId])
+}
+
+// A purchase request sent to a supplier: what we want, how many, and who asked.
+// The printed sheet quotes the supplier's own product name, since that is what
+// they recognise when reordering.
+model SupplierRequest {
+  id             String    @id @default(cuid())
+  referenceNumber String   @unique // SR-YYYYMMDD-NNN
+  supplierId     String
+  supplier       Supplier  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  requestDate    DateTime
+  status         String    @default("DRAFT") // DRAFT, SENT, RECEIVED, CANCELLED
+  remarks        String?
+  // Captured at creation so the printed sheet keeps saying who prepared it even
+  // if the account is renamed or deactivated later.
+  preparedByName String
+  preparedById   String?
+  preparedBy     User?     @relation("SupplierRequestPreparedBy", fields: [preparedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  items SupplierRequestItem[]
+
+  @@index([supplierId])
+  @@index([requestDate])
+}
+
+model SupplierRequestItem {
+  id        String          @id @default(cuid())
+  requestId String
+  request   SupplierRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      InventoryItem   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  quantity  Int
+  remarks   String?
+  createdAt DateTime        @default(now())
+
+  @@index([requestId])
+  @@index([itemId])
 }
 
 // Consumable pre-numbered forms (e.g. ADMIN01) tracked by control-number range.
@@ -647,6 +829,24 @@ model DigitalWallet {
   diagnosis        String? // GL wallets: patient diagnosis from CRM (snapshot at creation)
   approvedServices Json? // GL wallets: approved service types (e.g. ["PT","OT","SLP"])
   soaStatus        String?      @default("With GL/No SOA") // GL wallets: "With GL/No SOA" blocks checkout; "With GL and SOA" allows it
+
+  // ── GL case tracking (the "Detailed GL" sheet) ──────────────────────────
+  // A Guarantee Letter is a paper trail before it is a receivable: documents go
+  // in, an amount is requested, a smaller amount is approved and released, an
+  // SOA is filed, and only then does a cheque arrive. None of that fitted in
+  // totalGlAmount alone, so it was being kept in a spreadsheet outside the app.
+  // All optional — existing letters keep working with these blank.
+  glRequestedAmount Decimal? // Requested GL, before approval trimmed it
+  glDocsSubmittedAt DateTime? // Date the supporting documents were submitted
+  glReleasedAt      DateTime? // Date the approved GL was released
+  soaAmount         Decimal? // Amount billed on the SOA (differs from the approved GL)
+  soaSubmittedAt    DateTime? // Date the SOA was submitted to the agency
+  guardianName      String? // Parent/guardian who signed for the patient
+  // Agency commission withheld from the SOA amount — the rate varies by case
+  // (20% or 25%), so it is stored per letter rather than assumed.
+  soaCommissionRate Decimal?
+  payoutBatch       String? // Payout cutoff the professional fee went out on
+  qbEntry           String? // QuickBooks reference (e.g. AR25-0027)
   branch           String       @default("ALL") // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
   dateObtained     DateTime? // Date patient originally obtained the wallet/card
   paymentModeId    String? // How the initial load was paid
@@ -659,6 +859,8 @@ model DigitalWallet {
   logs       WalletLog[]
   payments   OrderPayment[]
   arPayments ARPayment[]
+  soaSubmissions SoaSubmission[]
+  glCase     GlCase?        @relation("WalletGlCase")
 
   @@index([patientId, walletType])
   @@index([patientName])
@@ -667,6 +869,61 @@ model DigitalWallet {
   @@index([accountId])
   @@index([paymentModeId])
   @@index([branch])
+}
+
+/// A Guarantee Letter case entered by accounting, which may not have a POS
+/// wallet behind it yet — a second application filed before the wallet exists,
+/// or a letter still awaiting approval. Once POS does have the wallet, staff tag
+/// the case to it and the live figures (balance drawn down, payments) come from
+/// there instead of being retyped.
+///
+/// walletId is unique so a wallet can back at most one case; Detailed GL renders
+/// every case plus the wallets no case has claimed, which keeps a tagged letter
+/// from appearing twice.
+model GlCase {
+  id       String         @id @default(cuid())
+  walletId String?        @unique
+  wallet   DigitalWallet? @relation("WalletGlCase", fields: [walletId], references: [id], onDelete: SetNull)
+
+  patientName String
+  branch      String @default("ALL")
+
+  // The same paper trail the wallet-backed rows carry. Held here too, because an
+  // untagged case has no wallet to read them from.
+  glRequestedAmount Decimal?
+  glDocsSubmittedAt DateTime?
+  glReleasedAt      DateTime?
+  /// Approved GL for an untagged case. Once tagged, the wallet's totalGlAmount wins.
+  approvedAmount    Decimal?
+  soaAmount         Decimal?
+  soaSubmittedAt    DateTime?
+  guardianName      String?
+  soaCommissionRate Decimal?
+  payoutBatch       String?
+  qbEntry           String?
+  /// Cheque date for an untagged case. A tagged one takes its payment from ARPayment.
+  paidAt            DateTime?
+  notes             String?
+
+  // ── GL processor payout ────────────────────────────────────────────────
+  // The fee we owe the GL processor (soaAmount × soaCommissionRate) is settled
+  // in batches through an RFP. Recording the RFP here is what stops a letter
+  // being paid twice: a case with processorRfpId set is excluded from the next
+  // batch. Nullable throughout — nothing is owed until an SOA amount and a rate
+  // both exist.
+  processorRfpId    String?
+  processorRfp      ReimbursementReport? @relation("GlProcessorRfp", fields: [processorRfpId], references: [id], onDelete: SetNull)
+  processorPaidAt   DateTime?
+  processorProofUrl String?
+
+  createdById String
+  createdBy   User     @relation("GlCaseCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([patientName])
+  @@index([branch])
+  @@index([processorRfpId])
 }
 
 model WalletPackage {
@@ -748,6 +1005,7 @@ model Order {
   items             OrderItem[]
   payments          OrderPayment[]
   arPaymentItems    ARPaymentItem[]
+  soaSubmissionItems SoaSubmissionItem[]
   otherReceivable   OtherReceivable?
   // Who the sale was to. Asked on every checkout, not just credit sales, because
   // an official invoice needs the buyer whatever the payment mode was. A patient
@@ -855,21 +1113,21 @@ model WalletDiscountRule {
 // ── Payment Mode Settings ─────────────────────────────────
 
 model PaymentMode {
-  id            String   @id @default(cuid())
-  name          String // "Cash - SBEA", "GCash", "Credit Card", etc.
-  paymentMethod String? // PaymentMethod enum key: CASH, GCASH, PAYMAYA, DEBIT, CREDIT_CARD, SHOPEE, LAZADA, TIKTOK
-  branch        String? // null = all branches, "SANDBOX_EAST", "SANDBOX_GREENHILLS"
-  isActive      Boolean  @default(true)
-  accountId     String? // COA where NET amount is lodged (usually an asset account)
-  account       Account? @relation("PaymentModeAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  id                      String   @id @default(cuid())
+  name                    String // "Cash - SBEA", "GCash", "Credit Card", etc.
+  paymentMethod           String? // PaymentMethod enum key: CASH, GCASH, PAYMAYA, DEBIT, CREDIT_CARD, SHOPEE, LAZADA, TIKTOK
+  branch                  String? // null = all branches, "SANDBOX_EAST", "SANDBOX_GREENHILLS"
+  isActive                Boolean  @default(true)
+  accountId               String? // COA where NET amount is lodged (usually an asset account)
+  account                 Account? @relation("PaymentModeAccount", fields: [accountId], references: [id], onDelete: SetNull)
   // Bank account the processor actually deposits settlements into, when that is
   // NOT accountId (e.g. TikTok sales lodge into a clearing account, but the
   // payout lands in VER BDO Checking). Bank rec offers this mode's payments
   // when reconciling either account.
   settlementBankAccountId String?
   settlementBankAccount   Account? @relation("PaymentModeSettlementAccount", fields: [settlementBankAccountId], references: [id], onDelete: SetNull)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   deductions    PaymentModeDeduction[]
   orderPayments OrderPayment[]         @relation("OrderPaymentMode")
@@ -1150,6 +1408,47 @@ model ARPaymentItem {
   createdAt DateTime  @default(now())
 
   @@index([paymentId])
+  @@index([orderId])
+}
+
+// A batch of sessions the HMO officer has physically submitted to a provider
+// for evaluation. This is the step before a payment exists: it records what
+// went out, when, and the paper trail proving it was transmitted — so an
+// unpaid session can be told apart from one nobody has billed yet.
+model SoaSubmission {
+  id             String        @id @default(cuid())
+  walletId       String
+  wallet         DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  submittedDate  DateTime
+  // Proof the batch was handed over (courier receipt, email screenshot) and the
+  // scanned claim documents themselves. Both hold a JSON array of file URLs.
+  transmittalUrls Json?
+  documentUrls    Json?
+  notes          String?
+  branch         String?
+  createdById    String
+  createdBy      User          @relation("SoaSubmissionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  items SoaSubmissionItem[]
+
+  @@index([walletId])
+  @@index([submittedDate])
+}
+
+model SoaSubmissionItem {
+  id           String        @id @default(cuid())
+  submissionId String
+  submission   SoaSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  orderId      String
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  createdAt    DateTime      @default(now())
+
+  // One session can only be in a given submission once; re-submitting the same
+  // session to the same provider is a data-entry slip, not a second claim.
+  @@unique([submissionId, orderId])
+  @@index([submissionId])
   @@index([orderId])
 }
 
@@ -1440,6 +1739,7 @@ model Employee {
   benefits           EmployeeBenefit[]
   payslips           EmployeePayslip[]
   cutoffAdjustments  CutoffAdjustment[]
+  staffLoans         StaffLoan[]
 
   @@index([branch])
   @@index([department])
@@ -1707,6 +2007,9 @@ model CutoffAdjustment {
   deduction      Decimal  @default(0)
   deductionType  String   @default("NON_TAXABLE") // TAXABLE (pre-tax, reduces taxable income) or NON_TAXABLE
   deductionLabel String? // e.g. "Cash Advance", "Loan"
+  // When this deduction repays a staff loan, the loan it repays. Set by the
+  // payroll suggestion flow; finalize turns it into a StaffLoanDeduction.
+  staffLoanId    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1714,6 +2017,50 @@ model CutoffAdjustment {
   @@index([employeeId])
   @@index([cutoffPeriod])
   @@index([branch])
+}
+
+// ── Staff Loans & Perks ──────────────────────────────────────────────
+// Money the company put out for a staff member that comes back through
+// payroll: cash loans, BIR assistance, sponsored trainings, medical bills,
+// SOS program balances. The release debits 1160 Due from Employees; every
+// per-cutoff deduction credits it back. This register is the per-person
+// subledger 1160 never had.
+model StaffLoan {
+  id           String    @id @default(cuid())
+  employeeId   String?
+  employee     Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  staffName    String // as written in the source; kept even when employeeId is linked
+  branch       String? // SBEA, SBGH, VERDANA
+  category     String    @default("LOAN") // LOAN, BIR_ASSISTANCE, TRAINING, MEDICAL, SOS, PERK
+  description  String?
+  principal    Decimal   @default(0)
+  dateReleased DateTime?
+  chequeRef    String? // cheque number that released the money, when known
+  perCutoff    Decimal   @default(0) // standing deduction per cutoff (payroll suggestion)
+  status       String    @default("ACTIVE") // ACTIVE, PAID, WAIVED
+  notes        String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  deductions StaffLoanDeduction[]
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model StaffLoanDeduction {
+  id             String    @id @default(cuid())
+  loanId         String
+  loan           StaffLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  cutoffPeriod   String // "2026-01-2" style, matching payroll cutoffs
+  amount         Decimal
+  source         String    @default("IMPORT") // IMPORT (monitoring sheet), PAYROLL (finalized cutoff), MANUAL
+  journalEntryId String? // the Dr salary expense / Cr 1160 entry, when posted
+  createdAt      DateTime  @default(now())
+
+  @@unique([loanId, cutoffPeriod, source])
+  @@index([cutoffPeriod])
 }
 
 model ConsultantCutoffAdjustment {
@@ -1773,6 +2120,8 @@ model JournalEntry {
   branch        String   @default("ALL")
   createdById   String
   createdAt     DateTime @default(now())
+  // Contribution-margin department tags: empty = "All" (allocated by rent %).
+  departments   String[] @default([])
 
   lines JournalEntryLine[]
 
@@ -2085,7 +2434,9 @@ model PettyCashEntry {
   pcvSeq              Int
   pcvSub              Int                  @default(1)
   requestor           String?
-  department          String? // ADMIN, PT, OT, SLP, SPED, PSYCH, MD, ORTHOSIS
+  department          String? // ADMIN, PT, OT, SLP, SPED, PSYCH, MD, ORTHOSIS (legacy single)
+  // Contribution-margin department tags: empty = "All" (allocated by rent %).
+  departments         String[]             @default([])
   pcfStatus           String? // Unliquidated | For Replenishment | Cancelled | Missing
   date                DateTime?
   description         String?
@@ -2146,6 +2497,33 @@ model PettyCashEntry {
   @@index([recordType])
 }
 
+// A TikTok order that never became a sale — cancelled or failed-delivery, with
+// TikTok's own reason. Informational only (no GL impact): postOrderJournal never
+// sees these, since the orders importer only processes Order Status = Completed.
+// Purpose is purely the Products Analysis "Top Cancellation Reasons" breakdown.
+// Upserted by orderId so re-uploading the same TikTok export is a no-op, and a
+// later "Cancelled" export can supply the real reason for an order that first
+// showed up in a "Failed Delivery" export with no reason yet.
+model TiktokCancellation {
+  id            String    @id @default(cuid())
+  orderId       String    @unique
+  branch        String    @default("VERDANA_STORE")
+  status        String // TikTok's Order Status at export time, e.g. "Canceled", "Shipped"
+  cancelType    String? // TikTok's "Cancelation/Return Type"
+  cancelBy      String? // System | User | Seller
+  cancelReason  String? // null when the order failed delivery but hasn't been formally
+  // cancelled by TikTok yet (Order Status still "Shipped"/"In transit")
+  orderAmount   Decimal?
+  cancelledTime DateTime?
+  sourceFile    String // which upload last touched this row: "CANCELLED" | "FAILED_DELIVERY"
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([branch])
+  @@index([cancelReason])
+}
+
 model ReimbursementReport {
   id             String    @id @default(cuid())
   branch         String
@@ -2174,6 +2552,7 @@ model ReimbursementReport {
   entries                  PettyCashEntry[]
   adjBatchesAsManufacturer InventoryAdjustmentBatch[] @relation("AdjBatchManufacturerRfp")
   adjBatchesAsFreight      InventoryAdjustmentBatch[] @relation("AdjBatchFreightRfp")
+  glProcessorCases         GlCase[]                   @relation("GlProcessorRfp")
 
   @@unique([branch, refNumber])
   @@index([branch])
@@ -2265,6 +2644,9 @@ model CreditCardSOA {
   status           String    @default("OPEN") // OPEN | IN_RFP | PAID
   paymentRoute     String? // RFP | PETTY_CASH
   statementUrl     String? // uploaded bank statement of account
+  legacyRef        String? // pre-standardization reference (e.g. the source filename) kept for traceability
+  periodYear       Int? // statement period the SOA covers (billing month)
+  periodMonth      Int? // 1-12
   soaDocUrl        String? // system-generated SOA PDF (petty-cash proof)
   reimbursementId  String? // RFP created via Request for RFP
   pettyCashEntryId String? // settlement entry if paid through petty cash
@@ -2794,6 +3176,7 @@ model AdvancePayout {
   paidDate         DateTime?
   bankAccountId    String?
   proofUrls        Json?
+  memo             String?
   emailedAt        DateTime?
   journalEntryId   String?
   createdById      String?
@@ -2890,6 +3273,7 @@ model LoanPayout {
   paidDate         DateTime?
   bankAccountId    String?
   proofUrls        Json?
+  memo             String?
   emailedAt        DateTime?
   journalEntryId   String?
   createdById      String?
@@ -3254,4 +3638,20 @@ model IssuedCheque {
   @@index([accountId])
   @@index([date])
   @@index([status])
+}
+
+// Rent allocation for the Contribution Margin analysis: per branch, what % of
+// that branch's rent (8210 indirect + 8211 direct) each department carries.
+// Managed from the Contribution Margin tab.
+model ContributionRentAllocation {
+  id         String   @id @default(cuid())
+  branch     String
+  department String
+  pct        Decimal  @default(0)
+  // 'RENT' (8210+8211) or 'OTHER' (every remaining expense) — each category
+  // carries its own per-branch percentages.
+  category   String   @default("RENT")
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([branch, department, category])
 }

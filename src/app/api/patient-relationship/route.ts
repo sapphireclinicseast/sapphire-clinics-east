@@ -67,8 +67,8 @@ export async function GET(req: NextRequest) {
     const formKey = searchParams.get('formKey') || 'registration'
     const FORM_TYPES: Record<string, { sbea: string; sbgh: string | null; title: string }> = {
       registration:  { sbea: 'GULaVBpI', sbgh: 'VaCB1bkE', title: 'Registration Form' },
-      'group-therapy': { sbea: 'ChrSrsBF', sbgh: null, title: 'Group Therapy Registration' },
-      sip:           { sbea: 'SGWVxqcW', sbgh: null, title: 'SIP Registration Form' },
+      'group-therapy': { sbea: 'ChrSrsBF', sbgh: 'tT8QASYo', title: 'Group Therapy Registration' },
+      sip:           { sbea: 'SGWVxqcW', sbgh: null, title: 'SIP Registration Form' }, // GH disabled — no ALAGA interns there yet
       psych:         { sbea: 'X2YDKTaH', sbgh: null, title: 'Psych Registration Form' },
     }
 

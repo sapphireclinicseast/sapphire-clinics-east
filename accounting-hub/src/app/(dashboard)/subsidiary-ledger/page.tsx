@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { refTypeLabel } from '@/lib/accounting/subsidiary-ledger'
+import { branchLabel, POSTABLE_BRANCHES } from '@/lib/branch'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 
@@ -79,13 +80,6 @@ const TYPE_LABEL: Record<string, string> = {
   REVENUE: 'Revenue', EXPENSE: 'Expenses',
 }
 
-const BRANCH_LABEL: Record<string, string> = {
-  ALL: 'All Branches',
-  SANDBOX_EAST: 'Aura Health East',
-  SANDBOX_GREENHILLS: 'Aura Health Greenhills',
-  VERDANA_STORE: 'Verdana',
-  AURA_INSTITUTE: 'Aura Health Institute',
-}
 
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -241,7 +235,7 @@ export default function SubsidiaryLedgerPage() {
   const onDownload = (format: 'xlsx' | 'pdf') => {
     const headers = ['Account', 'Date', 'Transaction Type', 'Num', 'Memo / Description', 'Split', 'Debit', 'Credit', 'Balance']
     const title = 'Subsidiary Ledger'
-    const subtitle = `${fmtDate(from)} – ${fmtDate(to)} · ${BRANCH_LABEL[branch] || branch}`
+    const subtitle = `${fmtDate(from)} – ${fmtDate(to)} · ${branchLabel(branch) || branch}`
     if (format === 'xlsx') {
       downloadXlsx(`subsidiary-ledger-${from}-to-${to}`, [{ name: 'Subsidiary Ledger', headers, rows: exportRows() }])
     } else {
@@ -310,7 +304,8 @@ export default function SubsidiaryLedgerPage() {
           </select>
 
           <select value={branch} onChange={e => setBranch(e.target.value)} className={selectClass} style={borderStyle}>
-            {Object.entries(BRANCH_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {/* 'ALL' first, matching the previous dropdown order. */}
+            {['ALL', ...POSTABLE_BRANCHES.filter(v => v !== 'ALL')].map(v => <option key={v} value={v}>{branchLabel(v)}</option>)}
           </select>
 
           <select value={refType} onChange={e => setRefType(e.target.value)} className={selectClass} style={borderStyle}>
@@ -365,7 +360,7 @@ export default function SubsidiaryLedgerPage() {
 
       {ledger?.branchLocked && (
         <div className="mb-3 px-4 py-2 rounded-lg text-xs bg-blue-50 text-blue-900">
-          Your account is scoped to {BRANCH_LABEL[ledger.branch] || ledger.branch} — the ledger shows that branch only.
+          Your account is scoped to {branchLabel(ledger.branch) || ledger.branch} — the ledger shows that branch only.
         </div>
       )}
 
@@ -508,7 +503,7 @@ export default function SubsidiaryLedgerPage() {
                   {refTypeLabel(detail.line.refType)}
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {fmtDate(detail.line.date)} · {BRANCH_LABEL[detail.line.branch] || detail.line.branch}
+                  {fmtDate(detail.line.date)} · {branchLabel(detail.line.branch) || detail.line.branch}
                   {detail.line.refId ? ` · Ref ${detail.line.refId}` : ''}
                 </p>
               </div>

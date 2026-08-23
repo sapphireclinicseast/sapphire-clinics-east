@@ -394,6 +394,8 @@ export async function GET() {
     purpose: 'daily payment-reminder cron',
     method: 'POST with x-cron-secret header',
     cronSecretConfigured: Boolean(process.env.CRON_SECRET),
-    resendConfigured: Boolean(process.env.RESEND_API_KEY),
+    // Transactional mail now goes through a connected Gmail OAuth account
+    // (see lib/transactional-email.ts), not an API key.
+    senderAccount: process.env.TRANSACTIONAL_GMAIL_ACCOUNT || 'main@sapphireclinicseast.org',
   })
 }

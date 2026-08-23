@@ -59,7 +59,8 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     (id ? { [field]: id } : {}) as Record<string, unknown>
   const [
     transfers, rfps, orders, arPayments, salaries, benefits, taxes, advances, common, preferred, expenseEntries,
-    shareholderAdvances, loans, equityDeposits, itemisedHoldings, onHandAccts,
+    shareholderAdvances, loans, equityDeposits, itemisedHoldings,
+    buybacks, advancePayouts, loanPayouts, staffLoans, onHandAccts,
   ] = await Promise.all([
     prisma.fundTransfer.findMany({
       where: { date: range, ...(bankAccountId ? { OR: [{ fromAccountId: bankAccountId }, { toAccountId: bankAccountId }] } : {}) },
@@ -153,6 +154,36 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     // wherever it is offered, or it would still appear at full value in the
     // account it names while its deposits are offered in another.
     prisma.equityDeposit.findMany({ select: { commonShareId: true, preferredShareId: true } }),
+    // Money going back OUT to shareholders. Everything equity-shaped above is a
+    // receipt, so before these a buyback or a repayment could not be matched at
+    // all and had to be written straight into the database.
+    prisma.shareBuyback.findMany({
+      where: { date: range, ...on('bankAccountId', bankAccountId) },
+      select: {
+        id: true, date: true, shares: true, price: true,
+        commonShare: { select: { shareholder: { select: { name: true } } } },
+      },
+    }),
+    // Repayments of shareholder advances and of loans. Only rows already
+    // recorded as paid are offered: those are actual cash movements with a date
+    // and an amount, the same rule salaries and taxes follow. A scheduled
+    // instalment nobody has paid yet is not a bank line waiting to be found.
+    prisma.advancePayout.findMany({
+      where: { status: 'PAID', paidDate: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, paidDate: true, amount: true, advance: { select: { name: true } } },
+    }),
+    prisma.loanPayout.findMany({
+      where: { status: 'PAID', paidDate: range, ...on('bankAccountId', bankAccountId) },
+      select: { id: true, paidDate: true, amount: true, loan: { select: { name: true } } },
+    }),
+    // Staff loan / perk releases: money out to a staff member that comes back
+    // through payroll deductions. The register does not name the paying bank
+    // account, so a release is offered against every account — the cheque
+    // reference in the label says where to look.
+    prisma.staffLoan.findMany({
+      where: { dateReleased: { gte: lo, lte: hi }, principal: { gt: 0 } },
+      select: { id: true, staffName: true, category: true, principal: true, dateReleased: true, chequeRef: true },
+    }),
     // A transfer into a branch's petty cash account is a replenishment —
     // labelled as such so the bank's withdrawal line reads like what it is.
     // This used to key off the separate "Petty Cash on Hand" floats; those are
@@ -278,6 +309,37 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       })
     }
   }
+  for (const b of buybacks) {
+    const who = b.commonShare?.shareholder?.name || ''
+    const shares = num(b.shares)
+    out.push({
+      type: 'BUYBACK', id: b.id,
+      label: `Share buyback · ${who || 'shareholder'}${shares > 0 ? ` · ${shares.toLocaleString('en-PH')} shares @ ₱${num(b.price)}` : ''}`,
+      date: b.date, amount: Math.round(shares * num(b.price) * 100) / 100,
+      dir: 'out',
+    })
+  }
+  for (const p of advancePayouts) {
+    out.push({
+      type: 'ADVANCE_PAYMENT', id: p.id,
+      label: `Advance repayment · ${p.advance?.name || 'shareholder'}`,
+      date: p.paidDate as Date, amount: num(p.amount), dir: 'out',
+    })
+  }
+  for (const p of loanPayouts) {
+    out.push({
+      type: 'LOAN_PAYMENT', id: p.id,
+      label: `Loan repayment · ${p.loan?.name || 'lender'}`,
+      date: p.paidDate as Date, amount: num(p.amount), dir: 'out',
+    })
+  }
+  for (const sl of staffLoans) {
+    out.push({
+      type: 'STAFF_LOAN', id: sl.id,
+      label: `Staff loan release · ${sl.staffName} · ${sl.category.replace(/_/g, ' ').toLowerCase()}${sl.chequeRef ? ` · cheque ${sl.chequeRef}` : ''}`,
+      date: sl.dateReleased as Date, amount: num(sl.principal), dir: 'out',
+    })
+  }
   for (const d of equityDeposits) {
     const who = d.commonShare?.shareholder?.name || d.preferredShare?.shareholder?.name || ''
     const kind = d.commonShare ? 'Common' : 'Preferred'
@@ -288,6 +350,41 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       dir: 'in',
     })
   }
+  // Open payable bills — accruals (Dr expense-or-asset / Cr A-P) whose payment
+  // was never recorded, mostly QB-era imports. They carry no bank leg, so the
+  // matcher could never offer them; the AP_BILL match action posts the
+  // settlement (Dr the payable / Cr the reconciled bank account) when picked.
+  const payableAccts = await prisma.account.findMany({
+    where: { accountNumber: { in: ['4010', '5040'] } }, select: { id: true },
+  })
+  if (payableAccts.length) {
+    const billLines = await prisma.journalEntryLine.findMany({
+      where: {
+        accountId: { in: payableAccts.map(p => p.id) },
+        credit: { gt: 0 },
+        journalEntry: { entryDate: range, referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] } },
+      },
+      select: {
+        credit: true,
+        journalEntry: { select: { id: true, entryDate: true, description: true } },
+      },
+    })
+    if (billLines.length) {
+      const settled = new Set((await prisma.journalEntry.findMany({
+        where: { referenceId: { in: billLines.map(l => `APSETTLE:${l.journalEntry.id}`) } },
+        select: { referenceId: true },
+      })).map(j => (j.referenceId || '').slice('APSETTLE:'.length)))
+      for (const l of billLines) {
+        if (settled.has(l.journalEntry.id)) continue
+        out.push({
+          type: 'AP_BILL', id: l.journalEntry.id,
+          label: `${(l.journalEntry.description || 'Payable bill').slice(0, 140)} · unpaid A/P bill`,
+          date: l.journalEntry.entryDate, amount: num(l.credit), dir: 'out',
+        })
+      }
+    }
+  }
+
   return out
 }
 

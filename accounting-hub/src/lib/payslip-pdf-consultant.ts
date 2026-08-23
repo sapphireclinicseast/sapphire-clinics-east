@@ -11,6 +11,7 @@
  */
 
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from './scei-logo'
+import { BRANCH_INFO } from './branch-info'
 
 export interface ConsultantPayslipPreview {
   consultantId: string
@@ -85,33 +86,6 @@ const POSITION_LABELS: Record<string, string> = {
   MD: 'Medical Doctor',
   PSYCHOLOGY: 'Psychologist',
   ORTHOSIS: 'Orthotist & Prosthetist',
-}
-
-const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
-  SBEA: {
-    name: 'Sapphire Clinics East Inc. – East Branch',
-    address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
-    phone: '0917 118 9289 | (02) 5310-4991',
-    tin: 'TIN 010-817-642-00000',
-  },
-  SBGH: {
-    name: 'Sapphire Clinics East Inc. – Greenhills Branch',
-    address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    tin: 'TIN 010-817-642-00001',
-  },
-  VERDANA_STORE: {
-    name: 'Verdana Store',
-    address: 'Metro Manila, Philippines',
-    phone: '',
-    tin: '',
-  },
-  '': {
-    name: 'Sapphire Clinics East Inc.',
-    address: 'Metro Manila, Philippines',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    tin: '',
-  },
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',

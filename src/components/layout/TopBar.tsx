@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { signOut } from 'next-auth/react'
 import { LogOut, Bell, User, Menu } from 'lucide-react'
 import type { Session } from 'next-auth'
+import { localTodayStr } from '@/lib/utils'
 
 interface NotifItem {
   id: string
@@ -19,7 +20,7 @@ interface NotifItem {
 const BRANCH_LABEL: Record<string, string> = { SBEA: 'East', SBGH: 'GH' }
 
 function todayKey() {
-  return `SCEI_NOTIF_SEEN_${new Date().toISOString().slice(0, 10)}`
+  return `SCEI_NOTIF_SEEN_${localTodayStr()}`
 }
 
 function getSeenIds(): Set<string> {
@@ -43,6 +44,13 @@ interface TopBarProps {
 }
 
 export default function TopBar({ user, onMenuClick }: TopBarProps) {
+  // Investor accounts are read-only and must never see patient/staff names —
+  // the notification feed is literally a stream of real patient names
+  // ("ELISH DENISE CONCINA — New Patient added"), so it's hidden entirely,
+  // not just the badge count. The API is gated the same way server-side
+  // (src/app/api/notifications/route.ts) so this isn't only a UI hide.
+  const isInvestor = (user as { role?: string })?.role === 'INVESTOR'
+
   const [items, setItems] = useState<NotifItem[]>([])
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(false)
@@ -61,10 +69,11 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
   }, [])
 
   useEffect(() => {
+    if (isInvestor) return
     fetchNotifs()
     const id = setInterval(fetchNotifs, 60_000)
     return () => clearInterval(id)
-  }, [fetchNotifs])
+  }, [fetchNotifs, isInvestor])
 
   // Close on outside click
   useEffect(() => {
@@ -116,7 +125,8 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
       <div className="hidden md:block" />
 
       <div className="flex items-center gap-3">
-        {/* Notification bell */}
+        {/* Notification bell — hidden for investor accounts, see isInvestor above */}
+        {!isInvestor && (
         <div ref={dropdownRef} className="relative">
           <button
             onClick={() => setOpen((o) => !o)}
@@ -228,6 +238,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
             </div>
           )}
         </div>
+        )}
 
         {/* User menu */}
         <div className="flex items-center gap-2.5">

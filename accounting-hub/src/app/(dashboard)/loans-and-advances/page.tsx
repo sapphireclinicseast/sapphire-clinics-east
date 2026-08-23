@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { Landmark, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
+import StaffLoansTab from './StaffLoansTab'
 
 const ALLOWED = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -26,7 +27,7 @@ interface AdvanceRow {
 
 export default function LoansAndAdvancesPage() {
   const { data: session, status } = useSession()
-  const [tab, setTab] = useState<'advances' | 'loans' | 'creditline' | 'history'>('advances')
+  const [tab, setTab] = useState<'advances' | 'loans' | 'creditline' | 'staff' | 'history'>('advances')
   const advTableRef = useRef<HTMLTableElement>(null)
   const advRz = useResizableColumns('loans-advances-list', advTableRef)
   const [rows, setRows] = useState<AdvanceRow[]>([])
@@ -64,7 +65,7 @@ export default function LoansAndAdvancesPage() {
       <NearDuePaymentsPopup onGoToHistory={() => setTab('history')} />
 
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['history', 'Payment History']] as const).map(([v, label]) => (
+        {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['staff', 'Staff Loans & Perks'], ['history', 'Payment History']] as const).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
             style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
@@ -113,6 +114,7 @@ export default function LoansAndAdvancesPage() {
 
       {tab === 'loans' && <LoansTab shareholders={shareholders} banks={banks} accts={accts} />}
       {tab === 'creditline' && <CreditLineTab shareholders={shareholders} banks={banks} accts={accts} />}
+      {tab === 'staff' && <StaffLoansTab />}
       {tab === 'history' && <PaymentHistoryTab banks={banks} accts={accts} />}
 
       {(showAdd || edit) && <AdvanceModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
@@ -928,6 +930,7 @@ function BatchRecordModal({ occs, banks, accts, onClose, onSaved }: { occs: PayR
   // amortization into one ledger month.
   const hasPastDues = occs.some(o => String(o.dueDate).slice(0, 10) < new Date().toISOString().slice(0, 10))
   const [useDueDates, setUseDueDates] = useState(hasPastDues)
+  const [memo, setMemo] = useState('')
   const [bankAccountId, setBankAccountId] = useState(occs[0]?.paymentBankAccountId || occs[0]?.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [otherExp, setOtherExp] = useState<OtherExp[]>([])
@@ -943,7 +946,7 @@ function BatchRecordModal({ occs, banks, accts, onClose, onSaved }: { occs: PayR
       const cleaned = cleanOtherExp(otherExp)
       for (let i = 0; i < occs.length; i++) {
         const occ = occs[i]
-        const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate: useDueDates ? String(occ.dueDate).slice(0, 10) : paidDate, bankAccountId, proofUrls, otherExpenses: i === 0 ? cleaned : [] }) })
+        const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate: useDueDates ? String(occ.dueDate).slice(0, 10) : paidDate, bankAccountId, proofUrls, otherExpenses: i === 0 ? cleaned : [], memo }) })
         if (!r.ok) { alert(`Failed on ${occ.name} (${String(occ.dueDate).slice(0, 10)}): ${(await r.json()).error || 'error'}`); return }
         setDone(d => d + 1)
       }
@@ -971,6 +974,7 @@ function BatchRecordModal({ occs, banks, accts, onClose, onSaved }: { occs: PayR
             </label>
           </div>
           <div><label className={lbl} style={mg}>Bank account credited</label><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div className="mt-2"><label className={lbl} style={mg}>Memo (optional)</label><textarea value={memo} onChange={e => setMemo(e.target.value)} rows={2} maxLength={500} placeholder="Description saved with this payment and shown in the books" className={inp} style={bc} /></div>
         </div>
         <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit <span className="font-normal text-gray-400">(applied to all)</span></label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix="BATCH-PAYMENT" existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
         <OtherExpensesSection rows={otherExp} setRows={setOtherExp} accts={accts} />
@@ -989,6 +993,7 @@ function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayR
     const today = new Date().toISOString().slice(0, 10)
     return due < today ? due : today
   })
+  const [memo, setMemo] = useState('')
   const [bankAccountId, setBankAccountId] = useState(occ.paymentBankAccountId || occ.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [otherExp, setOtherExp] = useState<OtherExp[]>([])
@@ -998,7 +1003,7 @@ function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayR
     if (!bankAccountId) { alert('Select the bank account.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls, otherExpenses: cleanOtherExp(otherExp) }) })
+      const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls, otherExpenses: cleanOtherExp(otherExp), memo }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
     } finally { setBusy(false) }
@@ -1012,6 +1017,7 @@ function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayR
         <div className="grid grid-cols-2 gap-3">
           <div><label className={lbl} style={mg}>Date paid</label><input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Bank account credited</label><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div className="mt-2"><label className={lbl} style={mg}>Memo (optional)</label><textarea value={memo} onChange={e => setMemo(e.target.value)} rows={2} maxLength={500} placeholder="Description saved with this payment and shown in the books" className={inp} style={bc} /></div>
         </div>
         <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${(occ.name || 'PAY').replace(/\s+/g, '_')}-PAYMENT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
         <OtherExpensesSection rows={otherExp} setRows={setOtherExp} accts={accts} />

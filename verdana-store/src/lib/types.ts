@@ -1,4 +1,54 @@
-// ── Cart types for Verdana Rehab Store ──────────────────────────
+// ── Shared client-safe types ────────────────────────────────────
+
+export interface ProductVariant {
+  label: string
+  /** Color swatch (website-only presentation) — used when type is "Color". */
+  colorHex?: string
+  /** Classification, mirrored from Accounting Hub: Color/Size/Material/Flavor/Scent/Style/Weight/Other. */
+  type?: string
+  /** Accounting Hub variant SKU — links this option to inventory for stock + deduction matching. */
+  sku?: string
+  /** Per-variant stock, mirrored from Accounting Hub. */
+  stock?: number
+  /** Per-variant price, mirrored from Accounting Hub. Absent = use the product price. */
+  price?: number
+  /** Per-variant shipping weight (kg), mirrored from Accounting Hub — SMALL vs LARGE
+   *  ship in different boxes. Absent = use the product's weightKg. */
+  weightKg?: number
+}
+
+export interface Product {
+  id: string
+  slug: string
+  title: string
+  description: string
+  price: number
+  collectionSlug: string
+  variants: ProductVariant[]
+  images: string[]
+  /** Inventory count. If undefined/null, treated as unlimited stock. */
+  stock?: number
+  /** Accounting Hub SKU — links this product to inventory for stock auto-sync. */
+  sku?: string
+  /** When true, the product is hidden from all public views but retained (not deleted). */
+  disabled?: boolean
+  /** Mirrored from Accounting Hub. Deliberately kept at 0 stock — stays orderable as a pre-order. */
+  isPreOrder?: boolean
+  /** True when the product is in the store's top-10 best sellers (Accounting Hub order history). */
+  bestSeller?: boolean
+  /** Shipping weight in kilograms — drives weight-based shipping fees at checkout. */
+  weightKg?: number
+}
+
+export interface Collection {
+  id: string
+  slug: string
+  name: string
+  description: string
+  imageUrl: string
+}
+
+// ── Cart types ──────────────────────────────────────────────────
 
 export interface CartItem {
   productId: string

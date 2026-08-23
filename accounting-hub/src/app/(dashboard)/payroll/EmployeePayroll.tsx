@@ -5,11 +5,13 @@ import {
   Users, Settings, FileText, Plus, Pencil, Save, Search, X, AlertCircle,
   RefreshCw, Loader2, Upload, Download, Calendar, Clock, CheckCircle2,
   XCircle, ChevronDown, ChevronUp, Trash2, Eye, QrCode, ClipboardList,
-  DollarSign, Shield, ShieldOff, Star, Mail, FileDown, ArrowUpDown,
+  DollarSign, Shield, ShieldOff, Star, Mail, FileDown, ArrowUpDown, Landmark
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { BRANCH_INFO } from '@/lib/branch-info'
 
 const toNum = (v: unknown) => Number(v) || 0
+const peso = (v: unknown) => `₱${toNum(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const EMP_DEPARTMENTS = [
   { value: '', label: 'All Departments' },
@@ -28,33 +30,6 @@ const BRANCHES = [
 // Short branch code for exports/filenames (current AHEA/AHGH naming; enum keys unchanged).
 const BRANCH_SHORT: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VERD', VERDANA_STORE: 'VERD' }
 const branchShort = (b?: string | null) => (b ? (BRANCH_SHORT[b] || b) : '')
-
-const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
-  SBEA: {
-    name: 'Sapphire Clinics East Inc. – East Branch',
-    address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
-    phone: '0917 118 9289 | (02) 5310-4991',
-    tin: 'TIN 010-817-642-00000',
-  },
-  SBGH: {
-    name: 'Sapphire Clinics East Inc. – Greenhills Branch',
-    address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    tin: 'TIN 010-817-642-00001',
-  },
-  VERDANA: {
-    name: 'Verdana Store',
-    address: 'Metro Manila, Philippines',
-    phone: '',
-    tin: '',
-  },
-  '': {
-    name: 'Sapphire Clinics East Inc.',
-    address: 'Metro Manila, Philippines',
-    phone: '',
-    tin: '',
-  },
-}
 
 const DAYS_OF_WEEK = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
 
@@ -414,7 +389,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [leaveSaved, setLeaveSaved] = useState(false)
 
   /* ── Cutoff Adjustments ── */
-  interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string; rowKey: string }
+  interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string; rowKey: string; staffLoanId?: string | null; suggested?: boolean }
   const adjCutoffMonth = parentCutoffMonth
   const adjCutoffYear = parentCutoffYear
   const adjCutoffHalf = parentCutoffHalf
@@ -422,6 +397,88 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [adjLoading, setAdjLoading] = useState(false)
   const [adjSaving, setAdjSaving] = useState(false)
   const [adjSaved, setAdjSaved] = useState(false)
+
+  /* Staff loans, so a cutoff can deduct against a real outstanding balance
+     instead of someone re-typing the amount. Keyed by loan, never by row, which
+     is what stops the same loan being deducted twice in one cutoff. */
+  interface StaffLoanLite {
+    id: string; employeeId: string | null; category: string; description: string | null
+    principal: number; perCutoff: number; repaid: number; balance: number; status: string
+  }
+  const [staffLoans, setStaffLoans] = useState<StaffLoanLite[]>([])
+  const [loanPickerEmp, setLoanPickerEmp] = useState<{ employeeId: string; employeeName: string } | null>(null)
+  const [loanPickerAmounts, setLoanPickerAmounts] = useState<Record<string, string>>({})
+
+  const loansByEmployee = useMemo(() => {
+    const m = new Map<string, StaffLoanLite[]>()
+    for (const l of staffLoans) {
+      if (!l.employeeId || l.status !== 'ACTIVE' || l.balance <= 0) continue
+      m.set(l.employeeId, [...(m.get(l.employeeId) || []), l])
+    }
+    return m
+  }, [staffLoans])
+
+  const openLoanPicker = (employeeId: string, employeeName: string) => {
+    const loans = loansByEmployee.get(employeeId) || []
+    const existing = new Map(adjRows.filter(r => r.staffLoanId).map(r => [r.staffLoanId as string, r.deduction]))
+    // Start from what is already on this cutoff, else the standing per-cutoff
+    // amount, never more than what is left to pay.
+    setLoanPickerAmounts(Object.fromEntries(loans.map(l => {
+      const current = existing.get(l.id)
+      const amount = current != null && current > 0 ? current : Math.min(l.perCutoff, l.balance)
+      return [l.id, amount > 0 ? String(amount) : '']
+    })))
+    setLoanPickerEmp({ employeeId, employeeName })
+  }
+
+  /* Apply the chosen amounts. A loan already on this cutoff has its row
+     updated; a new one takes an empty row for that employee if there is one,
+     otherwise a fresh row. Setting an amount to zero removes the row. */
+  const applyLoanPicker = () => {
+    if (!loanPickerEmp) return
+    const { employeeId, employeeName } = loanPickerEmp
+    const loans = loansByEmployee.get(employeeId) || []
+    setAdjRows(prev => {
+      let rows = [...prev]
+      for (const loan of loans) {
+        const raw = loanPickerAmounts[loan.id]
+        const amount = Math.min(Math.max(Number(raw) || 0, 0), loan.balance)
+        const label = `Staff Loan — ${loan.category.replace(/_/g, ' ').toLowerCase()}`
+        const idx = rows.findIndex(r => r.employeeId === employeeId && r.staffLoanId === loan.id)
+
+        if (amount <= 0) {
+          if (idx >= 0) {
+            // Keep the employee's last line rather than leaving them with none.
+            const others = rows.filter(r => r.employeeId === employeeId).length
+            if (others > 1) rows = rows.filter((_, i) => i !== idx)
+            else rows[idx] = { ...rows[idx], deduction: 0, deductionLabel: '', staffLoanId: null, suggested: false }
+          }
+          continue
+        }
+        if (idx >= 0) {
+          rows[idx] = { ...rows[idx], deduction: amount, deductionLabel: label, deductionType: 'NON_TAXABLE', staffLoanId: loan.id, suggested: false }
+          continue
+        }
+        const blankIdx = rows.findIndex(r => r.employeeId === employeeId && !r.staffLoanId
+          && !r.allowance && !r.deduction && !r.allowanceLabel && !r.deductionLabel)
+        if (blankIdx >= 0) {
+          rows[blankIdx] = { ...rows[blankIdx], deduction: amount, deductionLabel: label, deductionType: 'NON_TAXABLE', staffLoanId: loan.id, suggested: false }
+        } else {
+          const lastIdx = rows.reduce((acc, r, i) => r.employeeId === employeeId ? i : acc, -1)
+          const newRow: AdjustmentRow = {
+            employeeId, employeeName,
+            allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+            deduction: amount, deductionType: 'NON_TAXABLE', deductionLabel: label,
+            rowKey: `loan${loan.id}`, staffLoanId: loan.id,
+          }
+          rows = [...rows.slice(0, lastIdx + 1), newRow, ...rows.slice(lastIdx + 1)]
+        }
+      }
+      return rows
+    })
+    setAdjSaved(false)
+    setLoanPickerEmp(null)
+  }
   const [selectedAdjEmpIds, setSelectedAdjEmpIds] = useState<Set<string>>(new Set())
   const [showBulkAdjModal, setShowBulkAdjModal] = useState(false)
   const [bulkAdj, setBulkAdj] = useState<Partial<AdjustmentRow>>({})
@@ -616,7 +673,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         const empAdjs = existByEmp.get(emp.id)
         if (empAdjs && empAdjs.length > 0) {
           for (const ex of empAdjs) {
-            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionType: (ex as any).deductionType || 'NON_TAXABLE', deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}` })
+            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionType: (ex as any).deductionType || 'NON_TAXABLE', deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}`, staffLoanId: (ex as any).staffLoanId || null, suggested: !!(ex as any).suggested })
           }
         } else {
           rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '', deduction: 0, deductionType: 'NON_TAXABLE', deductionLabel: '', rowKey: `r${rk++}` })
@@ -897,6 +954,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
 
       // Fetch adjustments for this cutoff
       const adjParams = new URLSearchParams({ cutoffPeriod, branch: branch || 'SBEA' })
+      // Outstanding staff loans, so the picker can offer a real balance.
+      fetch('/api/staff-loans').then(r => r.ok ? r.json() : []).then(d => setStaffLoans(Array.isArray(d) ? d : [])).catch(() => {})
       const adjRes = await fetch(`/api/payroll/cutoff-adjustments?${adjParams}`)
       const adjData: { employeeId: string; allowance: number | string; allowanceType: string; deduction: number | string }[] = adjRes.ok ? await adjRes.json() : []
 
@@ -1747,6 +1806,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           consultantName: `${p.employee.lastName}, ${p.employee.firstName}`,
           firstName: p.employee.firstName,
           branch: (BRANCH_INFO[p.branch]?.name || branchLabel).replace('Sapphire Clinics East Inc.', 'Aura Health Rehab'),
+          // Raw code — the server routes the payslip to that branch's HR mailbox.
+          branchCode: p.branch,
           cutoffPeriod: p.cutoffPeriod,
           netPay: formatCurrency(toNum(p.netPay)),
           email,
@@ -4101,6 +4162,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                         })}
                       </tr>
                     ))}
+
                   </tbody>
                 </table>
               </div>
@@ -4125,34 +4187,65 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
               setAdjLoading(true)
               const cp = cutoffPeriod
               try {
-                // Fetch ALL employees for this branch
-                const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
-                const r = await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`, { method: 'PUT' })
-                const data = await r.json()
+                // Fetch ALL employees for this branch, the previous cutoff's rows,
+                // and the CURRENT cutoff's rows (for staff-loan rows/suggestions).
+                const [allBranchEmps, data, curData]: [Employee[], any, any] = await Promise.all([
+                  (await fetch(`/api/payroll/employees?branch=${branch}`)).json(),
+                  (await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`, { method: 'PUT' })).json(),
+                  (await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`)).json(),
+                ])
                 const prevByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string }[]>()
                 for (const a of (data.adjustments || [])) {
+                  // Staff-loan rows are NOT copied from the previous cutoff: copying
+                  // loses the loan link (staffLoanId), so the saved copy neither
+                  // suppresses this cutoff's auto-suggestion (→ duplicate rows after
+                  // save) nor credits the loan at finalize. The register-driven rows
+                  // below are the source of truth for loan deductions.
+                  if ((a as any).staffLoanId) continue
                   if (!prevByEmp.has(a.employeeId)) prevByEmp.set(a.employeeId, [])
                   prevByEmp.get(a.employeeId)!.push(a)
+                }
+                // Current cutoff's loan-linked rows (already-saved ones and fresh
+                // suggestions) — recomputed from the loan register, so amounts are
+                // clamped to what is actually still owed.
+                const loanByEmp = new Map<string, any[]>()
+                for (const a of (Array.isArray(curData) ? curData : [])) {
+                  if (!(a as any).staffLoanId) continue
+                  if (!loanByEmp.has(a.employeeId)) loanByEmp.set(a.employeeId, [])
+                  loanByEmp.get(a.employeeId)!.push(a)
                 }
                 const rows: AdjustmentRow[] = []
                 let rk = 0
                 for (const emp of allBranchEmps) {
-                  const empAdjs = prevByEmp.get(emp.id)
-                  if (empAdjs && empAdjs.length > 0) {
-                    for (const ex of empAdjs) {
-                      rows.push({
-                        employeeId: emp.id,
-                        employeeName: `${emp.firstName} ${emp.lastName}`,
-                        allowance: toNum(ex.allowance),
-                        allowanceType: ex.allowanceType || 'NON_TAXABLE',
-                        allowanceLabel: ex.allowanceLabel || '',
-                        deduction: toNum(ex.deduction),
-                        deductionType: (ex as any).deductionType || 'NON_TAXABLE',
-                        deductionLabel: ex.deductionLabel || '',
-                        rowKey: `r${rk++}`,
-                      })
-                    }
-                  } else {
+                  const empAdjs = prevByEmp.get(emp.id) || []
+                  const empLoans = loanByEmp.get(emp.id) || []
+                  for (const ex of empAdjs) {
+                    rows.push({
+                      employeeId: emp.id,
+                      employeeName: `${emp.firstName} ${emp.lastName}`,
+                      allowance: toNum(ex.allowance),
+                      allowanceType: ex.allowanceType || 'NON_TAXABLE',
+                      allowanceLabel: ex.allowanceLabel || '',
+                      deduction: toNum(ex.deduction),
+                      deductionType: (ex as any).deductionType || 'NON_TAXABLE',
+                      deductionLabel: ex.deductionLabel || '',
+                      rowKey: `r${rk++}`,
+                    })
+                  }
+                  for (const ln of empLoans) {
+                    rows.push({
+                      employeeId: emp.id,
+                      employeeName: `${emp.firstName} ${emp.lastName}`,
+                      allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+                      deduction: toNum(ln.deduction),
+                      deductionType: ln.deductionType || 'NON_TAXABLE',
+                      deductionLabel: ln.deductionLabel || '',
+                      rowKey: `r${rk++}`,
+                      staffLoanId: ln.staffLoanId,
+                      suggested: !!ln.suggested,
+                    })
+                  }
+                  if (empAdjs.length === 0 && empLoans.length === 0) {
                     rows.push({
                       employeeId: emp.id,
                       employeeName: `${emp.firstName} ${emp.lastName}`,
@@ -4296,6 +4389,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                       setAdjSaved(false)
                                     }} className="p-0.5 rounded hover:bg-green-50" title="Add another line">
                                       <Plus size={13} className="text-green-600" />
+                                    </button>
+                                  )}
+                                  {/* Only offered when this employee actually owes something. */}
+                                  {isFirstForEmp && (loansByEmployee.get(row.employeeId)?.length || 0) > 0 && (
+                                    <button onClick={() => openLoanPicker(row.employeeId, row.employeeName || '')}
+                                      className="p-0.5 rounded hover:bg-teal-50" title="Deduct against a staff loan">
+                                      <Landmark size={13} style={{ color: 'var(--teal)' }} />
                                     </button>
                                   )}
                                   {empRowCount > 1 && (
@@ -5494,6 +5594,82 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           </div>
         )
       })()}
+      {/* ── Deduct against a staff loan ──
+          One amount per loan, defaulting to the standing per-cutoff figure but
+          editable so a staff member can clear a balance faster. Writing back by
+          loan id is what keeps a loan from being deducted twice in one cutoff. */}
+      {loanPickerEmp && (() => {
+        const loans = loansByEmployee.get(loanPickerEmp.employeeId) || []
+        const total = loans.reduce((sum, l) => sum + Math.min(Math.max(Number(loanPickerAmounts[l.id]) || 0, 0), l.balance), 0)
+        return (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setLoanPickerEmp(null)}>
+            <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-1">
+                <div>
+                  <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Deduct from Staff Loan</h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{loanPickerEmp.employeeName} · this cutoff</p>
+                </div>
+                <button onClick={() => setLoanPickerEmp(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+              </div>
+              <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+                Each loan starts at its standing per-cutoff amount. Enter more to settle it sooner, or zero to skip it this cutoff — never more than the balance.
+              </p>
+
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs">
+                  <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                    <th className="px-3 py-2 text-left font-semibold uppercase">Loan</th>
+                    <th className="px-3 py-2 text-right font-semibold uppercase">Per Cutoff</th>
+                    <th className="px-3 py-2 text-right font-semibold uppercase">Balance</th>
+                    <th className="px-3 py-2 text-right font-semibold uppercase w-32">Deduct Now</th>
+                    <th className="px-3 py-2 text-right font-semibold uppercase">Remaining</th>
+                  </tr></thead>
+                  <tbody>
+                    {loans.map(l => {
+                      const amount = Math.min(Math.max(Number(loanPickerAmounts[l.id]) || 0, 0), l.balance)
+                      const over = (Number(loanPickerAmounts[l.id]) || 0) > l.balance
+                      return (
+                        <tr key={l.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-2">
+                            <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{l.category.replace(/_/g, ' ')}</span>
+                            {l.description && <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>{l.description}</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(l.perCutoff)}</td>
+                          <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(l.balance)}</td>
+                          <td className="px-3 py-2 text-right">
+                            <input type="number" min="0" step="0.01" max={l.balance}
+                              value={loanPickerAmounts[l.id] ?? ''}
+                              onChange={e => setLoanPickerAmounts(prev => ({ ...prev, [l.id]: e.target.value }))}
+                              className="w-28 px-2 py-1.5 rounded border text-xs text-right font-mono"
+                              style={{ borderColor: over ? '#dc2626' : 'var(--light-gray)' }} />
+                            {over && <span className="block text-[10px] text-red-600 mt-0.5">capped at balance</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: l.balance - amount === 0 ? '#166534' : 'var(--teal)' }}>
+                            {peso(l.balance - amount)}{l.balance - amount === 0 && <span className="block text-[10px]">settles it</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between mt-4">
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total deducted this cutoff</span>
+                <span className="text-sm font-bold font-mono" style={{ color: 'var(--teal)' }}>{peso(total)}</span>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-5">
+                <button onClick={() => setLoanPickerEmp(null)} className="px-4 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+                <button onClick={applyLoanPicker} className="px-5 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                  Apply to this cutoff
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
     </div>
   )
 }

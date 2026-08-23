@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
+import { pushWeightsToStore } from '@/lib/store-weight-sync'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
+import { resolveProductAccounts, inventorySubTypeForDept } from '@/lib/inventory-accounts'
+import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -41,7 +44,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where: { ...where, isActive: true },
-      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true }, orderBy: { variantLabel: 'asc' } } },
+      select: { id: true, name: true, supplierProductName: true, description: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, imageUrl: true, rewardPointsPrice: true, isPreOrder: true, websiteClassification: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, weightKg: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, variantSku: true, quantity: true, unitCost: true, sellingPrice: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, weightKg: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
@@ -88,7 +91,7 @@ export async function POST(req: Request) {
     const { name, skuDepartment, skuCategory, skuSubcategory, branch, accountSubType,
             unitCost, sellingPrice, rewardPointsPrice, quantity, reorderLevel, supplierId, supplierExchangeRate,
             revenueAccountId, sourceAccountId, expenseAccountId,
-            dimensionLength, dimensionWidth, dimensionHeight } = body
+            dimensionLength, dimensionWidth, dimensionHeight, weightKg } = body
 
     if (!name?.trim() || !skuDepartment || !skuCategory || !skuSubcategory || !branch) {
       return NextResponse.json({ error: 'Name, SKU components, and branch are required' }, { status: 400 })
@@ -110,6 +113,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'SKU already exists' }, { status: 409 })
     }
 
+    // Wire the GL accounts from the SKU department unless the form supplied them,
+    // so a product is always postable — and lands on the right income-statement
+    // line and sub-classification — the moment it's created.
+    const acct = await resolveProductAccounts(prisma, skuDepartment, {
+      revenueAccountId, expenseAccountId, sourceAccountId, accountSubType,
+    })
+
     const item = await prisma.inventoryItem.create({
       data: {
         // Product names are stored upper case so the catalogue reads uniformly.
@@ -122,7 +132,7 @@ export async function POST(req: Request) {
         skuSequence: nextSequence,
         barcode: sku, // Code128 uses the SKU string directly
         branch,
-        accountSubType: accountSubType || null,
+        accountSubType: acct.accountSubType,
         unitCost: unitCost ? parseFloat(unitCost) : 0,
         initialUnitCost: unitCost ? parseFloat(unitCost) : 0,
         sellingPrice: sellingPrice ? parseFloat(sellingPrice) : null,
@@ -130,21 +140,30 @@ export async function POST(req: Request) {
         quantity: quantity ? parseInt(quantity) : 0,
         reorderLevel: reorderLevel ? parseInt(reorderLevel) : null,
         supplierId: supplierId || null,
+        supplierProductName: body.supplierProductName?.trim() || null,
+        description: body.description?.trim() || null,
         supplierExchangeRate: supplierExchangeRate ? parseFloat(supplierExchangeRate) : null,
-        revenueAccountId: revenueAccountId || null,
-        sourceAccountId: sourceAccountId || null,
+        revenueAccountId: acct.revenueAccountId,
+        sourceAccountId: acct.sourceAccountId,
         fromPettyCash: body.fromPettyCash === true,
-        expenseAccountId: expenseAccountId || null,
+        expenseAccountId: acct.expenseAccountId,
         issuedOfficialInvoice: body.issuedOfficialInvoice || false,
         isPreOrder: body.isPreOrder || false,
         websiteClassification: body.websiteClassification || null,
         dimensionLength: dimensionLength ? parseFloat(dimensionLength) : null,
         dimensionWidth: dimensionWidth ? parseFloat(dimensionWidth) : null,
         dimensionHeight: dimensionHeight ? parseFloat(dimensionHeight) : null,
+        weightKg: weightKg ? parseFloat(weightKg) : null,
         createdById: session.user.id,
       },
       include: { supplier: { select: { supplierName: true } } },
     })
+
+    // A new product with a weight should reach the storefront too.
+    if (item.weightKg != null && item.sku) {
+      const sync = await pushWeightsToStore([{ sku: item.sku, weightKg: Number(item.weightKg) }])
+      if (!sync.pushed) console.warn(`[STORE SYNC] weight for ${item.sku} not pushed: ${sync.reason}`)
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -170,9 +189,10 @@ export async function PUT(req: Request) {
 
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
-            reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
+            reorderLevel, supplierId, supplierProductName, description, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
             issuedOfficialInvoice, isPreOrder, websiteClassification, imageUrl, isActive,
-            dimensionLength, dimensionWidth, dimensionHeight } = await req.json()
+            skuDepartment, skuCategory, skuSubcategory,
+            dimensionLength, dimensionWidth, dimensionHeight, weightKg } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 })
@@ -189,6 +209,8 @@ export async function PUT(req: Request) {
     if (quantity !== undefined) data.quantity = parseInt(quantity)
     if (reorderLevel !== undefined) data.reorderLevel = reorderLevel ? parseInt(reorderLevel) : null
     if (supplierId !== undefined) data.supplierId = supplierId || null
+    if (supplierProductName !== undefined) data.supplierProductName = supplierProductName?.trim() || null
+    if (description !== undefined) data.description = description?.trim() || null
     if (supplierExchangeRate !== undefined) data.supplierExchangeRate = supplierExchangeRate ? parseFloat(supplierExchangeRate) : null
     if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
     if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
@@ -201,16 +223,94 @@ export async function PUT(req: Request) {
     if (dimensionLength !== undefined) data.dimensionLength = dimensionLength !== '' && dimensionLength !== null ? parseFloat(dimensionLength) : null
     if (dimensionWidth !== undefined) data.dimensionWidth = dimensionWidth !== '' && dimensionWidth !== null ? parseFloat(dimensionWidth) : null
     if (dimensionHeight !== undefined) data.dimensionHeight = dimensionHeight !== '' && dimensionHeight !== null ? parseFloat(dimensionHeight) : null
+    if (weightKg !== undefined) data.weightKg = weightKg !== '' && weightKg !== null ? parseFloat(weightKg) : null
+
+    const current = await prisma.inventoryItem.findUnique({
+      where: { id },
+      select: { sku: true, skuDepartment: true, skuCategory: true, skuSubcategory: true, skuSequence: true,
+                revenueAccountId: true, expenseAccountId: true, sourceAccountId: true, accountSubType: true },
+    })
+
+    // Reclassification. The edit form has always SENT these three fields; the API
+    // just ignored them, so changing a product's department in the UI silently did
+    // nothing. Applying them means re-cutting the SKU under the new prefix, since a
+    // SKU that says OT- on a merchandise item is worse than no structure at all.
+    //
+    // The BARCODE is deliberately left alone: it's the string printed on labels
+    // already stuck to physical stock, so re-cutting it would strand every unit in
+    // the stockroom. Old label keeps scanning; the SKU is the accounting identity.
+    let reclassified: { from: string; to: string } | null = null
+    if (current && (skuDepartment || skuCategory || skuSubcategory)) {
+      const nextDept = (skuDepartment || current.skuDepartment).trim().toUpperCase()
+      const nextCat = (skuCategory || current.skuCategory).trim().toUpperCase()
+      const nextSub = (skuSubcategory || current.skuSubcategory).trim().toUpperCase()
+      const changed = nextDept !== current.skuDepartment || nextCat !== current.skuCategory || nextSub !== current.skuSubcategory
+      if (changed) {
+        if (!SKU_HIERARCHY[nextDept]?.categories?.[nextCat]?.subcategories?.[nextSub]) {
+          return NextResponse.json({ error: `Unknown SKU classification ${nextDept}-${nextCat}-${nextSub}` }, { status: 400 })
+        }
+        const prefix = `${nextDept}-${nextCat}-${nextSub}`
+        const last = await prisma.inventoryItem.findFirst({
+          where: { sku: { startsWith: prefix } },
+          orderBy: { skuSequence: 'desc' },
+          select: { skuSequence: true },
+        })
+        const nextSeq = (last?.skuSequence || 0) + 1
+        // Consignment copies carry a "-BRANCH" suffix on the parent SKU; keep it so
+        // the copy stays recognisable as the same product at another branch.
+        const suffix = current.sku.startsWith(`${current.skuDepartment}-${current.skuCategory}-${current.skuSubcategory}-`)
+          ? current.sku.split('-').slice(4).join('-')
+          : ''
+        const newSku = `${prefix}-${String(nextSeq).padStart(3, '0')}${suffix ? `-${suffix}` : ''}`
+        data.skuDepartment = nextDept
+        data.skuCategory = nextCat
+        data.skuSubcategory = nextSub
+        data.skuSequence = nextSeq
+        data.sku = newSku
+        reclassified = { from: current.sku, to: newSku }
+        // Keep the sub-type aligned with the new department when it was aligned with
+        // the old one (i.e. auto-derived, not a deliberate override).
+        if (accountSubType === undefined && current.accountSubType === inventorySubTypeForDept(current.skuDepartment)) {
+          data.accountSubType = inventorySubTypeForDept(nextDept)
+        }
+      }
+    }
+
+    // Self-heal on save: a product created before the accounts were derived (or by
+    // a path that didn't set them) gets its blanks filled the first time anyone
+    // edits it. Only ever fills nulls — an explicit value in this request, or one
+    // already on the row, is left exactly as it is.
+    if (current) {
+      const filled = await resolveProductAccounts(prisma, data.skuDepartment ?? current.skuDepartment, {
+        revenueAccountId: data.revenueAccountId !== undefined ? data.revenueAccountId : current.revenueAccountId,
+        expenseAccountId: data.expenseAccountId !== undefined ? data.expenseAccountId : current.expenseAccountId,
+        sourceAccountId: data.sourceAccountId !== undefined ? data.sourceAccountId : current.sourceAccountId,
+        accountSubType: data.accountSubType !== undefined ? data.accountSubType : current.accountSubType,
+      })
+      if (filled.revenueAccountId) data.revenueAccountId = filled.revenueAccountId
+      if (filled.expenseAccountId) data.expenseAccountId = filled.expenseAccountId
+      if (filled.sourceAccountId) data.sourceAccountId = filled.sourceAccountId
+      if (filled.accountSubType) data.accountSubType = filled.accountSubType
+    }
 
     const item = await prisma.inventoryItem.update({ where: { id }, data })
+
+    // The storefront prices delivery by weight, so its copy has to follow this
+    // one. Non-fatal: the item is saved either way, and the log records a
+    // divergence rather than hiding it.
+    if (weightKg !== undefined && item.sku) {
+      const sync = await pushWeightsToStore([{ sku: item.sku, weightKg: item.weightKg == null ? null : Number(item.weightKg) }])
+      if (!sync.pushed) console.warn(`[STORE SYNC] weight for ${item.sku} not pushed: ${sync.reason}`)
+      else if (sync.unmatched?.length) console.warn(`[STORE SYNC] no storefront product for SKU ${sync.unmatched.join(', ')}`)
+    }
 
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
-        action: 'UPDATE',
+        action: reclassified ? 'RECLASSIFY' : 'UPDATE',
         entity: 'inventoryItem',
         entityId: item.id,
-        details: { updated: Object.keys(data) },
+        details: { updated: Object.keys(data), ...(reclassified ? { skuChanged: reclassified } : {}) },
       },
     })
 

@@ -6,12 +6,15 @@ import {
   Calendar, Filter, Users, XCircle, ChevronDown, ChevronRight,
   Upload, Eye, Trash2, FileText, QrCode, Loader2, X,
 } from 'lucide-react'
+import { branchLabel as sharedBranchLabel } from '@/lib/branch-label'
 
 type Tab = 'waitlist' | 'followup' | 'noshow' | 'cancellation'
 
+// Only East/Greenhills \u2014 this tab's data (waitlist/follow-up/no-show/
+// cancellation) is clinic-only, deliberately excludes Verdana.
 const BRANCHES = [
-  { value: 'SANDBOX_EAST', label: 'East Branch' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
+  { value: 'SANDBOX_EAST', label: sharedBranchLabel('SANDBOX_EAST') },
+  { value: 'SANDBOX_GREENHILLS', label: sharedBranchLabel('SANDBOX_GREENHILLS') },
 ]
 
 function branchLabel(b?: string | null) {

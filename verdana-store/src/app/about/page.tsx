@@ -15,11 +15,11 @@ export default function AboutPage() {
         {/* Logo mark */}
         <div className="my-12 flex justify-center">
           <Image
-            src="/logo/logo-teal-transparent.png"
+            src="/logo/verdana-full-r.png"
             alt="Verdana Rehab Solutions"
-            width={300}
-            height={120}
-            className="h-auto w-64 sm:w-80"
+            width={565}
+            height={589}
+            className="h-auto w-52 sm:w-64"
           />
         </div>
 
@@ -44,10 +44,10 @@ export default function AboutPage() {
         <div className="mx-auto max-w-3xl px-6 text-center space-y-4">
           <h2 className="text-2xl font-bold">Our Mission</h2>
           <p className="text-lg leading-relaxed text-gray-200">
-            To make therapeutic tools accessible, affordable, and engaging for every child who
-            needs them. We are committed to bridging the gap between clinical excellence and
-            everyday use, empowering families and therapists with products that truly make a
-            difference.
+            To optimize quality of life through accessible, excellent, and evidence-based
+            rehabilitation services &mdash; optimizing functional mobility, enabling effective
+            communication, promoting inclusivity, advancing clinical research, and fostering
+            excellence in the professional community.
           </p>
         </div>
       </section>
@@ -57,10 +57,60 @@ export default function AboutPage() {
         <div className="mx-auto max-w-3xl px-6 text-center space-y-4">
           <h2 className="text-2xl font-bold text-verdana-charcoal">Our Vision</h2>
           <p className="text-lg leading-relaxed text-gray-700">
-            A world where every child, regardless of their abilities, has the support and tools
-            they need to reach their full potential. We envision communities where therapy is not
-            just a clinical experience, but a joyful part of everyday life.
+            To lead rehabilitation in the Philippines. A global leader in accessible, excellent,
+            and evidence-based habilitation and rehabilitation services &mdash; helping improve the
+            overall health of society, one person and one community at a time.
           </p>
+          <p className="pt-4 text-base font-serif italic text-verdana-charcoal/80">
+            Feeling seen. Finding footing. Moving forward.
+          </p>
+        </div>
+      </section>
+
+      {/* Values section — the three arches */}
+      <section className="py-16 bg-verdana-cream">
+        <div className="mx-auto max-w-4xl px-6">
+          <h2 className="text-2xl sm:text-3xl font-bold text-verdana-charcoal">
+            The three arches stand for our three values: Quality, Empathy, and Teamwork.
+          </h2>
+
+          <div className="mt-10 space-y-6">
+            {[
+              {
+                arch: "Outer Arch · Narra",
+                title: "Quality",
+                desc: "Foundation of the work. Evidence-based, outcome-led.",
+                color: "#8a9a80",
+              },
+              {
+                arch: "Middle Arch · Sage",
+                title: "Empathy",
+                desc: "The meeting place. We listen first.",
+                color: "#bdc3aa",
+              },
+              {
+                arch: "Inner Arch · Clay",
+                title: "Teamwork",
+                desc: "Warmth at the core. Therapists, families, patients in concert.",
+                color: "#e6ae98",
+              },
+            ].map((value) => (
+              <div key={value.title} className="flex items-stretch gap-5">
+                <span
+                  className="w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: value.color }}
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-verdana-teal">
+                    {value.arch}
+                  </p>
+                  <h3 className="mt-1 text-2xl font-bold text-verdana-charcoal">{value.title}</h3>
+                  <p className="mt-1 text-gray-700 leading-relaxed">{value.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     </>

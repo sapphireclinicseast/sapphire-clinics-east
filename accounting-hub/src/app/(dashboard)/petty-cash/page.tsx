@@ -27,6 +27,45 @@ const BRANCHES = [
 ]
 const ALLOC_BRANCHES = BRANCHES.filter(b => b.value !== 'CEO')
 const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSIS']
+
+// ── Contribution-margin department tags ──────────────────────────────────
+// Which department(s) an expense belongs to, for the Contribution Margin
+// analysis. "All" (nothing ticked) = allocated by the configured rent
+// percentages; tick one or more to charge those departments directly.
+const CM_DEPTS = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'] as const
+function DeptTagCell({ value, disabled, onSave }: { value: string[]; disabled?: boolean; onSave: (next: string[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const label = value.length ? value.map(d => d === 'PSYCHOLOGY' ? 'PSYCH' : d === 'ORTHOSIS' ? 'ORTHO' : d).join(', ') : 'All'
+  return (
+    <div className="relative">
+      <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+        className="px-2 py-1.5 w-full text-left text-sm whitespace-nowrap rounded"
+        style={{ minWidth: 120, color: value.length ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+        {label} ▾
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 p-2 rounded-xl bg-white shadow-lg" style={{ border: '1px solid var(--light-gray)', minWidth: 180 }}>
+          <label className="flex items-center gap-2 px-1 py-1 text-xs font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+            <input type="checkbox" checked={value.length === 0} onChange={() => { onSave([]); }} className="accent-current" />
+            All (use rent %)
+          </label>
+          <div className="my-1" style={{ borderTop: '1px solid var(--light-gray)' }} />
+          {CM_DEPTS.map(d => (
+            <label key={d} className="flex items-center gap-2 px-1 py-1 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+              <input type="checkbox" checked={value.includes(d)}
+                onChange={() => onSave(value.includes(d) ? value.filter(x => x !== d) : [...value, d])}
+                className="accent-current" />
+              {d === 'PSYCHOLOGY' ? 'Psychology' : d === 'ORTHOSIS' ? 'Orthosis' : d}
+            </label>
+          ))}
+          <button type="button" onClick={() => setOpen(false)}
+            className="mt-1 w-full py-1 rounded-lg text-xs font-medium" style={{ background: 'var(--light-gray)' }}>Done</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const PCF_STATUS = ['Unliquidated', 'For Replenishment', 'Cancelled', 'Missing']
 const VATABLE = ['VAT', 'Non-VAT']
 const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
@@ -951,11 +990,8 @@ function PettyCashInner() {
                           </select>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.department || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { department: ev.target.value }, false)}>
-                            <option value=""></option>
-                            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                          </select>
+                          <DeptTagCell value={(e as unknown as { departments?: string[] }).departments || []} disabled={lk}
+                            onSave={next => saveField(e.id, { departments: next } as unknown as Partial<Entry>, false)} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           {e.pcfStatus === 'Replenished' ? (
