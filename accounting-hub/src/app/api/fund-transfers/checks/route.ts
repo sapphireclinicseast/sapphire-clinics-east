@@ -114,11 +114,22 @@ export async function GET(req: Request) {
   // what a bank-rec match records. Without one the cheque was written but has not
   // been seen on the statement: still outstanding, stopped, or never presented.
   const matched = await prisma.bankTransaction.findMany({
-    where: { bankAccountId: { in: [...idSet] }, matchId: { not: null } },
+    where: { bankAccountId: { in: [...idSet] }, matchId: { not: null }, status: 'POSTED' },
     select: { matchId: true, date: true },
   })
   const clearedById = new Map<string, Date>()
-  for (const m of matched) if (m.matchId) clearedById.set(m.matchId, m.date)
+  // A MULTI match stores several record ids comma-joined in one matchId; each
+  // of those records cleared on that line. Earliest date wins when a record
+  // spans several bank lines.
+  for (const m of matched) {
+    if (!m.matchId) continue
+    for (const id of m.matchId.split(',')) {
+      const key = id.trim()
+      if (!key) continue
+      const prev = clearedById.get(key)
+      if (!prev || m.date < prev) clearedById.set(key, m.date)
+    }
+  }
 
   // 4b. The chequebook register — every leaf, including cancelled and unused.
   const register = await prisma.issuedCheque.findMany({
