@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server'
 import { readStoreData, addProduct, updateProduct, deleteProduct } from '@/lib/store-data'
 import { getAllProductImages } from '@/lib/product-images'
+import { getAllProductVideos } from '@/lib/product-videos'
 
 export async function GET() {
   const data = await readStoreData()
   const imageData = getAllProductImages()
+  const videoData = getAllProductVideos()
 
   const productsWithImages = data.products.map((p) => ({
     ...p,
     uploadedImages: imageData[p.slug] || [],
+    uploadedVideos: videoData[p.slug] || [],
   }))
 
   return NextResponse.json({
@@ -44,17 +47,17 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json()
-    const { slug, images, ...updates } = body
+    const { slug, images, videos, ...updates } = body
 
     if (!slug) {
       return NextResponse.json({ error: 'Slug is required' }, { status: 400 })
     }
 
+    const { readFile, writeFile, mkdir } = await import('fs/promises')
+    const { join } = await import('path')
+
     // If only images are being updated (photo save from admin)
-    if (images && Object.keys(updates).length === 0) {
-      // Save to product-images.json
-      const { readFile, writeFile, mkdir } = await import('fs/promises')
-      const { join } = await import('path')
+    if (images && Object.keys(updates).length === 0 && !videos) {
       const DATA_FILE = join(process.cwd(), 'src', 'data', 'product-images.json')
 
       let imageData: Record<string, string[]> = {}
@@ -71,6 +74,23 @@ export async function PUT(request: Request) {
       await updateProduct(slug, { images })
 
       return NextResponse.json({ success: true, images })
+    }
+
+    // If only videos are being updated
+    if (videos && Object.keys(updates).length === 0 && !images) {
+      const DATA_FILE = join(process.cwd(), 'src', 'data', 'product-videos.json')
+
+      let videoData: Record<string, string[]> = {}
+      try {
+        const raw = await readFile(DATA_FILE, 'utf-8')
+        videoData = JSON.parse(raw)
+      } catch {}
+
+      videoData[slug] = videos
+      await mkdir(join(process.cwd(), 'src', 'data'), { recursive: true })
+      await writeFile(DATA_FILE, JSON.stringify(videoData, null, 2))
+
+      return NextResponse.json({ success: true, videos })
     }
 
     // Full product update

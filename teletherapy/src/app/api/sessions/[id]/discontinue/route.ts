@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isNoteAgeLocked, NOTE_AGE_LOCK_MESSAGE } from '@/lib/note-age-lock'
 
 export async function POST(
   req: NextRequest,
@@ -35,6 +36,12 @@ export async function POST(
     const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
     if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    // Age lock — same rule as complete/edit. This route creates a note, so it
+    // needs the check explicitly; the "already has a note" guard above is not
+    // a substitute for it.
+    if (isNoteAgeLocked(schedule)) {
+      return NextResponse.json({ error: NOTE_AGE_LOCK_MESSAGE, ageLocked: true }, { status: 403 })
     }
   }
 

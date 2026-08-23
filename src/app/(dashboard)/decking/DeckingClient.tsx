@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-react'
 import PatientRequestsPanel from './PatientRequestsPanel'
+import { branchLabel } from '@/lib/branch-label'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
@@ -14,13 +15,9 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
   SBEA: { startTime: '10:00', endTime: '20:00' },
   SBGH: { startTime: '09:00', endTime: '19:00' },
 }
-const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string }
+interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null }
 interface Patient { id: string; firstName: string; lastName: string }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }
 interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean }
@@ -29,6 +26,16 @@ type ClinicSchedule = Record<string, DayHours>
 type AllClinicHours = Record<string, ClinicSchedule>
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Interns never get their own decking schedule — they're attached to a
+// supervisor's session through the "Select Intern" field in Clinic Schedule
+// and Queueing. This matters doubly here: decking therapist configs are what
+// drive the Clinic Schedule "Tomorrow" list, so an intern given a config here
+// would reappear there as a standalone clinician.
+function isIntern(s: StaffMember): boolean {
+  return s.employmentType === 'intern'
+}
+
 function formatTime(t: string): string {
   if (!t) return ''
   const [h, m] = t.split(':').map(Number)
@@ -52,8 +59,8 @@ function generateHourlySlots(startTime: string, endTime: string): string[] {
 }
 
 function visibleBranches(role: string): string[] {
-  if (role.startsWith('SBEA_')) return ['SBEA']
-  if (role.startsWith('SBGH_')) return ['SBGH']
+  if (role.startsWith('SBEA_') || role.startsWith('AHEA_')) return ['SBEA']
+  if (role.startsWith('SBGH_') || role.startsWith('AHGH_')) return ['SBGH']
   return ['SBEA', 'SBGH']
 }
 
@@ -116,8 +123,9 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
 }
 
 // ─── Custom Slot Modal ────────────────────────────────────────────────────────
-function CustomSlotModal({ staff, workDays, onClose, onSave }: {
+function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
   staff: StaffMember
+  activeBranch: string
   workDays: string[]
   onClose: () => void
   onSave: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null }) => Promise<void>
@@ -147,7 +155,7 @@ function CustomSlotModal({ staff, workDays, onClose, onSave }: {
   async function handleSave() {
     if (!dayOfWeek || !startTime || !endTime) return
     setSaving(true)
-    await onSave({ staffId: staff.id, patientId: patient?.id ?? null, dayOfWeek, startTime, endTime, branch: staff.branch, department: staff.department, notes: notes || null })
+    await onSave({ staffId: staff.id, patientId: patient?.id ?? null, dayOfWeek, startTime, endTime, branch: activeBranch, department: staff.department, notes: notes || null })
     setSaving(false)
     onClose()
   }
@@ -223,8 +231,9 @@ function CustomSlotModal({ staff, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSaveSlot, onDeleteSlot }: {
+function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSaveConfig, onSaveSlot, onDeleteSlot }: {
   staff: StaffMember
+  activeBranch: string
   config: TherapistConfig | undefined
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
@@ -261,7 +270,7 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
 
   async function saveConfig() {
     setSaving(true)
-    await onSaveConfig(staff.id, { workDays, startTime, endTime, useDefault, branch: staff.branch, department: staff.department })
+    await onSaveConfig(staff.id, { workDays, startTime, endTime, useDefault, branch: activeBranch, department: staff.department })
     setSaving(false)
     if (workDays.length > 0) setConfigOpen(false)
   }
@@ -286,7 +295,7 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
       dayOfWeek,
       startTime: slotTime,
       endTime: addHour(slotTime),
-      branch: staff.branch,
+      branch: activeBranch,
       department: staff.department,
       notes: null,
       disabled: true,
@@ -304,7 +313,7 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
       dayOfWeek,
       startTime: slotTime,
       endTime: addHour(slotTime),
-      branch: staff.branch,
+      branch: activeBranch,
       department: staff.department,
       notes: null,
     })
@@ -628,6 +637,7 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
       {showCustomModal && (
         <CustomSlotModal
           staff={staff}
+          activeBranch={activeBranch}
           workDays={configuredDays}
           onClose={() => setShowCustomModal(false)}
           onSave={async data => {
@@ -676,7 +686,7 @@ function SettingsTab({ initialData, onSave }: {
       {['SBEA', 'SBGH'].map(branch => (
         <div key={branch} style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', overflow: 'hidden' }}>
           <div style={{ padding: '0.875rem 1rem', background: '#FFF3E8', borderBottom: '1px solid #FDE4CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: '#ED6823' }}>{BRANCH_LABEL[branch] ?? branch} — Default Clinic Hours</h3>
+            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: '#ED6823' }}>{branchLabel(branch) ?? branch} — Default Clinic Hours</h3>
             <button
               onClick={() => handleSave(branch)}
               disabled={saving === branch}
@@ -760,8 +770,9 @@ export default function DeckingClient({ role }: { role: string }) {
     if (!loadingStaff) loadBranchData(activeBranch)
   }, [activeBranch, loadingStaff, loadBranchData])
 
-  // Filtered staff for display
-  const branchStaff = staff.filter(s => s.branch === activeBranch && s.department === activeDept)
+  // Filtered staff for display — interbranch staff (secondary branch in
+  // extraBranches) must show up here too, not just under their primary branch.
+  const branchStaff = staff.filter(s => !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && s.department === activeDept)
   const filteredStaff = nameFilter.trim()
     ? branchStaff.filter(s => `${s.firstName} ${s.lastName}`.toLowerCase().includes(nameFilter.toLowerCase()))
     : branchStaff
@@ -775,7 +786,7 @@ export default function DeckingClient({ role }: { role: string }) {
     slotsByStaff.set(slot.staffId, arr)
   }
 
-  const presentDepts = DEPARTMENTS.filter(d => staff.some(s => s.branch === activeBranch && s.department === d))
+  const presentDepts = DEPARTMENTS.filter(d => staff.some(s => !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && s.department === d))
   const defaultHours = clinicHoursData[activeBranch]
     ? (() => {
         const schedule = clinicHoursData[activeBranch]
@@ -877,7 +888,7 @@ export default function DeckingClient({ role }: { role: string }) {
                 {branches.map(b => (
                   <button key={b} onClick={() => { setActiveBranch(b); setNameFilter('') }}
                     style={{ padding: '0.4rem 1rem', fontSize: '0.82rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: activeBranch === b ? 'var(--teal)' : '#fff', color: activeBranch === b ? '#fff' : 'var(--mid-gray)' }}>
-                    {BRANCH_LABEL[b] ?? b}
+                    {branchLabel(b) ?? b}
                   </button>
                 ))}
               </div>
@@ -919,6 +930,7 @@ export default function DeckingClient({ role }: { role: string }) {
                 <TherapistRow
                   key={s.id}
                   staff={s}
+                  activeBranch={activeBranch}
                   config={configMap.get(s.id)}
                   slots={slotsByStaff.get(s.id) ?? []}
                   defaultHours={resolvedDefaultHours}

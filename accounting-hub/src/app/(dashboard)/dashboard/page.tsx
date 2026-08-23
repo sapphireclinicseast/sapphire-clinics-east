@@ -105,6 +105,7 @@ export default async function DashboardPage() {
   if (isHmoOfficer) redirect('/accounts-receivable')
   // Med rep only has Reports — send them straight there
   if (role === 'MEDREP') redirect('/reports')
+  if (role === 'INVESTOR') redirect('/reports')
 
   // Front desk users only see Services + POS (active, clickable)
   const visibleModules = isFrontDesk

@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import {
@@ -9,14 +10,22 @@ import {
   setPatientPassword,
   getMe,
   updatePatientProfile,
+  listMyDocuments,
+  documentFileUrl,
   InvalidTokenError,
   type MeResult,
+  type PatientSessionRecord,
+  type SessionStats,
+  type PatientDocuments,
 } from '@/lib/api'
+import { branchLabel } from '@/lib/branch-label'
 import { getSession, setSession, clearSession } from '@/lib/session'
 import Chatbot from '@/components/Chatbot'
 import { Hero3D } from '@/components/landing/Hero3D'
 import RewardsPanel from '@/components/RewardsPanel'
 import { DirectorySection } from '@/components/Directory'
+import PortalConcerns from '@/components/PortalConcerns'
+import HomeProgressSection from '@/components/HomeProgress'
 
 type Tab = 'returning' | 'new'
 
@@ -336,8 +345,8 @@ function AuthCard({
             </Field>
             <Field label="Branch">
               <select required name="branch" className="select" defaultValue="SANDBOX_EAST">
-                <option value="SANDBOX_EAST">East Branch</option>
-                <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
+                <option value="SANDBOX_EAST">{branchLabel('SANDBOX_EAST')}</option>
+                <option value="SANDBOX_GREENHILLS">{branchLabel('SANDBOX_GREENHILLS')}</option>
               </select>
             </Field>
           </div>
@@ -403,11 +412,12 @@ const SURVEY_BASE = 'https://survey.sapphireclinicseast.org'
 const CLINICIAN_SURVEYS = new Set(['HR10', 'HR11', 'HR16'])
 const FRONTDESK_SURVEYS = new Set(['HR12'])
 
-type Section = 'profile' | 'sessions' | 'feedback' | 'rewards' | 'directory'
+type Section = 'profile' | 'sessions' | 'homeprogress' | 'feedback' | 'rewards' | 'directory'
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'profile', label: 'Profile' },
   { key: 'sessions', label: 'Sessions' },
+  { key: 'homeprogress', label: 'Home Progress' },
   { key: 'feedback', label: 'Feedback' },
   { key: 'rewards', label: 'Reward Points' },
   { key: 'directory', label: 'Directory' },
@@ -443,6 +453,7 @@ function PortalDashboard({
 
   return (
     <section className="max-w-5xl mx-auto animate-fade-up stagger-2 space-y-6">
+      <PortalConcerns token={token} />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-[26px] leading-tight text-[color:var(--deep-teal)]">Welcome back, {firstName}</h2>
@@ -474,7 +485,8 @@ function PortalDashboard({
                 }
               />
             )}
-            {section === 'sessions' && <SessionsSection sessions={data.sessions} />}
+            {section === 'sessions' && <SessionsSection sessions={data.sessions} stats={data.stats} token={token} />}
+            {section === 'homeprogress' && <HomeProgressSection token={token} />}
             {section === 'feedback' && <FeedbackSection surveys={data.surveys} />}
             {section === 'rewards' && (
               <div>
@@ -504,12 +516,12 @@ function SidebarNav({ section, onChange }: { section: Section; onChange: (s: Sec
       >
         Sections
       </div>
-      <div className="flex lg:flex-col gap-1">
+      <div className="flex flex-wrap lg:flex-col gap-1">
         {SECTIONS.map((s) => (
           <button
             key={s.key}
             onClick={() => onChange(s.key)}
-            className={`flex-1 lg:flex-none text-left px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+            className={`lg:w-full text-left px-3 py-2.5 rounded-lg text-[13px] lg:text-sm font-semibold whitespace-nowrap transition-colors ${
               section === s.key
                 ? 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]'
                 : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)] hover:bg-[color:var(--pale-teal)]/50'
@@ -771,7 +783,7 @@ function resizeToDataUrl(file: File, size: number): Promise<string> {
 const SESSIONS_DISCLAIMER =
   'We began using this system in late March–April 2026, so sessions before then are not reflected here.'
 
-function SessionsSection({ sessions }: { sessions: MeResult['sessions'] }) {
+function SessionsSection({ sessions, stats, token }: { sessions: MeResult['sessions']; stats?: SessionStats; token: string }) {
   // Distinct departments present in this patient's history → subtabs.
   const departments = useMemo(() => {
     const seen = new Set<string>()
@@ -784,27 +796,17 @@ function SessionsSection({ sessions }: { sessions: MeResult['sessions'] }) {
   }, [sessions])
 
   const [dept, setDept] = useState<string | null>(departments[0] ?? null)
-  // Keep the active subtab valid if the underlying data changes.
+  const [selected, setSelected] = useState<PatientSessionRecord | null>(null)
+  const [docsOpen, setDocsOpen] = useState(false)
   useEffect(() => {
     if (departments.length && (dept == null || !departments.includes(dept))) {
       setDept(departments[0])
     }
   }, [departments, dept])
 
-  if (sessions.length === 0) {
-    return (
-      <div className="card-static">
-        <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Session History</h3>
-        <p className="mt-3 text-sm text-[color:var(--mid-gray)]">No sessions recorded yet.</p>
-        <Disclaimer>{SESSIONS_DISCLAIMER}</Disclaimer>
-      </div>
-    )
-  }
-
   const active = dept && departments.includes(dept) ? dept : departments[0]
   const deptSessions = sessions.filter((s) => (s.department || 'Other') === active)
 
-  // Group the active department's sessions by provider (clinician).
   const byProvider = new Map<string, MeResult['sessions']>()
   for (const s of deptSessions) {
     const arr = byProvider.get(s.clinician) ?? []
@@ -816,69 +818,268 @@ function SessionsSection({ sessions }: { sessions: MeResult['sessions'] }) {
     <div className="card-static">
       <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Session History</h3>
 
-      {/* Department subtabs */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {departments.map((d) => (
-          <button
-            key={d}
-            onClick={() => setDept(d)}
-            className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
-              active === d
-                ? 'bg-[color:var(--teal)] text-white'
-                : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:opacity-80'
-            }`}
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            {shortDept(d)}
-          </button>
-        ))}
-      </div>
+      {/* Attendance summary */}
+      {stats && (
+        <div className="mt-4 grid grid-cols-3 gap-2.5">
+          <StatTile label="Total Sessions" value={stats.total} tone="teal" />
+          <StatTile label="Confirmed" value={stats.confirmed} pct={stats.confirmedPct} tone="green" />
+          <StatTile label="Cancelled / Resched." value={stats.cancelledRescheduled} pct={stats.cancelledRescheduledPct} tone="rose" />
+        </div>
+      )}
 
-      <p className="mt-4 text-[13px] font-semibold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-        {active}
-      </p>
-
-      <div className="mt-3 space-y-6">
-        {[...byProvider.entries()].map(([provider, rows]) => (
-          <div key={provider}>
-            <div className="text-sm font-semibold text-[color:var(--teal)]">{provider}</div>
-            <div className="mt-2 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                    <th className="pb-2 pr-4 font-semibold">Date</th>
-                    <th className="pb-2 pr-4 font-semibold">Type of Service</th>
-                    <th className="pb-2 font-semibold">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((s) => (
-                    <tr key={`${s.source}-${s.id}`} className="border-t border-[color:var(--light-gray)]">
-                      <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--deep-teal)]">{fmtDate(s.date)}</td>
-                      <td className="py-2.5 pr-4 text-[color:var(--mid-gray)]">{s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}</td>
-                      <td className="py-2.5"><StatusBadge status={s.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {sessions.length === 0 ? (
+        <p className="mt-4 text-sm text-[color:var(--mid-gray)]">No sessions recorded yet.</p>
+      ) : (
+        <>
+          {/* Frozen bar: department tabs stay put on scroll + one Documents card */}
+          <div className="sticky top-[60px] z-20 -mx-7 mt-4 px-7 py-3 bg-white/95 backdrop-blur-sm border-b border-[color:var(--light-gray)]">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex flex-wrap gap-2">
+                {departments.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setDept(d)}
+                    className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
+                      active === d
+                        ? 'bg-[color:var(--teal)] text-white'
+                        : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:opacity-80'
+                    }`}
+                    style={{ fontFamily: 'var(--font-display)' }}
+                  >
+                    {shortDept(d)}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setDocsOpen(true)}
+                title="Initial Evaluation, Progress Reports and other documents"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[color:var(--paper-3)] bg-[color:var(--paper-2)] text-sm font-semibold text-[color:var(--deep-teal)] hover:border-[color:var(--sage)] transition-colors shrink-0"
+              >
+                <FolderIcon /> Documents
+              </button>
             </div>
           </div>
-        ))}
-      </div>
+
+          <p className="mt-3 text-[12px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Tap a session to view the therapist&apos;s notes.
+          </p>
+
+          <div className="mt-3 space-y-6">
+            {[...byProvider.entries()].map(([provider, rows]) => (
+              <div key={provider}>
+                <div className="text-sm font-semibold text-[color:var(--teal)]">{provider}</div>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[11px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+                        <th className="pb-2 pr-4 font-semibold">Date</th>
+                        <th className="pb-2 pr-4 font-semibold">Type of Service</th>
+                        <th className="pb-2 pr-4 font-semibold">Status</th>
+                        <th className="pb-2 font-semibold"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((s) => (
+                        <tr
+                          key={`${s.source}-${s.id}`}
+                          onClick={() => setSelected(s)}
+                          className="border-t border-[color:var(--light-gray)] cursor-pointer hover:bg-[color:var(--pale-teal)]/40 transition-colors"
+                        >
+                          <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--deep-teal)]">{fmtDate(s.date)}</td>
+                          <td className="py-2.5 pr-4 text-[color:var(--mid-gray)]">
+                            {s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}
+                            {s.branch && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] align-middle">{s.branch}</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 pr-4"><StatusBadge status={s.status} /></td>
+                          <td className="py-2.5 text-right text-[color:var(--teal)]">›</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <Disclaimer>{SESSIONS_DISCLAIMER}</Disclaimer>
+
+      {docsOpen && (
+        <DocumentsModal
+          token={token}
+          department={deptSessions.find((s) => s.departmentCode)?.departmentCode}
+          deptLabel={active ?? 'Documents'}
+          onClose={() => setDocsOpen(false)}
+        />
+      )}
+      {selected && <SessionDetailModal session={selected} token={token} onClose={() => setSelected(null)} />}
     </div>
   )
+}
+
+function StatTile({ label, value, pct, tone }: { label: string; value: number; pct?: number; tone: 'teal' | 'green' | 'rose' }) {
+  const color = tone === 'green' ? '#166534' : tone === 'rose' ? '#b91c1c' : 'var(--deep-teal)'
+  const bg = tone === 'green' ? '#F0FDF4' : tone === 'rose' ? '#FEF2F2' : 'var(--pale-teal)'
+  return (
+    <div className="rounded-xl px-3 py-3 text-center" style={{ background: bg }}>
+      <div className="text-[22px] font-semibold tabular-nums leading-none" style={{ color }}>{value}</div>
+      {pct != null && <div className="text-[12px] font-semibold mt-0.5" style={{ color }}>{pct}%</div>}
+      <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] mt-1 leading-tight" style={{ fontFamily: 'var(--font-display)' }}>{label}</div>
+    </div>
+  )
+}
+
+// Per-session detail — read-only. Shows ONLY the therapist's session notes and
+// any attachments they included with those notes for THIS session.
+function SessionDetailModal({ session, token, onClose }: { session: PatientSessionRecord; token: string; onClose: () => void }) {
+  const deptCode = session.departmentCode || shortDept(session.department)
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
+      <div
+        className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 pt-4 pb-3 z-10 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <span className="inline-block text-[11px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]">
+              {deptCode || 'Session'}
+            </span>
+            <div className="text-sm text-[color:var(--deep-teal)] font-semibold mt-1.5">{fmtDate(session.date)}</div>
+            <div className="text-[12px] text-[color:var(--mid-gray)]">
+              {session.clinician}{session.isTeletherapy ? ' · Teletherapy' : ' · In-clinic'}{session.branch ? ` · ${session.branch}` : ''} · <StatusInline status={session.status} />
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
+        </div>
+
+        <div className="overflow-y-auto px-4 py-4">
+          <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Therapist&apos;s Session Notes
+          </div>
+          {session.notes && session.notes.trim() ? (
+            <p className="mt-2 text-sm text-[color:var(--deep-teal)] whitespace-pre-wrap leading-relaxed">{session.notes}</p>
+          ) : (
+            <p className="mt-2 text-sm text-[color:var(--mid-gray)] italic">No notes were recorded for this session.</p>
+          )}
+
+          {/* Attachments the therapist included with this session's note (if any) */}
+          <div className="mt-5 text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+            Attachments
+          </div>
+          <DocumentsPanel token={token} scheduleId={session.id} emptyText="No attachments for this session." />
+
+          <p className="mt-4 text-[11px] text-[color:var(--mid-gray)] border-t border-[color:var(--light-gray)] pt-3" style={{ fontFamily: 'var(--font-display)' }}>
+            Read-only. Notes and attachments are added by your therapist.
+          </p>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+// Department-level Documents (the single "Documents" card at the top of Sessions):
+// Initial Evaluation, Progress Reports and other files for the active department.
+function DocumentsModal({ token, department, deptLabel, onClose }: { token: string; department?: string; deptLabel: string; onClose: () => void }) {
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
+      <div
+        className="bg-white w-full sm:max-w-lg max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-[0_24px_60px_rgba(27,63,56,0.3)] flex flex-col overflow-hidden animate-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-white border-b border-[color:var(--light-gray)] px-4 pt-4 pb-3 z-10 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[18px] font-semibold text-[color:var(--deep-teal)] inline-flex items-center gap-2"><FolderIcon /> Documents</div>
+            <div className="text-[12px] text-[color:var(--mid-gray)] mt-0.5 truncate">{deptLabel}</div>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="text-2xl leading-none text-[color:var(--mid-gray)] hover:text-[color:var(--deep-teal)] shrink-0">×</button>
+        </div>
+        <div className="overflow-y-auto px-4 py-4">
+          <DocumentsPanel token={token} department={department} emptyText="No documents uploaded yet." />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function DocumentsPanel({ token, department, scheduleId, emptyText }: { token: string; department?: string; scheduleId?: string; emptyText?: string }) {
+  const [docs, setDocs] = useState<PatientDocuments | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    listMyDocuments(token, { department, scheduleId })
+      .then((d) => { if (!cancelled) setDocs(d) })
+      .catch((e) => { if (!cancelled) setErr((e as Error).message) })
+    return () => { cancelled = true }
+  }, [token, department, scheduleId])
+
+  if (err) return <div className="mt-2 text-[12.5px] text-rose-700">{err}</div>
+  if (!docs) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)]">Loading…</div>
+  if (docs.total === 0) return <div className="mt-2 text-[13px] text-[color:var(--mid-gray)] italic">{emptyText ?? 'No documents.'}</div>
+
+  return (
+    <div className="mt-2 space-y-3">
+      <DocGroup title="Initial Evaluation" rows={docs.initialEvaluations} token={token} />
+      <DocGroup title="Progress Reports" rows={docs.progressReports} token={token} />
+      <DocGroup title="Other Documents" rows={docs.otherDocuments} token={token} />
+    </div>
+  )
+}
+
+function DocGroup({ title, rows, token }: { title: string; rows: PatientDocuments['initialEvaluations']; token: string }) {
+  if (rows.length === 0) return null
+  return (
+    <div>
+      <div className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-[color:var(--teal)] mb-1">{title}</div>
+      <div className="space-y-1.5">
+        {rows.map((d) => (
+          <a
+            key={d.id}
+            href={documentFileUrl(d.id, token)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-[color:var(--paper-3)] bg-white hover:border-[color:var(--sage)] transition-colors"
+          >
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-[color:var(--deep-teal)] truncate">{d.fileName}</span>
+              <span className="block text-[11px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>{fmtDate(d.createdAt.slice(0, 10))}</span>
+            </span>
+            <span className="text-[color:var(--teal)] text-[12px] font-semibold shrink-0">View ↗</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StatusInline({ status }: { status: string }) {
+  return <span className="font-semibold text-[color:var(--deep-teal)]">{fmtStatus(status)}</span>
+}
+
+function FolderIcon() {
+  return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>)
 }
 
 function StatusBadge({ status }: { status: string }) {
   const s = status.toUpperCase()
   const tone =
-    s === 'COMPLETED' || s === 'PAID'
+    s === 'CONFIRMED' || s === 'COMPLETED' || s === 'PAID'
       ? 'bg-emerald-50 text-emerald-700'
-      : s === 'CANCELLED' || s === 'NO_SHOW' || s === 'REJECTED'
-        ? 'bg-rose-50 text-rose-700'
-        : 'bg-[color:var(--pale-teal)] text-[color:var(--teal)]'
+      : s === 'PENDING'
+        ? 'bg-amber-100 text-amber-800'
+        : s === 'RESCHEDULED'
+          ? 'bg-sky-100 text-sky-800'
+          : s === 'CANCELLED' || s === 'NO_SHOW' || s === 'REJECTED'
+            ? 'bg-rose-50 text-rose-700'
+            : 'bg-[color:var(--pale-teal)] text-[color:var(--teal)]'
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${tone}`} style={{ fontFamily: 'var(--font-display)' }}>
       {fmtStatus(status)}

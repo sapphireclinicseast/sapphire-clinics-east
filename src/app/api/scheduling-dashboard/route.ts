@@ -2,7 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// INVESTOR is deliberately NOT in this list — investor accounts are scoped to
+// the Patient Dashboard only and must not be able to read clinic utilization
+// data, including by calling this route directly.
 const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
+
+// Kept as defence-in-depth: if INVESTOR is ever re-granted access to this
+// route, names stay masked to initials at the API layer rather than silently
+// going out in full. Unreachable while INVESTOR is excluded above.
+function initials(fullName: string): string {
+  const parts = fullName.trim().split(/[\s,]+/).filter(Boolean)
+  if (parts.length === 0) return '—'
+  return parts.map(p => p[0].toUpperCase()).join('')
+}
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -71,17 +83,24 @@ export async function GET(req: NextRequest) {
   const staffIds = new Set(schedules.map(s => s.staffId))
 
   return NextResponse.json({
-    schedules: schedules.map(s => ({
-      id: s.id,
-      date: s.date.toISOString().split('T')[0],
-      startTime: s.startTime,
-      endTime: s.endTime,
-      status: s.status,
-      sessionType: s.sessionType,
-      staffName: `${s.staff.lastName}, ${s.staff.firstName}`,
-      department: s.staff.department,
-      branch: s.staff.branch,
-    })),
+    schedules: schedules.map(s => {
+      const fullName = `${s.staff.lastName}, ${s.staff.firstName}`
+      return {
+        id: s.id,
+        date: s.date.toISOString().split('T')[0],
+        startTime: s.startTime,
+        endTime: s.endTime,
+        status: s.status,
+        sessionType: s.sessionType,
+        // staffId is the grouping key on the client — staffName is display-only
+        // and gets masked to initials for investors, so grouping/dedup must
+        // never key off it (two therapists can share initials).
+        staffId: s.staffId,
+        staffName: role === 'INVESTOR' ? initials(fullName) : fullName,
+        department: s.staff.department,
+        branch: s.staff.branch,
+      }
+    }),
     totalSessions: schedules.length,
     uniqueStaffCount: staffIds.size,
   })

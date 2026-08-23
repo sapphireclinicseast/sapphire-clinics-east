@@ -112,7 +112,7 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function Console({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<'sessions' | 'payments' | 'users' | 'aurora'>('sessions')
+  const [tab, setTab] = useState<'sessions' | 'payments' | 'users' | 'tickets' | 'aurora'>('sessions')
   const [faqs, setFaqs] = useState<Faq[]>([])
   const [settings, setSettings] = useState<Settings>({ intro_message: '', system_prompt: '', fallback_message: '' })
   const [loading, setLoading] = useState(true)
@@ -230,7 +230,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="flex gap-1 mb-6 p-1 bg-[color:var(--off-white)] rounded-xl w-fit">
-        {([['sessions', 'Sessions'], ['payments', 'Payment History'], ['users', 'Users'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
+        {([['sessions', 'Sessions'], ['payments', 'Payment History'], ['users', 'Users'], ['tickets', 'Tickets'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -248,6 +248,8 @@ function Console({ onLogout }: { onLogout: () => void }) {
       {tab === 'payments' && <PaymentsView onUnauthorized={onLogout} />}
 
       {tab === 'users' && <UsersView onUnauthorized={onLogout} />}
+
+      {tab === 'tickets' && <TicketsView onUnauthorized={onLogout} />}
 
       {tab === 'aurora' && (
         <>
@@ -572,6 +574,145 @@ interface UserBranchGroup {
   users: AccountUser[]
 }
 
+// ── Tickets: patient-submitted portal concerns ──────────────────────────────
+
+interface AdminTicket {
+  id: string
+  subject: string
+  description: string
+  screenshot: string | null
+  status: string
+  adminResponse: string | null
+  resolvedAt: string | null
+  createdAt: string
+  patientName: string
+  patientEmail: string | null
+  branch: string
+}
+
+function TicketsView({ onUnauthorized }: { onUnauthorized: () => void }) {
+  const [tickets, setTickets] = useState<AdminTicket[]>([])
+  const [openCount, setOpenCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [filter, setFilter] = useState<'open' | 'all'>('open')
+  const [replyFor, setReplyFor] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = () => {
+    setLoading(true); setError('')
+    fetch('/api/admin/data/tickets')
+      .then(async (r) => { if (r.status === 401) { onUnauthorized(); return null } return r.json() })
+      .then((d) => { if (!d) return; setTickets(d.tickets ?? []); setOpenCount(d.openCount ?? 0) })
+      .catch(() => setError('Could not load tickets.'))
+      .finally(() => setLoading(false))
+  }
+  useEffect(load, [onUnauthorized])
+
+  async function act(id: string, body: object) {
+    setBusy(true)
+    try {
+      const r = await fetch('/api/admin/tickets/resolve', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...body }),
+      })
+      if (r.status === 401) return onUnauthorized()
+      if (!r.ok) throw new Error()
+      setReplyFor(null); setReplyText(''); load()
+    } catch { setError('Update failed.') } finally { setBusy(false) }
+  }
+
+  const shown = tickets.filter((t) => (filter === 'open' ? t.status !== 'RESOLVED' : true))
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-3 items-center mb-4">
+        <div className="flex gap-1 p-1 bg-[color:var(--off-white)] rounded-lg">
+          {([['open', 'Open'], ['all', 'All']] as const).map(([v, l]) => (
+            <button key={v} onClick={() => setFilter(v)}
+              className={`px-3 py-1.5 rounded-md text-sm ${filter === v ? 'bg-white text-[color:var(--deep-teal)] shadow-sm font-medium' : 'text-[color:var(--mid-gray)]'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <span className="text-sm text-[color:var(--mid-gray)]">{openCount} open · {tickets.length} total</span>
+      </div>
+
+      {loading ? (
+        <div className="py-16 text-center text-[color:var(--mid-gray)]">Loading tickets…</div>
+      ) : error ? (
+        <div className="text-sm text-red-600">{error}</div>
+      ) : shown.length === 0 ? (
+        <div className="py-16 text-center text-[color:var(--mid-gray)]">No {filter === 'open' ? 'open ' : ''}tickets.</div>
+      ) : (
+        <div className="space-y-3">
+          {shown.map((t) => {
+            const resolved = t.status === 'RESOLVED'
+            return (
+              <div key={t.id} className="bg-white rounded-2xl border border-[color:var(--light-gray)] p-5">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[color:var(--charcoal)]">{t.subject}</div>
+                    <div className="text-xs text-[color:var(--mid-gray)] mt-0.5">
+                      {t.patientName}{t.patientEmail ? ` · ${t.patientEmail}` : ''} · {t.branch} · {new Date(t.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  </div>
+                  <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${resolved ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                    {resolved ? 'Resolved' : 'Open'}
+                  </span>
+                </div>
+
+                <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{t.description}</p>
+
+                {t.screenshot && (
+                  <a href={t.screenshot} target="_blank" rel="noreferrer" className="inline-block mt-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={t.screenshot} alt="Screenshot" className="max-h-40 rounded-lg border border-[color:var(--light-gray)]" />
+                  </a>
+                )}
+
+                {resolved && t.adminResponse && (
+                  <div className="mt-2 rounded-lg bg-[color:var(--off-white)] px-3 py-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-[color:var(--teal)]">Your response</div>
+                    <div className="text-[13px] text-gray-700 mt-0.5 whitespace-pre-wrap">{t.adminResponse}</div>
+                  </div>
+                )}
+
+                <div className="mt-3">
+                  {resolved ? (
+                    <button onClick={() => act(t.id, { reopen: true })} disabled={busy} className="text-sm px-3 py-1.5 rounded-lg text-[color:var(--mid-gray)] border border-[color:var(--light-gray)] hover:bg-[color:var(--off-white)]">
+                      Reopen
+                    </button>
+                  ) : replyFor === t.id ? (
+                    <div className="space-y-2">
+                      <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={2}
+                        placeholder="Optional reply shown to the patient…"
+                        className="w-full px-3 py-2 rounded-xl border border-[color:var(--light-gray)] text-sm focus:outline-none focus:border-[color:var(--teal)]" />
+                      <div className="flex gap-2">
+                        <button onClick={() => act(t.id, { response: replyText })} disabled={busy}
+                          className="text-sm px-4 py-1.5 rounded-lg text-white font-medium" style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}>
+                          {busy ? 'Saving…' : 'Mark resolved'}
+                        </button>
+                        <button onClick={() => { setReplyFor(null); setReplyText('') }} className="text-sm px-3 py-1.5 rounded-lg text-[color:var(--mid-gray)]">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setReplyFor(t.id); setReplyText('') }}
+                      className="text-sm px-4 py-1.5 rounded-lg text-[color:var(--deep-teal)] bg-[color:var(--pale-teal)] hover:opacity-80 font-medium">
+                      Resolve…
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function UsersView({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [groups, setGroups] = useState<UserBranchGroup[]>([])
   const [total, setTotal] = useState(0)
@@ -652,6 +793,7 @@ function UsersView({ onUnauthorized }: { onUnauthorized: () => void }) {
                       <th className="px-3 py-2 font-semibold text-right">Sessions</th>
                       <th className="px-3 py-2 font-semibold">Last session</th>
                       <th className="px-4 py-2 font-semibold">Registered</th>
+                      <th className="px-4 py-2 font-semibold text-right">Preview</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -663,6 +805,17 @@ function UsersView({ onUnauthorized }: { onUnauthorized: () => void }) {
                         <td className="px-3 py-2 text-right whitespace-nowrap">{u.sessionCount}</td>
                         <td className="px-3 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{u.lastSession || '—'}</td>
                         <td className="px-4 py-2 text-[color:var(--mid-gray)] whitespace-nowrap">{u.createdAt}</td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                          <a
+                            href={`/impersonate/${u.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Open this patient's portal exactly as they see it (new tab)"
+                            className="inline-block px-2.5 py-1 rounded-lg text-[12px] font-semibold text-[color:var(--deep-teal)] bg-[color:var(--pale-teal)] hover:opacity-80"
+                          >
+                            Open portal ↗
+                          </a>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

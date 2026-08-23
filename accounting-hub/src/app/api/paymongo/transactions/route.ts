@@ -22,6 +22,23 @@ const DEPT_LABELS: Record<string, string> = {
  * and also returns the account's recent raw PayMongo payments, which covers money taken
  * outside our links.
  */
+/**
+ * Class-portal tuition belongs to the clinic branch running the SPED class, and
+ * the portal now sends that branch so the charge settles into the right
+ * merchant account. Two payments predate that fix and settled into the
+ * storefront account instead; their students were confirmed GREENHILLS from the
+ * ClassPortalUser records, so they are named here to keep the tab honest about
+ * whose money it is. Anything newer carries its own branch in metadata and
+ * needs no entry.
+ */
+const TUITION_BRANCH_OVERRIDES: Record<string, string> = {
+  pay_a4uqzJB5tAuejLJYpZhJjRac: 'AHGH', // HAILEY CATHERINE OCONNOR — Grade 2
+  pay_fEoHEAkuD1nJbLfj6nDK4Rkh: 'AHGH', // CHLOÉ OLIVIA LIM — Grade 1
+}
+
+/** Portal branch names → the account codes this page uses. */
+const PORTAL_BRANCH_TO_ACCOUNT: Record<string, string> = { EAST: 'AHEA', GREENHILLS: 'AHGH' }
+
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user || !READ_ROLES.includes(session.user.role as string)) {
@@ -39,9 +56,16 @@ export async function GET(req: Request) {
   const configured = paymongoConfigured(account)
   let syncError: string | null = null
   const postWarnings: string[] = []
-  let livePayments: { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string }[] = []
+  let livePayments: { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string; paymentMethod: string | null; belongsToAccount: string | null }[] = []
 
-  if (sp.get('sync') === '1' && configured) {
+  const wantSync = sp.get('sync') === '1'
+  // Listing recent payments is cheap and has no side effects, so the page asks for
+  // it on every load. Storefront sales only exist as raw payments — they never
+  // create a checkout row here — so without this they are invisible until someone
+  // presses Sync, and vanish again on the next tab change.
+  const wantLive = wantSync || sp.get('live') === '1'
+
+  if (wantSync && configured) {
     // 1) Refresh PENDING checkouts for this account.
     try {
       const pending = await prisma.paymongoCheckout.findMany({
@@ -107,7 +131,10 @@ export async function GET(req: Request) {
       }
     } catch (e) { syncError = e instanceof Error ? e.message : 'Sync failed' }
 
-    // 2) Recent raw payments straight from the account.
+  }
+
+  if (wantLive && configured) {
+    // Recent raw payments straight from the account.
     try {
       const raw = await listPayments(account, { limit: 50 })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,6 +147,34 @@ export async function GET(req: Request) {
           status: p.status, paidAt: p.paidAt ? p.paidAt.toISOString() : null,
           description: a.description || a.remarks || '',
           payer: billing.name || billing.email || '',
+          paymentMethod: resolvePaymentMethodUsed(r) || null,
+          // Storefront checkouts send the whole cart in metadata.cart_items —
+          // surface it so the UI can enumerate what was actually bought.
+          cartItems: (() => {
+            try {
+              const rawCart = (a.metadata || {}).cart_items
+              const arr = typeof rawCart === 'string' ? JSON.parse(rawCart) : Array.isArray(rawCart) ? rawCart : null
+              if (!Array.isArray(arr) || !arr.length) return null
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              return arr.map((c: any) => ({
+                title: String(c.title || c.name || ''),
+                variant: c.variantLabel ? String(c.variantLabel) : null,
+                quantity: Number(c.quantity) || 1,
+                price: Number(c.price) || 0,
+              }))
+            } catch { return null }
+          })(),
+          shippingFee: Number((a.metadata || {}).shipping_fee) || null,
+          voucherCode: String((a.metadata || {}).voucher_code || '') || null,
+          // Where this money should have landed, when that differs from the
+          // account it is sitting in. Display only — no ledger effect.
+          belongsToAccount: (() => {
+            const desc = String(a.description || '').toLowerCase()
+            if (!desc.includes('class-portal tuition')) return null
+            const fromMeta = PORTAL_BRANCH_TO_ACCOUNT[String((a.metadata || {}).branch || '').toUpperCase()]
+            const owed = fromMeta || TUITION_BRANCH_OVERRIDES[p.paymentId] || null
+            return owed && owed !== account ? owed : null
+          })(),
         }
       })
     } catch (e) { syncError = syncError || (e instanceof Error ? e.message : 'Could not list payments') }

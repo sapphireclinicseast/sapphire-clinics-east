@@ -1,0 +1,1616 @@
+{
+  "collections": [
+    {
+      "id": "col_books_manuals",
+      "slug": "books-manuals",
+      "name": "Books & Manuals",
+      "description": "Educational books and clinical manuals for therapists and parents.",
+      "imageUrl": "/api/uploads/collections/1776668442740-rrx5ef.png"
+    },
+    {
+      "id": "col_merchandise",
+      "slug": "merchandise",
+      "name": "Merchandise",
+      "description": "In partnership with Sandbox Clinic",
+      "imageUrl": "/api/uploads/collections/1776668448229-rkwyb9.png"
+    },
+    {
+      "id": "col_sensory_gel_toys",
+      "slug": "sensory-gel-toys",
+      "name": "Sensory Gel Toys",
+      "description": "Oral-motor and sensory chew tools designed for children in therapy.",
+      "imageUrl": "/api/uploads/collections/1776668454251-hi9hrt.png"
+    },
+    {
+      "id": "col_sensory_swings",
+      "slug": "sensory-swings",
+      "name": "Sensory Swings",
+      "description": "Therapeutic swings for vestibular input and sensory integration.",
+      "imageUrl": "/api/uploads/collections/1776668464353-k5rpx6.png"
+    },
+    {
+      "id": "col_therapeutic_toys",
+      "slug": "therapeutic-toys",
+      "name": "Therapeutic Toys (OT, SLP, PT)",
+      "description": "Therapeutic toys and tools for occupational, speech-language, and physical therapy.",
+      "imageUrl": "/api/uploads/collections/1776668471432-lmasy2.png"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_velura_textured_spoon",
+      "slug": "velura-textured-spoon",
+      "title": "Velura Textured Spoon",
+      "description": "A soft, textured silicone spoon designed to provide gentle oral-sensory input during mealtimes. Ideal for children with feeding difficulties or sensory processing needs.",
+      "price": 350,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Baby Pink",
+          "colorHex": "#F4C2C2"
+        },
+        {
+          "label": "Beige",
+          "colorHex": "#D2B48C"
+        },
+        {
+          "label": "Brown",
+          "colorHex": "#8B4513"
+        },
+        {
+          "label": "Yellow",
+          "colorHex": "#FFD700"
+        },
+        {
+          "label": "Off White",
+          "colorHex": "#FAF0E6"
+        },
+        {
+          "label": "Green",
+          "colorHex": "#4CAF50"
+        },
+        {
+          "label": "Blue Grey",
+          "colorHex": "#6E7F80"
+        },
+        {
+          "label": "Rose Gold",
+          "colorHex": "#B76E79"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/velura-textured-spoon/1776065568437-3eoj8k.png",
+        "/api/uploads/products/velura-textured-spoon/1776065624863-ysrxy4.png",
+        "/api/uploads/products/velura-textured-spoon/1776065619700-gjw9gf.png",
+        "/api/uploads/products/velura-textured-spoon/1776065621096-ow1qxa.png",
+        "/api/uploads/products/velura-textured-spoon/1776065622353-u0eswu.png",
+        "/api/uploads/products/velura-textured-spoon/1776065624314-ikj8tr.png",
+        "/api/uploads/products/velura-textured-spoon/1776065621807-d2o744.png",
+        "/api/uploads/products/velura-textured-spoon/1776065618802-hicehl.png"
+      ],
+      "stock": 482
+    },
+    {
+      "id": "prod_hexaring_chew_keys",
+      "slug": "hexaring-chew-keys",
+      "title": "HexaRing Chew Keys",
+      "description": "Hexagonal ring-shaped chew keys that provide multiple textures for oral-motor exploration. Great for teething and sensory-seeking children.",
+      "price": 350,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Red",
+          "colorHex": "#E53935"
+        },
+        {
+          "label": "Green",
+          "colorHex": "#43A047"
+        },
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        },
+        {
+          "label": "Purple",
+          "colorHex": "#8E24AA"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/hexaring-chew-keys/1776065798324-zkycpv.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065801711-bojb32.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065798869-so6wqh.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065799571-rr94ml.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065800219-8hnyft.png",
+        "/api/uploads/products/hexaring-chew-keys/1776065801014-k6u0ix.png"
+      ],
+      "stock": 396
+    },
+    {
+      "id": "prod_aerogrip_chew_sleeves",
+      "slug": "aerogrip-chew-sleeves",
+      "title": "AeroGrip Chew Sleeves",
+      "description": "Ergonomic chew sleeves that slide onto pencils or utensils, redirecting chewing behaviour to a safe, food-grade silicone surface.",
+      "price": 250,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Green",
+          "colorHex": "#43A047"
+        },
+        {
+          "label": "Purple",
+          "colorHex": "#8E24AA"
+        },
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065887854-uqkcwi.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065888422-z7iwgu.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065889036-j52pde.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065889614-71l3q2.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065890265-0u5j85.png",
+        "/api/uploads/products/aerogrip-chew-sleeves/1776065890851-y9lty8.png"
+      ],
+      "stock": 696
+    },
+    {
+      "id": "prod_prism_brick_pencil_chew_toppers",
+      "slug": "prism-brick-pencil-chew-toppers",
+      "title": "Prism Brick Pencil Chew Toppers",
+      "description": "Brick-shaped chew toppers that fit standard pencils, providing a discreet oral-sensory outlet for children who chew on writing tools.",
+      "price": 250,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Orange",
+          "colorHex": "#FF9800"
+        },
+        {
+          "label": "Green",
+          "colorHex": "#43A047"
+        },
+        {
+          "label": "Red",
+          "colorHex": "#E53935"
+        },
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        },
+        {
+          "label": "Purple",
+          "colorHex": "#8E24AA"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065946646-ujzvbz.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065947183-0j5z8x.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065947741-adk1jx.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065948346-a39z0t.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065949083-ow34du.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065949713-x9s81z.png",
+        "/api/uploads/products/prism-brick-pencil-chew-toppers/1776065950349-bmbivr.png"
+      ],
+      "stock": 689
+    },
+    {
+      "id": "prod_prism_brick_chew_pendant",
+      "slug": "prism-brick-chew-pendant",
+      "title": "Prism Brick Chew Pendant",
+      "description": "A wearable brick-shaped chew pendant on a breakaway lanyard. Keeps a safe chew tool accessible for children throughout the day.",
+      "price": 250,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Red",
+          "colorHex": "#E53935"
+        },
+        {
+          "label": "Yellow",
+          "colorHex": "#FFD700"
+        },
+        {
+          "label": "Green",
+          "colorHex": "#43A047"
+        },
+        {
+          "label": "Orange",
+          "colorHex": "#FF9800"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/prism-brick-chew-pendant/1776065998418-l6pyit.png"
+      ],
+      "stock": 584
+    },
+    {
+      "id": "prod_crimson_sensory_bars",
+      "slug": "crimson-sensory-bars",
+      "title": "Crimson Sensory Bars",
+      "description": "Firm, textured chew bars designed for children who need intense proprioceptive input through the jaw. Suitable for heavy chewers.",
+      "price": 1000,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/crimson-sensory-bars/1776066044173-udgbzp.png"
+      ],
+      "stock": 93
+    },
+    {
+      "id": "prod_flexi_t_chew_tools",
+      "slug": "flexi-t-chew-tools",
+      "title": "Flexi-T Chew Tools",
+      "description": "T-shaped flexible chew tools that target the back molars for jaw strengthening. Available in multiple resistance levels by colour.",
+      "price": 350,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Red",
+          "colorHex": "#E53935"
+        },
+        {
+          "label": "Green",
+          "colorHex": "#43A047"
+        },
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        },
+        {
+          "label": "Purple",
+          "colorHex": "#8E24AA"
+        },
+        {
+          "label": "Yellow",
+          "colorHex": "#FFD700"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/flexi-t-chew-tools/1776066066334-8w73tk.png",
+        "/api/uploads/products/flexi-t-chew-tools/1776066068260-edfcnf.png",
+        "/api/uploads/products/flexi-t-chew-tools/1776066067678-wixtjy.png",
+        "/api/uploads/products/flexi-t-chew-tools/1776066067074-2pxpr4.png",
+        "/api/uploads/products/flexi-t-chew-tools/1776066068838-ub2ab1.png"
+      ],
+      "stock": 542
+    },
+    {
+      "id": "prod_butterfly_calm_chews",
+      "slug": "butterfly-calm-chews",
+      "title": "Butterfly Calm Chews",
+      "description": "Butterfly-shaped silicone chew toys that provide calming oral-sensory input. Lightweight and easy for small hands to hold.",
+      "price": 250,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        },
+        {
+          "label": "Purple",
+          "colorHex": "#8E24AA"
+        },
+        {
+          "label": "Pink",
+          "colorHex": "#E91E63"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/butterfly-calm-chews/1776066099889-vgbtn4.png",
+        "/api/uploads/products/butterfly-calm-chews/1776066100433-2s3sjr.png",
+        "/api/uploads/products/butterfly-calm-chews/1776066101568-slgoun.png",
+        "/api/uploads/products/butterfly-calm-chews/1776066101022-ma7eo5.png"
+      ],
+      "stock": 595
+    },
+    {
+      "id": "prod_aurora_tag_chews",
+      "slug": "aurora-tag-chews",
+      "title": "Aurora Tag Chews",
+      "description": "Small tag-shaped chew pendants that clip to clothing or lanyards. A subtle sensory tool for school and community settings.",
+      "price": 200,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Purple",
+          "colorHex": "#8E24AA"
+        },
+        {
+          "label": "Red",
+          "colorHex": "#E53935"
+        },
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        },
+        {
+          "label": "Green",
+          "colorHex": "#43A047"
+        },
+        {
+          "label": "Sky Blue",
+          "colorHex": "#87CEEB"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/aurora-tag-chews/1776066130669-xynhii.png",
+        "/api/uploads/products/aurora-tag-chews/1776066132378-z97qi0.png",
+        "/api/uploads/products/aurora-tag-chews/1776066133019-9y9xr0.png",
+        "/api/uploads/products/aurora-tag-chews/1776066131232-7xf8ta.png",
+        "/api/uploads/products/aurora-tag-chews/1776066131777-i6adnc.png",
+        "/api/uploads/products/aurora-tag-chews/1776066133613-ib544v.png"
+      ],
+      "stock": 590
+    },
+    {
+      "id": "prod_preschool_sensory_mealtime_set",
+      "slug": "preschool-sensory-mealtime-set",
+      "title": "Preschool Sensory Mealtime Set A",
+      "description": "A curated set of textured utensils and oral-motor tools to support picky eaters and children with mealtime sensory sensitivities.",
+      "price": 1500,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/preschool-sensory-mealtime-set/1776066175920-547o1m.png",
+        "/api/uploads/products/preschool-sensory-mealtime-set/1776066202783-vdiy5l.png"
+      ]
+    },
+    {
+      "id": "prod_intensive_oral_motor_dev_kit",
+      "slug": "intensive-oral-motor-development-kit",
+      "title": "Intensive Oral Motor Development Kit",
+      "description": "A comprehensive kit for speech-language pathologists featuring graded oral-motor tools for intensive jaw, lip, and tongue exercises.",
+      "price": 2450,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/intensive-oral-motor-development-kit/1776066237178-bieyan.png"
+      ]
+    },
+    {
+      "id": "prod_clinic_assessment_pack",
+      "slug": "clinic-assessment-pack",
+      "title": "Clinic Assessment Pack A",
+      "description": "An essential pack of oral-sensory tools for clinic-based feeding and oral-motor assessments. Includes a variety of textures and resistances.",
+      "price": 2350,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/clinic-assessment-pack/1776066285483-mcp6gq.png"
+      ]
+    },
+    {
+      "id": "prod_all_in_one_oral_sensory_mega_kit",
+      "slug": "all-in-one-oral-sensory-mega-kit",
+      "title": "All-in-one Oral Sensory Mega Kit A",
+      "description": "The most complete oral-sensory collection, bundling chew tools, feeding utensils, and oral-motor trainers for home and clinic use.",
+      "price": 2800,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/all-in-one-oral-sensory-mega-kit/1778723813237-qzd2yu.png"
+      ]
+    },
+    {
+      "id": "prod_starter_oral_sensory_kit",
+      "slug": "starter-oral-sensory-kit",
+      "title": "Starter Oral-Sensory Kit",
+      "description": "An introductory set of oral-sensory tools for families beginning their sensory therapy journey. Therapist-recommended starter bundle.",
+      "price": 1350,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/starter-oral-sensory-kit/1776066327421-kuf4sh.png"
+      ],
+      "stock": 10
+    },
+    {
+      "id": "prod_abc_explorers",
+      "slug": "abc-explorers",
+      "title": "ABC Explorers",
+      "description": "Tactile letter-learning toys that combine alphabet recognition with fine-motor manipulation. Great for early literacy and speech therapy activities.",
+      "price": 300,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/abc-explorers/1777877258097-yl1j9u.jpg"
+      ],
+      "stock": 63
+    },
+    {
+      "id": "prod_active_recovery_kids_shirt",
+      "slug": "active-recovery-active-life-kids-shirt",
+      "title": "Active Recovery, Active Life (for Kids) Shirt",
+      "description": "A fun, comfortable kids t-shirt featuring the \"Active Recovery, Active Life\" tagline. Made in partnership with Sandbox Clinic.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/active-recovery-active-life-kids-shirt/1777953678755-c2wo7e.png"
+      ]
+    },
+    {
+      "id": "prod_glider_swing",
+      "slug": "glider-swing",
+      "title": "Glider Swing",
+      "description": "Made with environmentally friendly high-density\nsponge and eco-friendly PU leather, the Glider Swing\noffers comfortable, safe, and supportive movement for\nbalance, coordination, and sensory integration\nactivities. Its stable platform and secure hand grips\nmake it ideal for therapy and active play.",
+      "price": 30599,
+      "collectionSlug": "sensory-swings",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/glider-swing/1777952191389-4ij5wh.png"
+      ]
+    },
+    {
+      "id": "prod_sky_bar_swing",
+      "slug": "sky-bar-swing",
+      "title": "Sky Bar Swing",
+      "description": "Made from durable plywood, supportive foam, and PU\nleather, the Sky Bar provides stable and comfortable\nswinging for balance, coordination, and sensory\nintegration activities. Its slim, secure platform is ideal\nfor therapy use and active play, supporting core\nstrength and controlled movement.",
+      "price": 15899,
+      "collectionSlug": "sensory-swings",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/sky-bar-swing/1777952230870-76nzt5.png"
+      ]
+    },
+    {
+      "id": "prod_cuddle_swing",
+      "slug": "cuddle-swing",
+      "title": "Cuddle Swing",
+      "description": "Designed to provide calming, cocoon-like support, the\nCuddle Swing offers gentle vestibular input for\nrelaxation, sensory regulation, and body awareness. Its\nsoft, supportive fabric creates a secure and comforting\nspace, making it ideal for therapy, sensory rooms, and\nquiet time activities.",
+      "price": 14398,
+      "collectionSlug": "sensory-swings",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/cuddle-swing/1777952256005-ifs2dm.png"
+      ]
+    },
+    {
+      "id": "prod_breeze_log_swing",
+      "slug": "breeze-log-swing",
+      "title": "Breeze Log Swing",
+      "description": "Made with environmentally friendly high-density\nsponge and eco-friendly PU leather, the Breeze Log\nSwing provides comfortable, supportive seating for\nswinging, balance, and sensory integration activities.\nIts cylindrical design promotes core strength,\ncoordination, and postural control, making it ideal for\ntherapy and active play.",
+      "price": 34499,
+      "collectionSlug": "sensory-swings",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/breeze-log-swing/1777952278340-yfja49.png"
+      ]
+    },
+    {
+      "id": "prod_tunnel_roll_swing",
+      "slug": "tunnel-roll-swing",
+      "title": "Tunnel Roll Swing",
+      "description": "Made with environmentally friendly high-density\nsponge and eco-friendly PU leather, the Tunnel Roll\nSwing combines swinging and crawling for dynamic\nsensory and motor play. Its tunnel-style design\npromotes balance, coordination, core strength, and\nbody awareness, making it ideal for therapy and active\nmovement activities.",
+      "price": 33998,
+      "collectionSlug": "sensory-swings",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tunnel-roll-swing/1777952303463-wmypsx.png"
+      ]
+    },
+    {
+      "id": "prod_roller_swing",
+      "slug": "roller-swing",
+      "title": "Roller Swing",
+      "description": "Constructed from durable plywood, supportive foam,\nand PU leather, the Roller Swing provides smooth\nswinging and rolling motion for vestibular stimulation,\nbalance training, and core strengthening. Its cylindrical\ndesign supports controlled movement, making it ideal\nfor therapy and sensory integration activities.",
+      "price": 11399,
+      "collectionSlug": "sensory-swings",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/roller-swing/1777952322202-s7id5z.png"
+      ]
+    },
+    {
+      "id": "prod_cozy_crash_pad",
+      "slug": "cozy-crash-pad",
+      "title": "Cozy Crash Pad",
+      "description": "The Cozy Crash Pad provides a safe and cushioned landing surface for active play and therapy. Made with high-density foam and a durable, easy-to-clean cover, they help absorb impact, support sensory regulation, and encourage active movement. Perfect for clinics, schools, or home use, these pads promote confidence and safety during jumping, tumbling, and crash play.",
+      "price": 15899,
+      "collectionSlug": "sensory-swings",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/cozy-crash-pad/1777952339314-zrc1wo.png"
+      ]
+    },
+    {
+      "id": "prod_am_i_spoiling_my_child",
+      "slug": "am-i-spoiling-my-child",
+      "title": "Am I Spoiling My Child?",
+      "description": "The book explains why children misbehave, introduces a simple\nholistic discipline approach, and offers science-backed strategies for\ncommon challenges like tantrums, aggression, and not listening, while\nalso providing clear guidance on modern parenting issues and when\nto seek professional help.",
+      "price": 500,
+      "collectionSlug": "books-manuals",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/am-i-spoiling-my-child/1777952364616-anmq9g.png"
+      ],
+      "stock": 6
+    },
+    {
+      "id": "prod_i_am_a_hero",
+      "slug": "i-am-a-hero",
+      "title": "I Am A Hero",
+      "description": "It’s designed to help kids reflect on themselves\nthrough the framework of the Hero’s Journey,\nencouraging self-awareness, confidence,\nresilience, and emotional growth through guided\nprompts and creative activities.",
+      "price": 500,
+      "collectionSlug": "books-manuals",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/i-am-a-hero/1777952380695-n6yxih.png"
+      ],
+      "stock": 7
+    },
+    {
+      "id": "prod_learning_by_heart",
+      "slug": "learning-by-heart",
+      "title": "Learning By Heart",
+      "description": "Learning by Heart reassures parents that teaching their\nchild to read doesn’t have to be stressful. It presents a\njoyful, pressure-free, and effective approach using\nscience-backed strategies, simple tips, and fun\nactivities to make reading a natural and enjoyable part\nof everyday life.",
+      "price": 500,
+      "collectionSlug": "books-manuals",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/learning-by-heart/1777952401860-uwaxxd.png"
+      ],
+      "stock": 7
+    },
+    {
+      "id": "prod_toddler_talking",
+      "slug": "toddler-talking",
+      "title": "Toddler Talking",
+      "description": "This book is a practical, science-based guide for\nparents of babies and toddlers under three, offering\nsimple, everyday strategies to support language and\nbrain development. It helps parents track milestones,\navoid common misconceptions, understand the impact\nof screen time, and follow a clear step-by-step plan if\nspeech delay is a concern.",
+      "price": 500,
+      "collectionSlug": "books-manuals",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/toddler-talking/1777952465609-x4rcen.png"
+      ],
+      "stock": 7
+    },
+    {
+      "id": "prod_form_fit_puzzle_basic",
+      "slug": "form-fit-puzzle-basic",
+      "title": "Form & Fit Puzzle - Basic",
+      "description": "Designed to support early learning and fine motor\ndevelopment, the Form & Fit Puzzle – Basic helps children\nrecognize shapes while building hand-eye coordination and\nproblem-solving skills. The chunky, easy-to-grip pieces\nencourage matching, sorting, and spatial awareness,\nmaking it ideal for home, classroom, and therapy use.",
+      "price": 400,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/form-fit-puzzle-basic/1777952514073-hx4d95.png",
+        "/api/uploads/products/form-fit-puzzle-basic/1777952515601-d7gjr0.png"
+      ],
+      "stock": 38
+    },
+    {
+      "id": "prod_poppy_the_precision_ball_clip_montessori_toy_occupational_therapy_sorting_matching_grip",
+      "slug": "poppy-the-precision-ball-clip-montessori-toy-occupational-therapy-sorting-matching-grip",
+      "title": "Poppy the Precision Ball Clip | Montessori Toy | Occupational Therapy | Sorting, Matching & Grip",
+      "description": "Elevate play into purposeful therapy. This Montessori-inspired set is crafted with premium materials to enhance fine motor skills, color recognition, focus, and hand-eye coordination. Designed for therapists, parents, and children who deserve only the best in quality and learning.\n\n•  Durable wooden board & safe, vibrant beads\n\n•  Builds multiple skills: grip, sorting, matching\n\n•  Includes activity cards & precision tools\n\n•  Ideal for home, school, or clinical use\n\n\n\nGive your child the gift of precision, quality, and fun—because learning deserves excellence.",
+      "price": 1200,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/poppy-the-precision-ball-clip-montessori-toy-occupational-therapy-sorting-matching-grip/1777952561763-485h93.png",
+        "/api/uploads/products/poppy-the-precision-ball-clip-montessori-toy-occupational-therapy-sorting-matching-grip/1777952562762-w1njgb.png",
+        "/api/uploads/products/poppy-the-precision-ball-clip-montessori-toy-occupational-therapy-sorting-matching-grip/1777952563830-skhuto.png"
+      ],
+      "stock": 16
+    },
+    {
+      "id": "prod_tacto_pegs_play_set",
+      "slug": "tacto-pegs-play-set",
+      "title": "TACTO PEGS PLAY SET",
+      "description": "Turn play into a powerful therapy session. This vibrant peg set is designed to strengthen fine motor skills, visual-motor coordination, focus, and problem-solving. Its colorful, oversized pegs and sturdy board make it safe and engaging for children while meeting the standards of therapists, parents, and educators.\n\n\n\n• Sturdy board with perfectly sized holes for stacking\n\n• Safe, durable, and colorful pegs for sorting & building\n\n• Supports grip strength, bilateral coordination, and focus\n\n• Perfect for home practice, classrooms, or clinical therapy\n\n\n\nEncourage skill-building through quality, color, and creativity—because every stage of learning matters.",
+      "price": 700,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tacto-pegs-play-set/1777952614814-ny0gj3.png",
+        "/api/uploads/products/tacto-pegs-play-set/1777952616130-37tozx.png"
+      ],
+      "stock": 14
+    },
+    {
+      "id": "prod_tactoease_sensory_brushes",
+      "slug": "tactoease-sensory-brushes",
+      "title": "TactoEase Sensory Brushes",
+      "description": "Made from BPA-free, food-grade silicone, the\nTactoEase Sensory Brushes provide gentle tactile\nstimulation to support sensory regulation,\ndesensitization, and body awareness. Their soft,\nflexible bristles offer calming sensory input, making\nthem ideal for therapy, home, or daily sensory routines.",
+      "price": 250,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        },
+        {
+          "label": "Green",
+          "colorHex": "#11d803"
+        },
+        {
+          "label": "Purple",
+          "colorHex": "#ea06e2"
+        },
+        {
+          "label": "Pink",
+          "colorHex": "#e51f89"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/tactoease-sensory-brushes/1777952674869-hd4u17.png",
+        "/api/uploads/products/tactoease-sensory-brushes/1777952672880-3vnl5i.png",
+        "/api/uploads/products/tactoease-sensory-brushes/1777952672068-49bh8k.png",
+        "/api/uploads/products/tactoease-sensory-brushes/1777952673803-5nl1f5.png",
+        "/api/uploads/products/tactoease-sensory-brushes/1777952675853-ga6ro8.png"
+      ],
+      "stock": 123
+    },
+    {
+      "id": "prod_alpha_me_letter_board",
+      "slug": "alpha-me-letter-board",
+      "title": "Alpha & Me Letter Board",
+      "description": "Designed to make learning the alphabet fun and interactive,\nthe Alpha & Me Letter Board helps children build letter\nrecognition, fine motor skills, and hand-eye coordination.\nThe chunky letters with lacing holes allow kids to thread\nthe included lace, promoting bilateral coordination, finger\nstrength, and early literacy through hands-on play—ideal\nfor home, classroom, and therapy use.",
+      "price": 300,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/alpha-me-letter-board/1777877351281-sf5zue.jpg"
+      ],
+      "stock": 63
+    },
+    {
+      "id": "prod_benny_the_hungry_bear",
+      "slug": "benny-the-hungry-bear",
+      "title": "Benny The Hungry Bear",
+      "description": "Designed to build fine motor skills and play-based learning,\nBenny the Hungry Bear lets children “feedˮ Benny using the\nincluded spoon and food pieces, promoting hand-eye\ncoordination, grasping, and pretend play. This engaging\nactivity also supports sequencing, attention, and early life\nskills, making it ideal for therapy, classrooms, and home play.",
+      "price": 700,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/benny-the-hungry-bear/1777877568446-xr0usp.jpg"
+      ],
+      "stock": 26
+    },
+    {
+      "id": "prod_number_matchies_board",
+      "slug": "number-matchies-board",
+      "title": "Number Matchies Board",
+      "description": "Designed to support early numeracy and problem\nsolving skills, the Number Matchies Board helps\nchildren learn number recognition, counting, and basic\nmath symbols through hands-on matching and play.\nThe chunky, easy-to-grip pieces promote fine motor\nskills and visual-motor coordination, making it ideal for\nhome, classroom, and therapy use.",
+      "price": 300,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/number-matchies-board/1777877693496-aldi5l.jpg"
+      ],
+      "stock": 12
+    },
+    {
+      "id": "prod_find_the_shadow_matched_images",
+      "slug": "find-the-shadow-matched-images",
+      "title": "Find The Shadow Matched Images",
+      "description": "Designed to build visual perception, attention, and\nproblem-solving skills, Find the Shadow Matched Images\nchallenges children to match objects with their correct\nsilhouettes. This engaging activity strengthens visual\ndiscrimination, cognitive skills, and focus, making it ideal\nfor therapy, classrooms, and home learning.",
+      "price": 350,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/find-the-shadow-matched-images/1777881485502-rz2f5n.jpg"
+      ],
+      "stock": 30
+    },
+    {
+      "id": "prod_shape_stacking_matching_board",
+      "slug": "shape-stacking-matching-board",
+      "title": "Shape Stacking Matching Board",
+      "description": "Designed to build fine motor skills, shape recognition, and\nproblem-solving, the Shape Stacking Matching Board\nchallenges children to stack and match shapes onto the\ncorrect pegs using visual guides. This hands-on activity\nsupports hand-eye coordination, sequencing, and early\ncognitive skills, making it ideal for therapy, classrooms, and\nhome learning.",
+      "price": 700,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shape-stacking-matching-board/1777881627696-r3of9d.jpg",
+        "/api/uploads/products/shape-stacking-matching-board/1777881615467-fd2x8a.jpg"
+      ]
+    },
+    {
+      "id": "prod_form_fit_puzzle_advanced",
+      "slug": "form-fit-puzzle-advanced",
+      "title": "Form & Fit Puzzle - Advanced",
+      "description": "Designed to challenge visual discrimination and problem\nsolving skills, the Form & Fit Puzzle – Advanced features\nmore complex shapes and patterns that encourage careful\nmatching and spatial reasoning. This hands-on puzzle\nbuilds fine motor control, attention, and cognitive flexibility,\nmaking it ideal for therapy, classrooms, and advanced early\nlearning activities.",
+      "price": 400,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/form-fit-puzzle-advanced/1777881743648-qtgd1p.jpg"
+      ],
+      "stock": 41
+    },
+    {
+      "id": "prod_matching_eggs",
+      "slug": "matching-eggs",
+      "title": "Matching Eggs",
+      "description": "Matching Eggs is a fun shape and number matching toy that helps children develop color recognition, problem solving, and fine motor skills by opening, matching, and sorting each egg.",
+      "price": 500,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/matching-eggs/1777882145453-fygfee.jpg"
+      ],
+      "stock": 101
+    },
+    {
+      "id": "prod_build_balance_wooden_blocks",
+      "slug": "build-balance-wooden-blocks",
+      "title": "Build & Balance Wooden Blocks",
+      "description": "Build & Balance Wooden Blocks is a classic construction set that helps children develop creativity, balance, and problem-solving skills by stacking and building different structures using natural wooden blocks.",
+      "price": 1000,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/build-balance-wooden-blocks/1777882280166-1qr8ru.jpg"
+      ],
+      "stock": 22
+    },
+    {
+      "id": "prod_balance_river_stones",
+      "slug": "balance-river-stones",
+      "title": "Balance River Stones",
+      "description": "Designed to build balance, coordination, and motor\nplanning, the Balance River Stones encourage active movement and playful obstacle courses. Their varied sizes and heights promote stepping, jumping, and stability training, making them ideal for therapy, classrooms, and sensory play spaces.",
+      "price": 3500,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/balance-river-stones/1777952769431-2k1qkj.png",
+        "/api/uploads/products/balance-river-stones/1777952771017-ox8qvz.png"
+      ]
+    },
+    {
+      "id": "prod_talkacards_audio_set",
+      "slug": "talkacards-audio-set",
+      "title": "TalkaCards Audio Set",
+      "description": "Designed to support early language development, the\nTalkaCards Audio Set combines visual cards with\naudio feedback to help build vocabulary, comprehension, and speech skills. Its interactive\nformat makes learning engaging while reinforcing word recognition, listening, and expressive language—ideal for therapy, classrooms, and home learning.",
+      "price": 500,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [
+        {
+          "label": "Blue",
+          "colorHex": "#1E88E5"
+        },
+        {
+          "label": "Pink",
+          "colorHex": "#e51f93"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/talkacards-audio-set/1777945905820-wqweqy.jpeg"
+      ],
+      "stock": 73
+    },
+    {
+      "id": "prod_tick_tock_clock_toy",
+      "slug": "tick-tock-clock-toy",
+      "title": "Tick-Tock Clock Toy",
+      "description": "Tick-Tock Clock Toy is a hands-on learning clock with blocks and dials that teaches time,\nnumbers, and daily routines while building early math and fine motor skills.",
+      "price": 700,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tick-tock-clock-toy/1777946025744-1amnq7.jpg",
+        "/api/uploads/products/tick-tock-clock-toy/1777946024727-85d5e5.jpg"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_cash_register_toy",
+      "slug": "cash-register-toy",
+      "title": "Cash Register Toy",
+      "description": "Designed to encourage pretend play and early math\nskills, the Cash Register Toy lets children role-play\nshopping, counting, and paying using buttons, scanner, and play money. This interactive set builds number recognition, social skills, and hand-eye coordination, making it ideal for imaginative play at home, in classrooms, or in therapy settings",
+      "price": 1200,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/cash-register-toy/1777946164758-mw0hvo.jpg",
+        "/api/uploads/products/cash-register-toy/1777946163109-rnj6l8.jpg",
+        "/api/uploads/products/cash-register-toy/1777946164122-lylnia.jpg"
+      ],
+      "stock": 3
+    },
+    {
+      "id": "prod_little_apple_matchers",
+      "slug": "little-apple-matchers",
+      "title": "Little Apple Matchers",
+      "description": "Designed to build early matching, sorting, and fine motor\nskills, Little Apple Matchers lets children open the apples and pair them by shape. This hands-on activity supports hand-eye coordination, problem-solving, and early cognitive development through fun, playful exploration—ideal for home, classroom, and therapy use.",
+      "price": 500,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/little-apple-matchers/1777946302380-3oicpz.jpg"
+      ],
+      "stock": 175
+    },
+    {
+      "id": "prod_big_brain_builder_puzzle",
+      "slug": "big-brain-builder-puzzle",
+      "title": "Big Brain Builder Puzzle",
+      "description": "The Big Brain Builder Puzzle helps develop problem solving and fine motor skills through colorful animal puzzles. Each set is color-coded and numbered at the back, allowing children to count pieces, match by color, and self-check their work.",
+      "price": 250,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [
+        {
+          "label": "",
+          "colorHex": "#e5e7eb"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/big-brain-builder-puzzle/1777947247046-p2m7sb.jpg",
+        "/api/uploads/products/big-brain-builder-puzzle/1777947246395-preuym.jpg",
+        "/api/uploads/products/big-brain-builder-puzzle/1777947245854-0ja2j0.jpg"
+      ],
+      "stock": 3
+    },
+    {
+      "id": "prod_numbysticks",
+      "slug": "numbysticks",
+      "title": "Numbysticks",
+      "description": "Numbysticks is a hands-on math learning set with counting sticks and number tiles that helps children practice counting, basic operations, and number concepts through playful, interactive activities.",
+      "price": 150,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/numbysticks/1777947385981-zwgo84.jpg"
+      ],
+      "stock": 8
+    },
+    {
+      "id": "prod_thinkshapes_discovery_puzzle",
+      "slug": "thinkshapes-discovery-puzzle",
+      "title": "ThinkShapes Discovery Puzzle",
+      "description": "Designed to build problem-solving, shape recognition, and fine motor skills, the ThinkShapes Discovery Puzzle challenges children to match and fit different shapes into the correct openings. This hands-on activity strengthens hand-eye coordination, spatial awareness, and logical thinking, making it ideal for early learning, therapy, and home play.",
+      "price": 500,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/thinkshapes-discovery-puzzle/1777947627723-6ecrzp.jpg"
+      ],
+      "stock": 146
+    },
+    {
+      "id": "prod_little_dentist",
+      "slug": "little-dentist",
+      "title": "Little Dentist",
+      "description": "Designed to teach healthy oral care habits through play,\nLittle Dentist lets children explore brushing, cleaning, and caring for teeth in a fun, non-threatening way. This interactive activity supports role-play, fine motor skills, and understanding of dental routines, making it ideal for therapy, classrooms, and home learning.",
+      "price": 1000,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/little-dentist/1777947764921-7v8k71.jpg"
+      ],
+      "stock": 42
+    },
+    {
+      "id": "prod_finger_friends_wild_wonders",
+      "slug": "finger-friends-wild-wonders",
+      "title": "Finger Friends Wild Wonders",
+      "description": "Designed to encourage imaginative play and early\nlanguage development, Finger Friends: Wild Wonders\nfeatures soft animal finger puppets that bring storytelling and role-play to life. These playful characters help build communication skills, creativity, and social interaction while also supporting fine motor control through finger play—ideal for therapy, classrooms, and home use.",
+      "price": 350,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/finger-friends-wild-wonders/1777947904964-4ra27l.jpg",
+        "/api/uploads/products/finger-friends-wild-wonders/1777947907972-md88bz.jpg"
+      ],
+      "stock": 58
+    },
+    {
+      "id": "prod_pocket_puzzle_advanced",
+      "slug": "pocket-puzzle-advanced",
+      "title": "Pocket Puzzle - Advanced",
+      "description": "The Pocket Puzzle – Advanced set features compact, themed puzzles that build problem-solving, visual matching, and fine motor skills in a fun, travel-friendly format.",
+      "price": 200,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/pocket-puzzle-advanced/1777952820826-6ew0ep.png"
+      ],
+      "stock": 12
+    },
+    {
+      "id": "prod_pocket_puzzle_basic",
+      "slug": "pocket-puzzle-basic",
+      "title": "Pocket Puzzle - Basic",
+      "description": "The Pocket Puzzle – Basic set includes simple, fewer, colorful puzzles designed to build early matching, shape recognition, and fine motor skills in a compact, travel friendly size.",
+      "price": 200,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/pocket-puzzle-basic/1777952856647-9xeo7b.png",
+        "/api/uploads/products/pocket-puzzle-basic/1777952857522-e3nu9y.png",
+        "/api/uploads/products/pocket-puzzle-basic/1777952858394-a5cbpq.png",
+        "/api/uploads/products/pocket-puzzle-basic/1777952859441-p4sb2q.png"
+      ],
+      "stock": 31
+    },
+    {
+      "id": "prod_mideer_magnet_activities",
+      "slug": "mideer-magnet-activities",
+      "title": "MiDeer Magnet Activities",
+      "description": "MiDeer Magnet Activities is a creative magnetic play set that helps children build pictures, patterns, and scenes while developing imagination, visual skills, and fine motor control.",
+      "price": 800,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/mideer-magnet-activities/1777952927774-mzqksq.png",
+        "/api/uploads/products/mideer-magnet-activities/1777952929182-r8u7vt.png"
+      ],
+      "stock": 0
+    },
+    {
+      "id": "prod_mideer_magnet_funny_face",
+      "slug": "mideer-magnet-funny-face",
+      "title": "MiDeer Magnet - Funny Face",
+      "description": "MiDeer Magnet – Funny Face lets kids mix and match magnetic pieces to create silly faces, building creativity, visual skills, and fine motor control through playful design.",
+      "price": 800,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/mideer-magnet-funny-face/1777952966336-hvlwsx.png",
+        "/api/uploads/products/mideer-magnet-funny-face/1777952967543-zknvfl.png",
+        "/api/uploads/products/mideer-magnet-funny-face/1777952968821-lypbm9.png"
+      ]
+    },
+    {
+      "id": "prod_tangram_puzzle_blue",
+      "slug": "tangram-puzzle-blue",
+      "title": "Tangram Puzzle - Blue",
+      "description": "The Tangram Puzzle challenges children to recreate shapes and pictures using colorful geometric pieces, building spatial reasoning, problem-solving, and creativity. This is the blue version.",
+      "price": 300,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tangram-puzzle-blue/1777953015212-yfvu38.png",
+        "/api/uploads/products/tangram-puzzle-blue/1777953016337-wqg9vk.png"
+      ],
+      "stock": 20
+    },
+    {
+      "id": "prod_tangram_puzzle_pink",
+      "slug": "tangram-puzzle-pink",
+      "title": "Tangram Puzzle - Pink",
+      "description": "The Tangram Puzzle challenges children to recreate shapes and pictures using colorful geometric pieces, building spatial reasoning, problem-solving, and creativity. This is the pink version.",
+      "price": 300,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/tangram-puzzle-pink/1777953034062-twuaem.png",
+        "/api/uploads/products/tangram-puzzle-pink/1777953035142-tmp9vj.png"
+      ],
+      "stock": 27
+    },
+    {
+      "id": "prod_busy_book_yeah_learning_maths",
+      "slug": "busy-book-yeah-learning-maths",
+      "title": "BUSY BOOK - YEAH LEARNING MATHS",
+      "description": "Busy Book – Math is an interactive activity book that helps children learn numbers, counting, and simple math concepts through hands-on, reusable activities that build early numeracy and fine motor skills.",
+      "price": 200,
+      "collectionSlug": "books-manuals",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/busy-book-yeah-learning-maths/1777953088938-zrnfdc.png",
+        "/api/uploads/products/busy-book-yeah-learning-maths/1777953091376-8h1ypx.png"
+      ],
+      "stock": 91
+    },
+    {
+      "id": "prod_busy_book_hello_alphabet",
+      "slug": "busy-book-hello-alphabet",
+      "title": "BUSY BOOK - HELLO ALPHABET",
+      "description": "Busy Book – Alphabet is an interactive activity book that helps children learn letters, sounds, and early word recognition through hands-on, reusable activities that build pre-reading and fine motor skills.",
+      "price": 200,
+      "collectionSlug": "books-manuals",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/busy-book-hello-alphabet/1778723961665-08imwu.png"
+      ],
+      "stock": 69
+    },
+    {
+      "id": "prod_clinic_assessment_pack_b",
+      "slug": "clinic-assessment-pack-b",
+      "title": "Clinic Assessment Pack B",
+      "description": "Clinic Assessment Pack B is a focused therapy set designed for oral motor and sensory assessment, featuring one set of Crimson Sensory Bars, one set of Precision Tongue Trainer, and one Aurora Tag Chew for evaluation, training, and sensory support.",
+      "price": 2350,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/clinic-assessment-pack-b/1778724213930-0uohsg.png"
+      ]
+    },
+    {
+      "id": "prod_preschool_sensory_mealtime_set_b",
+      "slug": "preschool-sensory-mealtime-set-b",
+      "title": "Preschool Sensory Mealtime Set B",
+      "description": "Preschool Sensory Mealtime Set B is a practical set designed to support sensory-friendly feeding and oral-motor development, featuring one Velura Textured Spoon, one Aurora Tag Chew, and one set of Crimson Sensory Bars for mealtime practice and sensory regulation.",
+      "price": 1500,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/preschool-sensory-mealtime-set-b/1778723475948-75opc5.png"
+      ]
+    },
+    {
+      "id": "prod_all_in_one_oral_sensory_mega_kit_b",
+      "slug": "all-in-one-oral-sensory-mega-kit-b",
+      "title": "All-in-one Oral Sensory Mega Kit B",
+      "description": "All-in-One Oral Sensory Mega Kit B is a comprehensive therapy set\ndesigned to support oral sensory regulation and oral-motor development, featuring one Butterfly Calm Chew, one Prism Brick Pencil Chew Topper, one set of Crimson Sensory Bars, one Velura Textured Spoon, and one set of Precision Tongue Tip Trainer for a\ncomplete range of sensory and training activities.",
+      "price": 5800,
+      "collectionSlug": "sensory-gel-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/all-in-one-oral-sensory-mega-kit-b/1778722958095-cpwdmb.png"
+      ]
+    },
+    {
+      "id": "prod_shirt_proud_sandbox_ther_s",
+      "slug": "shirt-proud-sandbox-ther-s",
+      "title": "SHIRT PROUD SANDBOX THERAPIST - SMALL",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “PROUD SANDBOX THERAPIST” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.\n\nMade for therapy-goers, fitness warriors, and everyday fighters.\n",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [
+        {
+          "label": "SMALL",
+          "colorHex": "#000000"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-proud-sandbox-ther-s/1779257457123-5b2ah6.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_proud_sandbox_therapist_medium",
+      "slug": "shirt-proud-sandbox-therapist-medium",
+      "title": "SHIRT PROUD SANDBOX THERAPIST - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “PROUD SANDBOX THERAPIST” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.\n\nMade for therapy-goers, fitness warriors, and everyday fighters.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [
+        {
+          "label": "WHITE",
+          "colorHex": "#f9fafa"
+        }
+      ],
+      "images": [
+        "/api/uploads/products/shirt-proud-sandbox-therapist-medium/1779258029926-4mjbdc.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_i_help_u_move_small",
+      "slug": "shirt-i-help-u-move-small",
+      "title": "SHIRT I HELP U MOVE - SMALL",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I HELP YOU MOVE” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.\n\nMade for therapy-goers, fitness warriors, and everyday fighters.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-help-u-move-small/1779259007470-g6e89d.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_i_help_u_move_medium",
+      "slug": "shirt-i-help-u-move-medium",
+      "title": "SHIRT I HELP U MOVE - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I HELP YOU MOVE” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-help-u-move-medium/1779326139706-sm9r9y.png"
+      ],
+      "stock": 2
+    },
+    {
+      "id": "prod_shirt_i_help_u_move_large",
+      "slug": "shirt-i-help-u-move-large",
+      "title": "SHIRT I HELP U MOVE - LARGE",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I HELP YOU MOVE” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-help-u-move-large/1779326292432-vlbxe6.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_therapist_on_board_large",
+      "slug": "shirt-therapist-on-board-large",
+      "title": "SHIRT THERAPIST IN MOTION - LARGE",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “THERAPIST ON BOARD” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-therapist-on-board-large/1779326406229-cvbvy8.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_i_choose_movement_small",
+      "slug": "shirt-i-choose-movement-small",
+      "title": "SHIRT I CHOOSE MOVEMENT - SMALL",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I CHOOSE MOVEMENT” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-choose-movement-small/1779327142105-h9k7az.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_i_choose_movment_medium",
+      "slug": "shirt-i-choose-movment-medium",
+      "title": "SHIRT I CHOOSE MOVMENT - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I I CHOOSE MOVMENT” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-choose-movment-medium/1779327680252-jsnmn8.png"
+      ],
+      "stock": 3
+    },
+    {
+      "id": "prod_shirt_strong_everyday_small",
+      "slug": "shirt-strong-everyday-small",
+      "title": "SHIRT STRONG EVERYDAY - SMALL",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “STRONG EVERYDAY” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-strong-everyday-small/1779330285017-5r3t6o.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_strong_everyday_medium",
+      "slug": "shirt-strong-everyday-medium",
+      "title": "SHIRT STRONG EVERYDAY - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “SHIRT STRONG EVERYDAY” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-strong-everyday-medium/1779331098196-6men54.png"
+      ],
+      "stock": 2
+    },
+    {
+      "id": "prod_shirt_pain_to_power_small",
+      "slug": "shirt-pain-to-power-small",
+      "title": "SHIRT PAIN TO POWER - SMALL",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “PAIN TO POWER” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-pain-to-power-small/1779331288806-wcm1xc.png"
+      ],
+      "stock": 3
+    },
+    {
+      "id": "prod_shirt_pain_to_power_medium",
+      "slug": "shirt-pain-to-power-medium",
+      "title": "SHIRT PAIN TO POWER - MEDIUM",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “PAIN TO POWER” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-pain-to-power-medium/1779331398879-shr7z3.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_healing_kid_8",
+      "slug": "shirt-healing-kid-8",
+      "title": "SHIRT HEALING KID #8",
+      "description": "Healing with Sandbox – One Step at a Time ✨\n\nA playful and uplifting tee designed to inspire healing, growth, and positivity. Featuring minimalist orange line art and a cheerful character design, this shirt brings comfort and encouragement in every step. Perfect for casual wear, self-care days, or anyone embracing their healing journey with style and confidence.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-healing-kid-8/1779331635311-7060xn.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_healing_kid_12",
+      "slug": "shirt-healing-kid-12",
+      "title": "SHIRT HEALING KID #12",
+      "description": "Healing with Sandbox – One Step at a Time ✨\n\nA playful and uplifting tee designed to inspire healing, growth, and positivity. Featuring minimalist orange line art and a cheerful character design, this shirt brings comfort and encouragement in every step. Perfect for casual wear, self-care days, or anyone embracing their healing journey with style and confidence.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-healing-kid-12/1779332177865-h9rjw0.png"
+      ],
+      "stock": 0
+    },
+    {
+      "id": "prod_shirt_healing_kid_16",
+      "slug": "shirt-healing-kid-16",
+      "title": "SHIRT HEALING KID #16",
+      "description": "Healing with Sandbox – One Step at a Time ✨\n\nA playful and uplifting tee designed to inspire healing, growth, and positivity. Featuring minimalist orange line art and a cheerful character design, this shirt brings comfort and encouragement in every step. Perfect for casual wear, self-care days, or anyone embracing their healing journey with style and confidence.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-healing-kid-16/1779332242136-mg37z1.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_progress_kid_8",
+      "slug": "shirt-progress-kid-8",
+      "title": "SHIRT PROGRESS KID #8",
+      "description": "Progress in Motion – #SandboxRecovery 🧡\n\nA fun and empowering graphic tee that celebrates growth, resilience, and recovery. Featuring a playful bunny character with bold orange artwork, this design inspires positivity and reminds everyone that every small step forward matters. Comfortable, stylish, and perfect for everyday wear.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-progress-kid-8/1779332435603-8l99ti.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_progress_kid_12",
+      "slug": "shirt-progress-kid-12",
+      "title": "SHIRT PROGRESS KID #12",
+      "description": "Progress in Motion – #SandboxRecovery 🧡\n\nA fun and empowering graphic tee that celebrates growth, resilience, and recovery. Featuring a playful bunny character with bold orange artwork, this design inspires positivity and reminds everyone that every small step forward matters. Comfortable, stylish, and perfect for everyday wear.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-progress-kid-12/1779332504543-nrzvfy.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_progress_kid_16",
+      "slug": "shirt-progress-kid-16",
+      "title": "SHIRT PROGRESS KID #16",
+      "description": "Progress in Motion – #SandboxRecovery 🧡\n\nA fun and empowering graphic tee that celebrates growth, resilience, and recovery. Featuring a playful bunny character with bold orange artwork, this design inspires positivity and reminds everyone that every small step forward matters. Comfortable, stylish, and perfect for everyday wear.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-progress-kid-16/1779332556029-0lhlon.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_proud_patient_8",
+      "slug": "shirt-proud-patient-8",
+      "title": "SHIRT PROUD PATIENT #8",
+      "description": "Proud Sandbox Patient Tee 🧡\n\nA meaningful and empowering shirt that represents recovery, strength, and resilience. Designed with bold yet minimalist graphics, this tee celebrates every patient’s journey toward healing and progress. Comfortable for everyday wear and perfect for showing pride in your recovery story.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-proud-patient-8/1779332759872-rna58t.png"
+      ],
+      "stock": 2
+    },
+    {
+      "id": "prod_shirt_proud_patient_12",
+      "slug": "shirt-proud-patient-12",
+      "title": "SHIRT PROUD PATIENT #12",
+      "description": "Proud Sandbox Patient Tee 🧡\n\nA meaningful and empowering shirt that represents recovery, strength, and resilience. Designed with bold yet minimalist graphics, this tee celebrates every patient’s journey toward healing and progress. Comfortable for everyday wear and perfect for showing pride in your recovery story.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-proud-patient-12/1779332838324-t8u5z3.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_proud_patient_16",
+      "slug": "shirt-proud-patient-16",
+      "title": "SHIRT PROUD PATIENT #16",
+      "description": "Proud Sandbox Patient Tee 🧡\n\nA meaningful and empowering shirt that represents recovery, strength, and resilience. Designed with bold yet minimalist graphics, this tee celebrates every patient’s journey toward healing and progress. Comfortable for everyday wear and perfect for showing pride in your recovery story.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-proud-patient-16/1779333703338-yluywn.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_limit_to_leap_8",
+      "slug": "shirt-limit-to-leap-8",
+      "title": "SHIRT LIMIT TO LEAP #8",
+      "description": "From Limits to Leaps T-Shirt\n\nA minimalist statement tee designed to inspire growth, courage, and transformation. Featuring elegant typography with bold and script accents, this premium white shirt symbolizes breaking barriers and taking bold leaps forward in life. Perfect for everyday wear with a meaningful message that stands out effortlessly.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-limit-to-leap-8/1779333854015-ody61e.png"
+      ],
+      "stock": 2
+    },
+    {
+      "id": "prod_shirt_limit_to_leap_12",
+      "slug": "shirt-limit-to-leap-12",
+      "title": "SHIRT LIMIT TO LEAP #12",
+      "description": "From Limits to Leaps T-Shirt\n\nA minimalist statement tee designed to inspire growth, courage, and transformation. Featuring elegant typography with bold and script accents, this premium white shirt symbolizes breaking barriers and taking bold leaps forward in life. Perfect for everyday wear with a meaningful message that stands out effortlessly.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-limit-to-leap-12/1779333902786-7qvrc1.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_limit_to_leap_16",
+      "slug": "shirt-limit-to-leap-16",
+      "title": "SHIRT LIMIT TO LEAP #16",
+      "description": "From Limits to Leaps T-Shirt\n\nA minimalist statement tee designed to inspire growth, courage, and transformation. Featuring elegant typography with bold and script accents, this premium white shirt symbolizes breaking barriers and taking bold leaps forward in life. Perfect for everyday wear with a meaningful message that stands out effortlessly.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-limit-to-leap-16/1779333956712-uqwc8h.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_move_forward_8",
+      "slug": "shirt-move-forward-8",
+      "title": "SHIRT MOVE FORWARD #8",
+      "description": "Moving Forward One Session at a Time T-Shirt.\n\nA motivational statement tee that celebrates progress, healing, and personal growth. Designed with bold modern typography and uplifting energy, this shirt is a reminder that every small step forward matters. Comfortable, stylish, and perfect for everyday inspiration.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-move-forward-8/1779334109415-xxwzj5.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_move_forward_12",
+      "slug": "shirt-move-forward-12",
+      "title": "SHIRT MOVE FORWARD  #12",
+      "description": "Moving Forward One Session at a Time T-Shirt.\n\nA motivational statement tee that celebrates progress, healing, and personal growth. Designed with bold modern typography and uplifting energy, this shirt is a reminder that every small step forward matters. Comfortable, stylish, and perfect for everyday inspiration.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-move-forward-12/1779334181692-3binr0.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_active_recovery_active_life_12",
+      "slug": "shirt-active-recovery-active-life-12",
+      "title": "SHIRT ACTIVE RECOVERY, ACTIVE LIFE #12",
+      "description": "Active Recovery, Active Life T-Shirt\n\nA vibrant and uplifting tee designed to promote movement, wellness, and everyday recovery. Featuring a clean outdoor-inspired graphic, this shirt represents the balance of staying active while prioritizing healing and self-care. Comfortable, motivational, and perfect for an active lifestyle.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-active-recovery-active-life-12/1779334409765-x1kkn1.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_active_recovery_active_life_16",
+      "slug": "shirt-active-recovery-active-life-16",
+      "title": "SHIRT ACTIVE RECOVERY ACTIVE LIFE #16",
+      "description": "Active Recovery, Active Life T-Shirt\n\nA vibrant and uplifting tee designed to promote movement, wellness, and everyday recovery. Featuring a clean outdoor-inspired graphic, this shirt represents the balance of staying active while prioritizing healing and self-care. Comfortable, motivational, and perfect for an active lifestyle.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-active-recovery-active-life-16/1779334475759-xofe1x.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_building_a_better_me_8",
+      "slug": "shirt-building-a-better-me-8",
+      "title": "SHIRT BUILDING A BETTER ME #8",
+      "description": "Building a Better Me, with Sandbox — a bold statement tee designed for builders, dreamers, and go-getters. Featuring a minimalist graphic and striking typography on a premium black shirt, this design represents growth, hard work, and self-improvement through every challenge. Perfect for casual wear, workdays, or anyone proud of the journey they’re building.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-building-a-better-me-8/1779334899967-p1kfe1.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_shirt_building_a_better_me_12",
+      "slug": "shirt-building-a-better-me-12",
+      "title": "SHIRT BUILDING A BETTER ME  #12",
+      "description": "Building a Better Me, with Sandbox — a bold statement tee designed for builders, dreamers, and go-getters. Featuring a minimalist graphic and striking typography on a premium black shirt, this design represents growth, hard work, and self-improvement through every challenge. Perfect for casual wear, workdays, or anyone proud of the journey they’re building.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-building-a-better-me-12/1779334991085-q5y3uo.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_otrp_car_emblem_for_occupational_therapists_premium_quality",
+      "slug": "otrp-car-emblem-for-occupational-therapists-premium-quality",
+      "title": "OTRP Car Emblem for Occupational Therapists (Premium Quality)",
+      "description": "Occupational Therapist On Board — A bold and professional emblem designed to represent licensed occupational therapists with pride and authority. Featuring a classic medical symbol and strong typography, this badge-style logo communicates trust, care, and healthcare expertise—perfect for vehicles, websites, uniforms, or professional branding.",
+      "price": 1200,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/otrp-car-emblem-for-occupational-therapists-premium-quality/1779341714669-rbe8m5.png"
+      ],
+      "stock": 2
+    },
+    {
+      "id": "prod_rslp_car_emblem_for_speech_language_pathologists_speech_therapists_premium_quality",
+      "slug": "rslp-car-emblem-for-speech-language-pathologists-speech-therapists-premium-quality",
+      "title": "RSLP Car Emblem for Speech Language Pathologists/ Speech Therapists (Premium Quality)",
+      "description": "Speech Language Pathologist On Board — A sleek and professional emblem designed for speech-language pathologists who take pride in their healthcare profession. Featuring a classic medical symbol with bold lettering, this badge-style design represents communication, care, and clinical expertise—ideal for vehicles, websites, work gear, or professional branding.",
+      "price": 1200,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [],
+      "stock": 3
+    },
+    {
+      "id": "prod_ptrp_car_emblem_for_physical_therapists_premium_quality",
+      "slug": "ptrp-car-emblem-for-physical-therapists-premium-quality",
+      "title": "PTRP Car Emblem for Physical Therapists (Premium Quality)",
+      "description": "Physical Therapist On Board — A bold and professional emblem created for physical therapists who proudly represent their healthcare profession. Featuring a classic medical symbol and strong lettering, this badge-style design symbolizes healing, mobility, and patient care—perfect for vehicles, websites, uniforms, or professional branding.",
+      "price": 1200,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/ptrp-car-emblem-for-physical-therapists-premium-quality/1779341921360-hf26sm.png"
+      ],
+      "stock": 4
+    },
+    {
+      "id": "prod_shirt_i_choose_movement_large",
+      "slug": "shirt-i-choose-movement-large",
+      "title": "SHIRT I CHOOSE MOVEMENT - LARGE",
+      "description": "Whether you're in rehab, training, or simply building yourself back up—this “I CHOOSE MOVEMENT” shirt is made to match your mindset. With a bold monochrome design and tagless, breathable fabric, it offers the perfect blend of style and comfort for adults on the move.",
+      "price": 498,
+      "collectionSlug": "merchandise",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/shirt-i-choose-movement-large/1779342269244-olbmx4.png"
+      ],
+      "stock": 1
+    },
+    {
+      "id": "prod_mini_maestros",
+      "slug": "mini-maestros",
+      "title": "MINI MAESTROS",
+      "description": "Mini Maestros\nBy Verdana Rehab Solutions — Progress, Made Possible.\n\nAwaken creativity and rhythm with Mini Maestros, a complete set of child-friendly percussion instruments designed to inspire sensory play, auditory exploration, and motor coordination. Crafted from safe, durable materials, each instrument invites children to explore sound, rhythm, and teamwork—making it a perfect tool for therapy, classrooms, or family playtime.",
+      "price": 2150,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/mini-maestros/1779342858155-m3fx6d.jpg"
+      ],
+      "stock": 12
+    },
+    {
+      "id": "prod_3d_puzzle_sets",
+      "slug": "3d-puzzle-sets",
+      "title": "3D PUZZLE SETS",
+      "description": "Give your child hours of hands-on learning with this delightful 3D Wooden Puzzle Set. Each board features raised, chunky puzzle pieces designed for tiny hands—making it ideal for toddlers and preschoolers who are developing fine motor skills, problem-solving abilities, and shape/animal/object recognition.\n\nThese vibrant, easy-to-grasp pieces bring each scene to life, whether it’s animals, vehicles, dinosaurs, or underwater creatures. Perfect for home play, classroom activities, therapy use, and gifting!",
+      "price": 250,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/3d-puzzle-sets/1776066756697-ob5543.png",
+        "/api/uploads/products/3d-puzzle-sets/1776066757354-tf46kw.png",
+        "/api/uploads/products/3d-puzzle-sets/1776066758006-tfdngj.png",
+        "/api/uploads/products/3d-puzzle-sets/1776066758635-8dzxhh.png"
+      ],
+      "stock": 79
+    },
+    {
+      "id": "prod_precision_tongue_trainer",
+      "slug": "precision-tongue-trainer",
+      "title": "PRECISION TONGUE TRAINER",
+      "description": "The Precision Tongue Trainer is designed to support oral motor development, feeding readiness, and speech clarity. Each tool encourages controlled tongue elevation, lateralization, and placement — essential skills for articulation, swallowing, and overall oral coordination.\n\n\n\nIdeal for use in speech therapy, occupational therapy, or guided home practice under clinician direction.\n\n\n\n• Supports tongue strength, control, and precision\n\n• Assists with speech sound production (e.g., /l/, /r/, /s/, /sh/, /t/, /d/)\n\n• Encourages proper tongue tip placement for clearer articulation\n\n• Helps promote safe and efficient feeding and swallowing patterns\n\n• Lightweight and easy to handle for both children and therapists\n\n• Durable and easy to clean between sessions\n\n\n\nA structured, therapist-approved tool for building confident and coordinated oral movement.",
+      "price": 1200,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/precision-tongue-trainer/1776066026384-1uol89.png",
+        "/api/uploads/products/precision-tongue-trainer/1779355060599-t9miw0.jpg"
+      ],
+      "stock": 493
+    },
+    {
+      "id": "prod_all_in_one_oral_sensory_mega_kit_chew_support_oral_motor_training_feeding_readiness_set",
+      "slug": "all-in-one-oral-sensory-mega-kit-chew-support-oral-motor-training-feeding-readiness-set",
+      "title": "All-in-One Oral Sensory Mega Kit | Chew Support + Oral Motor Training + Feeding Readiness Set",
+      "description": "The All-in-One Oral Sensory Mega Kit is a complete, therapist-designed set for children who need oral sensory support, chewing alternatives, and structured oral motor practice. Ideal for home programs, therapy centers, preschools, and classroom routines, this kit helps children develop oral awareness, jaw stability, tongue control, and calm self-regulation.\n\n\n\nThis set provides a full range of oral-sensory tools for chewing, feeding readiness, desensitization, and sensory calming — making it a versatile and comprehensive kit for daily use.\n\n\n\nWhat’s Included:\n\nChew Necklace Pendant (Choose 1):\n\n• Butterfly Calm Chew Pendant or\n\n• Aurora Tag Chew Pendant\n\n→ A wearable chew option for on-the-go sensory regulation.\n\n\n\nVelura Textured Spoon (1 pc)\n\n→ Supports feeding readiness, oral awareness, and sensory tolerance.\n\n\n\nPrecision Tongue Trainer Tools (Set of 3)\n\n→ Used for tongue elevation, oral coordination, and strengthening.\n\n\n\nPrism Brick Chew Pencil Toppers (1 pc)\n\n→ Helps reduce chewing on pencils, clothing, or non-food objects while improving focus.\n\n\n\nCrimson Sensory Chew Bars (Set)\n\n→ Provides varying resistances for jaw strengthening and sensory modulation.\n\n\n\n⭐ Benefits\n\n• Supports self-regulation, emotional calming, and sensory coping\n\n• Encourages safe chewing habits, reducing shirt chewing and nail biting\n\n• Promotes stronger jaw control and more efficient chewing patterns\n\n• Helps children participate more successfully in classroom and mealtime routines\n\n• Suitable for OT/ST therapy, home use, and preschool environments\n\n\n\n🌱 Safety & Materials\n\n• Made from food-grade, BPA-free silicone\n\n• Non-toxic, child-safe materials\n\n• Necklace includes breakaway safety cord\n\n• Easy to wash and sanitize\n\n\n\n🎯 Ideal For:\n\n✔ Oral seeking / sensory-seeking children\n\n✔ Feeding therapy & mealtime desensitization\n\n✔ Classroom, clinic, and home sensory routines\n\n✔ Speech & Occupational therapy programs\n\n\n\n📦 Variation Option\n\nPendant Style:\n\n• Butterfly Calm Chew\n\n• Aurora Tag Chew",
+      "price": 5800,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/all-in-one-oral-sensory-mega-kit-chew-support-oral-motor-training-feeding-readiness-set/1779355482264-wsck22.jpg"
+      ],
+      "stock": 50
+    },
+    {
+      "id": "prod_all_in_one_oral_sensory_mega_kit_chew_support_oral_motor_training_feeding_readiness_set",
+      "slug": "all-in-one-oral-sensory-mega-kit-chew-support-oral-motor-training-feeding-readiness-set",
+      "title": "All-in-One Oral Sensory Mega Kit | Chew Support + Oral Motor Training + Feeding Readiness Set",
+      "description": "The All-in-One Oral Sensory Mega Kit is a complete, therapist-designed set for children who need oral sensory support, chewing alternatives, and structured oral motor practice. Ideal for home programs, therapy centers, preschools, and classroom routines, this kit helps children develop oral awareness, jaw stability, tongue control, and calm self-regulation.\n\n\n\nThis set provides a full range of oral-sensory tools for chewing, feeding readiness, desensitization, and sensory calming — making it a versatile and comprehensive kit for daily use.\n\n\n\nWhat’s Included:\n\nChew Necklace Pendant (Choose 1):\n\n• Butterfly Calm Chew Pendant or\n\n• Aurora Tag Chew Pendant\n\n→ A wearable chew option for on-the-go sensory regulation.\n\n\n\nVelura Textured Spoon (1 pc)\n\n→ Supports feeding readiness, oral awareness, and sensory tolerance.\n\n\n\nPrecision Tongue Trainer Tools (Set of 3)\n\n→ Used for tongue elevation, oral coordination, and strengthening.\n\n\n\nPrism Brick Chew Pencil Toppers (1 pc)\n\n→ Helps reduce chewing on pencils, clothing, or non-food objects while improving focus.\n\n\n\nCrimson Sensory Chew Bars (Set)\n\n→ Provides varying resistances for jaw strengthening and sensory modulation.\n\n\n\n⭐ Benefits\n\n• Supports self-regulation, emotional calming, and sensory coping\n\n• Encourages safe chewing habits, reducing shirt chewing and nail biting\n\n• Promotes stronger jaw control and more efficient chewing patterns\n\n• Helps children participate more successfully in classroom and mealtime routines\n\n• Suitable for OT/ST therapy, home use, and preschool environments\n\n\n\n🌱 Safety & Materials\n\n• Made from food-grade, BPA-free silicone\n\n• Non-toxic, child-safe materials\n\n• Necklace includes breakaway safety cord\n\n• Easy to wash and sanitize\n\n\n\n🎯 Ideal For:\n\n✔ Oral seeking / sensory-seeking children\n\n✔ Feeding therapy & mealtime desensitization\n\n✔ Classroom, clinic, and home sensory routines\n\n✔ Speech & Occupational therapy programs\n\n\n\n📦 Variation Option\n\nPendant Style:\n\n• Butterfly Calm Chew\n\n• Aurora Tag Chew",
+      "price": 5800,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": []
+    },
+    {
+      "id": "prod_starter_oral_sensory_kit",
+      "slug": "starter-oral-sensory-kit",
+      "title": "STARTER ORAL-SENSORY KIT",
+      "description": "The Starter Oral-Sensory Kit is thoughtfully curated for children who chew to focus, self-regulate, or find comfort. This set provides three different chew formats so adults and therapists can identify the most supportive sensory match:\n\n\n\n• A wearable chew pendant for on-the-go regulation\n\n• A textured chew topper for classroom or homework use\n\n• A multi-bar chew set offering varied thickness for graded oral input\n\n\n\nEach item is made from food-grade, non-toxic, BPA-free silicone to ensure safe daily use at home, school, or during therapy.\n\n\n\nWhat’s Included:\n\n• 1 Wearable Sensory Chew Pendant (with breakaway safety cord)\n\n• 1 Textured Chew Topper (fits standard pencils)\n\n• 1 Set of Crimson Chew Bars (graded thickness set)\n\n\n\nBenefits:\n\n\n\n• Supports focus, calm, and emotional regulation\n\n• Helps reduce shirt chewing, nail biting, and pencil chewing\n\n• Provides oral motor input to strengthen the jaw and improve coordination\n\n• Offers three sensory experiences to match different needs and environments\n\n• Easy to clean, durable, and safe for everyday use\n\nA supportive, flexible sensory system — perfect for families and therapists beginning their oral-sensory journey.",
+      "price": 1350,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": []
+    },
+    {
+      "id": "prod_starter_oral_kit",
+      "slug": "starter-oral-kit",
+      "title": "STARTER ORAL KIT",
+      "description": "The Verdana Oral-Sensory Development Kit Collection is a structured range of therapist-informed chew and oral-motor sets designed to support focus, regulation, feeding readiness, and oral motor development across home, school, and clinical settings.\n\n\n\nInstead of random sensory toys, each kit is intentionally curated to match specific developmental goals — whether you are just starting your child’s oral-sensory journey or implementing a more intensive oral-motor program.\n\n\n\nAll items are made from food-grade, non-toxic, BPA-free silicone, ensuring safe daily use.\n\n\n\n1️⃣ STARTER ORAL-SENSORY KIT\n\nIdeal for beginners exploring safe chewing alternatives.\n\nIncludes:\n\n• Prism Brick Pencil Grip – 1\n\n• Aurora Tag Chew – 1\n\n• Crimson Sensory Bars – 1\n\n\n\n2️⃣ SCHOOL & HOMEWORK CHEW PACK\n\nDesigned for classroom focus and quiet regulation.\n\n\n\nIncludes:\n\n• Butterfly Calm Chew – 1\n\n• Prism Brick Pencil Grips – 3\n\n\n\n3️⃣ CLINIC ASSESSMENT PACK A\n\nFor therapists assessing graded oral input and tongue control.\n\n\n\nIncludes:\n\n• 6 Sets of Row Bars – 1\n\n• Precision Tongue Trainer – 1\n\n• Butterfly Calm Chew – 1\n\n\n\n4️⃣ CLINIC ASSESSMENT PACK B\n\nAlternate clinic set with wearable regulation option.\n\n\n\nIncludes:\n\n• 6 Sets of Row Bars – 1\n\n• Precision Tongue Trainer – 1\n\n• Aurora Tag Chew – 1\n\n\n\n5️⃣ INTENSIVE ORAL MOTOR DEVELOPMENT KIT\n\nFor structured strengthening and feeding readiness programs.\n\n\n\nIncludes:\n\n• 6 Sets of Row Bars – 1\n\n• Tongue Tip Trainer – 1\n\n• Velura Textured Spoon – 1\n\n\n\n6️⃣ PRESCHOOL SENSORY MEALTIME SET A\n\nSupports feeding exposure and oral input during meals.\n\n\n\nIncludes:\n\n• Velura Textured Spoon – 1\n\n• Butterfly Calm Chew – 1\n\n• 6 Sets of Row Bars – 1\n\n\n\n7️⃣ PRESCHOOL SENSORY MEALTIME SET B\n\nAlternate mealtime support set with wearable chew option.\n\n\n\nIncludes:\n\n• Velura Textured Spoon – 1\n\n• Aurora Tag Chew – 1\n\n• 6 Sets of Row Bars – 1\n\n\n\n8️⃣ ALL-IN-ONE ORAL SENSORY MEGA KIT A\n\nComprehensive support for home or therapy use.\n\n\n\nIncludes:\n\n• Aurora Tag Chew – 1\n\n• Prism Brick Pencil Chew Topper – 1\n\n• 6 Sets of Row Bars – 1\n\n• Velura Textured Spoon – 1\n\n• Tongue Tip Trainer – 1\n\n\n\n9️⃣ ALL-IN-ONE ORAL SENSORY MEGA KIT B\n\nComplete oral sensory system with alternate chew design.\n\n\n\nIncludes:\n\n• Butterfly Calm Chew – 1\n\n• Prism Brick Pencil Chew Topper – 1\n\n• 6 Sets of Row Bars – 1\n\n• Velura Textured Spoon – 1\n\n• Tongue Tip Trainer – 1\n\n\n\nBenefits Across the Collection\n\n• Supports focus, calm, and emotional regulation\n\n• Helps reduce shirt chewing, nail biting, and pencil chewing\n\n• Provides graded oral motor input\n\n• Strengthens jaw stability and tongue coordination\n\n• Supports feeding readiness and sensory exploration\n\n• Designed for therapists, parents, and educators\n\n• Durable, washable, and safe for daily use\n\n\n\nBest For Children Who:\n\n✓ Seek oral input\n\n✓ Need structured sensory regulation\n\n✓ Are undergoing OT or feeding therapy\n\n✓ Require classroom-friendly sensory tools\n\n✓ Need support with chewing or oral motor development",
+      "price": 1350,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/starter-oral-kit/1779356264916-i360e8.jpg"
+      ],
+      "stock": 48
+    },
+    {
+      "id": "prod_school_chew_pack",
+      "slug": "school-chew-pack",
+      "title": "SCHOOL CHEW PACK",
+      "description": "The Verdana Oral-Sensory Development Kit Collection is a structured range of therapist-informed chew and oral-motor sets designed to support focus, regulation, feeding readiness, and oral motor development across home, school, and clinical settings.\n\n\n\nInstead of random sensory toys, each kit is intentionally curated to match specific developmental goals — whether you are just starting your child’s oral-sensory journey or implementing a more intensive oral-motor program.\n\nAll items are made from food-grade, non-toxic, BPA-free silicone, ensuring safe daily use.",
+      "price": 900,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/school-chew-pack/1779356399105-lj12ub.jpg"
+      ],
+      "stock": 199
+    },
+    {
+      "id": "prod_clinic_assessment_pack_a",
+      "slug": "clinic-assessment-pack-a",
+      "title": "CLINIC ASSESSMENT PACK A",
+      "description": "The Verdana Oral-Sensory Development Kit Collection is a structured range of therapist-informed chew and oral-motor sets designed to support focus, regulation, feeding readiness, and oral motor development across home, school, and clinical settings.\n\n\n\nInstead of random sensory toys, each kit is intentionally curated to match specific developmental goals — whether you are just starting your child’s oral-sensory journey or implementing a more intensive oral-motor program.\n\nAll items are made from food-grade, non-toxic, BPA-free silicone, ensuring safe daily use.",
+      "price": 2350,
+      "collectionSlug": "therapeutic-toys",
+      "variants": [],
+      "images": [
+        "/api/uploads/products/clinic-assessment-pack-a/1779356518047-vrmh28.jpg"
+      ],
+      "stock": 50
+    }
+  ]
+}

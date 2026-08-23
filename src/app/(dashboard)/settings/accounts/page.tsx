@@ -16,7 +16,9 @@ import {
   RefreshCw,
   Mail,
   KeyRound,
+  Building2,
 } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 interface SocialAccount {
   id: string
@@ -746,8 +748,143 @@ export default function AccountsPage() {
         </p>
       </div>
 
+      {/* ─── HR Branches Registry sync ───────────────────────────── */}
+      <HrBranchesSection />
+
       {/* ─── Branch CC Emails (super admin only) ─────────────────── */}
       <BranchCCEmailsSection />
+    </div>
+  )
+}
+
+// ── HR Branches Registry sync ───────────────────────────────────────────────
+// HR Platform is the source of truth for branch identity/contact config.
+// This pulls a local cache via POST /api/branches/sync — same pattern as
+// the Staff module's "Sync Staff" button — and shows what's currently
+// cached so an admin can confirm the pipe is working without needing to
+// log into HR Platform.
+
+interface HrBranchRow {
+  id: string
+  shortCode: string
+  name: string
+  brandName: string | null
+  emailMain: string | null
+  active: boolean
+  syncedAt: string
+}
+
+function HrBranchesSection() {
+  const [branches, setBranches] = useState<HrBranchRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ synced: number; created: number; updated: number; deleted: number; total: number } | null>(null)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/public/branches?includeInactive=1')
+      const d = await r.json()
+      setBranches(d.branches || [])
+    } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+
+  async function handleSync() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/branches/sync', { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        setSyncResult(data)
+        load()
+      } else {
+        alert('Sync failed: ' + (data.error || 'Unknown error') + ' (HTTP ' + res.status + ')')
+      }
+    } catch (err) {
+      alert('Sync failed: ' + (err instanceof Error ? err.message : String(err)))
+    }
+    setSyncing(false)
+  }
+
+  return (
+    <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#EAF6F4' }}>
+            <Building2 size={18} style={{ color: 'var(--teal)' }} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              Branches Registry
+            </h2>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Synced from HR Platform, the single source of truth for branch name/address/emails/hours. Edit branches there, not here.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold flex-shrink-0"
+          style={{ background: 'var(--teal)', color: '#fff', cursor: syncing ? 'not-allowed' : 'pointer' }}
+        >
+          <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Syncing…' : 'Sync Branches'}
+        </button>
+      </div>
+
+      {syncResult && (
+        <p className="text-xs mt-2 px-1" style={{ color: 'var(--mid-gray)' }}>
+          Synced {syncResult.synced} of {syncResult.total} ({syncResult.created} new, {syncResult.updated} updated, {syncResult.deleted} removed).
+        </p>
+      )}
+
+      {loading ? (
+        <p className="text-xs mt-3" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
+      ) : branches.length === 0 ? (
+        <p className="text-xs mt-3" style={{ color: 'var(--mid-gray)' }}>
+          No branches synced yet — click &ldquo;Sync Branches&rdquo; to pull the current registry from HR Platform.
+        </p>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ color: 'var(--mid-gray)' }} className="text-left">
+                <th className="pb-2 pr-3 font-semibold">Branch</th>
+                <th className="pb-2 pr-3 font-semibold">Code</th>
+                <th className="pb-2 pr-3 font-semibold">Main Email</th>
+                <th className="pb-2 pr-3 font-semibold">Status</th>
+                <th className="pb-2 font-semibold">Last Synced</th>
+              </tr>
+            </thead>
+            <tbody>
+              {branches.map(b => (
+                <tr key={b.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                  <td className="py-2 pr-3" style={{ color: 'var(--charcoal)' }}>
+                    {b.name}
+                    {b.brandName && <div style={{ color: 'var(--mid-gray)' }}>{b.brandName}</div>}
+                  </td>
+                  <td className="py-2 pr-3"><code>{b.shortCode}</code></td>
+                  <td className="py-2 pr-3">{b.emailMain || '—'}</td>
+                  <td className="py-2 pr-3">
+                    <span
+                      className="px-1.5 py-0.5 rounded-full font-bold text-[10px]"
+                      style={b.active ? { background: '#D1FAE5', color: '#065F46' } : { background: '#F3F4F6', color: '#6B7280' }}
+                    >
+                      {b.active ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
+                  </td>
+                  <td className="py-2" style={{ color: 'var(--mid-gray)' }}>
+                    {new Date(b.syncedAt).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -763,12 +900,6 @@ interface BranchCCRow {
   email: string  // comma-separated allowed
   notes: string | null
   updatedAt: string
-}
-
-const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
 }
 
 function BranchCCEmailsSection() {
@@ -823,7 +954,7 @@ function BranchCCEmailsSection() {
   }
 
   async function remove(branch: string) {
-    if (!confirm(`Remove CC emails for ${BRANCH_LABELS[branch] ?? branch}?`)) return
+    if (!confirm(`Remove CC emails for ${branchLabel(branch) ?? branch}?`)) return
     setSaving(branch)
     try {
       const r = await fetch('/api/admin/branch-cc-emails?branch=' + encodeURIComponent(branch), { method: 'DELETE' })
@@ -862,7 +993,7 @@ function BranchCCEmailsSection() {
               <div key={branch} className="rounded-lg p-3" style={{ background: '#fafafa', border: '1px solid var(--light-gray)' }}>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#ED6823' }}>
-                    {BRANCH_LABELS[branch] ?? branch}
+                    {branchLabel(branch) ?? branch}
                   </span>
                   {existed && !dirty && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#D1FAE5', color: '#065F46' }}>

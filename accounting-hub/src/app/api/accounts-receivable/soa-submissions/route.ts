@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 // The HMO officer owns this record, so the write list includes that role even
 // though they cannot record payments.
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
@@ -45,14 +45,21 @@ export async function GET(req: Request) {
                 arCustomDate: true,
                 patientName: true,
                 items: { select: { name: true } },
-                payments: { where: { method: 'HMO' }, select: { amount: true } },
+                payments: { where: { method: 'HMO' }, select: { amount: true, walletId: true } },
               },
             },
           },
         },
       },
     })
-    return NextResponse.json({ submissions })
+    const scoped = submissions.map(sub => ({
+      ...sub,
+      items: sub.items.map(i => ({
+        ...i,
+        order: { ...i.order, payments: i.order.payments.filter(pay => pay.walletId === sub.walletId) },
+      })),
+    }))
+    return NextResponse.json({ submissions: scoped })
   } catch (e) {
     console.error('SOA submissions GET failed', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -79,7 +86,7 @@ export async function POST(req: Request) {
     // a rejected save.
     if (ids.length > 0) {
       const valid = await prisma.order.count({
-        where: { id: { in: ids }, payments: { some: { method: 'HMO', walletId } } },
+        where: { id: { in: ids }, status: { not: 'VOIDED' }, payments: { some: { method: 'HMO', walletId } } },
       })
       if (valid !== ids.length) {
         return NextResponse.json(
@@ -126,7 +133,7 @@ export async function PATCH(req: Request) {
     const ids: string[] | null = Array.isArray(orderIds) ? [...new Set(orderIds.filter(Boolean))] : null
     if (ids && ids.length > 0) {
       const valid = await prisma.order.count({
-        where: { id: { in: ids }, payments: { some: { method: 'HMO', walletId: existing.walletId } } },
+        where: { id: { in: ids }, status: { not: 'VOIDED' }, payments: { some: { method: 'HMO', walletId: existing.walletId } } },
       })
       if (valid !== ids.length) {
         return NextResponse.json(

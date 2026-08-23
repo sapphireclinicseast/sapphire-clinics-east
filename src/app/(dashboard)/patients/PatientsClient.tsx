@@ -8,6 +8,7 @@ import {
   QrCode, FileText, Camera, Loader2, Star,
 } from 'lucide-react'
 import { isLikelyChinoy } from '@/lib/chinoy-surnames'
+import { branchLabel } from '@/lib/branch-label'
 
 interface Patient {
   id: string
@@ -35,11 +36,29 @@ interface Patient {
   smsUnsubscribed?: boolean
 }
 
-const BRANCHES = [
-  { value: 'SANDBOX_EAST',       label: 'East Branch' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
-  { value: 'VERDANA_STORE',      label: 'Verdana Store' },
+// Seed list, shown for the moment before /api/branches/options answers so the
+// pickers are never briefly empty. The fetched list replaces it — a branch
+// created in HR Platform appears here without a code change, which is the
+// whole point of Patient.branches being text rather than a Prisma enum.
+const FALLBACK_BRANCHES: BranchOption[] = [
+  { value: 'SANDBOX_EAST',       label: branchLabel('SANDBOX_EAST') },
+  { value: 'SANDBOX_GREENHILLS', label: branchLabel('SANDBOX_GREENHILLS') },
+  { value: 'VERDANA_STORE',      label: branchLabel('VERDANA_STORE') },
 ]
+
+interface BranchOption { value: string; label: string; shortCode?: string }
+
+/** Branch list from the HrBranch registry (hourly sync from HR Platform). */
+function useBranchOptions(): BranchOption[] {
+  const [opts, setOpts] = useState<BranchOption[]>(FALLBACK_BRANCHES)
+  useEffect(() => {
+    fetch('/api/branches/options')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.branches?.length) setOpts(d.branches) })
+      .catch(() => { /* keep the seed list — never leave the picker empty */ })
+  }, [])
+  return opts
+}
 
 interface DuplicateEntry {
   csvRow: Record<string, string>
@@ -57,10 +76,6 @@ type SortCol = 'name' | 'type' | 'branch' | 'sex' | 'city' | 'barangay' | 'diagn
 type SortDir = 'asc' | 'desc'
 type FilterableCol = 'type' | 'branch' | 'sex' | 'city' | 'barangay' | 'diagnosis'
 
-// ── Helper: branch label ──────────────────────────────────────────────────────
-function branchLabel(b?: string) {
-  return BRANCHES.find((x) => x.value === b)?.label ?? b ?? '—'
-}
 
 function patientBranchDisplay(p: Patient) {
   const bs = p.branches?.length ? p.branches : (p.branch ? [p.branch] : [])
@@ -152,9 +167,10 @@ function FilterDropdown({
 function BranchCheckboxes({
   selected, onChange, lockedTo,
 }: { selected: string[]; onChange: (b: string[]) => void; lockedTo?: string }) {
+  const branches = useBranchOptions()
   return (
     <div className="flex flex-wrap gap-2">
-      {BRANCHES.map((b) => {
+      {branches.map((b) => {
         const active   = selected.includes(b.value)
         const disabled = !!lockedTo && b.value !== lockedTo
         return (
@@ -210,6 +226,7 @@ const ROLE_TO_BRANCH: Record<string, string> = {
 }
 
 export default function PatientsPage({ role = '', userEmail = '' }: { role?: string; userEmail?: string }) {
+  const branchOptions = useBranchOptions()
   const isMainAdmin = userEmail.toLowerCase() === 'main@sapphireclinicseast.org'
   const isFrontDesk  = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
   const forcedBranch = ROLE_TO_BRANCH[role] ?? ''
@@ -217,12 +234,23 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   const [patients, setPatients]         = useState<Patient[]>([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
+  // Patients matching the search but registered at another branch. Shown read-only
+  // beneath the empty result, so a front desk stops short of re-creating someone
+  // who already exists.
+  const [outOfBranch, setOutOfBranch]   = useState<Patient[]>([])
+  const [addingBranchId, setAddingBranchId] = useState<string | null>(null)
   const [typeFilter, setTypeFilter]     = useState('')
-  const [branchFilter, setBranchFilter] = useState(forcedBranch)
+  // Front desk now reads the whole register, so the listing defaults to every
+  // branch. `forcedBranch` still seeds the ADD form, since a new patient is
+  // normally registered at the desk taking them in.
+  const [branchFilter, setBranchFilter] = useState('')
   const [chinoyFilter, setChinoyFilter] = useState(false)
   const [showAddForm, setShowAddForm]   = useState(false)
   const [csvFile, setCsvFile]           = useState<File | null>(null)
-  const [importBranch, setImportBranch] = useState(forcedBranch || 'SANDBOX_EAST')
+  // CSV rows land at every branch ticked here. Single-select was one of the two
+  // paths that made interbranch patients impossible to import, forcing a second
+  // patient record instead of a second branch on the same one.
+  const [importBranches, setImportBranches] = useState<string[]>([forcedBranch || 'SANDBOX_EAST'])
   const [importing, setImporting]       = useState(false)
   const [importMsg, setImportMsg]       = useState('')
   const [duplicates, setDuplicates]     = useState<DuplicateEntry[]>([])
@@ -267,6 +295,11 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   // Staged files for the Add Patient form (uploaded after patient creation)
   const [addReferralFile, setAddReferralFile] = useState<File | null>(null)
   const [addPwdIdFile, setAddPwdIdFile] = useState<File | null>(null)
+  // Same-name matches returned by the API (409) — shown before a duplicate is made.
+  const [dupMatches, setDupMatches] = useState<Array<{
+    id: string; firstName: string; lastName: string; dob: string | null
+    phone: string | null; email: string | null; branches: string[]; branch: string | null
+  }> | null>(null)
   const addReferralInputRef = useRef<HTMLInputElement>(null)
   const addPwdIdInputRef = useRef<HTMLInputElement>(null)
 
@@ -280,19 +313,19 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       const saved = localStorage.getItem('pending-duplicates')
       const savedBranch = localStorage.getItem('pending-duplicates-branch')
       if (saved) setDuplicates(JSON.parse(saved))
-      if (savedBranch) setImportBranch(savedBranch)
+      if (savedBranch) setImportBranches(JSON.parse(savedBranch))
     } catch {}
   }, [])
 
   useEffect(() => {
     if (duplicates.length > 0) {
       localStorage.setItem('pending-duplicates', JSON.stringify(duplicates))
-      localStorage.setItem('pending-duplicates-branch', importBranch)
+      localStorage.setItem('pending-duplicates-branch', JSON.stringify(importBranches))
     } else {
       localStorage.removeItem('pending-duplicates')
       localStorage.removeItem('pending-duplicates-branch')
     }
-  }, [duplicates, importBranch])
+  }, [duplicates, importBranches])
 
   // ── Close filter dropdown on outside click ────────────────────────────────
   useEffect(() => {
@@ -395,8 +428,12 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       const res  = await fetch(`/api/patients?${params}`)
       const data = await res.json()
       setPatients(data.patients || [])
+      // Only ever populated for a branch-locked user whose scoped search found
+      // nothing — see the cross-branch note in /api/patients.
+      setOutOfBranch(data.outOfBranch || [])
     } catch {
       setPatients([])
+      setOutOfBranch([])
     } finally {
       setLoading(false)
     }
@@ -404,15 +441,45 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
 
   useEffect(() => { fetchPatients() }, [search, typeFilter, branchFilter])
 
+  /** Attach this front desk's own branch to a patient already registered elsewhere. */
+  async function addMyBranch(patientId: string) {
+    if (!forcedBranch) return
+    setAddingBranchId(patientId)
+    try {
+      const res = await fetch('/api/patients', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: patientId, addBranch: forcedBranch }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Could not add this branch')
+        return
+      }
+      // Re-running the search moves them out of outOfBranch and into the real list.
+      await fetchPatients()
+    } finally {
+      setAddingBranchId(null)
+    }
+  }
+
   // ── Add / Edit / Delete ───────────────────────────────────────────────────
-  async function handleAddPatient(e: React.FormEvent) {
+  async function handleAddPatient(e: React.FormEvent, confirmDuplicate = false) {
     e.preventDefault()
-    const payload = forcedBranch ? { ...form, branches: [forcedBranch] } : form
+    const base = forcedBranch ? { ...form, branches: [forcedBranch] } : form
+    const payload = confirmDuplicate ? { ...base, confirmDuplicate: true } : base
     const res = await fetch('/api/patients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
+    // Someone with this exact name already exists — show them before creating
+    // a second record rather than after.
+    if (res.status === 409) {
+      const data = await res.json().catch(() => null)
+      if (data?.duplicateWarning) { setDupMatches(data.matches ?? []); return }
+    }
+    setDupMatches(null)
     if (res.ok) {
       const { patient: created } = await res.json()
       if (created?.id) {
@@ -547,7 +614,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
     setImporting(true)
     const fd = new FormData()
     fd.append('file', csvFile)
-    fd.append('branch', importBranch)
+    fd.append('branches', JSON.stringify(importBranches))
     const res  = await fetch('/api/patients', { method: 'POST', body: fd })
     const data = await res.json()
     setImporting(false)
@@ -577,7 +644,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
     const tempFile = new File([csvContent], 'accept.csv', { type: 'text/csv' })
     const fd = new FormData()
     fd.append('file', tempFile)
-    fd.append('branch', importBranch)
+    fd.append('branches', JSON.stringify(importBranches))
     fd.append('force', 'true')
     setImporting(true)
     await fetch('/api/patients', { method: 'POST', body: fd })
@@ -691,13 +758,15 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
           <option value="ADULT">Adult</option>
         </select>
 
-        {/* Branch filter — hidden for front desk (locked to their branch) */}
-        {!isFrontDesk && (
+        {/* Branch filter — shown to everyone. Front desk reads across branches so
+            they can find a patient registered at the other one instead of
+            creating a duplicate. */}
+        {(
           <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}
             className="px-3 py-2 rounded-lg text-sm outline-none"
             style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
             <option value="">All Branches</option>
-            {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+            {branchOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
         )}
 
@@ -729,11 +798,11 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
         {/* CSV Import */}
         <div className="flex items-center gap-2">
           {!isFrontDesk && (
-            <select value={importBranch} onChange={(e) => setImportBranch(e.target.value)}
-              className="px-2 py-2 rounded-lg text-sm outline-none"
-              style={{ background: 'var(--pale-teal)', border: '1px solid rgba(26,123,138,0.3)', color: 'var(--teal)' }}>
-              {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
+            <BranchCheckboxes
+              selected={importBranches}
+              onChange={setImportBranches}
+              lockedTo={forcedBranch || undefined}
+            />
           )}
           <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer"
             style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
@@ -766,7 +835,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
               <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--mid-gray)' }}>
                 Download Branches
               </p>
-              {BRANCHES.map((b) => (
+              {branchOptions.map((b) => (
                 <label key={b.value} className="flex items-center gap-2 cursor-pointer">
                   <span onClick={() => setExportBranches((prev) => {
                     const next = new Set(prev)
@@ -955,6 +1024,58 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       )}
 
       {/* ── Add patient form ──────────────────────────────────────────────── */}
+      {/* Same-name warning — shown instead of silently creating a duplicate.
+          Deliberately blocks on the FIRST attempt only; genuine namesakes are
+          created by confirming past it. */}
+      {dupMatches && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+             onClick={() => setDupMatches(null)}>
+          <div className="bg-white rounded-xl w-full max-w-[560px] shadow-2xl overflow-hidden"
+               onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-gray-200" style={{ background: '#FEF3C7' }}>
+              <h3 className="text-sm font-extrabold" style={{ color: '#92400E' }}>
+                {dupMatches.length === 1 ? 'A patient with this name already exists' : 'Patients with this name already exist'}
+              </h3>
+              <p className="text-[11px] mt-0.5" style={{ color: '#92400E' }}>
+                Check whether this is the same person before adding a new record. Matches are searched across both branches.
+              </p>
+            </div>
+            <div className="max-h-[45vh] overflow-y-auto">
+              {dupMatches.map(m => (
+                <div key={m.id} className="px-5 py-3 border-b border-gray-100 last:border-b-0">
+                  <div className="text-sm font-semibold text-gray-900">{m.lastName}, {m.firstName}</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    {m.dob ? `DOB ${new Date(m.dob).toISOString().split('T')[0]}` : 'No DOB on file'}
+                    {m.phone ? ` · ${m.phone}` : ''}
+                    {m.email ? ` · ${m.email}` : ''}
+                  </div>
+                  <div className="mt-1 flex gap-1">
+                    {(m.branches?.length ? m.branches : (m.branch ? [m.branch] : [])).map(b => (
+                      <span key={b} className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: b === 'SANDBOX_GREENHILLS' ? '#ede9fe' : '#d1fae5',
+                                 color: b === 'SANDBOX_GREENHILLS' ? '#5b21b6' : '#065f46' }}>
+                        {branchLabel(b)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-3 flex flex-wrap gap-2 justify-end border-t border-gray-200 bg-gray-50">
+              <button type="button" onClick={() => setDupMatches(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-300 bg-white text-gray-700">
+                Cancel — use the existing record
+              </button>
+              <button type="button"
+                onClick={e => { setDupMatches(null); handleAddPatient(e as unknown as React.FormEvent, true) }}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: '#B45309' }}>
+                Different person — add anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAddForm && (
         <div className="rounded-xl p-6" style={{ background: '#fff', border: '1px solid var(--teal)' }}>
           <div className="flex items-center justify-between mb-5">
@@ -1138,8 +1259,45 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
               </tr>
             ) : displayPatients.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  No patients found
+                <td colSpan={9} className="py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                  <p className="text-center">No patients found</p>
+                  {outOfBranch.length > 0 && (
+                    <div className="mx-auto mt-5 max-w-2xl rounded-xl border p-4 text-left"
+                      style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <p className="text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                        Already registered at another branch
+                      </p>
+                      <p className="text-[11px] mb-3">
+                        {outOfBranch.length === 1 ? 'This patient exists' : 'These patients exist'} but
+                        {' '}{outOfBranch.length === 1 ? 'is' : 'are'} not registered at your branch. Add your branch
+                        instead of creating a new record — creating one makes a duplicate.
+                      </p>
+                      <ul className="space-y-2">
+                        {outOfBranch.map(p => (
+                          <li key={p.id} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 border"
+                            style={{ borderColor: 'var(--light-gray)' }}>
+                            <span>
+                              <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>
+                                {p.firstName} {p.lastName}
+                              </span>
+                              <span className="ml-2 text-[11px]">
+                                registered at {patientBranchDisplay(p)}
+                              </span>
+                            </span>
+                            {forcedBranch && (
+                              <button
+                                onClick={() => addMyBranch(p.id)}
+                                disabled={addingBranchId === p.id}
+                                className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white disabled:opacity-50"
+                                style={{ background: 'var(--teal)' }}>
+                                {addingBranchId === p.id ? 'Adding…' : `Add ${branchLabel(forcedBranch)}`}
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </td>
               </tr>
             ) : displayPatients.slice((page - 1) * pageSize, page * pageSize).map((p) => (
@@ -1237,6 +1395,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                         <BranchCheckboxes
                           selected={editForm.branches}
                           onChange={(b) => setEditForm((f) => ({ ...f, branches: b }))}
+                          lockedTo={forcedBranch || undefined}
                         />
                       </div>
                       {/* ── Doctor's Referral (optional) ──────────────────── */}
@@ -1556,6 +1715,7 @@ function PatientRegisterQrModal({
   forcedBranch: string
   onClose: () => void
 }) {
+  const branchOptions = useBranchOptions()
   const [branch, setBranch] = useState(forcedBranch || '')
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [loading, setLoading] = useState(false)
@@ -1640,7 +1800,7 @@ function PatientRegisterQrModal({
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
               >
                 <option value="">— Let patient choose —</option>
-                {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                {branchOptions.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
               </select>
             </div>
           )}

@@ -1,37 +1,94 @@
 "use client"
 
 import type { ProductVariant } from "@/lib/products"
+import { formatPrice } from "@/lib/format"
 
 interface VariantPickerProps {
   variants: ProductVariant[]
   selectedIndex: number
   onSelect: (index: number) => void
+  /** Pre-order items are deliberately at 0 stock — their options stay selectable. */
+  isPreOrder?: boolean
 }
 
-export function VariantPicker({ variants, selectedIndex, onSelect }: VariantPickerProps) {
+function hasNoStock(v: ProductVariant): boolean {
+  return v.stock !== undefined && v.stock !== null && v.stock <= 0
+}
+
+export function VariantPicker({ variants, selectedIndex, onSelect, isPreOrder }: VariantPickerProps) {
+  const isSoldOut = (v: ProductVariant) => hasNoStock(v) && !isPreOrder
   if (variants.length === 0) return null
+
+  const selected = variants[selectedIndex]
+  // Label the group by the variant type (Color, Size, Style, …); default to "Option".
+  const typeLabel = selected?.type || (selected?.colorHex ? "Color" : "Option")
+
+  // Swatch mode for Color-type options (missing hexes fall back to a neutral swatch).
+  const swatchMode =
+    variants.every((v) => v.type === "Color" || v.type === undefined) &&
+    variants.some((v) => !!v.colorHex)
 
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-verdana-charcoal">
-        Color: <span className="font-normal">{variants[selectedIndex]?.label}</span>
+        {typeLabel}: <span className="font-normal">{selected?.label}</span>
+        {selected && hasNoStock(selected) && (
+          <span className={`ml-2 text-xs font-semibold ${isPreOrder ? "text-blue-600" : "text-red-600"}`}>{isPreOrder ? "(Pre-order)" : "(Out of stock)"}</span>
+        )}
       </p>
-      <div className="flex flex-wrap gap-2">
-        {variants.map((variant, index) => (
-          <button
-            key={variant.label}
-            onClick={() => onSelect(index)}
-            className={`h-8 w-8 rounded-full border-2 transition-all ${
-              index === selectedIndex
-                ? "ring-2 ring-verdana-teal ring-offset-2 border-verdana-teal"
-                : "border-gray-200 hover:border-gray-400"
-            }`}
-            style={{ backgroundColor: variant.colorHex }}
-            title={variant.label}
-            aria-label={variant.label}
-          />
-        ))}
-      </div>
+
+      {swatchMode ? (
+        <div className="flex flex-wrap gap-2">
+          {variants.map((variant, index) => {
+            const soldOut = isSoldOut(variant)
+            return (
+              <button
+                key={variant.sku || variant.label}
+                onClick={() => !soldOut && onSelect(index)}
+                disabled={soldOut}
+                className={`relative h-8 w-8 rounded-full border-2 transition-all ${
+                  index === selectedIndex
+                    ? "ring-2 ring-verdana-teal ring-offset-2 border-verdana-teal"
+                    : "border-gray-200 hover:border-gray-400"
+                } ${soldOut ? "opacity-40 cursor-not-allowed" : ""}`}
+                style={{ backgroundColor: variant.colorHex || "#e5e7eb" }}
+                title={soldOut ? `${variant.label} — out of stock` : variant.label}
+                aria-label={variant.label}
+              >
+                {soldOut && (
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-bold text-gray-600">
+                    ✕
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {variants.map((variant, index) => {
+            const soldOut = isSoldOut(variant)
+            return (
+              <button
+                key={variant.sku || variant.label}
+                onClick={() => !soldOut && onSelect(index)}
+                disabled={soldOut}
+                className={`rounded-lg border px-3 py-1.5 text-sm transition-all ${
+                  index === selectedIndex
+                    ? "border-verdana-teal bg-verdana-teal/10 text-verdana-charcoal ring-1 ring-verdana-teal"
+                    : "border-gray-300 text-gray-700 hover:border-gray-400"
+                } ${soldOut ? "opacity-40 line-through cursor-not-allowed" : ""}`}
+                title={soldOut ? `${variant.label} — out of stock` : variant.label}
+              >
+                {variant.label}
+                {typeof variant.price === "number" && variant.price > 0 && (
+                  <span className="ml-1.5 text-xs text-gray-500">{formatPrice(variant.price)}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

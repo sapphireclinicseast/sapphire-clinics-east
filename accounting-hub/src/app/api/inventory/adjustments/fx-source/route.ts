@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const currency = (new URL(req.url).searchParams.get('currency') || 'CNY').toUpperCase()
 
   const accounts = await prisma.account.findMany({
-    where: { isBankAccount: true, isActive: true, currency },
+    where: { isBankAccount: true, isActive: true, bankRetiredAt: null, currency },
     select: { id: true, accountNumber: true, accountTitle: true, currency: true, isForexAccount: true },
     orderBy: { accountNumber: 'asc' },
   })

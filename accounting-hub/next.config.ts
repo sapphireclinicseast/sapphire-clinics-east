@@ -2,7 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  serverExternalPackages: ['bcryptjs', 'jspdf', 'jspdf-autotable', 'fflate', 'nodemailer'],
+  serverExternalPackages: ['bcryptjs', 'jspdf', 'jspdf-autotable', 'fflate', 'googleapis'],
   async headers() {
     return [
       {

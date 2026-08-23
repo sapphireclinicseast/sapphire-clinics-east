@@ -1,6 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { toChequeInput } from '@/lib/cheque-number'
+import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
@@ -11,6 +14,7 @@ import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import type { RfpMemoParts } from '@/lib/billing-voucher'
 import type { BVLine } from '@/lib/billing-voucher'
 
 // ── Constants ──────────────────────────────────────────────────
@@ -23,6 +27,45 @@ const BRANCHES = [
 ]
 const ALLOC_BRANCHES = BRANCHES.filter(b => b.value !== 'CEO')
 const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSIS']
+
+// ── Contribution-margin department tags ──────────────────────────────────
+// Which department(s) an expense belongs to, for the Contribution Margin
+// analysis. "All" (nothing ticked) = allocated by the configured rent
+// percentages; tick one or more to charge those departments directly.
+const CM_DEPTS = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'] as const
+function DeptTagCell({ value, disabled, onSave }: { value: string[]; disabled?: boolean; onSave: (next: string[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const label = value.length ? value.map(d => d === 'PSYCHOLOGY' ? 'PSYCH' : d === 'ORTHOSIS' ? 'ORTHO' : d).join(', ') : 'All'
+  return (
+    <div className="relative">
+      <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+        className="px-2 py-1.5 w-full text-left text-sm whitespace-nowrap rounded"
+        style={{ minWidth: 120, color: value.length ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+        {label} ▾
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 p-2 rounded-xl bg-white shadow-lg" style={{ border: '1px solid var(--light-gray)', minWidth: 180 }}>
+          <label className="flex items-center gap-2 px-1 py-1 text-xs font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+            <input type="checkbox" checked={value.length === 0} onChange={() => { onSave([]); }} className="accent-current" />
+            All (use rent %)
+          </label>
+          <div className="my-1" style={{ borderTop: '1px solid var(--light-gray)' }} />
+          {CM_DEPTS.map(d => (
+            <label key={d} className="flex items-center gap-2 px-1 py-1 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+              <input type="checkbox" checked={value.includes(d)}
+                onChange={() => onSave(value.includes(d) ? value.filter(x => x !== d) : [...value, d])}
+                className="accent-current" />
+              {d === 'PSYCHOLOGY' ? 'Psychology' : d === 'ORTHOSIS' ? 'Orthosis' : d}
+            </label>
+          ))}
+          <button type="button" onClick={() => setOpen(false)}
+            className="mt-1 w-full py-1 rounded-lg text-xs font-medium" style={{ background: 'var(--light-gray)' }}>Done</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const PCF_STATUS = ['Unliquidated', 'For Replenishment', 'Cancelled', 'Missing']
 const VATABLE = ['VAT', 'Non-VAT']
 const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
@@ -113,6 +156,10 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
 }
 
 export default function PettyCashPage() {
+  return <Suspense fallback={null}><PettyCashInner /></Suspense>
+}
+
+function PettyCashInner() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
   // Users assigned to a single branch only see that branch here.
@@ -160,6 +207,7 @@ export default function PettyCashPage() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
+  const [coaAccounts, setCoaAccounts] = useState<PickableAccount[]>([])
   const [requestors, setRequestors] = useState<string[]>([])
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
   const [showSettings, setShowSettings] = useState(false)
@@ -175,7 +223,7 @@ export default function PettyCashPage() {
   const [generating, setGenerating] = useState(false)
   const [bankOptions, setBankOptions] = useState<string[]>([])
   const [payTarget, setPayTarget] = useState<Reimb | null>(null)
-  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch?: string; defaultBilledTo?: string } | null>(null)
+  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch?: string; defaultBilledTo?: string ; payment?: RfpMemoParts } | null>(null)
   const [supplierNames, setSupplierNames] = useState<Set<string>>(new Set())
   const [suppliers, setSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
@@ -278,6 +326,8 @@ export default function PettyCashPage() {
         const list = Array.isArray(d) ? d : (d.accounts || d.data || [])
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setCoaOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setCoaAccounts(list.map((a: any) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle, accountType: a.accountType })))
       })
       .catch(() => setCoaOptions([]))
   }, [])
@@ -562,7 +612,17 @@ export default function PettyCashPage() {
     try {
       const res = await fetch(`/api/petty-cash/reimbursements?id=${rep.id}&items=1`)
       const d = res.ok ? await res.json() : { lines: [] }
-      setBvTarget({ refNumber: rep.refNumber, date: new Date(rep.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }), lines: d.lines || [], branch, defaultBilledTo: rep.payableTo || '' })
+      setBvTarget({
+        refNumber: rep.refNumber, date: new Date(rep.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }),
+        lines: d.lines || [], branch, defaultBilledTo: rep.payableTo || '',
+        payment: {
+          payee: rep.payableTo || ((d.lines || [])[0]?.payee ?? ''),
+          purpose: (d.lines || [])[0]?.memo || (d.lines || [])[0]?.description || '',
+          bankAccount: rep.debitAccount || '',
+          paymentMode: rep.paymentMethod || '',
+          reference: rep.transferRef || rep.checkNumber || '',
+        },
+      })
     } catch { alert('Could not load RFP line items.') }
   }
 
@@ -637,6 +697,9 @@ export default function PettyCashPage() {
   // Per-column header sort/filter for the entries grid.
   const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
   const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
+  // Deep link from global search — filter the grid to the PCV that was clicked.
+  const { focus, done } = useFocusTarget()
+  useEffect(() => { if (focus) { setGridFilters(f => ({ ...f, refNumber: focus })); done() } }, [focus, done])
   const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const gridCols: { key: string; label: string; plain?: boolean }[] = [
     { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Requestor' }, { key: 'department', label: 'Department' },
@@ -927,11 +990,8 @@ export default function PettyCashPage() {
                           </select>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.department || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { department: ev.target.value }, false)}>
-                            <option value=""></option>
-                            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                          </select>
+                          <DeptTagCell value={(e as unknown as { departments?: string[] }).departments || []} disabled={lk}
+                            onSave={next => saveField(e.id, { departments: next } as unknown as Partial<Entry>, false)} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           {e.pcfStatus === 'Replenished' ? (
@@ -1031,12 +1091,10 @@ export default function PettyCashPage() {
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.accountTitle || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { accountTitle: ev.target.value }, false)} style={{ minWidth: 200 }}>
-                            <option value=""></option>
-                            {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                            {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
-                          </select>
+                          <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
+                            disabled={lk} className={cellCls} placeholder="Type a number or a name…"
+                            clearLabel="— Clear —"
+                            onChange={v => saveField(e.id, { accountTitle: v }, false)} />
                           {/* Only tangible (depreciating PPE) classifications — not intangibles. */}
                           {(() => {
                             const ac = assetClassFromAccountTitle(e.accountTitle)
@@ -1156,6 +1214,8 @@ export default function PettyCashPage() {
               </table>
             )}
           </div>
+
+          {isCeo && <CeoPcfHistoryPanel />}
 
           {canWrite && (
             <div className="flex items-center gap-2">
@@ -1339,7 +1399,7 @@ export default function PettyCashPage() {
           onClose={() => setShowReimbModal(false)} onGenerate={generateReimbursement} />
       )}
 
-      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} payment={bvTarget.payment} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
 
       {payTarget && (
         <RecordPaidModal report={payTarget} bankOptions={bankOptions}
@@ -1557,7 +1617,7 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
         {isCheck && (
           <>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Check Number</label>
-            <input type="text" inputMode="numeric" value={checkNumber} onChange={e => setCheckNumber(e.target.value)}
+            <input type="text" inputMode="numeric" value={checkNumber} onChange={e => setCheckNumber(toChequeInput(e.target.value))}
               placeholder="e.g. 0001234" className="w-full px-3 py-2 rounded-xl border text-sm mb-1 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Leading zeros are preserved. The check&apos;s bank is the &quot;Debited from&quot; account below.</p>
           </>
@@ -1670,6 +1730,81 @@ function SettingsModal({ branch, requestors, nextPcvSeq, canWrite, onClose, onSa
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+
+/* ── Past PCF (CEO) — the fund before it lived in the Hub ──────────────
+   Amounts were advanced to the CEO, spent across branches, and replenished
+   not-to-the-peso, so the RFP model cannot hold it. This register shows that
+   history verbatim from the interbranch monitoring workbook: read-only and
+   ledger-neutral, because QuickBooks already carried the expense side. */
+function CeoPcfHistoryPanel() {
+  const [rows, setRows] = useState<{ id: string; branch: string; date: string; particulars: string; receivedBy: string | null; cashIn: number; cashOut: number; remarks: string | null; qbRecorded: boolean; qbRef: string | null; running: number }[]>([])
+  const [totals, setTotals] = useState<{ inn: number; out: number; rows: number; unrecorded: number } | null>(null)
+  const [histBranch, setHistBranch] = useState('')
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    fetch(`/api/petty-cash/ceo-history?branch=${encodeURIComponent(histBranch)}`)
+      .then(r => r.ok ? r.json() : { rows: [], totals: null })
+      .then(d => { setRows(d.rows || []); setTotals(d.totals || null) })
+      .finally(() => setLoading(false))
+  }, [open, histBranch])
+  const peso = (v: number) => v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return (
+    <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3 text-left">
+        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+          Past PCF (historical fund) {totals ? `— ₱${peso(totals.inn)} received · ₱${peso(totals.out)} spent · ${totals.rows.toLocaleString()} entries` : ''}
+        </span>
+        <span className="text-xs" style={{ color: 'var(--teal)' }}>{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            The CEO fund before it lived in the Hub: advances in, spending out, replenished not-to-the-peso.
+            Read-only and ledger-neutral — QuickBooks already carried these expenses; this is the fund&apos;s own story.
+            {totals && totals.unrecorded > 0 && <> <strong style={{ color: '#b45309' }}>{totals.unrecorded} spend entr{totals.unrecorded === 1 ? 'y' : 'ies'} were never marked as recorded in QB</strong> — worth a look.</>}
+          </p>
+          <div className="flex gap-2">
+            {['', 'East', 'Greenhills', 'Verdana'].map(b => (
+              <button key={b || 'all'} onClick={() => setHistBranch(b)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
+                style={histBranch === b ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                {b || 'All branches'}
+              </button>
+            ))}
+          </div>
+          {loading ? <div className="py-6 text-center"><Loader2 size={18} className="animate-spin inline" /></div> : (
+            <div className="rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)', maxHeight: 420 }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="sticky top-0" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                    {['Date', 'Branch', 'Particulars', 'Received by', 'In', 'Out', 'Running', 'QB'].map(h => <th key={h} className="text-left px-3 py-2 font-semibold">{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{r.date}</td>
+                      <td className="px-3 py-1.5">{r.branch}</td>
+                      <td className="px-3 py-1.5 max-w-md truncate" style={{ color: 'var(--charcoal)' }} title={r.particulars}>{r.particulars}</td>
+                      <td className="px-3 py-1.5">{r.receivedBy}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: r.cashIn ? '#166534' : 'var(--light-gray)' }}>{r.cashIn ? peso(r.cashIn) : ''}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{r.cashOut ? peso(r.cashOut) : ''}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.running)}</td>
+                      <td className="px-3 py-1.5">{r.qbRecorded ? <span title={r.qbRef || 'Recorded in QuickBooks'} style={{ color: '#166534' }}>✓</span> : <span title="Not marked as recorded" style={{ color: '#b45309' }}>—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

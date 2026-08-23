@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { clearSession, getSession } from '@/lib/session'
 import { createBooking, InvalidTokenError, type SlotChoice } from '@/lib/api'
+import { branchLabel } from '@/lib/branch-label'
 
 export default function BookConfirmPage() {
   return (
@@ -66,7 +67,7 @@ function BookConfirmInner() {
     } finally { setBusy(false) }
   }
 
-  const branchName = branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
+  const branchName = branchLabel(branch)
   const sexIcon = therapistSex === 'M' ? <span className="text-sky-600">♂</span> : therapistSex === 'F' ? <span className="text-pink-600">♀</span> : null
 
   function fmtDate(d: string) {

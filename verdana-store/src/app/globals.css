@@ -1,14 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* ── Brand fonts ──────────────────────────────────────────────
+   Intro Pro (display/headings) + Intro Script (accent) are self-hosted at
+   /api/uploads/fonts/ (runtime-served, like product images). Body = Light Poppins.
+   Until the Intro font files are uploaded these gracefully fall back to Poppins. */
+@font-face { font-family:'Intro Pro'; src:url('/api/uploads/fonts/Intro-Light.woff2') format('woff2'),   url('/api/uploads/fonts/Intro-Light.otf') format('opentype');   font-weight:300; font-style:normal; font-display:swap; }
+@font-face { font-family:'Intro Pro'; src:url('/api/uploads/fonts/Intro-Book.woff2') format('woff2'),    url('/api/uploads/fonts/Intro-Book.otf') format('opentype');    font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:'Intro Pro'; src:url('/api/uploads/fonts/Intro-Regular.woff2') format('woff2'), url('/api/uploads/fonts/Intro-Regular.otf') format('opentype'); font-weight:500; font-style:normal; font-display:swap; }
+@font-face { font-family:'Intro Pro'; src:url('/api/uploads/fonts/Intro-Bold.woff2') format('woff2'),    url('/api/uploads/fonts/Intro-Bold.otf') format('opentype');    font-weight:700; font-style:normal; font-display:swap; }
+@font-face { font-family:'Intro Pro'; src:url('/api/uploads/fonts/Intro-Black.woff2') format('woff2'),   url('/api/uploads/fonts/Intro-Black.otf') format('opentype');   font-weight:900; font-style:normal; font-display:swap; }
+@font-face { font-family:'Intro Script'; src:url('/api/uploads/fonts/Intro-Script.woff2') format('woff2'), url('/api/uploads/fonts/Intro-Script.otf') format('opentype'); font-weight:400; font-style:normal; font-display:swap; }
+
 @theme {
-  --color-verdana-teal: #1a6b6a;
-  --color-verdana-dark-teal: #0d4f4f;
-  --color-verdana-orange: #e8943a;
-  --color-verdana-light-blue: #b5d4db;
-  --color-verdana-pale-blue: #e8f4f8;
-  --color-verdana-charcoal: #1c2b30;
-  --color-verdana-off-white: #f7fafb;
-  --color-verdana-cream: #fdf6ee;
+  /* Font families (exposed as font-display / font-body / font-script utilities) */
+  --font-display: 'Intro Pro', 'Poppins', system-ui, sans-serif;
+  --font-body: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-script: 'Intro Script', 'Poppins', cursive;
+
+  /* --- Verdana brand palette (softer / lighter "Montessori" refresh) --- */
+  /* Core colors from the revised brand guide */
+  --color-verdana-sage: #bdc3aa;       /* RHYMES — primary soft green */
+  --color-verdana-blue: #96adc0;       /* MUSICAL — dusty blue */
+  --color-verdana-clay: #e6ae98;       /* FAIRY TALE — terracotta */
+  --color-verdana-peach: #f2b174;      /* warm peach (gradients / CTAs) */
+  --color-verdana-cream: #f5f0e8;      /* CRAFTS — cream base */
+  --color-verdana-ink: #2b3a42;        /* soft dark navy — text & dark surfaces */
+
+  /* Legacy token names remapped to the new palette so existing
+     components restyle automatically while keeping proper contrast. */
+  --color-verdana-teal: #3f5551;       /* dark anchor: deep muted sage-teal (footer, primary buttons) */
+  --color-verdana-dark-teal: #2c3d3a;  /* deeper anchor / hover state */
+  --color-verdana-orange: #d98c66;     /* warm accent → soft terracotta (eyebrows, badges) */
+  --color-verdana-light-blue: #c4d3dd; /* soft dusty-blue fill */
+  --color-verdana-pale-blue: #eaf1f4;  /* pale blue tint (section backgrounds) */
+  --color-verdana-charcoal: #2b3a42;   /* body text ink (softened navy) */
+  --color-verdana-off-white: #f7f3ec;  /* warm off-white base */
 }
 
 html {
@@ -16,9 +43,20 @@ html {
 }
 
 body {
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-body);
+  font-weight: 300;               /* Light Poppins */
   color: var(--color-verdana-charcoal);
-  background: #ffffff;
+  background: var(--color-verdana-off-white);
+}
+
+/* Headings use Intro Pro (falls back to Poppins until the font files are uploaded). */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* Script accent utility for taglines/eyebrows that want the handwritten Intro Script. */
+.font-script {
+  font-family: var(--font-script);
 }
 
 /* Marquee animation */

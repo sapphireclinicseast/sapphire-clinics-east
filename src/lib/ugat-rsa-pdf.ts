@@ -61,7 +61,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
       y += opts?.gap ?? 2
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
     }
-    // Paragraph with a bold lead-in (e.g. "2.1 Grant of Loan.") that hangs on the
+    // Paragraph with a bold lead-in (e.g. "2.1 Grant of Fellowship Assistance.") that hangs on the
     // first line and the remainder wraps at full width.
     const paraLead = (lead: string, text: string) => {
       doc.setFontSize(9)
@@ -115,8 +115,8 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     para('UGAT FELLOWSHIP AGREEMENT', { center: true, bold: true, size: 11, gap: 0.5 })
     para('(Educational Assistance with Full Condonation through Professional Service)', { center: true, size: 8, gap: 0.5 })
     para(loanSubtitle(isTindig), { center: true, size: 8, gap: 3 })
-    if (isTindig) para('Your award: review-support of up to PHP 30,000 (review fees, or PHP 5,000/month for 6 months), treated as a simple, fully-condonable loan — you pay nothing if you serve 1,500 hours (Option A), else repay only what you received, interest-free (Option B). Interest / a penalty applies only on default or restructuring.', { size: 8.5, gap: 3 })
-    else para(`Your award: a monthly allowance of ${m ? `PHP ${m.toLocaleString()} for ${n} months (about PHP ${(m * (n || 0)).toLocaleString()})` : 'a monthly allowance'}, treated as a simple, fully-condonable loan — you pay nothing if you serve 1,500 hours (Option A), else repay only what you received, interest-free (Option B). Interest / a penalty applies only on default or restructuring.`, { size: 8.5, gap: 3 })
+    if (isTindig) para('Your award: review-support of up to PHP 30,000 (review fees, or PHP 5,000/month for 6 months) — educational fellowship assistance, fully condonable: you pay nothing if you serve 600 Service Hours (Option A), else reimburse only what you received, interest-free (Option B). Interest / a penalty applies only after an uncured default.', { size: 8.5, gap: 3 })
+    else para(`Your award: a monthly allowance of ${m ? `PHP ${m.toLocaleString()} for ${n} months (about PHP ${(m * (n || 0)).toLocaleString()})` : 'a monthly allowance'} — educational fellowship assistance, fully condonable: you pay nothing if you serve 1,500 Service Hours (Option A), else reimburse only what you received, interest-free (Option B). Interest / a penalty applies only after an uncured default.`, { size: 8.5, gap: 3 })
 
     // ── Body (shared source of truth) ──
     const blocks = loanAgreementBlocks({ track: input.track, fellowName: input.fellowName, program: input.program, school: input.school, monthly: input.monthly, months: input.months, comakerName: input.comakerName })
@@ -139,7 +139,7 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
     para('Hannah Jara — CEO and President', { gap: 5 })
 
     ensure(46)
-    para('THE APPLICANT:', { bold: true, gap: 1 })
+    para('THE FELLOW:', { bold: true, gap: 1 })
     para(input.fellowName || '____________', { gap: 1 })
     if (fellowDataUrl) { try { doc.addImage(fellowDataUrl, fellowMime, M, y, 55, 20); y += 22 } catch { /* skip */ } }
     para('Signature over printed name', { size: 8, gap: 5 })
@@ -151,12 +151,12 @@ export async function generateSignedRsaPdf(input: PdfInput): Promise<Buffer | nu
 
     ensure(14)
     doc.setDrawColor(150); doc.line(M, y, M + W, y); y += 5
-    para(`Signed electronically (soft copy) by the APPLICANT on ${fmtDate(input.dateSigned)}. This soft copy will be countersigned in person (hard copy) with the CO-MAKER at an Aura Health Rehab branch, before witnesses and a Notary Public, to complete execution.`, { size: 8 })
+    para(`Signed electronically (soft copy) by the FELLOW on ${fmtDate(input.dateSigned)}. This soft copy will be countersigned in person (hard copy) with the CO-MAKER at an Aura Health Rehab branch, before witnesses and a Notary Public, to complete execution.`, { size: 8 })
 
     // ── Annex A (fresh page) ──
     doc.addPage(); y = 20
     para('ANNEX “A”', { center: true, bold: true, size: 12, gap: 0.5 })
-    para('SAMPLE REPAYMENT COMPUTATION — REPAYMENT OPTION (OPTION B)', { center: true, bold: true, size: 9.5, gap: 3 })
+    para('SAMPLE REIMBURSEMENT COMPUTATION — REIMBURSEMENT OPTION (OPTION B)', { center: true, bold: true, size: 9.5, gap: 3 })
     para(annexIntro(isTindig), { size: 8.5, gap: 3 })
     for (const tbl of annexTables(isTindig)) {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9)

@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-verdana-teal: #1a6b6a;
+  --color-verdana-dark-teal: #0d4f4f;
+  --color-verdana-orange: #e8943a;
+  --color-verdana-light-blue: #b5d4db;
+  --color-verdana-pale-blue: #e8f4f8;
+  --color-verdana-charcoal: #1c2b30;
+  --color-verdana-off-white: #f7fafb;
+  --color-verdana-cream: #fdf6ee;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--color-verdana-charcoal);
+  background: #ffffff;
+}
+
+/* Marquee animation */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 20s linear infinite;
+}
+
+/* Sheet slide animation */
+@keyframes sheet-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes sheet-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+.sheet-content[data-state="open"] {
+  animation: sheet-in 0.3s ease-out;
+}
+
+.sheet-content[data-state="closed"] {
+  animation: sheet-out 0.2s ease-in;
+}

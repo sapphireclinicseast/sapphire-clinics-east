@@ -14,6 +14,34 @@ const PAYMENT_LABELS: Record<string, string> = {
   ADVANCE: 'Advance', HMO: 'HMO', GL: 'GL',
 }
 
+// TikTok orders that never became a sale (cancelled / failed-delivery), with TikTok's
+// own reason — informational, no GL linkage. Only Verdana has these today (TikTok is
+// Verdana-only), so an "all branches" or non-Verdana view returns null rather than a
+// misleadingly-empty card. Dated by cancelledTime, which is null for the handful of
+// failed-delivery rows TikTok hasn't formally cancelled yet — those fall outside any
+// date filter, same as an order with no completion date would.
+async function tiktokCancellationSummary(branch: string, dateFrom: string, dateTo: string) {
+  if (branch && branch !== 'VERDANA_STORE') return null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = { branch: 'VERDANA_STORE' }
+  if (dateFrom || dateTo) {
+    where.cancelledTime = {}
+    if (dateFrom) where.cancelledTime.gte = new Date(`${dateFrom}T00:00:00+08:00`)
+    if (dateTo) where.cancelledTime.lte = new Date(`${dateTo}T23:59:59.999+08:00`)
+  }
+  const rows = await prisma.tiktokCancellation.findMany({ where, select: { cancelReason: true, status: true, orderAmount: true } })
+  if (rows.length === 0) return null
+  const byReason = new Map<string, { reason: string; count: number; orderAmount: number }>()
+  for (const r of rows) {
+    const key = r.cancelReason || (r.status !== 'Canceled' ? 'Failed delivery — not yet formally cancelled' : 'Unknown')
+    const cur = byReason.get(key) || { reason: key, count: 0, orderAmount: 0 }
+    cur.count++
+    cur.orderAmount += Number(r.orderAmount || 0)
+    byReason.set(key, cur)
+  }
+  return { total: rows.length, topReasons: [...byReason.values()].sort((a, b) => b.count - a.count) }
+}
+
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user || !READ_ROLES.includes((session.user as { role?: string }).role || '')) {
@@ -240,6 +268,7 @@ export async function GET(req: Request) {
       paymentModes: [...payModes.entries()]
         .map(([method, v]) => ({ method, label: PAYMENT_LABELS[method] || method, amount: round2(v.amount), count: v.count }))
         .sort((a, b) => b.amount - a.amount),
+      cancellations: await tiktokCancellationSummary(branch, dateFrom, dateTo),
     })
   } catch (err) {
     console.error('Products analysis error:', err)

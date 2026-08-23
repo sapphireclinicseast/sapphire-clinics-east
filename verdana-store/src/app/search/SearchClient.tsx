@@ -7,10 +7,11 @@ import { ProductCard } from "@/components/products/ProductCard"
 
 interface SearchClientProps {
   products: Product[]
+  initialQuery?: string
 }
 
-export function SearchClient({ products }: SearchClientProps) {
-  const [query, setQuery] = useState("")
+export function SearchClient({ products, initialQuery = "" }: SearchClientProps) {
+  const [query, setQuery] = useState(initialQuery)
 
   const filtered = useMemo(() => {
     if (!query.trim()) return products

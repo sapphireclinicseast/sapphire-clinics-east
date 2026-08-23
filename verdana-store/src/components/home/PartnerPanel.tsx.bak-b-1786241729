@@ -1,0 +1,172 @@
+"use client"
+
+import { useState } from "react"
+import { Heart, Users, Building2, X } from "lucide-react"
+
+const THERAPIST_RANGES = ["1–5", "6–10", "11–20", "21–50", "50+"]
+const PATIENT_RANGES = ["1–50", "51–200", "201–500", "501–1,000", "1,000+"]
+
+const input =
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal focus:border-transparent"
+
+const EMPTY = {
+  institution: "", website: "", repFirstName: "", repLastName: "",
+  email: "", mobile: "", therapistsRange: "", patientsRange: "",
+  username: "", password: "",
+}
+
+function RegistrationForm({ onClose }: { onClose: () => void }) {
+  const [f, setF] = useState({ ...EMPTY })
+  const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle")
+  const [error, setError] = useState("")
+  const set = (k: keyof typeof EMPTY, v: string) => setF((p) => ({ ...p, [k]: v }))
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setStatus("sending"); setError("")
+    try {
+      const res = await fetch("/api/partners/register", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Could not create your account.")
+      setStatus("done")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.")
+      setStatus("error")
+    }
+  }
+
+  if (status === "done") {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-2xl">🎉</p>
+        <h3 className="mt-2 text-xl font-bold text-verdana-charcoal">You&apos;re registered!</h3>
+        <p className="mt-2 text-sm text-gray-600">
+          Your partner account for <span className="font-semibold">{f.institution}</span> is created and
+          you&apos;re signed in. Next, choose your subscription tier (Platinum, Gold or Silver) to activate
+          your clinic &amp; patient discount codes.
+        </p>
+        <a href="/account" className="mt-6 inline-block rounded-full bg-verdana-orange px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90">
+          Go to my portal →
+        </a>
+        <button onClick={onClose} className="mt-3 block w-full text-sm text-gray-400 hover:text-gray-600">
+          Maybe later
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={submit} className="p-6 space-y-3">
+      <h3 className="text-xl font-bold text-verdana-charcoal">Create your partner account</h3>
+      <p className="text-sm text-gray-500 -mt-1">Tell us about your clinic or school.</p>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Name of Institution *</label>
+        <input className={input} value={f.institution} onChange={(e) => set("institution", e.target.value)} placeholder="e.g. Bright Steps Therapy Center" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Website of Institution</label>
+        <input className={input} value={f.website} onChange={(e) => set("website", e.target.value)} placeholder="https:// (optional)" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Representative — First Name *</label>
+          <input className={input} value={f.repFirstName} onChange={(e) => set("repFirstName", e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Last Name *</label>
+          <input className={input} value={f.repLastName} onChange={(e) => set("repLastName", e.target.value)} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+          <input type="email" className={input} value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="you@clinic.com" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Mobile Number *</label>
+          <input type="tel" inputMode="tel" className={input} value={f.mobile} onChange={(e) => set("mobile", e.target.value)} placeholder="09XX XXX XXXX" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Therapists / Teachers *</label>
+          <select className={input} value={f.therapistsRange} onChange={(e) => set("therapistsRange", e.target.value)}>
+            <option value="">Select range…</option>
+            {THERAPIST_RANGES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Patients *</label>
+          <select className={input} value={f.patientsRange} onChange={(e) => set("patientsRange", e.target.value)}>
+            <option value="">Select range…</option>
+            {PATIENT_RANGES.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Username *</label>
+          <input className={input} value={f.username} onChange={(e) => set("username", e.target.value)} autoComplete="username" placeholder="clinic-handle" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Password *</label>
+          <input type="password" className={input} value={f.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" placeholder="min 8 characters" />
+        </div>
+      </div>
+
+      {status === "error" && <p className="text-sm text-red-600">{error}</p>}
+      <button type="submit" disabled={status === "sending"} className="w-full rounded-full bg-verdana-orange px-6 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60">
+        {status === "sending" ? "Creating account…" : "Create account"}
+      </button>
+      <p className="text-[11px] text-gray-400 text-center">
+        After registering you&apos;ll choose a tier and pay the annual subscription to activate your discount codes.
+      </p>
+    </form>
+  )
+}
+
+export function PartnerPanel() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      {/* Fixed side panel (stays in place; large screens) */}
+      <aside className="hidden lg:block fixed right-5 top-28 z-30 w-[300px]">
+        <div className="rounded-2xl border border-verdana-orange/20 bg-white/95 backdrop-blur shadow-lg p-5">
+          <p className="text-[11px] font-semibold tracking-widest uppercase text-verdana-orange">For clinics &amp; schools</p>
+          <h3 className="mt-1 text-lg font-bold text-verdana-charcoal leading-snug">Want your clinic/school to partner with us?</h3>
+          <ul className="mt-3 space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2"><Heart className="h-4 w-4 mt-0.5 text-verdana-orange shrink-0" /> Discounts your patients can use</li>
+            <li className="flex items-start gap-2"><Users className="h-4 w-4 mt-0.5 text-verdana-orange shrink-0" /> Discounts for your consultants</li>
+            <li className="flex items-start gap-2"><Building2 className="h-4 w-4 mt-0.5 text-verdana-orange shrink-0" /> Discounts on everything your clinic orders</li>
+          </ul>
+          <button onClick={() => setOpen(true)} className="mt-4 w-full rounded-full bg-verdana-orange px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
+            Become a Partner
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile CTA bar */}
+      <div className="lg:hidden fixed bottom-4 inset-x-4 z-30">
+        <button onClick={() => setOpen(true)} className="w-full rounded-full bg-verdana-orange px-5 py-3 text-sm font-semibold text-white shadow-lg">
+          🤝 Partner your clinic with Verdana
+        </button>
+      </div>
+
+      {/* Modal */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8" onClick={() => setOpen(false)}>
+          <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl my-4" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setOpen(false)} className="absolute right-3 top-3 rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+              <X className="h-5 w-5" />
+            </button>
+            <RegistrationForm onClose={() => setOpen(false)} />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}

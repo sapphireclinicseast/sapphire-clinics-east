@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
-import { Resend } from 'resend'
 import { getGmailClient, makeEmailBody } from '@/lib/email'
 
 const EMAIL_BODY = (name: string, code: string) =>
@@ -39,24 +38,6 @@ export async function POST(req: NextRequest) {
   })
 
   const body = EMAIL_BODY(user.name, code)
-
-  // Try Resend first (dedicated transactional email, uses HTTPS)
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const resend = new Resend(process.env.RESEND_API_KEY)
-      const { data, error } = await resend.emails.send({
-        from: 'Sapphire Clinics East <noreply@do-not-reply.sapphireclinicseast.org>',
-        to: [email],
-        subject: 'Password Reset Code — Sapphire Operations Hub',
-        text: body,
-      })
-      if (error) throw new Error(error.message)
-      console.log('[forgot-password] Sent via Resend, id:', data?.id)
-      return NextResponse.json({ ok: true })
-    } catch (err) {
-      console.error('[forgot-password] Resend error, falling back to Gmail API:', err)
-    }
-  }
 
   // Fallback: Gmail API (HTTPS — works even when SMTP ports are blocked)
   try {

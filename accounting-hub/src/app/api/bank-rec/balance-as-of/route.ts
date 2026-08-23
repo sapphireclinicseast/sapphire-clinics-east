@@ -27,7 +27,12 @@ export async function GET(req: Request) {
   const out = []
   for (const a of accounts) {
     const line = await prisma.bankTransaction.findFirst({
-      where: { bankAccountId: a.id, date: { lte: upTo }, statementBalance: { not: null } },
+      // Excluded/archived lines are ones the user switched off in Bank Rec, so
+      // their printed running balance must not seed an opening balance either.
+      where: {
+        bankAccountId: a.id, date: { lte: upTo }, statementBalance: { not: null },
+        status: { in: ['PENDING', 'POSTED'] },
+      },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       select: { date: true, statementBalance: true, description: true },
     })

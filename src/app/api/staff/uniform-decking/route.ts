@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
         department: true,
         branch: true,
         employmentType: true,
-        deckingConfig: { select: { workDays: true } },
+        deckingConfigs: { select: { workDays: true } },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     })
@@ -78,11 +78,13 @@ export async function GET(req: NextRequest) {
       }
       if (s.branch) g.branches.add(s.branch)
       if (!g.employmentType && s.employmentType) g.employmentType = s.employmentType
-      const raw = s.deckingConfig?.workDays
-      if (Array.isArray(raw)) {
-        for (const d of raw as unknown[]) {
-          const up = String(d).toUpperCase()
-          if (DAY_ORDER.includes(up)) g.workDays.add(up)
+      for (const cfg of s.deckingConfigs) {
+        const raw = cfg.workDays
+        if (Array.isArray(raw)) {
+          for (const d of raw as unknown[]) {
+            const up = String(d).toUpperCase()
+            if (DAY_ORDER.includes(up)) g.workDays.add(up)
+          }
         }
       }
     }

@@ -1,0 +1,18 @@
+[
+  {
+    "code": "AURA20DFS2A",
+    "discountType": "percent",
+    "discountValue": 20,
+    "freeShipping": true,
+    "active": true,
+    "usedCount": 1
+  },
+  {
+    "code": "WELCOME5VER",
+    "discountType": "percent",
+    "discountValue": 5,
+    "freeShipping": false,
+    "active": true,
+    "usedCount": 0
+  }
+]

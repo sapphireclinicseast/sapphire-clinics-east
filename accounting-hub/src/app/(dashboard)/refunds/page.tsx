@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { Undo2, Plus, Loader2, X, Trash2, CheckCircle2, Circle, FileText, BadgeDollarSign, Receipt, Paperclip } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import type { RfpMemoParts } from '@/lib/billing-voucher'
 import { formatCurrency } from '@/lib/utils'
 
 // Verdana Store is intentionally excluded: it sells merchandise, and its returns are already
@@ -74,7 +75,7 @@ export default function RefundsPage() {
   const [paying, setPaying] = useState(false)
 
   // Billing voucher
-  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: { account: string; description: string; gross: number; vat: number; netVat: number; netEwt: number; payee?: string; memo?: string }[]; branch: string; defaultBilledTo: string; defaultMemo: string } | null>(null)
+  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: { account: string; description: string; gross: number; vat: number; netVat: number; netEwt: number; payee?: string; memo?: string }[]; branch: string; defaultBilledTo: string; defaultMemo: string ; payment?: RfpMemoParts } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -163,7 +164,15 @@ export default function RefundsPage() {
       const r = await fetch(`/api/refunds/rfp?id=${rfp.id}&items=1`)
       const d = r.ok ? await r.json() : { lines: [] }
       const first = (d.lines || [])[0]
-      setBvTarget({ refNumber: rfp.refNumber, date: new Date(rfp.createdAt).toLocaleDateString('en-PH'), lines: d.lines || [], branch, defaultBilledTo: first?.payee || rfp.payableTo || '', defaultMemo: first?.memo || 'Patient refund' })
+      setBvTarget({
+        refNumber: rfp.refNumber, date: new Date(rfp.createdAt).toLocaleDateString('en-PH'), lines: d.lines || [], branch,
+        defaultBilledTo: first?.payee || rfp.payableTo || '', defaultMemo: first?.memo || 'Patient refund',
+        payment: {
+          payee: first?.payee || rfp.payableTo || '',
+          purpose: first?.memo || 'patient refund',
+          paymentMode: rfp.paymentMethod || '',
+        },
+      })
     } catch { setError('Failed to build billing voucher') }
   }
 
@@ -418,7 +427,7 @@ export default function RefundsPage() {
         </div>
       )}
 
-      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} defaultMemo={bvTarget.defaultMemo} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} defaultMemo={bvTarget.defaultMemo} payment={bvTarget.payment} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
     </div>
   )
 }

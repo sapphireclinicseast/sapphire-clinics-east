@@ -27,6 +27,7 @@ import {
   Eye,
   Lock,
   ShieldX,
+  Unlock,
 } from 'lucide-react'
 import { formatTime, formatDate, cn } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
@@ -35,6 +36,7 @@ import SLPNoteDisplay from '@/components/SLPNoteDisplay'
 import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
 import PatientWidgets from '@/components/PatientWidgets'
+import { NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
 
 interface PatientDetail {
   id: string
@@ -74,8 +76,13 @@ interface SessionItem {
   } | null
   // Server-computed: true iff the logged-in clinician is the staff who
   // delivered this session AND is currently the active owner of the
-  // patient AND the note is not locked. Admins always get true.
+  // patient AND the note is neither signed nor aged out. Admins always
+  // get true.
   canEdit?: boolean
+  // Server-computed: the session is past the documentation window and
+  // nobody has re-opened it. Unlike lockedAt this is reversible, so the
+  // footer points at the session page where the re-enable lives.
+  ageLocked?: boolean
 }
 
 interface StaffOption {
@@ -83,6 +90,41 @@ interface StaffOption {
   name: string
   department: string
   branch: string
+}
+
+// Read-only document from another department (IE / Progress Report / other upload).
+interface OtherDeptDoc {
+  id: string
+  department: string
+  documentType: string
+  fileName: string
+  filePath: string
+  description: string | null
+  createdAt: string
+  uploaderName: string
+}
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  INITIAL_EVALUATION: 'Initial Evaluation',
+  PROGRESS_REPORT: 'Progress Report',
+  OTHER_DOCUMENT: 'Other Document',
+}
+
+// Read-only render of one session note's body, reusing the department display
+// components (falls back to plain text). Used for other departments' notes.
+function renderNoteBody(notes: string | null | undefined) {
+  if (!notes) return null
+  try {
+    const parsed = JSON.parse(notes)
+    if (parsed.formType?.startsWith('PSYCH_')) return <PsychologyNoteDisplay data={parsed} />
+    if (parsed.formType === 'OT_DAILY_NOTES') return <OTNoteDisplay data={parsed} />
+    if (parsed.formType === 'SLP_DAILY_NOTES') return <SLPNoteDisplay data={parsed} />
+    if (parsed.formType === 'SPED16' || parsed.formType === 'SPED18') return <SPEDNoteDisplay data={parsed} />
+    if (parsed.formType === 'PT_SESSION_NOTES') return <PTNoteDisplay data={parsed} />
+  } catch { /* not JSON — render as plain text below */ }
+  return (
+    <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-3 rounded-lg border border-[var(--light-gray)]">{notes}</div>
+  )
 }
 
 export default function PatientDetailPage() {
@@ -98,6 +140,17 @@ export default function PatientDetailPage() {
 
   const [patient, setPatient] = useState<PatientDetail | null>(null)
   const [sessions, setSessions] = useState<SessionItem[]>([])
+  const [otherDeptSessions, setOtherDeptSessions] = useState<SessionItem[]>([])
+  const [otherDeptDocuments, setOtherDeptDocuments] = useState<OtherDeptDoc[]>([])
+  const [otherDeptStaff, setOtherDeptStaff] = useState<{ name: string; department: string }[]>([])
+  // Interdisciplinary patients get a two-tab view (own notes vs other
+  // departments' records) so the page isn't crowded; openDept drives the
+  // per-department accordion inside the "other" tab.
+  const [activeTab, setActiveTab] = useState<'own' | 'other'>('own')
+  const [openDept, setOpenDept] = useState<string | null>(null)
+  // Which other-department note (by session id) is expanded. Notes collapse to
+  // a per-day list first so a year of sessions isn't one giant scroll.
+  const [openNoteId, setOpenNoteId] = useState<string | null>(null)
   const [otherServices, setOtherServices] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
@@ -142,6 +195,9 @@ export default function PatientDetailPage() {
         const data = await res.json()
         setPatient(data.patient)
         setSessions(data.sessions)
+        setOtherDeptSessions(data.otherDeptSessions ?? [])
+        setOtherDeptDocuments(data.otherDeptDocuments ?? [])
+        setOtherDeptStaff(data.otherDeptStaff ?? [])
         setOtherServices(data.otherServices ?? [])
         setAssignmentStatus(data.assignment?.status ?? null)
         setReadOnly(!!data.readOnly)
@@ -321,6 +377,18 @@ export default function PatientDetailPage() {
   const completedCount = sessions.filter((s) => s.sessionNote?.status === 'COMPLETED').length
   const totalCount = sessions.length
 
+  // Interdisciplinary = the patient also sees other departments. Only then do
+  // we split the page into tabs. The department list is the union of every
+  // other-department the patient has services, notes, or documents in.
+  const isInterdisciplinary = otherServices.length > 0
+  const otherDepts = Array.from(new Set<string>([
+    ...otherServices,
+    ...otherDeptSessions.map((s) => s.staff.department),
+    ...otherDeptDocuments.map((d) => d.department),
+  ])).sort()
+  // The own-documents sidebar belongs to the "own" view; hide it on the other tab.
+  const showSidebar = !isInterdisciplinary || activeTab === 'own'
+
   return (
     <div className="max-w-7xl mx-auto">
       {toast && <div className="toast">{toast}</div>}
@@ -335,7 +403,8 @@ export default function PatientDetailPage() {
       </button>
 
       <div className={cn(
-        'grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6',
+        'grid grid-cols-1 gap-6',
+        showSidebar && 'lg:grid-cols-[1fr_320px]',
         // Whole-page muted state when this clinician no longer owns the
         // patient. Slight desaturation + lower opacity makes it visually
         // obvious without preventing reading.
@@ -359,13 +428,13 @@ export default function PatientDetailPage() {
           )}>
             {patient.firstName[0]}{patient.lastName[0]}
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h1 className={cn(
-              'text-xl font-bold',
+              'text-xl font-bold break-words',
               readOnly ? 'text-[var(--mid-gray)]' : 'text-white'
             )}>{patientName}</h1>
             <p className={cn(
-              'text-sm mt-0.5',
+              'text-sm mt-0.5 break-words',
               readOnly ? 'text-[var(--mid-gray)]/80' : 'text-white/60'
             )}>
               {patient.patientType} {patient.diagnosis ? `· ${patient.diagnosis}` : ''}
@@ -594,24 +663,141 @@ export default function PatientDetailPage() {
         )
       })()}
 
-      {/* Other Services Notice — patient confidentiality */}
-      {otherServices.length > 0 && (
-        <div className="mb-6 animate-fade-up stagger-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-          <div className="flex gap-3">
-            <ShieldAlert size={20} className="text-blue-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[13px] font-semibold text-blue-800 mb-1">
-                Other Services Availed in the Clinic: {otherServices.join(', ')}
-              </p>
-              <p className="text-[12px] text-blue-600 leading-relaxed">
-                This patient is also receiving services from other departments. For patient confidentiality, only your sessions are displayed here. Coordinate with the front desk for information if needed for interprofessional collaboration.
-              </p>
-            </div>
-          </div>
+      {/* Interdisciplinary tab switcher — only for patients seen by more than
+          one department. Keeps the clinician's own notes separate from the
+          (read-only) records of the other departments so the page isn't crowded. */}
+      {isInterdisciplinary && (
+        <div className="mb-6 flex gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] animate-fade-up">
+          <button
+            onClick={() => setActiveTab('own')}
+            className={cn(
+              'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
+              activeTab === 'own' ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
+            )}
+          >
+            Own Session Notes
+          </button>
+          <button
+            onClick={() => setActiveTab('other')}
+            className={cn(
+              'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-2',
+              activeTab === 'other' ? 'bg-white text-[var(--narra)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
+            )}
+          >
+            Records from Other Departments
+            {otherDeptSessions.length + otherDeptDocuments.length > 0 && (
+              <span className="text-[10px] font-bold text-white bg-[var(--narra)] px-1.5 py-0.5 rounded-full">{otherDeptSessions.length + otherDeptDocuments.length}</span>
+            )}
+          </button>
         </div>
       )}
 
-      {/* Session history */}
+      {/* OTHER tab — per-department, read-only records (notes + IE / Progress
+          Reports / uploads). One accordion per department the patient sees. */}
+      {isInterdisciplinary && activeTab === 'other' && (
+        <div className="mb-6 animate-fade-up space-y-3">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex gap-2.5">
+            <ShieldAlert size={18} className="text-blue-600 shrink-0 mt-0.5" />
+            <p className="text-[12.5px] text-blue-700 leading-relaxed">
+              <span className="font-semibold">Interdisciplinary case.</span> These are the other departments’ read-only records — you can view but not edit them. Open a department to see its notes and documents, and coordinate with the professional for interprofessional collaboration.
+            </p>
+          </div>
+
+          {otherDepts.map((dep) => {
+            const notes = otherDeptSessions.filter((s) => s.staff.department === dep)
+            const docs = otherDeptDocuments.filter((d) => d.department === dep)
+            const pros = otherDeptStaff.filter((p) => p.department === dep).map((p) => p.name)
+            const open = openDept === dep
+            return (
+              <div key={dep} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
+                <button
+                  onClick={() => setOpenDept(open ? null : dep)}
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)]"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--teal)]">{dep}</span>
+                    {pros.length > 0 && <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{pros.join(', ')}</span>}
+                    <span className="text-[11px] text-[var(--mid-gray)]">{notes.length} note{notes.length === 1 ? '' : 's'} · {docs.length} document{docs.length === 1 ? '' : 's'}</span>
+                  </div>
+                  {open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+                </button>
+                {open && (
+                  <div className="px-3 pb-3 space-y-2.5 border-t border-[var(--light-gray)]">
+                    {notes.length === 0 && docs.length === 0 && (
+                      <p className="text-[12.5px] text-[var(--mid-gray)] italic px-1 py-3">No notes or documents yet for this department.</p>
+                    )}
+
+                    {notes.length > 0 && (
+                      <>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-3 px-1">Session Notes ({notes.length}) — pick a day</p>
+                        {notes.map((s) => {
+                          const noteOpen = openNoteId === s.id
+                          return (
+                            <div key={s.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
+                              <button
+                                onClick={() => setOpenNoteId(noteOpen ? null : s.id)}
+                                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]"
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Calendar size={13} className="text-[var(--mid-gray)] shrink-0" />
+                                  <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{s.date}</span>
+                                  {s.sessionType && <span className="text-[11px] text-[var(--mid-gray)]">{s.sessionType}</span>}
+                                </div>
+                                {noteOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)] shrink-0" /> : <ChevronDown size={16} className="text-[var(--mid-gray)] shrink-0" />}
+                              </button>
+                              {noteOpen && (
+                                <div className="px-3 pb-3 pt-2 border-t border-[var(--light-gray)]">
+                                  <p className="text-[11px] text-[var(--mid-gray)] mb-2">by {s.staff.firstName} {s.staff.lastName}</p>
+                                  {s.sessionNote?.notes
+                                    ? renderNoteBody(s.sessionNote.notes)
+                                    : s.sessionNote?.discontinuedRemarks
+                                      ? <p className="text-[13px] text-[var(--mid-gray)] italic">Discontinued: {s.sessionNote.discontinuedRemarks}</p>
+                                      : <p className="text-[13px] text-[var(--mid-gray)] italic">No note content.</p>}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
+
+                    {docs.length > 0 && (
+                      <>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-3 px-1">Documents — Initial Evaluations, Progress Reports &amp; Uploads</p>
+                        {docs.map((d) => (
+                          <div key={d.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
+                            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] font-semibold text-[var(--narra)]">{DOC_TYPE_LABEL[d.documentType] ?? d.documentType}</span>
+                                {d.uploaderName && <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{d.uploaderName}</span>}
+                              </div>
+                              <span className="text-[11.5px] text-[var(--mid-gray)]">{new Date(d.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            {d.description && <p className="text-[12.5px] text-[var(--mid-gray)] mb-2">{d.description}</p>}
+                            <a
+                              href={`/api/upload/${d.filePath}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--teal)] hover:underline"
+                            >
+                              <FileText size={14} />
+                              {d.fileName}
+                            </a>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* OWN tab — the clinician's own session history + note-making. Always
+          shown for single-department patients; the "own" tab for the rest. */}
+      {(!isInterdisciplinary || activeTab === 'own') && (
       <div className="animate-fade-up stagger-4">
         <button
           type="button"
@@ -731,7 +917,20 @@ export default function PatientDetailPage() {
                   {expanded && !s.sessionNote && (
                     <div className="px-4 pb-4 pt-0 border-t border-[var(--light-gray)]">
                       <div className="pt-3">
-                        {!s.canEdit ? (
+                        {s.ageLocked ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] text-[var(--mid-gray)] italic">
+                              No notes recorded. This session is over {NOTE_WINDOW_MONTHS} months old, so documentation is closed.
+                            </span>
+                            <button
+                              onClick={() => router.push(`/session/${s.id}`)}
+                              className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors shrink-0"
+                            >
+                              <Unlock size={13} />
+                              Enable editing
+                            </button>
+                          </div>
+                        ) : !s.canEdit ? (
                           <p className="text-[13px] text-[var(--mid-gray)] italic">
                             No notes recorded yet. Only {s.staff.firstName} {s.staff.lastName} can add notes for this session.
                           </p>
@@ -855,6 +1054,20 @@ export default function PatientDetailPage() {
                               Delete note
                             </button>
                           </div>
+                        ) : s.ageLocked && !s.sessionNote.lockedAt ? (
+                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">
+                              <Lock size={12} />
+                              Read-only — over {NOTE_WINDOW_MONTHS} months old.
+                            </span>
+                            <button
+                              onClick={() => router.push(`/session/${s.id}`)}
+                              className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors shrink-0"
+                            >
+                              <Unlock size={13} />
+                              Enable editing
+                            </button>
+                          </div>
                         ) : s.sessionNote.lockedAt ? (
                           <div className="pt-3 border-t border-[var(--light-gray)] flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">
                             <Lock size={12} />
@@ -877,12 +1090,15 @@ export default function PatientDetailPage() {
         </>
         )}
       </div>
+      )}
         </div>
 
-        {/* Right sidebar: Patient Widgets */}
+        {/* Right sidebar: Patient Widgets — own documents, part of the "own" view. */}
+        {showSidebar && (
         <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
           <PatientWidgets patient={patient} canManage={!readOnly} />
         </aside>
+        )}
       </div>
     </div>
   )

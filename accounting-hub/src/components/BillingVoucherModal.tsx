@@ -2,18 +2,20 @@
 
 import { useState } from 'react'
 import { X, Loader2, FileText } from 'lucide-react'
-import { buildBillingVoucher, type BVLine } from '@/lib/billing-voucher'
+import { buildBillingVoucher, rfpMemo, type BVLine, type RfpMemoParts } from '@/lib/billing-voucher'
 
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // Prompts for "Billed to" + "Description" (memo), then generates the A4 Billing
-// Voucher PDF for the given RFP line items.
-export function BillingVoucherModal({ refNumber, date, lines, branch, defaultBilledTo, defaultMemo, preparedBy, onClose }: {
+// Voucher PDF for the given RFP line items. When `payment` is given, the memo
+// pre-fills in the standard format:
+//   Paid to <payee> due to <purpose> credited to <bank account> ; <mode> ; <ref>
+export function BillingVoucherModal({ refNumber, date, lines, branch, defaultBilledTo, defaultMemo, payment, preparedBy, onClose }: {
   refNumber: string; date: string; lines: BVLine[]; branch?: string
-  defaultBilledTo?: string; defaultMemo?: string; preparedBy?: string; onClose: () => void
+  defaultBilledTo?: string; defaultMemo?: string; payment?: RfpMemoParts; preparedBy?: string; onClose: () => void
 }) {
   const [billedTo, setBilledTo] = useState(defaultBilledTo || '')
-  const [memo, setMemo] = useState(defaultMemo || '')
+  const [memo, setMemo] = useState(payment ? rfpMemo(payment) : (defaultMemo || ''))
   const [busy, setBusy] = useState(false)
   const total = lines.reduce((s, l) => s + l.netEwt, 0)
 

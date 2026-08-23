@@ -95,11 +95,16 @@ export default function ContactPage() {
 
           <div className="space-y-4">
             <a
-              href="mailto:support@verdanarehab.com"
-              className="flex items-center gap-3 text-sm text-gray-700 hover:text-verdana-teal transition-colors"
+              href="mailto:verdanatrading@gmail.com"
+              className="flex items-start gap-3 text-sm text-gray-700 hover:text-verdana-teal transition-colors"
             >
-              <Mail className="h-5 w-5 text-verdana-teal" />
-              support@verdanarehab.com
+              <Mail className="mt-0.5 h-5 w-5 shrink-0 text-verdana-teal" />
+              <span>
+                <span className="block text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Store &amp; Products
+                </span>
+                verdanatrading@gmail.com
+              </span>
             </a>
 
             <a

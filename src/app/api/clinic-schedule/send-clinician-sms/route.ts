@@ -85,7 +85,18 @@ export async function POST(req: NextRequest) {
   }
   if (current) chunks.push(current)
 
-  const cfg = BRANCH_CONFIG[callerBranch ?? staff.branch] ?? BRANCH_CONFIG['SBEA']
+  // The branch the caller is scheduling in wins over the clinician's home
+  // branch (an interbranch consultant has one home branch but works at both),
+  // and an unconfigured branch is an error rather than a silent switch to East.
+  const smsBranch = callerBranch ?? staff.branch
+  const cfg = BRANCH_CONFIG[smsBranch]
+  if (!cfg) {
+    throw new Error(
+      `No SMS sender configured for branch "${smsBranch}". Refusing to send ` +
+      `from another branch's number — install httpSMS on that branch's phone ` +
+      `and set HTTPSMS_API_KEY_${smsBranch}.`,
+    )
+  }
   if (!cfg.httpSmsKey)
     return NextResponse.json(
       { error: 'SMS gateway not configured for this branch' },

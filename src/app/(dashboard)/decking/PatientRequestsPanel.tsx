@@ -16,6 +16,7 @@
 // so the active list stays short.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { localTodayStr } from '@/lib/utils'
 
 interface BookingRow {
   id: string
@@ -60,7 +61,7 @@ const BRANCH_SHORT: Record<string, string> = { SBEA: 'East', SBGH: 'GH' }
 
 // localStorage key for seen booking IDs (per-day, auto-expires)
 function seenKey() {
-  return `SCEI_DECK_SEEN_${new Date().toISOString().slice(0, 10)}`
+  return `SCEI_DECK_SEEN_${localTodayStr()}`
 }
 function getSeenBookings(): Set<string> {
   try {
@@ -161,7 +162,7 @@ export default function PatientRequestsPanel({ branch }: Props) {
   // Open the "Add to Staff Deck" modal, pre-filling from the booking.
   // For teletherapy bookings, date and staff are null — front desk fills them.
   async function openDeckModal(b: BookingRow) {
-    const dateStr = b.date ? b.date.slice(0, 10) : new Date().toISOString().slice(0, 10)
+    const dateStr = b.date ? b.date.slice(0, 10) : localTodayStr()
     setDeckModal({
       booking: b,
       staffId: b.staff?.id ?? '',

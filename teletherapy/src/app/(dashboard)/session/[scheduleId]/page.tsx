@@ -20,6 +20,16 @@ import {
   Stethoscope,
   Pencil,
   ClipboardList,
+  GraduationCap,
+  Mic,
+  Image as ImageIcon,
+  Files,
+  Square,
+  Camera,
+  Trash2,
+  Film,
+  Lock,
+  Unlock,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
@@ -33,6 +43,252 @@ import SPEDNoteForm, { type SPEDFormData } from '@/components/SPEDNoteForm'
 import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteForm, { type PTFormData } from '@/components/PTNoteForm'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
+import { isPastNoteWindow, NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
+
+// In-portal voice / video recorder. Records via the browser MediaRecorder API
+// (on a phone this opens the mic/camera), then hands the finished clip to the
+// parent as a File so it joins the session's attachments. Kept self-contained:
+// idle = a tile button; recording = live timer (+ camera preview for video);
+// preview = playback with Add / Re-record.
+function MediaCapture({ kind, onAdd }: { kind: 'audio' | 'video'; onAdd: (file: File) => void }) {
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'preview'>('idle')
+  const [elapsed, setElapsed] = useState(0)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const blobRef = useRef<Blob | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const liveVideoRef = useRef<HTMLVideoElement | null>(null)
+
+  const supported =
+    typeof window !== 'undefined' &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    typeof MediaRecorder !== 'undefined'
+
+  function pickMime(): string {
+    const cands = kind === 'video'
+      ? ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+      : ['audio/webm', 'audio/mp4', 'audio/ogg']
+    for (const m of cands) { try { if (MediaRecorder.isTypeSupported(m)) return m } catch {} }
+    return ''
+  }
+
+  function cleanupStream() {
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    if (liveVideoRef.current) liveVideoRef.current.srcObject = null
+  }
+
+  async function start() {
+    setError(null)
+    try {
+      const constraints: MediaStreamConstraints =
+        kind === 'video' ? { audio: true, video: { facingMode: 'environment' } } : { audio: true }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
+      chunksRef.current = []
+      const mime = pickMime()
+      const opts: MediaRecorderOptions = {}
+      if (mime) opts.mimeType = mime
+      if (kind === 'video') opts.videoBitsPerSecond = 1_500_000 // keep clips a sane size
+      const mr = new MediaRecorder(stream, opts)
+      recorderRef.current = mr
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = () => {
+        const type = mr.mimeType || (kind === 'video' ? 'video/webm' : 'audio/webm')
+        const blob = new Blob(chunksRef.current, { type })
+        blobRef.current = blob
+        setPreviewUrl(URL.createObjectURL(blob))
+        cleanupStream()
+        setPhase('preview')
+      }
+      mr.start()
+      setPhase('recording')
+      setElapsed(0)
+      timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
+      // The live camera feed is bound to the <video> in an effect below, once
+      // the element is actually mounted (phase === 'recording').
+    } catch (err) {
+      cleanupStream()
+      const name = err instanceof Error ? err.name : ''
+      const device = kind === 'video' ? 'camera & microphone' : 'microphone'
+      setError(
+        name === 'NotAllowedError' || name === 'SecurityError'
+          ? `Access blocked. Allow ${device} for this site in your browser, then try again.`
+          : name === 'NotFoundError' || name === 'OverconstrainedError'
+            ? `No ${kind === 'video' ? 'camera' : 'microphone'} found on this device.`
+            : name === 'NotReadableError'
+              ? `Your ${kind === 'video' ? 'camera' : 'microphone'} is in use by another app. Close it and try again.`
+              : `${kind === 'video' ? 'Camera/microphone' : 'Microphone'} unavailable on this device/browser.`,
+      )
+      setPhase('idle')
+    }
+  }
+
+  function stop() {
+    if (timerRef.current) clearInterval(timerRef.current)
+    recorderRef.current?.stop()
+  }
+
+  function add() {
+    if (!blobRef.current) return
+    const type = blobRef.current.type || (kind === 'video' ? 'video/webm' : 'audio/webm')
+    const ext = type.includes('mp4') ? (kind === 'video' ? 'mp4' : 'm4a')
+      : type.includes('quicktime') ? 'mov'
+      : type.includes('ogg') ? 'ogg'
+      : 'webm'
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    const file = new File([blobRef.current], `${kind}-note-${stamp}.${ext}`, { type })
+    onAdd(file)
+    reset()
+  }
+
+  function reset() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null)
+    blobRef.current = null
+    chunksRef.current = []
+    setElapsed(0)
+    setPhase('idle')
+  }
+
+  // Bind the live camera feed once the <video> is actually mounted (i.e. after
+  // React commits the phase === 'recording' render). Doing this synchronously in
+  // start() raced the render and left the preview black.
+  useEffect(() => {
+    if (phase === 'recording' && kind === 'video' && liveVideoRef.current && streamRef.current) {
+      liveVideoRef.current.srcObject = streamRef.current
+      liveVideoRef.current.play().catch(() => {})
+    }
+  }, [phase, kind])
+
+  useEffect(() => () => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    cleanupStream()
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const clock = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
+  const Icon = kind === 'video' ? Camera : Mic
+  const title = kind === 'video' ? 'Record Video' : 'Record Voice Note'
+
+  if (!supported) return null
+
+  return (
+    <div className="rounded-xl border-2 border-dashed border-[var(--light-gray)] p-4">
+      {error && <p className="text-[12px] text-red-500 mb-2">{error}</p>}
+
+      {phase === 'idle' && (
+        <button type="button" onClick={start}
+          className="w-full flex flex-col items-center gap-2 py-2 group">
+          <div className="w-11 h-11 rounded-full bg-[var(--pale-teal)] flex items-center justify-center group-hover:bg-[var(--teal)] transition-colors">
+            <Icon size={20} className="text-[var(--teal)] group-hover:text-white transition-colors" />
+          </div>
+          <span className="text-[13px] font-semibold text-[var(--charcoal)]">{title}</span>
+          <span className="text-[11px] text-[var(--mid-gray)]">in the portal</span>
+        </button>
+      )}
+
+      {phase === 'recording' && (
+        <div className="flex flex-col items-center gap-3">
+          {kind === 'video' && (
+            <video ref={liveVideoRef} autoPlay muted playsInline
+              className="w-full max-h-56 rounded-lg bg-black object-contain" />
+          )}
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-red-600">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+            Recording · {clock}
+          </div>
+          <button type="button" onClick={stop}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-[13px] font-semibold hover:bg-red-700 transition-colors">
+            <Square size={14} /> Stop
+          </button>
+        </div>
+      )}
+
+      {phase === 'preview' && previewUrl && (
+        <div className="flex flex-col gap-3">
+          {kind === 'video'
+            ? <video src={previewUrl} controls playsInline className="w-full max-h-56 rounded-lg bg-black" />
+            : <audio src={previewUrl} controls className="w-full" />}
+          <div className="flex gap-2">
+            <button type="button" onClick={add}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--teal)] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity">
+              <CheckCircle2 size={14} /> Add to session
+            </button>
+            <button type="button" onClick={reset}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--light-gray)] text-[var(--mid-gray)] text-[13px] font-semibold hover:bg-[var(--off-white)] transition-colors">
+              <Trash2 size={14} /> Re-record
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Reusable attachments field: record voice/video in the portal, or upload
+// voice/photos/videos/documents. Stages File objects into the parent's list so
+// they can be saved ALONGSIDE a structured form or an uploaded note — the three
+// completion methods (form, upload/QR, attach others) are additive, not
+// mutually exclusive.
+function AttachOthersField({
+  files,
+  onAdd,
+  onRemove,
+}: {
+  files: File[]
+  onAdd: (f: File | File[]) => void
+  onRemove: (index: number) => void
+}) {
+  const tiles = [
+    { icon: Mic, label: 'Voice Notes', hint: 'audio', accept: 'audio/*' },
+    { icon: ImageIcon, label: 'Photos', hint: 'jpg, png, heic', accept: 'image/*' },
+    { icon: Film, label: 'Videos', hint: 'mp4, mov, webm', accept: 'video/*' },
+    { icon: Files, label: 'Documents', hint: 'pdf, docx, xlsx', accept: '.pdf,.doc,.docx,.xls,.xlsx' },
+  ]
+  return (
+    <div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <MediaCapture kind="audio" onAdd={(f) => onAdd(f)} />
+        <MediaCapture kind="video" onAdd={(f) => onAdd(f)} />
+      </div>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Or upload files</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {tiles.map((opt) => (
+          <label key={opt.label}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group cursor-pointer">
+            <opt.icon size={26} className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors" />
+            <span className="text-[13px] font-semibold text-[var(--mid-gray)] group-hover:text-[var(--deep-teal)]">{opt.label}</span>
+            <span className="text-[11px] text-[var(--mid-gray)]">{opt.hint}</span>
+            <input type="file" accept={opt.accept} multiple
+              onChange={(e) => { if (e.target.files) onAdd(Array.from(e.target.files)) }}
+              onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} className="hidden" />
+          </label>
+        ))}
+      </div>
+      {files.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-2">Attachments ({files.length})</p>
+          <div className="space-y-2">
+            {files.map((f, i) => (
+              <div key={i} className="flex items-center justify-between bg-[var(--off-white)] px-4 py-2.5 rounded-xl text-[13px] border border-[var(--light-gray)]">
+                <span className="flex items-center gap-2 truncate font-medium">
+                  <Paperclip size={14} className="text-[var(--teal)] shrink-0" />
+                  <span className="truncate">{f.name}</span>
+                </span>
+                <button type="button" onClick={() => onRemove(i)} className="text-[var(--mid-gray)] hover:text-red-500 shrink-0 ml-2"><X size={16} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface SessionDetail {
   id: string
@@ -43,6 +299,7 @@ interface SessionDetail {
   status: string
   meetLink: string | null
   notes: string | null
+  noteUnlockedAt: string | null
   patient: {
     id: string
     firstName: string
@@ -55,6 +312,11 @@ interface SessionDetail {
     lastName: string
     department: string
   }
+  internStaff: {
+    id: string
+    firstName: string
+    lastName: string
+  } | null
   sessionNote: {
     id: string
     status: string
@@ -64,10 +326,30 @@ interface SessionDetail {
     emailSentAt: string | null
     emailSentTo: string | null
     isInitialEvaluation: boolean
+    lockedAt: string | null
+    editHistory?: { name: string; accountType: string; action: string; at: string }[] | null
   } | null
 }
 
 type ActionMode = null | 'complete' | 'discontinue' | 'edit'
+
+// Compact edit-history block: who created the note and every subsequent edit.
+function NoteEditHistory({ history }: { history?: { name: string; accountType: string; action: string; at: string }[] | null }) {
+  if (!history || history.length === 0) return null
+  return (
+    <div className="mt-3 pt-3 border-t border-[var(--light-gray)]">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)] mb-1.5">Edit history</p>
+      <ul className="space-y-1">
+        {history.map((h, i) => (
+          <li key={i} className="text-[11.5px] text-[var(--mid-gray)]">
+            <span className="capitalize">{h.action}</span> by <span className="font-semibold text-[var(--charcoal)]">{h.name}</span>
+            {h.accountType === 'INTERN' ? ' (Intern)' : ''} · {new Date(h.at).toLocaleString()}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 export default function SessionDetailPage() {
   const params = useParams()
@@ -84,6 +366,7 @@ export default function SessionDetailPage() {
   const [notes, setNotes] = useState('')
   const [remarks, setRemarks] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null) // 0-100 while uploading attachments, else null
   const [keptAttachments, setKeptAttachments] = useState<{ fileName: string; filePath: string; mimeType: string }[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [sendingEmail, setSendingEmail] = useState(false)
@@ -106,6 +389,10 @@ export default function SessionDetailPage() {
   const [overrideToProgress, setOverrideToProgress] = useState(false)
   const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
   const [psychEditUseForm, setPsychEditUseForm] = useState(true) // same toggle for edit mode
+  // Within the non-form (upload) panel: 'uploadqr' = the single scanned note /
+  // QR capture; 'others' = attach MULTIPLE supplementary files (voice notes,
+  // photos, documents) to the session.
+  const [attachMode, setAttachMode] = useState<'uploadqr' | 'others'>('uploadqr')
   const [captureReceived, setCaptureReceived] = useState<string | null>(null) // filename of received capture
   const [spedFormVariant, setSPEDFormVariant] = useState<'SPED16' | 'SPED18'>('SPED16') // SPED form selector
   const [ieMode, setIEMode] = useState<'PENDING' | 'DAILY_NOTES' | 'INITIAL_EVAL'>('PENDING') // PT/OT/SLP/SPED IE flag
@@ -120,7 +407,7 @@ export default function SessionDetailPage() {
 
   async function fetchClinicianSettings() {
     try {
-      const res = await fetch('/api/clinician-settings')
+      const res = await fetch(`/api/clinician-settings?scheduleId=${scheduleId}`)
       if (res.ok) {
         const data = await res.json()
         setClinicianSettings(data.settings ?? null)
@@ -174,6 +461,58 @@ export default function SessionDetailPage() {
 
   function removeFile(index: number) {
     setFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  // Upload one file via XHR so we can report real upload progress (fetch has no
+  // upload-progress event). Returns the saved attachment descriptor.
+  function xhrUpload(
+    file: File,
+    onProgress: (loaded: number) => void,
+  ): Promise<{ fileName: string; filePath: string; mimeType: string }> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/upload')
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded) }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve(JSON.parse(xhr.responseText)) } catch { reject(new Error('Bad upload response')) }
+        } else {
+          let msg = `Upload failed (${xhr.status})`
+          try { msg = JSON.parse(xhr.responseText).error ?? msg } catch {}
+          reject(new Error(msg))
+        }
+      }
+      xhr.onerror = () => reject(new Error('Upload failed — network error'))
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('scheduleId', scheduleId)
+      xhr.send(fd)
+    })
+  }
+
+  // Upload all staged files, updating uploadProgress (0-100) across the whole
+  // batch by byte weight so the % reflects real transfer, not file count.
+  async function uploadAllFiles(): Promise<{ fileName: string; filePath: string; mimeType: string }[]> {
+    if (files.length === 0) return []
+    const totalBytes = files.reduce((s, f) => s + f.size, 0) || 1
+    let done = 0
+    setUploadProgress(0)
+    const out: { fileName: string; filePath: string; mimeType: string }[] = []
+    try {
+      for (const file of files) {
+        const res = await xhrUpload(file, (loaded) => {
+          setUploadProgress(Math.min(99, Math.round(((done + loaded) / totalBytes) * 100)))
+        })
+        done += file.size
+        setUploadProgress(Math.min(99, Math.round((done / totalBytes) * 100)))
+        out.push(res)
+      }
+      setUploadProgress(100)
+      return out
+    } finally {
+      // Clear shortly after so the 100% is briefly visible; safe if unmounted.
+      setTimeout(() => setUploadProgress(null), 600)
+    }
   }
 
   async function generateQR() {
@@ -245,6 +584,13 @@ export default function SessionDetailPage() {
     }
   }
 
+  // Jump straight from a structured form to the upload panel in "Attach Others"
+  // mode (multiple voice notes / photos / documents).
+  function openAttachOthers(mode: 'complete' | 'edit') {
+    setAttachMode('others')
+    handlePsychSwitchToUpload(mode)
+  }
+
   function handleClearFormChoice(clearIt: boolean) {
     if (clearIt) {
       // Clear the notes so only the upload/attachment is saved
@@ -260,14 +606,7 @@ export default function SessionDetailPage() {
   async function handleComplete() {
     setSubmitting(true)
     try {
-      const attachments: { fileName: string; filePath: string; mimeType: string }[] = []
-      for (const file of files) {
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('scheduleId', scheduleId)
-        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
-        if (uploadRes.ok) attachments.push(await uploadRes.json())
-      }
+      const attachments = await uploadAllFiles()
       const res = await fetch(`/api/sessions/${scheduleId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -275,7 +614,7 @@ export default function SessionDetailPage() {
       })
       if (res.ok) { showToast('Session marked as completed'); setActionMode(null); setFiles([]); setNotes(''); fetchSession() }
       else { const data = await res.json(); showToast(data.error ?? 'Failed') }
-    } catch { showToast('Failed to complete session') }
+    } catch (e) { showToast(e instanceof Error ? e.message : 'Failed to complete session') }
     setSubmitting(false)
   }
 
@@ -292,6 +631,30 @@ export default function SessionDetailPage() {
       else { const data = await res.json(); showToast(data.error ?? 'Failed') }
     } catch { showToast('Failed') }
     setSubmitting(false)
+  }
+
+  // Re-open (or re-close) documentation on a session past the editing window.
+  // Deliberately a server round-trip, not local state: the write routes
+  // enforce the same lock, so a purely client-side toggle would just produce
+  // a 403 at save time.
+  async function toggleNoteLock(unlocked: boolean) {
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/sessions/${scheduleId}/note-lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unlocked }),
+      })
+      if (res.ok) {
+        showToast(unlocked ? 'Editing re-enabled for this session' : 'Session locked again')
+        await fetchSession()
+      } else {
+        const e = await res.json().catch(() => ({}))
+        showToast(e.error || 'Could not change the lock')
+      }
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   async function handleEdit() {
@@ -499,6 +862,14 @@ export default function SessionDetailPage() {
   }
 
   const hasNote = !!session.sessionNote
+  // Permanent endorsement freeze — never re-openable here.
+  const permaLocked = !!session.sessionNote?.lockedAt
+  // Age lock — read-only because the session has passed the documentation
+  // window, unless someone deliberately re-opened it.
+  const pastWindow = isPastNoteWindow(session.date)
+  const ageLocked = !permaLocked && pastWindow && !session.noteUnlockedAt
+  const reopened = pastWindow && !!session.noteUnlockedAt
+  const readOnly = permaLocked || ageLocked
   const patientName = session.patient ? `${session.patient.firstName} ${session.patient.lastName}` : 'Walk-in Patient'
 
   return (
@@ -598,7 +969,12 @@ export default function SessionDetailPage() {
           { icon: Calendar, label: 'Date', value: formatDate(session.date) },
           { icon: Clock, label: 'Time', value: `${formatTime(session.startTime)} – ${formatTime(session.endTime)}` },
           { icon: FileText, label: 'Type', value: session.sessionType },
-          { icon: Stethoscope, label: 'Clinician', value: `${session.staff.lastName} (${session.staff.department})` },
+          // "Clinician" stays the supervisor — the therapist whose card this
+          // was booked under — whether or not an intern is assigned.
+          { icon: Stethoscope, label: session.internStaff ? 'Supervisor' : 'Clinician', value: `${session.staff.lastName} (${session.staff.department})` },
+          ...(session.internStaff
+            ? [{ icon: GraduationCap, label: 'Intern', value: `${session.internStaff.firstName} ${session.internStaff.lastName}` }]
+            : []),
         ].map((item, i) => (
           <div key={item.label} className={`card-static !p-4 animate-fade-up stagger-${i + 1}`}>
             <div className="flex items-center gap-1.5 mb-1">
@@ -625,6 +1001,70 @@ export default function SessionDetailPage() {
         </div>
       )}
 
+      {/* Documentation window notice — a session past the window is read-only
+          until the clinician deliberately re-opens it. The permanent
+          endorsement freeze is handled separately and is never re-openable. */}
+      {ageLocked && (
+        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-amber-500">
+          <div className="flex items-start gap-3">
+            <Lock size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Notes are read-only</p>
+              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
+                This session is more than {NOTE_WINDOW_MONTHS} months old. Documentation closes
+                automatically after that so notes aren&apos;t written or changed long after the fact.
+              </p>
+              <button
+                onClick={() => toggleNoteLock(true)}
+                disabled={submitting}
+                className="mt-3 flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-semibold transition-colors disabled:opacity-50"
+              >
+                <Unlock size={14} />
+                Enable editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reopened && (
+        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-[var(--teal)]">
+          <div className="flex items-start gap-3">
+            <Unlock size={18} className="text-[var(--teal)] mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Editing re-enabled</p>
+              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
+                This session is past the {NOTE_WINDOW_MONTHS}-month window but was re-opened on{' '}
+                {new Date(session.noteUnlockedAt!).toLocaleDateString()}.
+              </p>
+              <button
+                onClick={() => toggleNoteLock(false)}
+                disabled={submitting}
+                className="mt-3 flex items-center gap-1.5 text-[13px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] font-semibold transition-colors disabled:opacity-50"
+              >
+                <Lock size={14} />
+                Lock again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {permaLocked && (
+        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-[var(--mid-gray)]">
+          <div className="flex items-start gap-3">
+            <Lock size={18} className="text-[var(--mid-gray)] mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Note signed</p>
+              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
+                Notes are frozen once the author is endorsed or discharged off the patient, and
+                cannot be re-opened.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Existing note display */}
       {hasNote && actionMode !== 'edit' && (
         <div className="card-static mb-6 animate-fade-up stagger-5">
@@ -639,13 +1079,15 @@ export default function SessionDetailPage() {
                 Session {session.sessionNote!.status === 'COMPLETED' ? 'Completed' : 'Discontinued'}
               </h2>
             </div>
-            <button
-              onClick={startEdit}
-              className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-medium transition-colors"
-            >
-              <Pencil size={14} />
-              Edit
-            </button>
+            {!readOnly && (
+              <button
+                onClick={startEdit}
+                className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-medium transition-colors"
+              >
+                <Pencil size={14} />
+                Edit
+              </button>
+            )}
           </div>
 
           {/* Attachments — show FIRST so they're always visible */}
@@ -703,6 +1145,8 @@ export default function SessionDetailPage() {
             </div>
           )}
 
+          <NoteEditHistory history={session.sessionNote!.editHistory} />
+
           {/* No notes and no attachments indicator */}
           {!session.sessionNote!.notes && (!session.sessionNote!.attachments || (session.sessionNote!.attachments as any[]).length === 0) && (
             <div className="mb-4 text-center py-6 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)]">
@@ -723,8 +1167,14 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          {/* Send notes email — hidden for Psychology (internal only) and for IE (see above) */}
-          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && (
+          {/* Send notes email — hidden for Psychology (internal only), for IE
+              (see above), and for interns (only the supervisor sends). */}
+          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && authSession?.user?.accountType === 'INTERN' && (
+            <div className="pt-4 border-t border-[var(--light-gray)]">
+              <p className="text-sm text-[var(--mid-gray)] italic flex items-center gap-2"><Mail size={15} /> Only your supervisor can send this note to the patient.</p>
+            </div>
+          )}
+          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && authSession?.user?.accountType !== 'INTERN' && (
             <div className="pt-4 border-t border-[var(--light-gray)]">
               {session.sessionNote!.emailSentAt && (
                 <p className="text-sm text-green-600 flex items-center gap-2 font-medium mb-3">
@@ -1135,7 +1585,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* Action buttons */}
-      {!hasNote && actionMode === null && (
+      {!hasNote && actionMode === null && !readOnly && (
         <div className="flex gap-3 animate-fade-up stagger-6">
           <button onClick={() => setActionMode('complete')} className="btn-primary flex-1 py-3.5 rounded-xl text-[15px] !bg-gradient-to-r !from-green-600 !to-green-700 !shadow-[0_2px_8px_rgba(22,163,74,0.3)]">
             <CheckCircle2 size={20} />
@@ -1320,6 +1770,24 @@ export default function SessionDetailPage() {
         </div>
       )}
 
+      {/* Attachments alongside the structured form — so a clinician can fill the
+          form AND attach voice notes / video / photos / files in one completion.
+          These stage into files[] and the form's own Save uploads them. */}
+      {actionMode === 'complete' && hasStructuredForm && psychUseForm && (isPsychDept || ieMode === 'DAILY_NOTES') && (
+        <div className="card-static mb-6 animate-gate">
+          <h2 className="font-bold text-[var(--charcoal)] mb-1.5 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+            <Paperclip size={18} className="text-[var(--teal)]" />
+            Attachments <span className="text-[12px] font-medium text-[var(--mid-gray)]">(optional)</span>
+          </h2>
+          <p className="text-[12px] text-[var(--mid-gray)] mb-4">Record a voice note or video, or upload photos/videos/files. These are saved together with the form when you complete the session.</p>
+          <AttachOthersField
+            files={files}
+            onAdd={(f) => setFiles((prev) => [...prev, ...(Array.isArray(f) ? f : [f])])}
+            onRemove={removeFile}
+          />
+        </div>
+      )}
+
       {/* Complete form */}
       {actionMode === 'complete' && isPsychDept && session.patient && psychUseForm && (
         <div className="card-static animate-gate">
@@ -1343,6 +1811,13 @@ export default function SessionDetailPage() {
             >
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
+            </button>
+            <button
+              onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+            >
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
             </button>
           </div>
 
@@ -1400,6 +1875,13 @@ export default function SessionDetailPage() {
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
+            <button
+              onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+            >
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
+            </button>
           </div>
 
           <OTNoteForm
@@ -1452,6 +1934,11 @@ export default function SessionDetailPage() {
               className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
+            </button>
+            <button onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
             </button>
           </div>
 
@@ -1509,6 +1996,11 @@ export default function SessionDetailPage() {
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
+            <button onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
+            </button>
           </div>
 
           <SPEDNoteForm
@@ -1560,6 +2052,10 @@ export default function SessionDetailPage() {
               className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" /> Upload / QR
             </button>
+            <button onClick={() => openAttachOthers('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" /> Attach Others
+            </button>
           </div>
 
           <PTNoteForm
@@ -1601,9 +2097,9 @@ export default function SessionDetailPage() {
             Complete Session
           </h2>
 
-          {/* Structured form toggle — so they can switch back to form */}
-          {hasStructuredForm && (
-            <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          {/* Mode tabs: Use Form (structured depts only) · Upload / QR · Attach Others */}
+          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            {hasStructuredForm && (
               <button
                 onClick={() => setPsychUseForm(true)}
                 className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
@@ -1611,29 +2107,68 @@ export default function SessionDetailPage() {
                 <FileText size={14} className="inline mr-1.5 -mt-0.5" />
                 Use Form
               </button>
-              <button
-                onClick={() => setPsychUseForm(false)}
-                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
-              >
-                <Upload size={14} className="inline mr-1.5 -mt-0.5" />
-                Upload / QR
-              </button>
+            )}
+            <button
+              onClick={() => setAttachMode('uploadqr')}
+              className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${attachMode === 'uploadqr' ? 'bg-[var(--teal)] text-white' : 'bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100'}`}
+            >
+              <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+              Upload / QR
+            </button>
+            <button
+              onClick={() => setAttachMode('others')}
+              className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${attachMode === 'others' ? 'bg-[var(--teal)] text-white' : 'bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100'}`}
+            >
+              <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
+              Attach Others
+            </button>
+          </div>
+
+          {attachMode === 'uploadqr' ? (
+            <div className={`grid grid-cols-1 ${hasStructuredForm ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 mb-6`}>
+              {[
+                { icon: Upload, label: 'Upload Photo/PDF', onClick: () => fileInputRef.current?.click() },
+                { icon: QrCode, label: 'QR Camera Capture', onClick: generateQR },
+                ...(!hasStructuredForm ? [{ icon: FileText, label: 'Write Notes', onClick: () => document.getElementById('notes-area')?.focus() }] : []),
+              ].map((opt) => (
+                <button key={opt.label} onClick={opt.onClick}
+                  className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group">
+                  <opt.icon size={28} className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors" />
+                  <span className="text-[13px] font-semibold text-[var(--mid-gray)] group-hover:text-[var(--deep-teal)]">{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mb-6">
+              <p className="text-[12px] text-[var(--mid-gray)] mb-3">Record a voice note or video right here, or upload files. You can add several of each.</p>
+
+              {/* Record in the portal (uses the device mic / camera) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <MediaCapture kind="audio" onAdd={(f) => setFiles((prev) => [...prev, f])} />
+                <MediaCapture kind="video" onAdd={(f) => setFiles((prev) => [...prev, f])} />
+              </div>
+
+              {/* Or upload existing files */}
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Or upload files</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { icon: Mic, label: 'Voice Notes', hint: 'audio', accept: 'audio/*' },
+                  { icon: ImageIcon, label: 'Photos', hint: 'jpg, png, heic', accept: 'image/*' },
+                  { icon: Film, label: 'Videos', hint: 'mp4, mov, webm', accept: 'video/*' },
+                  { icon: Files, label: 'Documents', hint: 'pdf, docx, xlsx', accept: '.pdf,.doc,.docx,.xls,.xlsx' },
+                ].map((opt) => (
+                  <label key={opt.label}
+                    className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group cursor-pointer">
+                    <opt.icon size={26} className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors" />
+                    <span className="text-[13px] font-semibold text-[var(--mid-gray)] group-hover:text-[var(--deep-teal)]">{opt.label}</span>
+                    <span className="text-[11px] text-[var(--mid-gray)]">{opt.hint}</span>
+                    <input type="file" accept={opt.accept} multiple onChange={handleFileUpload}
+                      onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} className="hidden" />
+                  </label>
+                ))}
+              </div>
             </div>
           )}
-
-          <div className={`grid grid-cols-1 ${hasStructuredForm ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 mb-6`}>
-            {[
-              { icon: Upload, label: 'Upload Photo/PDF', onClick: () => fileInputRef.current?.click() },
-              { icon: QrCode, label: 'QR Camera Capture', onClick: generateQR },
-              ...(!hasStructuredForm ? [{ icon: FileText, label: 'Write Notes', onClick: () => document.getElementById('notes-area')?.focus() }] : []),
-            ].map((opt) => (
-              <button key={opt.label} onClick={opt.onClick}
-                className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group">
-                <opt.icon size={28} className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors" />
-                <span className="text-[13px] font-semibold text-[var(--mid-gray)] group-hover:text-[var(--deep-teal)]">{opt.label}</span>
-              </button>
-            ))}
-          </div>
 
           <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple onChange={handleFileUpload} className="hidden" />
 
@@ -1671,11 +2206,23 @@ export default function SessionDetailPage() {
             </div>
           )}
 
+          {uploadProgress !== null && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">
+                <span>Uploading attachments…</span>
+                <span className="tabular-nums">{uploadProgress}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-[var(--light-gray)] overflow-hidden">
+                <div className="h-full bg-[var(--teal)] transition-[width] duration-200" style={{ width: `${uploadProgress}%` }} />
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button onClick={handleComplete} disabled={submitting || (!hasStructuredForm && !notes.trim() && files.length === 0)}
               className="btn-primary flex-1 py-3 rounded-xl !bg-gradient-to-r !from-green-600 !to-green-700 !shadow-[0_2px_8px_rgba(22,163,74,0.3)]">
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-              Save & Complete
+              {uploadProgress !== null ? `Uploading… ${uploadProgress}%` : 'Save & Complete'}
             </button>
             <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) } }} className="btn-secondary px-6 rounded-xl">Cancel</button>
           </div>

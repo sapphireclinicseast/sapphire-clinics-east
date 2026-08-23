@@ -1,0 +1,25 @@
+{
+  "warehouse": {
+    "address": "210B Henry's Building, 80 Ortigas Ave, San Juan City, 1502 Metro Manila",
+    "city": "San Juan",
+    "zipCode": "1502",
+    "latitude": 14.602506578327858,
+    "longitude": 121.04523298226698
+  },
+  "shipping": {
+    "tiers": [
+      {
+        "maxKm": 5,
+        "fee": 50
+      },
+      {
+        "maxKm": 10,
+        "fee": 70
+      },
+      {
+        "maxKm": 999999,
+        "fee": 100
+      }
+    ]
+  }
+}

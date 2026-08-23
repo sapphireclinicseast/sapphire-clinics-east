@@ -1,0 +1,63 @@
+// ── Product data reader — reads from store-data.json (admin-managed) ──
+// NOTE: This module uses 'fs' and is SERVER-ONLY.
+// Client components should import types from '@/lib/types' instead.
+
+import { readFileSync, existsSync } from 'fs'
+import { join } from 'path'
+
+export type { Product, ProductVariant, Collection } from './types'
+import type { Product, Collection } from './types'
+
+interface StoreData {
+  collections: Collection[]
+  products: Product[]
+}
+
+const DATA_FILE = join(process.cwd(), 'src', 'data', 'store-data.json')
+
+let cachedData: StoreData | null = null
+let cacheTime = 0
+const CACHE_TTL_MS = 3000
+
+function loadData(): StoreData {
+  const now = Date.now()
+  if (cachedData && now - cacheTime < CACHE_TTL_MS) return cachedData
+
+  try {
+    if (existsSync(DATA_FILE)) {
+      const raw = readFileSync(DATA_FILE, 'utf-8')
+      cachedData = JSON.parse(raw) as StoreData
+      cacheTime = now
+      return cachedData
+    }
+  } catch {}
+
+  return { collections: [], products: [] }
+}
+
+// ── Public accessors ────────────────────────────────────────────
+
+export function getAllProducts(): Product[] {
+  return loadData().products.filter((p) => !p.disabled)
+}
+
+export function getProductBySlug(slug: string): Product | undefined {
+  const product = loadData().products.find((p) => p.slug === slug)
+  return product && !product.disabled ? product : undefined
+}
+
+export function getProductsByCollection(collectionSlug: string): Product[] {
+  return loadData().products.filter((p) => p.collectionSlug === collectionSlug && !p.disabled)
+}
+
+export function getCollectionBySlug(slug: string): Collection | undefined {
+  return loadData().collections.find((c) => c.slug === slug)
+}
+
+export function getAllCollections(): Collection[] {
+  return loadData().collections
+}
+
+// Convenience: snapshot of collections at module-load time for legacy
+// imports. New code should call getAllCollections() to get fresh data.
+export const collections: Collection[] = loadData().collections

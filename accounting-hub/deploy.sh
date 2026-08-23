@@ -2,14 +2,75 @@
 # deploy.sh — Full sync + rebuild for accounting-hub on VPS
 # Usage: ./deploy.sh
 # Always run this instead of manually SCP-ing individual files.
-set -e
+#
+# Failure handling: every step is checked and the script stops at the first
+# problem, loudly. It used to report "Deploy complete" after a failed build,
+# and exit 0 through a pipe, which hid two broken deploys.
+#
+# Order matters. Migrations (docker/redeploy.sh) go first, then the schema,
+# then the code that depends on both. A transfer that dies halfway therefore
+# leaves the server with migrations ahead of the code — never behind it, which
+# is the state that takes the app down (Prisma querying a column the database
+# does not have yet).
+set -Eeuo pipefail
 
 VPS="root@152.53.231.249"
 REMOTE="/opt/accounting"
 LOCAL="$(cd "$(dirname "$0")" && pwd)"
 
-echo "==> Syncing source files to VPS..."
-rsync -avz --delete \
+# One multiplexed connection for the whole deploy. Each rsync and the remote
+# build used to open its own SSH session — six or more in quick succession,
+# which fail2ban reads as an attack and refuses mid-deploy. They now all ride a
+# single master connection, so the server sees one login.
+CTRL="${TMPDIR:-/tmp}/cm-accounting-$$"
+SSH_OPTS=(-o ControlMaster=auto -o ControlPath="$CTRL" -o ControlPersist=600 -o ConnectTimeout=25 -o ServerAliveInterval=10 -o ServerAliveCountMax=6)
+RSYNC_OPTS=(-avz --partial --timeout=90 -e "ssh -o ControlMaster=auto -o ControlPath=$CTRL -o ControlPersist=600 -o ConnectTimeout=25")
+cleanup_ctrl() { ssh -O exit -o ControlPath="$CTRL" "$VPS" >/dev/null 2>&1 || true; }
+trap cleanup_ctrl EXIT
+
+HEALTH_URL="https://accounting.sapphireclinicseast.org/login"
+
+# Before the rebuild, a failure means nothing changed on the server.
+fail() { echo ""; echo "DEPLOY FAILED at: $1" >&2; echo "Nothing was rebuilt. The running app is untouched." >&2; exit 1; }
+# After it, the new code IS live — say so rather than implying a clean abort.
+fail_after_build() { echo ""; echo "DEPLOY PROBLEM at: $1" >&2; echo "The rebuild already completed, so the new code is live. Verify the app before assuming it rolled back." >&2; exit 1; }
+
+# The link to the VPS drops often enough that a single blip should not abort a
+# deploy; --partial means a retry resumes rather than restarts.
+retry_rsync() {
+  local what="$1"; shift
+  local attempt
+  for attempt in 1 2 3; do
+    if rsync "${RSYNC_OPTS[@]}" "$@"; then return 0; fi
+    echo "   ...$what failed (attempt $attempt/3), retrying" >&2
+    sleep 5
+  done
+  fail "$what"
+}
+
+# Establish the shared connection up front; everything after reuses it.
+echo "==> 0/5 Opening connection..."
+ssh "${SSH_OPTS[@]}" "$VPS" true || fail "opening the SSH connection (is this IP banned?)"
+
+echo "==> 1/5 Syncing migrations + compose (must land before the schema)..."
+retry_rsync "docker/ sync" \
+  "$LOCAL/docker/docker-compose.yml" \
+  "$LOCAL/docker/redeploy.sh" \
+  "$VPS:$REMOTE/docker/"
+
+echo "==> 2/5 Syncing prisma schema..."
+retry_rsync "schema.prisma sync" \
+  "$LOCAL/prisma/schema.prisma" \
+  "$VPS:$REMOTE/prisma/schema.prisma"
+
+echo "==> 3/5 Syncing public assets..."
+retry_rsync "public/ sync" \
+  --exclude='uploads' \
+  "$LOCAL/public/" \
+  "$VPS:$REMOTE/public/"
+
+echo "==> 4/5 Syncing source..."
+retry_rsync "src/ sync" --delete \
   --exclude='node_modules' \
   --exclude='.next' \
   --exclude='uploads' \
@@ -17,22 +78,20 @@ rsync -avz --delete \
   --exclude='*.log' \
   "$LOCAL/src/" "$VPS:$REMOTE/src/"
 
-rsync -avz \
-  "$LOCAL/prisma/schema.prisma" \
-  "$VPS:$REMOTE/prisma/schema.prisma"
+echo "==> 5/5 Rebuilding on VPS..."
+ssh "${SSH_OPTS[@]}" "$VPS" "bash $REMOTE/docker/redeploy.sh" || fail "remote build (redeploy.sh)"
 
-rsync -avz \
-  --exclude='uploads' \
-  "$LOCAL/public/" \
-  "$VPS:$REMOTE/public/"
-
-rsync -avz \
-  "$LOCAL/docker/docker-compose.yml" \
-  "$LOCAL/docker/redeploy.sh" \
-  "$VPS:$REMOTE/docker/"
-
-echo "==> Rebuilding on VPS..."
-ssh "$VPS" "bash $REMOTE/docker/redeploy.sh"
+# The build can succeed and the container still fail to come up, so confirm it.
+# Checked over the public URL rather than SSH: it is what a user actually
+# experiences, and it does not fail merely because SSH is momentarily refused.
+echo "==> Verifying the app is serving..."
+for attempt in 1 2 3 4 5; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' -m 25 "$HEALTH_URL" || echo 000)"
+  if [ "$code" = "200" ]; then echo "   healthy — $HEALTH_URL returned 200"; break; fi
+  if [ "$attempt" = "5" ]; then fail_after_build "health check — $HEALTH_URL returned $code after 5 tries"; fi
+  echo "   ...returned $code, retrying in 10s ($attempt/5)"
+  sleep 10
+done
 
 echo ""
-echo "Deploy complete. Ask all users to log out and back in."
+echo "Deploy complete and verified. Ask all users to log out and back in."

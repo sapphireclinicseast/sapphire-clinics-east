@@ -1,0 +1,22 @@
+[
+  {
+    "id": "PTR-1786239301900-1900",
+    "createdAt": "2026-08-09T01:35:01.900Z",
+    "institution": "Aura Health Rehab",
+    "website": "sapphireclinicseast.org",
+    "repFirstName": "Hannah",
+    "repLastName": "Jara",
+    "email": "hpjara@sapphireclinicseast.org",
+    "mobile": "09955403624",
+    "therapistsRange": "50+",
+    "patientsRange": "1,000+",
+    "username": "hpjara",
+    "passwordHash": "92d6c06620924f4c25ffa392d170a001:859b6280a28bfe674df12deee51c18fce8ef326eaa77675c9012118df554810ad2b8e2e599cf6a8c67c4682eb3a961c66dd847becd8ee5896a453fcbd39f57c1",
+    "tier": null,
+    "subscriptionStatus": "unpaid",
+    "paidAt": null,
+    "expiresAt": null,
+    "patientCode": null,
+    "consultantCode": null
+  }
+]
