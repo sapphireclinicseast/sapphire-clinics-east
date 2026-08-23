@@ -32,11 +32,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }),
   ])
 
-  const firstRecorded = history.length ? history[history.length - 1].changedAt : new Date()
+  // Tracking began when the history table shipped (the BASELINE rows are
+  // deliberately backdated to each service's createdAt, so the oldest row's
+  // changedAt is useless as a cut-off — every audit edit postdates creation).
+  // Anything after this date has a real valued row; anything before is only
+  // known from the audit log, which never stored amounts.
+  const TRACKING_SINCE = new Date('2026-08-03T09:00:00Z')
   const MONEY = ['price', 'doctorFee', 'clinicFee', 'newPrice']
   const olderEdits = legacy
     .filter((l) => {
-      if (l.createdAt >= firstRecorded) return false          // already covered by a real row
+      if (l.createdAt >= TRACKING_SINCE) return false          // already covered by a real row
       const d = l.details as { updated?: string[] } | null
       return Array.isArray(d?.updated) && d!.updated!.some((f) => MONEY.includes(f))
     })

@@ -527,13 +527,13 @@ export default function ServicesPage() {
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pricing</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Revenue</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>PWD Rule</th>
-                {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
+                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {services.length === 0 ? (
                 <tr>
-                  <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                  <td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                     <Stethoscope size={32} className="mx-auto mb-2 opacity-40" />
                     <p>No services found</p>
                     {canWrite && <p className="text-xs mt-1">Add clinic services to get started</p>}
@@ -627,21 +627,23 @@ export default function ServicesPage() {
                         <span>Standard (20% total)</span>
                       )}
                     </td>
-                    {canWrite && (
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => openPriceHistory(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Price History">
-                            <History size={15} style={{ color: 'var(--mid-gray)' }} />
-                          </button>
-                          <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
-                            <Pencil size={15} style={{ color: 'var(--teal)' }} />
-                          </button>
-                          <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete">
-                            <Trash2 size={15} className="text-red-500" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => openPriceHistory(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Price History">
+                          <History size={15} style={{ color: 'var(--mid-gray)' }} />
+                        </button>
+                        {canWrite && (
+                          <>
+                            <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
+                              <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                            </button>
+                            <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete">
+                              <Trash2 size={15} className="text-red-500" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
