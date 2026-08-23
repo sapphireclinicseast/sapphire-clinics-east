@@ -33,6 +33,26 @@ const CASE_TEXT_FIELDS = [...TEXT_FIELDS, 'notes'] as const
 const asDate = (v: unknown) =>
   v ? new Date(`${String(v).slice(0, 10)}T00:00:00+08:00`) : null
 
+/**
+ * An SOA submission date in the future is a plan, not a filing, and letting one
+ * be saved is what put ARSHIE RAE F. TARONA on the sheet as "SOA submitted YES"
+ * with a negative AR running days. Rejected so the real date is entered once it
+ * happens.
+ *
+ * Only this field. A payment date IS legitimately future-dated — that is what a
+ * post-dated cheque is — and a GL release date is recorded after the fact.
+ */
+function futureSoa(v: unknown): boolean {
+  const d = asDate(v)
+  if (!d) return false
+  // Compare against the end of today in Manila, so entering today's date passes.
+  const endOfToday = new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })}T23:59:59+08:00`)
+  return d.getTime() > endOfToday.getTime()
+}
+const FUTURE_SOA_ERROR =
+  'The SOA submission date is in the future. Record it once the SOA has actually been submitted — '
+  + 'until then leave it blank, and the letter counts as not yet submitted.'
+
 /** Shared money parse: blank clears, anything non-numeric or negative is rejected. */
 function parseMoney(v: unknown): { ok: true; value: number | null } | { ok: false } {
   if (v === '' || v === null || v === undefined) return { ok: true, value: null }
@@ -77,6 +97,9 @@ export async function PATCH(req: Request) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
+    if ('soaSubmittedAt' in body && futureSoa(body.soaSubmittedAt)) {
+      return NextResponse.json({ error: FUTURE_SOA_ERROR }, { status: 400 })
+    }
     for (const f of DATE_FIELDS) {
       if (!(f in body)) continue
       const v = body[f]
@@ -156,6 +179,9 @@ export async function POST(req: Request) {
       walletId,
       createdById: session.user.id as string,
     }
+    if ('soaSubmittedAt' in body && futureSoa(body.soaSubmittedAt)) {
+      return NextResponse.json({ error: FUTURE_SOA_ERROR }, { status: 400 })
+    }
     for (const f of CASE_DATE_FIELDS) if (f in body) data[f] = asDate(body[f])
     for (const f of CASE_MONEY_FIELDS) {
       if (!(f in body)) continue
@@ -208,6 +234,9 @@ export async function PUT(req: Request) {
         if (problem) return NextResponse.json({ error: problem }, { status: 400 })
       }
       data.walletId = walletId
+    }
+    if ('soaSubmittedAt' in body && futureSoa(body.soaSubmittedAt)) {
+      return NextResponse.json({ error: FUTURE_SOA_ERROR }, { status: 400 })
     }
     for (const f of CASE_DATE_FIELDS) if (f in body) data[f] = asDate(body[f])
     for (const f of CASE_MONEY_FIELDS) {
