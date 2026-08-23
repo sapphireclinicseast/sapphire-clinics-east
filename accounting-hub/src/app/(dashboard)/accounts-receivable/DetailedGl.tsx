@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X, Pencil, ArrowUpDown, ChevronUp, ChevronDown, Download, Plus, Link2, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch'
@@ -388,12 +388,14 @@ function sortValue(r: Row, k: ColKey): string | number {
 }
 
 export default function DetailedGl({
-  wallets, glCases = [], canWrite, onSaved,
+  wallets, glCases = [], canWrite, onSaved, focusId = '',
 }: {
   wallets: GlCaseWallet[]
   glCases?: GlCaseRow[]
   canWrite: boolean
   onSaved: () => void
+  /** Row (wallet or case id) a global-search hit wants revealed. */
+  focusId?: string
 }) {
   const [search, setSearch] = useState('')
   const [noSoaOnly, setNoSoaOnly] = useState(false)
@@ -404,6 +406,23 @@ export default function DetailedGl({
   const [editingCase, setEditingCase] = useState<GlCaseRow | 'new' | null>(null)
 
   const allRows = useMemo(() => buildRows(wallets, glCases), [wallets, glCases])
+
+  // A global-search hit lands here with ?focus=<wallet or case id>: scroll the
+  // row into view and flash it once the data is in.
+  const focusedOnce = useRef(false)
+  useEffect(() => {
+    if (!focusId || focusedOnce.current || !allRows.length) return
+    const hit = allRows.find(r => r.key === `wallet:${focusId}` || r.key === `case:${focusId}` || r.caseId === focusId)
+    if (!hit) return
+    focusedOnce.current = true
+    setTimeout(() => {
+      const el = document.getElementById(`glrow-${hit.key}`)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.style.outline = '2px solid var(--teal)'
+      setTimeout(() => { el.style.outline = '' }, 2500)
+    }, 150)
+  }, [focusId, allRows])
 
   // Branch tickboxes: tick a subset and both the table and the totals above it
   // cover only those branches.
@@ -492,7 +511,7 @@ export default function DetailedGl({
         {rows.map(r => {
           const tone = rowTone(r)
           return (
-          <tr key={r.key}
+          <tr key={r.key} id={`glrow-${r.key}`}
             className={`border-t ${tone ? '' : 'hover:bg-gray-50'}`}
             style={{ borderColor: 'var(--light-gray)', background: tone ? TONE_BG[tone] : undefined }}>
             {canWrite && (

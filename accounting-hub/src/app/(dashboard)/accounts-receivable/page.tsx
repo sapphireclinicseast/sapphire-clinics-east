@@ -442,7 +442,9 @@ export default function AccountsReceivablePage() {
   // Download menu for the summary dashboard (separate from the Per HMO one).
   const [showSummaryDownload, setShowSummaryDownload] = useState(false)
   // GL sub-tab: the dashboard, or the full case sheet.
-  const [glSubTab, setGlSubTab] = useState<'overview' | 'detailed'>('overview')
+  const [glSubTab, setGlSubTab] = useState<'overview' | 'detailed'>(
+    searchParams.get('gltab') === 'detailed' ? 'detailed' : 'overview')
+  const glFocusId = searchParams.get('focus') || ''
 
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -1171,6 +1173,7 @@ export default function AccountsReceivablePage() {
         <DetailedGl
           canWrite={canEditGlCase}
           onSaved={fetchData}
+          focusId={glFocusId}
           glCases={glCases}
           wallets={wallets.map(w => ({
             ...w,
