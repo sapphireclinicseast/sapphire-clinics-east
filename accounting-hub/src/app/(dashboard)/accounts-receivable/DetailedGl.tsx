@@ -222,12 +222,29 @@ const TONE_BG: Record<'nowallet' | 'paid' | 'soa', string> = {
 }
 
 /** Whole days between SOA submission and payment — the sheet's "AR running days". */
+/**
+ * SOA submission to payment. The clock stops at the payment date only once that
+ * date has actually arrived: this column is "Date of Payment (in check)", and a
+ * post-dated cheque is a promise, not a settlement — stopping the clock on it
+ * would report a letter as settled faster than it was, and in the case of a
+ * cheque dated next month, report a span shorter than the days already elapsed.
+ * Until then, and for letters with no payment at all, the days keep running.
+ */
 function arRunningDays(r: Row): number | null {
   if (!r.soaSubmittedAt) return null
-  // Paid letters stop at the payment date; unpaid ones keep running to today.
-  const end = r.lastPaymentDate ? new Date(r.lastPaymentDate) : new Date()
-  const ms = end.getTime() - new Date(r.soaSubmittedAt).getTime()
-  return Math.round(ms / 86_400_000)
+  const now = Date.now()
+  const paidAt = r.lastPaymentDate ? new Date(r.lastPaymentDate).getTime() : null
+  const end = paidAt != null && paidAt <= now ? paidAt : now
+  // Floor, not round: stored dates are midnight, so a letter still running would
+  // otherwise gain its next day at noon rather than at midnight, and the figure
+  // would change under the reader mid-afternoon. Completed days only.
+  return Math.floor((end - new Date(r.soaSubmittedAt).getTime()) / 86_400_000)
+}
+
+/** A payment that has actually landed — a post-dated cheque has not. */
+function settledOn(r: Row): string | null {
+  if (!r.paid || !r.lastPaymentDate) return null
+  return new Date(r.lastPaymentDate).getTime() <= Date.now() ? r.lastPaymentDate : null
 }
 
 /** Effective processor-fee rate: the stored per-letter rate, else the current
@@ -339,6 +356,7 @@ export default function DetailedGl({
   onSaved: () => void
 }) {
   const [search, setSearch] = useState('')
+  const [noSoaOnly, setNoSoaOnly] = useState(false)
   const [filters, setFilters] = useState<Partial<Record<ColKey, string>>>({})
   const [sortKey, setSortKey] = useState<ColKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -369,6 +387,7 @@ export default function DetailedGl({
       // One box, every column — staff search by guardian or QB ref as often as by name.
       out = out.filter(r => COLS.some(c => cellText(r, c.key).toLowerCase().includes(q)))
     }
+    if (noSoaOnly) out = out.filter(r => !r.soaSubmittedAt)
     for (const [k, v] of Object.entries(filters)) {
       const needle = (v || '').trim().toLowerCase()
       if (!needle) continue
@@ -381,7 +400,7 @@ export default function DetailedGl({
         : String(av).localeCompare(String(bv))
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [allRows, search, filters, sortKey, sortDir, ticked, branchOptions])
+  }, [allRows, search, filters, sortKey, sortDir, ticked, branchOptions, noSoaOnly])
 
   const toggleSort = (k: ColKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -481,6 +500,28 @@ export default function DetailedGl({
     soa: a.soa + num(r.soaAmount),
   }), { requested: 0, approved: 0, soa: 0 })
 
+  /**
+   * Average days between two milestones, over the letters that have both. A
+   * letter missing either end is left out rather than counted as zero — half the
+   * sheet has no SOA date, and treating those as same-day would pull every
+   * average toward nothing. Each card therefore shows its own denominator.
+   */
+  const avgSpan = (from: (r: Row) => string | null | undefined, to: (r: Row) => string | null | undefined) => {
+    const days: number[] = []
+    for (const r of rows) {
+      const a = from(r), b = to(r)
+      if (!a || !b) continue
+      days.push((new Date(b).getTime() - new Date(a).getTime()) / 86_400_000)
+    }
+    return days.length ? { avg: days.reduce((x, y) => x + y, 0) / days.length, n: days.length } : null
+  }
+  const docsToRelease = avgSpan(r => r.glDocsSubmittedAt, r => r.glReleasedAt)
+  const releaseToSoa  = avgSpan(r => r.glReleasedAt, r => r.soaSubmittedAt)
+  // Settled letters only: this is SOA submission to the cheque, so an unpaid
+  // letter has no end point. It is the same span the AR running days column
+  // measures once a letter is paid.
+  const soaToPayment  = avgSpan(r => r.soaSubmittedAt, settledOn)
+
   // Average AR running days over the letters where it is defined — an SOA has to
   // have been submitted for the clock to have started, so letters without one are
   // excluded rather than counted as zero, which would drag the average down.
@@ -489,6 +530,9 @@ export default function DetailedGl({
   // Entries with no POS wallet behind them: nothing can populate their live
   // figures until someone creates the wallet, so they are counted for the badge.
   const needsWallet = rows.filter(r => r.caseId && !r.wallet).length
+  // Counted over everything the other filters allow, so the number on the box is
+  // what ticking it would actually show.
+  const noSoaCount = rows.filter(r => !r.soaSubmittedAt).length
   const arDaysValues = rows.map(arRunningDays).filter((d): d is number => d != null)
   const avgArDays = arDaysValues.length
     ? arDaysValues.reduce((a, b) => a + b, 0) / arDaysValues.length
@@ -527,6 +571,25 @@ export default function DetailedGl({
           </div>
         </div>
       </div>
+      {/* Cycle times: how long each leg of the letter actually takes. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {([
+          ['Documents → GL release', docsToRelease],
+          ['GL release → SOA submitted', releaseToSoa],
+          ['SOA submitted → payment', soaToPayment],
+        ] as [string, { avg: number; n: number } | null][]).map(([label, v]) => (
+          <div key={label} className="rounded-xl px-4 py-3" style={{ border: '1px solid var(--light-gray)', background: '#f8fafc' }}>
+            <div className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>{label}</div>
+            <div className="text-lg font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>
+              {v ? `${v.avg.toFixed(1)} days` : '—'}
+            </div>
+            <div className="text-[10px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+              {v ? `${(v.avg / 30.44).toFixed(2)} months · ${v.n} of ${rows.length} letters` : 'no letters with both dates'}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
@@ -545,6 +608,15 @@ export default function DetailedGl({
         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
           {rows.length} of {allRows.length} letters
         </span>
+        {/* The letters still waiting on an SOA are the ones holding up the whole
+            cycle, and they are invisible in a sheet sorted by name. */}
+        <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+          style={{ border: `1px solid ${noSoaOnly ? '#c44b00' : 'var(--light-gray)'}`,
+                   background: noSoaOnly ? '#fff7ed' : 'white', color: 'var(--charcoal)' }}>
+          <input type="checkbox" checked={noSoaOnly} onChange={() => setNoSoaOnly(v => !v)} className="accent-current" />
+          SOA not yet submitted
+          <span className="tabular-nums" style={{ color: 'var(--mid-gray)' }}>({noSoaCount})</span>
+        </label>
         {/* Without a key the tints are just decoration — say what they mean. */}
         <span className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
           <span className="flex items-center gap-1.5">
