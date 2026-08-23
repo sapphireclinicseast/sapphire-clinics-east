@@ -250,12 +250,27 @@ function settledOn(r: Row): string | null {
 /** Effective processor-fee rate: the stored per-letter rate, else the current
  *  25% default — the modal shows 25 pre-filled, so unsaved rows must not read
  *  as "no fee". Older 20% letters keep their stored rate once saved. */
-function commissionRateOf(r: Row): number {
+/** The current rate, used when a letter has none recorded. */
+const DEFAULT_COMMISSION_RATE = 25
+
+/**
+ * The processor fee rate, and whether it is the letter's own or an assumption.
+ *
+ * Defaulting is what makes the column useful — most letters have no rate saved,
+ * and computing from the stored value alone left the fee blank everywhere. But
+ * the rate genuinely varies: the East OPGL sheet carries 38 letters at 25%, 7 at
+ * 20% and one at 12%, so an assumed 25% overstates a 20% letter's fee by a
+ * quarter. The caller is told which it is so the screen and the exports can say
+ * so, rather than presenting a guess in the same shape as a recorded figure.
+ */
+function commissionRateOf(r: Row): { rate: number; assumed: boolean } {
   const stored = num(r.soaCommissionRate)
-  return stored > 0 ? stored : 25
+  return stored > 0
+    ? { rate: stored, assumed: false }
+    : { rate: DEFAULT_COMMISSION_RATE, assumed: true }
 }
 function commissionOf(r: Row): number {
-  return num(r.soaAmount) * (commissionRateOf(r) / 100)
+  return num(r.soaAmount) * (commissionRateOf(r).rate / 100)
 }
 
 /** Columns in the order the OPGL SUMMARY sheet uses, with Branch added. */
@@ -313,7 +328,14 @@ function cellText(r: Row, k: ColKey): string {
     case 'perMonths': return typeof r.monthsToPay === 'number' ? `${r.monthsToPay.toFixed(2)}` : '—'
     case 'guardian': return r.guardianName || '—'
     case 'drive': { const n = r.files.length; return n ? `${n} file${n === 1 ? '' : 's'}` : '—' }
-    case 'commission': { const c = commissionOf(r); return c ? `${formatCurrency(c)} (${commissionRateOf(r)}%)` : '—' }
+    case 'commission': {
+      const c = commissionOf(r)
+      if (!c) return '—'
+      const { rate, assumed } = commissionRateOf(r)
+      // "assumed" travels into the Excel and PDF exports too, which is where an
+      // unmarked guess would do the most damage.
+      return `${formatCurrency(c)} (${rate}%${assumed ? ' assumed' : ''})`
+    }
     case 'threePct': return num(r.soaAmount) ? formatCurrency(num(r.soaAmount) * 0.03) : '—'
     case 'payout': return r.payoutBatch || '—'
     case 'qb': return r.qbEntry || '—'
@@ -873,7 +895,7 @@ function GlEntryModal({
           {field('Approved GL (₱)', 'approvedAmount', 'number', 'Ignored once tagged — the wallet’s approved amount wins.')}
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
-          {field('GL processor fee rate (%)', 'soaCommissionRate', 'number', '25% currently; older letters were 20%.')}
+          {field('GL processor fee rate (%)', 'soaCommissionRate', 'number', '25% is the current rate and is pre-filled, but older letters were 20% and one is 12% — check the SOA before saving, because saving records this rate against the letter.')}
           {field('Guardian name', 'guardianName')}
           {field('Date of payment', 'paidAt', 'date', 'Ignored once tagged — payments come from the wallet.')}
           {field('Payout', 'payoutBatch', 'text', 'e.g. 3/26-4/10')}
@@ -1034,7 +1056,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
           {field('GL release date', 'glReleasedAt', 'date')}
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
-          {field('GL processor fee rate (%)', 'soaCommissionRate', 'number', '25% currently; older letters were 20%. Applied to the SOA amount.')}
+          {field('GL processor fee rate (%)', 'soaCommissionRate', 'number', '25% is the current rate and is pre-filled, but older letters were 20% and one is 12% — check the SOA before saving, because saving records this rate against the letter.')}
           {field('Guardian name', 'guardianName')}
           {field('Payout', 'payoutBatch', 'text', 'e.g. 3/26-4/10')}
           {field('QB entry', 'qbEntry', 'text', 'e.g. AR25-0027')}
