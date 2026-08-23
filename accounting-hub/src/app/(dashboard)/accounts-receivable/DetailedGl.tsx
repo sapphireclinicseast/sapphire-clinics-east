@@ -212,7 +212,7 @@ function rowTone(r: Row): RowTone {
   // state that needs someone to go and do something, so it wins the row.
   if (r.caseId && !r.wallet) return 'nowallet'
   if (r.paid) return 'paid'
-  if (r.soaSubmittedAt) return 'soa'
+  if (soaSubmittedOn(r)) return 'soa'
   return null
 }
 const TONE_BG: Record<'nowallet' | 'paid' | 'soa', string> = {
@@ -231,14 +231,30 @@ const TONE_BG: Record<'nowallet' | 'paid' | 'soa', string> = {
  * Until then, and for letters with no payment at all, the days keep running.
  */
 function arRunningDays(r: Row): number | null {
-  if (!r.soaSubmittedAt) return null
   const now = Date.now()
+  // Once the SOA is filed the clock runs from it. Before that the letter is
+  // still ageing — from the day the GL was released — so the days keep counting
+  // rather than showing blank. A letter with neither date has no clock at all.
+  const start = soaSubmittedOn(r)
+    ?? (r.glReleasedAt && new Date(r.glReleasedAt).getTime() <= now ? r.glReleasedAt : null)
+  if (!start) return null
   const paidAt = r.lastPaymentDate ? new Date(r.lastPaymentDate).getTime() : null
   const end = paidAt != null && paidAt <= now ? paidAt : now
   // Floor, not round: stored dates are midnight, so a letter still running would
   // otherwise gain its next day at noon rather than at midnight, and the figure
   // would change under the reader mid-afternoon. Completed days only.
-  return Math.floor((end - new Date(r.soaSubmittedAt).getTime()) / 86_400_000)
+  return Math.floor((end - new Date(start).getTime()) / 86_400_000)
+}
+
+/**
+ * The SOA submission date, but only once it has arrived. A date in the future is
+ * a plan, not a filing: ARSHIE RAE F. TARONA carries 2026-09-17, which made the
+ * sheet read "SOA submitted YES" and gave AR running days a negative span,
+ * because the clock was started from a day that has not happened.
+ */
+function soaSubmittedOn(r: Row): string | null {
+  if (!r.soaSubmittedAt) return null
+  return new Date(r.soaSubmittedAt).getTime() <= Date.now() ? r.soaSubmittedAt : null
 }
 
 /** A payment that has actually landed — a post-dated cheque has not. */
@@ -320,7 +336,9 @@ function cellText(r: Row, k: ColKey): string {
     case 'soaAmount': return num(r.soaAmount) ? formatCurrency(num(r.soaAmount)) : '—'
     case 'posBalance': return r.posBalance == null ? '—' : formatCurrency(r.posBalance)
     case 'rendered': return r.rendered ? 'YES' : 'NO'
-    case 'soaSubmitted': return r.soaSubmittedAt ? 'YES' : 'NO'
+    case 'soaSubmitted': return soaSubmittedOn(r) ? 'YES' : 'NO'
+    // The recorded date still shows even when it is in the future — it is the
+    // planned filing date, and hiding it would lose information the sheet holds.
     case 'soaDate': return fmtDate(r.soaSubmittedAt) || '—'
     case 'status': return r.paid ? 'PAID' : 'UNPAID'
     case 'paidDate': return fmtDate(r.lastPaymentDate) || 'unpaid'
@@ -354,7 +372,7 @@ function sortValue(r: Row, k: ColKey): string | number {
     case 'soaAmount': return num(r.soaAmount)
     case 'posBalance': return r.posBalance ?? Number.MAX_SAFE_INTEGER
     case 'rendered': return r.rendered ? 'YES' : 'NO'
-    case 'soaSubmitted': return r.soaSubmittedAt ? 'YES' : 'NO'
+    case 'soaSubmitted': return soaSubmittedOn(r) ? 'YES' : 'NO'
     case 'soaDate': return dayKey(r.soaSubmittedAt) || '￿'
     case 'status': return r.paid ? 'PAID' : 'UNPAID'
     case 'paidDate': return dayKey(r.lastPaymentDate) || '￿'
@@ -409,7 +427,7 @@ export default function DetailedGl({
       // One box, every column — staff search by guardian or QB ref as often as by name.
       out = out.filter(r => COLS.some(c => cellText(r, c.key).toLowerCase().includes(q)))
     }
-    if (noSoaOnly) out = out.filter(r => !r.soaSubmittedAt)
+    if (noSoaOnly) out = out.filter(r => !soaSubmittedOn(r))
     for (const [k, v] of Object.entries(filters)) {
       const needle = (v || '').trim().toLowerCase()
       if (!needle) continue
@@ -538,11 +556,11 @@ export default function DetailedGl({
     return days.length ? { avg: days.reduce((x, y) => x + y, 0) / days.length, n: days.length } : null
   }
   const docsToRelease = avgSpan(r => r.glDocsSubmittedAt, r => r.glReleasedAt)
-  const releaseToSoa  = avgSpan(r => r.glReleasedAt, r => r.soaSubmittedAt)
+  const releaseToSoa  = avgSpan(r => r.glReleasedAt, soaSubmittedOn)
   // Settled letters only: this is SOA submission to the cheque, so an unpaid
   // letter has no end point. It is the same span the AR running days column
   // measures once a letter is paid.
-  const soaToPayment  = avgSpan(r => r.soaSubmittedAt, settledOn)
+  const soaToPayment  = avgSpan(soaSubmittedOn, settledOn)
 
   // Average AR running days over the letters where it is defined — an SOA has to
   // have been submitted for the clock to have started, so letters without one are
@@ -554,7 +572,7 @@ export default function DetailedGl({
   const needsWallet = rows.filter(r => r.caseId && !r.wallet).length
   // Counted over everything the other filters allow, so the number on the box is
   // what ticking it would actually show.
-  const noSoaCount = rows.filter(r => !r.soaSubmittedAt).length
+  const noSoaCount = rows.filter(r => !soaSubmittedOn(r)).length
   const arDaysValues = rows.map(arRunningDays).filter((d): d is number => d != null)
   const avgArDays = arDaysValues.length
     ? arDaysValues.reduce((a, b) => a + b, 0) / arDaysValues.length
