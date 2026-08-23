@@ -15,6 +15,7 @@ import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
+import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
 import ExpandablePanel from './ExpandablePanel'
 import DetailedGl, { type GlCaseRow } from './DetailedGl'
@@ -477,7 +478,7 @@ export default function AccountsReceivablePage() {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
   // HMO sub-tab state
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report'>('overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report' | 'submitted-soa'>('overview')
   // useSession resolves after the first render, so the initial tab/sub-tab are
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
@@ -1137,6 +1138,7 @@ export default function AccountsReceivablePage() {
             { key: 'overview', label: 'Overview' },
             { key: 'per-hmo', label: 'Per HMO' },
             { key: 'soa-report', label: 'SOA Report' },
+            { key: 'submitted-soa', label: 'Submitted for SOA' },
           ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
@@ -2353,6 +2355,12 @@ export default function AccountsReceivablePage() {
         />
       )}
 
+      {tab === 'HMO' && hmoSubTab === 'submitted-soa' && (
+        <SubmittedForSoa
+          wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName }))}
+          canWrite={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER'].includes((session?.user as { role?: string })?.role || '')}
+        />
+      )}
       {/* ── Sessions behind an aging figure ──────────────────────────────
           The orders list is capped by the API, so a bucket can reference an
           order that was never loaded. Say so rather than quietly showing a
