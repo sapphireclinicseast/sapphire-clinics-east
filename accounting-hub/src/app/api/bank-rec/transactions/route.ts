@@ -6,8 +6,11 @@ import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
 import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 import { applyBankRules } from '@/lib/bank-rec-rules'
 import { branchForBankAccount, isPostableBranch } from '@/lib/branch'
+import { recordAmountById } from '@/lib/bank-rec-candidates'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+
+const money = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // GET ?bankAccountId=&status=PENDING&search=&from=&to=
 export async function GET(req: Request) {
@@ -450,6 +453,56 @@ export async function PATCH(req: Request) {
     }
 
     if (action === 'match') {
+      // The same record must not settle twice. A record can legitimately be
+      // spread over several bank lines, and a transfer or petty cash
+      // replenishment is consumed once on each side, so what is checked is the
+      // amount already matched in this line's direction — not merely whether
+      // the record has been used before.
+      if (body.matchId && body.matchType) {
+        // A combination match stores its record ids comma-joined, both in this
+        // request and on lines already posted — every id must be checked, and a
+        // record counts as used wherever its id appears inside a joined match.
+        const reqIds = [...new Set(String(body.matchId).split(',').map(s => s.trim()).filter(Boolean))]
+        const posted = reqIds.length ? await prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED', id: { not: id },
+            AND: [
+              // A petty cash withdrawal names a replenishment report purely as
+              // an audit trail — the cash never settles the report.
+              { OR: [{ matchType: null }, { matchType: { not: 'PETTY_CASH_WITHDRAWAL' } }] },
+              { OR: [{ matchId: { in: reqIds } }, { matchId: { contains: ',' } }] },
+            ],
+          },
+          select: { id: true, date: true, description: true, spent: true, received: true, matchId: true },
+        }) : []
+        const isSpent = Number(txn.spent) > 0
+        const thisLine = isSpent ? Number(txn.spent) : Number(txn.received)
+        for (const rid of reqIds) {
+          const already = posted.filter(b => (b.matchId || '').split(',').some(p => p.trim() === rid))
+          if (!already.length) continue
+          const used = already.reduce((s, b) => s + Number(isSpent ? b.spent : b.received), 0)
+          if (!(used > 0.005)) continue
+          // What the record itself is for, resolved on the server from the
+          // record's own row — the client's recordsTotal (only sent when a
+          // difference account is chosen) is a fallback for anything the
+          // resolver cannot name, never an override.
+          const resolved = await recordAmountById(rid, isSpent)
+          // A single-record match claims only this line (a part payment is
+          // real); a record ticked into a combination is consumed for its own
+          // full amount, whatever share of the line it took.
+          const claim = reqIds.length === 1 ? thisLine : (resolved ?? thisLine)
+          const recordTotal = resolved ?? Number(body.recordsTotal ?? thisLine)
+          if (used + claim > recordTotal + 0.01) {
+            const where = already
+              .map(b => `${new Date(b.date).toISOString().slice(0, 10)} ${b.description || ''} ${money(Number(isSpent ? b.spent : b.received))}`.trim())
+              .join('; ')
+            return NextResponse.json({
+              error: `That record is already matched to ${already.length} other bank line${already.length === 1 ? '' : 's'} (${where}) totalling ${money(used)}. Matching this ${money(thisLine)} line as well would claim ${money(used + claim)} against a record for ${money(recordTotal)}. Unmatch the other line first, or match this one to its own record.`,
+              alreadyMatchedTo: already.map(b => b.id),
+            }, { status: 409 })
+          }
+        }
+      }
       // An A/P bill candidate is an accrual with no bank leg — the bank line IS
       // its payment. Post the settlement (Dr the bill's payable account / Cr
       // this bank account) so the payable is relieved and the cash movement is
