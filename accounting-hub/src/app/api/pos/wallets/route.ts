@@ -43,8 +43,12 @@ export async function GET(req: Request) {
     where.walletType = walletType
   }
 
-  // Filter wallets by branch: show wallets matching user's branch OR wallets set to ALL
-  if (branch && branch !== 'ALL') {
+  // Filter wallets by branch: show wallets matching user's branch OR wallets
+  // set to ALL. EXCEPTION — patient-targeted lookups (patientId or search):
+  // interbranch patients are merged to one account in the Operations Hub, so
+  // their wallets (packages, HMO, GL, advances, reward points) must be visible
+  // and spendable at every branch's POS, wherever they were opened.
+  if (branch && branch !== 'ALL' && !patientId && !search) {
     where.branch = { in: [branch, 'ALL'] }
   }
 

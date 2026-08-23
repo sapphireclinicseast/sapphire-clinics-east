@@ -170,8 +170,10 @@ const BS_SECTION: [key: string, label: string, match: (a: AcctInfo) => boolean][
 function isCashAccount(a: AcctInfo): boolean {
   if (a.type !== 'ASSET') return false
   const t = a.title.toLowerCase()
-  if (/receivable|input vat|withholding|prepaid|deposit|inventory|advances|due from/.test(t)) return false
-  return /cash|bank|gcash|paymaya|maya|fund/.test(t)
+  // 'deposit' used to exclude "UnDEPOSITed Funds" — the clearing account IS
+  // cash in transit and belongs in Cash and Cash Equivalents (user policy).
+  if (/receivable|input vat|withholding|prepaid|security deposit|deposit paid|inventory|advances|due from/.test(t)) return false
+  return /cash|bank|gcash|paymaya|maya|fund|clearing|undeposited/.test(t)
 }
 
 /**
@@ -566,9 +568,12 @@ export async function computeLedgerStatements(
      the normal journal fold instead. The ALL view is untouched (no double count). */
   if (branchValues) {
     const allocJes = await prisma.journalEntry.findMany({
-      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: { in: ['LOAN_PAYMENT', 'ADVANCE_PAYMENT'] } },
+      // The interest accruals belong here too: a late payment books its expense
+      // at the due date against Interest Payable, and that entry is as invisible
+      // to a branch view as the payment JE it precedes.
+      where: { entryDate: { gte: start, lt: end }, branch: 'ALL', referenceType: { in: ['LOAN_PAYMENT', 'ADVANCE_PAYMENT', 'LOAN_INTEREST_ACCRUAL', 'ADVANCE_INTEREST_ACCRUAL'] } },
       select: {
-        referenceId: true, entryDate: true, description: true,
+        referenceId: true, referenceType: true, entryDate: true, description: true,
         lines: { select: { debit: true, credit: true, account: { select: { accountNumber: true, accountType: true } } } },
       },
     })
@@ -600,7 +605,10 @@ export async function computeLedgerStatements(
         })).filter(i => i.debit > 0)
         const totalShare = round2(items.reduce((s, i) => s + i.debit, 0))
         if (!totalShare) continue
-        postBalanced('journal:LOAN_PAYMENT', monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
+        // Keyed by what the entry actually is. Reporting an advance amortization
+        // under "Loan payments" while its sibling months appear under "Advance
+        // payments" is what made the July drill-down read as a duplicate.
+        postBalanced(`journal:${je.referenceType || 'LOAN_PAYMENT'}`, monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
           ...items, { acct: bankAcct, credit: totalShare },
         ])
       }
@@ -615,7 +623,7 @@ export async function computeLedgerStatements(
       ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
     },
     select: {
-      id: true, orderNumber: true, patientName: true, transactionDate: true,
+      id: true, orderNumber: true, patientName: true, transactionDate: true, branch: true,
       netAmount: true, revenueType: true, discountAmount: true, discountLabel: true, discountType: true,
       items: {
         select: {
@@ -627,7 +635,7 @@ export async function computeLedgerStatements(
       payments: {
         select: {
           method: true, amount: true, walletId: true,
-          paymentMode: { select: { account: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, account: { select: { accountNumber: true } } } } } },
+          paymentMode: { select: { account: { select: { accountNumber: true } }, settlementBankAccount: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, account: { select: { accountNumber: true } } } } } },
         },
       },
     },
@@ -685,8 +693,12 @@ export async function computeLedgerStatements(
       const amt = Number(p.amount)
       if (!amt) continue
       paid += amt
-      if (p.walletId && ['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS'].includes(p.method as string)) {
-        lines.push({ acct: unearnedAccount(), debit: amt }) // wallet draw-down consumes the liability
+      /* Wallet/package/advance draws consume a liability the money already
+         funded when it was first received — they are NOT new cash. Routing
+         them to cash (worse: the no-branch default, which lands on the SCEI
+         Main corporate account) invented deposits the bank never saw. */
+      if (['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'PACKAGE', 'ADVANCE', 'DOWNPAYMENT'].includes(p.method as string)) {
+        lines.push({ acct: unearnedAccount(), debit: amt }) // draw-down consumes the liability
         continue
       }
       if (p.method === 'HMO' || p.method === 'GL') {
@@ -700,7 +712,12 @@ export async function computeLedgerStatements(
         lines.push({ acct: byNumber.get(d.account.accountNumber) || parseAccountKey(`${d.account.accountNumber} deduction`), debit: dAmt })
         net -= dAmt
       }
-      const cashA = p.paymentMode?.account ? (byNumber.get(p.paymentMode.account.accountNumber) || defaultCash()) : defaultCash()
+      /* Synthesized history: cash goes where it actually SETTLED. Modes now
+         point at a clearing account for sale-time posting (live JEs reclass
+         clearing -> bank on recon match), but synthesized orders have no
+         matching reclass — so use the mode's settlement bank when set. */
+      const pmAcctNum = p.paymentMode?.settlementBankAccount?.accountNumber || p.paymentMode?.account?.accountNumber
+      const cashA = pmAcctNum ? (byNumber.get(pmAcctNum) || defaultCash(o.branch || branch)) : defaultCash(o.branch || branch)
       lines.push({ acct: cashA, debit: net })
     }
     const unpaid = round2(Number(o.netAmount) - paid)
@@ -1153,6 +1170,11 @@ export async function computeLedgerStatements(
       for (const acct of byNumber.values()) {
         if (acct.virtual || !acct.id) continue
         if (!(bankFlagged.has(acct.number) || isCashAccount(acct))) continue
+        /* Clearing / undeposited / in-transit accounts group under Cash and
+           Cash Equivalents for DISPLAY, but they are net timing positions that
+           may legitimately run negative (e.g. 1170 at -200,000 across the
+           2024/25 year straddle) — flooring them invented 3990 noise. */
+        if (/clearing|undeposited|in transit/i.test(acct.title)) continue
         if (!ownsBank(acct)) continue                 // zeroed above, not ours to floor
         if (byAcctMonth.has(acct.id)) continue        // has statements — trued above
         const mm = movMonthly.get(acct.number)

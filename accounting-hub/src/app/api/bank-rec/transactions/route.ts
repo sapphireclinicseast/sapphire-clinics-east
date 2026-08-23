@@ -6,6 +6,7 @@ import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
 import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 import { applyBankRules } from '@/lib/bank-rec-rules'
 import { branchForBankAccount, isPostableBranch } from '@/lib/branch'
+import { recordAmountById } from '@/lib/bank-rec-candidates'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -458,26 +459,95 @@ export async function PATCH(req: Request) {
       // amount already matched in this line's direction — not merely whether
       // the record has been used before.
       if (body.matchId && body.matchType) {
-        const already = await prisma.bankTransaction.findMany({
-          where: { status: 'POSTED', matchType: body.matchType, matchId: body.matchId, id: { not: id } },
-          select: { id: true, date: true, description: true, spent: true, received: true },
-        })
-        if (already.length) {
-          const isSpent = Number(txn.spent) > 0
+        // A combination match stores its record ids comma-joined, both in this
+        // request and on lines already posted — every id must be checked, and a
+        // record counts as used wherever its id appears inside a joined match.
+        const reqIds = [...new Set(String(body.matchId).split(',').map(s => s.trim()).filter(Boolean))]
+        const posted = reqIds.length ? await prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED', id: { not: id },
+            AND: [
+              // A petty cash withdrawal names a replenishment report purely as
+              // an audit trail — the cash never settles the report.
+              { OR: [{ matchType: null }, { matchType: { not: 'PETTY_CASH_WITHDRAWAL' } }] },
+              { OR: [{ matchId: { in: reqIds } }, { matchId: { contains: ',' } }] },
+            ],
+          },
+          select: { id: true, date: true, description: true, spent: true, received: true, matchId: true },
+        }) : []
+        const isSpent = Number(txn.spent) > 0
+        const thisLine = isSpent ? Number(txn.spent) : Number(txn.received)
+        for (const rid of reqIds) {
+          const already = posted.filter(b => (b.matchId || '').split(',').some(p => p.trim() === rid))
+          if (!already.length) continue
           const used = already.reduce((s, b) => s + Number(isSpent ? b.spent : b.received), 0)
-          const thisLine = isSpent ? Number(txn.spent) : Number(txn.received)
-          // What the record itself is for. recordsTotal is what the picker had
-          // on screen; it is the only figure available for match types whose
-          // record lives outside this route's knowledge.
-          const recordTotal = Number(body.recordsTotal ?? thisLine)
-          if (used + thisLine > recordTotal + 0.01) {
+          if (!(used > 0.005)) continue
+          // What the record itself is for, resolved on the server from the
+          // record's own row — the client's recordsTotal (only sent when a
+          // difference account is chosen) is a fallback for anything the
+          // resolver cannot name, never an override.
+          const resolved = await recordAmountById(rid, isSpent)
+          // A single-record match claims only this line (a part payment is
+          // real); a record ticked into a combination is consumed for its own
+          // full amount, whatever share of the line it took.
+          const claim = reqIds.length === 1 ? thisLine : (resolved ?? thisLine)
+          const recordTotal = resolved ?? Number(body.recordsTotal ?? thisLine)
+          if (used + claim > recordTotal + 0.01) {
             const where = already
               .map(b => `${new Date(b.date).toISOString().slice(0, 10)} ${b.description || ''} ${money(Number(isSpent ? b.spent : b.received))}`.trim())
               .join('; ')
             return NextResponse.json({
-              error: `That record is already matched to ${already.length} other bank line${already.length === 1 ? '' : 's'} (${where}) totalling ${money(used)}. Matching this ${money(thisLine)} line as well would claim ${money(used + thisLine)} against a record for ${money(recordTotal)}. Unmatch the other line first, or match this one to its own record.`,
+              error: `That record is already matched to ${already.length} other bank line${already.length === 1 ? '' : 's'} (${where}) totalling ${money(used)}. Matching this ${money(thisLine)} line as well would claim ${money(used + claim)} against a record for ${money(recordTotal)}. Unmatch the other line first, or match this one to its own record.`,
               alreadyMatchedTo: already.map(b => b.id),
             }, { status: 409 })
+          }
+        }
+      }
+      // An A/P bill candidate is an accrual with no bank leg — the bank line IS
+      // its payment. Post the settlement (Dr the bill's payable account / Cr
+      // this bank account) so the payable is relieved and the cash movement is
+      // in the ledger. Pre-2026 payments post as QB_IMPORT_JE — the report
+      // engine reads only that type for QB-era years — and since settling a
+      // pre-2026 bill moves the 2025 closings, the 2026 opening balances are
+      // adjusted in step (payable down, retained earnings up, staying balanced).
+      let apJournalId: string | null = null
+      if (body.matchType === 'AP_BILL' && body.matchId) {
+        const bill = await prisma.journalEntry.findUnique({
+          where: { id: body.matchId as string },
+          include: { lines: { include: { account: { select: { accountNumber: true } } } } },
+        })
+        const payLine = bill?.lines.find(l => Number(l.credit) > 0 && ['4010', '5040'].includes(l.account.accountNumber))
+        const isSpentAp = Number(txn.spent) > 0
+        const bankAmt = isSpentAp ? Number(txn.spent) : Number(txn.received)
+        if (!bill || !payLine) return NextResponse.json({ error: 'That record is not an open payable bill.' }, { status: 400 })
+        if (!isSpentAp || !(bankAmt > 0)) return NextResponse.json({ error: 'An A/P bill settles a money-out bank line.' }, { status: 400 })
+        const already = await prisma.journalEntry.findFirst({ where: { referenceId: `APSETTLE:${bill.id}` } })
+        if (already) return NextResponse.json({ error: 'That bill is already settled by another bank line.' }, { status: 400 })
+        const preQb = txn.date < new Date(Date.UTC(2026, 0, 1))
+        const je = await prisma.journalEntry.create({
+          data: {
+            entryDate: txn.date,
+            description: `A/P settlement — ${bill.description || 'bill'} — bank: ${txn.description}`.slice(0, 250),
+            referenceType: preQb ? 'QB_IMPORT_JE' : 'AP_SETTLEMENT',
+            referenceId: `APSETTLE:${bill.id}`,
+            branch: bill.branch, totalAmount: bankAmt,
+            createdById: session.user!.id as string,
+            lines: { create: [
+              { accountId: payLine.accountId, debit: bankAmt, credit: 0, description: `Settles: ${bill.description || ''}`.slice(0, 250) },
+              { accountId: txn.bankAccountId, debit: 0, credit: bankAmt, description: (txn.description || '').slice(0, 250) },
+            ] },
+          },
+        })
+        apJournalId = je.id
+        if (preQb) {
+          const re = await prisma.account.findFirst({ where: { accountNumber: '6030' }, select: { id: true } })
+          const bumps: Array<[string, number]> = [[payLine.accountId, -bankAmt]]
+          if (re) bumps.push([re.id, bankAmt])
+          for (const [acctId, delta] of bumps) {
+            await prisma.beginningBalance.updateMany({
+              where: { accountId: acctId, periodYear: 2026 },
+              data: { amount: { increment: delta } },
+            })
           }
         }
       }
@@ -530,7 +600,7 @@ export async function PATCH(req: Request) {
           diffJournalId = je.id
         }
       }
-      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: diffJournalId } })
+      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: apJournalId ?? diffJournalId } })
       return NextResponse.json({ success: true, differenceJournalEntryId: diffJournalId })
     }
     // Cash drawn from a branch's petty cash account into the officer's hands.

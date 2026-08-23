@@ -1,4 +1,5 @@
-import { Prisma, Branch } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 
 /**
  * Interbranch (multi-branch) consultant helpers.
@@ -12,29 +13,62 @@ import { Prisma, Branch } from '@prisma/client'
  *
  * These helpers implement the NEW model's branch filtering, mirroring the
  * ops hub (`src/app/api/clinic-schedule`): scope by the PATIENT's branch.
+ *
+ * Staff and Patient name branches differently — Staff.branch holds a short
+ * code ("SBEA"), Patient.branch holds the ops-hub code ("SANDBOX_EAST") — so
+ * everything here is a translation between the two. That mapping used to be a
+ * hardcoded object pointing at the Prisma `Branch` enum, which meant a branch
+ * created in HR Platform could not be filtered on until someone edited this
+ * file. It now comes from the HrBranch registry, which syncs hourly from HR
+ * Platform and holds exactly this pairing (shortCode ↔ opsHubBranch).
  */
 
-/**
- * Staff short branch codes (SBEA/SBGH — as stored on Staff.branch and
- * Staff.extraBranches) → the Patient.branch enum. Accepts either form so
- * callers can pass whatever the switcher hands them.
- */
-const TO_PATIENT_BRANCH: Record<string, Branch> = {
-  SBEA: Branch.SANDBOX_EAST,
-  SBGH: Branch.SANDBOX_GREENHILLS,
-  SANDBOX_EAST: Branch.SANDBOX_EAST,
-  SANDBOX_GREENHILLS: Branch.SANDBOX_GREENHILLS,
+/** Short cache: these helpers run per-request, HrBranch changes hourly at most. */
+const TTL_MS = 5 * 60 * 1000
+let cache: { at: number; map: Record<string, string> } | null = null
+
+/** Floor, not ceiling — used before the first sync or if the read fails. */
+const STATIC_MAP: Record<string, string> = {
+  SBEA: 'SANDBOX_EAST',
+  SBGH: 'SANDBOX_GREENHILLS',
 }
 
-export function toPatientBranch(code?: string | null): Branch | null {
+async function codeMap(): Promise<Record<string, string>> {
+  if (cache && Date.now() - cache.at < TTL_MS) return cache.map
+
+  const map: Record<string, string> = { ...STATIC_MAP }
+  try {
+    const rows = await prisma.hrBranch.findMany({
+      where: { opsHubBranch: { not: null } },
+      select: { shortCode: true, opsHubBranch: true, aliases: true },
+    })
+    for (const r of rows) {
+      const ops = r.opsHubBranch as string
+      map[r.shortCode] = ops
+      // A branch can be referred to by an older short code; HR Platform keeps
+      // those in `aliases` precisely so renames don't orphan existing data.
+      for (const a of r.aliases ?? []) map[a] = ops
+    }
+  } catch (err) {
+    console.error('[branch-filter] HrBranch read failed, using static map:', err)
+  }
+  // Ops-hub codes map to themselves, so callers can pass either form.
+  for (const ops of Object.values({ ...map })) map[ops] = ops
+
+  cache = { at: Date.now(), map }
+  return map
+}
+
+/** Staff short code (or an ops-hub code) → the Patient.branch value. */
+export async function toPatientBranch(code?: string | null): Promise<string | null> {
   if (!code) return null
-  return TO_PATIENT_BRANCH[code] ?? null
+  return (await codeMap())[code] ?? null
 }
 
 /** True when two codes name the same branch, in either short or long form. */
-export function sameBranch(a?: string | null, b?: string | null): boolean {
-  const pa = toPatientBranch(a)
-  return !!pa && pa === toPatientBranch(b)
+export async function sameBranch(a?: string | null, b?: string | null): Promise<boolean> {
+  const pa = await toPatientBranch(a)
+  return !!pa && pa === (await toPatientBranch(b))
 }
 
 /**
@@ -45,31 +79,36 @@ export function sameBranch(a?: string | null, b?: string | null): boolean {
  * vanish when a branch is selected. Non-primary ("extra") branches match
  * strictly. Returns {} when the code can't be mapped (caller then doesn't
  * filter).
+ *
+ * Matches on `branches` as well as the legacy `branch`, so an interbranch
+ * PATIENT — one record ticked for two branches — shows up under both.
  */
-export function scheduleBranchWhere(
+export async function scheduleBranchWhere(
   patientBranch: string,
   primaryBranch: string,
-): Prisma.ScheduleWhereInput {
-  const target = toPatientBranch(patientBranch)
+): Promise<Prisma.ScheduleWhereInput> {
+  const target = await toPatientBranch(patientBranch)
   if (!target) return {}
-  if (sameBranch(patientBranch, primaryBranch)) {
-    return { OR: [{ patient: { branch: target } }, { patient: { branch: null } }, { patientId: null }] }
+  const matches = [{ patient: { branch: target } }, { patient: { branches: { has: target } } }]
+  if (await sameBranch(patientBranch, primaryBranch)) {
+    return { OR: [...matches, { patient: { branch: null, branches: { isEmpty: true } } }, { patientId: null }] }
   }
-  return { patient: { branch: target } }
+  return { OR: matches }
 }
 
 /**
  * Same idea as a Patient-level filter, for querying patients / assignments
  * directly. The primary branch also matches patients with no branch set.
  */
-export function patientBranchWhere(
+export async function patientBranchWhere(
   patientBranch: string,
   primaryBranch: string,
-): Prisma.PatientWhereInput {
-  const target = toPatientBranch(patientBranch)
+): Promise<Prisma.PatientWhereInput> {
+  const target = await toPatientBranch(patientBranch)
   if (!target) return {}
-  if (sameBranch(patientBranch, primaryBranch)) {
-    return { OR: [{ branch: target }, { branch: null }] }
+  const matches = [{ branch: target }, { branches: { has: target } }]
+  if (await sameBranch(patientBranch, primaryBranch)) {
+    return { OR: [...matches, { branch: null, branches: { isEmpty: true } }] }
   }
-  return { branch: target }
+  return { OR: matches }
 }

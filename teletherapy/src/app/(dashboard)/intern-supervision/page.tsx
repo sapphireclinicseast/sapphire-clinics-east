@@ -1,0 +1,516 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
+import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info, IdCard, Ban, Power } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
+import InternProfileModal from '@/components/InternProfileModal'
+
+interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null; hasAccount?: boolean; accountActive?: boolean | null; rotationLapsed?: boolean }
+interface GradeInfo { grade: string; note: string | null; fileName: string | null; filePath: string | null; gradedByName: string | null; updatedAt: string }
+interface Doc { id: string; title: string; description: string | null; fileName: string; filePath: string; uploadedByName: string; uploadedByAccountId: string; createdAt: string }
+
+// Upload a file to a given folder with real progress (fetch has no upload
+// progress event). Returns the saved attachment descriptor.
+function uploadWithProgress(file: File, folder: string, onProgress: (pct: number) => void): Promise<{ fileName: string; filePath: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/upload')
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.min(99, Math.round((e.loaded / e.total) * 100))) }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)) } catch { reject(new Error('Bad response')) } }
+      else { let m = `Upload failed (${xhr.status})`; try { m = JSON.parse(xhr.responseText).error ?? m } catch {} reject(new Error(m)) }
+    }
+    xhr.onerror = () => reject(new Error('Upload failed — network error'))
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('folder', folder)
+    xhr.send(fd)
+  })
+}
+
+function GradeCard({ intern, existing, onSaved, onToast }: { intern: Intern; existing?: GradeInfo; onSaved: () => void; onToast: (m: string) => void }) {
+  const [grade, setGrade] = useState(existing?.grade ?? '')
+  const [note, setNote] = useState(existing?.note ?? '')
+  const [file, setFile] = useState<File | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!grade.trim()) { onToast('Please enter a grade.'); return }
+    setSaving(true)
+    try {
+      let fileMeta: { fileName?: string; filePath?: string; mimeType?: string } = {}
+      if (file) {
+        setProgress(0)
+        fileMeta = await uploadWithProgress(file, `intern-grades/${intern.id}`, setProgress)
+        setProgress(100)
+      }
+      const res = await fetch('/api/intern-supervision/grades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ internStaffId: intern.id, grade, note, ...fileMeta }),
+      })
+      if (res.ok) { onToast('Grade saved'); setFile(null); onSaved() }
+      else { const d = await res.json().catch(() => ({})); onToast(d.error ?? 'Failed to save') }
+    } catch (e) { onToast(e instanceof Error ? e.message : 'Failed to save') }
+    setSaving(false)
+    setTimeout(() => setProgress(null), 600)
+  }
+
+  return (
+    <div className="card-static">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div>
+          <p className="font-semibold text-[var(--charcoal)] text-[14px]">{intern.name}</p>
+          <p className="text-[12px] text-[var(--mid-gray)]">{intern.department} · {intern.branch}</p>
+        </div>
+        {existing?.updatedAt && (
+          <span className="text-[11px] text-[var(--mid-gray)]">Last graded {new Date(existing.updatedAt).toLocaleDateString()}{existing.gradedByName ? ` · ${existing.gradedByName}` : ''}</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Grade</label>
+          <input value={grade} onChange={(e) => setGrade(e.target.value)} className="input" placeholder="e.g. 95% or Passed" />
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Computation file (optional)</label>
+          <div className="flex items-center gap-2">
+            <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--light-gray)] text-[13px] font-semibold text-[var(--mid-gray)] hover:border-[var(--teal)] hover:text-[var(--teal)] cursor-pointer transition-colors whitespace-nowrap">
+              <Upload size={14} /> {file ? 'Change' : 'Attach'} file
+              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="hidden"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)} onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} />
+            </label>
+            {file ? (
+              <span className="text-[12px] text-[var(--charcoal)] truncate flex items-center gap-1"><Paperclip size={12} className="text-[var(--teal)]" />{file.name}</span>
+            ) : existing?.filePath ? (
+              <a href={`/api/upload/${existing.filePath}`} target="_blank" rel="noopener noreferrer" className="text-[12px] text-[var(--teal)] hover:underline truncate flex items-center gap-1"><FileText size={12} />{existing.fileName ?? 'file'}</a>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Note (optional)</label>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input resize-y !rounded-xl" placeholder="Remarks…" />
+      </div>
+
+      {progress !== null && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--mid-gray)] mb-1"><span>Uploading…</span><span className="tabular-nums">{progress}%</span></div>
+          <div className="h-2 rounded-full bg-[var(--light-gray)] overflow-hidden"><div className="h-full bg-[var(--teal)] transition-[width] duration-200" style={{ width: `${progress}%` }} /></div>
+        </div>
+      )}
+
+      <button onClick={save} disabled={saving} className="btn-primary mt-4 px-5 py-2.5 rounded-xl text-[13px]">
+        {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {progress !== null ? `Uploading… ${progress}%` : (existing ? 'Update grade' : 'Save grade')}
+      </button>
+    </div>
+  )
+}
+interface BT {
+  id: string; internName: string; internStaffId: string; periodLabel: string
+  answers: { question: string; answer: string }[]
+  internSignedName: string; internSignedAt: string
+  supervisorSignedName: string | null; supervisorSignedAt: string | null
+  createdAt: string
+}
+
+// Sort key for a week group: parse "Week of <date>", else fall back to a timestamp.
+function weekSortTs(label: string, fallbackIso: string): number {
+  const t = new Date(label.replace(/^week of\s*/i, '')).getTime()
+  return isNaN(t) ? (new Date(fallbackIso).getTime() || 0) : t
+}
+
+// Read-only display of one intern's Learning Outcomes & Preferences.
+function LearningProfileView({ data }: { data: LearningProfileData }) {
+  const chips = (arr: string[], other?: string) => {
+    const all = [...(arr ?? []), ...(other?.trim() ? [`Others: ${other.trim()}`] : [])]
+    return all.length ? all.map((c, i) => <span key={i} className="inline-block text-[12px] bg-[var(--pale-teal)] text-[var(--deep-teal)] px-2 py-0.5 rounded-full mr-1.5 mb-1.5">{c}</span>) : <span className="text-[12px] italic text-[var(--mid-gray)]">—</span>
+  }
+  const line = (label: string, val?: string) => (
+    <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-0.5">{label}</p><p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{val?.trim() || <span className="italic text-[var(--mid-gray)]">—</span>}</p></div>
+  )
+  return (
+    <div className="space-y-3 pt-1">
+      {line('Expectations for the rotation', data.outcomes?.expectations)}
+      {line('Most looking forward to learning', data.outcomes?.lookingForward)}
+      {line('Wants to improve on', data.outcomes?.improve)}
+      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Learns best by</p>{chips(data.learnBest, data.learnBestOther)}</div>
+      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Preferred feedback</p>{chips(data.feedback, data.feedbackOther)}</div>
+      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Prepares for duty by</p>{chips(data.prep)}</div>
+      {line('Challenges in learning', data.challenges)}
+    </div>
+  )
+}
+
+// Department-scoped internship document library (supervisor uploads).
+function DocumentsPanel({ docs, myAccountId, isAdmin, onChanged, onToast }: {
+  docs: Doc[]; myAccountId?: string; isAdmin: boolean; onChanged: () => void; onToast: (m: string) => void
+}) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function upload() {
+    if (!title.trim()) { onToast('Please add a title.'); return }
+    if (!file) { onToast('Please attach a file.'); return }
+    setSaving(true)
+    try {
+      setProgress(0)
+      const meta = await uploadWithProgress(file, 'internship-documents', setProgress)
+      setProgress(100)
+      const res = await fetch('/api/intern-supervision/documents', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, ...meta }),
+      })
+      if (res.ok) { onToast('Document uploaded'); setTitle(''); setDescription(''); setFile(null); onChanged() }
+      else { const d = await res.json().catch(() => ({})); onToast(d.error ?? 'Failed to upload') }
+    } catch (e) { onToast(e instanceof Error ? e.message : 'Failed to upload') }
+    setSaving(false)
+    setTimeout(() => setProgress(null), 600)
+  }
+  async function remove(id: string) {
+    if (!confirm('Remove this document?')) return
+    const res = await fetch(`/api/intern-supervision/documents/${id}`, { method: 'DELETE' })
+    if (res.ok) onChanged(); else { const d = await res.json().catch(() => ({})); onToast(d.error ?? 'Failed to remove') }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex gap-2.5">
+        <Info size={18} className="text-blue-600 shrink-0 mt-0.5" />
+        <p className="text-[12.5px] text-blue-700 leading-relaxed">
+          Upload only documents <span className="font-semibold">specific to the internship</span> (e.g. supervision guides). Please do <span className="font-semibold">not duplicate</span> template forms already available in the <span className="font-semibold">Templates &amp; Forms</span> section. These are shared with supervisors in your department.
+        </p>
+      </div>
+
+      <div className="card-static">
+        <h3 className="font-bold text-[var(--charcoal)] mb-3 text-[14px]" style={{ fontFamily: 'var(--font-display)' }}>Upload a document</h3>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} className="input mb-2" placeholder="Title (e.g. PT Internship Supervision Guide)" />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="input resize-y !rounded-xl mb-2" placeholder="Description (optional)" />
+        <div className="flex items-center gap-2 mb-3">
+          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--light-gray)] text-[13px] font-semibold text-[var(--mid-gray)] hover:border-[var(--teal)] hover:text-[var(--teal)] cursor-pointer transition-colors whitespace-nowrap">
+            <Upload size={14} /> {file ? 'Change' : 'Attach'} file
+            <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} />
+          </label>
+          {file && <span className="text-[12px] text-[var(--charcoal)] truncate flex items-center gap-1"><Paperclip size={12} className="text-[var(--teal)]" />{file.name}</span>}
+        </div>
+        {progress !== null && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--mid-gray)] mb-1"><span>Uploading…</span><span className="tabular-nums">{progress}%</span></div>
+            <div className="h-2 rounded-full bg-[var(--light-gray)] overflow-hidden"><div className="h-full bg-[var(--teal)] transition-[width] duration-200" style={{ width: `${progress}%` }} /></div>
+          </div>
+        )}
+        <button onClick={upload} disabled={saving} className="btn-primary px-5 py-2.5 rounded-xl text-[13px]">
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {progress !== null ? `Uploading… ${progress}%` : 'Upload'}
+        </button>
+      </div>
+
+      {docs.length === 0 ? (
+        <div className="card-static text-center py-10 text-[13px] text-[var(--mid-gray)]">No internship documents yet.</div>
+      ) : (
+        <div className="space-y-2">
+          {docs.map((d) => (
+            <div key={d.id} className="card-static flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <a href={`/api/upload/${d.filePath}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[var(--teal)] hover:underline">
+                  <FileText size={15} className="shrink-0" /> {d.title}
+                </a>
+                {d.description && <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">{d.description}</p>}
+                <p className="text-[11px] text-[var(--mid-gray)] mt-1">Uploaded by <span className="font-semibold text-[var(--charcoal)]">{d.uploadedByName}</span> · {new Date(d.createdAt).toLocaleDateString()}</p>
+              </div>
+              {(isAdmin || d.uploadedByAccountId === myAccountId) && (
+                <button onClick={() => remove(d.id)} className="text-[var(--mid-gray)] hover:text-red-500 shrink-0" title="Remove"><Trash2 size={16} /></button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type Tab = 'interns' | 'balik-tanaw' | 'grades' | 'documents' | 'learning'
+
+export default function InternSupervisionPage() {
+  const [loading, setLoading] = useState(true)
+  const [interns, setInterns] = useState<Intern[]>([])
+  const [bt, setBt] = useState<BT[]>([])
+  const [grades, setGrades] = useState<Record<string, GradeInfo>>({})
+  const [docs, setDocs] = useState<Doc[]>([])
+  const [profiles, setProfiles] = useState<Record<string, { data: LearningProfileData; updatedAt: string }>>({})
+  const [tab, setTab] = useState<Tab>('interns')
+  const [signing, setSigning] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const [openProfile, setOpenProfile] = useState<string | null>(null)
+  const [profileFor, setProfileFor] = useState<string | null>(null)
+  // Balik-Tanaw browsing: sort weeks by date, drill week -> intern -> entry.
+  const [btSort, setBtSort] = useState<'desc' | 'asc'>('desc')
+  const [openWeek, setOpenWeek] = useState<string | null>(null)
+  const [openEntry, setOpenEntry] = useState<string | null>(null)
+
+  const { data: sess } = useSession()
+  const myAccountId = (sess?.user as { id?: string } | undefined)?.id
+  const isAdmin = (sess?.user as { role?: string } | undefined)?.role === 'ADMIN'
+
+  function showToast(m: string) { setToast(m); setTimeout(() => setToast(null), 4000) }
+
+  async function load() {
+    setLoading(true)
+    try {
+      const [iRes, bRes, gRes, dRes, pRes] = await Promise.all([
+        fetch('/api/intern-supervision/interns'),
+        fetch('/api/intern-supervision/balik-tanaw'),
+        fetch('/api/intern-supervision/grades'),
+        fetch('/api/intern-supervision/documents'),
+        fetch('/api/intern-supervision/learning-profiles'),
+      ])
+      if (iRes.ok) setInterns((await iRes.json()).interns ?? [])
+      if (bRes.ok) setBt((await bRes.json()).entries ?? [])
+      if (gRes.ok) setGrades((await gRes.json()).grades ?? {})
+      if (dRes.ok) setDocs((await dRes.json()).documents ?? [])
+      if (pRes.ok) setProfiles((await pRes.json()).profiles ?? {})
+    } catch {}
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  async function sign(id: string) {
+    setSigning(id)
+    try {
+      const res = await fetch(`/api/balik-tanaw/${id}/sign`, { method: 'POST' })
+      if (res.ok) { showToast('Signed'); load() }
+      else { const d = await res.json().catch(() => ({})); showToast(d.error ?? 'Failed to sign') }
+    } catch { showToast('Failed to sign') }
+    setSigning(null)
+  }
+
+  const [enabling, setEnabling] = useState<string | null>(null)
+  async function enableAccess(internId: string) {
+    setEnabling(internId)
+    try {
+      const res = await fetch(`/api/intern-supervision/interns/${internId}/enable-access`, { method: 'POST' })
+      if (res.ok) { showToast('Access re-enabled'); load() }
+      else { const d = await res.json().catch(() => ({})); showToast(d.error ?? 'Failed to enable') }
+    } catch { showToast('Failed to enable') }
+    setEnabling(null)
+  }
+
+  if (loading) {
+    return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" /></div>
+  }
+
+  const isActiveSupervisor = interns.length > 0
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {toast && <div className="toast">{toast}</div>}
+      {profileFor && <InternProfileModal internId={profileFor} onClose={() => setProfileFor(null)} />}
+
+      <div className="hero-gradient rounded-2xl px-8 py-8 mb-8">
+        <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Intern Supervision</h1>
+        <p className="text-white/60 text-sm mt-1">Interns decked to you, their Balik-Tanaw, and grades</p>
+      </div>
+
+      {!isActiveSupervisor ? (
+        <div className="card-static text-center py-16">
+          <div className="w-14 h-14 rounded-full bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-4">
+            <UserCog size={24} className="text-[var(--teal)]" />
+          </div>
+          <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>No interns assigned</p>
+          <p className="text-[13px] text-[var(--mid-gray)] max-w-md mx-auto leading-relaxed">
+            Only clinicians with an active supervision will have content here. When interns are decked to you in the
+            Operations Hub, they'll appear here with their Balik-Tanaw reflections and grading.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Tabs */}
+          <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] mb-6">
+            {([['interns', 'List of Interns'], ['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles']] as [Tab, string][]).map(([t, label]) => (
+              <button key={t} onClick={() => setTab(t)}
+                className={cn('flex-1 min-w-[110px] px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
+                  tab === t ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]')}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'interns' && (
+            <div className="space-y-3">
+              {interns.map((i) => (
+                <div key={i.id} className="card-static flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[var(--pale-teal)] flex items-center justify-center font-bold text-[var(--teal)] text-[13px]">
+                      {i.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[var(--charcoal)] text-[14px]">{i.name}</p>
+                      <p className="text-[12px] text-[var(--mid-gray)]">{i.department} · {i.branch}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="flex items-center gap-1.5 text-[12px] text-[var(--mid-gray)]">
+                      <Calendar size={13} />
+                      {i.startMonth || '—'} to {i.endMonth || '—'}
+                    </span>
+                    {i.hasAccount && i.accountActive === false && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><Ban size={11} /> Access disabled</span>
+                    )}
+                    {i.hasAccount && i.accountActive === false && (
+                      <button onClick={() => enableAccess(i.id)} disabled={enabling === i.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--teal)] text-white text-[12.5px] font-semibold hover:opacity-90 disabled:opacity-50">
+                        {enabling === i.id ? <Loader2 size={13} className="animate-spin" /> : <Power size={13} />} Enable Access
+                      </button>
+                    )}
+                    <button onClick={() => setProfileFor(i.id)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--teal)]/30 text-[var(--teal)] text-[12.5px] font-semibold hover:bg-[var(--teal)]/5 transition-colors">
+                      <IdCard size={14} /> Intern Profile
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'balik-tanaw' && (
+            bt.length === 0 ? (
+              <div className="card-static text-center py-12 text-[13px] text-[var(--mid-gray)]">No Balik-Tanaw reflections submitted yet.</div>
+            ) : (
+              <>
+                <div className="flex justify-end mb-3">
+                  <button onClick={() => setBtSort((s) => (s === 'desc' ? 'asc' : 'desc'))}
+                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[var(--mid-gray)] hover:text-[var(--teal)] border border-[var(--light-gray)] rounded-lg px-3 py-1.5 transition-colors">
+                    <ArrowUpDown size={13} /> {btSort === 'desc' ? 'Newest first' : 'Oldest first'}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {(() => {
+                    const map = new Map<string, BT[]>()
+                    for (const e of bt) { const arr = map.get(e.periodLabel) ?? []; arr.push(e); map.set(e.periodLabel, arr) }
+                    const weeks = [...map.entries()].map(([label, entries]) => ({
+                      label,
+                      entries: [...entries].sort((a, b) => a.internName.localeCompare(b.internName)),
+                      ts: weekSortTs(label, entries[0]?.createdAt ?? entries[0]?.internSignedAt ?? ''),
+                      signed: entries.filter((e) => e.supervisorSignedName).length,
+                    }))
+                    weeks.sort((a, b) => (btSort === 'desc' ? b.ts - a.ts : a.ts - b.ts))
+                    return weeks.map((w) => {
+                      const wOpen = openWeek === w.label
+                      const allSigned = w.signed === w.entries.length
+                      return (
+                        <div key={w.label} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
+                          <button onClick={() => setOpenWeek(wOpen ? null : w.label)}
+                            className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Calendar size={14} className="text-[var(--teal)]" />
+                              <span className="font-semibold text-[var(--charcoal)] text-[14px]">{w.label}</span>
+                              <span className="text-[11px] text-[var(--mid-gray)]">{w.entries.length} intern{w.entries.length === 1 ? '' : 's'}</span>
+                              <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', allSigned ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200')}>{w.signed}/{w.entries.length} signed</span>
+                            </div>
+                            {wOpen ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+                          </button>
+                          {wOpen && (
+                            <div className="border-t border-[var(--light-gray)] p-2 space-y-2">
+                              {w.entries.map((e) => {
+                                const eOpen = openEntry === e.id
+                                return (
+                                  <div key={e.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
+                                    <button onClick={() => setOpenEntry(eOpen ? null : e.id)}
+                                      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]">
+                                      <span className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-semibold text-[var(--charcoal)] text-[13.5px]">{e.internName}</span>
+                                        {e.supervisorSignedName ? (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full"><CheckCircle2 size={11} /> Signed</span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full"><Clock size={11} /> Not signed</span>
+                                        )}
+                                      </span>
+                                      {eOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
+                                    </button>
+                                    {eOpen && (
+                                      <div className="px-3 pb-3 border-t border-[var(--light-gray)] pt-3 space-y-3">
+                                        {e.answers.map((a, i) => (
+                                          <div key={i}>
+                                            <p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">{i + 1}. {a.question}</p>
+                                            <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{a.answer || <span className="italic text-[var(--mid-gray)]">—</span>}</p>
+                                          </div>
+                                        ))}
+                                        <div className="flex items-center justify-between gap-2 pt-3 border-t border-[var(--light-gray)] flex-wrap">
+                                          <p className="text-[11px] text-[var(--mid-gray)]">Intern's signature: <span className="font-semibold text-[var(--charcoal)]">{e.internSignedName}</span>
+                                            {e.supervisorSignedName && <> · CT: <span className="font-semibold text-[var(--charcoal)]">{e.supervisorSignedName}</span></>}
+                                          </p>
+                                          {!e.supervisorSignedName && (
+                                            <button onClick={() => sign(e.id)} disabled={signing === e.id}
+                                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--teal)] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">
+                                              {signing === e.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Sign as Coordinating Teacher
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+              </>
+            )
+          )}
+
+          {tab === 'grades' && (
+            <div className="space-y-3">
+              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Encode each intern's grade and attach a computation file (Excel, PDF, or Word).</p>
+              {interns.map((i) => (
+                <GradeCard key={i.id} intern={i} existing={grades[i.id]} onSaved={load} onToast={showToast} />
+              ))}
+            </div>
+          )}
+
+          {tab === 'documents' && (
+            <DocumentsPanel docs={docs} myAccountId={myAccountId} isAdmin={isAdmin} onChanged={load} onToast={showToast} />
+          )}
+
+          {tab === 'learning' && (
+            <div className="space-y-2">
+              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Each intern's Learning Outcomes &amp; Preferences (self-submitted).</p>
+              {interns.map((i) => {
+                const prof = profiles[i.id]
+                const open = openProfile === i.id
+                return (
+                  <div key={i.id} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
+                    <button onClick={() => setOpenProfile(open ? null : i.id)} disabled={!prof}
+                      className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)] disabled:cursor-default">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-[var(--charcoal)] text-[14px]">{i.name}</span>
+                        <span className="text-[11px] text-[var(--mid-gray)]">{i.department}</span>
+                        {!prof && <span className="text-[10px] italic text-[var(--mid-gray)]">not submitted yet</span>}
+                      </div>
+                      {prof && (open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />)}
+                    </button>
+                    {open && prof && (
+                      <div className="px-4 pb-4 border-t border-[var(--light-gray)]">
+                        <LearningProfileView data={prof.data} />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}

@@ -245,6 +245,39 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
     } finally { setBusy(false) }
   }
 
+  // Cancelled / Failed Delivery: orders that never became a sale. No GL impact — just
+  // logs TikTok's own cancel reason for the Products Analysis "Top Cancellation
+  // Reasons" card. sourceFile tells the server which export this is; the server
+  // upserts by Order ID, so an order appearing in both files keeps whichever record
+  // actually has a reason (Cancelled almost always does, Failed Delivery often doesn't
+  // yet — TikTok hasn't auto-cancelled it at export time).
+  async function onCancellationsFile(file: File, sourceFile: 'CANCELLED' | 'FAILED_DELIVERY') {
+    setBusy(true); setLog([])
+    try {
+      const rows = await readSheet(file)
+      const parsed = rows
+        .filter((r: Record<string, unknown>) => r['Order ID'] && !String(r['Order ID']).startsWith('Platform'))
+        .map((r: Record<string, unknown>) => ({
+          orderId: String(r['Order ID']).trim(),
+          status: String(r['Order Status'] || 'Unknown'),
+          cancelType: r['Cancelation/Return Type'] ? String(r['Cancelation/Return Type']) : null,
+          cancelBy: r['Cancel By'] ? String(r['Cancel By']) : null,
+          cancelReason: r['Cancel Reason'] ? String(r['Cancel Reason']) : null,
+          orderAmount: numAt(r, 'Order Amount') || null,
+          cancelledTime: r['Cancelled Time'] ? new Date(String(r['Cancelled Time'])).toISOString() : null,
+        }))
+      say(`Found ${parsed.length} row(s) in the ${sourceFile === 'CANCELLED' ? 'Cancelled' : 'Failed Delivery'} export.`)
+      const res = await fetch('/api/pos/tiktok/cancellations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: BRANCH, sourceFile, rows: parsed }),
+      })
+      const d = await res.json()
+      if (!res.ok) { say(`Error: ${d.error || 'failed'}`); return }
+      say(`Logged ${d.created} new order(s), updated ${d.updated} (reason arrived), skipped ${d.skipped} already up to date.`)
+      onDone()
+    } finally { setBusy(false) }
+  }
+
   const AcctSelect = ({ value, onChange, list, placeholder }: { value: string; onChange: (v: string) => void; list: Coa[]; placeholder: string }) => (
     <select value={value} onChange={e => onChange(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
       <option value="">{placeholder}</option>
@@ -260,7 +293,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
           <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>
         <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-          Step 1: upload the <strong>Completed Orders</strong> export to record sales (matched by Seller SKU, platform = Tiktok — reduces stock, books revenue/COGS). Step 2 (a few days later): upload the <strong>Settlement / income</strong> export to book fees, CWT, and the net bank deposit. Both steps are safe to re-run — duplicates are skipped.
+          Step 1: upload the <strong>Completed Orders</strong> export to record sales (matched by Seller SKU, platform = Tiktok — reduces stock, books revenue/COGS). Step 2 (a few days later): upload the <strong>Settlement / income</strong> export to book fees, CWT, and the net bank deposit. Optional: upload <strong>Cancelled</strong> / <strong>Failed Delivery</strong> exports to log TikTok&apos;s cancel reasons into Products Analysis — no GL impact, those orders were never sales. All uploads are safe to re-run — duplicates are skipped.
         </p>
 
         {/* Account mapping */}
@@ -294,6 +327,18 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
             <span className="block text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>2. Settlement / Income</span>
             <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>Books fees, CWT, bank deposit</span>
             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" disabled={busy} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importSettlement(f) }} />
+          </label>
+          <label className="rounded-xl border-2 border-dashed p-4 text-center cursor-pointer" style={{ borderColor: '#f59e0b' }}>
+            <Upload size={18} className="mx-auto mb-1" style={{ color: '#f59e0b' }} />
+            <span className="block text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>3. Cancelled</span>
+            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>Logs cancel reasons — optional</span>
+            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" disabled={busy} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onCancellationsFile(f, 'CANCELLED') }} />
+          </label>
+          <label className="rounded-xl border-2 border-dashed p-4 text-center cursor-pointer" style={{ borderColor: '#f59e0b' }}>
+            <Upload size={18} className="mx-auto mb-1" style={{ color: '#f59e0b' }} />
+            <span className="block text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>3. Failed Delivery</span>
+            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>Logs cancel reasons — optional</span>
+            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" disabled={busy} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onCancellationsFile(f, 'FAILED_DELIVERY') }} />
           </label>
         </div>
 

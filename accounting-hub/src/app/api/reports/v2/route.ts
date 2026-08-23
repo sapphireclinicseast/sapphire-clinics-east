@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { computeLedgerStatements } from '@/lib/reports/v2/engine'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'INVESTOR']
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -17,6 +17,11 @@ export async function GET(req: Request) {
   }
   // Optional drill-down: return the underlying lines for one account (+month)
   const account = searchParams.get('account') || undefined
+  // Investors read statements only: the drill-down returns the underlying
+  // entries (order/patient-level lines), which stay confidential.
+  if (account && (session.user.role as string) === 'INVESTOR') {
+    return NextResponse.json({ error: 'Drill-down is not available for investor accounts' }, { status: 403 })
+  }
   const monthParam = searchParams.get('month')
   const month = monthParam ? parseInt(monthParam) : undefined
   const cumulative = searchParams.get('cumulative') === '1'

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isNoteAgeLocked, NOTE_AGE_LOCK_MESSAGE } from '@/lib/note-age-lock'
 
 export async function DELETE(
   _req: NextRequest,
@@ -37,6 +38,12 @@ export async function DELETE(
         { error: 'This note is locked and cannot be deleted.' },
         { status: 403 },
       )
+    }
+    // Age lock — documentation for a session this old is read-only until the
+    // clinician deliberately re-opens it. Checked after the permanent
+    // endorsement lock above, which is never re-openable.
+    if (isNoteAgeLocked(schedule)) {
+      return NextResponse.json({ error: NOTE_AGE_LOCK_MESSAGE, ageLocked: true }, { status: 403 })
     }
   }
 

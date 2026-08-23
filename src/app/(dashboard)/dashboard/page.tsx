@@ -112,13 +112,13 @@ export default async function DashboardPage() {
   const session = await auth()
 
   // Investors never see the front-desk dashboard — send them straight to
-  // Clinic Utilization. This is a direct redirect (not the layout's
+  // the Patient Dashboard. This is a direct redirect (not the layout's
   // pathname-header gate) so it doesn't depend on the x-pathname header
   // being fresh on the very first post-login navigation, which is
   // unreliable during a client-side redirect chain and was causing a
   // blank page that only resolved on manual refresh.
   if ((session?.user as { role?: string })?.role === 'INVESTOR') {
-    redirect('/scheduling-dashboard')
+    redirect('/patients/dashboard')
   }
 
   // ── Everyone sees the front-desk-style welcome dashboard ──
@@ -131,7 +131,19 @@ export default async function DashboardPage() {
     'SBEA'
   const userName = session?.user?.name ?? undefined
   const birthdayPatients = await getBirthdayPatients(branch)
-  return <FrontDeskWelcome name={userName} branch={branch} birthdayPatients={birthdayPatients} />
+  // Main admins aren't tied to a clinic. `branch` above still drives the
+  // branch-specific widgets (reminders, birthdays, no-shows), which genuinely
+  // need one clinic; this flag only widens the plush-toy perk list, where a
+  // main admin is meant to see VIP holders across both branches.
+  const seesAllBranches = role === 'ADMIN' || role === 'MARKETING_ADMIN'
+  return (
+    <FrontDeskWelcome
+      name={userName}
+      branch={branch}
+      seesAllBranches={seesAllBranches}
+      birthdayPatients={birthdayPatients}
+    />
+  )
 
   // (Marketing-hub stats view below is kept as dead code in case we ever want
   // a separate route for it; remove if unused after a few weeks.)

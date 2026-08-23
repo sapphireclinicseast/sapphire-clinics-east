@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { localTodayStr } from '@/lib/utils'
 import {
   BarChart2, CalendarDays, Users, Settings, Star,
   Filter, Lock, Activity, ChevronDown, ChevronUp, User,
@@ -11,7 +12,10 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN', 'INVESTOR']
+// INVESTOR is deliberately excluded — investor accounts are scoped to the
+// Patient Dashboard only (hard-gated in (dashboard)/layout.tsx). This client
+// check is the cosmetic backstop; the API routes exclude INVESTOR too.
+const ALLOWED_ROLES = ['ADMIN', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MARKETING_ADMIN']
 
 const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS'] as const
 const DEPT_LABELS: Record<string, string> = {
@@ -38,7 +42,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayStr() { return new Date().toISOString().split('T')[0] }
+const todayStr = localTodayStr
 function monthAgoStr() {
   const d = new Date(); d.setMonth(d.getMonth() - 1)
   return d.toISOString().split('T')[0]
@@ -83,7 +87,7 @@ export default function SchedulingDashboardClient({ role }: { role: string }) {
         <Lock size={48} className="text-gray-300 mb-4" />
         <h2 className="text-xl font-bold text-gray-700 mb-2">Access Restricted</h2>
         <p className="text-sm text-gray-500 max-w-sm">
-          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, Marketing Admin, and Investor users.
+          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, and Marketing Admin users.
         </p>
       </div>
     )
@@ -304,6 +308,42 @@ function DashboardContent({ role }: { role: string }) {
     })
   }, [schedules, startDate, endDate, activeBranches, activeDepts, maxSessions])
 
+  // ── Trendline equations ──
+  // Least-squares fit y = mx + b over the same x index the chart plots (x = 0 is
+  // the first day in range), so the printed equation describes the dashed line
+  // on the chart rather than a separate calculation. Utilization is fitted on
+  // its own series instead of being scaled off the session fit: daily capacity
+  // shifts with the branch/department filters, so the two slopes are not a
+  // fixed multiple of each other.
+  const trendStats = useMemo(() => {
+    const n = chartData.length
+    if (n < 2) return null
+
+    const fit = (ys: number[]) => {
+      let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0
+      ys.forEach((y, i) => { sumX += i; sumY += y; sumXY += i * y; sumX2 += i * i })
+      const denom = n * sumX2 - sumX * sumX
+      const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0
+      const intercept = (sumY - slope * sumX) / n
+      // R² — how much of the movement the straight line actually explains. A
+      // steep slope over scattered data is not a trend worth acting on.
+      const meanY = sumY / n
+      let ssTot = 0, ssRes = 0
+      ys.forEach((y, i) => {
+        ssTot += (y - meanY) ** 2
+        ssRes += (y - (slope * i + intercept)) ** 2
+      })
+      const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
+      return { slope, intercept, r2, change: slope * (n - 1) }
+    }
+
+    return {
+      n,
+      sessions: fit(chartData.map(d => d.total)),
+      utilization: fit(chartData.map(d => d.utilization)),
+    }
+  }, [chartData])
+
   // ── Top therapists ──
   const topTherapists = useMemo(() => {
     const confirmed = schedules.filter(s => s.status === 'CONFIRMED')
@@ -406,7 +446,10 @@ function DashboardContent({ role }: { role: string }) {
               ))}
             </div>
           </div>
-          <button onClick={fetchData}
+          {/* Wrap, don't pass fetchData directly: onClick would hand it the
+              MouseEvent as its `isRetry` arg (truthy), silently disabling the
+              one-shot retry on 401/403. */}
+          <button onClick={() => fetchData()}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all"
             style={{ background: 'var(--teal)' }}>
             <Filter size={14} /> Apply
@@ -509,7 +552,8 @@ function DashboardContent({ role }: { role: string }) {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
         <div className={`${cardStyle} p-5`}>
-          <h3 className={`${sectionH} mb-4`}>Total Number of Sessions Over Time</h3>
+          <h3 className={`${sectionH} mb-2`}>Total Number of Sessions Over Time</h3>
+          <TrendEquation fit={trendStats?.sessions ?? null} unit="sessions" />
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -526,7 +570,8 @@ function DashboardContent({ role }: { role: string }) {
         </div>
 
         <div className={`${cardStyle} p-5`}>
-          <h3 className={`${sectionH} mb-4`}>Clinic Utilization Rate Over Time</h3>
+          <h3 className={`${sectionH} mb-2`}>Clinic Utilization Rate Over Time</h3>
+          <TrendEquation fit={trendStats?.utilization ?? null} unit="pp" />
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -534,6 +579,10 @@ function DashboardContent({ role }: { role: string }) {
               <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${v.toFixed(0)}%`} />
               <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
               <Area type="monotone" dataKey="utilization" stroke="#3b82f6" fill="rgba(59,130,246,0.12)" strokeWidth={2} name="Utilization" />
+              <ReferenceLine stroke="#94a3b8" strokeDasharray="6 3" segment={trendStats ? [
+                { x: chartData[0]?.label, y: Math.max(0, trendStats.utilization.intercept) },
+                { x: chartData[chartData.length - 1]?.label, y: Math.max(0, trendStats.utilization.slope * (trendStats.n - 1) + trendStats.utilization.intercept) },
+              ] : undefined} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -643,6 +692,41 @@ function KpiCard({ icon, value, label, color }: { icon: React.ReactNode; value: 
   )
 }
 
+// Prints the fitted line as an equation plus a plain-language reading of it.
+// `unit` is the y-axis unit per day — "sessions", or "pp" (percentage points)
+// for the utilization chart, where "%/week" would be ambiguous between a
+// relative change and a change in the rate itself.
+function TrendEquation({ fit, unit }: {
+  fit: { slope: number; intercept: number; r2: number; change: number } | null
+  unit: string
+}) {
+  if (!fit) return <div className="text-[11px] text-gray-400 mb-3">Not enough days in range to fit a trend</div>
+
+  const { slope, intercept, r2, change } = fit
+  // "Flat" is judged on total movement across the whole range, not on the raw
+  // slope: 0.02/day reads as flat over a week and as real over a quarter. Less
+  // than one unit of net change across the period is noise, not direction.
+  const flat = Math.abs(change) < 1
+  const dir = flat ? 'Flat' : change > 0 ? 'Rising' : 'Falling'
+  const dirColor = flat ? 'text-gray-500' : change > 0 ? 'text-emerald-600' : 'text-rose-600'
+  const arrow = flat ? '→' : change > 0 ? '↑' : '↓'
+
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-3">
+      <code className="text-[12px] font-semibold text-gray-800 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
+        y = {slope.toFixed(2)}x {intercept < 0 ? '−' : '+'} {Math.abs(intercept).toFixed(2)}
+      </code>
+      <span className={`text-[11px] font-bold ${dirColor}`}>{arrow} {dir}</span>
+      {!flat && (
+        <span className="text-[11px] text-gray-500">
+          {slope > 0 ? '+' : '−'}{Math.abs(slope * 7).toFixed(1)} {unit}/week
+        </span>
+      )}
+      <span className="text-[11px] text-gray-400" title="How closely the points follow the line (1.00 = perfect fit)">R² {r2.toFixed(2)}</span>
+    </div>
+  )
+}
+
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -668,6 +752,7 @@ interface TherapistUtil {
   cancelled: number
   pending: number
   blank: number
+  overbooked: number
 }
 
 interface UtilSummary {
@@ -677,6 +762,7 @@ interface UtilSummary {
   cancelled: number
   pending: number
   blank: number
+  overbooked: number
 }
 
 function pct(n: number, total: number): string {
@@ -688,6 +774,17 @@ function UtilBar({ confirmed, rescheduled, cancelled, pending, blank, total }: {
   confirmed: number; rescheduled: number; cancelled: number; pending: number; blank: number; total: number
 }) {
   if (total === 0) return <div className="h-5 bg-gray-100 rounded-full" />
+  const used = confirmed + rescheduled + cancelled + pending
+  // Only CONFIRMED + PENDING actually hold the hour — a cancelled session
+  // releases its slot and a rescheduled one has moved elsewhere — so this,
+  // not `used`, is what counts as over capacity.
+  const occupied = confirmed + pending
+  // Widths still scale by `used` so the bar can show cancelled/rescheduled
+  // history without overflowing: as flex children the segments would otherwise
+  // shrink to fit, quietly renormalising the proportions so an over-full bar
+  // looked exactly like a perfectly full one. flexShrink is pinned off for the
+  // same reason.
+  const scale = Math.max(total, used)
   const segments = [
     { value: confirmed,   color: '#10b981', label: 'Confirmed' },
     { value: rescheduled, color: '#f59e0b', label: 'Rescheduled' },
@@ -696,18 +793,28 @@ function UtilBar({ confirmed, rescheduled, cancelled, pending, blank, total }: {
     { value: blank,       color: '#e5e7eb', label: 'Blank' },
   ]
   return (
-    <div className="flex h-5 rounded-full overflow-hidden" style={{ background: '#f3f4f6' }}>
+    <div className="relative flex h-5 rounded-full overflow-hidden" style={{ background: '#f3f4f6' }}>
       {segments.map(seg => {
-        const w = (seg.value / total) * 100
+        const w = (seg.value / scale) * 100
         if (w === 0) return null
         return (
           <div
             key={seg.label}
             title={`${seg.label}: ${seg.value} (${pct(seg.value, total)}%)`}
-            style={{ width: `${w}%`, background: seg.color, transition: 'width 0.3s' }}
+            style={{ width: `${w}%`, background: seg.color, flexShrink: 0, transition: 'width 0.3s' }}
           />
         )
       })}
+      {occupied > total && (
+        <div
+          title={`Capacity ${total} slots — ${occupied - total} live booking${occupied - total === 1 ? '' : 's'} beyond it (confirmed + pending; cancelled and rescheduled do not hold a slot)`}
+          style={{
+            position: 'absolute', top: 0, bottom: 0,
+            left: `${(total / scale) * 100}%`,
+            width: 2, background: '#881337',
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -752,7 +859,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
   const byDept = useMemo(() => {
     const map = new Map<string, { therapists: TherapistUtil[]; totals: UtilSummary }>()
     for (const t of data) {
-      if (!map.has(t.department)) map.set(t.department, { therapists: [], totals: { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0 } })
+      if (!map.has(t.department)) map.set(t.department, { therapists: [], totals: { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0 } })
       const g = map.get(t.department)!
       g.therapists.push(t)
       g.totals.totalSlots  += t.totalSlots
@@ -761,6 +868,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
       g.totals.cancelled   += t.cancelled
       g.totals.pending     += t.pending
       g.totals.blank       += t.blank
+      g.totals.overbooked  += t.overbooked
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   }, [data])
@@ -768,7 +876,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
   const byBranch = useMemo(() => {
     const map = new Map<string, UtilSummary>()
     for (const t of data) {
-      if (!map.has(t.branch)) map.set(t.branch, { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0 })
+      if (!map.has(t.branch)) map.set(t.branch, { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0 })
       const g = map.get(t.branch)!
       g.totalSlots  += t.totalSlots
       g.confirmed   += t.confirmed
@@ -776,6 +884,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
       g.cancelled   += t.cancelled
       g.pending     += t.pending
       g.blank       += t.blank
+      g.overbooked  += t.overbooked
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   }, [data])
@@ -891,10 +1000,14 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
                         <UtilBar {...t} total={t.totalSlots} />
                       </div>
                       <div className="text-right min-w-[60px]">
-                        <div className="text-base font-extrabold" style={{ color: utilizationPct >= 80 ? '#10b981' : utilizationPct >= 50 ? '#f59e0b' : '#ef4444' }}>
+                        <div className="text-base font-extrabold" style={{ color: utilizationPct > 100 ? '#be123c' : utilizationPct >= 80 ? '#10b981' : utilizationPct >= 50 ? '#f59e0b' : '#ef4444' }}>
                           {pct(t.confirmed, t.totalSlots)}%
                         </div>
-                        <div className="text-[10px] text-gray-400">confirmed</div>
+                        <div className="text-[10px] text-gray-400">
+                          {t.overbooked > 0
+                            ? <span className="text-rose-700 font-bold">over capacity</span>
+                            : 'confirmed'}
+                        </div>
                       </div>
                       {isExpanded ? <ChevronUp size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />}
                     </button>
@@ -906,6 +1019,7 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
                           {statBox('Cancelled', t.cancelled, t.totalSlots, '#ef4444')}
                           {statBox('Pending', t.pending, t.totalSlots, '#6366f1')}
                           {statBox('Blank', t.blank, t.totalSlots, '#9ca3af')}
+                          {t.overbooked > 0 && statBox('Over capacity', t.overbooked, t.totalSlots, '#be123c')}
                         </div>
                       </div>
                     )}

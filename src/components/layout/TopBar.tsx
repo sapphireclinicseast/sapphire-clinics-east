@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { signOut } from 'next-auth/react'
 import { LogOut, Bell, User, Menu } from 'lucide-react'
 import type { Session } from 'next-auth'
+import { localTodayStr } from '@/lib/utils'
 
 interface NotifItem {
   id: string
@@ -19,7 +20,7 @@ interface NotifItem {
 const BRANCH_LABEL: Record<string, string> = { SBEA: 'East', SBGH: 'GH' }
 
 function todayKey() {
-  return `SCEI_NOTIF_SEEN_${new Date().toISOString().slice(0, 10)}`
+  return `SCEI_NOTIF_SEEN_${localTodayStr()}`
 }
 
 function getSeenIds(): Set<string> {

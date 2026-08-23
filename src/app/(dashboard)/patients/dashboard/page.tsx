@@ -6,6 +6,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
+
+import DeptBreakdownSection from './DeptBreakdownSection'
 
 const PatientMap = dynamic(() => import('@/components/patients/PatientMap'), { ssr: false })
 
@@ -43,16 +46,16 @@ interface InterdeptStats {
   comboStats: { label: string; depts: string[]; count: number; supportPct: number }[]
   affinityMatrix: { dept: string; color: string; count: number; affinities: AffinityEntry[] }[]
   avgSessionsPerMonth: Record<string, number>
+  comboTotal?: number
 }
 
 const ALL_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'] as const
 type Branch = typeof ALL_BRANCHES[number]
 
-const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST:       'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE:      'Verdana Store',
-  UNASSIGNED:         'Unassigned',
+// UNASSIGNED has no Branches Registry row — it's a dashboard-only bucket
+// for patients with no branch set, not a real branch.
+function dashboardBranchLabel(b: string): string {
+  return b === 'UNASSIGNED' ? 'Unassigned' : branchLabel(b)
 }
 
 const BRANCH_COLORS: Record<string, string> = {
@@ -284,7 +287,7 @@ export default function PatientDashboardPage() {
                   cursor: 'pointer',
                 }}
               >
-                {BRANCH_LABELS[branch]}
+                {dashboardBranchLabel(branch)}
               </button>
             )
           })}
@@ -447,7 +450,7 @@ export default function PatientDashboardPage() {
                     {count}
                   </p>
                   <p className="text-xs font-semibold mt-1" style={{ color }}>
-                    {BRANCH_LABELS[branch] ?? branch}
+                    {dashboardBranchLabel(branch)}
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                     {pct}% of total
@@ -459,6 +462,9 @@ export default function PatientDashboardPage() {
         </div>
       )}
 
+      {/* ── Patients by Service ── */}
+      <DeptBreakdownSection branches={selectedBranches} />
+
       {/* ── Interdepartmental Service Co-occurrence ── */}
       {interdeptStats && interdeptStats.totalPatients > 0 && (
         <div className="rounded-xl" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
@@ -468,11 +474,12 @@ export default function PatientDashboardPage() {
               Interdepartmental Service Co-occurrence
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-              Based on {interdeptStats.totalPatients.toLocaleString()} patients with confirmed sessions ·
+              Based on {interdeptStats.totalPatients.toLocaleString()} patients with recorded treatment
+              (Clinic Schedule sessions plus POS billing history, so visits from before this hub was in use are included) ·
               <strong>Confidence</strong> = if patient has Row, % chance they also have Column ·
               <strong>Lift</strong> = how many times more likely than pure chance (Lift 1 = independent) ·
               <strong>φ</strong> = effect size −1 to +1 (like a correlation coefficient) ·
-              <strong>χ² p-value</strong> with Bonferroni correction for 6 pairs (α = 0.0083)
+              <strong>χ² p-value</strong> with Bonferroni correction for 15 pairs (α = 0.0033)
             </p>
           </div>
 
@@ -483,12 +490,12 @@ export default function PatientDashboardPage() {
               <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--mid-gray)' }}>
                 Patients per Department (unique, confirmed sessions)
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {(['OT', 'PT', 'SLP', 'SPED'] as const).map((d) => {
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {(['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY'] as const).map((d) => {
                   const count = interdeptStats.deptCounts[d] ?? 0
                   const pct   = interdeptStats.totalPatients > 0
                     ? Math.round((count / interdeptStats.totalPatients) * 100) : 0
-                  const colors: Record<string, string> = { OT: '#1A7B8A', PT: '#2AAABB', SLP: '#F59E0B', SPED: '#8B5CF6' }
+                  const colors: Record<string, string> = { OT: '#1A7B8A', PT: '#2AAABB', SLP: '#F59E0B', SPED: '#8B5CF6', MD: '#DC2626', PSYCHOLOGY: '#7C3AED' }
                   const c = colors[d]
                   const avg = interdeptStats.avgSessionsPerMonth[d] ?? 0
                   return (
@@ -546,8 +553,8 @@ export default function PatientDashboardPage() {
                       <th className="py-2 pr-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>
                         If has…
                       </th>
-                      {(['OT', 'PT', 'SLP', 'SPED'] as const).map((d) => {
-                        const colors: Record<string, string> = { OT: '#1A7B8A', PT: '#2AAABB', SLP: '#F59E0B', SPED: '#8B5CF6' }
+                      {(['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY'] as const).map((d) => {
+                        const colors: Record<string, string> = { OT: '#1A7B8A', PT: '#2AAABB', SLP: '#F59E0B', SPED: '#8B5CF6', MD: '#DC2626', PSYCHOLOGY: '#7C3AED' }
                         return (
                           <th key={d} className="py-2 px-2 text-center font-bold"
                             style={{ color: colors[d] }}>…also uses {d}?</th>
@@ -589,7 +596,7 @@ export default function PatientDashboardPage() {
                           </td>
 
                           {/* Matrix cells */}
-                          {(['OT', 'PT', 'SLP', 'SPED'] as const).map((target) => {
+                          {(['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY'] as const).map((target) => {
                             if (target === row.dept) {
                               return (
                                 <td key={target} className="py-3 px-2 text-center align-top"
@@ -650,10 +657,13 @@ export default function PatientDashboardPage() {
               </p>
               <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
                 Counts are <em>at least</em> these services (patient may also use others) · Support = % of all patients in scope
+                {interdeptStats.comboTotal && interdeptStats.comboTotal > interdeptStats.comboStats.length
+                  ? ` · showing the ${interdeptStats.comboStats.length} largest of ${interdeptStats.comboTotal} combinations that occur`
+                  : ''}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {interdeptStats.comboStats.map((c) => {
-                  const deptColorMap: Record<string, string> = { OT: '#1A7B8A', PT: '#2AAABB', SLP: '#F59E0B', SPED: '#8B5CF6' }
+                  const deptColorMap: Record<string, string> = { OT: '#1A7B8A', PT: '#2AAABB', SLP: '#F59E0B', SPED: '#8B5CF6', MD: '#DC2626', PSYCHOLOGY: '#7C3AED' }
                   const supportStrength = c.supportPct >= 20 ? '#15803d'
                     : c.supportPct >= 10 ? '#059669'
                     : c.supportPct >= 5  ? '#0284c7'

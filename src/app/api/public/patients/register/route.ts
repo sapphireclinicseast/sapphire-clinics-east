@@ -9,6 +9,7 @@ import { hashPassword, validatePassword } from '@/lib/patient-password'
 import { preflight, withCors } from '../../_cors'
 import path from 'path'
 import fs from 'fs/promises'
+import { validateBranches } from '@/lib/branch-options'
 
 export async function OPTIONS(req: NextRequest) {
   return preflight(req.headers.get('origin'))
@@ -34,7 +35,11 @@ type Body = {
   diagnosis?: string
   pwdSeniorId?: string
   password?: string         // optional: create a portal login account
-  branch?: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'
+  // Branch codes are validated against the HrBranch registry, not a literal
+  // union — a branch added in HR Platform must work here without a deploy.
+  // `branch` (singular) stays accepted for older clients.
+  branch?: string
+  branches?: string[]
   patientType?: 'PEDIATRIC' | 'ADULT'
   referralFile?: UploadInput  // optional Doctor's Referral
   pwdIdFile?: UploadInput     // optional PWD / Senior ID
@@ -111,10 +116,12 @@ export async function POST(req: NextRequest) {
   const firstName = (body.firstName ?? '').trim()
   const lastName = (body.lastName ?? '').trim()
   const email = (body.email ?? '').trim().toLowerCase()
-  const branch = body.branch
+  const submittedBranches = Array.isArray(body.branches) && body.branches.length > 0
+    ? body.branches
+    : (body.branch ? [body.branch] : [])
   const patientType = body.patientType
 
-  if (!firstName || !lastName || !email || !branch || !patientType) {
+  if (!firstName || !lastName || !email || submittedBranches.length === 0 || !patientType) {
     return withCors(
       NextResponse.json(
         { error: 'firstName, lastName, email, branch, patientType are required' },
@@ -123,8 +130,12 @@ export async function POST(req: NextRequest) {
       origin,
     )
   }
-  if (branch !== 'SANDBOX_EAST' && branch !== 'SANDBOX_GREENHILLS') {
-    return withCors(NextResponse.json({ error: 'invalid branch' }, { status: 400 }), origin)
+  const { valid: branches, invalid } = await validateBranches(submittedBranches)
+  if (invalid.length > 0 || branches.length === 0) {
+    return withCors(
+      NextResponse.json({ error: `invalid branch: ${invalid.join(', ') || 'none supplied'}` }, { status: 400 }),
+      origin,
+    )
   }
   if (patientType !== 'PEDIATRIC' && patientType !== 'ADULT') {
     return withCors(NextResponse.json({ error: 'invalid patientType' }, { status: 400 }), origin)
@@ -193,8 +204,8 @@ export async function POST(req: NextRequest) {
       diagnosis: uc(body.diagnosis),
       pwdSeniorId: uc(body.pwdSeniorId),
       passwordHash: wantsAccount ? await hashPassword(body.password as string) : null,
-      branch,
-      branches: [branch],
+      branch: branches[0],
+      branches,
       patientType,
     },
     select: { id: true, firstName: true },

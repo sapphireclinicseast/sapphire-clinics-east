@@ -6,7 +6,9 @@
 // Schedule sessions since 2026-04-01 (decking-originated visits are already
 // counted here — see project note in FrontDeskWelcome.tsx PlushToyEligible).
 //
-// Front-desk dashboard widget only; excludes patients with plushToyGivenAt set.
+// Front-desk dashboard widget only. Includes patients who have ALREADY been
+// given a toy, flagged with givenAt/givenBy, so the widget can show a locked
+// record instead of the row silently disappearing.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
@@ -24,6 +26,9 @@ interface Candidate {
   id: string
   firstName: string
   lastName: string
+  plushToyGivenAt: Date | string | null
+  plushToyGivenBy: string | null
+  branchCode: string | null
 }
 
 export async function GET(req: NextRequest) {
@@ -33,18 +38,44 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const branch = searchParams.get('branch')?.toUpperCase() ?? ''
   const branchEnum = BRANCH_ENUM[branch]
-  if (!branchEnum) return NextResponse.json({ error: 'branch must be SBEA or SBGH' }, { status: 400 })
+  // Main admins are not scoped to one clinic, so they may request both. Branch
+  // admins and front desk stay pinned to their own branch — the widget hands
+  // out a physical item, so who can see whose patients matters.
+  const role = (session.user as { role?: string })?.role ?? ''
+  const MAIN_ADMIN_ROLES = ['ADMIN', 'MARKETING_ADMIN']
+  const wantsAll = branch === 'ALL'
+  if (wantsAll && !MAIN_ADMIN_ROLES.includes(role)) {
+    return NextResponse.json({ error: 'Not permitted to view all branches' }, { status: 403 })
+  }
+  if (!wantsAll && !branchEnum) {
+    return NextResponse.json({ error: 'branch must be SBEA, SBGH or ALL' }, { status: 400 })
+  }
 
   // Raw SQL for the branch/branches enum-array filter — PrismaPg driver
   // adapter doesn't support `has` on Postgres enum arrays (same workaround
-  // as getBirthdayPatients in dashboard/page.tsx). Only NOT-yet-given
-  // patients are candidates at all.
-  const candidates = await prisma.$queryRawUnsafe<Candidate[]>(
-    `SELECT id, "firstName", "lastName" FROM "Patient"
-     WHERE "plushToyGivenAt" IS NULL
-       AND (branch::text = $1 OR $1 = ANY("branches"::text[]))`,
-    branchEnum,
-  )
+  // as getBirthdayPatients in dashboard/page.tsx).
+  //
+  // Already-given patients are deliberately INCLUDED. They used to be filtered
+  // out here, which meant the card simply vanished once marked: the record
+  // persisted in the DB, but front desk had no way to tell "already received
+  // one" apart from "never qualified", so a returning patient could be handed
+  // a second toy on a hunch. They now come back flagged and render as a locked
+  // green card.
+  const candidates = wantsAll
+    ? await prisma.$queryRawUnsafe<Candidate[]>(
+        `SELECT id, "firstName", "lastName", "plushToyGivenAt", "plushToyGivenBy",
+                COALESCE(branch::text, ("branches"::text[])[1]) AS "branchCode"
+         FROM "Patient"
+         WHERE branch::text IN ('SANDBOX_EAST','SANDBOX_GREENHILLS')
+            OR "branches"::text[] && ARRAY['SANDBOX_EAST','SANDBOX_GREENHILLS']`,
+      )
+    : await prisma.$queryRawUnsafe<Candidate[]>(
+        `SELECT id, "firstName", "lastName", "plushToyGivenAt", "plushToyGivenBy",
+                $1::text AS "branchCode"
+         FROM "Patient"
+         WHERE (branch::text = $1 OR $1 = ANY("branches"::text[]))`,
+        branchEnum,
+      )
   if (candidates.length === 0) return NextResponse.json({ eligible: [] })
 
   const candidateIds = candidates.map(c => c.id)
@@ -103,15 +134,28 @@ export async function GET(req: NextRequest) {
   }
 
   const eligible = candidates
-    .filter(c => milestoneIds.has(c.id) || vipIds.has(c.id))
+    // Someone already given a toy stays listed even if their VIP wallet has
+    // since lapsed — the point of the row is the permanent record that they
+    // received one, not current eligibility.
+    .filter(c => milestoneIds.has(c.id) || vipIds.has(c.id) || c.plushToyGivenAt)
     .map(c => ({
       id:        c.id,
       firstName: c.firstName,
       lastName:  c.lastName,
       isVip:       vipIds.has(c.id),
       isMilestone: milestoneIds.has(c.id),
+      givenAt:     c.plushToyGivenAt ? new Date(c.plushToyGivenAt).toISOString() : null,
+      givenBy:     c.plushToyGivenBy ?? null,
+      // Only meaningful in the all-branches view; lets a main admin see which
+      // clinic each patient belongs to before handing anything over.
+      branch:      c.branchCode === 'SANDBOX_EAST' ? 'East'
+                 : c.branchCode === 'SANDBOX_GREENHILLS' ? 'Greenhills'
+                 : null,
     }))
-    .sort((a, b) => a.lastName.localeCompare(b.lastName))
+    // Pending first, then given — the actionable rows stay at the top.
+    .sort((a, b) =>
+      (a.givenAt ? 1 : 0) - (b.givenAt ? 1 : 0) ||
+      a.lastName.localeCompare(b.lastName))
 
   return NextResponse.json({ eligible })
 }

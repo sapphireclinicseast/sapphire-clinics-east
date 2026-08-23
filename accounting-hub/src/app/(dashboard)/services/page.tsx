@@ -5,7 +5,7 @@ import { userBranchScope } from '@/lib/branch-scope'
 import { useSession } from 'next-auth/react'
 import {
   Plus, Pencil, Trash2, X, Search, Stethoscope,
-  ArrowUpDown, ChevronUp, ChevronDown, AlertCircle, XCircle, FileCheck,
+  ArrowUpDown, ChevronUp, ChevronDown, AlertCircle, XCircle, FileCheck, History, Loader2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -86,6 +86,27 @@ const DEPT_BADGE: Record<string, { bg: string; color: string }> = {
 }
 
 export default function ServicesPage() {
+  // ── Price history ────────────────────────────────────────
+  type PriceRow = { id: string; field: string; branch: string | null; oldValue: number | null; newValue: number | null; source: string; note: string | null; changedAt: string; by: string | null }
+  type OlderEdit = { changedAt: string; by: string | null; fields: string[] }
+  const [phService, setPhService] = useState<{ id: string; name: string } | null>(null)
+  const [phRows, setPhRows] = useState<PriceRow[] | null>(null)
+  const [phOlder, setPhOlder] = useState<OlderEdit[]>([])
+  const [phLoading, setPhLoading] = useState(false)
+
+  async function openPriceHistory(svc: { id: string; name: string }) {
+    setPhService(svc); setPhRows(null); setPhOlder([]); setPhLoading(true)
+    try {
+      const res = await fetch(`/api/services/${svc.id}/price-history`)
+      if (res.ok) {
+        const d = await res.json()
+        setPhRows(d.history ?? [])
+        setPhOlder(d.olderEdits ?? [])
+      } else setPhRows([])
+    } catch { setPhRows([]) }
+    finally { setPhLoading(false) }
+  }
+
   const { data: session } = useSession()
   const sessionUserId = session?.user?.id as string | undefined
   const [services, setServices] = useState<Service[]>([])
@@ -506,13 +527,13 @@ export default function ServicesPage() {
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pricing</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Revenue</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>PWD Rule</th>
-                {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
+                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {services.length === 0 ? (
                 <tr>
-                  <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                  <td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                     <Stethoscope size={32} className="mx-auto mb-2 opacity-40" />
                     <p>No services found</p>
                     {canWrite && <p className="text-xs mt-1">Add clinic services to get started</p>}
@@ -606,18 +627,23 @@ export default function ServicesPage() {
                         <span>Standard (20% total)</span>
                       )}
                     </td>
-                    {canWrite && (
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
-                            <Pencil size={15} style={{ color: 'var(--teal)' }} />
-                          </button>
-                          <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete">
-                            <Trash2 size={15} className="text-red-500" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => openPriceHistory(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Price History">
+                          <History size={15} style={{ color: 'var(--mid-gray)' }} />
+                        </button>
+                        {canWrite && (
+                          <>
+                            <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
+                              <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                            </button>
+                            <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete">
+                              <Trash2 size={15} className="text-red-500" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
@@ -1128,6 +1154,95 @@ export default function ServicesPage() {
           </div>
         </div>
       )}
+
+      {/* ── Price History ───────────────────────────────────── */}
+      {phService && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => setPhService(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between px-5 pt-5 pb-3">
+              <div>
+                <h3 className="text-base font-semibold" style={{ color: 'var(--charcoal)' }}>Price History</h3>
+                <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>{phService.name}</p>
+              </div>
+              <button onClick={() => setPhService(null)} className="p-1 rounded hover:bg-gray-100"><X size={16} /></button>
+            </div>
+
+            <div className="px-5 pb-5 overflow-y-auto">
+              {phLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} />
+                </div>
+              ) : (phRows && phRows.length === 0 && phOlder.length === 0) ? (
+                <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>No price changes recorded yet.</p>
+              ) : (
+                <>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                        <th className="text-left py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>Date</th>
+                        <th className="text-left py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>What</th>
+                        <th className="text-right py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>From</th>
+                        <th className="text-right py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>To</th>
+                        <th className="text-right py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>Change</th>
+                        <th className="text-left py-2 pl-3 font-semibold" style={{ color: 'var(--mid-gray)' }}>By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(phRows ?? []).map((r) => {
+                        const diff = r.oldValue != null && r.newValue != null ? r.newValue - r.oldValue : null
+                        const label = r.field === 'price' ? 'Price' : r.field === 'doctorFee' ? "Doctor's fee"
+                          : r.field === 'clinicFee' ? 'Clinic fee' : r.field === 'newPrice' ? 'Scheduled price' : r.field
+                        return (
+                          <tr key={r.id} style={{ borderBottom: '1px solid var(--off-white)' }}>
+                            <td className="py-2 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                              {new Date(r.changedAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </td>
+                            <td className="py-2" style={{ color: 'var(--charcoal)' }}>
+                              {label}{r.branch ? ` · ${r.branch}` : ''}
+                              {r.source === 'BASELINE' && (
+                                <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#f1f5f9', color: '#475569' }}>starting point</span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right" style={{ color: 'var(--mid-gray)' }}>
+                              {r.oldValue == null ? '—' : `₱${r.oldValue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
+                            </td>
+                            <td className="py-2 text-right font-medium" style={{ color: 'var(--charcoal)' }}>
+                              {r.newValue == null ? '—' : `₱${r.newValue.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
+                            </td>
+                            <td className="py-2 text-right font-medium" style={{ color: diff == null ? 'var(--mid-gray)' : diff > 0 ? '#166534' : diff < 0 ? '#b91c1c' : 'var(--mid-gray)' }}>
+                              {diff == null ? '—' : `${diff > 0 ? '+' : ''}₱${diff.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
+                            </td>
+                            <td className="py-2 pl-3" style={{ color: 'var(--mid-gray)' }}>{r.by ?? '—'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+
+                  {phOlder.length > 0 && (
+                    <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                      <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>EARLIER EDITS</p>
+                      <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
+                        These predate price tracking. The audit log recorded that a price field was edited, but not the amounts.
+                      </p>
+                      <ul className="space-y-1">
+                        {phOlder.map((o, i) => (
+                          <li key={i} className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                            {new Date(o.changedAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                            {' — '}{o.fields.join(', ')}{o.by ? ` · ${o.by}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     sex, civilStatus, religion, nationality, address, city, diagnosis, notes: patientNotes,
     // Schedule (all required)
     staffId, date, startTime, endTime, duration, sessionType,
-    status = 'PENDING', notes: scheduleNotes,
+    status = 'PENDING', notes: scheduleNotes, internStaffId,
   } = body
 
   if (!staffId || !date || !startTime || !endTime || !duration || !sessionType) {
@@ -82,10 +82,12 @@ export async function POST(req: NextRequest) {
       sessionType,
       status: status as any,
       notes: scheduleNotes || null,
+      internStaffId: internStaffId || null,
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },
       staff:   { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
   })
 

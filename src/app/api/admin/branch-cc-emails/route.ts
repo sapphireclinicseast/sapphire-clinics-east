@@ -7,8 +7,25 @@ import { prisma } from '@/lib/prisma'
 
 const SUPER_ADMIN_EMAIL = 'main@sapphireclinicseast.org'
 
-// Branches we know about. Match Patient.branch enum.
-const KNOWN_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+// Last-resort default if the HrBranch sync cache is empty (before the first
+// "Sync Branches" click, or if it's briefly unreachable) — matches
+// Patient.branch enum. Prefer getKnownBranches() below, which reads the
+// live registry so a newly-added branch shows up here automatically.
+const FALLBACK_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+
+async function getKnownBranches(): Promise<string[]> {
+  try {
+    const rows = await prisma.hrBranch.findMany({
+      where: { active: true, opsHubBranch: { not: null } },
+      select: { opsHubBranch: true },
+      orderBy: { name: 'asc' },
+    })
+    const branches = rows.map(r => r.opsHubBranch).filter((b): b is string => !!b)
+    return branches.length > 0 ? branches : FALLBACK_BRANCHES
+  } catch {
+    return FALLBACK_BRANCHES
+  }
+}
 
 function isSuperAdmin(session: { user?: { email?: string | null } } | null) {
   return (session?.user?.email ?? '').toLowerCase() === SUPER_ADMIN_EMAIL
@@ -32,7 +49,7 @@ export async function GET() {
   }
 
   const rows = await prisma.branchCCEmail.findMany({ orderBy: { branch: 'asc' } })
-  return NextResponse.json({ ccEmails: rows, knownBranches: KNOWN_BRANCHES })
+  return NextResponse.json({ ccEmails: rows, knownBranches: await getKnownBranches() })
 }
 
 export async function POST(req: NextRequest) {
@@ -47,7 +64,7 @@ export async function POST(req: NextRequest) {
   if (!branch || !email) {
     return NextResponse.json({ error: 'Branch and email(s) are required' }, { status: 400 })
   }
-  if (!KNOWN_BRANCHES.includes(branch)) {
+  if (!(await getKnownBranches()).includes(branch)) {
     return NextResponse.json({ error: 'Unknown branch' }, { status: 400 })
   }
 

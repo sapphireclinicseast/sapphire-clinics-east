@@ -32,8 +32,14 @@ export async function GET(req: NextRequest) {
   const date        = searchParams.get('date')        // YYYY-MM-DD (single day)
   const startDate   = searchParams.get('startDate')   // YYYY-MM-DD (range start)
   const endDate     = searchParams.get('endDate')     // YYYY-MM-DD (range end)
-  // For multi-branch consultants: filter to only patients registered at this branch
-  const patientBranch = searchParams.get('patientBranch')
+  // The branch calendar being viewed. A session belongs to the branch it was
+  // BOOKED on (Schedule.branch), not the branch its patient is registered at:
+  // the Greenhills front desk routinely books East-registered patients, and
+  // those sessions are Greenhills sessions.
+  const branch = searchParams.get('branch')
+  // Legacy fallback only. Rows created before Schedule.branch existed have it
+  // null, so for those we still infer from the patient's registered branch.
+  const patientBranch = searchParams.get('patientBranch') ?? branch
   const patientBranchEnum = patientBranch ? STAFF_BRANCH_TO_PATIENT_BRANCH[patientBranch] : null
 
   let dayStart: Date, dayEnd: Date
@@ -51,18 +57,46 @@ export async function GET(req: NextRequest) {
     where: {
       ...(staffId ? { staffId } : {}),
       date: { gte: dayStart, lte: dayEnd },
-      ...(patientBranchEnum ? {
+      ...(branch ? {
+        OR: [
+          // Booked on this branch's calendar — the authoritative signal.
+          { branch },
+          // Legacy rows (branch null) keep patient-based inference so history
+          // stays visible rather than vanishing from both calendars. Read the
+          // `branches` ARRAY, not the legacy `branch` scalar: a patient tagged
+          // for both branches has branches = {EAST, GREENHILLS} while `branch`
+          // still holds only whichever branch registered them first. Filtering
+          // on the scalar is what hid interbranch patients from the second
+          // branch's calendar.
+          {
+            branch: null,
+            OR: [
+              { patientId: null },
+              // Patients with neither field set pre-date branch tagging — show everywhere
+              { patient: { branches: { isEmpty: true }, branch: null } },
+              ...(patientBranchEnum
+                ? [
+                    { patient: { branches: { has: patientBranchEnum } } },
+                    // Older rows never migrated onto `branches`
+                    { patient: { branches: { isEmpty: true }, branch: patientBranchEnum } },
+                  ]
+                : []),
+            ],
+          },
+        ],
+      } : patientBranchEnum ? {
         OR: [
           { patientId: null },
-          // Patients with no branch set pre-date the branch field — include them everywhere
-          { patient: { branch: null } },
-          { patient: { branch: patientBranchEnum as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' } },
+          { patient: { branches: { isEmpty: true }, branch: null } },
+          { patient: { branches: { has: patientBranchEnum } } },
+          { patient: { branches: { isEmpty: true }, branch: patientBranchEnum } },
         ],
       } : {}),
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
       staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
     orderBy: { startTime: 'asc' },
   })
@@ -74,10 +108,41 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy } = await req.json()
+  const { staffId, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, internStaffId, branch } = await req.json()
+  // Where the session happens — the branch calendar it was booked on. Needed
+  // because interbranch clinicians hold one staff profile pinned to a single
+  // branch, so staff.branch cannot attribute their cross-branch sessions.
+  const sessionBranch = ['SBEA', 'SBGH', 'VER'].includes(branch) ? branch : null
 
   if (!staffId || !date || !startTime || !endTime || !duration || !sessionType) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
+
+  // Booking a patient onto a branch calendar IS the act of assigning them to
+  // that branch, so tag them here rather than making the front desk remember a
+  // separate step. Without this, an East-registered patient booked at
+  // Greenhills stays tagged East-only and drops off the Greenhills calendar the
+  // moment anyone filters by patient branch — which is how the same session
+  // ended up booked three times.
+  if (patientId && sessionBranch && sessionBranch !== 'VER') {
+    const patientBranchEnum = STAFF_BRANCH_TO_PATIENT_BRANCH[sessionBranch]
+    if (patientBranchEnum) {
+      const existing = await prisma.patient.findUnique({
+        where: { id: patientId },
+        select: { branches: true, branch: true },
+      })
+      if (existing && !existing.branches.includes(patientBranchEnum)) {
+        // Seed `branches` from the legacy scalar for patients never migrated,
+        // so tagging a second branch does not silently drop the first.
+        const seeded = existing.branches.length === 0 && existing.branch
+          ? [existing.branch]
+          : existing.branches
+        await prisma.patient.update({
+          where: { id: patientId },
+          data: { branches: { set: [...new Set([...seeded, patientBranchEnum])] } },
+        })
+      }
+    }
   }
 
   const schedule = await prisma.schedule.create({
@@ -92,10 +157,13 @@ export async function POST(req: NextRequest) {
       status: status || 'PENDING',
       notes: notes || null,
       isTeletherapy: isTeletherapy || false,
+      internStaffId: internStaffId || null,
+      branch: sessionBranch,
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
       staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
   })
 
@@ -125,7 +193,7 @@ export async function PUT(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, meetLink } = await req.json()
+  const { id, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, meetLink, internStaffId, branch } = await req.json()
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
   const data: Record<string, unknown> = {}
@@ -139,6 +207,8 @@ export async function PUT(req: NextRequest) {
   if (notes !== undefined) data.notes = notes || null
   if (isTeletherapy !== undefined) data.isTeletherapy = isTeletherapy
   if (meetLink !== undefined) data.meetLink = meetLink || null
+  if (internStaffId !== undefined) data.internStaffId = internStaffId || null
+  if (branch !== undefined) data.branch = ['SBEA', 'SBGH', 'VER'].includes(branch) ? branch : null
 
   // Auto-generate a Jitsi link when teletherapy is being TOGGLED ON during an
   // edit (POST creates a link on initial save, but the PUT path used to leave
@@ -175,6 +245,7 @@ export async function PUT(req: NextRequest) {
     data,
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
   })
 

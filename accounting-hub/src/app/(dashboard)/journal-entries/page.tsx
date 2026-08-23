@@ -188,6 +188,8 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10))
   const [branch, setBranch] = useState('ALL')
   const [memo, setMemo] = useState('')
+  // Contribution-margin department tags: empty = "All" (allocated by rent %).
+  const [departments, setDepartments] = useState<string[]>([])
   const [lines, setLines] = useState<DraftLine[]>([blankLine(), blankLine()])
   const [busy, setBusy] = useState(false)
   const upd = (i: number, patch: Partial<DraftLine>) => setLines(ls => ls.map((l, j) => j === i ? { ...l, ...patch } : l))
@@ -201,7 +203,7 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
     try {
       const r = await fetch('/api/journal-entries', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entryDate, branch, memo, lines: lines.map(l => ({ accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description })) }),
+        body: JSON.stringify({ entryDate, branch, memo, departments, lines: lines.map(l => ({ accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description })) }),
       })
       const d = await r.json()
       if (!r.ok) { alert(d.error || 'Failed'); return }
@@ -228,6 +230,25 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
           <label className="flex-1 min-w-[240px] text-xs" style={{ color: 'var(--mid-gray)' }}>Memo<br />
             <input value={memo} onChange={e => setMemo(e.target.value)} placeholder="What this entry records" className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
           </label>
+        </div>
+
+        {/* Department tags for the contribution-margin analysis. "All"
+            (nothing ticked) = allocated by the configured rent percentages. */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Department</span>
+          <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+            style={{ border: `1px solid ${departments.length === 0 ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`, background: departments.length === 0 ? '#f0f7f2' : 'white', color: 'var(--charcoal)' }}>
+            <input type="checkbox" checked={departments.length === 0} onChange={() => setDepartments([])} className="accent-current" />
+            All
+          </label>
+          {['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'].map(d => (
+            <label key={d} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+              style={{ border: `1px solid ${departments.includes(d) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`, background: departments.includes(d) ? '#f0f7f2' : 'white', color: 'var(--charcoal)' }}>
+              <input type="checkbox" checked={departments.includes(d)}
+                onChange={() => setDepartments(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d])} className="accent-current" />
+              {d === 'PSYCHOLOGY' ? 'Psych' : d === 'ORTHOSIS' ? 'Ortho' : d}
+            </label>
+          ))}
         </div>
 
         <table className="w-full text-sm mb-2">

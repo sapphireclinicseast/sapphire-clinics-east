@@ -358,6 +358,41 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       dir: 'in',
     })
   }
+  // Open payable bills — accruals (Dr expense-or-asset / Cr A-P) whose payment
+  // was never recorded, mostly QB-era imports. They carry no bank leg, so the
+  // matcher could never offer them; the AP_BILL match action posts the
+  // settlement (Dr the payable / Cr the reconciled bank account) when picked.
+  const payableAccts = await prisma.account.findMany({
+    where: { accountNumber: { in: ['4010', '5040'] } }, select: { id: true },
+  })
+  if (payableAccts.length) {
+    const billLines = await prisma.journalEntryLine.findMany({
+      where: {
+        accountId: { in: payableAccts.map(p => p.id) },
+        credit: { gt: 0 },
+        journalEntry: { entryDate: range, referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] } },
+      },
+      select: {
+        credit: true,
+        journalEntry: { select: { id: true, entryDate: true, description: true } },
+      },
+    })
+    if (billLines.length) {
+      const settled = new Set((await prisma.journalEntry.findMany({
+        where: { referenceId: { in: billLines.map(l => `APSETTLE:${l.journalEntry.id}`) } },
+        select: { referenceId: true },
+      })).map(j => (j.referenceId || '').slice('APSETTLE:'.length)))
+      for (const l of billLines) {
+        if (settled.has(l.journalEntry.id)) continue
+        out.push({
+          type: 'AP_BILL', id: l.journalEntry.id,
+          label: `${(l.journalEntry.description || 'Payable bill').slice(0, 140)} · unpaid A/P bill`,
+          date: l.journalEntry.entryDate, amount: num(l.credit), dir: 'out',
+        })
+      }
+    }
+  }
+
   await markSettled(out)
   return out
 }
@@ -375,18 +410,39 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
 async function markSettled(list: Candidate[]) {
   const ids = [...new Set(list.map(c => c.id))]
   if (ids.length === 0) return
+  // A combination match stores its record ids comma-joined on the one line, so
+  // fetching by exact matchId would miss a record consumed inside one — pull
+  // every joined match too and read the ids apart. Petty cash withdrawals name
+  // a replenishment report purely as an audit trail; the cash never settles the
+  // report, so they must not count against it.
   const taken = await prisma.bankTransaction.findMany({
-    where: { status: 'POSTED', matchId: { in: ids } },
+    where: {
+      status: 'POSTED',
+      AND: [
+        { OR: [{ matchType: null }, { matchType: { not: 'PETTY_CASH_WITHDRAWAL' } }] },
+        { OR: [{ matchId: { in: ids } }, { matchId: { contains: ',' } }] },
+      ],
+    },
     select: { matchId: true, spent: true, received: true },
   })
   if (taken.length === 0) return
+  const wanted = new Set(ids)
   const by = new Map<string, { in: number; out: number }>()
   for (const t of taken) {
     if (!t.matchId) continue
-    const cur = by.get(t.matchId) || { in: 0, out: 0 }
-    cur.out = Math.round((cur.out + num(t.spent)) * 100) / 100
-    cur.in = Math.round((cur.in + num(t.received)) * 100) / 100
-    by.set(t.matchId, cur)
+    // Each record named on the line is consumed by it. For a combination the
+    // whole line amount is booked against every constituent — the line does not
+    // say who got what, and a record ticked into a combination is settled in
+    // full by design, so overstating its share only keeps it (correctly) off
+    // the shelf.
+    for (const part of t.matchId.split(',')) {
+      const rid = part.trim()
+      if (!rid || !wanted.has(rid)) continue
+      const cur = by.get(rid) || { in: 0, out: 0 }
+      cur.out = Math.round((cur.out + num(t.spent)) * 100) / 100
+      cur.in = Math.round((cur.in + num(t.received)) * 100) / 100
+      by.set(rid, cur)
+    }
   }
   for (const c of list) {
     const s = by.get(c.id)
@@ -415,4 +471,62 @@ export function forDirection(all: Candidate[], isSpent: boolean): Candidate[] {
 export function remainingOn(c: Candidate, isSpent: boolean): number {
   const used = isSpent ? (c.settled?.out ?? 0) : (c.settled?.in ?? 0)
   return Math.round((c.amount - used) * 100) / 100
+}
+
+/**
+ * The true amount of one record, resolved on the server by its id — what a
+ * match may claim in total, independent of anything the client sent. Each
+ * source is read the way its candidate builder above derives the amount: a
+ * loan nets its charges, equity is shares × price, an A/P bill is its payable
+ * credit, a currency exchange moves a different figure each way.
+ *
+ * Resolution is by id alone because a combination match stores several ids
+ * with no per-id type; ids are cuids, so one id answering from two tables is
+ * not a real concern. Returns null when nothing answers to the id.
+ */
+export async function recordAmountById(id: string, isSpent: boolean): Promise<number | null> {
+  const [ft, rfp, order, ar, sal, ben, tax, ca, pce, adv, loan, cs, ps, ed, bb, ap, lp, sl, apBillLine] = await Promise.all([
+    prisma.fundTransfer.findUnique({ where: { id }, select: { amount: true, toAmount: true } }),
+    prisma.reimbursementReport.findUnique({ where: { id }, select: { grossTotal: true } }),
+    prisma.order.findUnique({ where: { id }, select: { netAmount: true } }),
+    prisma.aRPayment.findUnique({ where: { id }, select: { amount: true } }),
+    prisma.salaryPayment.findUnique({ where: { id }, select: { totalAmount: true } }),
+    prisma.benefitPayment.findUnique({ where: { id }, select: { totalAmount: true } }),
+    prisma.taxPayment.findUnique({ where: { id }, select: { totalAmount: true } }),
+    prisma.cashAdvance.findUnique({ where: { id }, select: { amount: true } }),
+    prisma.pettyCashEntry.findUnique({ where: { id }, select: { grossAmount: true } }),
+    prisma.advance.findUnique({ where: { id }, select: { principalAmount: true } }),
+    prisma.loan.findUnique({ where: { id }, select: { principalAmount: true, netAmountToDebit: true } }),
+    prisma.commonShare.findUnique({ where: { id }, select: { numberOfShares: true, pricePerShare: true } }),
+    prisma.preferredShare.findUnique({ where: { id }, select: { numberOfShares: true, pricePerShare: true } }),
+    prisma.equityDeposit.findUnique({ where: { id }, select: { amount: true } }),
+    prisma.shareBuyback.findUnique({ where: { id }, select: { shares: true, price: true } }),
+    prisma.advancePayout.findUnique({ where: { id }, select: { amount: true } }),
+    prisma.loanPayout.findUnique({ where: { id }, select: { amount: true } }),
+    prisma.staffLoan.findUnique({ where: { id }, select: { principal: true } }),
+    prisma.journalEntryLine.findFirst({
+      where: { journalEntryId: id, credit: { gt: 0 }, account: { accountNumber: { in: ['4010', '5040'] } } },
+      select: { credit: true },
+    }),
+  ])
+  if (ft) return !isSpent && num(ft.toAmount) > 0 ? num(ft.toAmount) : num(ft.amount)
+  if (rfp) return num(rfp.grossTotal)
+  if (order) return num(order.netAmount)
+  if (ar) return num(ar.amount)
+  if (sal) return num(sal.totalAmount)
+  if (ben) return num(ben.totalAmount)
+  if (tax) return num(tax.totalAmount)
+  if (ca) return num(ca.amount)
+  if (pce) return num(pce.grossAmount)
+  if (adv) return num(adv.principalAmount)
+  if (loan) return num(loan.netAmountToDebit) > 0 ? num(loan.netAmountToDebit) : num(loan.principalAmount)
+  if (cs) return Math.round(num(cs.numberOfShares) * num(cs.pricePerShare) * 100) / 100
+  if (ps) return Math.round(num(ps.numberOfShares) * num(ps.pricePerShare) * 100) / 100
+  if (ed) return Math.round(num(ed.amount) * 100) / 100
+  if (bb) return Math.round(num(bb.shares) * num(bb.price) * 100) / 100
+  if (ap) return num(ap.amount)
+  if (lp) return num(lp.amount)
+  if (sl) return num(sl.principal)
+  if (apBillLine) return num(apBillLine.credit)
+  return null
 }

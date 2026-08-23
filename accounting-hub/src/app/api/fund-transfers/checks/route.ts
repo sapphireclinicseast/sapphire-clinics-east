@@ -49,8 +49,8 @@ export async function GET(req: Request) {
   const strKeys = [...strMap.keys()]
   const labelFor = (s: string | null) => (s && strMap.has(s) ? strMap.get(s)!.label : s || '')
 
-  type Group = Omit<Row, 'id' | 'kind'> & { id?: string; kind?: Row['kind'] | 'REGISTER'; items: Row[]; registeredAmount?: number; registerStatus?: string }
-  type Row = { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED' | 'REGISTER'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
+  type Group = Omit<Row, 'id' | 'kind'> & { id?: string; kind?: Row['kind'] | 'REGISTER'; items: Row[]; registeredAmount?: number; registerStatus?: string; cleared?: boolean; clearedOn?: string | null }
+  type Row = { cleared?: boolean; clearedOn?: string | null; id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED' | 'REGISTER'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
   const rows: Row[] = []
 
   // 1. Petty Cash + Expenses
@@ -109,6 +109,28 @@ export async function GET(req: Request) {
     })
   }
 
+  // 4a. Which records has bank reconciliation actually matched a bank line to?
+  // A cheque has cleared when the bank shows the money leaving — that is exactly
+  // what a bank-rec match records. Without one the cheque was written but has not
+  // been seen on the statement: still outstanding, stopped, or never presented.
+  const matched = await prisma.bankTransaction.findMany({
+    where: { bankAccountId: { in: [...idSet] }, matchId: { not: null }, status: 'POSTED' },
+    select: { matchId: true, date: true },
+  })
+  const clearedById = new Map<string, Date>()
+  // A MULTI match stores several record ids comma-joined in one matchId; each
+  // of those records cleared on that line. Earliest date wins when a record
+  // spans several bank lines.
+  for (const m of matched) {
+    if (!m.matchId) continue
+    for (const id of m.matchId.split(',')) {
+      const key = id.trim()
+      if (!key) continue
+      const prev = clearedById.get(key)
+      if (!prev || m.date < prev) clearedById.set(key, m.date)
+    }
+  }
+
   // 4b. The chequebook register — every leaf, including cancelled and unused.
   const register = await prisma.issuedCheque.findMany({
     where: { accountId: { in: [...idSet] } },
@@ -146,7 +168,12 @@ export async function GET(req: Request) {
   // instrument — a telegraphic transfer keeps its bank reference in the same
   // column — is dropped here rather than shown as a cheque with no number.
   const cheques = rows
-    .map(r => ({ ...r, checkNumber: chequeDigits(r.checkNumber) || '' }))
+    .map(r => ({
+      ...r,
+      checkNumber: chequeDigits(r.checkNumber) || '',
+      cleared: r.id ? clearedById.has(r.id) : false,
+      clearedOn: r.id ? clearedById.get(r.id)?.toISOString().slice(0, 10) || null : null,
+    }))
     .filter(r => r.checkNumber !== '')
 
   // One cheque, one row. The same cheque appears once per expense line when the
@@ -164,6 +191,7 @@ export async function GET(req: Request) {
         checkNumber: r.checkNumber, bankAccount: r.bankAccount, date: r.date,
         amount: r.amount, source: r.source, reference: r.reference, payee: r.payee,
         id: r.id, kind: r.kind, proofUrls: r.proofUrls, items: [r],
+        cleared: r.cleared, clearedOn: r.clearedOn,
       })
       continue
     }
@@ -171,6 +199,8 @@ export async function GET(req: Request) {
     g.items.push(r)
     // Show the fullest form of the number that any record carries.
     if (r.checkNumber.length > g.checkNumber.length) g.checkNumber = r.checkNumber
+    // One matched line is enough: the cheque was seen leaving the account.
+    if (r.cleared) { g.cleared = true; g.clearedOn = g.clearedOn || r.clearedOn }
     if (!g.date || (r.date && r.date < g.date)) g.date = r.date
     if (g.source !== r.source) g.source = 'Multiple'
     if (g.payee !== r.payee) g.payee = g.payee || r.payee

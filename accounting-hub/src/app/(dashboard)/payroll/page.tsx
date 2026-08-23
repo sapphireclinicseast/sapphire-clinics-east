@@ -3,13 +3,14 @@
 import React, { Fragment, useState, useEffect, useCallback } from 'react'
 import { AccountPicker } from '@/components/AccountPicker'
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
+import { BRANCH_INFO } from '@/lib/branch-info'
 import { useSession } from 'next-auth/react'
 import {
   BadgeDollarSign, Users, Settings, FileText, Plus, Pencil, Save,
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
   PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, Shield, ShieldOff, Upload,
-  Lock, LockOpen, ClipboardList, Eye,
+  Lock, LockOpen, ClipboardList, Eye, UserX,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
@@ -237,6 +238,21 @@ interface AccountBrief {
   accountType: string
 }
 
+interface StaffDirectoryRow {
+  id: string
+  externalStaffId: string
+  source: string
+  name: string
+  branch: string
+  department: string | null
+  employmentType: string | null
+  activeUpstream: boolean
+  firstSeenAt: string
+  lastSeenAt: string
+  missingSince: string | null
+  resignedAt: string | null
+}
+
 /* ═══════════════════════════════════════════════════════════════
    CONSTANTS
    ═══════════════════════════════════════════════════════════════ */
@@ -267,33 +283,6 @@ const POSITION_LABELS: Record<string, string> = {
   PSYCHOLOGY: 'Psychologist',
   ORTHOSIS: 'Orthotist & Prosthetist',
   ADMINISTRATION: 'Administrative Staff',
-}
-
-const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
-  SBEA: {
-    name: 'Sapphire Clinics East Inc. – East Branch',
-    address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
-    phone: '0917 118 9289 | (02) 5310-4991',
-    tin: 'TIN 010-817-642-00000',
-  },
-  SBGH: {
-    name: 'Sapphire Clinics East Inc. – Greenhills Branch',
-    address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    tin: 'TIN 010-817-642-00001',
-  },
-  VERDANA_STORE: {
-    name: 'Verdana Store',
-    address: 'Metro Manila, Philippines',
-    phone: '',
-    tin: '',
-  },
-  '': {
-    name: 'Sapphire Clinics East Inc.',
-    address: 'Metro Manila, Philippines',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    tin: '',
-  },
 }
 
 const BRANCHES = [
@@ -796,7 +785,7 @@ export default function PayrollPage() {
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
   const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings'>('consultants')
-  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits' | 'directory'>('list')
   // Consultant Benefits Setting (mirror Employees)
   const [conBenefitSelIds, setConBenefitSelIds] = useState<Set<string>>(new Set())
   const [showConBenefitForm, setShowConBenefitForm] = useState(false)
@@ -1098,6 +1087,25 @@ export default function PayrollPage() {
       setConsultants(await res.json())
     } catch { setConsultants([]) }
   }, [branch])
+
+  /* ── Staff Directory (who the sync has seen, and who has left) ── */
+  const [directory, setDirectory] = useState<StaffDirectoryRow[]>([])
+  const [dirStatus, setDirStatus] = useState<'resigned' | 'current'>('resigned')
+  const [dirLoading, setDirLoading] = useState(false)
+
+  const fetchDirectory = useCallback(async () => {
+    setDirLoading(true)
+    try {
+      const params = new URLSearchParams({ status: dirStatus })
+      if (branch) params.set('branch', branch)
+      const r = await fetch(`/api/payroll/staff-directory?${params}`)
+      const d = await r.json()
+      setDirectory(Array.isArray(d) ? d : [])
+    } catch { setDirectory([]) }
+    finally { setDirLoading(false) }
+  }, [dirStatus, branch])
+
+  useEffect(() => { if (subTab === 'directory') fetchDirectory() }, [subTab, fetchDirectory])
 
   /* ── Consultant Benefits Setting ── */
   const toggleConBenefitSel = (id: string) => setConBenefitSelIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -2548,6 +2556,8 @@ export default function PayrollPage() {
           consultantName: p.consultantName,
           firstName,
           branch: (BRANCH_INFO[p.branch]?.name || p.branch).replace('Sapphire Clinics East Inc.', 'Aura Health Rehab'),
+          // Raw code — the server routes the payslip to that branch's HR mailbox.
+          branchCode: p.branch,
           cutoffPeriod,
           netPay: formatCurrency(totals.net),
           email,
@@ -3049,6 +3059,7 @@ export default function PayrollPage() {
               { key: 'initial-eval' as const, label: 'Initial Evaluation', icon: ClipboardList },
               { key: 'progress-report' as const, label: 'Progress Report', icon: FileText },
               { key: 'payslips' as const, label: 'Payslip Generation', icon: FileText },
+              { key: 'directory' as const, label: 'Staff Directory', icon: UserX },
             ].map(t => (
               <button key={t.key} onClick={() => { setSubTab(t.key); setIeprSearch(''); setIeprExpanded(new Set()) }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
@@ -4449,6 +4460,82 @@ export default function PayrollPage() {
           })()}
 
           {/* ══ TAB 4: Payslip Generation ══ */}
+          {/* ══ Staff Directory — who the sync has seen, and who has left ══ */}
+          {subTab === 'directory' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Staff Directory</p>
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    Accounting&apos;s own copy of the staff feed, kept because Operations and HR list only current
+                    staff — so once someone resigns they simply stop appearing. Anyone shown as resigned is out of
+                    payslip generation; every payslip they were ever paid stays on their record and in Salaries Payable.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select value={dirStatus} onChange={e => setDirStatus(e.target.value as 'resigned' | 'current')}
+                    className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="resigned">Resigned / no longer listed</option>
+                    <option value="current">Currently listed</option>
+                  </select>
+                  <button onClick={fetchDirectory} disabled={dirLoading}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50"
+                    style={{ background: 'var(--teal)' }}>
+                    {dirLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Department</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Source</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>First seen</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Last listed</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dirLoading ? (
+                      <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>
+                    ) : directory.length === 0 ? (
+                      <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>
+                        {dirStatus === 'resigned'
+                          ? 'Nobody has left since the directory started recording.'
+                          : 'Nothing recorded yet — run a sync from the Consultant List.'}
+                      </td></tr>
+                    ) : directory.map(d => {
+                      const day = (v: string | null) => v ? new Date(v).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
+                      const gone = !!d.resignedAt || !d.activeUpstream
+                      return (
+                        <tr key={d.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{d.name}</td>
+                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{d.branch}</td>
+                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{d.department || '—'}</td>
+                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{d.source === 'HR' ? 'HR Platform' : 'Operations'}</td>
+                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{day(d.firstSeenAt)}</td>
+                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{day(d.lastSeenAt)}</td>
+                          <td className="px-3 py-2.5">
+                            <span className="px-2 py-1 rounded-md text-[11px] font-medium"
+                              style={gone
+                                ? { background: '#fee2e2', color: '#b91c1c' }
+                                : { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                              {gone ? `Resigned ${d.resignedAt ? day(d.resignedAt) : ''}`.trim() : 'Current'}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {subTab === 'payslips' && (
             <div className="space-y-4">
               {/* Controls row */}
