@@ -11,7 +11,7 @@ import { prisma } from './prisma'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
 const HR_KEY = process.env.HR_API_KEY ?? ''
-const SERVICE_KEY = process.env.TELETHERAPY_HR_API_KEY ?? 'scei-teletherapy-hr-2026'
+const SERVICE_KEY = process.env.TELETHERAPY_HR_API_KEY ?? ''
 const HR_BRANCH_URLS = [
   `${HR_API_BASE}/branches/external`,
   'http://127.0.0.1:3457/branches/external', // direct pm2 fallback (same key)
