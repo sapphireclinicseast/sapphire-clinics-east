@@ -1040,6 +1040,8 @@ function InventoryInner() {
   // Stock-in only: the write-off path is its own multi-item modal now, and this
   // one is reached solely from the petty-cash replenishment draft.
   const [adjType, setAdjType] = useState<'SHRINKAGE' | 'INCREASE'>('INCREASE')
+  // Which variant the stock-in applies to — required when the item has variants.
+  const [adjVariantId, setAdjVariantId] = useState('')
   const [adjQty, setAdjQty] = useState('')
   const [adjDate, setAdjDate] = useState(new Date().toISOString().split('T')[0])
   const [adjRemarks, setAdjRemarks] = useState('')
@@ -1503,6 +1505,7 @@ function InventoryInner() {
       setActiveTab('Adjustments')
       setPcfSourceEntryId(entryId)
       setAdjType('INCREASE')
+      setAdjVariantId('')
       if (draft.unitCost != null) setAdjLocalCost(String(draft.unitCost))
       setAdjRemarks(`Replenishment from petty cash${draft.name ? ` — ${draft.name}` : ''}`)
       setAdjModalOpen(true)
@@ -1532,7 +1535,10 @@ function InventoryInner() {
   /* ── Helpers ───────────────────────────────────────────── */
 
   const selectedAdjItem = allItems.find((i) => i.id === adjItemId)
-  const adjPrevQty = selectedAdjItem?.quantity ?? 0
+  const adjVariants = selectedAdjItem?.variants ?? []
+  const adjVariant = adjVariants.find((v) => v.id === adjVariantId)
+  // When a variant is chosen, the before/after figures describe that variant's own stock.
+  const adjPrevQty = adjVariant ? adjVariant.quantity : (selectedAdjItem?.quantity ?? 0)
   const adjNewQty = adjType === 'SHRINKAGE'
     ? adjPrevQty - (parseInt(adjQty) || 0)
     : adjPrevQty + (parseInt(adjQty) || 0)
@@ -1934,13 +1940,18 @@ function InventoryInner() {
 
   async function handleAdjSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // An item with variants must say which one moved, or the per-variant counts drift.
+    if (adjVariants.length > 0 && !adjVariantId) {
+      setError('Select which variant this stock movement applies to')
+      return
+    }
     setSaving(true); setError('')
     try {
       const res = await fetch('/api/inventory/adjustments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          itemId: adjItemId, type: adjType,
+          itemId: adjItemId, variantId: adjVariantId || null, type: adjType,
           quantityChange: parseInt(adjQty) || 0,
           adjustmentDate: adjDate, remarks: adjRemarks,
           // Replenishment sourced from a petty-cash / expense entry → skip GL so
@@ -4526,7 +4537,29 @@ setTimeout(()=>window.print(),500);
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item</label>
                     <ItemSearchSelect items={allItems} value={adjItemId} required
-                      onChange={(it) => setAdjItemId(it?.id || '')} />
+                      onChange={(it) => { setAdjItemId(it?.id || ''); setAdjVariantId('') }} />
+                    {/* Which variant is arriving — so per-colour and per-size stock
+                        stays truthful instead of only the product total. */}
+                    {adjVariants.length > 0 && (
+                      <div className="mt-2">
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>
+                          Variant <span style={{ color: '#b91c1c' }}>*</span>
+                        </label>
+                        <select value={adjVariantId} onChange={(e) => setAdjVariantId(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                          style={{ borderColor: adjVariantId ? 'var(--light-gray)' : '#fca5a5' }}>
+                          <option value="">— Select variant —</option>
+                          {adjVariants.map((v) => (
+                            <option key={v.id} value={v.id}>{v.variantType}: {v.variantLabel} ({v.quantity} on hand)</option>
+                          ))}
+                        </select>
+                        {!adjVariantId && (
+                          <p className="text-xs mt-1" style={{ color: '#b91c1c' }}>
+                            This item has variants — pick the one this stock-in applies to.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Quantity Change</label>
@@ -6159,10 +6192,11 @@ function ShrinkageModal({ items, editAdjustmentId, onClose, onDone }: {
 }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [remarks, setRemarks] = useState('')
-  const [rows, setRows] = useState<{ itemId: string; quantity: string }[]>([{ itemId: '', quantity: '' }])
+  const [rows, setRows] = useState<{ itemId: string; variantId: string; quantity: string }[]>([{ itemId: '', variantId: '', quantity: '' }])
   const [reference, setReference] = useState<string | null>(null)
   // Units the rows being edited already gave up — added back to show true on-hand.
   const [restoreByItem, setRestoreByItem] = useState<Record<string, number>>({})
+  const [restoreByVariant, setRestoreByVariant] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(!!editAdjustmentId)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -6183,9 +6217,13 @@ function ShrinkageModal({ items, editAdjustmentId, onClose, onDone }: {
         setReference(d.referenceNumber || null)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const loaded = (d.rows || []) as any[]
-        setRows(loaded.map(r => ({ itemId: r.itemId, quantity: String(r.quantity) })))
+        setRows(loaded.map(r => ({ itemId: r.itemId, variantId: r.variantId || '', quantity: String(r.quantity) })))
         setRestoreByItem(loaded.reduce((m: Record<string, number>, r) => {
           m[r.itemId] = (m[r.itemId] || 0) + Number(r.quantity)
+          return m
+        }, {}))
+        setRestoreByVariant(loaded.reduce((m: Record<string, number>, r) => {
+          if (r.variantId) m[r.variantId] = (m[r.variantId] || 0) + Number(r.quantity)
           return m
         }, {}))
       } catch { if (!cancelled) setErr('Network error') } finally { if (!cancelled) setLoading(false) }
@@ -6193,18 +6231,30 @@ function ShrinkageModal({ items, editAdjustmentId, onClose, onDone }: {
     return () => { cancelled = true }
   }, [editAdjustmentId])
 
-  const setRow = (i: number, patch: Partial<{ itemId: string; quantity: string }>) =>
+  const setRow = (i: number, patch: Partial<{ itemId: string; variantId: string; quantity: string }>) =>
     setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r))
-  const addRow = () => setRows(rs => [...rs, { itemId: '', quantity: '' }])
+  const addRow = () => setRows(rs => [...rs, { itemId: '', variantId: '', quantity: '' }])
   const removeRow = (i: number) => setRows(rs => rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs)
 
   const filled = rows.filter(r => r.itemId && Number(r.quantity) > 0)
   const totalUnits = filled.reduce((s, r) => s + Number(r.quantity), 0)
-  const totalValue = filled.reduce((s, r) => s + Number(itemById.get(r.itemId)?.unitCost || 0) * Number(r.quantity), 0)
+  const totalValue = filled.reduce((s, r) => {
+    const it = itemById.get(r.itemId)
+    const v = r.variantId ? it?.variants?.find(x => x.id === r.variantId) : undefined
+    return s + Number(v?.unitCost ?? it?.unitCost ?? 0) * Number(r.quantity)
+  }, 0)
 
   const submit = async () => {
     setErr('')
     if (!filled.length) { setErr('Add at least one item with a quantity greater than zero.'); return }
+    // An item with variants must say which one is being written off, or the
+    // per-variant counts drift from reality.
+    const missingVariant = filled.find(r => (itemById.get(r.itemId)?.variants?.length || 0) > 0 && !r.variantId)
+    if (missingVariant) {
+      const it = itemById.get(missingVariant.itemId)
+      setErr(`${it?.sku || ''} — ${it?.name || 'This item'} has variants: pick the one being written off.`)
+      return
+    }
     if (!remarks.trim()) { setErr('Enter remarks — why is this stock being written off?'); return }
     setBusy(true)
     try {
@@ -6215,7 +6265,7 @@ function ShrinkageModal({ items, editAdjustmentId, onClose, onDone }: {
           ...(editAdjustmentId ? { id: editAdjustmentId } : {}),
           adjustmentDate: date,
           remarks: remarks.trim(),
-          rows: filled.map(r => ({ itemId: r.itemId, quantity: Number(r.quantity) })),
+          rows: filled.map(r => ({ itemId: r.itemId, variantId: r.variantId || null, quantity: Number(r.quantity) })),
         }),
       })
       const d = await res.json()
@@ -6269,17 +6319,32 @@ function ShrinkageModal({ items, editAdjustmentId, onClose, onDone }: {
               <tbody>
                 {rows.map((r, i) => {
                   const item = r.itemId ? itemById.get(r.itemId) : null
+                  const rowVariants = item?.variants ?? []
+                  const rowVariant = rowVariants.find(v => v.id === r.variantId)
                   // In edit mode the item's stored quantity already has the old
                   // write-off taken out, so add it back to show real availability.
-                  const onHand = item ? item.quantity + (restoreByItem[r.itemId] || 0) : null
+                  // With a variant chosen, on-hand and remaining describe that variant.
+                  const onHand = rowVariant
+                    ? rowVariant.quantity + (restoreByVariant[rowVariant.id] || 0)
+                    : item ? item.quantity + (restoreByItem[r.itemId] || 0) : null
                   const qty = Number(r.quantity) || 0
                   const after = onHand != null && r.quantity !== '' ? onHand - qty : null
-                  const cost = item ? Number(item.unitCost || 0) * qty : 0
+                  const cost = item ? Number(rowVariant?.unitCost ?? item.unitCost ?? 0) * qty : 0
                   return (
                     <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2">
                         <ItemSearchSelect items={items} value={r.itemId} compact
-                          onChange={it => setRow(i, { itemId: it?.id || '' })} />
+                          onChange={it => setRow(i, { itemId: it?.id || '', variantId: '' })} />
+                        {rowVariants.length > 0 && (
+                          <select value={r.variantId} onChange={e => setRow(i, { variantId: e.target.value })}
+                            className="w-full mt-1 px-2 py-1.5 rounded-lg border text-xs outline-none"
+                            style={{ borderColor: r.variantId ? 'var(--light-gray)' : '#fca5a5' }}>
+                            <option value="">— Select variant —</option>
+                            {rowVariants.map(v => (
+                              <option key={v.id} value={v.id}>{v.variantType}: {v.variantLabel} ({v.quantity + (restoreByVariant[v.id] || 0)} on hand)</option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{onHand ?? '—'}</td>
                       <td className="px-3 py-2 text-right">

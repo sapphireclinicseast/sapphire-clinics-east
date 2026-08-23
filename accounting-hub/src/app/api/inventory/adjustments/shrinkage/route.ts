@@ -21,7 +21,7 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_AD
 
 type TxClient = Prisma.TransactionClient | PrismaClient
 
-interface ShrinkRow { itemId: string; quantity: number }
+interface ShrinkRow { itemId: string; quantity: number; variantId: string | null }
 
 /** Raised for conditions the user can fix in the form — surfaced as a 400. */
 class ShrinkageError extends Error {}
@@ -31,8 +31,9 @@ function parseRows(rows: unknown): ShrinkRow[] {
   for (const r of Array.isArray(rows) ? rows : []) {
     const itemId = (r as { itemId?: string })?.itemId
     const qty = Math.round(Number((r as { quantity?: unknown })?.quantity))
+    const variantId = (r as { variantId?: unknown })?.variantId
     if (!itemId || !Number.isFinite(qty) || qty <= 0) continue
-    out.push({ itemId, quantity: qty })
+    out.push({ itemId, quantity: qty, variantId: typeof variantId === 'string' && variantId ? variantId : null })
   }
   return out
 }
@@ -59,29 +60,57 @@ async function applyRows(
   for (const row of rows) {
     const item = await tx.inventoryItem.findUnique({ where: { id: row.itemId } })
     if (!item) throw new Error(`Item not found: ${row.itemId}`)
-    const previousQuantity = item.quantity
+    const itemPrevQuantity = item.quantity
     // Refuse rather than clamp: writing off fewer units than entered would look
     // like it worked while leaving the count wrong.
-    if (row.quantity > previousQuantity) {
-      throw new ShrinkageError(`${item.sku} — ${item.name}: cannot write off ${row.quantity} unit(s), only ${previousQuantity} on hand.`)
+    if (row.quantity > itemPrevQuantity) {
+      throw new ShrinkageError(`${item.sku} — ${item.name}: cannot write off ${row.quantity} unit(s), only ${itemPrevQuantity} on hand.`)
     }
-    const newQuantity = previousQuantity - row.quantity
+    const itemNewQuantity = itemPrevQuantity - row.quantity
+
+    // A row may target one variant (e.g. 3 of the pink got damaged) rather than the
+    // product as a whole. Validate it really belongs to this item before touching stock.
+    let variant: { id: string; quantity: number; variantLabel: string } | null = null
+    if (row.variantId) {
+      const v = await tx.inventoryVariant.findUnique({
+        where: { id: row.variantId },
+        select: { id: true, itemId: true, quantity: true, variantLabel: true, isActive: true },
+      })
+      if (!v || v.itemId !== row.itemId || !v.isActive) {
+        throw new ShrinkageError(`${item.sku} — ${item.name}: that variant does not belong to this item.`)
+      }
+      // A variant's count must never go negative — refuse rather than clamp, so the
+      // user learns the real on-hand figure instead of silently writing off less.
+      if (row.quantity > v.quantity) {
+        throw new ShrinkageError(`${item.sku} — ${item.name} (${v.variantLabel}): cannot write off ${row.quantity} unit(s), only ${v.quantity} on hand for this variant.`)
+      }
+      variant = { id: v.id, quantity: v.quantity, variantLabel: v.variantLabel }
+    }
+
     const adj = await tx.inventoryAdjustment.create({
       data: {
         itemId: row.itemId,
+        variantId: variant?.id ?? null,
         type: 'SHRINKAGE',
         quantityChange: row.quantity,
-        previousQuantity,
-        newQuantity,
+        // When a variant is targeted, the recorded before/after figures describe that
+        // variant's own stock (matching the modal's preview); otherwise the item's total.
+        previousQuantity: variant ? variant.quantity : itemPrevQuantity,
+        newQuantity: variant ? variant.quantity - row.quantity : itemNewQuantity,
         adjustmentDate: opts.when,
-        remarks: opts.remarks,
+        // The variant label rides on the remarks so product-level rows stay distinguishable.
+        remarks: variant ? `${opts.remarks} [${variant.variantLabel}]` : opts.remarks,
         batchId: opts.ref,
         referenceNumber: opts.ref,
         adjustedById: opts.userId,
       },
       select: { id: true },
     })
-    await tx.inventoryItem.update({ where: { id: row.itemId }, data: { quantity: newQuantity } })
+    await tx.inventoryItem.update({ where: { id: row.itemId }, data: { quantity: itemNewQuantity } })
+    // Keep the variant's own count in step, so per-colour/size stock stays truthful.
+    if (variant) {
+      await tx.inventoryVariant.update({ where: { id: variant.id }, data: { quantity: { decrement: row.quantity } } })
+    }
     await consumeFifoLots(tx, row.itemId, row.quantity)
     createdIds.push(adj.id)
   }
@@ -91,10 +120,14 @@ async function applyRows(
 /** Give back everything a set of shrinkage rows took, then remove the rows. */
 async function undoRows(
   tx: TxClient,
-  existing: { id: string; itemId: string; quantityChange: number }[],
+  existing: { id: string; itemId: string; quantityChange: number; variantId: string | null }[],
 ) {
   for (const a of existing) {
     await tx.inventoryItem.update({ where: { id: a.itemId }, data: { quantity: { increment: a.quantityChange } } })
+    if (a.variantId) {
+      // updateMany: the variant may have been deleted since (variantId set-null races aside).
+      await tx.inventoryVariant.updateMany({ where: { id: a.variantId }, data: { quantity: { increment: a.quantityChange } } })
+    }
     await restoreFifoLots(tx, a.itemId, a.quantityChange)
   }
   await tx.inventoryAdjustment.deleteMany({ where: { id: { in: existing.map((a) => a.id) } } })
@@ -138,6 +171,7 @@ export async function GET(req: Request) {
     rows: group.filter(Boolean).map((a) => ({
       adjustmentId: a!.id,
       itemId: a!.itemId,
+      variantId: a!.variantId || null,
       quantity: a!.quantityChange,
       itemSku: a!.item?.sku || '',
       itemName: a!.item?.name || '',
@@ -214,8 +248,8 @@ export async function PATCH(req: Request) {
     if (anchor.type !== 'SHRINKAGE') return NextResponse.json({ error: 'Only shrinkage rows are edited here.' }, { status: 400 })
 
     const existing = anchor.batchId?.startsWith('SHR-')
-      ? await prisma.inventoryAdjustment.findMany({ where: { batchId: anchor.batchId, type: 'SHRINKAGE' }, select: { id: true, itemId: true, quantityChange: true } })
-      : [{ id: anchor.id, itemId: anchor.itemId, quantityChange: anchor.quantityChange }]
+      ? await prisma.inventoryAdjustment.findMany({ where: { batchId: anchor.batchId, type: 'SHRINKAGE' }, select: { id: true, itemId: true, quantityChange: true, variantId: true } })
+      : [{ id: anchor.id, itemId: anchor.itemId, quantityChange: anchor.quantityChange, variantId: anchor.variantId }]
 
     const when = adjustmentDate ? new Date(adjustmentDate) : anchor.adjustmentDate
     // Keep the original reference when there is one, so the write-off stays traceable.
