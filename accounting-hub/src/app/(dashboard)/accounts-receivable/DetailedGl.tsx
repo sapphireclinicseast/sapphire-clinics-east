@@ -586,7 +586,7 @@ export default function DetailedGl({
       </ExpandablePanel>
 
       {editing && (
-        <GlCaseModal wallet={editing} cases={glCases} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onSaved() }} />
+        <GlCaseModal wallet={editing} cases={glCases} wallets={wallets} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); onSaved() }} />
       )}
       {editingCase && (
         <GlEntryModal
@@ -812,7 +812,7 @@ function GlEntryModal({
 }
 
 /* ── Edit modal — only the case-tracking fields, never the amounts the ledger uses ── */
-function GlCaseModal({ wallet, cases, onClose, onSaved }: { wallet: GlCaseWallet; cases: GlCaseRow[]; onClose: () => void; onSaved: () => void }) {
+function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlCaseWallet; cases: GlCaseRow[]; wallets: GlCaseWallet[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({
     glDocsSubmittedAt: dayKey(wallet.glDocsSubmittedAt),
     glRequestedAmount: wallet.glRequestedAmount != null ? String(num(wallet.glRequestedAmount)) : '',
@@ -834,6 +834,41 @@ function GlCaseModal({ wallet, cases, onClose, onSaved }: { wallet: GlCaseWallet
   const currentCase = cases.find(c => c.walletId === wallet.id) || null
   const [linkCaseId, setLinkCaseId] = useState(currentCase?.id || '')
   const linkable = cases.filter(c => !c.walletId || c.walletId === wallet.id)
+  // Moving the paper trail to a different letter. A wallet-backed row cannot be
+  // re-pointed — the row IS the wallet — so what moves is the case tracking, not
+  // the wallet. Balances, payments and orders are untouched.
+  const [moveTo, setMoveTo] = useState('')
+  const [moveSearch, setMoveSearch] = useState('')
+  const moveOptions = useMemo(() => {
+    const q = moveSearch.trim().toLowerCase()
+    const others = wallets.filter(w => w.id !== wallet.id)
+    return q
+      ? others.filter(w => w.patientName.toLowerCase().includes(q)
+          || (branchLabel(w.branch) || '').toLowerCase().includes(q)
+          || walletTag(w).toLowerCase().includes(q))
+      : others
+  }, [wallets, wallet.id, moveSearch])
+
+  const moveDetails = async () => {
+    if (!moveTo) return
+    const dest = wallets.find(w => w.id === moveTo)
+    if (!confirm(`Move the recorded details from ${wallet.patientName} to ${dest?.patientName || 'the selected letter'}?\n\n`
+      + 'Only the paper trail moves — dates, amounts, guardian, payout and QB entry. '
+      + 'Balances, payments and orders stay where they are.')) return
+    setBusy(true); setError('')
+    try {
+      const res = await fetch('/api/accounts-receivable/gl-case/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromWalletId: wallet.id, toWalletId: moveTo }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `Move failed (${res.status})`)
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Move failed')
+    } finally { setBusy(false) }
+  }
 
   const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -921,6 +956,38 @@ function GlCaseModal({ wallet, cases, onClose, onSaved }: { wallet: GlCaseWallet
               ))}
             </select>
             <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Links a standalone recorded entry to this POS wallet so they show as one row.</p>
+          </div>
+          <div className="sm:col-span-2 rounded-xl p-3" style={{ border: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+              Recorded against the wrong letter?
+            </label>
+            <p className="text-[10px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+              Moves the details above — dates, amounts, guardian, payout, QB entry — to another
+              Guarantee Letter. The wallets themselves are not touched: balances, payments and
+              orders stay where they are. Refused if the destination already has any of these
+              recorded, so nothing is overwritten.
+            </p>
+            <input
+              value={moveSearch}
+              onChange={e => setMoveSearch(e.target.value)}
+              placeholder="Search letters by name, branch or approved amount…"
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none mb-2" style={{ border: '1px solid var(--light-gray)' }} />
+            <div className="flex gap-2">
+              <select value={moveTo} onChange={e => setMoveTo(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg text-sm bg-white" style={{ border: '1px solid var(--light-gray)' }}>
+                <option value="">— pick the correct letter —</option>
+                {moveOptions.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.patientName} · {branchLabel(w.branch) || 'no branch'} · {walletTag(w)}
+                  </option>
+                ))}
+              </select>
+              <button onClick={moveDetails} disabled={!moveTo || busy}
+                className="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold border disabled:opacity-40"
+                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                Move details
+              </button>
+            </div>
           </div>
         </div>
 
