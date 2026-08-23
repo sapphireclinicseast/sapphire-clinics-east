@@ -10,6 +10,8 @@ import {
   X,
   Users as UsersIcon,
   Search,
+  Building2,
+  RefreshCw,
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 import Pagination from '@/components/ui/Pagination'
@@ -39,6 +41,7 @@ const ROLE_OPTIONS = [
   { value: 'AHGH_FRONTDESK', label: 'AHGH Front Desk' },
   { value: 'HMO_OFFICER', label: 'HMO Officer' },
   { value: 'MEDREP', label: 'Medical Representative (Reports — Gross Revenue only)' },
+  { value: 'INVESTOR', label: 'Investor (Financial Reports view-only — no drill-downs; BS/CF whole-company)' },
 ]
 
 const BRANCH_OPTIONS = [
@@ -62,6 +65,7 @@ const ROLE_LABELS: Record<string, string> = {
   AHGH_FRONTDESK: 'AHGH Front Desk',
   HMO_OFFICER: 'HMO Officer',
   MEDREP: 'Medical Representative',
+  INVESTOR: 'Investor',
 }
 
 const BRANCH_LABELS: Record<string, string> = {
@@ -256,6 +260,9 @@ export default function UsersPage() {
       {error && !modalOpen && (
         <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
       )}
+
+      {/* HR Branches Registry sync */}
+      <HrBranchesCard />
 
       {/* Table */}
       <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
@@ -512,6 +519,105 @@ export default function UsersPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── HR Branches Registry sync ───────────────────────────────────────────────
+// HR Platform is the source of truth for branch identity/contact config
+// (name, TIN, address, emails). This pulls a local read-only cache via
+// POST /api/branches/sync — same admin-triggered, full-replace pattern
+// as the Employees sync (see /api/payroll/employees?sync=true).
+
+interface HrBranchRow {
+  id: string
+  shortCode: string
+  name: string
+  brandName: string | null
+  tin: string | null
+  emailMain: string | null
+  active: boolean
+  syncedAt: string
+}
+
+function HrBranchesCard() {
+  const [branches, setBranches] = useState<HrBranchRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/branches')
+      if (res.ok) {
+        const data = await res.json()
+        setBranches(data.branches || [])
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleSync() {
+    setSyncing(true)
+    setSyncMsg('')
+    try {
+      const res = await fetch('/api/branches/sync', { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        setSyncMsg(`Synced ${data.synced} of ${data.total} (${data.created} new, ${data.updated} updated, ${data.deleted} removed)`)
+        load()
+      } else {
+        setSyncMsg('Sync failed: ' + (data.error || 'Unknown error'))
+      }
+    } catch (e) {
+      setSyncMsg('Sync failed: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border p-4 mb-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="flex items-center gap-2">
+          <Building2 size={16} style={{ color: 'var(--teal)' }} />
+          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Branches Registry</span>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
+          style={{ background: 'var(--teal)' }}
+        >
+          <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Syncing…' : 'Sync Branches'}
+        </button>
+      </div>
+      <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
+        Synced from HR Platform — edit branch details there, not here.
+      </p>
+      {syncMsg && <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>{syncMsg}</p>}
+      {loading ? (
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
+      ) : branches.length === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No branches synced yet.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {branches.map(b => (
+            <span
+              key={b.id}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+              style={{ background: b.active ? '#EAF6F4' : '#F3F4F6', color: b.active ? 'var(--charcoal)' : 'var(--mid-gray)' }}
+            >
+              <strong>{b.shortCode}</strong> {b.name}
+            </span>
+          ))}
         </div>
       )}
     </div>

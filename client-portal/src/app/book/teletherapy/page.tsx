@@ -4,6 +4,7 @@ import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { TELE_CATALOG, checkoutUrlFor, pwdNet, type TeleDept } from '@/lib/tele-services'
+import { branchLabel } from '@/lib/branch-label'
 
 const DEPT_LABELS: Record<TeleDept, string> = {
   OT: 'Occupational Therapy',
@@ -54,7 +55,7 @@ function BookTeletherapyInner() {
   }
 
   const dept = (department === 'OT' || department === 'SLP') ? (department as TeleDept) : null
-  const branchName = branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
+  const branchName = branchLabel(branch)
 
   if (!dept) {
     return (

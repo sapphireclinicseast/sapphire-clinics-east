@@ -1,22 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { sendEmail } from '@/lib/email'
+import { sendEmail, branchFromAddress } from '@/lib/email'
 import { loadEmailLogo, emailHeader } from '@/lib/email-branding'
 import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
-
-// Map a Staff.branch enum value to a label for the email
-const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'Sandbox East',
-  SBGH: 'Sandbox Greenhills',
-  SANDBOX_EAST: 'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
-  VERDANA_STORE: 'Verdana Store',
-}
 
 export async function POST(
   _req: NextRequest,
@@ -25,6 +16,14 @@ export async function POST(
   const session = await auth()
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  // Interns can upload IE / documents but cannot send them to patients —
+  // only their supervisor sends.
+  if (session.user.accountType === 'INTERN') {
+    return NextResponse.json(
+      { error: 'Interns cannot send reports. Ask your supervisor to review and send this report.' },
+      { status: 403 },
+    )
   }
 
   const { id: patientId, docId } = await params
@@ -147,6 +146,7 @@ export async function POST(
     await sendEmail({
       to: patient.email,
       cc: ccEmail ? [ccEmail] : undefined,
+      from: await branchFromAddress(branchKey),
       subject: `Initial Evaluation Report — ${patientName}`,
       html,
       attachments: [{ filename: doc.fileName, content: fileBuffer }],

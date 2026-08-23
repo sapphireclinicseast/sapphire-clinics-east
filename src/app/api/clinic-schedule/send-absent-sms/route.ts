@@ -97,7 +97,17 @@ async function dispatch(opts: {
   branch:    string
   message:   string
 }): Promise<'viber' | 'sms'> {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  // No cross-branch fallback — see send-sms/route.ts. Defaulting to SBEA
+  // would tell a Greenhills patient their clinician is out, from the East
+  // clinic's number.
+  const cfg = BRANCH_CONFIG[opts.branch]
+  if (!cfg) {
+    throw new Error(
+      `No SMS sender configured for branch "${opts.branch}". Refusing to send ` +
+      `from another branch's number — install httpSMS on that branch's phone ` +
+      `and set HTTPSMS_API_KEY_${opts.branch}.`,
+    )
+  }
 
   if (cfg.viberToken) {
     const sub = await prisma.viberSubscription.findFirst({

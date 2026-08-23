@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postJournalEntry } from '@/lib/accounting/posting'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -14,8 +15,15 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_AD
 //                           → that mode's order payments in the window, each
 //                             with its net-of-deductions value and whether it
 //                             is already settled by another deposit
-//   POST { txnId, modeId, orderPaymentIds } → create the batch and post the
-//                             bank line as POS_SETTLEMENT
+//   POST { txnId, modeId, orderPaymentIds } → create the batch, post the bank
+//                             line as POS_SETTLEMENT, and — when the mode's
+//                             orders book to a clearing account rather than
+//                             straight into this bank account — post the
+//                             reclassifying entry (Dr Bank / Cr Clearing) that
+//                             moves the settled net out of clearing. Deduction
+//                             fees (MDR/CWT) were already expensed at order
+//                             time (post-order.ts), so this JE only ever
+//                             carries the two cash-movement legs.
 //
 // Net per payment: gross − Σ(percentage deductions × gross) − Σ(fixed).
 
@@ -38,13 +46,13 @@ export async function GET(req: Request) {
     // offered too — just unflagged.
     const modes = await prisma.paymentMode.findMany({
       where: { isActive: true },
-      select: { id: true, name: true, paymentMethod: true, branch: true, accountId: true, deductions: { select: { name: true, rate: true, valueType: true } } },
+      select: { id: true, name: true, paymentMethod: true, branch: true, accountId: true, settlementBankAccountId: true, deductions: { select: { name: true, rate: true, valueType: true } } },
       orderBy: { name: 'asc' },
     })
     return NextResponse.json({
       modes: modes.map(m => ({
         id: m.id, name: m.name, method: m.paymentMethod, branch: m.branch,
-        settlesHere: m.accountId === txn.bankAccountId,
+        settlesHere: m.accountId === txn.bankAccountId || m.settlementBankAccountId === txn.bankAccountId,
         deductions: m.deductions.map(d => `${d.name} ${d.valueType === 'FIXED' ? '₱' : ''}${Number(d.rate)}${d.valueType === 'FIXED' ? '' : '%'}`),
       })),
       // POS money reaches the bank 0-3 days after the sale.
@@ -126,11 +134,21 @@ export async function POST(req: Request) {
     const dateLabel = dates.length === 1 ? dates[0] : `${dates[0]}…${dates[dates.length - 1]}`
     const label = `POS settlement · ${mode?.name || 'POS'} · ${dateLabel} · ${payments.length} payment(s) · net ₱${net.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
 
+    // If this mode's orders book to a clearing account (e.g. 1170 Undeposited
+    // Funds) rather than straight into the bank the deposit landed in, the
+    // settled net is still sitting in clearing — reclassify it into the real
+    // bank account now that the deposit confirms it arrived. Modes still
+    // booking directly to the settling bank account (accountId === the bank
+    // being reconciled) need no reclass — the money was already there.
+    const netRounded = Math.round(net * 100) / 100
+    const clearingAccountId = mode?.accountId && mode.accountId !== txn.bankAccountId ? mode.accountId : null
+    const needsReclass = Boolean(clearingAccountId) && netRounded > 0
+
     const batch = await prisma.$transaction(async (tx) => {
       const b = await tx.posSettlementBatch.create({
         data: {
           bankTransactionId: txn.id, paymentModeId: modeId || null, label,
-          grossTotal: Math.round(gross * 100) / 100, netTotal: Math.round(net * 100) / 100,
+          grossTotal: Math.round(gross * 100) / 100, netTotal: netRounded,
           createdById: session.user!.id ?? null,
           payments: { create: payments.map(p => ({ orderPaymentId: p.id, amount: Number(p.amount) })) },
         },
@@ -139,9 +157,23 @@ export async function POST(req: Request) {
         where: { id: txn.id },
         data: { status: 'POSTED', matchType: 'POS_SETTLEMENT', matchId: b.id, matchLabel: label, categoryAccountId: null },
       })
+      if (needsReclass && clearingAccountId) {
+        await postJournalEntry(tx, {
+          entryDate: txn.date,
+          description: `POS settlement reclass — ${label}`,
+          referenceType: 'POS_SETTLEMENT_RECLASS',
+          referenceId: b.id,
+          branch: 'ALL',
+          createdById: session.user!.id as string,
+          lines: [
+            { accountId: txn.bankAccountId, debit: netRounded, description: 'Settled into bank' },
+            { accountId: clearingAccountId, credit: netRounded, description: `Cleared from ${mode?.name || 'clearing'}` },
+          ],
+        })
+      }
       return b
     })
-    return NextResponse.json({ success: true, batchId: batch.id, label, gross, net })
+    return NextResponse.json({ success: true, batchId: batch.id, label, gross, net, reclassPosted: needsReclass })
   } catch (e) {
     console.error('POS settlement error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })

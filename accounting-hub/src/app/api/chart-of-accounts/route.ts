@@ -67,6 +67,8 @@ export async function GET(req: Request) {
         isActive: true,
         isBankAccount: true,
         isCheckingAccount: true,
+        bankRetiredAt: true,
+        branch: true,
         createdAt: true,
         createdBy: { select: { name: true } },
       },
@@ -88,7 +90,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount } = await req.json()
+    const { accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount, branch } = await req.json()
 
     if (!accountNumber?.trim() || !accountTitle?.trim() || !accountType) {
       return NextResponse.json({ error: 'Account number, title, and type are required' }, { status: 400 })
@@ -122,6 +124,8 @@ export async function POST(req: Request) {
         description: description?.trim() || null,
         isBankAccount: subType?.trim() === 'CURRENT_ASSETS' ? !!isBankAccount : false,
         isCheckingAccount: subType?.trim() === 'CURRENT_ASSETS' && !!isBankAccount ? !!isCheckingAccount : false,
+        // Only a bank account can belong to a branch; everything else is company-wide.
+        branch: subType?.trim() === 'CURRENT_ASSETS' && !!isBankAccount ? (branch || null) : null,
         createdById: session.user.id,
       },
     })
@@ -150,10 +154,35 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount } = await req.json()
+    const { id, accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount, branch, bankRetired } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Account ID is required' }, { status: 400 })
+    }
+
+    // Retire / unretire a bank account. Retirement pulls the account out of
+    // every bank dropdown and out of Bank Rec, so it is only allowed once the
+    // bank itself is finished: last statement balance zero and nothing pending.
+    if (bankRetired !== undefined) {
+      const acct = await prisma.account.findUnique({ where: { id }, select: { isBankAccount: true, bankRetiredAt: true } })
+      if (!acct) return NextResponse.json({ error: 'Account not found' }, { status: 404 })
+      if (bankRetired && !acct.bankRetiredAt) {
+        if (!acct.isBankAccount) return NextResponse.json({ error: 'Only bank accounts can be retired' }, { status: 400 })
+        const [pending, lastLine] = await Promise.all([
+          prisma.bankTransaction.count({ where: { bankAccountId: id, status: 'PENDING' } }),
+          prisma.bankTransaction.findFirst({
+            where: { bankAccountId: id, statementBalance: { not: null } },
+            orderBy: [{ date: 'desc' }, { id: 'desc' }], select: { statementBalance: true },
+          }),
+        ])
+        if (pending > 0) {
+          return NextResponse.json({ error: `Cannot retire: ${pending} bank line(s) are still pending — match or exclude them first` }, { status: 400 })
+        }
+        const lastBal = lastLine ? Number(lastLine.statementBalance) : 0
+        if (Math.abs(lastBal) >= 0.01) {
+          return NextResponse.json({ error: `Cannot retire: the last statement balance is ${lastBal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}, not zero` }, { status: 400 })
+        }
+      }
     }
 
     if (accountType && !VALID_TYPES.includes(accountType)) {
@@ -174,6 +203,7 @@ export async function PUT(req: Request) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updateData: any = {}
+    if (bankRetired !== undefined) updateData.bankRetiredAt = bankRetired ? new Date() : null
     if (accountNumber) updateData.accountNumber = accountNumber.trim()
     if (accountTitle) updateData.accountTitle = accountTitle.trim()
     if (accountType) updateData.accountType = accountType
@@ -192,6 +222,13 @@ export async function PUT(req: Request) {
     if (isCheckingAccount !== undefined || isBankAccount !== undefined || subType !== undefined) {
       const bankFinal = updateData.isBankAccount ?? !!isBankAccount
       updateData.isCheckingAccount = bankFinal ? !!isCheckingAccount : false
+    }
+    // Branch ownership is meaningless on a non-bank account, so it is cleared
+    // alongside the flag rather than left behind to mislead the reports.
+    if (branch !== undefined || isBankAccount !== undefined || subType !== undefined) {
+      const bankFinal = updateData.isBankAccount ?? !!isBankAccount
+      if (!bankFinal) updateData.branch = null
+      else if (branch !== undefined) updateData.branch = branch || null
     }
 
     const account = await prisma.account.update({

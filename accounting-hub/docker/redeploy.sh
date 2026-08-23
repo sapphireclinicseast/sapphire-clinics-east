@@ -26,10 +26,12 @@ else
   echo "  DB not running — skipping DB backup."
 fi
 
-# Keep only the 10 most recent source backups (pre_deploy_* only) to save disk
-ls -t "${BACKUP_DIR}"/pre_deploy_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm --
-# Keep only the 10 most recent DB backups
-ls -t "${DB_BACKUP_DIR}"/pre_deploy_*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm --
+# Keep only the 3 most recent source backups (pre_deploy_* only). Each is ~850MB
+# because it carries uploads/, so ten of them was 8GB — on a disk that only has
+# ~12GB spare while a --no-cache build needs ~11GB of it.
+ls -t "${BACKUP_DIR}"/pre_deploy_*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --
+# Keep 5 pre-deploy DB dumps; the nightly off-site job holds the longer history.
+ls -t "${DB_BACKUP_DIR}"/pre_deploy_*.sql.gz 2>/dev/null | tail -n +6 | xargs -r rm --
 echo "─────────────────────────────────────────────────────────────────────────"
 
 echo "Building app image..."
@@ -128,6 +130,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "PosSettlementPayment_orderPaymentId_key" ON "
 CREATE INDEX IF NOT EXISTS "PosSettlementPayment_batchId_idx" ON "PosSettlementPayment"("batchId");
 ALTER TABLE "PaymentModeDeduction" ADD COLUMN IF NOT EXISTS "effectiveFrom" TIMESTAMP(3);
 ALTER TABLE "PaymentModeDeduction" ADD COLUMN IF NOT EXISTS "effectiveTo" TIMESTAMP(3);
+ALTER TABLE "PaymentMode" ADD COLUMN IF NOT EXISTS "settlementBankAccountId" TEXT;
+ALTER TABLE "SalesDayClearing" ADD COLUMN IF NOT EXISTS "confirmed" JSONB;
 
 -- PayMongo checkout/payment tracking (Phase 1)
 CREATE TABLE IF NOT EXISTS "PaymongoCheckout" (
@@ -275,6 +279,58 @@ END$$;
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionLength" DECIMAL(65,30);
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionWidth"  DECIMAL(65,30);
 ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionHeight" DECIMAL(65,30);
+-- Shipping weight (kg) — feeds the shipping rates on verdanarehab.com
+ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "weightKg" DECIMAL(65,30);
+
+-- Supplier purchase requests: what we are asking a supplier for, and who asked
+CREATE TABLE IF NOT EXISTS "SupplierRequest" (
+  "id" TEXT NOT NULL,
+  "referenceNumber" TEXT NOT NULL,
+  "supplierId" TEXT NOT NULL,
+  "requestDate" TIMESTAMP(3) NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'DRAFT',
+  "remarks" TEXT,
+  "preparedByName" TEXT NOT NULL,
+  "preparedById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SupplierRequest_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "SupplierRequest_referenceNumber_key" ON "SupplierRequest"("referenceNumber");
+CREATE INDEX IF NOT EXISTS "SupplierRequest_supplierId_idx" ON "SupplierRequest"("supplierId");
+CREATE INDEX IF NOT EXISTS "SupplierRequest_requestDate_idx" ON "SupplierRequest"("requestDate");
+DO $$ BEGIN
+  ALTER TABLE "SupplierRequest" ADD CONSTRAINT "SupplierRequest_supplierId_fkey" FOREIGN KEY ("supplierId") REFERENCES "Supplier"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "SupplierRequest" ADD CONSTRAINT "SupplierRequest_preparedById_fkey" FOREIGN KEY ("preparedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS "SupplierRequestItem" (
+  "id" TEXT NOT NULL,
+  "requestId" TEXT NOT NULL,
+  "itemId" TEXT NOT NULL,
+  "quantity" INTEGER NOT NULL,
+  "remarks" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "SupplierRequestItem_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "SupplierRequestItem_requestId_idx" ON "SupplierRequestItem"("requestId");
+CREATE INDEX IF NOT EXISTS "SupplierRequestItem_itemId_idx" ON "SupplierRequestItem"("itemId");
+DO $$ BEGIN
+  ALTER TABLE "SupplierRequestItem" ADD CONSTRAINT "SupplierRequestItem_requestId_fkey" FOREIGN KEY ("requestId") REFERENCES "SupplierRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "SupplierRequestItem" ADD CONSTRAINT "SupplierRequestItem_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "InventoryItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Per-variant physical specs (NULL = inherit the parent item). Size variants
+-- ship in different boxes, so LWH + weight are settable per variant; the
+-- storefront charges shipping by the variant's weight.
+ALTER TABLE "InventoryVariant" ADD COLUMN IF NOT EXISTS "dimensionLength" DECIMAL(10,2);
+ALTER TABLE "InventoryVariant" ADD COLUMN IF NOT EXISTS "dimensionWidth"  DECIMAL(10,2);
+ALTER TABLE "InventoryVariant" ADD COLUMN IF NOT EXISTS "dimensionHeight" DECIMAL(10,2);
+ALTER TABLE "InventoryVariant" ADD COLUMN IF NOT EXISTS "weightKg"        DECIMAL(10,3);
 
 -- Inventory adjustment: display reference + batch FK
 ALTER TABLE "InventoryAdjustment" ADD COLUMN IF NOT EXISTS "referenceNumber" TEXT;
@@ -637,6 +693,38 @@ BEGIN
 END$$;
 SQL
 
+# ── GL processor payout (Detailed GL → Pay GL Processor) ─────────────────────
+# The deploy step deliberately does not replay prisma/migrations, so a schema
+# change ships here or it does not ship at all. These three columns are read by
+# the AR endpoint, so without them the Guarantee Letters tab fails to load.
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+-- GlCase is created out-of-band like the rest of this schema, so guard on the
+-- table existing: on an environment that has not got it yet this is a no-op
+-- rather than an error that aborts the rest of the deploy.
+DO $$
+BEGIN
+  IF to_regclass('public."GlCase"') IS NULL THEN
+    RAISE NOTICE 'GlCase not present — skipping processor payout columns';
+    RETURN;
+  END IF;
+
+  ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorRfpId" TEXT;
+  ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorPaidAt" TIMESTAMP(3);
+  ALTER TABLE "GlCase" ADD COLUMN IF NOT EXISTS "processorProofUrl" TEXT;
+
+  CREATE INDEX IF NOT EXISTS "GlCase_processorRfpId_idx" ON "GlCase"("processorRfpId");
+
+  -- SET NULL, so deleting an RFP releases its letters for a fresh batch rather
+  -- than orphaning them as permanently unpayable.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'GlCase_processorRfpId_fkey') THEN
+    ALTER TABLE "GlCase"
+      ADD CONSTRAINT "GlCase_processorRfpId_fkey"
+      FOREIGN KEY ("processorRfpId") REFERENCES "ReimbursementReport"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END$$;
+SQL
+
 # ── Consumable form-stock tracking (control-number ranges) ────────────────────
 docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
 CREATE TABLE IF NOT EXISTS "FormReceipt" (
@@ -793,6 +881,34 @@ DO $$ BEGIN
     ALTER TABLE "ScholarRelease" ADD CONSTRAINT "ScholarRelease_awardId_fkey" FOREIGN KEY ("awardId") REFERENCES "ScholarAward"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- Local synced cache of HR Platform's Branches Registry (Branches Registry
+-- Phase 2). Populated by POST /api/branches/sync.
+CREATE TABLE IF NOT EXISTS "HrBranch" (
+  "id"                      TEXT NOT NULL,
+  "shortCode"               TEXT NOT NULL,
+  "aliases"                 TEXT[] NOT NULL DEFAULT '{}',
+  "opsHubBranch"            TEXT,
+  "opsHubClassPortalBranch" TEXT,
+  "acctHubBranch"           TEXT,
+  "acctHubServiceBranch"    TEXT,
+  "teletherapyBranch"       TEXT,
+  "name"                    TEXT NOT NULL,
+  "brandName"               TEXT,
+  "tin"                     TEXT,
+  "address"                 TEXT,
+  "phone"                   TEXT,
+  "emailMain"               TEXT,
+  "emailHr"                 TEXT,
+  "emailAccounting"         TEXT,
+  "departmentsOffered"      TEXT[] NOT NULL DEFAULT '{}',
+  "operatingDays"           TEXT[] NOT NULL DEFAULT '{}',
+  "operatingHoursOpen"      TEXT,
+  "operatingHoursClose"     TEXT,
+  "active"                  BOOLEAN NOT NULL DEFAULT true,
+  "syncedAt"                TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "HrBranch_pkey" PRIMARY KEY ("id")
+);
 SQL
 
 echo "Redeploy complete."

@@ -1,27 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Resend } from 'resend'
 import { getGmailClient } from '@/lib/email'
-
-const BRANCH_CONFIG: Record<string, { subject: string; ccEmail: string; location: string; phone: string; teamName: string; branchName: string }> = {
-  SBEA: {
-    subject:    'Important: Session Cancellation — Aura Health Rehab East',
-    ccEmail:    'east@sapphireclinicseast.org',
-    location:   'Aura Health Rehab – East Branch, Level 4, Robinsons MetroEast, Marcos Highway, Brgy. Dela Paz, Pasig City',
-    phone:      '0917 118 9289 | (02) 5310-4991',
-    teamName:   'The Aura Health Rehab – East Team',
-    branchName: 'East Branch',
-  },
-  SBGH: {
-    subject:    'Important: Session Cancellation — Aura Health Rehab Greenhills',
-    ccEmail:    'greenhills@sapphireclinicseast.org',
-    location:   'Aura Health Rehab – Greenhills Branch, Unit 8L, GH Tower Offices at Greenhills, South Drive, Brgy. Greenhills, Ortigas Avenue, San Juan City',
-    phone:      '0917 770 1686 | (02) 8529-1590',
-    teamName:   'The Aura Health Rehab – Greenhills Team',
-    branchName: 'Greenhills Branch',
-  },
-}
+import { getBranchNotifyConfig, getBranchSender, branchCc, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
 const LOGO_URL = 'https://operations.sapphireclinicseast.org/brand/aura-logo-cream.png'
 
@@ -43,9 +24,9 @@ function buildAbsentEmailHtml(opts: {
   startTime:          string
   endTime:            string
   sessionType:        string
-  branch:             string
+  cfg:                BranchNotifyConfig
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   const phone1 = cfg.phone.split('|')[0].trim()
 
   return `<!DOCTYPE html>
@@ -113,9 +94,9 @@ function buildAbsentEmailText(opts: {
   startTime:          string
   endTime:            string
   sessionType:        string
-  branch:             string
+  cfg:                BranchNotifyConfig
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   return [
     `Dear ${opts.patientName},`,
     '',
@@ -144,13 +125,13 @@ function buildAbsentEmailText(opts: {
 }
 
 function makeRawEmail(opts: {
-  to: string; cc: string; from: string; subject: string; html: string; text: string
+  to: string; cc: string; from: string; fromName: string; subject: string; html: string; text: string
 }): string {
   const boundary = 'sa_boundary_' + Date.now()
   const message = [
-    `From: Aura Health Rehab <${opts.from}>`,
+    `From: ${opts.fromName} <${opts.from}>`,
     `To: ${opts.to}`,
-    `Cc: ${opts.cc}`,
+    ...(opts.cc ? [`Cc: ${opts.cc}`] : []),
     `Subject: ${opts.subject}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -171,33 +152,24 @@ function makeRawEmail(opts: {
 }
 
 async function sendEmail(opts: {
-  to: string; subject: string; html: string; text: string; cc: string
+  to: string; subject: string; html: string; text: string; cfg: BranchNotifyConfig
 }): Promise<void> {
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const resend = new Resend(process.env.RESEND_API_KEY)
-      const { error } = await resend.emails.send({
-        from: 'Aura Health Rehab <noreply@do-not-reply.sapphireclinicseast.org>',
-        to: [opts.to],
-        cc: [opts.cc],
-        subject: opts.subject,
-        html: opts.html,
-        text: opts.text,
-      })
-      if (error) throw new Error(error.message)
-      return
-    } catch (err) {
-      console.error('[send-absent-email] Resend failed, falling back to Gmail API:', err)
+  // Sender is the branch's own mailbox (HR Platform → Branches → main email),
+  // not whichever account happens to be first in the table.
+  const sender = await getBranchSender(opts.cfg)
+  if (sender) {
+    if (!sender.isBranchMailbox) {
+      console.warn(
+        `[send-absent-email] ${opts.cfg.ccEmail} is not a connected Gmail account — ` +
+        `sending as ${sender.email} instead. Connect it under Settings → Email.`,
+      )
     }
-  }
-
-  const gmailAcct = await prisma.gmailAccount.findFirst()
-  if (gmailAcct) {
     const raw = makeRawEmail({
-      to: opts.to, cc: opts.cc, from: gmailAcct.email,
+      to: opts.to, cc: branchCc(opts.cfg, sender.email), from: sender.email,
+      fromName: opts.cfg.brandName,
       subject: opts.subject, html: opts.html, text: opts.text,
     })
-    const gmail = await getGmailClient(gmailAcct.refreshToken)
+    const gmail = await getGmailClient(sender.refreshToken)
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
   }
 }
@@ -233,7 +205,8 @@ export async function POST(req: NextRequest) {
 
   const branch             = reqBranch || schedules[0].staff.branch
   const clinicianFullName  = `${schedules[0].staff.firstName} ${schedules[0].staff.lastName}`
-  const cfg                = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg                = await getBranchNotifyConfig(branch)
+  const subject             = `Important: Session Cancellation — Aura Health Rehab ${cfg.brandShort}`
   let sent = 0
 
   for (const s of schedules) {
@@ -241,7 +214,7 @@ export async function POST(req: NextRequest) {
     try {
       await sendEmail({
         to:      s.patient.email,
-        subject: cfg.subject,
+        subject,
         html:    buildAbsentEmailHtml({
           patientName:       `${s.patient.firstName} ${s.patient.lastName}`,
           clinicianFullName,
@@ -249,7 +222,7 @@ export async function POST(req: NextRequest) {
           startTime:         s.startTime,
           endTime:           s.endTime,
           sessionType:       s.sessionType,
-          branch,
+          cfg,
         }),
         text:    buildAbsentEmailText({
           patientName:       `${s.patient.firstName} ${s.patient.lastName}`,
@@ -258,9 +231,9 @@ export async function POST(req: NextRequest) {
           startTime:         s.startTime,
           endTime:           s.endTime,
           sessionType:       s.sessionType,
-          branch,
+          cfg,
         }),
-        cc: cfg.ccEmail,
+        cfg,
       })
       sent++
     } catch (err) {

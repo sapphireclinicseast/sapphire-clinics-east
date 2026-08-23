@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
+import type { PaymentMethod } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+
+// The only methods Sales Checking reconciles — the ones that reach a bank
+// account. Must stay in step with CHECKING_METHODS in the POS page and in
+// /api/pos/sales-clearing/auto.
+const CHECKING_METHODS: PaymentMethod[] = ['CASH', 'CREDIT_CARD', 'DEBIT', 'GCASH', 'PAYMAYA', 'PAYMONGO']
 
 // Which POS order payments a bank deposit has actually confirmed.
 //
@@ -10,10 +16,13 @@ import { prisma } from '@/lib/prisma'
 // the single definition of "the money arrived"; Sales Checking reads it rather
 // than keeping a parallel notion of cleared.
 //
-// Only payments made through a configured PaymentMode are in scope: those are
-// the ones that lodge into a bank or cash account and so are expected to turn
-// up as a deposit. HMO and wallet payments carry no mode — they settle through
-// AR and a wallet balance, not through a bank line.
+// Scope is decided by payment METHOD, not by whether a PaymentMode is
+// configured: only the methods Sales Checking reconciles (the ones that reach
+// a bank account) are included, mirroring CHECKING_METHODS in
+// /api/pos/sales-clearing/auto and the POS page. HMO, GL and wallet-type
+// methods settle through AR and a wallet balance, never as a deposit — while a
+// legacy CASH/GCASH payment with a missing mode is still real money that must
+// show as untagged rather than silently vanish.
 //
 // GET ?branch=&dateFrom=&dateTo=
 //   → settled:  one row per payment a deposit has confirmed
@@ -39,9 +48,12 @@ export async function GET(req: Request) {
 
   const payments = await prisma.orderPayment.findMany({
     where: {
-      paymentModeId: { not: null },
+      method: { in: CHECKING_METHODS },
       order: {
-        status: 'COMPLETED',
+        // Not just COMPLETED: a REOPENED order's money was still taken, so its
+        // payments must show as untagged rather than vanish. Only VOIDED
+        // orders are out — their payments were reversed.
+        status: { not: 'VOIDED' },
         transactionDate: { gte: lo, lte: hi },
         ...(branch ? { branch } : {}),
       },
@@ -96,7 +108,7 @@ export async function GET(req: Request) {
       ...row(p),
       batchId: l.batch.id,
       label: l.batch.label,
-      bankDate: bank ? bank.date.toISOString().slice(0, 10) : null,
+      bankDate: bank ? bank.date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : null,
       bankAmount: bank ? Number(bank.received) : null,
     })
   }

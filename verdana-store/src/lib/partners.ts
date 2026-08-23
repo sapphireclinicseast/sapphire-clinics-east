@@ -1,0 +1,180 @@
+// ── Institutional (partner clinic/school) accounts + subscription tiers ──────
+// SERVER-ONLY. Partners live in src/data/partners.json (runtime data, not in git,
+// excluded from deploy — same pattern as store-data.json / vouchers.json).
+
+import { readFile, writeFile, mkdir, rename } from 'fs/promises'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
+import { randomBytes, scryptSync, timingSafeEqual, createHmac } from 'crypto'
+
+// ── Tier catalogue (from Verdana_Clinic_Partnership_Tiers) ───────────────────
+// clinicToys/clinicBulky = discount % for the clinic & its consultants;
+// patientToys = discount % the clinic can pass to its patients (Toys only).
+export interface Tier {
+  key: 'PLATINUM' | 'GOLD' | 'SILVER'
+  name: string
+  annualFee: number
+  clinicToys: number
+  clinicBulky: number
+  patientToys: number
+}
+
+export const TIERS: Record<Tier['key'], Tier> = {
+  PLATINUM: { key: 'PLATINUM', name: 'Platinum', annualFee: 20000, clinicToys: 20, clinicBulky: 8, patientToys: 20 },
+  GOLD: { key: 'GOLD', name: 'Gold', annualFee: 15000, clinicToys: 15, clinicBulky: 5, patientToys: 15 },
+  SILVER: { key: 'SILVER', name: 'Silver', annualFee: 10000, clinicToys: 10, clinicBulky: 3, patientToys: 10 },
+}
+
+// Collection slugs grouped into the two discount bands. "toys" = Toys & Sensory
+// Tools (higher %); "bulky" = Furniture/Room Pieces + Active & Sensory Play.
+export const TOYS_COLLECTIONS = ['pretend-play-learning-toys', 'sensory-therapeutic-tools']
+export const BULKY_COLLECTIONS = ['furniture-room-pieces', 'active-sensory-play']
+
+export const THERAPIST_RANGES = ['1–5', '6–10', '11–20', '21–50', '50+']
+export const PATIENT_RANGES = ['1–50', '51–200', '201–500', '501–1,000', '1,000+']
+
+export interface PartnerInvoice {
+  id: string
+  filename: string // original filename (for display)
+  url: string // /api/uploads/... path (unguessable)
+  uploadedAt: string
+}
+
+export interface Partner {
+  id: string
+  createdAt: string
+  // Institution + representative
+  institution: string
+  website?: string
+  repFirstName: string
+  repLastName: string
+  email: string
+  mobile: string
+  therapistsRange: string
+  patientsRange: string
+  // Account
+  username: string
+  passwordHash: string // scrypt: salt:hash (hex)
+  // Billing / sales-invoice details (added by the partner in their portal)
+  officialBusinessName?: string
+  tin?: string
+  businessAddress?: string
+  // Subscription (filled once they pay — see the portal stage)
+  tier?: Tier['key'] | null
+  subscriptionStatus: 'unpaid' | 'active' | 'expired'
+  paidAt?: string | null
+  expiresAt?: string | null
+  patientCode?: string | null
+  consultantCode?: string | null
+  /** Sales invoices uploaded by admin (written manually), visible in the partner portal. */
+  invoices?: PartnerInvoice[]
+  // Lifecycle
+  /** Which pre-expiry reminders were already emailed, e.g. ['30','7','1']. Reset on renewal. */
+  remindersSent?: string[]
+  /** PayMongo checkout ids already activated — guards against duplicate webhooks. */
+  processedCheckouts?: string[]
+}
+
+const DATA_FILE = join(process.cwd(), 'src', 'data', 'partners.json')
+
+function parse(raw: string): Partner[] {
+  const p = JSON.parse(raw)
+  if (Array.isArray(p)) return p
+  return Array.isArray(p?.partners) ? p.partners : []
+}
+
+export async function readPartners(): Promise<Partner[]> {
+  try {
+    return parse(await readFile(DATA_FILE, 'utf-8'))
+  } catch {
+    return []
+  }
+}
+
+export function readPartnersSync(): Partner[] {
+  try {
+    if (!existsSync(DATA_FILE)) return []
+    return parse(readFileSync(DATA_FILE, 'utf-8'))
+  } catch {
+    return []
+  }
+}
+
+export async function writePartners(list: Partner[]): Promise<void> {
+  await mkdir(join(process.cwd(), 'src', 'data'), { recursive: true })
+  const tmp = `${DATA_FILE}.tmp`
+  await writeFile(tmp, JSON.stringify(list, null, 2))
+  await rename(tmp, DATA_FILE) // atomic
+}
+
+// ── Password hashing (Node scrypt — no external dependency) ───────────────────
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString('hex')
+  const hash = scryptSync(password, salt, 64).toString('hex')
+  return `${salt}:${hash}`
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  try {
+    const [salt, hash] = stored.split(':')
+    if (!salt || !hash) return false
+    const test = scryptSync(password, salt, 64)
+    const known = Buffer.from(hash, 'hex')
+    return test.length === known.length && timingSafeEqual(test, known)
+  } catch {
+    return false
+  }
+}
+
+// ── Signed session token (HMAC — stored in an httpOnly cookie) ────────────────
+export const PARTNER_COOKIE = 'verdana_partner'
+function secret(): string {
+  return process.env.PARTNER_SESSION_SECRET || 'verdana-partner-dev-secret-change-me'
+}
+
+/** Sign a session valid for `days` (default 30). */
+export function signSession(partnerId: string, days = 30): string {
+  const exp = Math.floor(Date.now() / 1000) + days * 86400
+  const body = `${partnerId}.${exp}`
+  const sig = createHmac('sha256', secret()).update(body).digest('hex')
+  return `${body}.${sig}`
+}
+
+/** Verify a session token → partnerId, or null if invalid/expired. */
+export function verifySession(token: string | undefined): string | null {
+  if (!token) return null
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  const [id, exp, sig] = parts
+  const expected = createHmac('sha256', secret()).update(`${id}.${exp}`).digest('hex')
+  if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null
+  if (Number(exp) * 1000 < Date.now()) return null
+  return id
+}
+
+/** Extract + verify the partner session from a request's cookie. */
+export function partnerIdFromRequest(req: Request): string | null {
+  const raw = req.headers.get('cookie') || ''
+  let token: string | undefined
+  for (const part of raw.split(';')) {
+    const [k, ...v] = part.trim().split('=')
+    if (k === PARTNER_COOKIE) token = decodeURIComponent(v.join('='))
+  }
+  return verifySession(token)
+}
+
+export function publicPartner(p: Partner) {
+  // Never expose the password hash.
+  const { passwordHash, ...rest } = p
+  void passwordHash
+  // Reflect expiry without a cron: an active subscription past its end date reads as expired.
+  if (rest.subscriptionStatus === 'active' && rest.expiresAt && new Date(rest.expiresAt).getTime() < Date.now()) {
+    rest.subscriptionStatus = 'expired'
+  }
+  return rest
+}
+
+export function findByUsername(list: Partner[], username: string): Partner | undefined {
+  const u = (username || '').trim().toLowerCase()
+  return list.find((p) => p.username.toLowerCase() === u)
+}

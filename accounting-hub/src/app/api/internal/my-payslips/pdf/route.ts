@@ -20,6 +20,7 @@ import { prisma } from '@/lib/prisma'
 import { existsSync } from 'fs'
 import { readFile } from 'fs/promises'
 import path from 'path'
+import { payslipBranchLabel } from '@/lib/payslip-pdf-employee'
 
 const PDF_DIR = process.env.PDF_STORAGE_DIR || '/app/uploads/payslips'
 
@@ -29,13 +30,6 @@ function verifyKey(req: NextRequest): boolean {
   return req.headers.get('authorization') === `Bearer ${key}`
 }
 
-const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-}
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -102,7 +96,7 @@ async function buildEmployeePdf(slip: {
 
   doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(...MID)
   doc.text(`Employee:  ${slip.employee.lastName}, ${slip.employee.firstName}`, margin, y); y += 5
-  doc.text(`Branch:    ${BRANCH_LABEL[slip.branch] ?? slip.branch}`, margin, y); y += 5
+  doc.text(`Branch:    ${payslipBranchLabel(slip.branch)}`, margin, y); y += 5
   doc.text(`Cut-off:   ${fmtCutoffLabel(slip.cutoffPeriod)}`, margin, y); y += 8
 
   const num = (v: unknown) => Number(v ?? 0)

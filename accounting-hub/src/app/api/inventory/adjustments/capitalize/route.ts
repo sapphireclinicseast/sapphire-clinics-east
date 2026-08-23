@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { recalcWeightedUnitCost } from '@/lib/fifo'
+import { postSoldCostRestatement } from '@/lib/accounting/post-cost-restatement'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -62,7 +63,19 @@ export async function POST(req: Request) {
       if (newUnitCost > 0) {
         await tx.inventoryItem.update({ where: { id: lot.itemId }, data: { unitCost: newUnitCost } })
       }
-      return { newUnitCost }
+      // Units of this lot already sold carry the pre-freight cost in their COGS.
+      // Recalc above only re-values what is still on hand, so the sold units'
+      // share of the freight would otherwise stay stranded in Inventory.
+      const soldUnits = qty - (lot.remainingQuantity ?? qty)
+      const restatement = await postSoldCostRestatement(tx, {
+        changes: [{ itemId: lot.itemId, soldUnits, oldUnitCost: priorTotal / qty, newUnitCost: newLocal }],
+        entryDate: new Date(),
+        createdById: session.user!.id as string,
+        referenceType: 'INVENTORY_COST_RESTATEMENT',
+        referenceId: adjustmentId,
+        description: `Freight capitalized into sold units — ${item.name}`,
+      })
+      return { newUnitCost, restatement }
     })
 
     // Stamp the source entry so the "Recorded in Inventory" state persists.
@@ -83,11 +96,18 @@ export async function POST(req: Request) {
         action: 'FREIGHT_CAPITALIZE',
         entity: 'inventoryAdjustment',
         entityId: adjustmentId,
-        details: { itemId: lot.itemId, itemName: item.name, freight, priorTotalLandedCost: priorTotal, newTotalLandedCost: newTotal, newUnitCost: result.newUnitCost, sourceEntryId: sourceEntryId || null },
+        details: {
+          itemId: lot.itemId, itemName: item.name, freight,
+          priorTotalLandedCost: priorTotal, newTotalLandedCost: newTotal, newUnitCost: result.newUnitCost,
+          sourceEntryId: sourceEntryId || null,
+          costRestatement: result.restatement.posted
+            ? { totalDelta: result.restatement.totalDelta, journalEntryIds: result.restatement.journalEntryIds }
+            : { skipped: result.restatement.reason },
+        },
       },
     })
 
-    return NextResponse.json({ ok: true, newUnitCost: result.newUnitCost, newTotalLandedCost: newTotal, inventoryRecordedAt })
+    return NextResponse.json({ ok: true, newUnitCost: result.newUnitCost, newTotalLandedCost: newTotal, inventoryRecordedAt, costRestatement: result.restatement })
   } catch (err) {
     console.error('capitalize freight error:', err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to capitalize freight' }, { status: 500 })

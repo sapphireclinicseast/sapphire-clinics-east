@@ -61,7 +61,27 @@ export default function LoginPage() {
       setError('Invalid email or password.')
       setLoading(false)
     } else {
-      router.push('/dashboard')
+      // Investor accounts are gated out of /dashboard entirely (see
+      // (dashboard)/layout.tsx's INVESTOR_ALLOWED_PREFIXES) — pushing them
+      // there first meant every investor login triggered a client-side
+      // soft-navigation into a chained server redirect
+      // (/dashboard -> /patients/dashboard). That chain is what actually
+      // produced the blank-until-refresh bug: Next's router got stuck
+      // retrying the same RSC fetch for the redirect target for several
+      // seconds (sometimes 20+) before finally resolving. Reading the role
+      // here and routing straight to the real destination skips the hop
+      // entirely, so there's no mid-navigation redirect for the router to
+      // get stuck on.
+      let dest = '/dashboard'
+      try {
+        const sessionRes = await fetch('/api/auth/session')
+        const session = await sessionRes.json()
+        if (session?.user?.role === 'INVESTOR') dest = '/patients/dashboard'
+      } catch {
+        // fall through to /dashboard — the layout gate still redirects
+        // investor sessions correctly, just via the slower chained path.
+      }
+      router.push(dest)
     }
   }
 

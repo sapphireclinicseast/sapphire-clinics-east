@@ -6,6 +6,7 @@
 // meta.otherFees and included in its grossTotal; the per-branch prefill template
 // is shared across all RFP types (/api/payroll/benefit-fee-template).
 import { useEffect, useState } from 'react'
+import { AccountPicker } from '@/components/AccountPicker'
 import { Plus, Trash2, Save, CheckCircle2 } from 'lucide-react'
 
 export interface RfpFee { accountTitle: string; description: string; requestor: string; grossAmount: string; vatable: string; hasEwt: boolean; ewtRate: string }
@@ -91,10 +92,9 @@ export function RfpOtherFeesSection({ state, branch }: { state: RfpOtherFeesStat
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
                   <label className="block text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>Account / Item</label>
-                  <select value={f.accountTitle} onChange={e => setFees(fees.map((x, j) => j === i ? { ...x, accountTitle: e.target.value } : x))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                    <option value="">Select expense account…</option>
-                    {coa.map(a => <option key={a.id} value={a.accountTitle}>{a.accountNumber} · {a.accountTitle}</option>)}
-                  </select>
+                  <AccountPicker accounts={coa} value={f.accountTitle}
+                    onChange={v => setFees(fees.map((x, j) => j === i ? { ...x, accountTitle: v } : x))}
+                    placeholder="Select expense account…" />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>Description</label>

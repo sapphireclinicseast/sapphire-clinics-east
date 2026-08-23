@@ -18,7 +18,32 @@ export function Footer() {
   return (
     <footer className="bg-verdana-dark-teal text-white">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+        {/* Contact Us */}
+        <div className="mb-10 max-w-md">
+          <h3 className="text-sm font-semibold uppercase tracking-wider">Contact Us</h3>
+          <address className="mt-4 space-y-2 text-sm not-italic text-gray-300">
+            <p>
+              Unit 210B, Henry&apos;s Building, 80 Ortigas Extension, Greenhills, San Juan City
+              1502
+            </p>
+            <p>
+              <span className="text-gray-400">Products:</span>{" "}
+              <a
+                href="mailto:verdanatrading@gmail.com"
+                className="hover:text-white transition-colors"
+              >
+                verdanatrading@gmail.com
+              </a>
+            </p>
+            <p>
+              <a href="tel:+639171731368" className="hover:text-white transition-colors">
+                +63 917 173 1368
+              </a>
+            </p>
+          </address>
+        </div>
+
+        <div className="grid grid-cols-2 gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {/* Shop column */}
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wider">Shop</h3>
@@ -90,7 +115,7 @@ export function Footer() {
               <Instagram className="h-5 w-5" />
             </a>
             <a
-              href="https://www.tiktok.com/@verdanarehabsolutions"
+              href="https://www.tiktok.com/@verdanarehab"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-300 hover:text-white transition-colors"

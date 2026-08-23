@@ -16,6 +16,7 @@ rsync -avz --delete \
   --exclude='prisma/generated' \
   --exclude='public/uploads' \
   --exclude='src/data/product-images.json' \
+  --exclude='src/data/product-videos.json' \
   --exclude='src/data/store-data.json' \
   --exclude='src/data/settings.json' \
   --exclude='src/data/orders.json' \

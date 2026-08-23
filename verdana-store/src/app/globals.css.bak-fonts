@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* --- Verdana brand palette (softer / lighter "Montessori" refresh) --- */
+  /* Core colors from the revised brand guide */
+  --color-verdana-sage: #bdc3aa;       /* RHYMES — primary soft green */
+  --color-verdana-blue: #96adc0;       /* MUSICAL — dusty blue */
+  --color-verdana-clay: #e6ae98;       /* FAIRY TALE — terracotta */
+  --color-verdana-peach: #f2b174;      /* warm peach (gradients / CTAs) */
+  --color-verdana-cream: #f5f0e8;      /* CRAFTS — cream base */
+  --color-verdana-ink: #2b3a42;        /* soft dark navy — text & dark surfaces */
+
+  /* Legacy token names remapped to the new palette so existing
+     components restyle automatically while keeping proper contrast. */
+  --color-verdana-teal: #3f5551;       /* dark anchor: deep muted sage-teal (footer, primary buttons) */
+  --color-verdana-dark-teal: #2c3d3a;  /* deeper anchor / hover state */
+  --color-verdana-orange: #d98c66;     /* warm accent → soft terracotta (eyebrows, badges) */
+  --color-verdana-light-blue: #c4d3dd; /* soft dusty-blue fill */
+  --color-verdana-pale-blue: #eaf1f4;  /* pale blue tint (section backgrounds) */
+  --color-verdana-charcoal: #2b3a42;   /* body text ink (softened navy) */
+  --color-verdana-off-white: #f7f3ec;  /* warm off-white base */
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--color-verdana-charcoal);
+  background: var(--color-verdana-off-white);
+}
+
+/* Marquee animation */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 20s linear infinite;
+}
+
+/* Sheet slide animation */
+@keyframes sheet-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes sheet-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+.sheet-content[data-state="open"] {
+  animation: sheet-in 0.3s ease-out;
+}
+
+.sheet-content[data-state="closed"] {
+  animation: sheet-out 0.2s ease-in;
+}

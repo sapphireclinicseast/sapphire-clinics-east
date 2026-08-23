@@ -2,21 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient } from '@/lib/email'
+import { getBranchNotifyConfig, getBranchSender, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
-// ─── Branch config ────────────────────────────────────────────────────────────
-const BRANCH_CONFIG: Record<string, { location: string; phone: string; teamName: string; ccEmail: string }> = {
-  SBEA: {
-    location: 'Aura Health Rehab – East Branch',
-    phone: '0917 118 9289 | (02) 5310 4991',
-    teamName: 'Aura Health Rehab – East',
-    ccEmail: 'east@sapphireclinicseast.org',
-  },
-  SBGH: {
-    location: 'Aura Health Rehab – Greenhills Branch',
-    phone: '0917 770 1686 | (02) 8529 1590',
-    teamName: 'Aura Health Rehab – Greenhills',
-    ccEmail: 'greenhills@sapphireclinicseast.org',
-  },
+// This file wants the SHORT display forms — "Aura Health Rehab – East" as
+// the team label, "Aura Health Rehab – East Branch" as the location line —
+// unlike send-absent-email/send-reminder, which want the full street
+// address. Derive both from the shared config's raw brandName.
+function shortLocation(cfg: BranchNotifyConfig): string {
+  return `${cfg.brandName} Branch`
 }
 
 const LOGO_URL = 'https://operations.sapphireclinicseast.org/brand/aura-logo-cream.png'
@@ -36,7 +29,7 @@ function formatTime(t: string): string {
 function buildClinicianEmailHtml(opts: {
   firstName: string
   date: string
-  branch: string
+  cfg: BranchNotifyConfig
   schedules: {
     startTime: string
     endTime: string
@@ -46,7 +39,7 @@ function buildClinicianEmailHtml(opts: {
     meetLink: string | null
   }[]
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   const total = opts.schedules.length
 
   const rows = opts.schedules.map((s, i) => {
@@ -76,7 +69,7 @@ function buildClinicianEmailHtml(opts: {
         <tr>
           <td style="padding:32px 40px 28px;text-align:center;background:linear-gradient(135deg,#193339 0%,#244952 65%,#4a8073 100%);">
             <img src="${LOGO_URL}" alt="Aura Health Rehab" style="height:120px;max-width:300px;display:inline-block;">
-            <p style="margin:14px 0 0;font-size:13px;letter-spacing:0.08em;color:rgba(237,243,217,0.80);text-transform:uppercase;">${cfg.teamName}</p>
+            <p style="margin:14px 0 0;font-size:13px;letter-spacing:0.08em;color:rgba(237,243,217,0.80);text-transform:uppercase;">${cfg.brandName}</p>
           </td>
         </tr>
 
@@ -94,7 +87,7 @@ function buildClinicianEmailHtml(opts: {
           <td style="padding:32px 40px;">
             <p style="margin:0 0 18px;font-size:15px;">Hi <strong>${opts.firstName}</strong>!</p>
             <p style="margin:0 0 20px;color:#444;">
-              Here is your confirmed schedule at <strong>${cfg.location}</strong>:
+              Here is your confirmed schedule at <strong>${shortLocation(cfg)}</strong>:
             </p>
 
             <!-- Schedule table -->
@@ -117,7 +110,7 @@ function buildClinicianEmailHtml(opts: {
             </p>
 
             <p style="margin:0 0 4px;color:#555;">Warm regards,</p>
-            <p style="margin:0 0 2px;font-weight:bold;color:#244952;">${cfg.teamName} Team</p>
+            <p style="margin:0 0 2px;font-weight:bold;color:#244952;">${cfg.brandName} Team</p>
             <p style="margin:0 0 2px;font-size:13px;color:#777;">${cfg.phone}</p>
             <p style="margin:0;font-size:13px;">
               <a href="mailto:${cfg.ccEmail}" style="color:#4a8073;">${cfg.ccEmail}</a>
@@ -142,7 +135,7 @@ function buildClinicianEmailHtml(opts: {
 function buildClinicianEmailPlainText(opts: {
   firstName: string
   date: string
-  branch: string
+  cfg: BranchNotifyConfig
   schedules: {
     startTime: string
     endTime: string
@@ -152,11 +145,11 @@ function buildClinicianEmailPlainText(opts: {
     meetLink: string | null
   }[]
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   const lines = [
     `Hi ${opts.firstName}!`,
     '',
-    `Here is your schedule for ${formatDate(opts.date)} at ${cfg.location}:`,
+    `Here is your schedule for ${formatDate(opts.date)} at ${shortLocation(cfg)}:`,
     '',
   ]
 
@@ -170,7 +163,7 @@ function buildClinicianEmailPlainText(opts: {
     `Total confirmed patients: ${opts.schedules.length}`,
     '',
     'Warm regards,',
-    `${cfg.teamName} Team`,
+    `${cfg.brandName} Team`,
     cfg.phone,
     cfg.ccEmail,
   )
@@ -178,11 +171,11 @@ function buildClinicianEmailPlainText(opts: {
 }
 
 function makeRawEmail(opts: {
-  to: string; from: string; subject: string; html: string; text: string
+  to: string; from: string; fromName: string; subject: string; html: string; text: string
 }): string {
   const boundary = 'ah_boundary_' + Date.now()
   const message = [
-    `From: Aura Health Rehab <${opts.from}>`,
+    `From: ${opts.fromName} <${opts.from}>`,
     `To: ${opts.to}`,
     `Subject: =?UTF-8?B?${Buffer.from(opts.subject).toString('base64')}?=`,
     'MIME-Version: 1.0',
@@ -240,22 +233,28 @@ export async function POST(req: NextRequest) {
 
   const firstName = staffMember.firstName.charAt(0) + staffMember.firstName.slice(1).toLowerCase()
   const branch    = callerBranch ?? staffMember.branch
-  const cfg       = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
-  const emailOpts = { firstName, date, branch, schedules: scheduleRows }
+  const cfg       = await getBranchNotifyConfig(branch)
+  const emailOpts = { firstName, date, cfg, schedules: scheduleRows }
 
   const html    = buildClinicianEmailHtml(emailOpts)
   const text    = buildClinicianEmailPlainText(emailOpts)
-  const subject = `Your Schedule for ${formatDate(date)} – ${cfg.teamName}`
+  const subject = `Your Schedule for ${formatDate(date)} – ${cfg.brandName}`
 
   // Prefer the branch inbox; fall back to any connected Gmail account
-  const gmailAcct =
-    await prisma.gmailAccount.findUnique({ where: { email: cfg.ccEmail } }) ??
-    await prisma.gmailAccount.findFirst()
+  // Same branch-mailbox resolution as the patient-facing routes, so a
+  // Greenhills clinician's schedule arrives from greenhills@, not main@.
+  const gmailAcct = await getBranchSender(cfg)
   if (!gmailAcct) {
     return NextResponse.json({ error: 'No Gmail account configured for sending' }, { status: 500 })
   }
 
-  const raw = makeRawEmail({ to: staffMember.email, from: gmailAcct.email, subject, html, text })
+  if (!gmailAcct.isBranchMailbox) {
+    console.warn(
+      `[send-clinician-email] ${cfg.ccEmail} is not a connected Gmail account — ` +
+      `sending as ${gmailAcct.email} instead. Connect it under Settings → Email.`,
+    )
+  }
+  const raw = makeRawEmail({ to: staffMember.email, from: gmailAcct.email, fromName: cfg.brandName, subject, html, text })
   const gmail = await getGmailClient(gmailAcct.refreshToken)
   await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
 

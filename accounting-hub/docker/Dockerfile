@@ -13,7 +13,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
-RUN npm run build
+# Node's default old-space cap in this image is ~2GB, and the Next build now
+# exceeds it: the first deploy of merged main died at 136s with "Ineffective
+# mark-compacts near heap limit" after peaking at 2044/2080 MB. The host is not
+# short of memory (7.8G total, 5.0G available, 10G swap) — only the V8 heap is
+# capped. 4GB clears the build with headroom to spare on this VPS.
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
 # ── Runner ────────────────────────────────────────────────────
 FROM base AS runner

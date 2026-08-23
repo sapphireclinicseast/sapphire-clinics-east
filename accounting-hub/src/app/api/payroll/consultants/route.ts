@@ -75,6 +75,9 @@ export async function GET(req: Request) {
           // Not adding their id to syncedExternalIds lets Phase 3 deactivate any that were
           // previously mis-synced as consultants.
           if (dept === 'FRONT_DESK') continue
+          // Interns aren't paid staff — keep them out of payroll entirely, regardless of
+          // any per-branch consultant-role override below.
+          if (s.employmentType === 'intern') continue
           // Resigned upstream. Leave them out of syncedExternalIds so Phase 3 retires them,
           // and never re-create them: this is the signal the directory exists to give us.
           if (directory.inactiveIds.has(String(s.id))) continue

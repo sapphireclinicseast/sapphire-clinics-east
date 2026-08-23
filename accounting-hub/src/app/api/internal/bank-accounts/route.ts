@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   }
   try {
     const accounts = await prisma.account.findMany({
-      where: { isBankAccount: true, isActive: true },
+      where: { isBankAccount: true, isActive: true, bankRetiredAt: null },
       orderBy: { accountNumber: 'asc' },
       select: { id: true, accountNumber: true, accountTitle: true, currency: true },
     })

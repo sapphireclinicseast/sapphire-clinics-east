@@ -63,7 +63,7 @@ export async function addProduct(input: {
 
 export async function updateProduct(
   slug: string,
-  updates: Partial<Pick<Product, 'title' | 'description' | 'price' | 'collectionSlug' | 'variants' | 'images'>>
+  updates: Partial<Pick<Product, 'title' | 'description' | 'price' | 'collectionSlug' | 'variants' | 'images' | 'stock' | 'sku' | 'disabled' | 'weightKg'>>
 ): Promise<Product | null> {
   const data = await readStoreData()
   const index = data.products.findIndex((p) => p.slug === slug)
@@ -77,6 +77,10 @@ export async function updateProduct(
   if (updates.collectionSlug !== undefined) product.collectionSlug = updates.collectionSlug
   if (updates.variants !== undefined) product.variants = updates.variants
   if (updates.images !== undefined) product.images = updates.images
+  if (updates.stock !== undefined) product.stock = updates.stock
+  if (updates.sku !== undefined) product.sku = updates.sku
+  if (updates.disabled !== undefined) product.disabled = updates.disabled
+  if (updates.weightKg !== undefined) product.weightKg = updates.weightKg ?? undefined
 
   data.products[index] = product
   await writeStoreData(data)

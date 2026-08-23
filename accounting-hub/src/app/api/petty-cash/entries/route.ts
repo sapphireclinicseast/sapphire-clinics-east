@@ -12,8 +12,12 @@ const EDITABLE = [
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'grossAmount',
   'accountTitle', 'referenceNumber', 'proofUrl', 'proofUrls', 'validity', 'finalized',
   'recurFrequency', 'recurDeadlineDay', 'distributeMonthly', 'amountVaries', 'distributeStart', 'distributeEnd',
-  'hasEwt', 'ewtRate',
+  'hasEwt', 'ewtRate', 'departments',
 ] as const
+
+// Departments this expense belongs to, for the contribution-margin analysis.
+// Empty array = "All" (allocated by the configured rent percentages).
+const VALID_DEPTS = new Set(['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'])
 
 const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD', CEO: 'CEO' }
 // Petty cash entries carry a "-NN" sub-sequence (entries sharing one PCV);
@@ -24,7 +28,22 @@ function pcvNumber(branch: string, seq: number, sub: number, withSub: boolean): 
   return withSub ? `${base}-${String(sub).padStart(2, '0')}` : base
 }
 
-// GET /api/petty-cash/entries?branch=SANDBOX_EAST
+// Fields the `q` search looks at — the same ones the grid used to filter client-side.
+const SEARCH_FIELDS = [
+  'pcvNumber', 'requestor', 'description', 'accountTitle',
+  'siNumber', 'registeredName', 'tinNumber', 'paymentMethod',
+] as const
+// A search hit set larger than this is not something anyone reads; it means the
+// term was too broad. Cap it so one keystroke can't pull the whole table back.
+const SEARCH_CAP = 500
+
+// GET /api/petty-cash/entries?branch=SANDBOX_EAST[&recordType=][&from=&to=][&q=]
+//
+// One-time expenses run to thousands of rows per branch, which is far more than
+// the editable grid can render at once. `from`/`to` narrow the fetch to a date
+// window; `q` searches the whole history regardless of that window (capped), so
+// narrowing the window never hides an entry from search. Omit all three and the
+// behaviour is unchanged — everything comes back.
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -32,6 +51,9 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams
   const branch = sp.get('branch') || ''
   const recordType = sp.get('recordType') || 'PETTY_CASH'
+  const from = sp.get('from') || ''
+  const to = sp.get('to') || ''
+  const q = (sp.get('q') || '').trim()
   if (!VALID_BRANCHES.includes(branch)) {
     return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
   }
@@ -44,12 +66,27 @@ export async function GET(req: Request) {
   if (!canRead) {
     return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
   }
-  const entries = await prisma.pettyCashEntry.findMany({
-    where: { branch, recordType },
-    orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }],
-    include: { reimbursement: { select: { refNumber: true } } },
+  // A search reaches across the whole history; a plain listing honours the window.
+  const dateWindow = !q && (from || to)
+    ? { date: { ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}) } }
+    : {}
+  const search = q
+    ? { OR: SEARCH_FIELDS.map(f => ({ [f]: { contains: q, mode: 'insensitive' as const } })) }
+    : {}
+
+  const [entries, total] = await Promise.all([
+    prisma.pettyCashEntry.findMany({
+      where: { branch, recordType, ...dateWindow, ...search },
+      orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }],
+      include: { reimbursement: { select: { refNumber: true } } },
+      ...(q ? { take: SEARCH_CAP } : {}),
+    }),
+    prisma.pettyCashEntry.count({ where: { branch, recordType } }),
+  ])
+  // The grid shows "N of M" from these; M is the unfiltered count for the tab.
+  return NextResponse.json(entries, {
+    headers: { 'X-Total-Count': String(total), 'X-Search-Capped': q && entries.length === SEARCH_CAP ? '1' : '0' },
   })
-  return NextResponse.json(entries)
 }
 
 // POST /api/petty-cash/entries  { branch }  → creates a blank row with the next PCV number
@@ -176,6 +213,12 @@ export async function PUT(req: Request) {
         else if (f === 'recurDeadlineDay') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
         else if (f === 'distributeMonthly' || f === 'amountVaries' || f === 'hasEwt') data[f] = !!body[f]
         else if (f === 'ewtRate') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
+        else if (f === 'departments') {
+          const raw: unknown = body.departments
+          data.departments = Array.isArray(raw)
+            ? Array.from(new Set(raw.map(d => String(d).toUpperCase()).filter(d => VALID_DEPTS.has(d))))
+            : []
+        }
         else data[f] = body[f] === '' ? null : body[f]
       }
     }

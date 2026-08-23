@@ -1,21 +1,35 @@
 // UGAT Fellowship transactional email — verification link.
 //
-// Sends DIRECTLY through the scholarship@sapphireclinicseast.org Gmail
+// Sends DIRECTLY through the fellowship@sapphireclinicseast.org Gmail
 // mailbox via the Gmail API (HTTPS, port 443 — the VPS blocks outbound
 // SMTP). This reuses the OAuth plumbing in src/lib/email.ts and the
 // GmailAccount table: connect the mailbox once at
-//   /api/auth/google  →  Settings ▸ Accounts  (pick scholarship@…)
+//   /api/auth/google  →  Settings ▸ Accounts  (pick fellowship@…)
 // which upserts a GmailAccount row we look up here by address.
 //
 // Resolution order for the sending account's refresh token:
 //   1. UGAT_GMAIL_REFRESH_TOKEN env (explicit override)
-//   2. GmailAccount row whose email == UGAT_MAIL_FROM_ADDRESS
+//   2. First connected GmailAccount matching ACCOUNT_CANDIDATES below
 // The message shows "From: UGAT Fellowship <that address>".
 
 import { getGmailClient } from './email'
 import { prisma } from './prisma'
 
-const FROM_ADDRESS = process.env.UGAT_MAIL_FROM_ADDRESS || 'scholarship@sapphireclinicseast.org'
+// What recipients see. Now the mailbox's own address rather than the
+// scholarship@ send-as alias, so the From header matches the account actually
+// sending — one less thing that can break if the alias is ever removed.
+const FROM_ADDRESS = process.env.UGAT_MAIL_FROM_ADDRESS || 'fellowship@sapphireclinicseast.org'
+
+// Which connected mailbox actually holds the OAuth token. The account was
+// registered under the scholarship@ label but authenticates as fellowship@ —
+// its real Google mailbox — so the row has been corrected to fellowship@.
+// Both are tried, in order, so this keeps working whichever label the row
+// carries and no UGAT mail is lost to a renamed account.
+const ACCOUNT_CANDIDATES = [
+  process.env.UGAT_GMAIL_ACCOUNT,
+  'fellowship@sapphireclinicseast.org',
+  'scholarship@sapphireclinicseast.org',
+].filter(Boolean) as string[]
 const FROM_NAME = 'UGAT Fellowship'
 
 // Brand palette (mirrors the /ugatfellow landing page).
@@ -24,16 +38,19 @@ const GREEN = '#4a8073'
 const GOLD = '#c69849'
 const CREAM = '#edf3d9'
 
-/** Find the refresh token for the scholarship@ mailbox. */
+/** Find the refresh token for the UGAT mailbox (fellowship@). */
 async function resolveRefreshToken(): Promise<string> {
   if (process.env.UGAT_GMAIL_REFRESH_TOKEN) return process.env.UGAT_GMAIL_REFRESH_TOKEN
-  const acct = await prisma.gmailAccount.findUnique({
-    where: { email: FROM_ADDRESS },
-    select: { refreshToken: true },
-  })
-  if (acct?.refreshToken) return acct.refreshToken
+  for (const email of ACCOUNT_CANDIDATES) {
+    const acct = await prisma.gmailAccount.findUnique({
+      where: { email },
+      select: { refreshToken: true },
+    })
+    if (acct?.refreshToken) return acct.refreshToken
+  }
   throw new Error(
-    `No Gmail account connected for ${FROM_ADDRESS}. Connect it once at /api/auth/google (Settings ▸ Accounts), signing in as ${FROM_ADDRESS}.`,
+    `No Gmail account connected for any of: ${ACCOUNT_CANDIDATES.join(', ')}. ` +
+    'Connect it once at /api/auth/google (Settings ▸ Accounts).',
   )
 }
 
@@ -164,7 +181,7 @@ export async function sendUgatCycleOpenEmail(params: {
           </div>
           <p style="margin:0;line-height:1.6;font-size:12px;color:#94a3b8">
             You&rsquo;re receiving this because you created a UGAT Fellowship account.
-            Reach us anytime at scholarship@sapphireclinicseast.org.
+            Reach us anytime at fellowship@sapphireclinicseast.org.
           </p>
         </div>
         <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px;line-height:1.5">
@@ -227,7 +244,7 @@ export async function sendUgatVerificationEmail(params: {
         <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px;line-height:1.5">
           Sapphire Clinics East, Inc. is compliant with the Data Privacy Act of 2012
           (RA 10173) and registered with the National Privacy Commission.<br>
-          Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.
+          Questions? Reply to this email or write to fellowship@sapphireclinicseast.org.
         </div>
       </div>
     </div>
@@ -264,7 +281,7 @@ export async function sendUgatInterviewEmail(params: {
           <p style="margin:0 0 6px;font-size:12px;color:${GREEN}">Meeting link:</p>
           <p style="margin:0;word-break:break-all;font-size:12px"><a href="${jitsiUrl}" style="color:${GOLD}">${jitsiUrl}</a></p>
         </div>
-        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.</div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to fellowship@sapphireclinicseast.org.</div>
       </div>
     </div>
   </div>`
@@ -291,7 +308,7 @@ export async function sendUgatInterviewInviteEmail(params: { to: string | string
             <a href="${url}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:15px;padding:13px 28px;border-radius:999px">Choose my interview slot</a>
           </div>
         </div>
-        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.</div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to fellowship@sapphireclinicseast.org.</div>
       </div>
     </div>
   </div>`
@@ -316,7 +333,7 @@ export async function sendUgatContractEmail(params: { to: string | string[]; fir
             <a href="${signUrl}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;font-family:'Montserrat',Arial,sans-serif;font-weight:700;font-size:15px;padding:13px 28px;border-radius:999px">Review &amp; sign my agreement</a>
           </div>
         </div>
-        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.</div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to fellowship@sapphireclinicseast.org.</div>
       </div>
     </div>
   </div>`
@@ -341,7 +358,7 @@ export async function sendUgatSignedRsaEmail(params: { to: string | string[]; fi
           <p style="margin:0 0 14px;line-height:1.6;font-size:15px"><strong>One step remains:</strong> to finalize, please sign the <strong>hard copy in person</strong>, together with your co-maker, at <strong>Aura Health Rehab &ndash; East</strong> (Robinsons Metro East, Pasig) or <strong>Greenhills</strong> (GH Tower, San Juan). Kindly bring the valid IDs you uploaded.</p>
           <p style="margin:0;line-height:1.6;font-size:14px;color:${GREEN}">Welcome aboard &mdash; we&rsquo;re glad to have you with us.</p>
         </div>
-        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to scholarship@sapphireclinicseast.org.</div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">Questions? Reply to this email or write to fellowship@sapphireclinicseast.org.</div>
       </div>
     </div>
   </div>`
@@ -366,7 +383,7 @@ export async function sendUgatRejectionEmail(params: { to: string | string[]; fi
           <p style="margin:0 0 14px;line-height:1.65;font-size:15px">We sincerely hope you&rsquo;ll consider applying again in a future cycle, and we wish you every success in your internship and licensure. Extensions and future openings are usually announced on your account and by email.</p>
           <p style="margin:0;line-height:1.65;font-size:15px">With warmth and respect,<br><strong>The UGAT Fellowship Team</strong><br>Sapphire Clinics East, Inc.</p>
         </div>
-        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">You&rsquo;re welcome to reach us anytime at scholarship@sapphireclinicseast.org.</div>
+        <div style="background:${CREAM};padding:16px 28px;text-align:center;color:${DEEP};font-size:11px">You&rsquo;re welcome to reach us anytime at fellowship@sapphireclinicseast.org.</div>
       </div>
     </div>
   </div>`

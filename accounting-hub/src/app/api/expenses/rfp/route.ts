@@ -20,6 +20,17 @@ export async function GET(req: Request) {
       // Order the Billing-Voucher lines the same way they were entered (PCV sequence),
       // matching the RFP Summary — without this Postgres returns them in arbitrary order.
       const entries = await prisma.pettyCashEntry.findMany({ where: { reimbursementId: id }, orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }], select: { accountTitle: true, description: true, requestor: true, grossAmount: true, vatable: true, hasEwt: true, ewtRate: true } })
+      // Back-imported RFPs (historical disbursement sheets) carry their lines in
+      // meta.items instead of member entries — no PCV rows were created for
+      // them, so the P&L never double-counts.
+      if (!entries.length) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const m = (r.meta || {}) as any
+        if (Array.isArray(m.items)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return NextResponse.json({ lines: m.items.map((i: any) => { const g = Number(i.gross || 0); return { account: i.account || '', description: i.description || '', payee: i.payee || '', memo: i.memo || i.description || '', gross: g, vat: 0, netVat: g, ewt: 0, netEwt: g } }) })
+        }
+      }
       return NextResponse.json({ lines: entries.map(e => {
         const gross = Number(e.grossAmount)
         const netVat = e.vatable === 'VAT' ? gross / 1.12 : gross
@@ -78,17 +89,21 @@ export async function GET(req: Request) {
   // Amount Payable = GROSS − EWT for expense RFPs (VAT is not deducted from the
   // payee — they paid the full gross; only EWT is withheld). Payroll uses netTotal.
   const withPayable = reports.map(r => {
+    // Back-imported RFPs have no member entries; grossTotal (mirrored by
+    // meta.items) is the paid amount.
     const payableTotal = r.module === 'EXPENSE'
-      ? r.entries.reduce((sum, e) => {
+      ? (r.entries.length ? r.entries.reduce((sum, e) => {
           const g = Number(e.grossAmount)
           const net = e.vatable === 'VAT' ? g / 1.12 : g
           const ewt = e.hasEwt && e.ewtRate ? net * (e.ewtRate / 100) : 0
           return sum + (g - ewt)
-        }, 0)
+        }, 0) : Number(r.grossTotal))
       : Number(r.grossTotal)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metaItems = !r._count.entries && Array.isArray((r.meta as any)?.items) ? ((r.meta as any).items as unknown[]).length : 0
     const { entries, ...rest } = r
     void entries
-    return { ...rest, payableTotal }
+    return { ...rest, payableTotal, _count: { entries: r._count.entries || metaItems } }
   })
   return NextResponse.json(withPayable)
 }
@@ -202,7 +217,14 @@ export async function PATCH(req: Request) {
       const meta = { ...((rep?.meta || {}) as any), paymentId: body.paymentId || null }
       await prisma.reimbursementReport.update({
         where: { id },
-        data: { status: 'PAID', paidAt: body.datePaid ? new Date(body.datePaid) : new Date(), paymentMethod: body.paymentMethod || null, proofUrl: body.proofUrl || null, meta },
+        data: { status: 'PAID', paidAt: body.datePaid ? new Date(body.datePaid) : new Date(),
+          paymentMethod: body.paymentMethod || null,
+          // Cheques go in checkNumber, wires in transferRef — same split the
+          // rest of the system uses, so cheque monitoring and bank rec see these.
+          checkNumber: body.checkNumber || null,
+          transferRef: body.transferRef || null,
+          debitAccount: body.debitAccount || null,
+          proofUrl: body.proofUrl || null, meta },
       })
       return NextResponse.json({ success: true })
     }
@@ -250,12 +272,21 @@ export async function DELETE(req: Request) {
     if (rep?.module === 'PAYROLL_SALARY' || rep?.module === 'PAYROLL_BENEFIT') {
       // Reactivate the locked payroll entries. (A paid payroll RFP must be unpaid first.)
       const ids: string[] = Array.isArray(meta.ids) ? meta.ids : []
-      // Benefit RFPs lock a per-agency field (sss/philhealth/pagibigRfpId); legacy combined ones use benefitRfpId.
+      // Benefit RFPs lock one field per agency covered (sss/philhealth/pagibigRfpId);
+      // legacy ones use the single combined benefitRfpId. A combined RFP locks several,
+      // so release every field it holds — clearing only one would strand the rest as
+      // permanently unselectable.
       const AGENCY_LOCK: Record<string, string> = { SSS: 'sssRfpId', PHILHEALTH: 'philhealthRfpId', PAGIBIG: 'pagibigRfpId' }
-      const field = rep.module === 'PAYROLL_SALARY' ? 'salaryRfpId' : (meta.benefitType && AGENCY_LOCK[meta.benefitType] ? AGENCY_LOCK[meta.benefitType] : 'benefitRfpId')
+      const types: string[] = Array.isArray(meta.benefitTypes) && meta.benefitTypes.length
+        ? meta.benefitTypes
+        : (meta.benefitType ? [meta.benefitType] : [])
+      const fields = rep.module === 'PAYROLL_SALARY'
+        ? ['salaryRfpId']
+        : (types.length ? types.map(t => AGENCY_LOCK[t]).filter(Boolean) : ['benefitRfpId'])
+      const clear = Object.fromEntries(fields.map(f => [f, null]))
       if (ids.length) {
-        if (meta.idKind === 'payrollEntry') await prisma.payrollEntry.updateMany({ where: { id: { in: ids } }, data: { [field]: null } })
-        else await prisma.employeePayslip.updateMany({ where: { id: { in: ids } }, data: { [field]: null } })
+        if (meta.idKind === 'payrollEntry') await prisma.payrollEntry.updateMany({ where: { id: { in: ids } }, data: clear })
+        else await prisma.employeePayslip.updateMany({ where: { id: { in: ids } }, data: clear })
       }
       await prisma.reimbursementReport.delete({ where: { id } })
       return NextResponse.json({ success: true })

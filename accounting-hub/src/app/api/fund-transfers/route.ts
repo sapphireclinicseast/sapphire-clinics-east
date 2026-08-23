@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postFundTransferJE, removeFundTransferJE } from '@/lib/fund-transfer-je'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -14,8 +15,17 @@ export async function GET() {
   const label = (id: string) => { const a = accounts.find(x => x.id === id); return a ? `${a.accountNumber} — ${a.accountTitle}` : '—' }
   // How many of this transfer's two bank legs are matched in Bank Reconciliation
   // (0, 1 or 2) — the star on the list.
+  //
+  // A leg counts whichever way it was reconciled. Confirming an interbank pair
+  // or a currency exchange in bank rec CREATES the fund transfer and links both
+  // lines to it by matchId, but labels them INTERBANK / FOREX rather than
+  // FUND_TRANSFER. Counting only the latter therefore showed transfers that are
+  // fully reconciled as having no legs at all — 67 of them, the entire interbank
+  // and forex population.
   const legAgg = await prisma.bankTransaction.groupBy({
-    by: ['matchId'], where: { matchType: 'FUND_TRANSFER', matchId: { in: transfers.map(t => t.id) } }, _count: { _all: true },
+    by: ['matchId'],
+    where: { matchType: { in: ['FUND_TRANSFER', 'INTERBANK', 'FOREX'] }, matchId: { in: transfers.map(t => t.id) } },
+    _count: { _all: true },
   })
   const legs = new Map(legAgg.map(l => [l.matchId as string, l._count._all]))
   return NextResponse.json(transfers.map(t => ({
@@ -76,7 +86,7 @@ export async function POST(req: Request) {
       // transfer in 2026 was numbering it FT26.
       const yy = new Date(date).getFullYear() % 100
       const refNumber = `FT${yy}-${String(seq).padStart(6, '0')}`
-      return tx.fundTransfer.create({
+      const ft = await tx.fundTransfer.create({
         data: {
           refNumber, refSeq: seq, date: new Date(date), fromAccountId, toAccountId, amount: amt,
           toAmount: crossCurrency ? toAmt : null,
@@ -86,6 +96,9 @@ export async function POST(req: Request) {
           createdById: session.user.id ?? null,
         },
       })
+      // Move the money in the ledger too, not just in the Fund Transfer list.
+      await postFundTransferJE(tx, ft.id, session.user!.id ?? null)
+      return ft
     })
     return NextResponse.json({ id: created.id, refNumber: created.refNumber })
   } catch (e) {
@@ -138,6 +151,12 @@ export async function DELETE(req: Request) {
   }
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
-  try { await prisma.fundTransfer.delete({ where: { id } }); return NextResponse.json({ success: true }) }
+  try {
+    await prisma.$transaction(async (tx) => {
+      await removeFundTransferJE(tx, id)
+      await tx.fundTransfer.delete({ where: { id } })
+    })
+    return NextResponse.json({ success: true })
+  }
   catch { return NextResponse.json({ error: 'Failed to delete' }, { status: 500 }) }
 }

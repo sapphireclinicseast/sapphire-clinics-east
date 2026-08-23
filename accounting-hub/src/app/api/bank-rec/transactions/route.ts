@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postFundTransferJE, removeFundTransferJE } from '@/lib/fund-transfer-je'
 import { ARCHIVED, isLocked, tagCutoff } from '@/lib/bank-rec'
 import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 import { applyBankRules } from '@/lib/bank-rec-rules'
+import { branchForBankAccount, isPostableBranch } from '@/lib/branch'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -19,7 +21,41 @@ export async function GET(req: Request) {
   const from = sp.get('from'), to = sp.get('to')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { bankAccountId, status }
-  if (search) where.description = { contains: search, mode: 'insensitive' }
+  if (search) {
+    // Search reaches everything a line shows on screen — description, payee,
+    // and the match label — not just the statement text.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const or: any[] = [
+      { description: { contains: search, mode: 'insensitive' } },
+      { fromToName: { contains: search, mode: 'insensitive' } },
+      { matchLabel: { contains: search, mode: 'insensitive' } },
+    ]
+    // A fund-transfer reference (FT25-000345) names a recorded transfer, not
+    // any text on the bank line, so searching it used to return nothing even
+    // while the grid hinted the transfer. Resolve the ref to the transfer and
+    // surface its lines: anything already matched to it, plus same-amount
+    // lines within the settlement window that could be its legs.
+    if (/^ft\d{2}/i.test(search)) {
+      const fts = await prisma.fundTransfer.findMany({
+        where: { refNumber: { contains: search, mode: 'insensitive' } },
+        select: { id: true, amount: true, toAmount: true, date: true },
+        take: 5,
+      })
+      for (const ft of fts) {
+        const lo = new Date(ft.date); lo.setUTCDate(lo.getUTCDate() - 5)
+        const hi = new Date(ft.date); hi.setUTCDate(hi.getUTCDate() + 6)
+        or.push({ matchId: ft.id })
+        or.push({
+          date: { gte: lo, lt: hi },
+          OR: [
+            { spent: ft.amount }, { received: ft.amount },
+            ...(ft.toAmount != null ? [{ received: ft.toAmount }] : []),
+          ],
+        })
+      }
+    }
+    where.OR = or
+  }
   if (from || to) {
     where.date = {}
     if (from) where.date.gte = new Date(from)
@@ -49,6 +85,11 @@ export async function POST(req: Request) {
     const body = await req.json()
     const bankAccountId = body.bankAccountId
     if (!bankAccountId) return NextResponse.json({ error: 'bankAccountId is required' }, { status: 400 })
+
+    const acctState = await prisma.account.findUnique({ where: { id: bankAccountId }, select: { bankRetiredAt: true, accountTitle: true } })
+    if (acctState?.bankRetiredAt) {
+      return NextResponse.json({ error: `${acctState.accountTitle} is retired — no new bank lines can be added to it` }, { status: 400 })
+    }
 
     if (Array.isArray(body.rows)) {
       // One batch record per upload so the whole file can be removed again later.
@@ -199,9 +240,16 @@ export async function PATCH(req: Request) {
       // The ledger is kept in PHP, so a line on an account held in another
       // currency is translated at the rate for its date before it is posted.
       const bankAcct = await prisma.account.findUnique({
-        where: { id: txn.bankAccountId }, select: { currency: true },
+        where: { id: txn.bankAccountId }, select: { currency: true, accountTitle: true },
       })
       const cur = bankAcct?.currency || 'PHP'
+      // The reports engine filters journal entries by branch, so an entry left on
+      // the 'ALL' default never appears on a per-branch statement. Take the branch
+      // from the bank account that holds the line, unless the caller names one —
+      // which is how a company-wide account (SCEI/SCI) gets attributed.
+      const branch = isPostableBranch(body.branch)
+        ? String(body.branch)
+        : branchForBankAccount(bankAcct?.accountTitle)
       let amount = native, usedRate: number | null = null
       if (isForeign(cur)) {
         const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate), rateDate: '', onOrBefore: true } : await rateFor(cur, txn.date)
@@ -226,7 +274,7 @@ export async function PATCH(req: Request) {
             description: usedRate
               ? `Bank: ${txn.description} (${native.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${bankAcct?.currency} @ ${usedRate})`
               : `Bank: ${txn.description}`,
-            referenceType: 'BANK_REC', referenceId: txn.id,
+            referenceType: 'BANK_REC', referenceId: txn.id, branch,
             totalAmount: amount, createdById: session.user!.id as string,
             lines: { create: lines.map(l => ({ accountId: l.accountId, debit: l.debit, credit: l.credit, description: txn.description })) },
           },
@@ -324,6 +372,51 @@ export async function PATCH(req: Request) {
       const amount = Number(out.spent)
 
       const transfer = await prisma.$transaction(async (tx) => {
+        // The transfer may already be on file, entered from its voucher with the
+        // cheque number and branch reference on it. Creating a second record for
+        // the same movement double-counts it in the ledger — both records post
+        // their own journal entry — and leaves the voucher permanently showing
+        // as unmatched. Reuse the existing row so the match lands on the record
+        // that carries the evidence.
+        //
+        // Only an unambiguous, still-unreconciled candidate is reused: exactly
+        // one row, same two accounts, same amount, within a week. Two transfers
+        // of the same amount between the same accounts in one week are rare but
+        // real, so anything ambiguous still creates a new record, and the caller
+        // can force that with newRecord:true.
+        const reuse = body.newRecord ? [] : await tx.fundTransfer.findMany({
+          where: {
+            fromAccountId: out.bankAccountId,
+            toAccountId: inn.bankAccountId,
+            amount,
+            date: {
+              gte: new Date(new Date(out.date).getTime() - 7 * 86400000),
+              lte: new Date(new Date(out.date).getTime() + 7 * 86400000),
+            },
+          },
+          select: { id: true, refNumber: true },
+        })
+        const free: { id: string; refNumber: string }[] = []
+        for (const r of reuse) {
+          const legs = await tx.bankTransaction.count({
+            where: { matchId: r.id, matchType: { in: ['FUND_TRANSFER', 'INTERBANK', 'FOREX'] } },
+          })
+          if (legs === 0) free.push(r)
+        }
+        if (free.length === 1) {
+          const existing = free[0]
+          const label = `${existing.refNumber} · transfer ${fromAcct?.accountNumber || ''} → ${toAcct?.accountNumber || ''}`
+          for (const t of [out, inn]) {
+            await tx.bankTransaction.update({
+              where: { id: t.id },
+              data: { status: 'POSTED', matchType: 'INTERBANK', matchId: existing.id, matchLabel: label, categoryAccountId: null },
+            })
+          }
+          // Idempotent — leaves the entry alone if the existing record already posted one.
+          await postFundTransferJE(tx, existing.id, session.user!.id ?? null)
+          return existing
+        }
+
         let s = await tx.fundTransferSettings.findUnique({ where: { id: 'singleton' } })
         if (!s) s = await tx.fundTransferSettings.create({ data: { id: 'singleton', nextSeq: 1 } })
         const maxSeq = (await tx.fundTransfer.aggregate({ _max: { refSeq: true } }))._max.refSeq ?? 0
@@ -349,13 +442,162 @@ export async function PATCH(req: Request) {
             data: { status: 'POSTED', matchType: 'INTERBANK', matchId: created.id, matchLabel: label, categoryAccountId: null },
           })
         }
+        // The transfer moves cash in the ledger, not just between the two lines.
+        await postFundTransferJE(tx, created.id, session.user!.id ?? null)
         return created
       })
       return NextResponse.json({ success: true, refNumber: transfer.refNumber })
     }
 
     if (action === 'match') {
-      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null } })
+      // An A/P bill candidate is an accrual with no bank leg — the bank line IS
+      // its payment. Post the settlement (Dr the bill's payable account / Cr
+      // this bank account) so the payable is relieved and the cash movement is
+      // in the ledger. Pre-2026 payments post as QB_IMPORT_JE — the report
+      // engine reads only that type for QB-era years — and since settling a
+      // pre-2026 bill moves the 2025 closings, the 2026 opening balances are
+      // adjusted in step (payable down, retained earnings up, staying balanced).
+      let apJournalId: string | null = null
+      if (body.matchType === 'AP_BILL' && body.matchId) {
+        const bill = await prisma.journalEntry.findUnique({
+          where: { id: body.matchId as string },
+          include: { lines: { include: { account: { select: { accountNumber: true } } } } },
+        })
+        const payLine = bill?.lines.find(l => Number(l.credit) > 0 && ['4010', '5040'].includes(l.account.accountNumber))
+        const isSpentAp = Number(txn.spent) > 0
+        const bankAmt = isSpentAp ? Number(txn.spent) : Number(txn.received)
+        if (!bill || !payLine) return NextResponse.json({ error: 'That record is not an open payable bill.' }, { status: 400 })
+        if (!isSpentAp || !(bankAmt > 0)) return NextResponse.json({ error: 'An A/P bill settles a money-out bank line.' }, { status: 400 })
+        const already = await prisma.journalEntry.findFirst({ where: { referenceId: `APSETTLE:${bill.id}` } })
+        if (already) return NextResponse.json({ error: 'That bill is already settled by another bank line.' }, { status: 400 })
+        const preQb = txn.date < new Date(Date.UTC(2026, 0, 1))
+        const je = await prisma.journalEntry.create({
+          data: {
+            entryDate: txn.date,
+            description: `A/P settlement — ${bill.description || 'bill'} — bank: ${txn.description}`.slice(0, 250),
+            referenceType: preQb ? 'QB_IMPORT_JE' : 'AP_SETTLEMENT',
+            referenceId: `APSETTLE:${bill.id}`,
+            branch: bill.branch, totalAmount: bankAmt,
+            createdById: session.user!.id as string,
+            lines: { create: [
+              { accountId: payLine.accountId, debit: bankAmt, credit: 0, description: `Settles: ${bill.description || ''}`.slice(0, 250) },
+              { accountId: txn.bankAccountId, debit: 0, credit: bankAmt, description: (txn.description || '').slice(0, 250) },
+            ] },
+          },
+        })
+        apJournalId = je.id
+        if (preQb) {
+          const re = await prisma.account.findFirst({ where: { accountNumber: '6030' }, select: { id: true } })
+          const bumps: Array<[string, number]> = [[payLine.accountId, -bankAmt]]
+          if (re) bumps.push([re.id, bankAmt])
+          for (const [acctId, delta] of bumps) {
+            await prisma.beginningBalance.updateMany({
+              where: { accountId: acctId, periodYear: 2026 },
+              data: { amount: { increment: delta } },
+            })
+          }
+        }
+      }
+      // A deposit rarely lands to the centavo: ₱1,000,000.43 arrives against a
+      // ₱1,000,000.00 equity record because the bank added interest, or took a
+      // charge. Matching alone would leave that sliver unexplained — the ledger
+      // would hold the record's amount while the bank holds its own. When a
+      // difference account is chosen the remainder posts to it, so the line is
+      // settled in full and cash still ties to the statement.
+      const diffAccountId: string | null = body.differenceAccountId || null
+      let diffJournalId: string | null = null
+      if (diffAccountId) {
+        if (diffAccountId === txn.bankAccountId) {
+          return NextResponse.json({ error: 'The difference cannot go to this line\'s own bank account — the entry would cancel itself out.' }, { status: 400 })
+        }
+        const isSpent = Number(txn.spent) > 0
+        const bankAmt = isSpent ? Number(txn.spent) : Number(txn.received)
+        // bank − records: positive means the bank moved more than the records explain.
+        const raw = Math.round((bankAmt - Number(body.recordsTotal ?? bankAmt)) * 100) / 100
+        if (Math.abs(raw) >= 0.005) {
+          const bankAcct = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true, accountTitle: true } })
+          const cur = bankAcct?.currency || 'PHP'
+          const diffBranch = branchForBankAccount(bankAcct?.accountTitle)
+          let amount = Math.abs(raw), usedRate: number | null = null
+          if (isForeign(cur)) {
+            const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate) } : await rateFor(cur, txn.date)
+            if (!rate || !(rate.phpPerUnit > 0)) {
+              return NextResponse.json({ error: `No ${cur} exchange rate is on file for ${txn.date.toISOString().slice(0, 10)}, so the difference cannot be stated in PHP.`, needsRate: true, currency: cur }, { status: 400 })
+            }
+            usedRate = rate.phpPerUnit
+            amount = toPhp(Math.abs(raw), usedRate)
+          }
+          // Money in with the bank ahead (raw > 0) is an extra inflow: Dr bank /
+          // Cr the account. Money out with the bank ahead is an extra outflow:
+          // Dr the account / Cr bank. A negative raw flips each of those.
+          const bankIsDebit = isSpent ? raw < 0 : raw > 0
+          const lines = bankIsDebit
+            ? [{ accountId: txn.bankAccountId, debit: amount, credit: 0 }, { accountId: diffAccountId, debit: 0, credit: amount }]
+            : [{ accountId: diffAccountId, debit: amount, credit: 0 }, { accountId: txn.bankAccountId, debit: 0, credit: amount }]
+          if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+          const je = await prisma.journalEntry.create({
+            data: {
+              entryDate: txn.date,
+              description: `Bank: ${txn.description} — difference on match`,
+              referenceType: 'BANK_REC', referenceId: txn.id, branch: diffBranch,
+              totalAmount: amount, createdById: session.user!.id as string,
+              lines: { create: lines.map(l => ({ ...l, description: `Match difference — ${txn.description}`.slice(0, 250) })) },
+            },
+          })
+          diffJournalId = je.id
+        }
+      }
+      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: apJournalId ?? diffJournalId } })
+      return NextResponse.json({ success: true, differenceJournalEntryId: diffJournalId })
+    }
+    // Cash drawn from a branch's petty cash account into the officer's hands.
+    //
+    // The petty cash bank account IS the float: whatever is withdrawn from it is
+    // the cash the admin officer holds, so moving it out of the passbook is not
+    // a movement of value — it is the same pool in physical form. There is
+    // therefore nothing to post, and nothing on any other statement to match it
+    // against, which is why these lines sat PENDING forever with no way to
+    // close them. (The Petty Cash on Hand accounts that used to receive them
+    // were retired deliberately; reinstating one per branch would rebuild a
+    // float that has to be reconciled separately.)
+    //
+    // Spending is already accounted for elsewhere: the reports engine
+    // synthesises DR expense / CR petty cash from each PettyCashEntry, so
+    // posting anything here would double-count it.
+    //
+    // reimbursementId optionally names the replenishment report the cash was
+    // spent against, purely so the line carries its own audit trail.
+    if (action === 'close-petty-cash-withdrawal') {
+      const acct = await prisma.account.findUnique({
+        where: { id: txn.bankAccountId },
+        select: { accountNumber: true, accountTitle: true },
+      })
+      if (!acct || !/petty cash/i.test(acct.accountTitle)) {
+        return NextResponse.json({ error: 'Only a petty cash account holds cash on hand — this line is on ' + (acct?.accountTitle || 'another account') }, { status: 400 })
+      }
+      if (!(Number(txn.spent) > 0)) {
+        return NextResponse.json({ error: 'Only money leaving the petty cash account can be cash withdrawn to the box' }, { status: 400 })
+      }
+      let ref: { id: string; refNumber: string; grossTotal: unknown } | null = null
+      if (body.reimbursementId) {
+        ref = await prisma.reimbursementReport.findUnique({
+          where: { id: String(body.reimbursementId) },
+          select: { id: true, refNumber: true, grossTotal: true },
+        })
+        if (!ref) return NextResponse.json({ error: 'That replenishment report no longer exists' }, { status: 400 })
+      }
+      await prisma.bankTransaction.update({
+        where: { id },
+        data: {
+          status: 'POSTED',
+          matchType: 'PETTY_CASH_WITHDRAWAL',
+          matchId: ref?.id ?? null,
+          matchLabel: 'Cash withdrawn to the box — still petty cash, no ledger movement'
+            + (ref ? ` · replenishment ${ref.refNumber}` : ''),
+          categoryAccountId: null,
+          journalEntryId: null,
+        },
+      })
       return NextResponse.json({ success: true })
     }
     if (action === 'exclude') {
@@ -380,6 +622,7 @@ export async function PATCH(req: Request) {
             where: { id: { in: both.map(b => b.id) } },
             data: { status: 'PENDING', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null },
           })
+          await removeFundTransferJE(tx, txn.matchId!)
           await tx.fundTransfer.delete({ where: { id: txn.matchId! } }).catch(() => {})
         })
         return NextResponse.json({ success: true, released: both.length })

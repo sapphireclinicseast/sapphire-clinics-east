@@ -61,7 +61,7 @@ export async function GET(req: Request) {
     const c = cardById.get(s.cardId)
     const t = tot.get(s.id) || { count: 0, total: 0 }
     return {
-      id: s.id, refNumber: s.refNumber, status: s.status, paymentRoute: s.paymentRoute,
+      id: s.id, refNumber: s.refNumber, legacyRef: s.legacyRef, periodYear: s.periodYear, periodMonth: s.periodMonth, status: s.status, paymentRoute: s.paymentRoute,
       cardId: s.cardId, cardLabel: c ? cardLabel(c) : s.bankCode,
       statementUrl: s.statementUrl, soaDocUrl: s.soaDocUrl, filingStatus: s.filingStatus,
       reimbursementId: s.reimbursementId, rfpRefNumber: s.reimbursementId ? (rfpById.get(s.reimbursementId) || '') : '',
@@ -130,6 +130,19 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true })
     }
 
+    if (action === 'set-period') {
+      const { periodYear, periodMonth } = body as { periodYear?: number | null; periodMonth?: number | null }
+      // Both or neither: a month without a year identifies nothing.
+      const clear = periodYear == null && periodMonth == null
+      if (!clear) {
+        if (!Number.isInteger(periodYear) || (periodYear as number) < 2020 || (periodYear as number) > 2040
+          || !Number.isInteger(periodMonth) || (periodMonth as number) < 1 || (periodMonth as number) > 12) {
+          return NextResponse.json({ error: 'Period must be a real month (YYYY-MM)' }, { status: 400 })
+        }
+      }
+      await prisma.creditCardSOA.update({ where: { id }, data: { periodYear: clear ? null : periodYear, periodMonth: clear ? null : periodMonth } })
+      return NextResponse.json({ ok: true })
+    }
     if (action === 'set-filing') {
       await prisma.creditCardSOA.update({ where: { id }, data: { filingStatus: body.filingStatus === 'FILED' ? 'FILED' : 'FOR_FILING' } })
       return NextResponse.json({ success: true })

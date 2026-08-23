@@ -3,12 +3,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
+import { localTodayStr, localTomorrowStr } from '@/lib/utils'
+import { branchLabel } from '@/lib/branch-label'
 
-// ─── Branch display labels (enum values must stay SBEA / SBGH in the DB) ────
-const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-}
 
 // ─── Session types per department ────────────────────────────────────────────
 const SESSION_TYPES: Record<string, string[]> = {
@@ -50,20 +47,62 @@ function visibleBranches(role: string): string[] {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches: string[]; phone: string | null }
-interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
+interface StaffMember {
+  id: string; firstName: string; lastName: string; department: string; branch: string
+  extraBranches: string[]; phone: string | null
+  employmentType: string | null; active: boolean
+  dateHired: string | null; contractExpiry: string | null // interns: Start Month / End Month
+}
+interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null; branches?: string[] }
+
+// Staff.branch codes -> Patient.branches enum values
+const BRANCH_ENUM: Record<string, string> = {
+  SBEA: 'SANDBOX_EAST',
+  SBGH: 'SANDBOX_GREENHILLS',
+}
+interface InternStaff { id: string; firstName: string; lastName: string }
 interface Schedule {
   id: string; staffId: string; patientId: string | null; patient: Patient | null
   date: string; startTime: string; endTime: string; duration: string
   sessionType: string; status: string; notes: string | null
   isTeletherapy: boolean; meetLink: string | null
+  internStaffId: string | null; internStaff: InternStaff | null
 }
 
 const EMPTY_FORM = {
   patientId: '', patientLabel: '', date: '',
   startTime: '08:00', duration: '1h', endTime: '09:00',
   sessionType: '', status: 'PENDING', notes: '',
-  isTeletherapy: false,
+  isTeletherapy: false, internStaffId: '',
+}
+
+const INTERN_SESSION_TYPES = new Set(['IE Intern', 'Session Intern'])
+
+// Interns are attached to a supervisor's session via the "Select Intern"
+// field; they are never listed as clinicians in their own right. Note this is
+// intentionally date-independent, unlike isEligibleIntern below — an intern
+// outside their Start/End Month is still an intern, and must not fall back
+// into the clinician list.
+function isIntern(s: StaffMember): boolean {
+  return s.employmentType === 'intern'
+}
+
+// Is this staff member an intern whose Start/End Month covers `forDate`
+// (YYYY-MM-DD)? Falls back to today if no date is picked yet.
+function isEligibleIntern(s: StaffMember, forDate: string): boolean {
+  if (s.employmentType !== 'intern' || s.active === false) return false
+  const d = forDate || localTodayStr()
+  if (s.dateHired) {
+    const startMonth = s.dateHired.split('T')[0].slice(0, 7)
+    if (d < `${startMonth}-01`) return false
+  }
+  if (s.contractExpiry) {
+    const endMonth = s.contractExpiry.split('T')[0].slice(0, 7)
+    const [y, m] = endMonth.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate() // last calendar day of the End Month
+    if (d > `${endMonth}-${String(lastDay).padStart(2, '0')}`) return false
+  }
+  return true
 }
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
@@ -74,9 +113,10 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
 }
 
 // ─── Patient search typeahead ─────────────────────────────────────────────────
-function PatientSearch({ value, label, onChange }: {
+function PatientSearch({ value, label, onChange, branchEnum }: {
   value: string; label: string
   onChange: (id: string, label: string) => void
+  branchEnum: string
 }) {
   const [query, setQuery] = useState(label)
   const [results, setResults] = useState<Patient[]>([])
@@ -125,6 +165,23 @@ function PatientSearch({ value, label, onChange }: {
                 setOpen(false)
               }}>
               <span className="font-medium">{p.lastName}, {p.firstName}</span>
+              {(p.branches ?? []).map(b => (
+                <span key={b} className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ background: b === 'SANDBOX_GREENHILLS' ? '#ede9fe' : '#d1fae5',
+                           color: b === 'SANDBOX_GREENHILLS' ? '#5b21b6' : '#065f46' }}>
+                  {b === 'SANDBOX_GREENHILLS' ? 'GH' : b === 'SANDBOX_EAST' ? 'East' : b}
+                </span>
+              ))}
+              {/* Search spans both branches on purpose: a patient registered at
+                  one branch is routinely seen at the other, and booking them
+                  here adds this branch to their record. The badges say where
+                  they are already registered so the front desk can tell an
+                  existing patient from a same-named stranger. */}
+              {!(p.branches ?? []).includes(branchEnum) && (
+                <span className="ml-1.5 text-[10px] font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                  · will be added to this branch
+                </span>
+              )}
               {p.email && <span className="ml-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{p.email}</span>}
             </button>
           ))}
@@ -135,8 +192,10 @@ function PatientSearch({ value, label, onChange }: {
 }
 
 // ─── Schedule form ─────────────────────────────────────────────────────────────
-function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submitting, submitLabel }: {
+function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, error, submitting, submitLabel, branchEnum }: {
   dept: string
+  branchEnum: string
+  allStaff: StaffMember[]
   values: typeof EMPTY_FORM
   onChange: (v: typeof EMPTY_FORM) => void
   onSubmit: (e: React.FormEvent) => void
@@ -189,6 +248,7 @@ function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submi
           <PatientSearch
             value={values.patientId}
             label={values.patientLabel}
+            branchEnum={branchEnum}
             onChange={(id, lbl) => onChange({ ...values, patientId: id, patientLabel: lbl })}
           />
         </div>
@@ -239,11 +299,37 @@ function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submi
         </div>
         <div>
           <label style={labelStyle}>Session Type</label>
-          <select style={inputStyle} value={values.sessionType} onChange={e => onChange({ ...values, sessionType: e.target.value })}>
+          <select style={inputStyle} value={values.sessionType} onChange={e => {
+            const sessionType = e.target.value
+            // Clear a stale intern pick when switching away from an intern session type.
+            const internStaffId = INTERN_SESSION_TYPES.has(sessionType) ? values.internStaffId : ''
+            onChange({ ...values, sessionType, internStaffId })
+          }}>
             <option value="">Select type</option>
             {(SESSION_TYPES[dept] ?? []).map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
+        {INTERN_SESSION_TYPES.has(values.sessionType) && (
+          <div>
+            <label style={labelStyle}>Select Intern</label>
+            {(() => {
+              const eligible = allStaff
+                .filter(s => s.department === dept && isEligibleIntern(s, values.date))
+                .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName))
+              return eligible.length === 0 ? (
+                <div style={{ ...inputStyle, background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  No active {dept} interns right now
+                </div>
+              ) : (
+                <select style={inputStyle} value={values.internStaffId}
+                  onChange={e => onChange({ ...values, internStaffId: e.target.value })}>
+                  <option value="">Select intern…</option>
+                  {eligible.map(s => <option key={s.id} value={s.id}>{s.lastName}, {s.firstName}</option>)}
+                </select>
+              )
+            })()}
+          </div>
+        )}
         <div className="col-span-2">
           <label style={labelStyle}>Status</label>
           <select style={inputStyle} value={values.status} onChange={e => onChange({ ...values, status: e.target.value })}>
@@ -286,7 +372,7 @@ function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submi
 }
 
 // ─── Staff card with schedules ─────────────────────────────────────────────────
-function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMember; selectedDate: string; schedulingBranch: string }) {
+function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff: StaffMember; allStaff: StaffMember[]; selectedDate: string; schedulingBranch: string }) {
   const [open, setOpen] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loadingSchedules, setLoadingSchedules] = useState(false)
@@ -316,10 +402,17 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true)
-    // Multi-branch consultant in extra branch: only show patients registered at that branch
-    const isExtraBranch = staff.branch !== schedulingBranch
-    const params = new URLSearchParams({ staffId: staff.id, date: selectedDate })
-    if (isExtraBranch) params.set('patientBranch', schedulingBranch)
+    // Always scope to the branch calendar being viewed — not just when the
+    // clinician is visiting from another branch. Sessions carry the branch they
+    // were booked on, so an East-registered patient booked by the Greenhills
+    // front desk belongs to Greenhills. Filtering only on the "extra" branch
+    // left the clinician's HOME calendar unfiltered, which is why sessions
+    // booked at the other branch showed up there.
+    const params = new URLSearchParams({
+      staffId: staff.id,
+      date: selectedDate,
+      branch: schedulingBranch,
+    })
     const res = await fetch(`/api/clinic-schedule?${params}`)
     if (res.ok) setSchedules(await res.json())
     setLoadingSchedules(false)
@@ -348,9 +441,11 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     d.setDate(d.getDate() - 7)
     const lastWeekDate = d.toISOString().split('T')[0]
     try {
-      const isExtraBranch = staff.branch !== schedulingBranch
-      const lwParams = new URLSearchParams({ staffId: staff.id, date: lastWeekDate })
-      if (isExtraBranch) lwParams.set('patientBranch', schedulingBranch)
+      const lwParams = new URLSearchParams({
+        staffId: staff.id,
+        date: lastWeekDate,
+        branch: schedulingBranch,
+      })
       const res = await fetch(`/api/clinic-schedule?${lwParams}`)
       if (res.ok) setLastWeekSuggestions(await res.json())
     } catch { /* silent */ }
@@ -382,6 +477,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
       status: 'PENDING',
       notes: '',
       isTeletherapy: s.isTeletherapy || false,
+      internStaffId: s.internStaffId ?? '',
     })
   }
 
@@ -393,7 +489,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     const res = await fetch('/api/clinic-schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, ...form, isTeletherapy: form.isTeletherapy }),
+      body: JSON.stringify({ staffId: staff.id, ...form, isTeletherapy: form.isTeletherapy, branch: schedulingBranch }),
     })
     setSaving(false)
     if (res.ok) { closeAddForm(); loadSchedules() }
@@ -409,6 +505,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
       startTime: s.startTime, endTime: s.endTime, duration: s.duration,
       sessionType: s.sessionType, status: s.status, notes: s.notes ?? '',
       isTeletherapy: s.isTeletherapy || false,
+      internStaffId: s.internStaffId ?? '',
     })
     setEditError('')
   }
@@ -422,7 +519,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
     const res = await fetch('/api/clinic-schedule', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editId, ...editForm }),
+      body: JSON.stringify({ id: editId, ...editForm, branch: schedulingBranch }),
     })
     setEditSaving(false)
     if (res.ok) { setEditId(null); loadSchedules() }
@@ -593,7 +690,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
             : isSBEA
               ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
               : { background: '#FFF3CD', color: '#92400E' }}>
-          {isMultiBranch ? 'Both Branches' : (BRANCH_LABEL[staff.branch] ?? staff.branch)}
+          {isMultiBranch ? 'Both Branches' : (branchLabel(staff.branch) ?? staff.branch)}
         </span>
         {open ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
       </button>
@@ -668,6 +765,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
                           status: 'PENDING',
                           notes: '',
                           isTeletherapy: false,
+                          internStaffId: '',
                         })}
                         className="px-3 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"
                         style={{ background: '#ED6823', color: '#fff' }}
@@ -679,7 +777,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
                   </div>
                 </div>
               )}
-              <ScheduleForm dept={staff.department} values={form} onChange={setForm}
+              <ScheduleForm dept={staff.department} branchEnum={BRANCH_ENUM[schedulingBranch] ?? ''} allStaff={allStaff} values={form} onChange={setForm}
                 onSubmit={handleAdd} onCancel={closeAddForm}
                 error={formError} submitting={saving} submitLabel="Save Schedule" />
             </div>
@@ -756,7 +854,7 @@ function StaffCard({ staff, selectedDate, schedulingBranch }: { staff: StaffMemb
                       {editId === s.id && (
                         <tr key={`${s.id}-edit`} style={{ borderBottom: '1px solid var(--light-gray)' }}>
                           <td colSpan={5} className="px-3 py-3" style={{ background: 'var(--pale-teal)' }}>
-                            <ScheduleForm dept={staff.department} values={editForm} onChange={setEditForm}
+                            <ScheduleForm dept={staff.department} branchEnum={BRANCH_ENUM[schedulingBranch] ?? ''} allStaff={allStaff} values={editForm} onChange={setEditForm}
                               onSubmit={handleEdit} onCancel={() => { setEditId(null); setEditError('') }}
                               error={editError} submitting={editSaving} submitLabel="Save Changes" />
                           </td>
@@ -865,11 +963,7 @@ const WEEKDAY_FULL: Record<string, string> = {
 function weekdayCodeFor(iso: string): string {
   return WEEKDAY_CODES[new Date(iso + 'T12:00:00').getDay()]
 }
-function tomorrowStr(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
-}
+const tomorrowStr = localTomorrowStr
 function fmtDateShort(iso: string): string {
   return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
 }
@@ -902,7 +996,12 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   // Reset dept filter + make-up picks when branch changes
   useEffect(() => { setActiveDept('Tomorrow'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
 
-  const branchStaff = staff.filter(s => s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch))
+  // Interns are never standalone clinicians — they hold no caseload of their
+  // own and appear only as the "Select Intern" field inside a supervisor's
+  // schedule entry (see ScheduleForm's isEligibleIntern picker). They must
+  // stay in `staff` so that picker can still find them; they're excluded
+  // here, from every list that renders a clinician row.
+  const branchStaff = staff.filter(s => !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)))
   const presentDepts = ALL_DEPARTMENTS.filter(d => branchStaff.some(s => s.department === d))
   const filtered = activeDept === 'All' ? branchStaff : branchStaff.filter(s => s.department === activeDept)
 
@@ -914,7 +1013,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const tomorrowClinicians = configs
     .filter(c => Array.isArray(c.workDays) && c.workDays.includes(tomorrowCode))
     .map(c => ({ cfg: c, staff: staffById.get(c.staffId) }))
-    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && (x.staff.branch === activeBranch || (x.staff.extraBranches ?? []).includes(activeBranch)))
+    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && !isIntern(x.staff) && (x.staff.branch === activeBranch || (x.staff.extraBranches ?? []).includes(activeBranch)))
     .sort((a, b) =>
       (a.staff.lastName || '').localeCompare(b.staff.lastName || '') ||
       (a.staff.firstName || '').localeCompare(b.staff.firstName || ''))
@@ -930,7 +1029,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
   const makeupClinicians = makeupIds
     .map(id => staffById.get(id))
-    .filter((s): s is StaffMember => !!s && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && !autoIds.has(s.id))
+    .filter((s): s is StaffMember => !!s && !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && !autoIds.has(s.id))
   // Type-ahead matches for the make-up search (exclude already-listed staff).
   const makeupMatches = makeupQuery.trim().length > 0
     ? branchStaff
@@ -952,7 +1051,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                 style={activeBranch === b
                   ? { background: 'var(--teal)', color: '#fff' }
                   : { background: '#fff', color: 'var(--mid-gray)' }}>
-                {BRANCH_LABEL[b] ?? b}
+                {branchLabel(b) ?? b}
               </button>
             ))}
           </div>
@@ -1013,7 +1112,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                   Clinicians tomorrow · {fmtDateShort(tomorrowDate)}
                 </h3>
                 <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  {tomorrowClinicians.length} on schedule · {BRANCH_LABEL[activeBranch] ?? activeBranch}
+                  {tomorrowClinicians.length} on schedule · {branchLabel(activeBranch) ?? activeBranch}
                 </span>
               </div>
               {tomorrowClinicians.length === 0 ? (
@@ -1037,7 +1136,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                       </div>
                       <div className="space-y-2">
                         {g.list.map(({ staff: s }) => (
-                          <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
+                          <StaffCard key={s.id} staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                         ))}
                       </div>
                     </div>
@@ -1066,7 +1165,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                           Remove
                         </button>
                       </div>
-                      <StaffCard staff={s} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
+                      <StaffCard staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                     </div>
                   ))}
                 </div>
@@ -1140,7 +1239,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       ) : (
         <div className="space-y-2">
           {filtered.map(s => (
-            <StaffCard key={s.id} staff={s} selectedDate={selectedDate} schedulingBranch={activeBranch} />
+            <StaffCard key={s.id} staff={s} allStaff={staff} selectedDate={selectedDate} schedulingBranch={activeBranch} />
           ))}
         </div>
       )}

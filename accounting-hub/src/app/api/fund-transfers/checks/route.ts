@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { chequeDigits, chequeKey } from '@/lib/cheque-number'
 
 /**
  * Check Release Monitoring — GET /api/fund-transfers/checks?accountId=<id|all>
@@ -48,7 +49,8 @@ export async function GET(req: Request) {
   const strKeys = [...strMap.keys()]
   const labelFor = (s: string | null) => (s && strMap.has(s) ? strMap.get(s)!.label : s || '')
 
-  type Row = { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
+  type Group = Omit<Row, 'id' | 'kind'> & { id?: string; kind?: Row['kind'] | 'REGISTER'; items: Row[]; registeredAmount?: number; registerStatus?: string; cleared?: boolean; clearedOn?: string | null }
+  type Row = { cleared?: boolean; clearedOn?: string | null; id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED' | 'REGISTER'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
   const rows: Row[] = []
 
   // 1. Petty Cash + Expenses
@@ -107,6 +109,34 @@ export async function GET(req: Request) {
     })
   }
 
+  // 4a. Which records has bank reconciliation actually matched a bank line to?
+  // A cheque has cleared when the bank shows the money leaving — that is exactly
+  // what a bank-rec match records. Without one the cheque was written but has not
+  // been seen on the statement: still outstanding, stopped, or never presented.
+  const matched = await prisma.bankTransaction.findMany({
+    where: { bankAccountId: { in: [...idSet] }, matchId: { not: null }, status: 'POSTED' },
+    select: { matchId: true, date: true },
+  })
+  const clearedById = new Map<string, Date>()
+  // A MULTI match stores several record ids comma-joined in one matchId; each
+  // of those records cleared on that line. Earliest date wins when a record
+  // spans several bank lines.
+  for (const m of matched) {
+    if (!m.matchId) continue
+    for (const id of m.matchId.split(',')) {
+      const key = id.trim()
+      if (!key) continue
+      const prev = clearedById.get(key)
+      if (!prev || m.date < prev) clearedById.set(key, m.date)
+    }
+  }
+
+  // 4b. The chequebook register — every leaf, including cancelled and unused.
+  const register = await prisma.issuedCheque.findMany({
+    where: { accountId: { in: [...idSet] } },
+    select: { id: true, checkNumber: true, date: true, amount: true, payee: true, status: true, note: true, accountId: true },
+  })
+
   // 4. Manually-recorded cancelled checks
   const cancelled = await prisma.cancelledCheck.findMany({
     where: { accountId: { in: [...idSet] } },
@@ -126,14 +156,111 @@ export async function GET(req: Request) {
     })
   }
 
-  // Enumerate by check number (numeric-aware sort)
-  rows.sort((a, b) => {
-    const na = parseInt(a.checkNumber.replace(/\D/g, '') || '0', 10)
-    const nb = parseInt(b.checkNumber.replace(/\D/g, '') || '0', 10)
+  // The register is the spine: it says which cheque leaves exist and what each
+  // was written for. Rows from petty cash / RFP / fund transfers describe what
+  // the cheque PAID, so they become the breakdown beneath it rather than
+  // separate cheques — and the register's own amount is what the cheque was for,
+  // never the sum of the lines, which may be incomplete.
+  const regByNumber = new Map<string, typeof register[number]>()
+  for (const r of register) regByNumber.set(`${chequeKey(r.checkNumber) || r.checkNumber}|${acctById.get(r.accountId) || ''}`, r)
+
+  // A cheque book lists cheques. Anything whose reference names another
+  // instrument — a telegraphic transfer keeps its bank reference in the same
+  // column — is dropped here rather than shown as a cheque with no number.
+  const cheques = rows
+    .map(r => ({
+      ...r,
+      checkNumber: chequeDigits(r.checkNumber) || '',
+      cleared: r.id ? clearedById.has(r.id) : false,
+      clearedOn: r.id ? clearedById.get(r.id)?.toISOString().slice(0, 10) || null : null,
+    }))
+    .filter(r => r.checkNumber !== '')
+
+  // One cheque, one row. The same cheque appears once per expense line when the
+  // lines sit under different account titles; those are the SAME payment, so
+  // they are folded into a single row whose amount is the cheque's total and
+  // whose `items` carry what made it up.
+  const byCheque = new Map<string, Group>()
+  for (const r of cheques) {
+    // Identity ignores zero-padding: the book writes 273801, the hub stores
+    // 0000273801, and those are the same cheque.
+    const key = `${chequeKey(r.checkNumber) || r.checkNumber}|${r.bankAccount}`
+    const g = byCheque.get(key)
+    if (!g) {
+      byCheque.set(key, {
+        checkNumber: r.checkNumber, bankAccount: r.bankAccount, date: r.date,
+        amount: r.amount, source: r.source, reference: r.reference, payee: r.payee,
+        id: r.id, kind: r.kind, proofUrls: r.proofUrls, items: [r],
+        cleared: r.cleared, clearedOn: r.clearedOn,
+      })
+      continue
+    }
+    g.amount += r.amount
+    g.items.push(r)
+    // Show the fullest form of the number that any record carries.
+    if (r.checkNumber.length > g.checkNumber.length) g.checkNumber = r.checkNumber
+    // One matched line is enough: the cheque was seen leaving the account.
+    if (r.cleared) { g.cleared = true; g.clearedOn = g.clearedOn || r.clearedOn }
+    if (!g.date || (r.date && r.date < g.date)) g.date = r.date
+    if (g.source !== r.source) g.source = 'Multiple'
+    if (g.payee !== r.payee) g.payee = g.payee || r.payee
+    // A grouped row is no longer one record, so it cannot be edited as one.
+    g.id = undefined; g.kind = undefined
+  }
+
+  // Fold the register in: a leaf with recorded payments keeps them as its
+  // breakdown; a leaf with none is still listed, so gaps in the book show up.
+  for (const [key, r] of regByNumber) {
+    const digits = chequeDigits(r.checkNumber) || r.checkNumber
+    const bank = acctById.get(r.accountId) || ''
+    const g = byCheque.get(key)
+    const registered = {
+      checkNumber: digits, bankAccount: bank,
+      date: r.date?.toISOString().slice(0, 10) || null,
+      amount: Number(r.amount || 0),
+      payee: r.payee || '',
+      note: r.note || '',
+      status: r.status,
+    }
+    if (!g) {
+      byCheque.set(key, {
+        ...registered, kind: 'REGISTER', id: r.id, items: [],
+        source: r.status === 'CANCELLED' ? 'Cancelled' : r.status === 'UNUSED' ? 'Unused' : 'Chequebook',
+        reference: r.note || '',
+      } as Group)
+      continue
+    }
+    // Recorded payments exist — the register still owns the cheque's own facts.
+    g.registeredAmount = registered.amount
+    g.registerStatus = r.status
+    g.payee = g.payee || registered.payee
+    if (!g.date) g.date = registered.date
+    if (r.status === 'CANCELLED') g.source = 'Cancelled'
+  }
+
+  const grouped = [...byCheque.values()].map(g => {
+    const single = g.items.length === 1 && g.registeredAmount === undefined
+    const base = single ? { ...g.items[0], items: [] as Row[] } : { ...g, reference: g.items.length > 1 ? `${g.items.length} entries` : g.reference }
+    if (g.registeredAmount === undefined) return base
+    const lines = g.items.reduce((s, x) => s + x.amount, 0)
+    return {
+      ...base,
+      // What the cheque was written for, per the chequebook.
+      amount: g.registeredAmount,
+      recordedTotal: g.items.length ? lines : undefined,
+      // Flagged when the recorded expenses do not add up to the cheque.
+      mismatch: g.items.length > 0 && Math.round(lines * 100) !== Math.round(g.registeredAmount * 100),
+      registerStatus: g.registerStatus,
+    }
+  })
+
+  // Enumerate by check number (numeric — they are all digits now)
+  grouped.sort((a, b) => {
+    const na = parseInt(a.checkNumber, 10), nb = parseInt(b.checkNumber, 10)
     return na !== nb ? na - nb : a.checkNumber.localeCompare(b.checkNumber)
   })
 
-  return NextResponse.json({ checks: rows, accounts: accountsList })
+  return NextResponse.json({ checks: grouped, accounts: accountsList })
 }
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']

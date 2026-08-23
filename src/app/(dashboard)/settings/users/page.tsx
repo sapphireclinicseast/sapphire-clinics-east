@@ -11,6 +11,7 @@ const ROLE_LABELS: Record<string, string> = {
   VERDANA_ADMIN: 'Verdana Admin',
   AHEA_FRONT_DESK: 'AHEA Front Desk',
   AHGH_FRONT_DESK: 'AHGH Front Desk',
+  INVESTOR: 'Investor (read-only)',
 }
 
 function roleLabel(role: string) {
@@ -190,6 +191,7 @@ export default function UsersPage() {
                   <option value="VERDANA_ADMIN">Verdana Admin — Verdana Store social only</option>
                   <option value="AHEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
                   <option value="AHGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
+                  <option value="INVESTOR">Investor — Patient Dashboard only, read-only</option>
                 </select>
               </div>
               <div>
@@ -346,6 +348,7 @@ export default function UsersPage() {
                           <option value="VERDANA_ADMIN">Verdana Admin — Verdana Store social only</option>
                           <option value="AHEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
                           <option value="AHGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
+                          <option value="INVESTOR">Investor — Patient Dashboard only, read-only</option>
                         </select>
                       </div>
                       <div>

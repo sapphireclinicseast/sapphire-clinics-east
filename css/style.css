@@ -594,6 +594,10 @@ a.hero-brand-chip:hover {
   text-align: center;
 }
 .partner-logo-card img { max-height: 80px; object-fit: contain; margin: 0 auto; }
+/* Square-format logos (e.g. Xavier, Abba's Orchard) get a tighter card and
+   larger cap so they don't look small next to wide horizontal logos. */
+.partner-logo-card.big { padding: 8px; }
+.partner-logo-card.big img { max-height: 102px; }
 .partner-logo-card:hover { box-shadow: var(--shadow-md); border-color: var(--primary-light); transform: translateY(-2px); }
 
 /* ── ABOUT SECTION ─────────────────────────────────────────────── */

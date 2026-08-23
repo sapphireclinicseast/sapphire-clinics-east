@@ -1,17 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadPosHistory } from '@/lib/pos-history'
 
 export const dynamic = 'force-dynamic'
 
-const FOCUS_DEPTS = ['OT', 'PT', 'SLP', 'SPED'] as const
+// MD and PSYCHOLOGY are included: with POS history merged they are the two
+// largest services (1,236 and 1,099 patients), so excluding them from
+// co-occurrence hid the biggest referral relationships in the clinic.
+// ORTHOSIS is deliberately left out — 9 patients is far too sparse for a
+// chi-square test to say anything, and it would cost every other pair
+// statistical power through the Bonferroni correction.
+const FOCUS_DEPTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY'] as const
 type Dept = (typeof FOCUS_DEPTS)[number]
 
 const DEPT_COLORS: Record<Dept, string> = {
-  OT:   '#1A7B8A',
-  PT:   '#2AAABB',
-  SLP:  '#F59E0B',
-  SPED: '#8B5CF6',
+  OT:         '#1A7B8A',
+  PT:         '#2AAABB',
+  SLP:        '#F59E0B',
+  SPED:       '#8B5CF6',
+  MD:         '#DC2626',
+  PSYCHOLOGY: '#7C3AED',
+}
+
+// Distinct unordered pairs = n(n-1)/2. Derived rather than written as a literal
+// so the correction can't silently go stale if FOCUS_DEPTS changes again — the
+// previous hardcoded "/ 6" was correct only for 4 departments.
+const PAIR_COUNT = (FOCUS_DEPTS.length * (FOCUS_DEPTS.length - 1)) / 2
+const ALPHA = 0.05 / PAIR_COUNT
+
+// Empty per-department tally, used for monthly volume and patient counts.
+function zeroByDept(): Record<Dept, number> {
+  return Object.fromEntries(FOCUS_DEPTS.map(d => [d, 0])) as Record<Dept, number>
 }
 
 // ── Chi-square test helpers (no external deps) ───────────────────────────────
@@ -40,7 +60,7 @@ interface ChiResult {
   phi:      number   // φ coefficient (effect size, −1 to +1)
   pValue:   number   // two-tailed p-value
   pLabel:   string   // e.g. "p < 0.001"
-  pSig:     boolean  // significant at α = 0.05 / 6 (Bonferroni for 6 pairs)
+  pSig:     boolean  // significant at α = 0.05 / PAIR_COUNT (Bonferroni)
   smallCell: boolean // true when any expected cell < 5 (chi-sq less reliable)
 }
 
@@ -81,8 +101,7 @@ function chiSquareTest(a: number, b: number, c: number, d: number): ChiResult {
 
   const pValue = chi2pValue(chiSq)
 
-  // Bonferroni-corrected α for 6 independent pairs = 0.05/6 ≈ 0.0083
-  const ALPHA = 0.05 / 6
+  // Bonferroni-corrected α — see PAIR_COUNT above.
   const pSig = pValue < ALPHA
 
   let pLabel: string
@@ -144,14 +163,40 @@ export async function GET(req: NextRequest) {
 
     const d    = new Date(s.date)
     const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    if (!monthDept[mKey]) monthDept[mKey] = { OT: 0, PT: 0, SLP: 0, SPED: 0 }
+    if (!monthDept[mKey]) monthDept[mKey] = zeroByDept()
     monthDept[mKey][dept]++
+  }
+
+  // ── Merge POS treatment history from the Accounting Hub ───────────────────
+  // Without this, every figure below (patients per department, the affinity
+  // matrix and the Multi-Service Combinations) is computed from ~5 months of
+  // Schedule data only and understates real co-occurrence by 3-4x. POS orders
+  // reach back to Jun 2024. Scoped to FOCUS_DEPTS so the matrix stays a 4x4
+  // with its stated Bonferroni correction.
+  const pos = await loadPosHistory(filterBranches, FOCUS_DEPTS)
+  if (pos) {
+    for (const [key, depts] of pos.patientDepts) {
+      if (!patientDepts.has(key)) patientDepts.set(key, new Set())
+      for (const d of depts) {
+        if ((FOCUS_DEPTS as readonly string[]).includes(d)) {
+          patientDepts.get(key)!.add(d as Dept)
+        }
+      }
+    }
+    // Session volume feeds avg sessions/patient/mo, which can't be derived from
+    // the deduped per-patient pairs above.
+    for (const [month, byDept] of pos.monthly) {
+      if (!monthDept[month]) monthDept[month] = zeroByDept()
+      for (const d of FOCUS_DEPTS) {
+        monthDept[month][d] += byDept[d] ?? 0
+      }
+    }
   }
 
   const N = patientDepts.size
 
   // ── Single-dept counts ───────────────────────────────────────────────────────
-  const deptCounts: Record<string, number> = { OT: 0, PT: 0, SLP: 0, SPED: 0 }
+  const deptCounts: Record<string, number> = zeroByDept()
   for (const depts of patientDepts.values())
     for (const d of depts) deptCounts[d]++
 
@@ -178,24 +223,28 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Combination stats ────────────────────────────────────────────────────────
-  const COMBOS: { label: string; depts: Dept[] }[] = [
-    { label: 'OT + PT + SLP + SPED', depts: ['OT', 'PT', 'SLP', 'SPED'] },
-    { label: 'OT + PT + SLP',        depts: ['OT', 'PT', 'SLP'] },
-    { label: 'OT + PT + SPED',       depts: ['OT', 'PT', 'SPED'] },
-    { label: 'OT + SLP + SPED',      depts: ['OT', 'SLP', 'SPED'] },
-    { label: 'PT + SLP + SPED',      depts: ['PT', 'SLP', 'SPED'] },
-    { label: 'OT + PT',              depts: ['OT', 'PT'] },
-    { label: 'OT + SLP',             depts: ['OT', 'SLP'] },
-    { label: 'OT + SPED',            depts: ['OT', 'SPED'] },
-    { label: 'PT + SLP',             depts: ['PT', 'SLP'] },
-    { label: 'PT + SPED',            depts: ['PT', 'SPED'] },
-    { label: 'SLP + SPED',           depts: ['SLP', 'SPED'] },
-  ]
+  // With 6 departments there are 57 subsets of size >= 2, so the previous
+  // hardcoded list no longer works. Enumerate them, keep only combinations that
+  // actually occur, and return the largest — an exhaustive list would be mostly
+  // zeroes and unreadable.
+  const COMBOS: { label: string; depts: Dept[] }[] = []
+  for (let mask = 0; mask < (1 << FOCUS_DEPTS.length); mask++) {
+    const depts = FOCUS_DEPTS.filter((_, i) => mask & (1 << i))
+    if (depts.length < 2) continue
+    COMBOS.push({ label: depts.join(' + '), depts: [...depts] })
+  }
 
-  const comboStats = COMBOS.map(({ label, depts }) => {
+  // Only combinations that actually occur, largest first, capped so the panel
+  // stays readable. Dropping the zeroes is what makes 57 subsets presentable;
+  // the cap is stated here so a truncated list isn't mistaken for the full set.
+  const COMBO_LIMIT = 15
+  const allCombos = COMBOS.map(({ label, depts }) => {
     const count = countAtLeast(depts)
     return { label, depts, count, supportPct: N > 0 ? (count / N) * 100 : 0 }
   })
+  const occurring = allCombos.filter(c => c.count > 0).sort((a, b) => b.count - a.count)
+  const comboStats = occurring.slice(0, COMBO_LIMIT)
+  const comboTotal = occurring.length
 
   // ── Affinity matrix with chi-square + phi ────────────────────────────────────
   const affinityMatrix = FOCUS_DEPTS.map((d1) => ({
@@ -243,5 +292,8 @@ export async function GET(req: NextRequest) {
     comboStats,
     affinityMatrix,
     avgSessionsPerMonth,
+    comboTotal,
+    posMerged: !!pos,
+    match: pos?.match ?? null,
   })
 }

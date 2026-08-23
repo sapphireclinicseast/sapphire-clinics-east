@@ -4,7 +4,9 @@
 // module of its own (or you are not yet sure how to classify it), enter it
 // here as balanced debits and credits; it posts to the same ledger every
 // report, drill-down and statement reads, so it flows everywhere at once.
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useFocusTarget, revealRow } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { BookOpen, Plus, Loader2, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
 
@@ -25,6 +27,10 @@ const SOURCE_LABEL: Record<string, string> = {
 }
 
 export default function JournalEntriesPage() {
+  return <Suspense fallback={null}><JournalEntriesInner /></Suspense>
+}
+
+function JournalEntriesInner() {
   const { data: session } = useSession()
   const canWrite = WRITE_ROLES.includes((session?.user as { role?: string })?.role || '')
   const [entries, setEntries] = useState<JE[]>([])
@@ -34,6 +40,11 @@ export default function JournalEntriesPage() {
   const [coa, setCoa] = useState<Coa[]>([])
   const [showNew, setShowNew] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  // Deep link from global search: /journal-entries?focus=<id>&q=<description>
+  const { focus, done } = useFocusTarget()
+  const searchParams = useSearchParams()
+  const focusQ = searchParams.get('q') || ''
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
 
   const load = async () => {
     setLoading(true)
@@ -44,6 +55,31 @@ export default function JournalEntriesPage() {
     } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [onlyManual])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Arriving from search: the target is usually a system-generated entry, so drop
+  // the "manual only" filter and seed the search box before loading.
+  useEffect(() => {
+    if (!focus) return
+    setQ(focusQ)
+    setOnlyManual(false)
+    ;(async () => {
+      setLoading(true)
+      try {
+        const r = await fetch(`/api/journal-entries/recent?manual=false&q=${encodeURIComponent(focusQ)}`)
+        const d = await r.json()
+        setEntries(d.entries || [])
+      } finally { setLoading(false) }
+    })()
+  }, [focus, focusQ])
+
+  // Once it's on screen, expand it and jump to it.
+  useEffect(() => {
+    if (!focus || loading) return
+    if (!entries.some(e => e.id === focus)) return
+    setExpanded(x => ({ ...x, [focus]: true }))
+    const t = setTimeout(() => { revealRow(rowRefs.current[focus]); done() }, 60)
+    return () => clearTimeout(t)
+  }, [focus, loading, entries, done])
   useEffect(() => {
     fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] })
       .then(d => setCoa((d.data || []).map((a: Coa) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
@@ -101,7 +137,8 @@ export default function JournalEntriesPage() {
             <tbody>
               {entries.map(e => (
                 <>
-                  <tr key={e.id} className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}
+                  <tr key={e.id} ref={el => { rowRefs.current[e.id] = el }}
+                    className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}
                     onClick={() => setExpanded(x => ({ ...x, [e.id]: !x[e.id] }))}>
                     <td className="px-3 py-2">{expanded[e.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                     <td className="px-3 py-2 tabular-nums">{e.entryDate}</td>
@@ -151,6 +188,8 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10))
   const [branch, setBranch] = useState('ALL')
   const [memo, setMemo] = useState('')
+  // Contribution-margin department tags: empty = "All" (allocated by rent %).
+  const [departments, setDepartments] = useState<string[]>([])
   const [lines, setLines] = useState<DraftLine[]>([blankLine(), blankLine()])
   const [busy, setBusy] = useState(false)
   const upd = (i: number, patch: Partial<DraftLine>) => setLines(ls => ls.map((l, j) => j === i ? { ...l, ...patch } : l))
@@ -164,7 +203,7 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
     try {
       const r = await fetch('/api/journal-entries', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entryDate, branch, memo, lines: lines.map(l => ({ accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description })) }),
+        body: JSON.stringify({ entryDate, branch, memo, departments, lines: lines.map(l => ({ accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description })) }),
       })
       const d = await r.json()
       if (!r.ok) { alert(d.error || 'Failed'); return }
@@ -191,6 +230,25 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
           <label className="flex-1 min-w-[240px] text-xs" style={{ color: 'var(--mid-gray)' }}>Memo<br />
             <input value={memo} onChange={e => setMemo(e.target.value)} placeholder="What this entry records" className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
           </label>
+        </div>
+
+        {/* Department tags for the contribution-margin analysis. "All"
+            (nothing ticked) = allocated by the configured rent percentages. */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Department</span>
+          <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+            style={{ border: `1px solid ${departments.length === 0 ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`, background: departments.length === 0 ? '#f0f7f2' : 'white', color: 'var(--charcoal)' }}>
+            <input type="checkbox" checked={departments.length === 0} onChange={() => setDepartments([])} className="accent-current" />
+            All
+          </label>
+          {['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'].map(d => (
+            <label key={d} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+              style={{ border: `1px solid ${departments.includes(d) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`, background: departments.includes(d) ? '#f0f7f2' : 'white', color: 'var(--charcoal)' }}>
+              <input type="checkbox" checked={departments.includes(d)}
+                onChange={() => setDepartments(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d])} className="accent-current" />
+              {d === 'PSYCHOLOGY' ? 'Psych' : d === 'ORTHOSIS' ? 'Ortho' : d}
+            </label>
+          ))}
         </div>
 
         <table className="w-full text-sm mb-2">

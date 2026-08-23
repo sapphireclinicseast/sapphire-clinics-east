@@ -1,6 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { toChequeInput } from '@/lib/cheque-number'
+import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
+import { useSearchParams } from 'next/navigation'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
@@ -22,12 +26,54 @@ const BRANCHES = [
   { code: 'AHI', value: 'AURA_INSTITUTE', label: 'AHI' },
 ]
 const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSIS']
+
+// ── Contribution-margin department tags ──────────────────────────────────
+// Which department(s) an expense belongs to, for the Contribution Margin
+// analysis. "All" (nothing ticked) = allocated by the configured rent
+// percentages; tick one or more to charge those departments directly.
+const CM_DEPTS = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'] as const
+function DeptTagCell({ value, disabled, onSave }: { value: string[]; disabled?: boolean; onSave: (next: string[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const label = value.length ? value.map(d => d === 'PSYCHOLOGY' ? 'PSYCH' : d === 'ORTHOSIS' ? 'ORTHO' : d).join(', ') : 'All'
+  return (
+    <div className="relative">
+      <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+        className="px-2 py-1.5 w-full text-left text-sm whitespace-nowrap rounded"
+        style={{ minWidth: 120, color: value.length ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+        {label} ▾
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 p-2 rounded-xl bg-white shadow-lg" style={{ border: '1px solid var(--light-gray)', minWidth: 180 }}>
+          <label className="flex items-center gap-2 px-1 py-1 text-xs font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+            <input type="checkbox" checked={value.length === 0} onChange={() => { onSave([]); }} className="accent-current" />
+            All (use rent %)
+          </label>
+          <div className="my-1" style={{ borderTop: '1px solid var(--light-gray)' }} />
+          {CM_DEPTS.map(d => (
+            <label key={d} className="flex items-center gap-2 px-1 py-1 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+              <input type="checkbox" checked={value.includes(d)}
+                onChange={() => onSave(value.includes(d) ? value.filter(x => x !== d) : [...value, d])}
+                className="accent-current" />
+              {d === 'PSYCHOLOGY' ? 'Psychology' : d === 'ORTHOSIS' ? 'Orthosis' : d}
+            </label>
+          ))}
+          <button type="button" onClick={() => setOpen(false)}
+            className="mt-1 w-full py-1 rounded-lg text-xs font-medium" style={{ background: 'var(--light-gray)' }}>Done</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const VATABLE = ['VAT', 'Non-VAT']
 const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
 // Credit card is intentionally NOT a payment method here — credit-card expenses now
 // flow through the Credit Card SOA pipeline, and the RFP that settles an SOA is paid
 // to the bank via check / cash / transfer.
 const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', "Deposit to admin officer's bank account", 'Telegraphic Transfer']
+// How a payroll RFP was settled. The strings match the ones used elsewhere so
+// cheque monitoring ('Check deposit') and bank reconciliation recognise these.
+const PAYROLL_PAYMENT_METHODS = ['Cash', 'Check deposit', 'Telegraphic Transfer'] as const
 const RECUR_FREQ = [
   { v: 'MONTHLY', label: 'Monthly' },
   { v: 'QUARTERLY', label: 'Quarterly' },
@@ -98,7 +144,7 @@ interface Supplier { id: string | null; registeredName: string; registeredAddres
 interface SupTxn { date: string | null; pcvNumber: string; description: string; validity: string; gross: number; vat: number; netVat: number }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
-  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
+  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
 }
@@ -137,6 +183,25 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
     })
   } catch { return null }
 }
+// One-time expenses accumulate into the thousands per branch — more editable rows
+// than a browser will render. The grid loads a recent window by default; searching
+// still reaches the whole history (the server does that part), and the Excel/PDF
+// export pulls its own From/To range, so neither is limited by what's on screen.
+const PERIODS = [
+  { key: '3m', label: 'Last 3 months', months: 3 },
+  { key: '6m', label: 'Last 6 months', months: 6 },
+  { key: '12m', label: 'Last 12 months', months: 12 },
+  { key: 'all', label: 'All time', months: 0 },
+] as const
+type PeriodKey = typeof PERIODS[number]['key']
+const periodFrom = (key: PeriodKey): string => {
+  const m = PERIODS.find(p => p.key === key)?.months || 0
+  if (!m) return ''
+  const d = new Date()
+  d.setMonth(d.getMonth() - m)
+  return d.toISOString().slice(0, 10)
+}
+
 const monthInput = (d: string | null) => (d ? String(d).slice(0, 7) : '')
 const monthsInWindow = (startISO: string | null, endISO: string | null) => {
   if (!startISO || !endISO) return 0
@@ -155,6 +220,10 @@ const monthlyAmt = (e: Entry) => {
 
 // Upload via XHR so we can report upload progress (0–100%).
 export default function ExpensesPage() {
+  return <Suspense fallback={null}><ExpensesInner /></Suspense>
+}
+
+function ExpensesInner() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
   const canWrite = WRITE_ROLES.includes(role)
@@ -168,8 +237,12 @@ export default function ExpensesPage() {
   const entriesRef = useRef<Entry[]>([])
   useEffect(() => { entriesRef.current = entries }, [entries])
   const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState<PeriodKey>('3m')
+  const [totalCount, setTotalCount] = useState(0)      // all rows in this tab, ignoring the window
+  const [searchCapped, setSearchCapped] = useState(false)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
+  const [coaAccounts, setCoaAccounts] = useState<PickableAccount[]>([])
   const [bankOptions, setBankOptions] = useState<string[]>([])
   const [cards, setCards] = useState<Card[]>([])
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
@@ -237,7 +310,11 @@ export default function ExpensesPage() {
       : k === 'payableTotal' ? num(r.payableTotal)
       : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'For Payment')
       : ''
+  // The RFP date range filters the list itself, not just the export — it sits
+  // directly above the table with a "clear" link, so it reads as a table filter
+  // (and the Credit Card Report's identical control already behaves this way).
   const shownRfps = applySortFilter(rfps, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters)
+    .filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
   const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number; amountVaries?: boolean }[]>([])
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
@@ -245,6 +322,22 @@ export default function ExpensesPage() {
   const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string; defaultBilledTo?: string; defaultMemo?: string; payment?: RfpMemoParts } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
+  // Deep link from global search: /expenses?tab=<key>&focus=<PCV or reference>.
+  // On the recording grids the search box now queries the server across all
+  // history, so seeding it finds the entry however old it is; on the RFP and
+  // Credit Card tabs it seeds that list's own reference filter instead.
+  const { focus, done } = useFocusTarget()
+  const urlParams = useSearchParams()
+  const urlTab = urlParams.get('tab') || ''
+  useEffect(() => {
+    if (!focus) return
+    const t = TABS.find(x => x.key === urlTab)
+    if (t) setTab(t.key)
+    if (t?.key === 'rfp') setRfpFilters(f => ({ ...f, refNumber: focus }))
+    else if (t?.key === 'suppliers' || t?.key === 'cc-soa') setSearch(focus)
+    else setSearch(focus)
+    done()
+  }, [focus, urlTab, done])
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridTableRef = useRef<HTMLTableElement>(null)
   const gridRz = useResizableColumns(`expenses-entries-grid-${tab}`, gridTableRef)
@@ -253,15 +346,33 @@ export default function ExpensesPage() {
   const isRecording = recordType === 'RECURRING' || recordType === 'ONE_TIME'
   const isRecurringTab = recordType === 'RECURRING'
 
-  const loadEntries = useCallback(async (br: string, rt: string) => {
+  const loadEntries = useCallback(async (br: string, rt: string, per: PeriodKey, term: string) => {
     if (!rt) { setEntries([]); setLoading(false); return }
     setLoading(true)
     try {
-      const r = await fetch(`/api/petty-cash/entries?branch=${br}&recordType=${rt}`)
+      const qs = new URLSearchParams({ branch: br, recordType: rt })
+      // Only one-time expenses are big enough to need a window; recurring setups
+      // and petty cash are a handful of rows and always load whole.
+      const t = term.trim()
+      if (t) qs.set('q', t)
+      else if (rt === 'ONE_TIME') {
+        const w = periodFrom(per)
+        if (w) qs.set('from', w)
+      }
+      const r = await fetch(`/api/petty-cash/entries?${qs}`)
       setEntries(r.ok ? await r.json() : [])
-    } catch { setEntries([]) }
+      setTotalCount(r.ok ? Number(r.headers.get('X-Total-Count') || 0) : 0)
+      setSearchCapped(r.ok && r.headers.get('X-Search-Capped') === '1')
+    } catch { setEntries([]); setTotalCount(0); setSearchCapped(false) }
     setLoading(false)
   }, [])
+
+  // Refs so the many `reload(...)` call sites below keep a stable identity while
+  // still picking up the current window / search term.
+  const periodRef = useRef<PeriodKey>(period)
+  const searchRef = useRef('')
+  useEffect(() => { periodRef.current = period }, [period])
+  const reload = useCallback((br: string, rt: string) => loadEntries(br, rt, periodRef.current, searchRef.current), [loadEntries])
 
   const loadSettings = useCallback(async (br: string) => {
     try {
@@ -302,8 +413,15 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     setSelected(new Set()); setRfpMode(null)
-    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch); loadRecurringDue(branch)
-  }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers, loadRfps, loadRecurringDue])
+    loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch); loadRecurringDue(branch)
+  }, [branch, recordType, loadSettings, loadCards, loadSuppliers, loadRfps, loadRecurringDue])
+
+  // Entries reload on their own so changing the window or the search term refetches.
+  // The term is debounced — a search runs against the whole history server-side.
+  useEffect(() => {
+    const t = setTimeout(() => { searchRef.current = search; loadEntries(branch, recordType, period, search) }, search ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [branch, recordType, period, search, loadEntries])
 
   const generateFromRecurring = async (recurringId: string) => {
     setGenFromRecurring(recurringId)
@@ -314,7 +432,7 @@ export default function ExpensesPage() {
       })
       if (r.ok) {
         if (tab !== 'onetime') setTab('onetime')
-        await loadEntries(branch, 'ONE_TIME')
+        await reload(branch, 'ONE_TIME')
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 80)
       } else alert((await r.json()).error || 'Failed to generate entry')
     } catch { alert('Failed to generate entry') }
@@ -329,6 +447,8 @@ export default function ExpensesPage() {
         const list = Array.isArray(d) ? d : (d.accounts || d.data || [])
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setCoaOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setCoaAccounts(list.map((a: any) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle, accountType: a.accountType })))
       })
       .catch(() => setCoaOptions([]))
     fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=1000')
@@ -336,8 +456,10 @@ export default function ExpensesPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then((d: any) => {
         const list = Array.isArray(d) ? d : (d.accounts || d.data || [])
+        // Retired bank accounts are closed at the bank — nothing can be paid
+        // from them, so they leave this dropdown along with all the others.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setBankOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
+        setBankOptions(list.filter((a: any) => !a.bankRetiredAt).map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
       })
       .catch(() => setBankOptions([]))
   }, [])
@@ -478,7 +600,7 @@ export default function ExpensesPage() {
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to create SOA'); setCreatingSoa(false); return }
       setShowCcPick(false); setCcMode(false); setSelected(new Set())
-      await loadEntries(branch, 'ONE_TIME')
+      await reload(branch, 'ONE_TIME')
       setTab('cc-soa')
     } catch { alert('Failed to create SOA') }
     setCreatingSoa(false)
@@ -500,7 +622,7 @@ export default function ExpensesPage() {
         await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdfData }) })
       } catch { /* pdf best-effort */ }
       setShowRfpModal(false); setRfpMode(null); setSelected(new Set()); setRfpManualSeq('')
-      await loadEntries(branch, recordType); await loadRfps(branch)
+      await reload(branch, recordType); await loadRfps(branch)
       setTab('rfp')
     } catch { alert('Failed to generate RFP') }
     setGeneratingRfp(false)
@@ -515,7 +637,7 @@ export default function ExpensesPage() {
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to record payment'); setPaying(false); return }
       setPayTarget(null)
-      await loadRfps(branch); await loadEntries(branch, recordType)
+      await loadRfps(branch); await reload(branch, recordType)
     } catch { alert('Failed to record payment') }
     setPaying(false)
   }
@@ -531,9 +653,22 @@ export default function ExpensesPage() {
   // ── Downloads (Excel / PDF) with the From/To range ──
   const brLabel = BRANCHES.find(b => b.value === branch)?.label || branch
   const rangeNote = `${dlFrom || 'start'} → ${dlTo || 'end'}`
-  const exportEntries = (fmt: ExportFormat) => {
+  // The export covers the whole From/To range, not just the rows currently loaded
+  // in the grid — otherwise narrowing the window would silently shrink the report.
+  const exportEntries = async (fmt: ExportFormat) => {
     const isRecurring = recordType === 'RECURRING'
-    const rows = entries.filter(e => inDateRange(e.date, dlFrom, dlTo))
+    let source = entries
+    if (recordType === 'ONE_TIME') {
+      const qs = new URLSearchParams({ branch, recordType })
+      if (dlFrom) qs.set('from', dlFrom)
+      if (dlTo) qs.set('to', dlTo)
+      try {
+        const r = await fetch(`/api/petty-cash/entries?${qs}`)
+        if (!r.ok) { alert('Could not load the entries for that range.'); return }
+        source = await r.json()
+      } catch { alert('Could not load the entries for that range.'); return }
+    }
+    const rows = source.filter(e => inDateRange(e.date, dlFrom, dlTo))
     const headers = isRecurring
       ? ['Reference', 'Payee', 'Department', 'Description', 'Account Title', 'Frequency', 'Vatable', 'Gross Amount']
       : ['Reference', 'Payee', 'Department', 'Date', 'Description', 'Account Title', 'Vatable', 'Validity', 'Audited', 'Gross Amount', 'Payment']
@@ -546,7 +681,7 @@ export default function ExpensesPage() {
     else downloadPdf({ title, subtitle: `Range: ${rangeNote} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
   }
   const exportRfps = (fmt: ExportFormat) => {
-    const rows = shownRfps.filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
+    const rows = shownRfps   // already scoped to the From/To range
     const headers = ['Reference Number', 'Date', 'Kind', 'Payable to', 'Entries', 'Gross Total', 'Amount Payable', 'Status']
     const body = rows.map(r => [
       r.refNumber, new Date(r.createdAt).toISOString().slice(0, 10),
@@ -596,7 +731,7 @@ export default function ExpensesPage() {
     try {
       if (isPayrollRfp(rfp)) await reversePayrollPayment(rfp)
       await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'unpay' }) })
-      await loadRfps(branch); await loadEntries(branch, recordType)
+      await loadRfps(branch); await reload(branch, recordType)
     } catch { /* ignore */ }
   }
 
@@ -606,7 +741,7 @@ export default function ExpensesPage() {
     try {
       if (isPayrollRfp(rfp) && rfp.status === 'PAID') await reversePayrollPayment(rfp)
       setRfps(prev => prev.filter(r => r.id !== rfp.id))
-      await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await loadEntries(branch, recordType)
+      await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await reload(branch, recordType)
     } catch { /* ignore */ }
   }
 
@@ -743,8 +878,13 @@ export default function ExpensesPage() {
   const locked = (e: Entry) => !!e.reimbursementId || !!e.soaId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
 
+  // Only the one-time tab is loaded through a date window (it's the only one that
+  // grows into the thousands); everything else behaves exactly as before.
+  const isWindowed = recordType === 'ONE_TIME'
   const q = search.trim().toLowerCase()
-  const shown = q
+  // On the windowed tab the server has already applied the search across all
+  // history; re-filtering here would only drop rows while the fetch is in flight.
+  const shown = q && !isWindowed
     ? entries.filter(e => [e.pcvNumber, e.requestor, e.description, e.accountTitle, e.siNumber, e.registeredName, e.tinNumber, e.paymentMethod]
         .some(v => (v || '').toString().toLowerCase().includes(q)))
     : entries
@@ -937,16 +1077,26 @@ export default function ExpensesPage() {
       {isRecording && (
         <>
           <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportEntries}
-            dateLabel="Expense date" note={`${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
+            dateLabel="Expense date"
+            note={isWindowed ? 'exports the full range' : `${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
           {/* Search + scroll controls */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="relative flex-1 min-w-[240px] max-w-md">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search payee, description, PCV, account…"
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder={isWindowed ? 'Search all entries — payee, description, PCV, account…' : 'Search payee, description, PCV, account…'}
                 className="w-full pl-9 pr-8 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2"><X size={15} style={{ color: 'var(--mid-gray)' }} /></button>}
             </div>
             <div className="flex items-center gap-2">
+              {isWindowed && (
+                <select value={period} onChange={e => setPeriod(e.target.value as PeriodKey)} disabled={!!q}
+                  title={q ? 'Search covers every entry, so the period does not apply' : 'How far back to load into the grid'}
+                  className="px-3 py-2 rounded-xl border text-xs font-semibold outline-none disabled:opacity-50"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                  {PERIODS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+              )}
               <button onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
                 className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                 <ArrowUp size={14} /> Top
@@ -959,9 +1109,19 @@ export default function ExpensesPage() {
           </div>
 
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            {shown.length}{q ? ` of ${entries.length}` : ''} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
+            {shown.length}{isWindowed && totalCount > shown.length ? ` of ${totalCount}` : q ? ` of ${entries.length}` : ''} entries
+            {' · '}{selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
             {' · '}Next PCV #{nextPcvSeq}
           </p>
+          {isWindowed && (
+            <p className="text-[11px] -mt-2" style={{ color: 'var(--mid-gray)' }}>
+              {q
+                ? searchCapped
+                  ? 'Showing the first 500 matches from every entry on record — narrow the search to see fewer.'
+                  : 'Searching every entry on record, not just the period above.'
+                : `Showing ${PERIODS.find(p => p.key === period)?.label.toLowerCase()} — Total Gross covers these rows only. Search to reach older entries, or widen the period. The Excel/PDF export always covers its full From/To range.`}
+            </p>
+          )}
 
           <div ref={scrollRef} className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 260px)' : '66vh' }}>
             {loading ? (
@@ -1039,11 +1199,8 @@ export default function ExpensesPage() {
                             }} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.department || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { department: ev.target.value }, false)}>
-                            <option value=""></option>
-                            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                          </select>
+                          <DeptTagCell value={(e as unknown as { departments?: string[] }).departments || []} disabled={lk}
+                            onSave={next => saveField(e.id, { departments: next } as unknown as Partial<Entry>, false)} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="date" className={cellCls} disabled={lk}
@@ -1122,12 +1279,10 @@ export default function ExpensesPage() {
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.accountTitle || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { accountTitle: ev.target.value }, false)} style={{ minWidth: 200 }}>
-                            <option value=""></option>
-                            {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                            {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
-                          </select>
+                          <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
+                            disabled={lk} className={cellCls} placeholder="Type a number or a name…"
+                            clearLabel="— Clear —"
+                            onChange={v => saveField(e.id, { accountTitle: v }, false)} />
                           {/* Only tangible (depreciating PPE) one-time entries — not intangibles. */}
                           {(() => {
                             const ac = assetClassFromAccountTitle(e.accountTitle)
@@ -1351,7 +1506,7 @@ export default function ExpensesPage() {
       )}
 
       {tab === 'cc-soa' && (
-        <CreditCardSoaTab branch={branch} canWrite={canWrite} onChanged={() => { loadRfps(branch); loadEntries(branch, 'ONE_TIME') }} />
+        <CreditCardSoaTab branch={branch} canWrite={canWrite} onChanged={() => { loadRfps(branch); reload(branch, 'ONE_TIME') }} />
       )}
 
       {tab === 'cc-report' && (
@@ -1361,7 +1516,7 @@ export default function ExpensesPage() {
       {tab === 'rfp' && (
         <>
         <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportRfps}
-          dateLabel="RFP date" note={`${shownRfps.filter(r => inDateRange(r.createdAt, dlFrom, dlTo)).length} in range`} />
+          dateLabel="RFP date" note={`${shownRfps.length} in range`} />
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
             <SortFilterHead cols={rfpCols} sortKey={rfpSort.key} sortDir={rfpSort.dir} filters={rfpFilters}
@@ -1435,7 +1590,11 @@ export default function ExpensesPage() {
               ))}
               {shownRfps.length === 0 && (
                 <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  {rfps.length === 0 ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.' : 'No RFPs match the current filters.'}
+                  {rfps.length === 0
+                    ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.'
+                    : (dlFrom || dlTo)
+                      ? `No RFPs dated ${dlFrom || 'start'} → ${dlTo || 'end'}. Clear the date range to see all ${rfps.length}.`
+                      : 'No RFPs match the current filters.'}
                 </td></tr>
               )}
             </tbody>
@@ -1787,7 +1946,7 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
         {isCheck && (
           <>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Check Number</label>
-            <input type="text" inputMode="numeric" value={checkNumber} onChange={e => setCheckNumber(e.target.value)}
+            <input type="text" inputMode="numeric" value={checkNumber} onChange={e => setCheckNumber(toChequeInput(e.target.value))}
               placeholder="e.g. 0001234" className="w-full px-3 py-2 rounded-xl border text-sm mb-1 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Leading zeros are preserved.</p>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Bank account</label>
@@ -1943,13 +2102,42 @@ function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccou
 
 // ── Credit Card Report tab ─────────────────────────────────────
 interface SoaRow {
-  id: string; refNumber: string; status: string; paymentRoute: string | null
+  id: string; refNumber: string; legacyRef: string | null; periodYear: number | null; periodMonth: number | null
+  status: string; paymentRoute: string | null
   cardId: string; cardLabel: string; statementUrl: string | null; soaDocUrl: string | null
   filingStatus: string; reimbursementId: string | null; rfpRefNumber: string
   entryCount: number; total: number; paidAt: string | null; createdAt: string
 }
 
-// Credit Card SOA subtab — SOAs still in progress (OPEN / IN_RFP).
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "Jul 2025" | em-dash; the SOA's billing month, editable in place. */
+function SoaPeriodCell({ row, canWrite, onSaved }: { row: SoaRow; canWrite: boolean; onSaved: () => void }) {
+  const value = row.periodYear && row.periodMonth ? `${row.periodYear}-${String(row.periodMonth).padStart(2, '0')}` : ''
+  const save = async (v: string) => {
+    const m = /^([0-9]{4})-([0-9]{2})$/.exec(v)
+    try {
+      await fetch('/api/expenses/soa', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id, action: 'set-period', periodYear: m ? parseInt(m[1]) : null, periodMonth: m ? parseInt(m[2]) : null }),
+      })
+      onSaved()
+    } catch { /* leave as-is */ }
+  }
+  if (!canWrite) {
+    return <span className="text-xs" style={{ color: row.periodYear ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+      {row.periodYear && row.periodMonth ? `${MONTH_SHORT[row.periodMonth - 1]} ${row.periodYear}` : '—'}
+    </span>
+  }
+  return (
+    <input type="month" value={value} onChange={e => save(e.target.value)}
+      className="px-1.5 py-1 rounded-lg border text-xs outline-none"
+      style={{ borderColor: value ? 'var(--light-gray)' : '#fcd34d', color: 'var(--charcoal)', background: 'white' }}
+      title="Billing month this SOA covers" />
+  )
+}
+
+// Credit Card SOA subtab — every SOA booked for the branch; active ones first, paid ones kept as history.
 function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; canWrite: boolean; onChanged: () => void }) {
   const [rows, setRows] = useState<SoaRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -1957,7 +2145,21 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { const r = await fetch(`/api/expenses/soa?branch=${branch}&status=active`); setRows(r.ok ? await r.json() : []) }
+    try {
+      // Every SOA ever booked stays visible here — a paid SOA is history, not
+      // clutter. Active ones (Open / In RFP) float to the top; paid ones follow,
+      // newest payment first.
+      const r = await fetch(`/api/expenses/soa?branch=${branch}`)
+      const all: SoaRow[] = r.ok ? await r.json() : []
+      all.sort((a, b) => {
+        const aPaid = a.status === 'PAID' ? 1 : 0
+        const bPaid = b.status === 'PAID' ? 1 : 0
+        if (aPaid !== bPaid) return aPaid - bPaid
+        if (aPaid) return String(b.paidAt || '').localeCompare(String(a.paidAt || ''))
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+      })
+      setRows(all)
+    }
     catch { setRows([]) } finally { setLoading(false) }
   }, [branch])
   useEffect(() => { load() }, [load])
@@ -2031,22 +2233,31 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
       <table className="w-full text-sm">
         <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
           <th className="px-3 py-2.5 font-semibold">SOA Ref</th><th className="px-3 py-2.5 font-semibold">Card</th>
+          <th className="px-3 py-2.5 font-semibold">Period</th>
           <th className="px-3 py-2.5 font-semibold text-right">Entries</th><th className="px-3 py-2.5 font-semibold text-right">Total</th>
           <th className="px-3 py-2.5 font-semibold">Status</th><th className="px-3 py-2.5 font-semibold">Statement</th>
           {canWrite && <th className="px-3 py-2.5 font-semibold text-right">Actions</th>}
         </tr></thead>
         <tbody>
           {loading ? (
-            <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+            <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           ) : rows.map(r => (
-            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.status === 'IN_RFP' ? '#ffedd5' : '#f3e8ff' }}>
-              <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.status === 'PAID' ? 'white' : r.status === 'IN_RFP' ? '#ffedd5' : '#f3e8ff' }}>
+              <td className="px-3 py-2.5 whitespace-nowrap">
+                <span className="font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</span>
+                {r.legacyRef && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>was: {r.legacyRef}</span>}
+              </td>
               <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
+              <td className="px-3 py-2.5"><SoaPeriodCell row={r} canWrite={canWrite} onSaved={load} /></td>
               <td className="px-3 py-2.5 text-right" style={{ color: 'var(--mid-gray)' }}>{r.entryCount}</td>
               <td className="px-3 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(r.total)}</td>
               <td className="px-3 py-2.5">
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={r.status === 'IN_RFP' ? { background: '#fed7aa', color: '#9a3412' } : { background: '#e9d5ff', color: '#6b21a8' }}>
-                  {r.status === 'IN_RFP' ? `In RFP${r.rfpRefNumber ? ` · ${r.rfpRefNumber}` : ''}` : 'Open'}
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                  style={r.status === 'PAID' ? { background: '#dcfce7', color: '#166534' }
+                    : r.status === 'IN_RFP' ? { background: '#fed7aa', color: '#9a3412' } : { background: '#e9d5ff', color: '#6b21a8' }}>
+                  {r.status === 'PAID'
+                    ? `Paid${r.paidAt ? ` · ${new Date(r.paidAt).toLocaleDateString('en-PH')}` : ''}${r.paymentRoute === 'PETTY_CASH' ? ' · petty cash' : r.rfpRefNumber ? ` · ${r.rfpRefNumber}` : ''}`
+                    : r.status === 'IN_RFP' ? `In RFP${r.rfpRefNumber ? ` · ${r.rfpRefNumber}` : ''}` : 'Open'}
                 </span>
               </td>
               <td className="px-3 py-2.5">
@@ -2073,7 +2284,7 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
             </tr>
           ))}
           {!loading && rows.length === 0 && (
-            <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No open SOAs. In One-time expense, select entries and click &quot;Paid by Credit Card&quot;.</td></tr>
+            <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No SOAs booked yet. In One-time expense, select entries and click &quot;Paid by Credit Card&quot;.</td></tr>
           )}
         </tbody>
       </table>
@@ -2090,11 +2301,12 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
   const [filters, setFilters] = useState<Record<string, string>>({})
   const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const cols = [
-    { key: 'refNumber', label: 'SOA Ref' }, { key: 'cardLabel', label: 'Card' }, { key: 'paidAt', label: 'Paid Date' },
+    { key: 'refNumber', label: 'SOA Ref' }, { key: 'cardLabel', label: 'Card' }, { key: 'period', label: 'Period' }, { key: 'paidAt', label: 'Paid Date' },
     { key: 'paidVia', label: 'Paid Via' }, { key: 'total', label: 'Total' }, { key: 'status', label: 'Filing' },
   ]
   const get = (r: SoaRow, k: string): string | number =>
     k === 'refNumber' ? r.refNumber : k === 'cardLabel' ? r.cardLabel
+      : k === 'period' ? (r.periodYear && r.periodMonth ? `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}` : '')
       : k === 'paidAt' ? (r.paidAt ? String(r.paidAt).slice(0, 10) : '')
       : k === 'paidVia' ? (r.paymentRoute === 'PETTY_CASH' ? 'Paid through Petty Cash' : (r.rfpRefNumber || 'RFP'))
       : k === 'total' ? r.total : k === 'status' ? (r.filingStatus === 'FILED' ? 'Filed' : 'For Filing') : ''
@@ -2109,11 +2321,25 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
   useEffect(() => { load() }, [load])
 
   const exportReport = (fmt: ExportFormat) => {
-    const headers = ['SOA Ref', 'Card', 'Paid Date', 'Paid Via', 'Total', 'Filing']
-    const body = shown.map(r => [r.refNumber, r.cardLabel, r.paidAt ? String(r.paidAt).slice(0, 10) : '',
+    const headers = ['SOA Ref', 'Card', 'Period', 'Paid Date', 'Paid Via', 'Total', 'Filing']
+    const body = shown.map(r => [r.refNumber, r.cardLabel,
+      r.periodYear && r.periodMonth ? `${r.periodYear}-${String(r.periodMonth).padStart(2, '0')}` : '',
+      r.paidAt ? String(r.paidAt).slice(0, 10) : '',
       r.paymentRoute === 'PETTY_CASH' ? 'Paid through Petty Cash' : (r.rfpRefNumber || 'RFP'), r.total.toFixed(2), r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'])
     if (fmt === 'xlsx') downloadXlsx(`credit-card-report-${branch}`, [{ name: 'Credit Card Report', headers, rows: body }])
     else downloadPdf({ title: 'Credit Card Report', subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} paid SOA(s)`, headers, rows: body, landscape: true })
+  }
+
+  const uploadStatement = async (row: SoaRow, file: File | null) => {
+    if (!file) return
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!up.ok) { alert('Upload failed'); return }
+      const { url } = await up.json()
+      await fetch('/api/expenses/soa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, action: 'upload-statement', statementUrl: url }) })
+      await load()
+    } catch { alert('Upload failed') }
   }
 
   const setFiling = async (id: string, filingStatus: string) => {
@@ -2132,8 +2358,12 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
               <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
             ) : shown.map(r => (
               <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  <span className="font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</span>
+                  {r.legacyRef && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>was: {r.legacyRef}</span>}
+                </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
+                <td className="px-3 py-2.5"><SoaPeriodCell row={r} canWrite={canWrite} onSaved={load} /></td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.paidAt ? new Date(r.paidAt).toLocaleDateString('en-PH') : ''}</td>
                 <td className="px-3 py-2.5 text-xs">
                   {r.paymentRoute === 'PETTY_CASH'
@@ -2151,7 +2381,13 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
                 </td>
                 <td className="px-3 py-2.5 text-right whitespace-nowrap">
                   {r.statementUrl && <a href={r.statementUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Eye size={12} /> Statement</a>}
-                  {r.soaDocUrl && <a href={r.soaDocUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileText size={12} /> SOA</a>}
+                  {r.soaDocUrl && <a href={r.soaDocUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileText size={12} /> SOA</a>}
+                  {canWrite && (
+                    <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      <Upload size={12} /> {r.statementUrl ? 'Replace' : 'Attach SOA'}
+                      <input type="file" className="hidden" accept="image/*,.pdf" onChange={e => { uploadStatement(r, e.target.files?.[0] || null); e.target.value = '' }} />
+                    </label>
+                  )}
                 </td>
               </tr>
             ))}
@@ -2853,10 +3089,9 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
   const count = rfp.meta?.ids?.length || 0
   const [assets, setAssets] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [expenseAccts, setExpenseAccts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
-  const [q, setQ] = useState('')
-  const [feeQ, setFeeQ] = useState('')
   const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
   const [fromAccountId, setFromAccountId] = useState('')
+  const [payMethod, setPayMethod] = useState<string>('Telegraphic Transfer')
   const [bankRef, setBankRef] = useState('')
   const [remarks, setRemarks] = useState('')
   const [proofUrl, setProofUrl] = useState('')
@@ -2873,9 +3108,8 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
       setExpenseAccts(rows.filter(a => a.accountType === 'EXPENSE').map(pick))
     }).catch(() => {})
   }, [])
-  // Pay-from source is a cash/bank (ASSET) account; the fee DEBIT is an EXPENSE account.
-  const filtered = assets.filter(a => !q || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(q.toLowerCase()))
-  const feeFiltered = expenseAccts.filter(a => !feeQ || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(feeQ.toLowerCase()))
+  // Pay-from source is a cash/bank (ASSET) account; the fee DEBIT is an EXPENSE
+  // account. Both fields search their own list as you type.
 
   const upload = async (file: File | null) => {
     if (!file) return
@@ -2889,7 +3123,21 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
     try {
       const ids = rfp.meta?.ids || []
       const useEmployee = isSalary ? (rfp.meta?.payableType === 'EMPLOYEE') : true
-      const idBody = useEmployee ? { employeePayslipIds: ids } : { payrollEntryIds: ids }
+      // A salaries RFP can hold whole payslips, instalments of split ones, or
+      // both. Each kind is paid through its own list so the ledger posts the
+      // instalment amount rather than the whole net pay.
+      const meta = isSalary ? rfp.meta : null
+      const splitIds = meta?.splitIds || []
+      const entryIds = meta?.entryIds || []
+      const payslipIds = meta?.payslipIds || []
+      // Older RFPs (and all benefit RFPs) carry a plain id list for one table.
+      const legacy = (!splitIds.length && !entryIds.length && !payslipIds.length) ? ids : (meta?.rowIds || [])
+      const idBody = {
+        ...(splitIds.length ? { salarySplitIds: splitIds } : {}),
+        ...(entryIds.length ? { payrollEntryIds: entryIds } : {}),
+        ...(payslipIds.length ? { employeePayslipIds: payslipIds } : {}),
+        ...(legacy.length ? (useEmployee ? { employeePayslipIds: [...payslipIds, ...legacy] } : { payrollEntryIds: [...entryIds, ...legacy] }) : {}),
+      }
       const hasFee = isSalary && Number(feeAmount) > 0 && feeExpenseAccountId
       const endpoint = isSalary ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
       const res = await fetch(endpoint, {
@@ -2903,7 +3151,14 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
       const data = await res.json()
       if (!res.ok) { alert(data.error || 'Failed to record payment'); return }
       const paymentId = data?.payment?.id || null
-      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'pay-payroll', paymentId, datePaid, paymentMethod: 'Bank/Cash', proofUrl: proofUrl || null }) })
+      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'pay-payroll', paymentId, datePaid,
+        paymentMethod: payMethod,
+        checkNumber: payMethod === 'Check deposit' ? bankRef.trim() : null,
+        transferRef: payMethod === 'Telegraphic Transfer' ? bankRef.trim() : null,
+        // debitAccount holds the readable "number title" label (the billing
+        // voucher and bank rec read it as text), not the account id.
+        debitAccount: (() => { const a = assets.find(x => x.id === fromAccountId); return a ? `${a.accountNumber} ${a.accountTitle}` : null })(),
+        proofUrl: proofUrl || null }) })
       onDone()
     } finally { setBusy(false) }
   }
@@ -2916,12 +3171,30 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payment Date</label>
         <input type="date" value={datePaid} onChange={e => setDatePaid(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Source Account (Cash/Bank)</label>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search asset accounts…" className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
-        <select value={fromAccountId} onChange={e => setFromAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
-          <option value="">— Select Account —</option>{filtered.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-        </select>
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Bank transaction reference number</label>
-        <input value={bankRef} onChange={e => setBankRef(e.target.value)} placeholder="Reference / check number" className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+        <div className="mb-3">
+          <AccountPicker accounts={assets} value={fromAccountId} valueKey="id"
+            className="w-full px-3 py-2 rounded-xl border text-sm"
+            placeholder="Type a bank/cash account number or name…"
+            onChange={v => setFromAccountId(v)} />
+        </div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payment Method</label>
+        <div className="flex gap-2 mb-3">
+          {PAYROLL_PAYMENT_METHODS.map(m => (
+            <button key={m} type="button" onClick={() => setPayMethod(m)}
+              className="flex-1 px-3 py-2 rounded-xl border text-xs font-semibold"
+              style={payMethod === m
+                ? { background: 'var(--teal)', color: 'white', borderColor: 'var(--teal)' }
+                : { background: 'white', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
+              {m === 'Check deposit' ? 'Cheque' : m}
+            </button>
+          ))}
+        </div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+          {payMethod === 'Check deposit' ? 'Cheque number' : payMethod === 'Cash' ? 'Reference (optional)' : 'Bank transaction reference number'}
+        </label>
+        <input value={bankRef} onChange={e => setBankRef(e.target.value)}
+          placeholder={payMethod === 'Check deposit' ? 'Cheque number' : payMethod === 'Cash' ? 'Voucher / slip number' : 'Telegraphic transfer reference'}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
         <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Anything else to note for this transaction" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof of Remittance (optional)</label>
@@ -2939,10 +3212,10 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
             <input value={feeAmount} onChange={e => setFeeAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm mb-2 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             {Number(feeAmount) > 0 && (<>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Fee Expense Account</label>
-              <input value={feeQ} onChange={e => setFeeQ(e.target.value)} placeholder="Search accounts…" className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
-              <select value={feeExpenseAccountId} onChange={e => setFeeExpenseAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
-                <option value="">— Select Account —</option>{feeFiltered.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-              </select>
+              <AccountPicker accounts={expenseAccts} value={feeExpenseAccountId} valueKey="id"
+                className="w-full px-3 py-2 rounded-xl border text-sm"
+                placeholder="Type an expense account number or name…"
+                onChange={v => setFeeExpenseAccountId(v)} />
             </>)}
           </div>
         )}

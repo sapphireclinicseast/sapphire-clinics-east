@@ -23,6 +23,7 @@ declare module 'next-auth' {
       department?: string
       branch?: string
       branches?: BranchInfo[]
+      employmentType?: string
     }
   }
   interface User {
@@ -32,6 +33,7 @@ declare module 'next-auth' {
     department?: string
     branch?: string
     branches?: BranchInfo[]
+    employmentType?: string
   }
 }
 
@@ -155,6 +157,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           department: account.staff.department,
           branch: account.staff.branch,
           branches,
+          employmentType: account.staff.employmentType ?? undefined,
         }
       },
     }),
@@ -169,18 +172,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.department = user.department
         token.branch = user.branch
         token.branches = user.branches
+        token.employmentType = user.employmentType
       }
 
-      // On every token refresh, check if account is still active
+      // On every token refresh, check if account is still active and keep the
+      // employment type fresh (drives the employees-only Company Loan tab, and
+      // backfills sessions that logged in before this field existed).
       if (token.id) {
         const account = await prisma.therapistAccount.findUnique({
           where: { id: token.id as string },
-          select: { isActive: true },
+          select: { isActive: true, staff: { select: { employmentType: true } } },
         })
         if (!account?.isActive) {
           // Force sign out by returning empty token
           return { ...token, isActive: false }
         }
+        token.employmentType = account.staff?.employmentType ?? undefined
       }
 
       return token
@@ -199,6 +206,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.department = token.department as string
         session.user.branch = token.branch as string
         session.user.branches = (token.branches as BranchInfo[]) ?? []
+        session.user.employmentType = (token.employmentType as string) ?? undefined
       }
       return session
     },

@@ -15,6 +15,8 @@ import {
   Trash2,
   Save,
   Plus,
+  Video,
+  Film,
 } from "lucide-react"
 import { formatPrice } from "@/lib/format"
 import { Button } from "@/components/ui/button"
@@ -26,6 +28,7 @@ interface AdminProductPageProps {
 
 interface ProductWithImages extends Product {
   uploadedImages: string[]
+  uploadedVideos: string[]
 }
 
 export default function AdminProductPage({ params }: AdminProductPageProps) {
@@ -40,15 +43,22 @@ export default function AdminProductPage({ params }: AdminProductPageProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [price, setPrice] = useState("")
+  const [stock, setStock] = useState("")
+  const [weightKg, setWeightKg] = useState("")
+  const [sku, setSku] = useState("")
   const [collectionSlug, setCollectionSlug] = useState("")
   const [variants, setVariants] = useState<ProductVariant[]>([])
   const [images, setImages] = useState<string[]>([])
+  const [videos, setVideos] = useState<string[]>([])
 
   const [uploading, setUploading] = useState(false)
+  const [uploadingVideo, setUploadingVideo] = useState(false)
   const [savingDetails, setSavingDetails] = useState(false)
   const [savingImages, setSavingImages] = useState(false)
+  const [savingVideos, setSavingVideos] = useState(false)
   const [detailsSaved, setDetailsSaved] = useState(false)
   const [imagesSaved, setImagesSaved] = useState(false)
+  const [videosSaved, setVideosSaved] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
   // Load product data
@@ -62,9 +72,13 @@ export default function AdminProductPage({ params }: AdminProductPageProps) {
           setTitle(p.title)
           setDescription(p.description)
           setPrice(String(p.price))
+          setStock(p.stock === undefined || p.stock === null ? "" : String(p.stock))
+          setWeightKg(p.weightKg === undefined || p.weightKg === null ? "" : String(p.weightKg))
+          setSku(p.sku || "")
           setCollectionSlug(p.collectionSlug)
           setVariants(p.variants || [])
           setImages(p.uploadedImages || [])
+          setVideos(p.uploadedVideos || [])
         }
         setCollections(d.collections || [])
         setLoading(false)
@@ -149,6 +163,9 @@ export default function AdminProductPage({ params }: AdminProductPageProps) {
           title,
           description,
           price: Number(price),
+          stock: stock.trim() === "" ? null : Number(stock),
+          weightKg: weightKg.trim() === "" ? null : Number(weightKg),
+          sku: sku.trim() || null,
           collectionSlug,
           variants,
         }),
@@ -177,6 +194,88 @@ export default function AdminProductPage({ params }: AdminProductPageProps) {
     setSavingImages(false)
   }
 
+  // ── Video upload ──────────────────────────────────────────────
+
+  const handleVideoUpload = useCallback(
+    async (file: File) => {
+      const ext = file.name.split(".").pop()?.toLowerCase()
+      if (ext !== "mp4" && ext !== "mov" && ext !== "webm") {
+        alert("Only .mp4, .mov, or .webm video files are allowed.")
+        return
+      }
+      // 50 MB limit
+      if (file.size > 50 * 1024 * 1024) {
+        alert("Video file is too large. Maximum size is 50 MB.")
+        return
+      }
+
+      setUploadingVideo(true)
+      try {
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("productSlug", slug)
+        const res = await fetch("/api/admin/upload", { method: "POST", body: formData })
+        const data = await res.json()
+        if (data.url) {
+          // Auto-save to server so user doesn't lose the upload
+          const newVideos = [...videos, data.url]
+          setVideos(newVideos)
+          await fetch("/api/admin/products", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slug, videos: newVideos }),
+          })
+          setVideosSaved(true)
+          setTimeout(() => setVideosSaved(false), 2000)
+        }
+      } catch (err) {
+        console.error("Failed to upload video:", err)
+      }
+      setUploadingVideo(false)
+    },
+    [slug, videos]
+  )
+
+  const handleVideoInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleVideoUpload(e.target.files[0])
+        e.target.value = "" // reset input
+      }
+    },
+    [handleVideoUpload]
+  )
+
+  const removeVideo = async (index: number) => {
+    const newVideos = videos.filter((_, i) => i !== index)
+    setVideos(newVideos)
+    try {
+      await fetch("/api/admin/products", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, videos: newVideos }),
+      })
+    } catch (err) {
+      console.error("Failed to delete video:", err)
+    }
+  }
+
+  async function saveVideos() {
+    setSavingVideos(true)
+    try {
+      await fetch("/api/admin/products", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, videos }),
+      })
+      setVideosSaved(true)
+      setTimeout(() => setVideosSaved(false), 2000)
+    } catch (err) {
+      console.error("Failed to save videos:", err)
+    }
+    setSavingVideos(false)
+  }
+
   async function handleDeleteProduct() {
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return
     const res = await fetch(`/api/admin/products?slug=${slug}`, { method: "DELETE" })
@@ -186,11 +285,15 @@ export default function AdminProductPage({ params }: AdminProductPageProps) {
   // ── Variant management ────────────────────────────────────────
 
   function addVariant() {
-    setVariants((prev) => [...prev, { label: "", colorHex: "#1E88E5" }])
+    setVariants((prev) => [...prev, { type: "Color", label: "", sku: "", colorHex: "#1E88E5" }])
     setDetailsSaved(false)
   }
 
-  function updateVariant(index: number, field: keyof ProductVariant, value: string) {
+  function updateVariant(
+    index: number,
+    field: "type" | "label" | "sku" | "colorHex",
+    value: string
+  ) {
     setVariants((prev) => {
       const arr = [...prev]
       arr[index] = { ...arr[index], [field]: value }
@@ -309,24 +412,80 @@ export default function AdminProductPage({ params }: AdminProductPageProps) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
-                <select
-                  value={collectionSlug}
-                  onChange={(e) => { setCollectionSlug(e.target.value); setDetailsSaved(false) }}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal transition-all"
-                >
-                  {collections.map((c) => (
-                    <option key={c.slug} value={c.slug}>{c.name}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Stock {stock.trim() !== "" && Number(stock) === 0 && (
+                    <span className="ml-1 text-xs font-semibold text-red-600">(Out of stock)</span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={stock}
+                  onChange={(e) => { setStock(e.target.value); setDetailsSaved(false) }}
+                  placeholder="Leave blank = unlimited"
+                  className={`w-full rounded-xl border bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal transition-all ${
+                    stock.trim() !== "" && Number(stock) === 0
+                      ? "border-red-300 bg-red-50"
+                      : "border-gray-200"
+                  }`}
+                />
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Auto-synced from the Accounting Hub when a SKU is set below. When stock reaches 0, &quot;Add to cart&quot; is disabled on the store.
+                </p>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Shipping weight (kg){" "}
+                <span className="text-xs font-normal text-gray-400">(sets the weight-based shipping fee at checkout)</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={weightKg}
+                onChange={(e) => { setWeightKg(e.target.value); setDetailsSaved(false) }}
+                placeholder="e.g. 0.5"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                SKU <span className="text-xs font-normal text-gray-400">(links to Accounting Hub inventory for stock sync)</span>
+              </label>
+              <input
+                type="text"
+                value={sku}
+                onChange={(e) => { setSku(e.target.value); setDetailsSaved(false) }}
+                placeholder="e.g. OT-TOY-THP-007"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal transition-all"
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                When set, this product&apos;s stock auto-updates from the Accounting Hub every 10 minutes.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
+              <select
+                value={collectionSlug}
+                onChange={(e) => { setCollectionSlug(e.target.value); setDetailsSaved(false) }}
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal transition-all"
+              >
+                {collections.map((c) => (
+                  <option key={c.slug} value={c.slug}>{c.name}</option>
+                ))}
+              </select>
             </div>
 
             {/* Variants */}
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-sm font-medium text-gray-700">
-                  Color Variants ({variants.length})
+                  Variants ({variants.length})
                 </label>
                 <button
                   onClick={addVariant}
@@ -335,28 +494,54 @@ export default function AdminProductPage({ params }: AdminProductPageProps) {
                   <Plus className="h-3 w-3" /> Add variant
                 </button>
               </div>
+              <p className="mb-3 text-xs text-gray-400">
+                Variants sync automatically from Accounting Hub inventory (matched by the product SKU),
+                including per-variant stock. Set a colour swatch here for Color-type variants.
+              </p>
               {variants.length === 0 ? (
-                <p className="text-xs text-gray-400">No variants. Click &quot;Add variant&quot; to add color options.</p>
+                <p className="text-xs text-gray-400">No variants. They appear here once added in Accounting Hub, or click &quot;Add variant&quot;.</p>
               ) : (
                 <div className="space-y-2">
                   {variants.map((v, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <input
                         type="color"
-                        value={v.colorHex}
+                        value={v.colorHex || "#cccccc"}
                         onChange={(e) => updateVariant(i, "colorHex", e.target.value)}
-                        className="h-9 w-9 rounded-lg border border-gray-200 cursor-pointer"
+                        className={`h-9 w-9 shrink-0 rounded-lg border border-gray-200 cursor-pointer ${
+                          (v.type && v.type !== "Color") ? "opacity-40" : ""
+                        }`}
+                        title="Colour swatch (used for Color-type variants)"
                       />
+                      <select
+                        value={v.type || "Color"}
+                        onChange={(e) => updateVariant(i, "type", e.target.value)}
+                        className="w-28 shrink-0 rounded-lg border border-gray-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal"
+                      >
+                        {["Color", "Size", "Material", "Flavor", "Scent", "Style", "Weight", "Other"].map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
                       <input
                         type="text"
                         value={v.label}
                         onChange={(e) => updateVariant(i, "label", e.target.value)}
-                        placeholder="Color name"
-                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal"
+                        placeholder="Label"
+                        className="flex-1 min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal"
                       />
+                      <input
+                        type="text"
+                        value={v.sku || ""}
+                        onChange={(e) => updateVariant(i, "sku", e.target.value)}
+                        placeholder="SKU"
+                        className="w-40 shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal"
+                      />
+                      <span className="w-14 shrink-0 text-center text-xs text-gray-500" title="Stock (synced from Accounting Hub)">
+                        {v.stock !== undefined && v.stock !== null ? `${v.stock}` : "—"}
+                      </span>
                       <button
                         onClick={() => removeVariant(i)}
-                        className="rounded-lg p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                        className="shrink-0 rounded-lg p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -486,6 +671,79 @@ export default function AdminProductPage({ params }: AdminProductPageProps) {
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center">
                 <ImagePlus className="mx-auto h-10 w-10 text-gray-300" />
                 <p className="mt-2 text-sm text-gray-500">No photos uploaded yet</p>
+              </div>
+            )}
+          </div>
+
+          {/* ── Videos card ─────────────────────────────── */}
+          <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-verdana-charcoal">
+                Videos ({videos.length})
+              </h2>
+              <Button onClick={saveVideos} disabled={savingVideos} size="sm">
+                {savingVideos ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
+                ) : videosSaved ? (
+                  <><Check className="h-4 w-4" /> Saved</>
+                ) : (
+                  <><Save className="h-4 w-4" /> Save Videos</>
+                )}
+              </Button>
+            </div>
+
+            {/* Upload area for videos */}
+            <div className="relative rounded-xl border-2 border-dashed border-gray-300 p-6 text-center hover:border-gray-400 transition-all">
+              <input
+                type="file"
+                accept="video/mp4,video/quicktime,.mp4,.mov,.webm"
+                onChange={handleVideoInput}
+                className="absolute inset-0 cursor-pointer opacity-0"
+                disabled={uploadingVideo}
+              />
+              <div className="flex flex-col items-center gap-2">
+                {uploadingVideo ? (
+                  <Loader2 className="h-8 w-8 animate-spin text-verdana-teal" />
+                ) : (
+                  <div className="rounded-full bg-verdana-teal/10 p-2.5">
+                    <Video className="h-5 w-5 text-verdana-teal" />
+                  </div>
+                )}
+                <p className="text-sm font-medium text-verdana-charcoal">
+                  {uploadingVideo ? "Uploading video..." : "Click to upload a video"}
+                </p>
+                <p className="text-xs text-gray-400">MP4, MOV, or WebM up to 50MB</p>
+              </div>
+            </div>
+
+            {/* Video list */}
+            {videos.length > 0 ? (
+              <div className="space-y-3">
+                {videos.map((url, index) => (
+                  <div
+                    key={url}
+                    className="group relative overflow-hidden rounded-xl border border-gray-200 bg-black"
+                  >
+                    <video
+                      src={url}
+                      controls
+                      className="w-full aspect-video"
+                      preload="metadata"
+                    />
+                    <button
+                      onClick={() => removeVideo(index)}
+                      className="absolute top-2 right-2 rounded-md bg-red-500/90 p-1.5 text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all shadow-sm"
+                      title="Remove video"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center">
+                <Film className="mx-auto h-10 w-10 text-gray-300" />
+                <p className="mt-2 text-sm text-gray-500">No videos uploaded yet</p>
               </div>
             )}
           </div>

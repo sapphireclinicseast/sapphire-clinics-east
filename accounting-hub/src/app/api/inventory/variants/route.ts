@@ -34,7 +34,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { itemId, variantType, variantLabel, color, quantity, unitCost, sellingPrice } = await req.json()
+    const { itemId, variantType, variantLabel, color, quantity, unitCost, sellingPrice,
+            dimensionLength, dimensionWidth, dimensionHeight, weightKg } = await req.json()
     const label = variantLabel || color // backward compat
     const type = variantType || 'Color'
 
@@ -71,6 +72,10 @@ export async function POST(req: Request) {
         // blank = inherit the parent item's figure
         unitCost: unitCost !== undefined && unitCost !== '' && unitCost !== null ? parseFloat(unitCost) : null,
         sellingPrice: sellingPrice !== undefined && sellingPrice !== '' && sellingPrice !== null ? parseFloat(sellingPrice) : null,
+        dimensionLength: dimensionLength !== undefined && dimensionLength !== '' && dimensionLength !== null ? parseFloat(dimensionLength) : null,
+        dimensionWidth: dimensionWidth !== undefined && dimensionWidth !== '' && dimensionWidth !== null ? parseFloat(dimensionWidth) : null,
+        dimensionHeight: dimensionHeight !== undefined && dimensionHeight !== '' && dimensionHeight !== null ? parseFloat(dimensionHeight) : null,
+        weightKg: weightKg !== undefined && weightKg !== '' && weightKg !== null ? parseFloat(weightKg) : null,
       },
     })
 
@@ -109,7 +114,8 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, quantity, color, variantLabel, variantType, unitCost, sellingPrice } = await req.json()
+    const { id, quantity, color, variantLabel, variantType, unitCost, sellingPrice,
+            dimensionLength, dimensionWidth, dimensionHeight, weightKg } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Variant ID is required' }, { status: 400 })
@@ -124,6 +130,11 @@ export async function PUT(req: Request) {
     // '' clears the override and falls back to the parent item
     if (unitCost !== undefined) data.unitCost = unitCost === '' || unitCost === null ? null : parseFloat(unitCost)
     if (sellingPrice !== undefined) data.sellingPrice = sellingPrice === '' || sellingPrice === null ? null : parseFloat(sellingPrice)
+    // '' clears the override and falls back to the parent item (same rule as cost/price)
+    if (dimensionLength !== undefined) data.dimensionLength = dimensionLength === '' || dimensionLength === null ? null : parseFloat(dimensionLength)
+    if (dimensionWidth !== undefined) data.dimensionWidth = dimensionWidth === '' || dimensionWidth === null ? null : parseFloat(dimensionWidth)
+    if (dimensionHeight !== undefined) data.dimensionHeight = dimensionHeight === '' || dimensionHeight === null ? null : parseFloat(dimensionHeight)
+    if (weightKg !== undefined) data.weightKg = weightKg === '' || weightKg === null ? null : parseFloat(weightKg)
 
     const variant = await prisma.inventoryVariant.update({ where: { id }, data })
 

@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
+import { toChequeInput } from '@/lib/cheque-number'
 import { useSession } from 'next-auth/react'
-import { Repeat, Plus, Settings, Loader2, X, Eye, Pencil, Trash2, ListChecks, Info, ArrowLeftRight } from 'lucide-react'
+import { Repeat, Plus, Settings, Loader2, X, Eye, Pencil, Trash2, ListChecks, Info, ArrowLeftRight, ChevronRight} from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { ScanUpload } from '@/components/ScanUpload'
 import ForexPanel from './ForexPanel'
@@ -92,12 +93,19 @@ export default function FundTransferPage() {
           <tbody>
             {loading ? (
               <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-            ) : shown.map(t => (
-              <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+            ) : shown.map(t => {
+              // A star was too easy to miss, so the whole row carries the state:
+              // solid yellow when both bank legs are matched, a paler wash when
+              // only one is, nothing at all when the transfer is untagged.
+              const legs = t.matchedLegs ?? 0
+              const rowBg = legs === 2 ? '#fef9c3' : legs === 1 ? '#fefce8' : undefined
+              return (
+              <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: rowBg }}
+                title={legs === 2 ? 'Both bank legs matched in Bank Reconciliation'
+                  : legs === 1 ? 'One of two bank legs matched in Bank Reconciliation' : undefined}>
                 <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
-                  {(t.matchedLegs ?? 0) > 0 && (
-                    <span title={t.matchedLegs === 2 ? 'Both bank legs matched in Bank Reconciliation' : 'One of two bank legs matched in Bank Reconciliation'}
-                      style={{ color: t.matchedLegs === 2 ? '#eab308' : 'var(--light-gray)', marginRight: 4 }}>★</span>
+                  {legs > 0 && (
+                    <span style={{ color: legs === 2 ? '#ca8a04' : '#d4d4d8', marginRight: 4 }}>★</span>
                   )}
                   {t.refNumber}
                 </td>
@@ -121,7 +129,7 @@ export default function FundTransferPage() {
                   </td>
                 )}
               </tr>
-            ))}
+            )})}
             {!loading && shown.length === 0 && <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{transfers.length === 0 ? 'No fund transfers yet.' : 'No transfers match the current filters.'}</td></tr>}
           </tbody>
         </table>
@@ -134,7 +142,17 @@ export default function FundTransferPage() {
   )
 }
 
-interface CheckRow { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
+interface CheckRow { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[]
+  /** The expense lines that made up this cheque. Empty when the cheque is one record. */
+  items?: CheckRow[]
+  /** Sum of those lines, when the cheque also exists in the chequebook register. */
+  recordedTotal?: number
+  /** True when the recorded lines do not add up to the cheque as written. */
+  mismatch?: boolean
+  registerStatus?: string
+  /** True when bank reconciliation has matched a bank line to this cheque. */
+  cleared?: boolean
+  clearedOn?: string | null }
 
 function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [accounts, setAccounts] = useState<{ id: string; label: string }[]>([])
@@ -142,6 +160,9 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [checks, setChecks] = useState<CheckRow[]>([])
   const [loading, setLoading] = useState(true)
   const [showCancel, setShowCancel] = useState(false)
+  // Which grouped cheques are opened to show the lines that make them up.
+  const [openCheque, setOpenCheque] = useState<Set<string>>(new Set())
+  const toggleCheque = (k: string) => setOpenCheque(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n })
 
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'checkNumber', dir: 'asc' })
   // Correcting a mistyped cheque number writes back to whichever record produced the
@@ -172,9 +193,18 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const cols = [
     { key: 'checkNumber', label: 'Check No.' }, { key: 'date', label: 'Date' }, { key: 'source', label: 'Source' },
     { key: 'reference', label: 'Reference' }, { key: 'payee', label: 'Payee / Description' },
-    { key: 'bankAccount', label: 'Bank Account' }, { key: 'amount', label: 'Amount' },
+    { key: 'bankAccount', label: 'Bank Account' }, { key: 'cleared', label: 'Bank Rec' }, { key: 'amount', label: 'Amount' },
   ]
-  const get = (c: CheckRow, k: string): string | number => k === 'amount' ? c.amount : ((c[k as keyof CheckRow] as string | number) ?? '')
+  // The Bank Rec column filters on the words you would actually type, not on a
+  // raw boolean — "not cleared" is how the state is read aloud.
+  const clearedText = (c: CheckRow): string =>
+    (c.source === 'Cancelled' || c.registerStatus === 'CANCELLED') ? 'Cancelled'
+      : c.registerStatus === 'UNUSED' ? 'Unused'
+      : c.cleared ? 'Matched' : 'Not matched'
+  const get = (c: CheckRow, k: string): string | number =>
+    k === 'amount' ? c.amount
+      : k === 'cleared' ? clearedText(c)
+      : ((c[k as keyof CheckRow] as string | number) ?? '')
   const shown = applySortFilter(checks, get, sort.key, sort.dir, filters)
 
   const load = useCallback(async () => {
@@ -224,12 +254,22 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
           <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={filters} onToggleSort={toggleSort} onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))} trailing={canWrite} />
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
             ) : shown.map((c, i) => {
-              const isCancelled = c.source === 'Cancelled'
+              const isCancelled = c.source === 'Cancelled' || c.registerStatus === 'CANCELLED'
+              const isUnused = c.registerStatus === 'UNUSED'
+              const parts = c.items || []
+              const key = `${c.checkNumber}|${c.bankAccount}`
+              const isOpen = openCheque.has(key)
               return (
-              <tr key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isCancelled ? '#fef2f2' : undefined }}>
+              <Fragment key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`}>
+              <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: isCancelled ? '#fef2f2' : isUnused ? '#f8fafc' : c.mismatch ? '#fffbeb' : undefined }}>
                 <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', textDecoration: isCancelled ? 'line-through' : undefined }}>
+                  {parts.length > 1 && (
+                    <button onClick={() => toggleCheque(key)} className="mr-1.5 align-middle" title={isOpen ? 'Hide the lines under this cheque' : `Show the ${parts.length} lines under this cheque`}>
+                      <ChevronRight size={13} style={{ color: 'var(--mid-gray)', transform: isOpen ? 'rotate(90deg)' : undefined, transition: 'transform .12s' }} />
+                    </button>
+                  )}
                   {editing === `${c.kind}:${c.id}` ? (
                     <span className="inline-flex items-center gap-1">
                       <input autoFocus value={draft} onChange={e => setDraft(e.target.value)}
@@ -254,7 +294,34 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankAccount}</td>
-                <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(c.amount)}</td>
+                <td className="px-3 py-2.5 text-xs whitespace-nowrap">
+                  {/* A cancelled or unused leaf was never going to clear, so asking
+                      whether it did would be noise. */}
+                  {isCancelled ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Cancelled</span>
+                  ) : isUnused ? (
+                    <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>—</span>
+                  ) : c.cleared ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#15803d' }}
+                      title={c.clearedOn ? `Matched in Bank Reconciliation — cleared the bank ${c.clearedOn}` : 'Matched in Bank Reconciliation'}>
+                      Cleared{c.clearedOn ? ` ${c.clearedOn}` : ''}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#ffedd5', color: '#c2410c' }}
+                      title="Nothing in Bank Reconciliation is matched to this cheque, so the hub cannot show it leaving the account. Either it has not cleared, or the bank line exists but has not been tagged to it yet.">
+                      Not matched
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: isUnused ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
+                  {isUnused ? '—' : `₱${peso(c.amount)}`}
+                  {c.mismatch && c.recordedTotal !== undefined && (
+                    <span className="block text-[10px] font-normal" style={{ color: '#b45309' }}
+                      title="What the cheque was written for, against what the recorded expenses add up to">
+                      recorded ₱{peso(c.recordedTotal)}
+                    </span>
+                  )}
+                </td>
                 {canWrite && <td className="px-3 py-2.5 text-right whitespace-nowrap">
                   {c.id && c.kind && editing !== `${c.kind}:${c.id}` && (
                     <button onClick={() => startEdit(c)} className="p-1 rounded hover:bg-gray-100" title="Correct the cheque number — updates the source record and everything that reads from it">
@@ -264,8 +331,22 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                   {isCancelled && c.id && <button onClick={() => removeCancelled(c.id!)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}
                 </td>}
               </tr>
+              {isOpen && parts.map((p, j) => (
+                <tr key={`${key}-part-${j}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: '#fbfbfa' }}>
+                  <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--mid-gray)', paddingLeft: '2.5rem' }}>↳ {j + 1} of {parts.length}</td>
+                  <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{p.date || ''}</td>
+                  <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{p.source}</td>
+                  <td className="px-3 py-1.5 text-[11px] font-mono" style={{ color: 'var(--charcoal)' }}>{p.reference}</td>
+                  <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--charcoal)' }}>{p.payee}</td>
+                  <td></td>
+                  <td></td>
+                  <td className="px-3 py-1.5 text-right text-[11px] font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(p.amount)}</td>
+                  {canWrite && <td></td>}
+                </tr>
+              ))}
+              </Fragment>
             )})}
-            {!loading && shown.length === 0 && accounts.length > 0 && <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{checks.length === 0 ? 'No checks recorded for the selected checking account(s).' : 'No checks match the current filters.'}</td></tr>}
+            {!loading && shown.length === 0 && accounts.length > 0 && <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{checks.length === 0 ? 'No checks recorded for the selected checking account(s).' : 'No checks match the current filters.'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -305,7 +386,7 @@ function CancelledCheckModal({ accounts, defaultAccountId, onClose, onSaved }: {
           <option value="">Select account…</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
         </select>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Check Number</label>
-        <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} placeholder="Leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <input value={checkNumber} onChange={e => setCheckNumber(toChequeInput(e.target.value))} inputMode="numeric" placeholder="Numbers only — leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date Cancelled</label>
         <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payee (optional)</label>
@@ -371,7 +452,7 @@ function TransferForm({ banks, editing, onClose, onSaved }: { banks: Bank[]; edi
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Amount</label>
         <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Check Number</label>
-        <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} placeholder="Leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <input value={checkNumber} onChange={e => setCheckNumber(toChequeInput(e.target.value))} inputMode="numeric" placeholder="Numbers only — leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Description / Purpose</label>
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof (you can add multiple)</label>
