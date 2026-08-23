@@ -222,12 +222,29 @@ const TONE_BG: Record<'nowallet' | 'paid' | 'soa', string> = {
 }
 
 /** Whole days between SOA submission and payment — the sheet's "AR running days". */
+/**
+ * SOA submission to payment. The clock stops at the payment date only once that
+ * date has actually arrived: this column is "Date of Payment (in check)", and a
+ * post-dated cheque is a promise, not a settlement — stopping the clock on it
+ * would report a letter as settled faster than it was, and in the case of a
+ * cheque dated next month, report a span shorter than the days already elapsed.
+ * Until then, and for letters with no payment at all, the days keep running.
+ */
 function arRunningDays(r: Row): number | null {
   if (!r.soaSubmittedAt) return null
-  // Paid letters stop at the payment date; unpaid ones keep running to today.
-  const end = r.lastPaymentDate ? new Date(r.lastPaymentDate) : new Date()
-  const ms = end.getTime() - new Date(r.soaSubmittedAt).getTime()
-  return Math.round(ms / 86_400_000)
+  const now = Date.now()
+  const paidAt = r.lastPaymentDate ? new Date(r.lastPaymentDate).getTime() : null
+  const end = paidAt != null && paidAt <= now ? paidAt : now
+  // Floor, not round: stored dates are midnight, so a letter still running would
+  // otherwise gain its next day at noon rather than at midnight, and the figure
+  // would change under the reader mid-afternoon. Completed days only.
+  return Math.floor((end - new Date(r.soaSubmittedAt).getTime()) / 86_400_000)
+}
+
+/** A payment that has actually landed — a post-dated cheque has not. */
+function settledOn(r: Row): string | null {
+  if (!r.paid || !r.lastPaymentDate) return null
+  return new Date(r.lastPaymentDate).getTime() <= Date.now() ? r.lastPaymentDate : null
 }
 
 /** Effective processor-fee rate: the stored per-letter rate, else the current
@@ -503,7 +520,7 @@ export default function DetailedGl({
   // Settled letters only: this is SOA submission to the cheque, so an unpaid
   // letter has no end point. It is the same span the AR running days column
   // measures once a letter is paid.
-  const soaToPayment  = avgSpan(r => r.soaSubmittedAt, r => (r.paid ? r.lastPaymentDate : null))
+  const soaToPayment  = avgSpan(r => r.soaSubmittedAt, settledOn)
 
   // Average AR running days over the letters where it is defined — an SOA has to
   // have been submitted for the clock to have started, so letters without one are
