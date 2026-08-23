@@ -53,7 +53,7 @@ export async function GET(req: Request) {
   const oBranch: Record<string, unknown> = scope ? { branch: { in: scope } } : {}
   const jBranch: Record<string, unknown> = scope ? { branch: { in: [...scope, 'ALL'] } } : {}
 
-  const [orders, pcEntries, reimbs, ccReports, expSuppliers, suppliers, inv, accounts, journals, assets] = await Promise.all([
+  const [orders, pcEntries, reimbs, ccReports, expSuppliers, suppliers, inv, accounts, journals, assets, glWallets, glCases] = await Promise.all([
     prisma.order.findMany({
       where: { ...oBranch, OR: [
         ...(isNum ? [{ orderNumber: Math.round(n) }, { netAmount: n }] : []),
@@ -108,6 +108,25 @@ export async function GET(req: Request) {
       where: { OR: [...(isNum ? [{ totalAmount: n }, { purchasePrice: n }] : []), { name: ci }, { controlNumber: ci }, { remarks: ci }] },
       take: TAKE, orderBy: { dateBought: 'desc' },
       select: { id: true, name: true, controlNumber: true, totalAmount: true, classification: true, dateBought: true },
+    }),
+    // Guarantee Letters — the Detailed GL paper trail lives on the wallet
+    // (guardian, QB entry, payout batch) and on standalone GlCase rows, neither
+    // of which was searchable from the top bar.
+    prisma.digitalWallet.findMany({
+      where: { walletType: 'GL', ...jBranch, OR: [
+        ...(isNum ? [{ totalGlAmount: n }, { soaAmount: n }] : []),
+        { patientName: ci }, { guardianName: ci }, { qbEntry: ci }, { payoutBatch: ci }, { agency: ci },
+      ] },
+      take: TAKE, orderBy: { patientName: 'asc' },
+      select: { id: true, patientName: true, guardianName: true, qbEntry: true, payoutBatch: true, agency: true, branch: true, totalGlAmount: true, soaAmount: true, soaSubmittedAt: true },
+    }),
+    prisma.glCase.findMany({
+      where: { ...jBranch, OR: [
+        ...(isNum ? [{ soaAmount: n }, { approvedAmount: n }] : []),
+        { patientName: ci }, { guardianName: ci }, { qbEntry: ci }, { payoutBatch: ci }, { notes: ci },
+      ] },
+      take: TAKE, orderBy: { createdAt: 'desc' },
+      select: { id: true, walletId: true, patientName: true, guardianName: true, qbEntry: true, payoutBatch: true, branch: true, soaAmount: true, approvedAmount: true, soaSubmittedAt: true },
     }),
   ])
 
@@ -175,6 +194,27 @@ export async function GET(req: Request) {
     id: a.id, type: 'Asset', title: `${a.name}${a.controlNumber ? ` · ${a.controlNumber}` : ''}`, subtitle: `Class ${a.classification} · ${dstr(a.dateBought)}`,
     amount: num(a.totalAmount), reference: a.controlNumber || '', date: dstr(a.dateBought), href: `/asset-management?focus=${enc(a.controlNumber || a.id)}`,
     detail: { Name: a.name, 'Control #': a.controlNumber || '—', Classification: a.classification, 'Total Amount': num(a.totalAmount).toFixed(2), 'Date Bought': dstr(a.dateBought) },
+  })
+
+  // A wallet already represented by a linked case would double-list — the case
+  // row carries the same paper trail, so prefer it and skip its wallet.
+  const caseWalletIds = new Set(glCases.map(c => c.walletId).filter(Boolean))
+  for (const w of glWallets) {
+    if (caseWalletIds.has(w.id)) continue
+    results.push({
+      id: w.id, type: 'Guarantee Letter', title: `${w.patientName}${w.qbEntry ? ` · ${w.qbEntry}` : ''}`,
+      subtitle: `${bl(w.branch)}${w.agency ? ` · ${w.agency}` : ''}${w.guardianName ? ` · ${w.guardianName}` : ''}`,
+      amount: w.soaAmount != null ? num(w.soaAmount) : (w.totalGlAmount != null ? num(w.totalGlAmount) : null),
+      reference: w.qbEntry || '', date: dstr(w.soaSubmittedAt), href: `/accounts-receivable?type=GL&gltab=detailed&focus=${enc(w.id)}`,
+      detail: { Patient: w.patientName, Guardian: w.guardianName || '—', Agency: w.agency || '—', 'QB entry': w.qbEntry || '—', Payout: w.payoutBatch || '—', Branch: bl(w.branch), 'Approved GL': w.totalGlAmount != null ? num(w.totalGlAmount).toFixed(2) : '—', 'SOA Amount': w.soaAmount != null ? num(w.soaAmount).toFixed(2) : '—' },
+    })
+  }
+  for (const c of glCases) results.push({
+    id: c.id, type: 'Guarantee Letter', title: `${c.patientName}${c.qbEntry ? ` · ${c.qbEntry}` : ''}`,
+    subtitle: `${bl(c.branch)}${c.guardianName ? ` · ${c.guardianName}` : ''}`,
+    amount: c.soaAmount != null ? num(c.soaAmount) : (c.approvedAmount != null ? num(c.approvedAmount) : null),
+    reference: c.qbEntry || '', date: dstr(c.soaSubmittedAt), href: `/accounts-receivable?type=GL&gltab=detailed&focus=${enc(c.walletId || c.id)}`,
+    detail: { Patient: c.patientName, Guardian: c.guardianName || '—', 'QB entry': c.qbEntry || '—', Payout: c.payoutBatch || '—', Branch: bl(c.branch), 'Approved GL': c.approvedAmount != null ? num(c.approvedAmount).toFixed(2) : '—', 'SOA Amount': c.soaAmount != null ? num(c.soaAmount).toFixed(2) : '—' },
   })
 
   return NextResponse.json({ results })
