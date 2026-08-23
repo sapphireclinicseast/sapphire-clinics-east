@@ -99,6 +99,16 @@ export async function PUT(
       const pays: { method: string; amount: number; walletId?: string; reference?: string; paymentModeId?: string }[] = body.payments || []
       const total = pays.reduce((s, p) => s + Number(p.amount || 0), 0)
       if (!(total > 0)) return NextResponse.json({ error: 'Enter the payment collected' }, { status: 400 })
+      // Collected total must equal the amount due — a mismatch is accepted by
+      // the POS but the GL refuses the lopsided entry, so the sale silently
+      // never posts. Refuse it at collection time instead.
+      const amountDue = Number(existing.netAmount)
+      if (Math.abs(total - amountDue) > 0.05) {
+        return NextResponse.json(
+          { error: `Payments total ₱${total.toFixed(2)} but the amount due is ₱${amountDue.toFixed(2)}. The collected amount must equal the net amount — check the discount and downpayment math.` },
+          { status: 400 }
+        )
+      }
       const payDate = body.paymentDate ? new Date(`${body.paymentDate}T08:00:00+08:00`) : new Date()
       await prisma.$transaction(async (tx) => {
         await tx.orderPayment.createMany({
@@ -424,6 +434,23 @@ export async function PUT(
       data.netAmount = subtotal - Number(data.discountAmount ?? existing.discountAmount)
     }
 
+    // Re-completing must leave payments equal to the net amount — otherwise
+    // the POS accepts the order but the GL refuses the lopsided entry and the
+    // sale silently never posts. (Same guard as order creation.)
+    if (payments?.length) {
+      const paidTotal = payments.reduce(
+        (s: number, p: { amount: number }) => s + (Number(p.amount) || 0),
+        0
+      )
+      const expectedNet = Number(data.netAmount ?? existing.netAmount)
+      if (Math.abs(paidTotal - expectedNet) > 0.05) {
+        return NextResponse.json(
+          { error: `Payments total ₱${paidTotal.toFixed(2)} but the net amount is ₱${expectedNet.toFixed(2)}. The collected amount must equal the net amount — fix the discount/downpayment or the payment lines before completing.` },
+          { status: 400 }
+        )
+      }
+    }
+
     // Use a transaction to replace items/payments atomically
     const updated = await prisma.$transaction(async (tx) => {
       // Delete and recreate items if provided
@@ -536,12 +563,15 @@ export async function PUT(
       createdById: session.user.id,
     })
 
-    // Keep the GL in sync: order creation auto-posts a journal entry, so re-post after
-    // item/payment edits — e.g. assigning a configured payment mode now adds its
-    // merchant-discount deduction. Delete the old POS_ORDER entry first so the idempotent
-    // helper writes a fresh, correct one. Non-fatal (gated by ENABLE_GL_POSTING).
-    if ((items || payments) && updated.status !== 'VOIDED') {
-      await prisma.journalEntry.deleteMany({ where: { referenceType: 'POS_ORDER', referenceId: id } })
+    // Keep the GL in sync: reopening posted a POS_ORDER_REVERSAL that cancels the
+    // original forward JE, so completing the order again must post a fresh forward
+    // entry — postOrderJournal's forwardCount>reversalCount check makes this call
+    // idempotent, so it runs on every re-complete, not just item/payment edits
+    // (a name/date/discount-only edit still needs its revenue re-posted).
+    // The old forward JE must NOT be deleted: it pairs with the reopen reversal,
+    // and deleting it leaves that reversal dangling — the fresh forward then nets
+    // to zero against it and the sale silently vanishes from the books.
+    if (updated.status !== 'VOIDED') {
       try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('Order re-post after edit failed:', e) }
     }
 

@@ -21,9 +21,13 @@ export async function POST(req: NextRequest) {
 
   const { staffId, workDays, startTime, endTime, useDefault, branch, department } = await req.json()
   if (!staffId) return NextResponse.json({ error: 'staffId is required' }, { status: 400 })
+  if (!branch) return NextResponse.json({ error: 'branch is required' }, { status: 400 })
 
+  // Interbranch staff get one config PER branch (staffId+branch is the unique
+  // key, not staffId alone) — otherwise saving a secondary-branch schedule
+  // would silently overwrite their primary-branch config.
   const config = await prisma.deckingTherapistConfig.upsert({
-    where: { staffId },
+    where: { staffId_branch: { staffId, branch } },
     create: {
       staffId,
       workDays: workDays ?? [],

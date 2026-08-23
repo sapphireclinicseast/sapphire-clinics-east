@@ -44,7 +44,7 @@ const faqs = [
   {
     question: "How do I contact customer support?",
     answer:
-      "You can reach us through our Contact page, email us at support@verdanarehab.com, or message us on Facebook.",
+      "You can reach us through our Contact page, email us at verdanatrading@gmail.com, or message us on Facebook.",
   },
 ]
 

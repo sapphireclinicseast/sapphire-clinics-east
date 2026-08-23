@@ -17,6 +17,7 @@ import {
   Target,
   Users,
   Stethoscope,
+  FileSignature,
   FileCheck,
   Receipt,
   CreditCard,
@@ -29,6 +30,8 @@ import {
   Repeat,
   ScrollText,
   X,
+  FileText,
+  PiggyBank,
 } from 'lucide-react'
 
 // Roles that see all accounting modules (excludes front desk and HMO Officer).
@@ -42,8 +45,9 @@ const SERVICES_POS_ACCESS = [...FULL_ACCESS, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const SERVICES_POS_PAYROLL = [...SERVICES_POS_ACCESS, 'PAYROLL_OFFICER']
 // Roles that see the Dashboard overview
 const DASHBOARD_ACCESS = SERVICES_POS_ACCESS
-// Roles that can view Accounts Receivable
-const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
+// Roles that can view Accounts Receivable. Branch front desk get a read-only
+// slice of it — HMO only, Per HMO and SOA Report sub-tabs (see the page).
+const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 // Roles that can view Chart of Accounts (full access only — HMO Officer gets it via COA_WITH_HMO)
 const COA_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 // Taxes module: main admin, accountant, bookkeeper.
@@ -94,9 +98,13 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/asset-management', icon: Building2, label: 'Asset Management', roles: SERVICES_POS_ACCESS },
       { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_PAYROLL },
       { href: '/pos', icon: ShoppingCart, label: 'Point of Sale', roles: SERVICES_POS_PAYROLL },
+      { href: '/quotations', icon: FileSignature, label: 'Quotations', roles: SERVICES_POS_ACCESS },
       { href: '/paymongo', icon: CreditCard, label: 'PayMongo', roles: SERVICES_POS_ACCESS },
       { href: '/referral', icon: Users, label: 'Referral', roles: REFERRAL_ACCESS },
       { href: '/accounts-receivable', icon: FileCheck, label: 'Accounts Receivable', roles: AR_ACCESS },
+      { href: '/accounts-payable', icon: FileText, label: 'Accounts Payable', roles: TAX_ACCESS },
+      { href: '/journal-entries', icon: BookOpen, label: 'General Journal', roles: TAX_ACCESS },
+      { href: '/unearned-revenue', icon: PiggyBank, label: 'Unearned Revenue', roles: TAX_ACCESS },
       { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll', roles: PAYROLL_ACCESS },
       { href: '/benefits-payable', icon: Shield, label: 'Benefits Payable', roles: PAYROLL_ACCESS },
       { href: '/taxes', icon: Landmark, label: 'Taxes', roles: TAX_ACCESS },
@@ -110,7 +118,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Planning & Analysis',
     items: [
       { href: '/budgets', icon: Target, label: 'Budgets', roles: FULL_ACCESS },
-      { href: '/reports', icon: BarChart3, label: 'Reports', roles: [...FULL_ACCESS, 'MEDREP'] },
+      { href: '/reports', icon: BarChart3, label: 'Reports', roles: [...FULL_ACCESS, 'MEDREP', 'INVESTOR'] },
       { href: '/sales-summary', icon: Receipt, label: 'Sales Summary', roles: SERVICES_POS_ACCESS },
       { href: '/products-analysis', icon: PackageSearch, label: 'Products Analysis', roles: [...ANALYSIS_ACCESS, 'ACCOUNTANT', 'BOOKKEEPER'] },
       { href: '/sales-analysis', icon: TrendingUp, label: 'Sales Analysis', roles: ANALYSIS_ACCESS },

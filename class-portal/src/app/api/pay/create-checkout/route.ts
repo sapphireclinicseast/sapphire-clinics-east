@@ -16,17 +16,40 @@ interface CreateCheckoutBody {
   period: string
   voucherCode?: string
   discountPercent?: number
+  // Student's branch — routes the charge to that branch's PayMongo
+  // account (each branch's PayMongo settles into its own BDO bank
+  // account, so the branch must own the checkout session). Optional
+  // for back-compat; missing/unknown branch falls back to the shared
+  // PAYMONGO_SECRET_KEY.
+  branch?: 'EAST' | 'GREENHILLS'
+}
+
+/** Resolve the PayMongo secret key for a branch. Env var naming keeps
+ *  the SBEA/SBGH short codes for backward-compat with the operations
+ *  hub — those are data keys, not display labels, and the rebrand
+ *  memo explicitly leaves them alone.
+ *
+ *  Priority:
+ *    1. PAYMONGO_SECRET_KEY_SBEA / SBGH (per-branch, LIVE keys)
+ *    2. PAYMONGO_SECRET_KEY (single fallback — legacy behaviour)
+ */
+function secretKeyFor(branch?: 'EAST' | 'GREENHILLS'): string | null {
+  const short = branch === 'EAST' ? 'SBEA' : branch === 'GREENHILLS' ? 'SBGH' : null
+  const perBranch = short ? process.env[`PAYMONGO_SECRET_KEY_${short}`] : undefined
+  return perBranch || process.env.PAYMONGO_SECRET_KEY || null
 }
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.PAYMONGO_SECRET_KEY
-  if (!secret) {
-    return NextResponse.json({ error: 'PAYMONGO_SECRET_KEY is not configured on the server.' }, { status: 500 })
-  }
-
   let body: CreateCheckoutBody
   try { body = await req.json() as CreateCheckoutBody } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
-  const { studentId, studentEmail, studentName, plan, paymentId, tuitionAmount, miscAmount, period, voucherCode, discountPercent } = body
+  const { studentId, studentEmail, studentName, plan, paymentId, tuitionAmount, miscAmount, period, voucherCode, discountPercent, branch } = body
+
+  const secret = secretKeyFor(branch)
+  if (!secret) {
+    return NextResponse.json({
+      error: `No PayMongo key configured for branch ${branch ?? '(unknown)'}. Set PAYMONGO_SECRET_KEY_${branch === 'EAST' ? 'SBEA' : branch === 'GREENHILLS' ? 'SBGH' : 'SBEA'} or the fallback PAYMONGO_SECRET_KEY on the server.`,
+    }, { status: 500 })
+  }
 
   const hasDiscount = !!voucherCode && Number(discountPercent) > 0
   const tuitionDescription = hasDiscount
@@ -81,6 +104,7 @@ export async function POST(req: NextRequest) {
             plan,
             period,
             payment_id: paymentId,
+            ...(branch ? { branch } : {}),
             ...(hasDiscount ? { voucher_code: voucherCode!, discount_percent: String(discountPercent) } : {}),
           },
         },

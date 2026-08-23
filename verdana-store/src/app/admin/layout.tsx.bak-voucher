@@ -1,0 +1,43 @@
+import Link from 'next/link'
+import { ShieldCheck, Package, FolderOpen, Plus, Settings } from 'lucide-react'
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <nav className="bg-verdana-charcoal text-white">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-14 items-center justify-between">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="h-5 w-5 text-verdana-orange" />
+              <span className="font-semibold">Verdana Store Admin</span>
+            </div>
+            <div className="flex items-center gap-6 text-sm">
+              <Link href="/admin" className="inline-flex items-center gap-1.5 hover:text-verdana-light-blue transition-colors">
+                <Package className="h-4 w-4" />
+                Products
+              </Link>
+              <Link href="/admin/collections" className="inline-flex items-center gap-1.5 hover:text-verdana-light-blue transition-colors">
+                <FolderOpen className="h-4 w-4" />
+                Categories
+              </Link>
+              <Link href="/admin/settings" className="inline-flex items-center gap-1.5 hover:text-verdana-light-blue transition-colors">
+                <Settings className="h-4 w-4" />
+                Settings
+              </Link>
+              <Link href="/admin/products/new" className="inline-flex items-center gap-1.5 rounded-lg bg-verdana-orange px-3 py-1.5 text-white hover:bg-verdana-orange/90 transition-colors">
+                <Plus className="h-4 w-4" />
+                Add Product
+              </Link>
+              <Link href="/" className="text-gray-400 hover:text-white transition-colors">
+                View Store
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {children}
+      </main>
+    </div>
+  )
+}

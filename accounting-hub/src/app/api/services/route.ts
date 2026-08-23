@@ -280,7 +280,36 @@ export async function PUT(req: Request) {
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
     if (isHmoGl !== undefined) data.isHmoGl = !!isHmoGl
 
+    // Capture the money figures before the write so any movement can be recorded.
+    const before = await prisma.service.findUnique({
+      where: { id },
+      select: { price: true, doctorFee: true, clinicFee: true, newPrice: true },
+    })
+
     const service = await prisma.service.update({ where: { id }, data })
+
+    // Price history: one row per money field that actually moved. The audit log only
+    // records which fields were touched, so this is the only place the old value survives.
+    if (before) {
+      const MONEY = ['price', 'doctorFee', 'clinicFee', 'newPrice'] as const
+      const rows = MONEY.flatMap((f) => {
+        if (!(f in data)) return []
+        const oldV = before[f] == null ? null : Number(before[f])
+        const newV = (service as Record<string, unknown>)[f] == null ? null : Number((service as Record<string, unknown>)[f])
+        if (oldV === newV) return []
+        return [{
+          serviceId: id,
+          field: f,
+          oldValue: oldV,
+          newValue: newV,
+          source: 'EDIT',
+          changedById: session.user.id ?? null,
+        }]
+      })
+      if (rows.length > 0) {
+        await prisma.servicePriceHistory.createMany({ data: rows })
+      }
+    }
 
     // Update eligible services if provided
     if (eligibleServices !== undefined) {

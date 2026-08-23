@@ -33,7 +33,7 @@ export async function PUT(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { date, branch, actualAmounts, remarks } = body
+  const { date, branch, actualAmounts, remarks, confirmed } = body
 
   if (!date || !branch) {
     return NextResponse.json({ error: 'date and branch are required' }, { status: 400 })
@@ -44,6 +44,9 @@ export async function PUT(req: Request) {
     update: {
       actualAmounts: actualAmounts ?? null,
       remarks: remarks ?? null,
+      // Per-method OK ticks (auto ticks carry source 'BANK_REC'); omitted by
+      // older callers, in which case whatever is stored is left alone.
+      ...(confirmed === undefined ? {} : { confirmed: confirmed ?? null }),
     },
     create: {
       date,
@@ -52,6 +55,7 @@ export async function PUT(req: Request) {
       isCleared: false,
       actualAmounts: actualAmounts ?? null,
       remarks: remarks ?? null,
+      confirmed: confirmed ?? null,
     },
   })
 
@@ -64,7 +68,7 @@ export async function POST(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { date, branch, actualAmounts, remarks } = body
+  const { date, branch, actualAmounts, remarks, confirmed } = body
 
   if (!date || !branch) {
     return NextResponse.json({ error: 'date and branch are required' }, { status: 400 })
@@ -78,6 +82,7 @@ export async function POST(req: Request) {
       isCleared: true,
       actualAmounts: actualAmounts ?? null,
       remarks: remarks ?? null,
+      ...(confirmed === undefined ? {} : { confirmed: confirmed ?? null }),
     },
     create: {
       date,
@@ -86,6 +91,7 @@ export async function POST(req: Request) {
       isCleared: true,
       actualAmounts: actualAmounts ?? null,
       remarks: remarks ?? null,
+      confirmed: confirmed ?? null,
     },
   })
 

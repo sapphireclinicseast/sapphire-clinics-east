@@ -1,0 +1,147 @@
+import { NextResponse } from 'next/server'
+import { createCheckoutSession, type PayMongoLineItem } from '@/lib/paymongo'
+import { getProductBySlug, getAllProducts } from '@/lib/products'
+import { toCentavos } from '@/lib/format'
+import { evaluateVoucher } from '@/lib/vouchers'
+
+interface CartItem {
+  productId: string
+  slug?: string
+  variantId?: string
+  variantLabel?: string
+  variantSku?: string
+  quantity: number
+  title: string
+  price: number
+  image?: string
+}
+
+interface ShippingInfo {
+  name: string
+  phone: string
+  email?: string
+  address: string
+  city: string
+  zipCode?: string
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const { items, shipping, shippingFee, voucherCode } = body as {
+      items: CartItem[]
+      shipping?: ShippingInfo
+      shippingFee?: number
+      voucherCode?: string
+    }
+
+    if (!items || items.length === 0) {
+      return NextResponse.json({ error: 'Cart is empty' }, { status: 400 })
+    }
+
+    const allProducts = getAllProducts()
+
+    // Build line items for products (amounts in centavos).
+    const productLineItems: PayMongoLineItem[] = items.map((item) => {
+      const product = item.slug
+        ? getProductBySlug(item.slug)
+        : allProducts.find((p) => p.id === item.productId)
+
+      const price = product?.price ?? item.price
+      const name = item.variantLabel ? `${item.title} (${item.variantLabel})` : item.title
+
+      return {
+        amount: toCentavos(price),
+        currency: 'PHP',
+        name,
+        quantity: item.quantity,
+        description: product?.description?.slice(0, 200) || '',
+      }
+    })
+
+    // Authoritative product subtotal (pesos) from resolved prices.
+    const subtotal =
+      productLineItems.reduce((sum, li) => sum + li.amount * li.quantity, 0) / 100
+
+    // ── Apply voucher (server-side re-validation; never trust the client) ──
+    let fee = shippingFee ?? 100
+    const voucher = voucherCode ? evaluateVoucher(voucherCode, subtotal) : null
+
+    if (voucher?.valid) {
+      if (voucher.freeShipping) fee = 0
+
+      if (voucher.discountAmount && voucher.discountAmount > 0 && subtotal > 0) {
+        // Scale each product line proportionally so the discounted total
+        // matches (item prices on the PayMongo page reflect the discount).
+        const factor = (subtotal - voucher.discountAmount) / subtotal
+        for (const li of productLineItems) {
+          li.amount = Math.max(1, Math.round(li.amount * factor))
+        }
+      }
+    }
+
+    const lineItems: PayMongoLineItem[] = [...productLineItems]
+
+    if (fee > 0) {
+      lineItems.push({
+        amount: toCentavos(fee),
+        currency: 'PHP',
+        name: `Shipping to ${shipping?.city || 'your address'}`,
+        quantity: 1,
+        description: 'Flat-rate delivery fee',
+      })
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_URL || 'https://verdanarehab.com'
+
+    const session = await createCheckoutSession({
+      lineItems,
+      description: `Verdana Rehab — ${items.length} item${items.length > 1 ? 's' : ''}${fee > 0 ? ' + delivery' : ''}`,
+      successUrl: `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${baseUrl}/cart`,
+      billing: shipping
+        ? {
+            name: shipping.name,
+            email: shipping.email,
+            phone: shipping.phone,
+            address: {
+              line1: shipping.address,
+              city: shipping.city,
+              postal_code: shipping.zipCode,
+              country: 'PH',
+            },
+          }
+        : undefined,
+      metadata: {
+        customer_name: shipping?.name || '',
+        customer_phone: shipping?.phone || '',
+        customer_email: shipping?.email || '',
+        customer_address: shipping?.address || '',
+        customer_city: shipping?.city || '',
+        customer_zip: shipping?.zipCode || '',
+        shipping_fee: String(fee),
+        voucher_code: voucher?.valid ? voucher.code || '' : '',
+        discount_amount: voucher?.valid ? String(voucher.discountAmount || 0) : '0',
+        free_shipping: voucher?.valid && voucher.freeShipping ? 'yes' : 'no',
+        cart_items: JSON.stringify(
+          items.map((i) => ({
+            productId: i.productId,
+            title: i.title,
+            variantLabel: i.variantLabel,
+            variantSku: i.variantSku,
+            quantity: i.quantity,
+            price: i.price,
+          }))
+        ),
+      },
+    })
+
+    const checkoutUrl = session.attributes.checkout_url
+
+    return NextResponse.json({ url: checkoutUrl, sessionId: session.id })
+  } catch (error) {
+    console.error('Checkout error:', error)
+    const msg = error instanceof Error ? error.message : 'Failed to create checkout session'
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}

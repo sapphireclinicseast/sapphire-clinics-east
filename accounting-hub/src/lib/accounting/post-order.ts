@@ -43,14 +43,23 @@ export async function postOrderJournal(
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
 
-  // Idempotency: skip while an ACTIVE forward JE exists for this order. A
-  // forward JE cancelled by a POS_ORDER_REVERSAL (void → reopen → complete
-  // again) no longer counts, so the re-completed sale posts a fresh JE.
-  const [forwardCount, reversalCount] = await Promise.all([
-    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER', referenceId: orderId } }),
-    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER_REVERSAL', referenceId: orderId } }),
-  ])
-  if (forwardCount > reversalCount) return { posted: false, alreadyPosted: true }
+  // Idempotency: skip while an ACTIVE forward JE exists for this order. A forward JE
+  // cancelled by a POS_ORDER_REVERSAL (void → reopen → complete again) no longer
+  // counts, so the re-completed sale posts a fresh JE — determined by which posting
+  // happened LAST, not by comparing raw counts. Raw counts (forwardCount >
+  // reversalCount) look equivalent but aren't: any order reopened exactly once before
+  // its revenue account existed (so the fresh forward posts only once, after the
+  // reversal) lands at forwardCount === reversalCount == 1 the moment the backfill
+  // that finally posts it runs a second time — indistinguishable, by count alone,
+  // from "already caught up" and "still needs its post-reversal repost". Ordering by
+  // createdAt resolves it correctly either way and self-heals any order already
+  // double-posted by the count-based check (its last JE is still the newer forward).
+  const lastJe = await prisma.journalEntry.findFirst({
+    where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
+    orderBy: { createdAt: 'desc' },
+    select: { referenceType: true },
+  })
+  if (lastJe?.referenceType === 'POS_ORDER') return { posted: false, alreadyPosted: true }
 
   // Pull everything we need in one round-trip.
   const order = await prisma.order.findUnique({
@@ -136,11 +145,60 @@ export async function postOrderJournal(
     agg.set(accountId, cur)
   }
 
+  /* ── 0b. Name fallback for unlinked product lines ───────────────
+     A line rung up as free text carries no inventoryItem, but nearly always names
+     a real catalogue product — and the reporting engine ALREADY resolves exactly
+     these lines by name for the 7080 product-subtype breakdown. Without the same
+     fallback here the two disagree on the same sale: the income statement files it
+     under "Training & Education · Materials" while its peso sits in 7000
+     Unclassified Revenue. Resolve by name so classification follows the catalogue
+     automatically, and 7000 means what it says — a product we genuinely can't
+     identify — rather than "the cashier didn't pick from the dropdown".
+
+     Ambiguity is never guessed through: a name matching several catalogue rows
+     (consignment copies share their parent's name) only resolves when the order's
+     own branch picks a single one, or when every candidate points at the same
+     revenue account anyway. Otherwise it falls through to 7000, which is visible
+     and fixable, rather than silently crediting the wrong line. */
+  const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ')
+  const unlinkedNames = [...new Set(
+    order.items
+      .filter(i => !i.service && !i.inventoryItem && Number(i.lineTotal) > 0 && (i.name || '').trim())
+      .map(i => norm(i.name)),
+  )]
+  const revByName = new Map<string, { id: string; accountNumber: string; accountTitle: string }>()
+  if (unlinkedNames.length > 0) {
+    const candidates = await prisma.inventoryItem.findMany({
+      where: { name: { in: unlinkedNames } },   // catalogue names are stored upper-case
+      select: { name: true, branch: true, revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } } },
+    })
+    const byName = new Map<string, typeof candidates>()
+    for (const c of candidates) {
+      const k = norm(c.name)
+      if (!byName.has(k)) byName.set(k, [])
+      byName.get(k)!.push(c)
+    }
+    for (const [name, rows] of byName) {
+      const withAcct = rows.filter(r => r.revenueAccount)
+      if (withAcct.length === 0) continue
+      const sameBranch = withAcct.filter(r => r.branch === order.branch)
+      const pick =
+        withAcct.length === 1 ? withAcct[0]
+        : sameBranch.length === 1 ? sameBranch[0]
+        : new Set(withAcct.map(r => r.revenueAccount!.id)).size === 1 ? withAcct[0]
+        : null
+      if (pick?.revenueAccount) revByName.set(name, pick.revenueAccount)
+    }
+  }
+
   /* ── 1. Revenue (CR) per item ─────────────────────────────────── */
   for (const item of order.items) {
     const lineTotal = Number(item.lineTotal)
     if (lineTotal <= 0) continue   // free samples / zero-priced items have their own JE
-    const revAcct = item.service?.revenueAccount || item.inventoryItem?.revenueAccount || defaultUnclassifiedRevenue
+    const revAcct = item.service?.revenueAccount
+      || item.inventoryItem?.revenueAccount
+      || revByName.get(norm(item.name || ''))
+      || defaultUnclassifiedRevenue
     if (!revAcct) {
       return { posted: false, reason: `item "${item.name}" has no revenue account and no 7000 fallback exists` }
     }
@@ -331,17 +389,22 @@ export async function reverseOrderJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
-  const [original, reversalCount] = await Promise.all([
-    prisma.journalEntry.findFirst({
-      where: { referenceType: 'POS_ORDER', referenceId: orderId },
-      include: { lines: true },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER_REVERSAL', referenceId: orderId } }),
-  ])
+  const original = await prisma.journalEntry.findFirst({
+    where: { referenceType: 'POS_ORDER', referenceId: orderId },
+    include: { lines: true },
+    orderBy: { createdAt: 'desc' },
+  })
   if (!original) return { posted: false, reason: 'no forward JE to reverse' }
-  const forwardCount = await prisma.journalEntry.count({ where: { referenceType: 'POS_ORDER', referenceId: orderId } })
-  if (reversalCount >= forwardCount) return { posted: false, alreadyPosted: true }
+  // Idempotency: mirrors postOrderJournal's fix above — ordering by createdAt, not
+  // raw counts, since forwardCount===reversalCount is ambiguous (could mean "fully
+  // reversed" or "freshly reposted after a reversal") and raw counts read that
+  // ambiguous case as "already reversed", silently skipping a genuine new void/reopen.
+  const lastJe = await prisma.journalEntry.findFirst({
+    where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
+    orderBy: { createdAt: 'desc' },
+    select: { referenceType: true },
+  })
+  if (lastJe?.referenceType !== 'POS_ORDER') return { posted: false, alreadyPosted: true }
 
   const lines: PostingLine[] = original.lines.map(l => ({
     accountId: l.accountId,

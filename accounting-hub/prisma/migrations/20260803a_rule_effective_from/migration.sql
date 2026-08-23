@@ -1,0 +1,1 @@
+ALTER TABLE "BankCategoryRule" ADD COLUMN IF NOT EXISTS "effectiveFrom" TIMESTAMP(3);

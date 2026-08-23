@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { branchLabel } from '@/lib/branch-label'
 import {
   UsersRound, ClipboardList, BarChart3, Zap, Trash2, CheckCircle2,
   ChevronDown, ChevronUp, RefreshCw, X, AlertCircle,
@@ -84,10 +85,6 @@ interface AdminConfig {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BRANCH_LABELS: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-}
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -483,7 +480,7 @@ function FrontDeskPendingView({ role }: { role: string }) {
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <div style={{ flex: 1, fontSize: '0.85rem', color: '#6b7280' }}>
-          {assignments.length} pending evaluation{assignments.length !== 1 ? 's' : ''} for {BRANCH_LABELS[branch]}
+          {assignments.length} pending evaluation{assignments.length !== 1 ? 's' : ''} for {branchLabel(branch)}
         </div>
       </div>
 
@@ -607,7 +604,7 @@ function FrontDeskPendingView({ role }: { role: string }) {
                 />
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#111827', marginBottom: 2 }}>{fullName(qrStaff)}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: 6 }}>{qrStaff.department} · {BRANCH_LABELS[branch]}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: 6 }}>{qrStaff.department} · {branchLabel(branch)}</div>
                   <a href={staffUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#0284c7', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     <ExternalLink size={11} /> Open form
                   </a>
@@ -1512,7 +1509,7 @@ function GenerateTab({ role }: { role: string }) {
   }
 
   async function handleGenerate() {
-    if (!confirm(`Generate ${formType} assignments for ${BRANCH_LABELS[branch]} — ${year}?\n\nDuplicate assignments will be skipped automatically.`)) return
+    if (!confirm(`Generate ${formType} assignments for ${branchLabel(branch)} — ${year}?\n\nDuplicate assignments will be skipped automatically.`)) return
     setGenerating(true); setResult(null); setGenError('')
     try {
       const body: Record<string, any> = { formType, branch, year }
@@ -1558,7 +1555,7 @@ function GenerateTab({ role }: { role: string }) {
               <div style={{ display: 'flex', gap: 8 }}>
                 {['SBEA', 'SBGH'].map(b => (
                   <button key={b} onClick={() => setBranch(b)} style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: `1.5px solid ${branch === b ? '#1a7b8a' : '#e5e7eb'}`, background: branch === b ? '#f0f9ff' : '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', color: branch === b ? '#1a7b8a' : '#374151' }}>
-                    {BRANCH_LABELS[b]}
+                    {branchLabel(b)}
                   </button>
                 ))}
               </div>
@@ -1759,7 +1756,7 @@ function SettingsTab({ role }: { role: string }) {
                       <div style={{ fontWeight: 600, color: '#111827' }}>{c.staff.firstName} {c.staff.lastName}</div>
                       {c.staff.jobTitle && <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{c.staff.jobTitle}</div>}
                     </td>
-                    <td style={tdStyle}>{BRANCH_LABELS[c.branch] ?? c.branch}</td>
+                    <td style={tdStyle}>{branchLabel(c.branch) ?? c.branch}</td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         {DAYS_OF_WEEK.map(day => (
@@ -2032,7 +2029,7 @@ function PerDepartmentRankings({
                           ? (r.responseCount + ' eval' + (r.responseCount !== 1 ? 's' : ''))
                           : 'No evaluations yet'}
                         {' · '}
-                        <span style={{ color: '#9ca3af' }}>{BRANCH_LABELS[r.branch] ?? r.branch}</span>
+                        <span style={{ color: '#9ca3af' }}>{branchLabel(r.branch) ?? r.branch}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2268,7 +2265,7 @@ function LeaderboardSection({
                       </div>
                     ) : (
                       <div style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 2 }}>
-                        {g.members[0].department}{g.members[0].branch ? ' · ' + (BRANCH_LABELS[g.members[0].branch] ?? g.members[0].branch) : ''} · {g.members[0].responseCount} eval{g.members[0].responseCount !== 1 ? 's' : ''}
+                        {g.members[0].department}{g.members[0].branch ? ' · ' + (branchLabel(g.members[0].branch) ?? g.members[0].branch) : ''} · {g.members[0].responseCount} eval{g.members[0].responseCount !== 1 ? 's' : ''}
                       </div>
                     )}
                   </div>
@@ -2289,7 +2286,7 @@ function LeaderboardSection({
                         padding: '6px 0', borderTop: '1px dashed #FDE4CC', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 8,
                       }}>
                         <span style={{ color: '#1f2937', flex: 1, fontWeight: 600 }}>{m.name}</span>
-                        <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.department}{m.branch ? ' · ' + (BRANCH_LABELS[m.branch] ?? m.branch) : ''}</span>
+                        <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.department}{m.branch ? ' · ' + (branchLabel(m.branch) ?? m.branch) : ''}</span>
                         <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.responseCount} eval{m.responseCount !== 1 ? 's' : ''}</span>
                       </div>
                     ))}

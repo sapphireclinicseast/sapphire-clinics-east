@@ -63,11 +63,19 @@ export async function GET(req: NextRequest) {
       // the patient is registered there too, otherwise their first. Nothing on file, and
       // walk-ins with no patient at all → the clinician's branch, so the session still
       // reaches one queue.
-      const effectiveBranch = pb.length === 1
-        ? pb[0]
-        : pb.length > 1
-          ? (pb.includes(s.staff.branch) ? s.staff.branch : pb[0])
-          : s.staff.branch
+      // A branch stored on the schedule itself (captured from the branch
+      // calendar it was booked on) is authoritative — it is what places an
+      // interbranch clinician's East session in East's cashier queue even
+      // though her staff profile is pinned to Greenhills. Legacy rows without
+      // it fall back to the patient/staff inference below.
+      const stored = (s as { branch?: string | null }).branch
+      const effectiveBranch = stored && ['SBEA', 'SBGH', 'VER'].includes(stored)
+        ? stored
+        : pb.length === 1
+          ? pb[0]
+          : pb.length > 1
+            ? (pb.includes(s.staff.branch) ? s.staff.branch : pb[0])
+            : s.staff.branch
       return {
         id:          s.id,
         startTime:   s.startTime,

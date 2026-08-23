@@ -10,6 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPatientToken } from '@/lib/patient-session'
+import { branchLabel } from '@/lib/branch-label'
+import { linkedPatientIds } from '@/lib/patient-links'
 import { preflight, withCors } from '../../_cors'
 
 export async function OPTIONS(req: NextRequest) {
@@ -31,11 +33,6 @@ const DEPT_LABEL: Record<string, string> = {
 // Departments that aren't clinical services and shouldn't appear under "availed".
 const NON_SERVICE = new Set(['FRONT_DESK', 'ADMINISTRATION'])
 
-const BRANCH_LABEL: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-}
 
 function titleCase(s: string): string {
   return s
@@ -65,7 +62,7 @@ export async function GET(req: NextRequest) {
     where: { id: session.patientId },
     select: {
       id: true, firstName: true, lastName: true, dob: true, sex: true,
-      patientType: true, diagnosis: true, city: true, branch: true,
+      patientType: true, diagnosis: true, city: true, branch: true, branches: true,
       email: true, phone: true, address: true, civilStatus: true,
       pwdSeniorId: true, username: true, profilePhoto: true,
       referralUrl: true, pwdIdUrl: true,
@@ -77,25 +74,34 @@ export async function GET(req: NextRequest) {
 
   const now = new Date()
 
-  const [schedules, bookings, assignments] = await Promise.all([
+  // Combine interbranch records (same person, one Patient row per branch) so the
+  // portal shows all their sessions across branches.
+  const patientIds = await linkedPatientIds(patient.id)
+
+  const [schedules, bookings, assignments, linkedRecords] = await Promise.all([
     prisma.schedule.findMany({
-      where: { patientId: patient.id, status: { not: 'CANCELLED' } },
+      // All statuses (incl. CANCELLED / RESCHEDULED) so the portal can show the
+      // patient's full attendance record.
+      where: { patientId: { in: patientIds } },
       orderBy: { date: 'desc' },
-      take: 100,
+      // High headroom for full session-history backfills (2024→): a multi-year,
+      // multi-department patient can accumulate many hundreds of schedules and
+      // the newest-N cap would silently hide their oldest sessions.
+      take: 2000,
       select: {
-        id: true, date: true, startTime: true, endTime: true, status: true,
-        isTeletherapy: true,
-        staff: { select: { firstName: true, lastName: true, department: true } },
+        id: true, patientId: true, date: true, startTime: true, endTime: true, status: true,
+        isTeletherapy: true, notes: true,
+        staff: { select: { firstName: true, lastName: true, department: true, branch: true } },
       },
     }),
     prisma.patientBooking.findMany({
-      where: { patientId: patient.id, status: { in: ['PAID', 'COMPLETED'] } },
+      where: { patientId: { in: patientIds }, status: { in: ['PAID', 'COMPLETED'] } },
       orderBy: { date: 'desc' },
-      take: 100,
+      take: 500,
       select: {
         id: true, date: true, startTime: true, endTime: true, status: true,
-        department: true, isTeletherapy: true,
-        staff: { select: { firstName: true, lastName: true, department: true } },
+        department: true, branch: true, isTeletherapy: true, notes: true,
+        staff: { select: { firstName: true, lastName: true, department: true, branch: true } },
       },
     }),
     prisma.surveyAssignment.findMany({
@@ -107,7 +113,18 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
       select: { id: true, surveyType: true, expiresAt: true, createdAt: true },
     }),
+    // Branch per interbranch record — a session's real branch is the branch of
+    // the Patient row that owns it, NOT the consultant's home branch (an
+    // interbranch consultant staffs both branches under one Staff.branch).
+    prisma.patient.findMany({
+      where: { id: { in: patientIds } },
+      select: { id: true, branch: true, branches: true },
+    }),
   ])
+  // Prefer the CRM's multi-branch `branches[]` (primary) over legacy `branch`.
+  const branchByPatientId = new Map(
+    linkedRecords.map((r) => [r.id, (r.branches?.[0] ?? r.branch) as string | null]),
+  )
 
   // ── Services availed (distinct departments across both session sources) ──
   const deptSet = new Set<string>()
@@ -129,40 +146,97 @@ export async function GET(req: NextRequest) {
     endTime: string
     clinician: string
     department: string
+    departmentCode: string
+    branch: string
     status: string
     isTeletherapy: boolean
+    notes: string | null
     source: 'schedule' | 'booking'
   }
   const clin = (f?: string | null, l?: string | null) =>
     titleCase(`${f ?? ''} ${l ?? ''}`.trim()) || 'Clinician'
+  // Normalise branch across sources: Schedule staff use "SBEA"/"SBGH";
+  // PatientBooking uses "SANDBOX_EAST"/"SANDBOX_GREENHILLS".
+  const branchShort = (b?: string | null): string => {
+    const v = (b ?? '').toUpperCase()
+    if (v === 'SBEA' || v === 'SANDBOX_EAST') return 'East'
+    if (v === 'SBGH' || v === 'SANDBOX_GREENHILLS') return 'Greenhills'
+    return ''
+  }
 
   const sessions: Session[] = [
-    ...schedules.map((s): Session => ({
-      id: s.id,
-      date: s.date.toISOString().slice(0, 10),
-      startTime: s.startTime,
-      endTime: s.endTime,
-      clinician: clin(s.staff?.firstName, s.staff?.lastName),
-      department: s.staff?.department ? (DEPT_LABEL[s.staff.department] ?? titleCase(s.staff.department)) : '',
-      status: s.status,
-      isTeletherapy: s.isTeletherapy,
-      source: 'schedule',
-    })),
+    ...schedules.map((s): Session => {
+      const code = (s.staff?.department ?? '').toUpperCase()
+      return {
+        id: s.id,
+        date: s.date.toISOString().slice(0, 10),
+        startTime: s.startTime,
+        endTime: s.endTime,
+        clinician: clin(s.staff?.firstName, s.staff?.lastName),
+        department: code ? (DEPT_LABEL[code] ?? titleCase(code)) : '',
+        departmentCode: code,
+        branch: branchShort(branchByPatientId.get(s.patientId ?? '') ?? s.staff?.branch),
+        status: s.status,
+        isTeletherapy: s.isTeletherapy,
+        notes: s.notes ?? null,
+        source: 'schedule',
+      }
+    }),
     ...bookings.map((b): Session => {
-      const d = (b.staff?.department ?? b.department ?? '').toUpperCase()
+      const code = (b.staff?.department ?? b.department ?? '').toUpperCase()
       return {
         id: b.id,
         date: b.date.toISOString().slice(0, 10),
         startTime: b.startTime,
         endTime: b.endTime,
         clinician: clin(b.staff?.firstName, b.staff?.lastName),
-        department: d ? (DEPT_LABEL[d] ?? titleCase(d)) : '',
+        department: code ? (DEPT_LABEL[code] ?? titleCase(code)) : '',
+        departmentCode: code,
+        branch: branchShort(b.branch ?? b.staff?.branch),
         status: b.status,
         isTeletherapy: b.isTeletherapy,
+        notes: b.notes ?? null,
         source: 'booking',
       }
     }),
   ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.startTime < b.startTime ? 1 : -1))
+
+  // The same appointment slot (person + date + time + clinician + department)
+  // can appear as duplicate rows across the interbranch records — e.g. a session
+  // first booked PENDING under one branch, then moved and RESOLVED (confirmed /
+  // cancelled / rescheduled) under another. Drop the stale PENDING copy when the
+  // slot already has a resolved outcome, then collapse any remaining exact
+  // duplicates. A slot with only PENDING rows (no resolved twin) still shows.
+  const resolvedSlots = new Set(
+    sessions
+      .filter((s) => s.status !== 'PENDING')
+      .map((s) => `${s.date}|${s.startTime}|${s.endTime}|${s.clinician}|${s.departmentCode}`),
+  )
+  const seen = new Set<string>()
+  const dedupedSessions = sessions.filter((s) => {
+    const slot = `${s.date}|${s.startTime}|${s.endTime}|${s.clinician}|${s.departmentCode}`
+    if (s.status === 'PENDING' && resolvedSlots.has(slot)) return false
+    const key = `${slot}|${s.status}|${s.branch}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  // ── Attendance stats (Confirmed vs Cancelled/Rescheduled; PENDING excluded) ──
+  const CONFIRMED = new Set(['CONFIRMED', 'PAID', 'COMPLETED'])
+  const CANCELLED_RESCHED = new Set(['CANCELLED', 'RESCHEDULED'])
+  const counted = dedupedSessions.filter((s) => CONFIRMED.has(s.status) || CANCELLED_RESCHED.has(s.status))
+  const confirmedCount = counted.filter((s) => CONFIRMED.has(s.status)).length
+  const cancelledCount = counted.filter((s) => CANCELLED_RESCHED.has(s.status)).length
+  const totalCounted = counted.length
+  const pct = (n: number) => (totalCounted > 0 ? Math.round((n / totalCounted) * 1000) / 10 : 0)
+  const stats = {
+    total: totalCounted,
+    confirmed: confirmedCount,
+    confirmedPct: pct(confirmedCount),
+    cancelledRescheduled: cancelledCount,
+    cancelledRescheduledPct: pct(cancelledCount),
+  }
 
   // ── Active surveys (links built client-side to the survey subdomain) ──
   const surveys = assignments.map((a) => ({
@@ -185,7 +259,9 @@ export async function GET(req: NextRequest) {
     patientType: patient.patientType === 'PEDIATRIC' ? 'Pediatric' : 'Adult',
     diagnosis: patient.diagnosis ? titleCase(patient.diagnosis) : null,
     city: patient.city ? titleCase(patient.city) : null,
-    branch: patient.branch ? (BRANCH_LABEL[patient.branch] ?? patient.branch) : null,
+    branch: (patient.branches?.[0] ?? patient.branch)
+      ? (branchLabel(patient.branches?.[0] ?? patient.branch) ?? (patient.branches?.[0] ?? patient.branch))
+      : null,
     // Contact + ID fields for the patient-facing portal profile section.
     email: patient.email ? patient.email.trim() : null,
     phone: patient.phone ? patient.phone.trim() : null,
@@ -198,5 +274,5 @@ export async function GET(req: NextRequest) {
     pwdIdUrl: patient.pwdIdUrl ?? null,
   }
 
-  return withCors(NextResponse.json({ profile, servicesAvailed, sessions, surveys }), origin)
+  return withCors(NextResponse.json({ profile, servicesAvailed, sessions: dedupedSessions, surveys, stats }), origin)
 }

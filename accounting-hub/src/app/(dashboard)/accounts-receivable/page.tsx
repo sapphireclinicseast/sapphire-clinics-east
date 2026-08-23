@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
+import { branchLabel } from '@/lib/branch'
+import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
 import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
@@ -10,9 +12,13 @@ import {
   Download, Filter, FileText, Settings, Maximize2, Minimize2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
+import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
+import ExpandablePanel from './ExpandablePanel'
+import DetailedGl, { type GlCaseRow } from './DetailedGl'
 
 interface ARWallet {
   id: string
@@ -28,6 +34,10 @@ interface ARWallet {
   perSession?: boolean
   // Lifetime settled by this agency (cash + tax withheld), and how long it took.
   paidTotal?: number
+  commissionTotal?: number
+  // When the letter/SOA was obtained (dateObtained, else the record's createdAt).
+  // monthsToPay counts from this date, so the two always reconcile.
+  soaDate?: string | null
   lastPaymentDate?: string | null
   monthsToPay?: number | null
   // Total consumed (paid + unpaid, GL only)
@@ -358,11 +368,27 @@ function ProofCell({ orderId, currentUrl, onChange }: {
 
 export default function AccountsReceivablePage() {
   const { data: session } = useSession()
-  const isHmoOfficer = session?.user?.role === 'HMO_OFFICER'
+  const role = (session?.user as { role?: string })?.role || ''
+  const isHmoOfficer = role === 'HMO_OFFICER'
+  // Branch front desk keep the HMO tab read-only (no Record Payment) and skip its
+  // Overview, but they maintain the Guarantee Letter paper trail, so the GL tab and
+  // its Detailed GL sheet are theirs to edit. Other Customers stays hidden.
+  const isFrontdesk = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(role)
+  const visibleTabs = (isHmoOfficer ? ['HMO'] : isFrontdesk ? ['HMO', 'GL'] : ['HMO', 'GL', 'OTHERS']) as readonly ('HMO' | 'GL' | 'OTHERS')[]
+  // Money: recording a payment against an agency or provider stays with the roles
+  // that reconcile it.
+  const canWrite = !isFrontdesk
+  // Detailed GL case tracking. Mirrors WRITE_ROLES in
+  // src/app/api/accounts-receivable/gl-case/route.ts — the API is the real gate, and
+  // showing a pencil to someone whose save would 403 is worse than hiding it.
+  const canEditGlCase = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN',
+    'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(role)
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const searchParams = useSearchParams()
-  // HMO Officers are locked to the HMO tab only
-  const initialType = !isHmoOfficer && ['GL', 'OTHERS'].includes(searchParams.get('type') || '') ? (searchParams.get('type') as 'GL' | 'OTHERS') : 'HMO'
+  // HMO Officers and front desk are locked to the HMO tab only
+  const initialType = ['GL', 'OTHERS'].includes(searchParams.get('type') || '')
+    && (isHmoOfficer ? false : !(isFrontdesk && searchParams.get('type') === 'OTHERS'))
+    ? (searchParams.get('type') as 'GL' | 'OTHERS') : 'HMO'
   const initialWallet = searchParams.get('wallet') || ''
 
   const [tab, setTab] = useState<'HMO' | 'GL' | 'OTHERS'>(initialType as 'HMO' | 'GL' | 'OTHERS')
@@ -374,9 +400,21 @@ export default function AccountsReceivablePage() {
   const [sortField, setSortField] = useState('transactionDate')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
+  // Sort/filter for the Consumption table. Kept separate from sortField/sortDir
+  // above, which drive the server-side order of the transactions list.
+  const [consSortKey, setConsSortKey] = useState('')
+  const [consSortDir, setConsSortDir] = useState<'asc' | 'desc'>('asc')
+  const [consFilters, setConsFilters] = useState<Record<string, string>>({})
+  const toggleConsSort = (k: string) => {
+    if (consSortKey === k) setConsSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setConsSortKey(k); setConsSortDir('asc') }
+  }
+
   const [wallets, setWallets] = useState<ARWallet[]>([])
   const [orders, setOrders] = useState<AROrder[]>([])
   const [arPayments, setArPayments] = useState<ARPaymentRecord[]>([])
+  // Detailed GL entries created without a POS wallet behind them.
+  const [glCases, setGlCases] = useState<GlCaseRow[]>([])
   // Full-history totals from the API. The `orders` list is capped at 500, so
   // summary figures must come from here or older years drop out silently.
   const [summary, setSummary] = useState<ARSummary | null>(null)
@@ -396,7 +434,15 @@ export default function AccountsReceivablePage() {
   // When user clicks a cell, filter the orders table to that bucket's ids
   const [bucketFilterIds, setBucketFilterIds] = useState<string[] | null>(null)
   const [bucketFilterLabel, setBucketFilterLabel] = useState('')
+  // Drill-down popup: the actual sessions behind an aging figure.
+  const [sessionModal, setSessionModal] = useState<{ label: string; ids: string[] } | null>(null)
+  // Free-text filter over Payment History (both wallet tabs).
+  const [paySearch, setPaySearch] = useState('')
   const [arDaysSort, setArDaysSort] = useState<'asc' | 'desc'>('desc')
+  // Download menu for the summary dashboard (separate from the Per HMO one).
+  const [showSummaryDownload, setShowSummaryDownload] = useState(false)
+  // GL sub-tab: the dashboard, or the full case sheet.
+  const [glSubTab, setGlSubTab] = useState<'overview' | 'detailed'>('overview')
 
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -432,7 +478,15 @@ export default function AccountsReceivablePage() {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
   // HMO sub-tab state
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report'>('overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report' | 'submitted-soa'>('overview')
+  // useSession resolves after the first render, so the initial tab/sub-tab are
+  // picked before the role is known. Snap them back once it arrives — a ?type=
+  // link or a stale sub-tab must not park a restricted user on a hidden view.
+  useEffect(() => {
+    if (!visibleTabs.includes(tab)) { setTab('HMO'); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel('') }
+    if (isFrontdesk && hmoSubTab === 'overview') setHmoSubTab('per-hmo')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFrontdesk, tab, hmoSubTab, visibleTabs.join(',')])
   // Per HMO sub-tab state
   const [perHmoWallet, setPerHmoWallet] = useState('')
   const [perHmoFrom, setPerHmoFrom] = useState('')
@@ -478,9 +532,11 @@ export default function AccountsReceivablePage() {
       setWallets(data.wallets || [])
       setOrders(data.orders || [])
       setArPayments(data.arPayments || [])
+      setGlCases(data.glCases || [])
       setSummary(data.summary || null)
     } catch {
       setOrders([])
+      setGlCases([])
       setSummary(null)
     } finally {
       setLoading(false)
@@ -568,6 +624,92 @@ export default function AccountsReceivablePage() {
     if (sortField !== field) return <ArrowUpDown size={12} className="opacity-30" />
     return sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
   }
+
+  // Consumption rows, sorted and filtered. The two groups are ordered and
+  // filtered independently so approved-SOA agencies stay above the per-session
+  // ones — they are read differently and must not interleave.
+  const consumptionRows = useMemo(() => {
+    const pctOf = (w: ARWallet) => {
+      const approved = toNum(w.balance)
+      return approved > 0 ? ((w.consumedOutstanding || 0) / approved) * 100 : 0
+    }
+    // Sorting wants numbers; filtering wants the text actually on screen — an
+    // agency with no payment reads "unpaid", not a sentinel number.
+    const sortGet = (w: ARWallet, k: string): string | number => {
+      switch (k) {
+        case 'name': return w.patientName || ''
+        case 'branch': return branchLabel(w.branch)
+        case 'approved': return toNum(w.balance)
+        case 'paid': return toNum(w.paidTotal)
+        // Undated rows sort to the end rather than to 1970.
+        case 'soaDate': return w.soaDate ? String(w.soaDate) : '￿'
+        case 'paidDate': return w.lastPaymentDate ? String(w.lastPaymentDate) : '￿'
+        // What the agency still owes: approved less what it has settled.
+        case 'ar': return Math.max(0, toNum(w.balance) - toNum(w.paidTotal))
+        case 'commission': return toNum(w.commissionTotal)
+        // Unpaid agencies sort to the end either way rather than as zero.
+        case 'months': return typeof w.monthsToPay === 'number' ? w.monthsToPay : Number.MAX_SAFE_INTEGER
+        case 'consumed': return w.consumedOutstanding || 0
+        case 'pct': return w.perSession ? -1 : pctOf(w)
+        default: return ''
+      }
+    }
+    const filterGet = (w: ARWallet, k: string): string | number => {
+      switch (k) {
+        case 'months': return typeof w.monthsToPay === 'number' ? `${w.monthsToPay.toFixed(1)} mo` : 'unpaid'
+        case 'soaDate': return w.soaDate ? formatDate(w.soaDate) : '—'
+        case 'paidDate': return w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid'
+        case 'pct': return w.perSession ? 'per session' : `${pctOf(w).toFixed(1)}%`
+        default: return sortGet(w, k)
+      }
+    }
+    const sortGroup = (rows: ARWallet[]) =>
+      applySortFilter(rows, sortGet, consSortKey, consSortDir, consFilters, filterGet)
+    return [
+      ...sortGroup(wallets.filter(w => !w.perSession)),
+      ...sortGroup(wallets.filter(w => w.perSession)),
+    ]
+  }, [wallets, consSortKey, consSortDir, consFilters])
+
+  const consumptionCols: SortCol[] = tab === 'GL'
+    ? [
+      { key: 'name', label: 'Agency / Name' },
+      { key: 'branch', label: 'Branch' },
+      { key: 'approved', label: 'Approved SOA' },
+      { key: 'soaDate', label: 'Date of SOA' },
+      { key: 'paid', label: 'Paid' },
+      { key: 'paidDate', label: 'Date Paid' },
+      { key: 'commission', label: 'Commission' },
+      { key: 'months', label: 'Months to pay' },
+      { key: 'ar', label: 'AR Balance' },
+      { key: 'consumed', label: 'Consumed' },
+      { key: 'pct', label: '% Consumed' },
+    ]
+    : [
+      { key: 'name', label: 'HMO Provider' },
+      { key: 'branch', label: 'Branch' },
+      { key: 'approved', label: 'Outstanding' },
+    ]
+
+  // Payment History search — matches the text actually on the row, so what the
+  // user reads is what they can search for.
+  const shownPayments = useMemo(() => {
+    const q = paySearch.trim().toLowerCase()
+    if (!q) return arPayments
+    return arPayments.filter(p => {
+      const wallet = wallets.find(w => w.id === p.walletId)
+      return [
+        formatDate(p.paymentDate),
+        p.salesInvoiceNumber || '',
+        wallet?.patientName || '',
+        String(toNum(p.amount)), formatCurrency(toNum(p.amount)),
+        String(toNum(p.discount)),
+        p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '',
+        p.notes || '',
+        p.createdBy?.name || '',
+      ].join(' ').toLowerCase().includes(q)
+    })
+  }, [arPayments, wallets, paySearch])
 
   const totalReceivable = wallets.reduce((s, w) => s + toNum(w.balance), 0)
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
@@ -783,6 +925,144 @@ export default function AccountsReceivablePage() {
     }
   }
 
+  /* ── Summary dashboard export ──────────────────────────────────
+     Builds the four tables on this screen once, so the Excel workbook and
+     the PDF always carry the same figures. Everything reflects the filters
+     currently applied — the file should match what the screen shows, not a
+     second, unfiltered version of the truth. */
+  const buildSummaryExport = () => {
+    const isGL = tab === 'GL'
+    const money = (n: number) => Number(n || 0).toFixed(2)
+
+    const scopeBits = [
+      branch ? branchLabel(branch) : 'All branches',
+      `last ${agingPeriodDays} days`,
+      dateFrom || dateTo ? `orders ${dateFrom || 'start'} → ${dateTo || 'today'}` : null,
+      walletFilter ? (wallets.find(w => w.id === walletFilter)?.patientName || null) : null,
+    ].filter(Boolean)
+
+    const kpis = [
+      { label: 'AR Days (Overall)', value: agingData ? `${agingData.arDaysOverall.toFixed(1)} days` : '—' },
+      { label: 'Total AR', value: agingData ? formatCurrency(agingData.totalAR) : '—' },
+      { label: `Revenue (${agingPeriodDays}d)`, value: agingData ? formatCurrency(agingData.totalRevenue) : '—' },
+      ...(!isGL && agingData?.totalAllDeptRevenue != null
+        ? [{ label: 'All-dept revenue', value: formatCurrency(agingData.totalAllDeptRevenue) }]
+        : []),
+    ]
+
+    // 1) Consumption — same columns and order as the on-screen table.
+    const consumptionHeaders = consumptionCols.map(c => c.label)
+    const consumptionRowsOut = consumptionRows.map(w => {
+      const approved = toNum(w.balance)
+      const consumed = typeof w.consumedOutstanding === 'number' ? w.consumedOutstanding : 0
+      const pct = approved > 0 ? (consumed / approved) * 100 : 0
+      const base = [w.patientName, branchLabel(w.branch) || '—']
+      return isGL
+        ? [...base, money(approved),
+           w.soaDate ? formatDate(w.soaDate) : '—',
+           money(toNum(w.paidTotal)),
+           w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid',
+           money(toNum(w.commissionTotal)),
+           typeof w.monthsToPay === 'number' ? `${w.monthsToPay.toFixed(1)} mo` : 'unpaid',
+           money(Math.max(0, approved - toNum(w.paidTotal))),
+           money(consumed), w.perSession ? 'per session' : `${pct.toFixed(1)}%`]
+        : [...base, money(approved)]
+    })
+
+    // 2) AR Days per wallet
+    const arDaysRows = (agingData?.perWallet || [])
+      .filter(w => w.ar > 0 || w.revenue > 0)
+      .sort((a, b) => arDaysSort === 'asc' ? a.arDays - b.arDays : b.arDays - a.arDays)
+      .map(w => [w.walletName, money(w.ar), money(w.revenue), w.arDays.toFixed(1)])
+
+    // 3) Aging buckets, with the same TOTAL line the screen shows
+    const agingRows = (agingData?.perWallet || []).filter(w => w.ar > 0)
+    const bucketTotals = agingRows.reduce(
+      (acc, r) => ({
+        b0_30: acc.b0_30 + r.aging.b0_30, b31_60: acc.b31_60 + r.aging.b31_60,
+        b61_90: acc.b61_90 + r.aging.b61_90, b90plus: acc.b90plus + r.aging.b90plus,
+        ar: acc.ar + r.ar,
+      }),
+      { b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0, ar: 0 },
+    )
+
+    // 4) Payment history
+    const paymentRows = arPayments.map(p => [
+      formatDate(p.paymentDate),
+      p.salesInvoiceNumber || '—',
+      wallets.find(w => w.id === p.walletId)?.patientName || '—',
+      money(toNum(p.amount)),
+      money(toNum(p.discount)),
+      p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—',
+      String(p.items?.length ?? 0),
+      p.notes || '',
+      p.createdBy?.name || '—',
+    ])
+
+    return {
+      label: isGL ? 'Guarantee Letters (GL)' : 'HMO Providers',
+      scope: scopeBits.join(' · '),
+      kpis,
+      sections: [
+        { heading: 'Consumption', headers: consumptionHeaders, rows: consumptionRowsOut },
+        // AR Days and Aging Receivable Details are HMO-only, matching the screen:
+        // both panels are hidden on the GL tab, so the GL export must not carry
+        // sections the user can no longer see.
+        ...(isGL ? [] : [
+          {
+            heading: `AR Days per ${isGL ? 'Agency' : 'HMO'}`,
+            headers: [isGL ? 'Agency' : 'HMO', 'Total AR', `Revenue (${agingPeriodDays}d)`, 'AR Days'],
+            rows: arDaysRows,
+          },
+          {
+            heading: 'Aging Receivable Details',
+            headers: [isGL ? 'Agency' : 'HMO', '0–30 days', '31–60 days', '61–90 days', '>90 days', 'Total'],
+            rows: agingRows.map(w => [w.walletName, money(w.aging.b0_30), money(w.aging.b31_60),
+                                      money(w.aging.b61_90), money(w.aging.b90plus), money(w.ar)]),
+            totalRow: ['TOTAL', money(bucketTotals.b0_30), money(bucketTotals.b31_60),
+                       money(bucketTotals.b61_90), money(bucketTotals.b90plus), money(bucketTotals.ar)],
+          },
+        ]),
+        {
+          heading: 'Payment History',
+          headers: ['Date', 'SI Number', isGL ? 'Agency' : 'Provider', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By'],
+          rows: paymentRows,
+        },
+      ],
+    }
+  }
+
+  const downloadSummaryExcel = () => {
+    const x = buildSummaryExport()
+    const stamp = new Date().toISOString().slice(0, 10)
+    downloadXlsx(`ar-summary-${tab.toLowerCase()}-${stamp}`, [
+      // The headline figures ride in their own sheet — putting them above a
+      // table would break the header row every other tool expects on row 1.
+      { name: 'Summary', headers: ['Figure', 'Value'], rows: [
+        ['Scope', x.scope],
+        ...x.kpis.map(k => [k.label, k.value]),
+      ] },
+      ...x.sections.map(s => ({
+        name: s.heading,
+        headers: s.headers,
+        rows: s.totalRow ? [...s.rows, s.totalRow] : s.rows,
+      })),
+    ])
+    setShowSummaryDownload(false)
+  }
+
+  const downloadSummaryPdf = () => {
+    const x = buildSummaryExport()
+    downloadReportPdf({
+      title: `Accounts Receivable Summary — ${x.label}`,
+      subtitle: x.scope,
+      kpis: x.kpis,
+      sections: x.sections,
+      landscape: true,
+    })
+    setShowSummaryDownload(false)
+  }
+
   const toggleOrderSelect = (orderId: string) => {
     setPaySelectedOrders(prev =>
       prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
@@ -807,17 +1087,19 @@ export default function AccountsReceivablePage() {
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total Receivable ({tab})</p>
             <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalReceivable)}</p>
           </div>
+          {canWrite && (
           <button onClick={openPaymentModal} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
             <DollarSign size={16} /> Record Payment
           </button>
+          )}
         </div>
         )}
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {(['HMO', 'GL', 'OTHERS'] as const).filter(t => !(isHmoOfficer && t !== 'HMO')).map(t => (
-          <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab('overview') }}
+        {visibleTabs.map(t => (
+          <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab(isFrontdesk ? 'per-hmo' : 'overview') }}
             className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
             style={tab === t
               ? { background: 'var(--teal)', color: 'white' }
@@ -856,7 +1138,8 @@ export default function AccountsReceivablePage() {
             { key: 'overview', label: 'Overview' },
             { key: 'per-hmo', label: 'Per HMO' },
             { key: 'soa-report', label: 'SOA Report' },
-          ] as const).map(st => (
+            { key: 'submitted-soa', label: 'Submitted for SOA' },
+          ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
               style={hmoSubTab === st.key
@@ -868,19 +1151,58 @@ export default function AccountsReceivablePage() {
         </div>
       )}
 
+      {/* GL Sub-tabs */}
+      {tab === 'GL' && (
+        <div className="flex gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
+          {([{ key: 'overview', label: 'Overview' }, { key: 'detailed', label: 'Detailed GL' }] as const).map(st => (
+            <button key={st.key} onClick={() => setGlSubTab(st.key)}
+              className="px-4 py-2 text-sm font-medium transition-colors"
+              style={glSubTab === st.key
+                ? { color: 'var(--teal)', borderBottom: '2px solid var(--teal)' }
+                : { color: 'var(--mid-gray)', borderBottom: '2px solid transparent' }}>
+              {st.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Detailed GL: every letter in the OPGL summary layout ── */}
+      {tab === 'GL' && glSubTab === 'detailed' && (
+        <DetailedGl
+          canWrite={canEditGlCase}
+          onSaved={fetchData}
+          glCases={glCases}
+          wallets={wallets.map(w => ({
+            ...w,
+            // "Rendered service?" — has anything actually been billed to the letter.
+            hasOrders: orders.some(o => o.payments.some(p => p.walletId === w.id)),
+          }))}
+        />
+      )}
+
       {/* ── GL Summary: % consumed, % paid, department pie chart ── */}
       {tab === 'GL' && (() => {
         // Per-session agencies have no approved amount, so they are left out of the
         // approved-basis percentages — including them would divide a consumed figure
         // by a denominator that does not contain it.
-        const approvedWallets = wallets.filter(w => !w.perSession)
-        const perSessionWallets = wallets.filter(w => w.perSession)
+        // The branch chips above filter the orders query server-side, but the wallet
+        // query is not branch-scoped, so GL Summary was reporting every branch no
+        // matter which chip was lit. Scope it here, on the same [branch, 'ALL']
+        // convention the order filter uses, so a company-wide letter still shows in
+        // the branch views it funds.
+        const inBranch = (w: ARWallet) => !branch || w.branch === branch || w.branch === 'ALL'
+        const branchWallets = wallets.filter(inBranch)
+        const branchWalletIds = new Set(branchWallets.map(w => w.id))
+        const approvedWallets = branchWallets.filter(w => !w.perSession)
+        const perSessionWallets = branchWallets.filter(w => w.perSession)
         const perSessionOutstanding = perSessionWallets.reduce((s, w) => s + toNum(w.balance), 0)
         const totalApproved = approvedWallets.reduce((s, w) => s + toNum(w.totalGlAmount), 0)
         // Use consumedOutstanding (= totalGlAmount − remaining balance) so that
         // zero-balance wallets and partially-consumed wallets are included correctly.
         const totalConsumed = approvedWallets.reduce((s, w) => s + (w.consumedOutstanding ?? 0), 0)
-        const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
+        const totalPaid = arPayments
+          .filter(p => !branch || !p.walletId || branchWalletIds.has(p.walletId))
+          .reduce((s, p) => s + toNum(p.amount), 0)
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
 
@@ -899,7 +1221,7 @@ export default function AccountsReceivablePage() {
         // Service type breakdown from approvedServices field on GL wallets
         // Each wallet may approve multiple service types; count applications per type.
         const svcTypeMap = new Map<string, number>()
-        for (const w of wallets) {
+        for (const w of branchWallets) {
           const svcs = (w as unknown as { approvedServices?: string[] | null }).approvedServices
           if (Array.isArray(svcs)) {
             for (const s of svcs) svcTypeMap.set(s, (svcTypeMap.get(s) || 0) + 1)
@@ -1250,7 +1572,7 @@ export default function AccountsReceivablePage() {
       {tab === 'OTHERS' && <OthersTab branch={branch} canWrite={!isHmoOfficer} />}
 
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
-      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && <>
+      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
 
       {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
       <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -1271,6 +1593,25 @@ export default function AccountsReceivablePage() {
               <option value={180}>Last 180 days</option>
               <option value={365}>Last 365 days</option>
             </select>
+            <div className="relative">
+              <button
+                onClick={() => setShowSummaryDownload(v => !v)}
+                disabled={!agingData}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium border bg-white disabled:opacity-50"
+                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                <Download size={14} /> Download
+              </button>
+              {showSummaryDownload && (
+                <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border bg-white shadow-lg" style={{ borderColor: 'var(--light-gray)', minWidth: 170 }}>
+                  <button onClick={downloadSummaryExcel} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl" style={{ color: 'var(--charcoal)' }}>
+                    Download as Excel
+                  </button>
+                  <button onClick={downloadSummaryPdf} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-b-xl" style={{ color: 'var(--charcoal)' }}>
+                    Download as PDF
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1300,11 +1641,11 @@ export default function AccountsReceivablePage() {
           </div>
         </div>
 
-        {/* AR Days per wallet — sortable table */}
-        {agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
+        {/* AR Days per wallet — sortable table. Hidden on the GL tab; HMO still
+            shows it (as "AR Days per HMO") off this same block. */}
+        {tab !== 'GL' && agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
           <div id="ar-days-per-agency">
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>AR Days per {tab === 'HMO' ? 'HMO' : 'Agency'}</p>
-            <div className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
+            <ExpandablePanel title={`AR Days per ${tab === 'HMO' ? 'HMO' : 'Agency'}`} maxHeight={260}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
@@ -1332,11 +1673,14 @@ export default function AccountsReceivablePage() {
                   }
                 </tbody>
               </table>
-            </div>
+            </ExpandablePanel>
           </div>
         )}
 
-        {/* Aging Receivable Details */}
+        {/* Aging Receivable Details. Hidden on the GL tab; HMO still shows it,
+            where clicking a bucket amount still filters the transactions table
+            below via setBucketFilterIds. */}
+        {tab !== 'GL' && (
         <div id="ar-aging-details">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
@@ -1349,7 +1693,7 @@ export default function AccountsReceivablePage() {
               </button>
             )}
           </div>
-          <div className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '280px' }}>
+          <ExpandablePanel title="Aging Receivable Details" subtitle="Click an amount to see the transactions included" maxHeight={280}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
@@ -1373,14 +1717,12 @@ export default function AccountsReceivablePage() {
                   const clickCell = (w: AgingRow, b: AgingBucket) => {
                     const ids = w.orderIdsByBucket[b]
                     if (!ids || ids.length === 0) return
+                    // Show the sessions themselves. This used to scroll to
+                    // [data-ar-transactions-table], a selector that matches no
+                    // element, so the click appeared to do nothing.
                     setBucketFilterIds(ids)
                     setBucketFilterLabel(`${w.walletName} · ${bucketLabels[b]}`)
-                    setWalletFilter(w.walletId)
-                    // Nudge the user to the table below
-                    setTimeout(() => {
-                      const el = document.querySelector('[data-ar-transactions-table]')
-                      if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }, 50)
+                    setSessionModal({ label: `${w.walletName} · ${bucketLabels[b]}`, ids })
                   }
                   const totals = buckets.reduce((acc, b) => ({ ...acc, [b]: rows.reduce((s, r) => s + r.aging[b], 0) }), {} as Record<AgingBucket, number>)
                   const grandTotal = rows.reduce((s, r) => s + r.ar, 0)
@@ -1415,198 +1757,39 @@ export default function AccountsReceivablePage() {
                 })()}
               </tbody>
             </table>
-          </div>
+          </ExpandablePanel>
         </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{tab === 'HMO' ? 'HMO Provider' : 'Agency'}</label>
-          <select value={walletFilter} onChange={e => setWalletFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-            <option value="">All</option>
-            {wallets.map(w => <option key={w.id} value={w.id}>{w.patientName} ({formatCurrency(toNum(w.balance))})</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* Consumption — what each agency approved, how much of it has been used, and
-          what they have settled so far. */}
-      <div className="flex items-baseline justify-between mt-4 mb-2">
-        <h3 className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Consumption</h3>
-        {tab === 'GL' && (
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            Months to pay counts from the letter being recorded to its latest payment, in 30-day months.
-          </p>
         )}
       </div>
-      <div id="ar-utilization" className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
-              <th className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
-                {tab === 'GL' ? 'Agency / Name' : 'HMO Provider'}
-              </th>
-              <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
-                {tab === 'GL' ? 'Approved SOA' : 'Outstanding'}
-              </th>
-              {tab === 'GL' && <>
-                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Paid</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Months to pay</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Consumed</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>% Consumed</th>
-              </>}
-            </tr>
-          </thead>
-          <tbody>
-            {/* Approved-SOA agencies first, then the per-session ones under their own
-                heading: they are read differently, so they are not mixed in. */}
-            {[...wallets.filter(w => !w.perSession), ...wallets.filter(w => w.perSession)].map((w, i, arr) => {
-              const approved = toNum(w.balance)
-              const consumed = typeof w.consumedOutstanding === 'number' ? w.consumedOutstanding : 0
-              const paid = toNum(w.paidTotal)
-              const pct = approved > 0 ? (consumed / approved) * 100 : 0
-              const isSelected = walletFilter === w.id
-              const startsPerSession = tab === 'GL' && !!w.perSession && !arr[i - 1]?.perSession
-              return (
-                <Fragment key={`grp-${w.id}`}>
-                {startsPerSession && (
-                  <tr style={{ background: 'var(--pale-teal, #f0f7f6)' }}>
-                    <td colSpan={6} className="px-3 py-2 text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
-                      Billed per session, settled afterwards — no approved SOA
-                    </td>
-                  </tr>
-                )}
-                <tr key={w.id}
-                  className="cursor-pointer hover:bg-gray-50 transition-colors"
-                  style={{ borderTop: i > 0 ? '1px solid var(--light-gray)' : undefined, background: isSelected ? '#f0fdfa' : undefined }}
-                  onClick={() => setWalletFilter(isSelected ? '' : w.id)}>
-                  <td className="px-3 py-2">
-                    <p className="text-xs font-semibold" style={{ color: isSelected ? 'var(--teal)' : 'var(--charcoal)' }}>{w.patientName}</p>
-                    {w.account && <p className="text-[10px]" style={{ color: 'var(--teal)' }}>{w.account.accountNumber} {w.account.accountTitle}</p>}
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs font-bold tabular-nums" style={{ color: approved > 0 ? '#dc2626' : '#166534' }}>
-                    {formatCurrency(approved)}
-                  </td>
-                  {tab === 'GL' && <>
-                    <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: paid > 0 ? '#166534' : 'var(--light-gray)' }}>
-                      {paid > 0 ? formatCurrency(paid) : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
-                      {typeof w.monthsToPay === 'number'
-                        ? `${w.monthsToPay.toFixed(1)} mo`
-                        : <span style={{ color: 'var(--light-gray)' }}>unpaid</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
-                      {consumed > 0 ? formatCurrency(consumed) : <span style={{ color: 'var(--light-gray)' }}>—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: pct > 80 ? '#dc2626' : pct > 50 ? '#c44b00' : '#166534' }}>
-                      {w.perSession
-                        ? <span style={{ color: 'var(--mid-gray)' }}>per session</span>
-                        : consumed > 0 ? `${pct.toFixed(1)}%` : <span style={{ color: 'var(--light-gray)' }}>—</span>}
-                    </td>
-                  </>}
-                </tr>
-                </Fragment>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Session Tagging — the sessions themselves, and which of them a payment has
-          been applied to. Pick an agency above to see only that patient's sessions. */}
-      {!(tab === 'HMO' && hmoSubTab === 'overview') && (
-        <div className="flex items-baseline justify-between mt-4 mb-2">
-          <h3 className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Session Tagging</h3>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            {walletFilter
-              ? 'Tagging records which sessions a payment covered — it does not change the AR balance.'
-              : 'Choose an agency above to tag that patient\u2019s sessions.'}
-          </p>
-        </div>
-      )}
-      {!(tab === 'HMO' && hmoSubTab === 'overview') && <div id="ar-transactions" data-ar-transactions-table className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '400px' }}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
-              <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
-                onClick={() => toggleSort('transactionDate')}>
-                <span className="flex items-center gap-1">Date <SortIcon field="transactionDate" /></span>
-              </th>
-              <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Service</th>
-              <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
-                onClick={() => toggleSort('patientName')}>
-                <span className="flex items-center gap-1">Patient <SortIcon field="patientName" /></span>
-              </th>
-              <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>
-                {tab === 'HMO' ? 'HMO' : 'Agency'}
-              </th>
-              <th className="text-right px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
-                onClick={() => toggleSort('netAmount')}>
-                <span className="flex items-center justify-end gap-1">Amount <SortIcon field="netAmount" /></span>
-              </th>
-              <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
-              <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Proof</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
-            ) : (bucketFilterIds ? orders.filter(o => bucketFilterIds.includes(o.id)) : orders).length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No receivable transactions found</td></tr>
-            ) : (bucketFilterIds ? orders.filter(o => bucketFilterIds.includes(o.id)) : orders).map(o => {
-              // Sum all HMO/GL payments on this order (should normally be 1)
-              const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
-              const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
-              const isPaid = o.arPaymentItems.length > 0
-              return (
-                <tr key={o.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
-                  <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>{o.items.map(i => i.name).join(', ')}</td>
-                  <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{wallet?.patientName || '—'}</td>
-                  <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(amt)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="px-2 py-1 rounded-full text-xs font-semibold"
-                      style={isPaid ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
-                      {isPaid ? 'Paid' : 'Unpaid'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <ProofCell orderId={o.id} currentUrl={o.arProofUrl || null}
-                      onChange={(url) => setOrders(prev => prev.map(x => x.id === o.id ? { ...x, arProofUrl: url } : x))} />
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>}
 
       {/* Payment History — always shown, on both wallet tabs. Hiding it when empty made
           it look as though HMO had no such section at all, when in fact no HMO
           payment had been recorded (the one that was is since reversed). */}
       {(
         <div id="ar-payment-history">
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
-            Payment History — {tab}
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              {arPayments.length}
-            </span>
-          </h3>
-          <div className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '320px' }}>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+              Payment History — {tab}
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                {shownPayments.length === arPayments.length ? arPayments.length : `${shownPayments.length} of ${arPayments.length}`}
+              </span>
+            </h3>
+            <div className="relative ml-auto min-w-[240px] flex-1 max-w-sm">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+              <input
+                value={paySearch}
+                onChange={e => setPaySearch(e.target.value)}
+                placeholder={`Search ${tab === 'GL' ? 'agency' : 'provider'}, SI number, amount, notes…`}
+                className="w-full pl-8 pr-7 py-1.5 rounded-lg border text-xs outline-none"
+                style={{ borderColor: 'var(--light-gray)' }} />
+              {paySearch && (
+                <button onClick={() => setPaySearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                  <X size={12} style={{ color: 'var(--mid-gray)' }} />
+                </button>
+              )}
+            </div>
+          </div>
+          <ExpandablePanel title={`Payment History — ${tab}`} maxHeight={320}>
             <table className="w-full text-xs">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
@@ -1616,12 +1799,14 @@ export default function AccountsReceivablePage() {
                 </tr>
               </thead>
               <tbody>
-                {arPayments.length === 0 && (
+                {shownPayments.length === 0 && (
                   <tr><td colSpan={11} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                    No {tab} payments recorded yet. Payments recorded against {tab === 'HMO' ? 'an HMO provider' : 'a Guarantee Letter agency'} appear here, newest first.
+                    {arPayments.length > 0
+                      ? `No payment matches “${paySearch.trim()}”.`
+                      : `No ${tab} payments recorded yet. Payments recorded against ${tab === 'HMO' ? 'an HMO provider' : 'a Guarantee Letter agency'} appear here, newest first.`}
                   </td></tr>
                 )}
-                {arPayments.map(p => {
+                {shownPayments.map(p => {
                   const wallet = wallets.find(w => w.id === p.walletId)
                   const proofFiles = parseProofUrls(p.proofUrl)
                   return (
@@ -1677,9 +1862,127 @@ export default function AccountsReceivablePage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ExpandablePanel>
         </div>
       )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{tab === 'HMO' ? 'HMO Provider' : 'Agency'}</label>
+          <select value={walletFilter} onChange={e => setWalletFilter(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+            <option value="">All</option>
+            {wallets.map(w => <option key={w.id} value={w.id}>{w.patientName} ({formatCurrency(toNum(w.balance))})</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Consumption — what each agency approved, how much of it has been used, and
+          what they have settled so far. */}
+      <div className="flex items-baseline justify-between mt-4 mb-2">
+        <h3 className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Consumption</h3>
+        {tab === 'GL' && (
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Months to pay counts from the letter being recorded to its latest payment, in 30-day months.
+          </p>
+        )}
+      </div>
+      <div id="ar-utilization">
+      <ExpandablePanel title="Consumption" subtitle={tab === 'GL' ? 'Months to pay counts from the SOA date to the latest payment, in 30-day months.' : undefined} maxHeight={260}>
+        <table className="w-full text-sm">
+          <SortFilterHead
+            cols={consumptionCols}
+            sortKey={consSortKey}
+            sortDir={consSortDir}
+            filters={consFilters}
+            onToggleSort={toggleConsSort}
+            onFilter={(k, v) => setConsFilters(f => ({ ...f, [k]: v }))}
+          />
+          <tbody>
+            {/* Approved-SOA agencies first, then the per-session ones under their own
+                heading: they are read differently, so they are not mixed in. */}
+            {consumptionRows.map((w, i, arr) => {
+              const approved = toNum(w.balance)
+              const consumed = typeof w.consumedOutstanding === 'number' ? w.consumedOutstanding : 0
+              const paid = toNum(w.paidTotal)
+              const pct = approved > 0 ? (consumed / approved) * 100 : 0
+              const isSelected = walletFilter === w.id
+              const startsPerSession = tab === 'GL' && !!w.perSession && !arr[i - 1]?.perSession
+              return (
+                <Fragment key={`grp-${w.id}`}>
+                {startsPerSession && (
+                  <tr style={{ background: 'var(--pale-teal, #f0f7f6)' }}>
+                    <td colSpan={consumptionCols.length} className="px-3 py-2 text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                      Billed per session, settled afterwards — no approved SOA
+                    </td>
+                  </tr>
+                )}
+                <tr key={w.id}
+                  className="cursor-pointer hover:bg-gray-50 transition-colors"
+                  style={{ borderTop: i > 0 ? '1px solid var(--light-gray)' : undefined, background: isSelected ? '#f0fdfa' : undefined }}
+                  onClick={() => setWalletFilter(isSelected ? '' : w.id)}>
+                  <td className="px-3 py-2">
+                    <p className="text-xs font-semibold" style={{ color: isSelected ? 'var(--teal)' : 'var(--charcoal)' }}>{w.patientName}</p>
+                    {w.account && <p className="text-[10px]" style={{ color: 'var(--teal)' }}>{w.account.accountNumber} {w.account.accountTitle}</p>}
+                  </td>
+                  <td className="px-3 py-2 text-xs" style={{ color: w.branch ? 'var(--charcoal)' : 'var(--light-gray)' }}>
+                    {w.branch ? branchLabel(w.branch) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right text-xs font-bold tabular-nums" style={{ color: approved > 0 ? '#dc2626' : '#166534' }}>
+                    {formatCurrency(approved)}
+                  </td>
+                  {tab === 'GL' && <>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: w.soaDate ? 'var(--charcoal)' : 'var(--light-gray)' }}>
+                      {w.soaDate ? formatDate(w.soaDate) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: paid > 0 ? '#166534' : 'var(--light-gray)' }}>
+                      {paid > 0 ? formatCurrency(paid) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: w.lastPaymentDate ? 'var(--charcoal)' : 'var(--light-gray)' }}>
+                      {w.lastPaymentDate ? formatDate(w.lastPaymentDate) : 'unpaid'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: toNum(w.commissionTotal) > 0 ? 'var(--mid-gray)' : 'var(--light-gray)' }}>
+                      {toNum(w.commissionTotal) > 0 ? formatCurrency(toNum(w.commissionTotal)) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                      {typeof w.monthsToPay === 'number'
+                        ? `${w.monthsToPay.toFixed(1)} mo`
+                        : <span style={{ color: 'var(--light-gray)' }}>unpaid</span>}
+                    </td>
+                    {/* What this person's agency still owes: approved less settled. */}
+                    <td className="px-3 py-2 text-right text-xs font-bold tabular-nums"
+                      style={{ color: Math.max(0, approved - paid) > 0 ? '#dc2626' : '#166534' }}>
+                      {formatCurrency(Math.max(0, approved - paid))}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                      {consumed > 0 ? formatCurrency(consumed) : <span style={{ color: 'var(--light-gray)' }}>—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: pct > 80 ? '#dc2626' : pct > 50 ? '#c44b00' : '#166534' }}>
+                      {w.perSession
+                        ? <span style={{ color: 'var(--mid-gray)' }}>per session</span>
+                        : consumed > 0 ? `${pct.toFixed(1)}%` : <span style={{ color: 'var(--light-gray)' }}>—</span>}
+                    </td>
+                  </>}
+                </tr>
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </ExpandablePanel>
+      </div>
+
 
       </>}
 
@@ -2048,8 +2351,83 @@ export default function AccountsReceivablePage() {
         <SoaReport
           wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName, branch: w.branch }))}
           isAdmin={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes((session?.user as { role?: string })?.role || '')}
+          canWrite={canWrite}
         />
       )}
+
+      {tab === 'HMO' && hmoSubTab === 'submitted-soa' && (
+        <SubmittedForSoa
+          wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName }))}
+          canWrite={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER'].includes((session?.user as { role?: string })?.role || '')}
+        />
+      )}
+      {/* ── Sessions behind an aging figure ──────────────────────────────
+          The orders list is capped by the API, so a bucket can reference an
+          order that was never loaded. Say so rather than quietly showing a
+          shorter list than the figure that was clicked. */}
+      {sessionModal && (() => {
+        const found = orders.filter(o => sessionModal.ids.includes(o.id))
+        const missing = sessionModal.ids.length - found.length
+        const amountOf = (o: AROrder) => o.payments.reduce((s, p) => s + toNum(p.amount), 0)
+        const total = found.reduce((s, o) => s + amountOf(o), 0)
+        return (
+          <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-4 overflow-y-auto"
+            onClick={() => setSessionModal(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-3xl mt-10 overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between px-5 py-3 border-b"
+                style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Sessions included</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{sessionModal.label}</p>
+                </div>
+                <button onClick={() => setSessionModal(null)} className="p-1.5 rounded-lg hover:bg-gray-200">
+                  <X size={16} style={{ color: 'var(--mid-gray)' }} />
+                </button>
+              </div>
+
+              <div className="max-h-[60vh] overflow-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
+                      {['Date', 'Order #', 'Patient', 'Service', 'Clinician', 'Branch', 'Amount'].map(h => (
+                        <th key={h} className={`px-3 py-2 font-semibold ${h === 'Amount' ? 'text-right' : 'text-left'}`}
+                          style={{ color: 'var(--deep-teal)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {found.length === 0 && (
+                      <tr><td colSpan={7} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        These sessions are older than the loaded window, so their details aren&apos;t available here.
+                      </td></tr>
+                    )}
+                    {found.map(o => (
+                      <tr key={o.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-3 py-2 whitespace-nowrap">{formatDate(o.arCustomDate || o.transactionDate)}</td>
+                        <td className="px-3 py-2 font-mono">{o.orderNumber}</td>
+                        <td className="px-3 py-2">{o.patientName || '—'}</td>
+                        <td className="px-3 py-2">{o.items.map(i => i.name).join(', ') || '—'}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{o.clinicianName || '—'}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{branchLabel(o.branch) || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono">{formatCurrency(amountOf(o))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between px-5 py-3 border-t text-xs"
+                style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <span style={{ color: 'var(--mid-gray)' }}>
+                  {found.length} of {sessionModal.ids.length} session{sessionModal.ids.length === 1 ? '' : 's'}
+                  {missing > 0 && ` · ${missing} not loaded`}
+                </span>
+                <span className="font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(total)}</span>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Invoice Settings Modal */}
       {showInvoiceSettings && (

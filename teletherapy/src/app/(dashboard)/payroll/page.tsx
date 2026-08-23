@@ -13,6 +13,7 @@ import {
   X as XIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { branchLabel, toPatientBranchCode } from '@/lib/branch-label'
 import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface Payslip {
@@ -91,24 +92,6 @@ function fmtIssued(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-}
-
-// Normalize branch codes between accounting (SBEA/SBGH) and the Patient
-// enum (SANDBOX_EAST/SANDBOX_GREENHILLS) so the BranchSwitcher can match.
-function canonicalBranch(b: string): string {
-  const m: Record<string, string> = {
-    SBEA: 'SANDBOX_EAST',
-    SBGH: 'SANDBOX_GREENHILLS',
-  }
-  return m[b] ?? b
-}
-
 export default function PayrollPage() {
   const [data, setData] = useState<PayrollResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -136,12 +119,12 @@ export default function PayrollPage() {
   // For interbranch clinicians, scope the visible payslips to the
   // currently selected branch. Accounting stores branch as 'SBEA'/'SBGH'
   // while session.user.branches uses the Patient enum 'SANDBOX_EAST' etc.
-  // — normalize both sides via canonicalBranch().
+  // — normalize both sides via toPatientBranchCode().
   const visiblePayslips = useMemo(() => {
     if (!data) return []
     if (!isMultiBranch || !activeBranch) return data.payslips
-    const wanted = canonicalBranch(activeBranch.branch)
-    return data.payslips.filter((p) => canonicalBranch(p.branch) === wanted)
+    const wanted = toPatientBranchCode(activeBranch.branch)
+    return data.payslips.filter((p) => toPatientBranchCode(p.branch) === wanted)
   }, [data, isMultiBranch, activeBranch])
 
   const total = useMemo(
@@ -245,7 +228,6 @@ export default function PayrollPage() {
 function PayslipRow({ payslip, index }: {
   payslip: Payslip; index: number
 }) {
-  const branchLabel = BRANCH_LABEL[payslip.branch] ?? payslip.branch
   const pdfHref = `/api/payroll/pdf?kind=${payslip.kind}&id=${encodeURIComponent(payslip.id)}`
   return (
     <div
@@ -272,7 +254,7 @@ function PayslipRow({ payslip, index }: {
             </span>
           </div>
           <div className="flex items-center gap-3 text-[11px] text-[var(--mid-gray)] flex-wrap">
-            <span className="flex items-center gap-1"><Building2 size={11} /> {branchLabel}</span>
+            <span className="flex items-center gap-1"><Building2 size={11} /> {branchLabel(payslip.branch)}</span>
             <span>·</span>
             <span className="flex items-center gap-1"><CalendarIcon size={11} /> Issued {fmtIssued(payslip.issuedAt)}</span>
           </div>

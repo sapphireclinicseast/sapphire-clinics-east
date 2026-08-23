@@ -84,11 +84,24 @@ export async function POST(req: Request) {
       if (!v || v.itemId !== itemId || !v.isActive) {
         return NextResponse.json({ error: 'That variant does not belong to this item' }, { status: 400 })
       }
+      // A variant's count must never go negative — refuse rather than clamp, so the
+      // user learns the real on-hand figure instead of silently writing off less.
+      if (type === 'SHRINKAGE' && change > v.quantity) {
+        return NextResponse.json({
+          error: `${v.variantLabel}: cannot write off ${change} unit(s), only ${v.quantity} on hand for this variant.`,
+        }, { status: 400 })
+      }
       variant = { id: v.id, quantity: v.quantity, variantLabel: v.variantLabel }
     }
 
-    const previousQuantity = item.quantity
-    const newQuantity = type === 'INCREASE' ? previousQuantity + change : Math.max(0, previousQuantity - change)
+    const itemPrevQuantity = item.quantity
+    const itemNewQuantity = type === 'INCREASE' ? itemPrevQuantity + change : Math.max(0, itemPrevQuantity - change)
+    // When a variant is targeted, the recorded before/after figures describe that
+    // variant's own stock (matching the modal's preview); otherwise the item's total.
+    const previousQuantity = variant ? variant.quantity : itemPrevQuantity
+    const newQuantity = variant
+      ? (type === 'INCREASE' ? variant.quantity + change : variant.quantity - change)
+      : itemNewQuantity
 
     // Create adjustment and update item quantity in one transaction
     const adjustment = await prisma.$transaction(async (tx) => {
@@ -132,7 +145,7 @@ export async function POST(req: Request) {
 
       await tx.inventoryItem.update({
         where: { id: itemId },
-        data: { quantity: newQuantity },
+        data: { quantity: itemNewQuantity },
       })
 
       // Keep the variant's own count in step, so per-colour/size stock stays truthful.
@@ -152,8 +165,8 @@ export async function POST(req: Request) {
       // stock (quantity went negative) and expensed COGS at the then-current unitCost.
       // The units they sold come out of THIS arrival, so consume them from the new lot
       // immediately — otherwise the lot's remainingQuantity would exceed physical stock.
-      if (type === 'INCREASE' && previousQuantity < 0) {
-        await consumeFifoLots(tx, itemId, Math.min(-previousQuantity, change))
+      if (type === 'INCREASE' && itemPrevQuantity < 0) {
+        await consumeFifoLots(tx, itemId, Math.min(-itemPrevQuantity, change))
       }
 
       // Recalculate weighted-average unit cost from remaining lots
@@ -241,6 +254,18 @@ export async function DELETE(req: Request) {
         where: { id: adjustment.itemId },
         data: { quantity: reversedQty },
       })
+
+      // If the movement targeted a variant, give that variant its units back too
+      // (or take them away for a deleted stock-in), floored at zero like the item.
+      if (adjustment.variantId) {
+        const v = await tx.inventoryVariant.findUnique({ where: { id: adjustment.variantId }, select: { quantity: true } })
+        if (v) {
+          const reversedVarQty = adjustment.type === 'INCREASE'
+            ? Math.max(0, v.quantity - adjustment.quantityChange)
+            : v.quantity + adjustment.quantityChange
+          await tx.inventoryVariant.update({ where: { id: adjustment.variantId }, data: { quantity: reversedVarQty } })
+        }
+      }
 
       // Delete the adjustment record
       await tx.inventoryAdjustment.delete({ where: { id } })

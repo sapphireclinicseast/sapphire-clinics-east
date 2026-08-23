@@ -9,7 +9,7 @@ import {
   paymentStatusFor, currentPeriodPaymentStatusFor, inferPaymentPlanFor,
   hydrateFrontDeskPayments,
   uploadDocumentBlob,
-  levelLabel,
+  levelLabel, branchShortLabel,
   type StoredUser, type EnrollmentLevel, type Branch, type WaiverRecord,
   type PaymentPlan,
 } from '@/lib/session'
@@ -176,7 +176,7 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
     })
   }, [students, filter])
 
-  function handleWitness(printedName: string, sig: string) {
+  async function handleWitness(printedName: string, sig: string) {
     if (!waiver || !viewer.userId) return
     if (!printedName.trim()) { alert("Please type the witness's printed name."); return }
     if (!sig) { alert('Please sign before submitting.'); return }
@@ -192,9 +192,16 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
       },
       updatedAt: now,
     }
-    saveWaiver(updated)
+    // Await so we can catch a sync failure and warn the signer — the
+    // old fire-and-forget path let signatures die silently on the
+    // teacher's device, so the main admin's view kept showing the
+    // witness slot blank even though the teacher believed she'd signed.
+    const res = await saveWaiver(updated)
     setWaiver(updated)
     setWitnessOpen(false)
+    if (!res.ok) {
+      alert(`Signed on this device, but the sync to the main admin failed:\n\n${res.error}\n\nTry signing in again from this device — your signature is safe locally and will retry pushing automatically.`)
+    }
     try { downloadWaiverPdf(updated) } catch (e) { console.warn('PDF download failed', e) }
   }
 
@@ -219,9 +226,12 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
       },
       updatedAt: now,
     }
-    saveWaiver(updated)
+    const res = await saveWaiver(updated)
     setWaiver(updated)
     setSceiAckOpen(false)
+    if (!res.ok) {
+      alert(`Signed on this device, but the sync failed:\n\n${res.error}\n\nSign in again from this device to retry — your signature is safe locally.`)
+    }
     // Regenerate the PDF + push to the server so the admission tracker
     // shows the fully-signed copy. Failure here is non-fatal — the
     // local record is still updated.
@@ -280,7 +290,7 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
                 // but this month's / this half's payment hasn't landed
                 // yet. Front-desk should be actively charging DUE rows.
                 const ps = currentPeriodPaymentStatusFor(s.id)
-                const branchLabel = s.branch === 'EAST' ? 'East' : s.branch === 'GREENHILLS' ? 'Greenhills' : '—'
+                const branchLabel = branchShortLabel(s.branch)
                 // Inferred from the student's latest PaymentRecord.
                 // Undefined for students who have never had a payment
                 // recorded (fresh enrolees) — front desk sees "—" as

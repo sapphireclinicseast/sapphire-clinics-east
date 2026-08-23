@@ -75,6 +75,9 @@ export async function GET(req: Request) {
           // Not adding their id to syncedExternalIds lets Phase 3 deactivate any that were
           // previously mis-synced as consultants.
           if (dept === 'FRONT_DESK') continue
+          // Interns aren't paid staff — keep them out of payroll entirely, regardless of
+          // any per-branch consultant-role override below.
+          if (s.employmentType === 'intern') continue
           // Resigned upstream. Leave them out of syncedExternalIds so Phase 3 retires them,
           // and never re-create them: this is the signal the directory exists to give us.
           if (directory.inactiveIds.has(String(s.id))) continue
@@ -342,11 +345,23 @@ export async function PUT(req: Request) {
 
     // Update unit pay rates if provided
     if (unitPayRates && Array.isArray(unitPayRates)) {
+      // Per-branch rate overrides, e.g. { SBGH: 1050 }: validate codes and amounts,
+      // keep only positive numbers, store null when nothing remains.
+      const cleanBranchAmounts = (raw: unknown): Record<string, number> | null => {
+        if (!raw || typeof raw !== 'object') return null
+        const clean: Record<string, number> = {}
+        for (const [code, amt] of Object.entries(raw as Record<string, unknown>)) {
+          if (!BRANCH_CODES.includes(code)) continue
+          const n = Number(amt)
+          if (Number.isFinite(n) && n > 0) clean[code] = Math.round(n * 100) / 100
+        }
+        return Object.keys(clean).length > 0 ? clean : null
+      }
       // Delete existing and recreate
       await prisma.consultantUnitPay.deleteMany({ where: { consultantId: id } })
       if (unitPayRates.length > 0) {
         await prisma.consultantUnitPay.createMany({
-          data: unitPayRates.map((r: { unitPayId: string; amount: number; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number; reducedAmount?: number }) => ({
+          data: unitPayRates.map((r: { unitPayId: string; amount: number; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number; reducedAmount?: number; branchAmounts?: Record<string, unknown> | null }) => ({
             consultantId: id,
             unitPayId: r.unitPayId,
             amount: Number(r.amount),
@@ -354,6 +369,8 @@ export async function PUT(req: Request) {
             thresholdEnabled: r.thresholdEnabled || false,
             thresholdAmount: r.thresholdAmount != null ? Number(r.thresholdAmount) : null,
             reducedAmount: r.reducedAmount != null ? Number(r.reducedAmount) : null,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            branchAmounts: cleanBranchAmounts(r.branchAmounts) as any,
           })),
           skipDuplicates: true,
         })

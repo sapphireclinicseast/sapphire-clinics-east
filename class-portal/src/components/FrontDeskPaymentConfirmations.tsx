@@ -8,6 +8,7 @@ import {
   type FrontDeskPaymentRow, type PaymentPlan, type StoredUser, type Branch,
   type FrontDeskPaymentPatch, type FrontDeskMethodDetail,
 } from '@/lib/session'
+import { PeriodPicker } from '@/components/PeriodPicker'
 
 interface FdpProps {
   /**
@@ -508,7 +509,7 @@ function RecordPaymentModal({
     setBusy(true)
     try {
       const studentName = [selected.firstName, selected.lastName].filter(Boolean).join(' ') || selected.email
-      const id = await recordPaymentOnBehalfOf({
+      const result = await recordPaymentOnBehalfOf({
         studentId: selected.id,
         studentEmail: selected.email,
         studentName,
@@ -521,8 +522,14 @@ function RecordPaymentModal({
         period: period.trim(),
         reference: reference.trim() || undefined,
       })
-      if (!id) {
-        setErr('Could not record the payment. Retry?')
+      if (!result.ok) {
+        // Surface the real reason so an expired token doesn't look like a
+        // generic server error. On auth-expired the token has already
+        // been cleared client-side, so bounce to /sign-in after a beat.
+        setErr(result.message)
+        if (result.reason === 'auth-expired' && typeof window !== 'undefined') {
+          setTimeout(() => { window.location.href = '/sign-in' }, 1500)
+        }
         return
       }
       await onRecorded()
@@ -649,17 +656,10 @@ function RecordPaymentModal({
           />
         </label>
 
-        <label className="block mb-3">
+        <div className="block mb-3">
           <span className="label">Period covered</span>
-          <input
-            type="text"
-            className="input"
-            value={period}
-            onChange={e => setPeriod(e.target.value)}
-            placeholder='e.g. "AY 2026–2027" or "Aug 2026"'
-            disabled={busy}
-          />
-        </label>
+          <PeriodPicker plan={plan} value={period} onChange={setPeriod} disabled={busy} />
+        </div>
 
         <label className="block mb-4">
           <span className="label">
@@ -848,17 +848,10 @@ function EditPaymentModal({ row, onClose, onSaved }: {
               <option value="MONTHLY">Monthly</option>
             </select>
           </label>
-          <label className="block">
+          <div className="block">
             <span className="label">Period covered</span>
-            <input
-              type="text"
-              className="input"
-              value={period}
-              onChange={e => setPeriod(e.target.value)}
-              placeholder='e.g. "AY 2026–2027" or "Aug 2026"'
-              disabled={busy}
-            />
-          </label>
+            <PeriodPicker plan={plan} value={period} onChange={setPeriod} disabled={busy} />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-3">

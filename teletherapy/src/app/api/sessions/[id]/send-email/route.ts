@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { sendEmail } from '@/lib/email'
+import { sendEmail, branchFromAddress } from '@/lib/email'
 import { loadEmailLogo, emailHeader } from '@/lib/email-branding'
+import { toPatientBranchCode } from '@/lib/branch-label'
 import { readFile } from 'fs/promises'
 
 function escapeHtml(str: string): string {
@@ -226,6 +227,14 @@ export async function POST(
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // Interns cannot send session notes to patients — only their supervisor
+  // sends (and the supervisor's licence appears on what is sent).
+  if (session.user.accountType === 'INTERN') {
+    return NextResponse.json(
+      { error: 'Interns cannot send notes. Ask your supervisor to review and send this note.' },
+      { status: 403 },
+    )
+  }
 
   const { id } = await params
 
@@ -257,14 +266,10 @@ export async function POST(
   // Resolve branch-specific CC from BranchCCEmail (same pattern as IE send-to-patient).
   // Falls back through patient.branch → patient.branches[0] → staff.branch (with legacy
   // SBEA/SBGH alias normalisation, since older Staff rows use those codes).
-  const STAFF_BRANCH_ALIAS: Record<string, string> = {
-    SBEA: 'SANDBOX_EAST',
-    SBGH: 'SANDBOX_GREENHILLS',
-  }
   const rawBranch =
     schedule.patient.branch ??
     schedule.patient.branches?.[0] ??
-    (schedule.staff?.branch ? (STAFF_BRANCH_ALIAS[schedule.staff.branch] ?? schedule.staff.branch) : null)
+    (schedule.staff?.branch ? toPatientBranchCode(schedule.staff.branch) : null)
   let ccEmail: string | null = null
   if (rawBranch) {
     // @ts-ignore — branchCCEmail not in PrismaClient typings until generate
@@ -327,6 +332,7 @@ export async function POST(
     await sendEmail({
       to: schedule.patient.email,
       cc: ccEmail ? [ccEmail] : undefined,
+      from: await branchFromAddress(rawBranch),
       subject: `Session Notes - ${sessionDate}`,
       html,
       attachments: emailAttachments,

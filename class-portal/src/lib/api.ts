@@ -57,6 +57,15 @@ export interface StaffMember {
   jobTitle: string
   department: string
   branch: string
+  /** HR employmentType — "employee" | "consultant" | "intern". Empty
+   *  string when unset upstream. Only "intern" is meaningful today; it
+   *  drives the INTERN badge and the auto-disable date the admin sees
+   *  in the Staff Module prefill panel. */
+  employmentType?: string
+  /** ISO timestamp of the HR contract end date. For interns this is
+   *  the End-of-Internship-Month date; the class portal auto-disables
+   *  the account 15 days after this. Null when unset. */
+  contractExpiry?: string | null
 }
 
 /**
@@ -73,6 +82,32 @@ export async function listStaff(opts: { branch?: string; department?: string } =
   if (!res.ok) throw new Error('Failed to load staff list (' + res.status + ')')
   const data = await res.json() as { staff: StaffMember[] }
   return data.staff
+}
+
+export interface Branch {
+  id: string
+  shortCode: string
+  name: string
+  brandName: string | null
+  address: string | null
+  phone: string | null
+  emailMain: string | null
+  departmentsOffered: string[]
+  operatingDays: string[]
+  operatingHoursOpen: string | null
+  operatingHoursClose: string | null
+}
+
+/**
+ * Pulls the Branches Registry from HR Platform via marketing's synced
+ * cache, through the same-origin booking-proxy → GET /api/public/branches.
+ * HR Platform is the source of truth; this is a read-only mirror.
+ */
+export async function listBranches(): Promise<Branch[]> {
+  const res = await fetch(`${API_BASE}/branches`)
+  if (!res.ok) throw new Error('Failed to load branches (' + res.status + ')')
+  const data = await res.json() as { branches: Branch[] }
+  return data.branches
 }
 
 export async function submitDocuments(token: string, payload: {

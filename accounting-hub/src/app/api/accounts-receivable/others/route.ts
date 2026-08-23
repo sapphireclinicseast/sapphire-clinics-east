@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+// Front desk are deliberately absent: they get AR for HMO only. Receivables
+// raised at the till are still created for them, server-side, by the POS order
+// route — they never reach this endpoint.
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function serialize(r: any) {
@@ -48,7 +52,9 @@ async function refreshStatus(id: string) {
 // GET [?branch=][&status=] — list other receivables with payments + balances
 export async function GET(req: Request) {
   const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session?.user || !READ_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
   const sp = new URL(req.url).searchParams
   const branch = sp.get('branch') || ''
   const status = sp.get('status') || ''

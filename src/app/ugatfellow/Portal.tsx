@@ -166,7 +166,7 @@ function TrackFlowchart() {
   )
   const arr = { stroke: '#9aa8a0', strokeWidth: 1.4, fill: 'none', markerEnd: 'url(#ugatArrow)' }
   return (
-    <svg className={s.flowSvg} viewBox="0 0 720 692" role="img" aria-label="The two UGAT track paths: apply, receive forgivable fellowship assistance, complete internship or review, pass the licensure exam, then either render 1,500 patient-session hours to have the assistance forgiven (Option A) or reimburse only what you actually received, with no interest (Option B).">
+    <svg className={s.flowSvg} viewBox="0 0 720 692" role="img" aria-label="The two UGAT track paths: apply, receive forgivable fellowship assistance, complete internship or review, pass the licensure exam, then either render your return-service hours (1,500 for the Aral Track, 600 for the Tindig Track) to have the assistance forgiven (Option A) or reimburse only what you actually received, with no interest (Option B).">
       <defs>
         <marker id="ugatArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M2 1L8 5L2 9" fill="none" stroke="#9aa8a0" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
@@ -176,7 +176,7 @@ function TrackFlowchart() {
       <Node x={390} y={12} w={300} h={56} c={TIN} title="Tindig track" sub="for graduates, pre-boards" />
       <line x1={180} y1={68} x2={180} y2={96} {...arr} />
       <line x1={540} y1={68} x2={540} y2={96} {...arr} />
-      <Node x={30} y={96} w={300} h={56} c={ARAL} title="Submit application" sub="via your partner school" />
+      <Node x={30} y={96} w={300} h={56} c={ARAL} title="Submit application" sub="directly to SCEI" />
       <Node x={390} y={96} w={300} h={56} c={TIN} title="Submit application" sub="directly to SCEI" />
       <line x1={180} y1={152} x2={180} y2={180} {...arr} />
       <line x1={540} y1={152} x2={540} y2={180} {...arr} />
@@ -195,7 +195,7 @@ function TrackFlowchart() {
       <path d="M360 508 L360 534 L540 534 L540 556" {...arr} />
       <text x={262} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>work it off</text>
       <text x={452} y={527} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>or pay it back</text>
-      <Node x={30} y={556} w={300} h={60} c={GREEN} title="Option A — render service" sub="1,500 patient-session hrs → forgiven" />
+      <Node x={30} y={556} w={300} h={60} c={GREEN} title="Option A — render service" sub="1,500 Aral · 600 Tindig hrs → forgiven" />
       <Node x={390} y={556} w={300} h={60} c={GOLD} title="Option B — pay it back" sub="only what you received · no interest" />
       <text x={180} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ fully paid at market rate; pay nothing</text>
       <text x={540} y={638} textAnchor="middle" dominantBaseline="central" fill={SUB} fontSize={11.5}>→ 3–6 mos (Aral) / 3 mos (Tindig)</text>
@@ -214,8 +214,8 @@ function AboutUs() {
             The <b>UGAT Fellowship Program</b> is a fellowship for aspiring
             Allied Health Professionals — Speech-Language Pathology and Occupational Therapy — offered
             in two tracks: the <b>Aral Track</b> for final-year interns and the <b>Tindig Track</b> for
-            graduates preparing for the licensure exam. It is <b>educational fellowship assistance</b>, treated as a
-            <b> simple, fully-condonable loan</b> — you pay nothing at all if you begin your career with us — walking with
+            graduates preparing for the licensure exam. It is <b>educational fellowship assistance</b> that is
+            <b> fully condonable</b> — you pay nothing at all if you begin your career with us — walking with
             you from training and review all the way into your first years as a licensed professional.
           </p>
         </div>
@@ -223,17 +223,17 @@ function AboutUs() {
         <img className={s.aboutHeroMark} src="/ugat/ugat-wordmark.png" alt="UGAT" aria-hidden="true" />
       </div>
       <div className={s.aboutGrid}>
-        <div className={s.aboutCard}><h3>A fully-condonable fellowship</h3><p><b>Aral Track</b> (final-year interns): a monthly allowance of <b>₱5,000 or ₱10,000</b> for 5–10 months. <b>Tindig Track</b> (graduates): <b>₱30,000</b> of review support toward your licensure — review fees, or ₱5,000/month for six months. It is educational assistance <b>treated as a simple loan</b>, but one you never repay in cash if you serve: render <b>1,500 patient-session hours</b> with us after licensure and it is written off in full — you pay nothing, no interest.</p></div>
+        <div className={s.aboutCard}><h3>A fully-condonable fellowship</h3><p><b>Aral Track</b> (final-year interns): a monthly allowance of <b>₱5,000 or ₱10,000</b> for 5–10 months. <b>Tindig Track</b> (graduates): <b>₱30,000</b> of review support toward your licensure — review fees, or ₱5,000/month for six months. It is <b>educational fellowship assistance</b> you never repay in cash if you serve: render your return-service hours with us after licensure — <b>1,500 hours</b> for the Aral Track, <b>600 hours</b> for the Tindig Track — and it is written off in full, you pay nothing, no interest.</p></div>
         <div className={s.aboutCard}><h3>Mentorship at Aura Health Rehab</h3><p>Upon receiving your license, you will receive additional mentorship training alongside our senior therapists across Aura Health Rehab&rsquo;s <b>East</b> and <b>Greenhills</b> branches — real caseloads, real supervision, and a team invested in your craft (<i>galing</i>).</p></div>
-        <div className={s.aboutCard}><h3>Two ways to settle — one costs nothing</h3><p>After licensure you choose: <b>Option A</b> — render 1,500 patient-session hours as a fully-compensated clinician at Aura, and the entire loan is <b>condoned</b>, so you pay nothing; or <b>Option B</b> — repay <b>only what you actually received</b>, in equal monthly installments, <b>interest-free</b>. Rendering service is never compelled. Interest (or a small penalty) only comes into play if you default on payments or need a restructured extension.</p></div>
+        <div className={s.aboutCard}><h3>Two ways to settle — one costs nothing</h3><p>After licensure you choose: <b>Option A</b> — render your return-service hours (<b>1,500</b> for Aral, <b>600</b> for Tindig) as a fully-compensated clinician at Aura, and the entire amount is <b>condoned</b>, so you pay nothing; or <b>Option B</b> — reimburse <b>only what you actually received</b>, in equal monthly installments, <b>interest-free</b>. Rendering service is never compelled. Interest (or a small penalty) only comes into play if you default on payments or need a restructured extension.</p></div>
         <div className={s.aboutCard}><h3>Values that stay grounded</h3><p>Much like strong roots (<i>ugat</i>), we hope our fellows stay grounded in their values as they grow — pursuing excellence (<i>galing</i>), upholding integrity (<i>tindig</i>), and giving back through service (<i>paglilingkod</i>).</p></div>
       </div>
       <div className={s.aboutNote}>
         <h3>How the fellowship works</h3>
         <ol className={s.aboutSteps}>
-          <li><b>Aral Track</b> — for qualified final-year SLP and OT interns, coursed through your University; fellowship assistance, released as a monthly allowance, supports you through your internship.</li>
+          <li><b>Aral Track</b> — for qualified final-year SLP and OT interns; you apply <b>directly to SCEI</b>. Fellowship assistance, released as a monthly allowance, supports you through your internship.</li>
           <li><b>Tindig Track</b> — for graduates who&rsquo;ve completed their internship and are preparing for the licensure exam. Your school does <b>not</b> need to be a partner — you only need to be a <b>graduate of an SLP or OT program we accept fellows in</b>, and you apply <b>directly to SCEI</b>. Review support covers review fees or a monthly review stipend.</li>
-          <li>Upon licensure you settle it one of two ways: <b>Option A</b> — render 1,500 clinical hours at Aura as a fully-paid professional and the loan is <b>condoned in full</b> (you pay nothing); or <b>Option B</b> — repay <b>only what you actually received</b>, in monthly installments, <b>interest-free</b>. Interest or a penalty applies only if you default or restructure.</li>
+          <li>Upon licensure you settle it one of two ways: <b>Option A</b> — render your clinical return-service hours at Aura as a fully-paid professional (<b>1,500</b> for Aral, <b>600</b> for Tindig) and the assistance is <b>condoned in full</b> (you pay nothing); or <b>Option B</b> — reimburse <b>only what you actually received</b>, in monthly installments, <b>interest-free</b>. Interest or a penalty applies only if you default or restructure.</li>
           <li><b>Tindig Track — if you don&rsquo;t pass on the first take:</b> you may still sit the licensure exam a second time (the fellowship doesn&rsquo;t add a new stipend for the retake). <b>Once you pass</b> — on either take — you settle it the usual way: render service and it is <b>forgiven</b> (Option A), or reimburse what you received (Option B). If you do <b>not</b> pass within two exam cycles, you simply reimburse what you received — <b>still with no interest</b> — without prejudice to working it off through service should you become licensed later.</li>
           <li>Fellows are also expected to <b>actively participate in &ldquo;Araw ng Kalinga&rdquo;</b> — a one-day annual event by Sapphire Clinics East, Inc. that provides free therapy screening and medical services in partnership with a local government unit (LGU) or NGO, as our shared opportunity to give back to the community (<i>paglilingkod</i>).</li>
           <li>Handled with fairness and compassion, consistent with the <b>Data Privacy Act of 2012</b>.</li>
@@ -430,7 +430,7 @@ const TINDIG_QUESTIONS: { field: keyof AppData; label: string }[] = [
   { field: 'q2Initiatives', label: 'What initiatives or experiences during your studies or internship reflect our values of Galing, Aral, and Tindig?' },
   { field: 'q3WhyProgram', label: 'How do you plan to prepare for the Licensure Examination — your review program or self-review plan and timeline?' },
   { field: 'q4StipendUse', label: 'How do you intend to use the review-support grant (e.g., licensure review fees, or a monthly review stipend)?' },
-  { field: 'q5ReturnService', label: 'The fellowship requires 1,500 patient-session hours of return service at the clinics after you are licensed. How long will you be willing to work with the clinic/s?' },
+  { field: 'q5ReturnService', label: 'The fellowship requires return service at the clinics after you are licensed (1,500 patient-session hours for the Aral Track, 600 for the Tindig Track). How long will you be willing to work with the clinic/s?' },
   { field: 'q6ArawNgKalinga', label: 'The fellowship also requires awarded fellows to actively participate in the organization’s “Araw ng Kalinga” — a day of giving back through free screening and treatment. Will you be open to actively participating in this initiative?' },
   { field: 'q7FiveYearPlan', label: 'What are your plans in the next five years after getting your license?' },
 ]
@@ -745,11 +745,11 @@ function RSAText({ track, name, program, school, monthly, months }: { track?: st
   return (
     <div className={s.rsaDoc}>
       <h4>UGAT Fellowship Agreement</h4>
-      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · educational assistance, a fully-condonable loan</p>
+      <p className={s.muted} style={{ margin: '0 0 6px' }}>Sapphire Clinics East Incorporated · UGAT Fellowship Program — {isTindig ? 'Tindig' : 'Aral'} Track · educational fellowship assistance, fully condonable</p>
       <div className={s.rsaAward}>
         {isTindig
-          ? <>Your award is <b>review-support of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months), treated as a <b>simple, fully-condonable loan</b>. <b>You pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you repay <b>only what you received</b>, in <b>3 monthly installments, interest-free</b> (Option B). Interest or a penalty applies only if you default or restructure.</>
-          : <>Your award is a monthly allowance of <b>{m && n ? `₱${m.toLocaleString()} for ${n} months` : 'a monthly allowance'}</b>{total ? <> (about <b>₱{total.toLocaleString()}</b>)</> : ''}, treated as a <b>simple, fully-condonable loan</b>. <b>You pay nothing</b> if you render 1,500 patient-session hours with SCEI after licensure (Option A). Otherwise you repay <b>only what you received</b>, in <b>{total ? (total <= 50000 ? '3' : '6') : '3–6'} monthly installments, interest-free</b> (Option B). Interest or a penalty applies only if you default or restructure.</>}
+          ? <>Your award is <b>review-support of up to ₱30,000</b> (review fees, or ₱5,000 / month for 6 months) — <b>educational fellowship assistance, fully condonable</b>. <b>You pay nothing</b> if you render 600 Service Hours with SCEI after licensure (Option A). Otherwise you reimburse <b>only what you received</b>, in <b>3 monthly installments, interest-free</b> (Option B). Interest or a penalty applies only after an uncured default.</>
+          : <>Your award is a monthly allowance of <b>{m && n ? `₱${m.toLocaleString()} for ${n} months` : 'a monthly allowance'}</b>{total ? <> (about <b>₱{total.toLocaleString()}</b>)</> : ''} — <b>educational fellowship assistance, fully condonable</b>. <b>You pay nothing</b> if you render 1,500 Service Hours with SCEI after licensure (Option A). Otherwise you reimburse <b>only what you received</b>, in <b>{total ? (total <= 50000 ? '3' : '6') : '3–6'} monthly installments, interest-free</b> (Option B). Interest or a penalty applies only after an uncured default.</>}
       </div>
       <div className={s.rsaScroll}>
         {blocks.map((b, i) =>

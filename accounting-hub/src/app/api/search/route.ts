@@ -111,12 +111,16 @@ export async function GET(req: Request) {
     }),
   ])
 
+  // Search hits deep-link to the individual record, not just its section: the
+  // destination reads ?focus= and reveals that row. See useFocusTarget.
+  const enc = (v: string | number) => encodeURIComponent(String(v ?? ''))
+
   const results: Hit[] = []
 
   for (const o of orders) results.push({
     id: o.id, type: 'Sale / Order', title: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}`,
     subtitle: `${bl(o.branch)}${o.platform ? ` · ${o.platform}` : ''} · ${dstr(o.transactionDate)}`,
-    amount: num(o.netAmount), reference: o.salesInvoiceNumber || o.referenceNumber || '', date: dstr(o.transactionDate), href: '/sales-summary',
+    amount: num(o.netAmount), reference: o.salesInvoiceNumber || o.referenceNumber || '', date: dstr(o.transactionDate), href: `/pos?tab=orders&focus=${enc(o.id)}`,
     detail: { 'Order #': String(o.orderNumber), Customer: o.patientName || '—', Branch: bl(o.branch), Platform: o.platform || '—', 'SI #': o.salesInvoiceNumber || '—', Reference: o.referenceNumber || '—', 'Net Amount': num(o.netAmount).toFixed(2), Date: dstr(o.transactionDate) },
   })
   for (const e of pcEntries) {
@@ -125,48 +129,51 @@ export async function GET(req: Request) {
       id: e.id, type: isPc ? 'Petty Cash' : (e.recordType === 'RECURRING' ? 'Expense (Recurring)' : 'Expense (One-time)'),
       title: `${e.pcvNumber} · ${e.registeredName || e.requestor || e.description || 'Entry'}`,
       subtitle: `${bl(e.branch)} · ${e.accountTitle || ''} · ${dstr(e.date)}`,
-      amount: num(e.grossAmount), reference: e.pcvNumber, date: dstr(e.date), href: isPc ? '/petty-cash' : '/expenses',
+      amount: num(e.grossAmount), reference: e.pcvNumber, date: dstr(e.date),
+      href: isPc
+        ? `/petty-cash?focus=${enc(e.pcvNumber)}`
+        : `/expenses?tab=${e.recordType === 'RECURRING' ? 'recurring' : 'onetime'}&focus=${enc(e.pcvNumber)}`,
       detail: { 'PCV #': e.pcvNumber, Payee: e.requestor || '—', 'Registered Name': e.registeredName || '—', 'Account Title': e.accountTitle || '—', Description: e.description || '—', Branch: bl(e.branch), 'Gross Amount': num(e.grossAmount).toFixed(2), Date: dstr(e.date) },
     })
   }
   for (const r of reimbs) results.push({
     id: r.id, type: 'Reimbursement', title: r.refNumber, subtitle: `${bl(r.branch)} · ${r.status} · ${dstr(r.createdAt)}`,
-    amount: num(r.grossTotal), reference: r.refNumber, date: dstr(r.createdAt), href: '/petty-cash',
+    amount: num(r.grossTotal), reference: r.refNumber, date: dstr(r.createdAt), href: `/expenses?tab=rfp&focus=${enc(r.refNumber)}`,
     detail: { Reference: r.refNumber, Branch: bl(r.branch), Status: r.status, 'Gross Total': num(r.grossTotal).toFixed(2), Created: dstr(r.createdAt) },
   })
   for (const c of ccReports) results.push({
     id: c.id, type: 'Credit Card Report', title: c.refNumber, subtitle: `${bl(c.branch)} · ${c.periodMonth}/${c.periodYear} · ${c.status}`,
-    amount: null, reference: c.refNumber, date: '', href: '/expenses',
+    amount: null, reference: c.refNumber, date: '', href: `/expenses?tab=cc-soa&focus=${enc(c.refNumber)}`,
     detail: { Reference: c.refNumber, 'Bank Code': c.bankCode, Branch: bl(c.branch), Period: `${c.periodMonth}/${c.periodYear}`, Status: c.status },
   })
   for (const s of expSuppliers) results.push({
     id: s.id || s.registeredName, type: 'Supplier (Expense)', title: s.registeredName, subtitle: `${bl(s.branch)}${s.tin ? ` · TIN ${s.tin}` : ''}`,
-    amount: null, reference: s.tin || '', date: '', href: '/expenses',
+    amount: null, reference: s.tin || '', date: '', href: `/expenses?tab=suppliers&focus=${enc(s.registeredName)}`,
     detail: { 'Registered Name': s.registeredName, 'Registered Address': s.registeredAddress || '—', TIN: s.tin || '—', Branch: bl(s.branch) },
   })
   for (const s of suppliers) results.push({
     id: s.id, type: 'Supplier (Procurement)', title: s.supplierName, subtitle: s.contactNumber || s.email || '',
-    amount: null, reference: '', date: '', href: '/inventory',
+    amount: null, reference: '', date: '', href: `/inventory?tab=Suppliers&focus=${enc(s.supplierName)}`,
     detail: { Name: s.supplierName, Email: s.email || '—', Contact: s.contactNumber || '—', Address: s.address || '—' },
   })
   for (const i of inv) results.push({
     id: i.id, type: 'Inventory', title: `${i.name} · ${i.sku}`, subtitle: `Qty ${i.quantity}${i.sellingPrice != null ? ` · ₱${num(i.sellingPrice).toFixed(2)}` : ''}`,
-    amount: i.sellingPrice != null ? num(i.sellingPrice) : null, reference: i.sku, date: '', href: '/inventory',
+    amount: i.sellingPrice != null ? num(i.sellingPrice) : null, reference: i.sku, date: '', href: `/inventory?focus=${enc(i.sku)}`,
     detail: { Name: i.name, SKU: i.sku, Quantity: String(i.quantity), 'Unit Cost': num(i.unitCost).toFixed(2), 'Selling Price': i.sellingPrice != null ? num(i.sellingPrice).toFixed(2) : '—' },
   })
   for (const a of accounts) results.push({
     id: a.id, type: 'Account', title: `${a.accountNumber} ${a.accountTitle}`, subtitle: a.subType || '',
-    amount: null, reference: a.accountNumber, date: '', href: '/chart-of-accounts',
+    amount: null, reference: a.accountNumber, date: '', href: `/chart-of-accounts?focus=${enc(a.accountNumber)}`,
     detail: { 'Account #': a.accountNumber, Title: a.accountTitle, Type: a.subType || '—' },
   })
   for (const j of journals) results.push({
     id: j.id, type: 'Journal Entry', title: j.description, subtitle: `${j.referenceType} · ${bl(j.branch)} · ${dstr(j.entryDate)}`,
-    amount: num(j.totalAmount), reference: j.referenceType, date: dstr(j.entryDate), href: '/reports',
+    amount: num(j.totalAmount), reference: j.referenceType, date: dstr(j.entryDate), href: `/journal-entries?focus=${enc(j.id)}&q=${enc(j.description)}`,
     detail: { Description: j.description, 'Reference Type': j.referenceType, Branch: bl(j.branch), 'Total Amount': num(j.totalAmount).toFixed(2), Date: dstr(j.entryDate) },
   })
   for (const a of assets) results.push({
     id: a.id, type: 'Asset', title: `${a.name}${a.controlNumber ? ` · ${a.controlNumber}` : ''}`, subtitle: `Class ${a.classification} · ${dstr(a.dateBought)}`,
-    amount: num(a.totalAmount), reference: a.controlNumber || '', date: dstr(a.dateBought), href: '/asset-management',
+    amount: num(a.totalAmount), reference: a.controlNumber || '', date: dstr(a.dateBought), href: `/asset-management?focus=${enc(a.controlNumber || a.id)}`,
     detail: { Name: a.name, 'Control #': a.controlNumber || '—', Classification: a.classification, 'Total Amount': num(a.totalAmount).toFixed(2), 'Date Bought': dstr(a.dateBought) },
   })
 

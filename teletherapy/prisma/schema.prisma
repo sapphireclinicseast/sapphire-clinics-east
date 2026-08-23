@@ -33,12 +33,6 @@ enum PatientType {
   ADULT
 }
 
-enum Branch {
-  SANDBOX_EAST
-  SANDBOX_GREENHILLS
-  VERDANA_STORE
-}
-
 // ── Shared models (read from marketing DB) ────────────────────────────────────
 
 model Staff {
@@ -54,10 +48,14 @@ model Staff {
   jobTitle        String?
   employmentType  String?
   hrPlatformId    String?
+  // Fallback profile photo (URL or data URI) used when there is no HR photo —
+  // e.g. sample/demo interns that aren't real HR records.
+  photoPath       String?
   createdById     String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   schedules       Schedule[]
+  internSchedules Schedule[]      @relation("ScheduleIntern") // sessions this person did as an intern
   therapistAccount TherapistAccount?
   surveyResponses  SurveyResponse[]
 }
@@ -80,6 +78,18 @@ model SurveyResponse {
   @@index([staffId])
 }
 
+// NOTE: patient branches are plain strings, not a Prisma enum.
+//
+// They used to be `enum Branch`, which meant a branch created in HR Platform
+// could never become a patient option without a schema change and a deploy —
+// a Postgres enum cannot grow at runtime. Staff already stored its branches as
+// text (Staff.branch / Staff.extraBranches), which is why interbranch staff
+// worked and interbranch patients did not.
+//
+// Valid values are the `opsHubBranch` codes in the HrBranch registry, which
+// syncs hourly from HR Platform. Validate against that (see
+// @/lib/branch-options), never against a hardcoded list.
+
 model Patient {
   id          String      @id @default(cuid())
   firstName   String
@@ -88,8 +98,8 @@ model Patient {
   phone       String?
   dob         DateTime?
   patientType PatientType
-  branch      Branch?
-  branches    Branch[]    @default([])
+  branch      String?          // legacy single-branch (kept for backward compat)
+  branches    String[]    @default([])  // multi-branch (primary)
   sex         String?
   civilStatus String?
   religion    String?
@@ -170,6 +180,45 @@ model BranchCCEmail {
   updatedAt DateTime @updatedAt
 }
 
+// HR Branch Registry (synced cache) — HR Platform is the source of truth
+// (see HR Platform's `modules/branches`). Populated via admin-triggered
+// POST /api/branches/sync (full replace, Bearer HR_API_KEY against
+// HR_API_BASE, same working pair /api/staff/sync-hr already uses). Do not
+// edit rows here directly — edits belong in HR Platform.
+//
+// NOTE: teletherapy shares its Postgres database (sapphire_marketing) with
+// Operations Hub — same physical table as Operations Hub's own HrBranch
+// model, same convention already established by BranchCCEmail above. Keep
+// this model's columns in lockstep with Operations Hub's prisma/schema.prisma
+// HrBranch — Operations Hub's migration is what actually creates the table.
+model HrBranch {
+  id                       String   @id
+  shortCode                String
+  aliases                  String[] @default([])
+  opsHubBranch             String?
+  opsHubClassPortalBranch  String?
+  acctHubBranch            String?
+  acctHubServiceBranch     String?
+  teletherapyBranch        String?
+  name                     String
+  brandName                String?
+  tin                      String?
+  address                  String?
+  phone                    String?
+  emailMain                String?
+  emailHr                  String?
+  emailAccounting          String?
+  emailPayslips            String?
+  emailSchedules           String?
+  emailSessionNotes        String?
+  departmentsOffered       String[] @default([])
+  operatingDays            String[] @default([])
+  operatingHoursOpen       String?
+  operatingHoursClose      String?
+  active                   Boolean  @default(true)
+  syncedAt                 DateTime @default(now())
+}
+
 // Staff directory — admin-managed contact list shown to everyone.
 // `departments` holds one or more StaffDepartment values (multi-select).
 model DirectoryEntry {
@@ -211,7 +260,7 @@ model DirectoryWebsite {
 
 model Schedule {
   id          String         @id @default(cuid())
-  staffId     String
+  staffId     String         // supervising therapist — whoever's card this was booked under
   staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
   patientId   String?
   patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
@@ -223,11 +272,34 @@ model Schedule {
   status      ScheduleStatus @default(PENDING)
   notes       String?
   meetLink    String?
+  // Which intern actually did the session, when sessionType is "IE Intern" /
+  // "Session Intern" (set from the Ops Hub Clinic Schedule) — the intern
+  // writes the note; staffId above stays the supervisor. Column already
+  // exists in the shared DB (Ops Hub migration 20260815_schedule_intern_staff).
+  internStaffId String?
+  // Where the session happens (SBEA|SBGH|VER) — owned by Operations Hub;
+  // declared here to keep the shared table's schemas in lockstep.
+  branch        String?
+  internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
+  // Age lock (see src/lib/note-age-lock.ts). Notes on sessions older than the
+  // documentation window are read-only by default; a clinician can deliberately
+  // re-open one, and that decision is recorded here rather than held in the
+  // browser so the server can actually enforce the lock.
+  //
+  // Lives on Schedule, not SessionNote, because a stale session may have no
+  // note yet — writing the first note on an old session is exactly the case
+  // the lock is meant to catch.
+  //
+  // Distinct from SessionNote.lockedAt, which is the permanent endorsement
+  // freeze and is NOT re-openable by anyone.
+  noteUnlockedAt   DateTime?
+  noteUnlockedById String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   sessionNote SessionNote?
 
   @@index([staffId])
+  @@index([internStaffId])
   @@index([patientId])
   @@index([date])
   @@index([status])
@@ -296,6 +368,10 @@ model TherapistAccount {
   // are limited staff presets; ADMIN-role accounts always see everything.
   accountType  String        @default("CLINICIAN") // CLINICIAN | FRONT_DESK | ADMIN_STAFF | ADMIN
   isActive         Boolean       @default(true)
+  // For intern accounts: once a human (HR/supervisor/admin) re-enables access
+  // after the rotation lapsed, this is set so the daily auto-disable sweep
+  // won't turn the account off again (e.g. a re-rotation).
+  internAccessOverride Boolean   @default(false)
   lastLoginAt      DateTime?
   resetToken       String?
   resetTokenExpiry DateTime?
@@ -331,6 +407,10 @@ model SessionNote {
   // by who delivered it at the time it was delivered, and a later
   // re-endorsement should not unlock historical clinical content.
   lockedAt            DateTime?
+  // Append-only audit trail: who created/edited the note and when. Each entry
+  // is { name, accountType, action: 'created'|'edited', at }. Interns author;
+  // supervisors edit — this makes both visible.
+  editHistory         Json?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 }
@@ -382,4 +462,98 @@ model ClinicianSettings {
   signatureDataUrl    String?          @db.Text // base64 signature image
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
+}
+
+// ── Support Tickets ──────────────────────────────────────────────
+// Staff-raised concerns about the portal. Numbered per branch per day
+// (AHEA-/AHGH-/VERD-YYYYMMDD-NN). The main admin resolves; the raiser
+// sees the resolution.
+model Ticket {
+  id                String    @id @default(cuid())
+  ticketNumber      String    @unique
+  branch            String
+  subject           String
+  description       String
+  attachmentPath    String?
+  attachmentName    String?
+  status            String    @default("OPEN") // OPEN / RESOLVED
+  raisedByAccountId String
+  raisedByName      String
+  raisedByEmail     String?
+  resolution        String?
+  resolvedByName    String?
+  resolvedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([raisedByAccountId])
+  @@index([status])
+}
+
+// ── Intern Supervision ───────────────────────────────────────────
+// Balik-Tanaw: an intern's weekly reflection. The intern submits (their typed
+// name is stamped as the signature); their supervisor reads it in the portal
+// and "signs" (Coordinating Teacher's signature) with their name + timestamp.
+model BalikTanaw {
+  id                     String    @id @default(cuid())
+  internStaffId          String
+  department             String
+  periodLabel            String    // e.g. "Week of Aug 18, 2026"
+  answers                Json      // [{ question: string, answer: string }]
+  internSignedName       String
+  internSignedAt         DateTime  @default(now())
+  supervisorSignedName   String?
+  supervisorSignedAt     DateTime?
+  supervisorSignatureUrl String?
+  supervisorAccountId    String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([internStaffId])
+}
+
+// A supervisor's grade for an intern: one grade + an attached computation file.
+model InternGrade {
+  id                  String   @id @default(cuid())
+  internStaffId       String
+  supervisorAccountId String
+  grade               String   // number/percentage or short remark
+  note                String?
+  fileName            String?
+  filePath            String?
+  mimeType            String?
+  gradedByName        String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([internStaffId, supervisorAccountId])
+  @@index([internStaffId])
+}
+
+// An intern's Learning Outcomes & Preferences intake (one per intern, editable).
+// Stored as a flexible JSON blob (open-text outcomes + multi-select preferences).
+model LearningProfile {
+  id            String   @id @default(cuid())
+  internStaffId String   @unique
+  data          Json     // { outcomes: {...}, learnBest: [], learnBestOther, feedback: [], feedbackOther, prep: [], challenges }
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Internship documents supervisors upload (supervision guides, forms, etc.).
+// Department-scoped: visible to supervisors in the same department (+ admins).
+model InternshipDocument {
+  id                  String   @id @default(cuid())
+  department          String
+  title               String
+  description         String?
+  fileName            String
+  filePath            String
+  mimeType            String?
+  uploadedByAccountId String
+  uploadedByName      String
+  createdAt           DateTime @default(now())
+
+  @@index([department])
+  @@index([createdAt])
 }

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { rateFor } from '@/lib/fx'
 import { prisma } from '@/lib/prisma'
 import { candidates, forDirection } from '@/lib/bank-rec-candidates'
+import { ruleMatches } from '@/lib/bank-rec-rules'
 
 // Which bank lines look like they correspond to something already recorded in
 // the Hub, so the grid can flag them instead of the user opening every row.
@@ -20,7 +22,7 @@ type Hint = { kind: string; label: string; amount: number; date: string; n: numb
 const KIND: Record<string, string> = {
   FUND_TRANSFER: 'Fund transfer', RFP: 'Paid RFP', ORDER: 'Sale', AR_PAYMENT: 'AR receipt',
   SALARY: 'Salaries payable', BENEFIT: 'Benefits payable', TAX: 'Tax payment',
-  CASH_ADVANCE: 'Cash advance', EQUITY: 'Equity deposit',
+  CASH_ADVANCE: 'Cash advance', EQUITY: 'Equity deposit', ADVANCE: 'Advance received',
 }
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10)
@@ -43,7 +45,10 @@ function bankingDaysBetween(from: Date, to: Date): number {
   return n
 }
 const within = (a: Date, b: Date) => Math.abs(+a - +b) <= WINDOW_DAYS * 86400000
-const close = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE
+// Tolerance scales down with the amount: a P60,000 settlement can be a peso
+// off, but a P0.09 interest line matching a P1.00 record is how centavo bank
+// lines ended up "likely" order settlements and paid RFPs.
+const close = (a: number, b: number) => Math.abs(a - b) <= Math.min(TOLERANCE, Math.max(0.05, 0.02 * Math.max(a, b)))
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -55,7 +60,7 @@ export async function GET(req: Request) {
 
   const txns = await prisma.bankTransaction.findMany({
     where: { bankAccountId, status },
-    select: { id: true, date: true, spent: true, received: true },
+    select: { id: true, date: true, spent: true, received: true, description: true },
   })
   if (txns.length === 0) return NextResponse.json({ hints: {} })
 
@@ -65,14 +70,22 @@ export async function GET(req: Request) {
 
   // ── money in: settlements expected to land in this bank account ───────────
   const modes = await prisma.paymentMode.findMany({
-    where: { accountId: bankAccountId },
-    select: { id: true, name: true, deductions: { select: { rate: true, valueType: true } } },
+    // accountId: NET lodges here directly. settlementBankAccountId: sales post
+    // to a clearing account but the processor's payout lands here (e.g. TikTok
+    // settlements deposited into VER BDO Checking).
+    where: { OR: [{ accountId: bankAccountId }, { settlementBankAccountId: bankAccountId }] },
+    select: { id: true, name: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } },
   })
-  const netOf = (modeId: string, gross: number) => {
+  // Rate eras: the deduction in force on the SALE date applies (see
+  // netOfDeductions in pos-settlement-shapes).
+  const netOf = (modeId: string, gross: number, onDate?: Date) => {
     const m = modes.find(x => x.id === modeId)
     if (!m) return gross
-    const cut = m.deductions.reduce((s, d) =>
-      s + (d.valueType === 'PERCENTAGE' ? gross * Number(d.rate) / 100 : Number(d.rate)), 0)
+    const cut = m.deductions.reduce((s, d) => {
+      if (onDate && d.effectiveFrom && onDate < d.effectiveFrom) return s
+      if (onDate && d.effectiveTo && onDate > d.effectiveTo) return s
+      return s + (d.valueType === 'PERCENTAGE' ? gross * Number(d.rate) / 100 : Number(d.rate))
+    }, 0)
     return Math.round((gross - cut) * 100) / 100
   }
 
@@ -91,7 +104,7 @@ export async function GET(req: Request) {
     })
     for (const p of payments) {
       if (!p.order || !p.paymentModeId) continue
-      const net = netOf(p.paymentModeId, Number(p.amount))
+      const net = netOf(p.paymentModeId, Number(p.amount), p.order.transactionDate)
       const mode = modes.find(m => m.id === p.paymentModeId)!
       singles.push({
         date: p.order.transactionDate, amount: net,
@@ -137,6 +150,20 @@ export async function GET(req: Request) {
       })
     : []
 
+  // ── the other leg of an internal transfer ─────────────────────────────────
+  // Money moved between two of our own same-currency accounts (AUB → BDO,
+  // checking → petty cash): a SPENT here and an equal RECEIVED there, landing
+  // the same banking day or the next.
+  const sameCcyIds = otherCurrencyAccounts
+    .filter(a => (a.currency || 'PHP') === (thisAccount?.currency || 'PHP'))
+    .map(a => a.id)
+  const sameCcyLines = sameCcyIds.length
+    ? await prisma.bankTransaction.findMany({
+        where: { bankAccountId: { in: sameCcyIds }, date: { gte: lo, lte: hi }, status: 'PENDING' },
+        select: { bankAccountId: true, date: true, spent: true, received: true, description: true },
+      })
+    : []
+
   // ── everything else the Hub has recorded ──────────────────────────────────
   // Fund transfers, RFPs from petty cash / expenses / refunds / taxes, POS
   // orders, AR receipts, salaries and benefits, cash advances and equity
@@ -145,10 +172,22 @@ export async function GET(req: Request) {
   const recorded = await candidates(bankAccountId, lo, hi)
 
   const hints: Record<string, Hint> = {}
+  // Interest and service charges are generated by the bank itself — nothing in
+  // the Hub records them, so a "likely match" against an order or RFP is
+  // always a coincidence of tiny amounts. Name them instead of matching them.
+  const BANK_GENERATED = /INTEREST WITHHELD|INTEREST PAYMENT SYS GEN|SERVICE CHARGE SYS GEN/i
   for (const t of txns) {
     const spent = Number(t.spent), received = Number(t.received)
     const out = spent > 0
     const amount = out ? spent : received
+    if (BANK_GENERATED.test(t.description || '')) {
+      hints[t.id] = {
+        kind: 'Bank interest/charge',
+        label: 'Bank-generated line — Categorise it (interest income, withheld tax, service charge) or let an auto-rule post it',
+        amount, date: dayKey(t.date), n: 1,
+      }
+      continue
+    }
 
     const hit = forDirection(recorded, out).find(c => within(c.date, t.date) && close(c.amount, amount))
     if (hit) {
@@ -197,6 +236,31 @@ export async function GET(req: Request) {
     }
   }
 
+  // Internal-transfer legs: an equal-amount pending line on another of our own
+  // same-currency accounts within 3 banking days, either direction. Electronic
+  // transfers land same-day, but the LCK/DEPN check transfers are deposited at
+  // the receiving bank first and only clear at the source 1–2 banking days
+  // later (more over a weekend) — so the window is symmetric and counted in
+  // banking days. Exact amount + a unique counterpart is the evidence.
+  for (const t of txns) {
+    if (hints[t.id]) continue
+    const out = Number(t.spent) > 0
+    const amount = out ? Number(t.spent) : Number(t.received)
+    if (!amount) continue
+    const legs = sameCcyLines.filter(l => {
+      const opp = out ? Number(l.received) : Number(l.spent)
+      if (Math.abs(opp - amount) > 0.01) return false
+      return Math.abs(bankingDaysBetween(new Date(l.date), new Date(t.date))) <= 3
+    })
+    if (legs.length !== 1) continue      // ambiguous, so say nothing
+    const acct = otherCurrencyAccounts.find(a => a.id === legs[0].bankAccountId)!
+    hints[t.id] = {
+      kind: 'Internal transfer',
+      label: `${out ? '→' : '←'} ${acct.accountNumber} ${acct.accountTitle} · ${legs[0].description || ''} — use Match to pair both legs`,
+      amount, date: dayKey(legs[0].date), n: 1,
+    }
+  }
+
   // Currency-exchange legs, applied last so a real settlement match wins: this
   // one is only a direction-and-date coincidence, since the two sides of an
   // exchange never share an amount.
@@ -209,6 +273,20 @@ export async function GET(req: Request) {
     const leg = legs[0]
     const acct = otherCurrencyAccounts.find(a => a.id === leg.bankAccountId)!
     const amt = out ? Number(leg.received) : Number(leg.spent)
+    // Direction and date alone are not evidence: a CNY supplier payment beside
+    // an unrelated PHP deposit is not an exchange. The two legs must imply a
+    // rate near the currency's actual rate, or the hint says nothing.
+    {
+      const thisCur = thisAccount?.currency || 'PHP'
+      const foreignCur = thisCur === 'PHP' ? (acct.currency || 'PHP') : thisCur
+      const phpAmt = thisCur === 'PHP' ? (out ? Number(t.spent) : Number(t.received)) : amt
+      const fxAmt = thisCur === 'PHP' ? amt : (out ? Number(t.spent) : Number(t.received))
+      if (!fxAmt) continue
+      const known = await rateFor(foreignCur, t.date)
+      if (!known || !(known.phpPerUnit > 0)) continue
+      const implied = phpAmt / fxAmt
+      if (implied < known.phpPerUnit * 0.8 || implied > known.phpPerUnit * 1.25) continue
+    }
     hints[t.id] = {
       kind: 'Currency exchange',
       label: `${amt.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${acct.currency} on ${acct.accountNumber} — use Match › Currency exchange`,
@@ -216,5 +294,21 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ hints, windowDays: WINDOW_DAYS })
+  // Which active auto-rule would post each line — powers the per-row
+  // "Auto-post" button so a matching line is one click, not a dialog.
+  const activeRules = await prisma.bankCategoryRule.findMany({ where: { active: true }, orderBy: { createdAt: 'asc' } })
+  const ruleAccts = new Map(
+    (await prisma.account.findMany({ where: { id: { in: [...new Set(activeRules.map(r => r.categoryAccountId))] } }, select: { id: true, accountNumber: true, accountTitle: true } }))
+      .map(a => [a.id, `${a.accountNumber} ${a.accountTitle}`]),
+  )
+  const autoRules: Record<string, { ruleId: string; label: string }> = {}
+  if (status === 'PENDING') {
+    for (const t of txns) {
+      const full = { description: t.description || '', fromToName: null, spent: t.spent, received: t.received, bankAccountId }
+      const rule = activeRules.find(r => ruleMatches(r, full) && (!r.effectiveFrom || t.date >= r.effectiveFrom) && r.categoryAccountId !== bankAccountId)
+      if (rule) autoRules[t.id] = { ruleId: rule.id, label: `"${rule.pattern}" → ${ruleAccts.get(rule.categoryAccountId) || 'account'}` }
+    }
+  }
+
+  return NextResponse.json({ hints, autoRules, windowDays: WINDOW_DAYS })
 }

@@ -23,6 +23,9 @@ const BRANCH_LABEL: Record<string, string> = {
   SANDBOX_EAST: 'East Branch',
   SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
+  // Staff branch codes → Aura Health branch codes (display).
+  SBEA: 'AHEA',
+  SBGH: 'AHGH',
 }
 function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).trim()

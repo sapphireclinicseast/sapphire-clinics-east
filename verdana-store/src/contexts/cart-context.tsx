@@ -1,11 +1,14 @@
 "use client"
 
 import { createContext, useState, useEffect, useCallback, type ReactNode } from "react"
+import { fbTrack } from "@/lib/fbpixel"
 
 export interface CartItem {
   productId: string
   variantId: string | undefined
   variantLabel: string | undefined
+  /** Accounting Hub variant SKU for this option (for inventory deduction matching). */
+  variantSku?: string
   quantity: number
   title: string
   price: number
@@ -57,6 +60,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem = useCallback(
     (incoming: Omit<CartItem, "quantity"> & { quantity?: number }) => {
       const qty = incoming.quantity ?? 1
+      fbTrack("AddToCart", {
+        content_ids: [incoming.variantSku || incoming.productId],
+        content_name: incoming.title,
+        content_type: "product",
+        value: incoming.price * qty,
+        currency: "PHP",
+        contents: [{ id: incoming.variantSku || incoming.productId, quantity: qty }],
+      })
       setItems((prev) => {
         const idx = prev.findIndex((i) =>
           matchesItem(i, incoming.productId, incoming.variantId)

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import {
   User,
   FileText,
@@ -183,6 +184,9 @@ function DocumentSection({
   onChange: () => void
   canManage: boolean
 }) {
+  const { data: authSession } = useSession()
+  // Interns can upload documents but cannot send them to patients.
+  const isIntern = authSession?.user?.accountType === 'INTERN'
   const [open, setOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [reuploadingId, setReuploadingId] = useState<string | null>(null)
@@ -441,7 +445,10 @@ function DocumentSection({
                   can route the IE without claiming authorship. The
                   document itself remains immutable to non-uploaders
                   (see canEdit on re-upload / delete above). */}
-              {isIE && doc.canSend && (
+              {isIE && doc.canSend && isIntern && (
+                <p className="mt-2 text-[11px] text-[var(--mid-gray)] italic flex items-center gap-1"><Mail size={11} /> Only your supervisor can send this to the patient.</p>
+              )}
+              {isIE && doc.canSend && !isIntern && (
                 <button
                   onClick={() => {
                     if (sentAt) setPendingResend({ doc, kind: 'IE' })

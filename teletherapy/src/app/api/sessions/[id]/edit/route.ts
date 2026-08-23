@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isNoteAgeLocked, NOTE_AGE_LOCK_MESSAGE } from '@/lib/note-age-lock'
 
 export async function PATCH(
   req: NextRequest,
@@ -29,7 +30,9 @@ export async function PATCH(
 
   if (session.user.role !== 'ADMIN') {
     const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
-    if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
+    const isSupervisor = allowedStaffIds.includes(schedule.staffId) || schedule.staffId === session.user.staffId
+    const isAssignedIntern = !!schedule.internStaffId && schedule.internStaffId === session.user.staffId
+    if (!isSupervisor && !isAssignedIntern) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     // Locked notes are permanently read-only. lockedAt is stamped when
@@ -41,6 +44,12 @@ export async function PATCH(
         { error: 'This note is locked. Notes become read-only after the author is endorsed or discharged off the patient.' },
         { status: 403 },
       )
+    }
+    // Age lock — documentation for a session this old is read-only until the
+    // clinician deliberately re-opens it. Checked after the permanent
+    // endorsement lock above, which is never re-openable.
+    if (isNoteAgeLocked(schedule)) {
+      return NextResponse.json({ error: NOTE_AGE_LOCK_MESSAGE, ageLocked: true }, { status: 403 })
     }
   }
 
@@ -67,6 +76,18 @@ export async function PATCH(
     updateData.emailSentAt = null
     updateData.emailSentTo = null
   }
+
+  // Record this edit in the note's history — a supervisor editing an intern's
+  // note shows alongside the intern's original authoring.
+  updateData.editHistory = [
+    ...(Array.isArray(schedule.sessionNote.editHistory) ? schedule.sessionNote.editHistory : []),
+    {
+      name: session.user.name ?? session.user.email ?? 'Staff',
+      accountType: session.user.accountType ?? 'CLINICIAN',
+      action: 'edited',
+      at: new Date().toISOString(),
+    },
+  ]
 
   const note = await prisma.sessionNote.update({
     where: { id: schedule.sessionNote.id },

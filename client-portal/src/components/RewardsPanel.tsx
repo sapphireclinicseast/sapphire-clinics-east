@@ -148,7 +148,7 @@ export default function RewardsPanel() {
           <UseCard
             title="Clinic merchandise"
             body="Aura Health Rehab–branded merchandise — apparel, mugs, and seasonal items — handpicked by the clinic."
-            href="https://verdanarehab.com/collections/merchandise"
+            href="https://verdanarehab.com/collections/merch-resources"
             cta="Shop merchandise →"
             icon={<IconShirt />}
           />

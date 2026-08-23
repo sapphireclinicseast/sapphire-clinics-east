@@ -1,33 +1,255 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Minus, Plus, Trash2, Loader2, ShoppingBag } from "lucide-react"
+import { Minus, Plus, Trash2, Loader2, ShoppingBag, Copy, Check, Share2, Tag, X, Truck } from "lucide-react"
 import { useCart } from "@/hooks/use-cart"
 import { formatPrice } from "@/lib/format"
+import { fbTrack } from "@/lib/fbpixel"
 import { Button } from "@/components/ui/button"
+
+/**
+ * Where the order is being delivered. Collected here rather than left to
+ * PayMongo: PayMongo only captures the *card's billing* address, which for a
+ * card issued abroad is nowhere near where the parcel should go. These fields
+ * ride along as checkout-session metadata and land in the Accounting Hub's
+ * Online Orders panel, which is what the packing team ships from.
+ */
+interface ShippingInfo {
+  name: string
+  phone: string
+  email: string
+  address: string
+  city: string
+  zipCode: string
+}
+
+const EMPTY_SHIPPING: ShippingInfo = { name: "", phone: "", email: "", address: "", city: "", zipCode: "" }
+const SHIPPING_STORAGE_KEY = "verdana.shipping"
+
+interface AppliedVoucher {
+  code: string
+  discountType: "percent" | "fixed" | "none"
+  discountValue: number
+  freeShipping: boolean
+  discountAmount: number
+  description?: string
+}
+
+function Field({
+  label, value, onChange, required = false, invalid = false, hint,
+  placeholder, type = "text", autoComplete, inputMode,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  required?: boolean
+  invalid?: boolean
+  hint?: string
+  placeholder?: string
+  type?: string
+  autoComplete?: string
+  inputMode?: "text" | "tel" | "numeric" | "email"
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-verdana-charcoal">
+        {label}
+        {required && <span className="text-red-500"> *</span>}
+        {hint && <span className="font-normal text-gray-400"> — {hint}</span>}
+      </span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        type={type}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
+        aria-invalid={invalid || undefined}
+        className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal ${
+          invalid ? "border-red-400 bg-red-50" : "border-gray-300"
+        }`}
+      />
+    </label>
+  )
+}
 
 export default function CartPage() {
   const { items, updateQuantity, removeItem, subtotal, totalItems } = useCart()
   const [isCheckingOut, setIsCheckingOut] = useState(false)
+  const [isLinking, setIsLinking] = useState(false)
+  const [shareLink, setShareLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  async function handleCheckout() {
-    setIsCheckingOut(true)
+  // Delivery details
+  const [shipping, setShipping] = useState<ShippingInfo>(EMPTY_SHIPPING)
+  const [shippingErrors, setShippingErrors] = useState<Partial<Record<keyof ShippingInfo, boolean>>>({})
+
+  // Voucher state
+  const [codeInput, setCodeInput] = useState("")
+  const [voucher, setVoucher] = useState<AppliedVoucher | null>(null)
+  const [voucherError, setVoucherError] = useState<string | null>(null)
+  const [applying, setApplying] = useState(false)
+
+  const discount = voucher?.discountAmount || 0
+  const discountedSubtotal = Math.max(0, subtotal - discount)
+
+  // Returning buyers shouldn't retype their address every order.
+  useEffect(() => {
     try {
-      const res = await fetch("/api/checkout", {
+      const saved = localStorage.getItem(SHIPPING_STORAGE_KEY)
+      if (saved) setShipping({ ...EMPTY_SHIPPING, ...JSON.parse(saved) })
+    } catch {
+      // Private mode or a corrupt value — the blank form is fine.
+    }
+  }, [])
+
+  function setField(field: keyof ShippingInfo, value: string) {
+    setShipping((prev) => ({ ...prev, [field]: value }))
+    if (shippingErrors[field]) setShippingErrors((prev) => ({ ...prev, [field]: false }))
+  }
+
+  /** Everything the courier needs; email is optional but drives the receipt. */
+  function validateShipping(): boolean {
+    const missing: Partial<Record<keyof ShippingInfo, boolean>> = {}
+    for (const field of ["name", "phone", "address", "city"] as const) {
+      if (!shipping[field].trim()) missing[field] = true
+    }
+    setShippingErrors(missing)
+    if (Object.keys(missing).length > 0) {
+      setError("Please complete the delivery details so we know where to send your order.")
+      return false
+    }
+    return true
+  }
+
+  async function applyVoucher() {
+    const code = codeInput.trim()
+    if (!code) return
+    setApplying(true)
+    setVoucherError(null)
+    try {
+      const res = await fetch("/api/voucher/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({
+          code, subtotal,
+          items: items.map((i) => ({ productId: i.productId, price: i.price, quantity: i.quantity })),
+        }),
       })
       const data = await res.json()
-      if (data.url) {
-        window.location.href = data.url
+      if (!data.valid) {
+        setVoucher(null)
+        setVoucherError(data.reason || "That code isn't valid.")
+        return
       }
-    } catch (error) {
-      console.error("Checkout failed:", error)
+      setVoucher({
+        code: data.code,
+        discountType: data.discountType,
+        discountValue: data.discountValue,
+        freeShipping: !!data.freeShipping,
+        discountAmount: data.discountAmount || 0,
+        description: data.description,
+      })
+      setShareLink(null) // any previously generated link is now stale
+    } catch {
+      setVoucherError("Could not check that code.")
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  function removeVoucher() {
+    setVoucher(null)
+    setCodeInput("")
+    setVoucherError(null)
+    setShareLink(null)
+  }
+
+  async function createSession(): Promise<string | null> {
+    try {
+      localStorage.setItem(SHIPPING_STORAGE_KEY, JSON.stringify(shipping))
+    } catch {
+      // Not being able to remember the address must never block the sale.
+    }
+
+    const res = await fetch("/api/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, shipping, voucherCode: voucher?.code }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.url) {
+      throw new Error(data.error || "Could not create the payment link.")
+    }
+    return data.url as string
+  }
+
+  async function handleCheckout() {
+    setError(null)
+    if (!validateShipping()) return
+    fbTrack("InitiateCheckout", {
+      value: subtotal,
+      currency: "PHP",
+      num_items: items.reduce((s, i) => s + i.quantity, 0),
+      content_ids: items.map((i) => i.variantSku || i.productId),
+      content_type: "product",
+    })
+    setIsCheckingOut(true)
+    try {
+      const url = await createSession()
+      if (url) window.location.href = url
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Checkout failed.")
     } finally {
       setIsCheckingOut(false)
+    }
+  }
+
+  async function handleGenerateLink() {
+    setError(null)
+    // The payer only pays — the delivery address still has to come from the
+    // person placing the order, so it is required for this flow too.
+    if (!validateShipping()) return
+    setIsLinking(true)
+    setCopied(false)
+    try {
+      const url = await createSession()
+      setShareLink(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create the payment link.")
+    } finally {
+      setIsLinking(false)
+    }
+  }
+
+  async function handleCopy() {
+    if (!shareLink) return
+    try {
+      await navigator.clipboard.writeText(shareLink)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard blocked — the link is still selectable in the field.
+    }
+  }
+
+  async function handleShare() {
+    if (!shareLink) return
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "Verdana Rehab — Payment Link",
+          text: "Here's the payment link for our Verdana Rehab order:",
+          url: shareLink,
+        })
+      } catch {
+        // User dismissed the share sheet — no action needed.
+      }
+    } else {
+      handleCopy()
     }
   }
 
@@ -54,19 +276,10 @@ export default function CartPage() {
         {items.map((item) => {
           const key = `${item.productId}-${item.variantId ?? "default"}`
           return (
-            <div
-              key={key}
-              className="flex gap-4 border-b border-gray-200 pb-6"
-            >
+            <div key={key} className="flex gap-4 border-b border-gray-200 pb-6">
               <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
                 {item.image ? (
-                  <Image
-                    src={item.image}
-                    alt={item.title}
-                    fill
-                    className="object-cover"
-                    sizes="96px"
-                  />
+                  <Image src={item.image} alt={item.title} fill className="object-cover" sizes="96px" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-gray-400 text-xs">
                     No image
@@ -90,21 +303,15 @@ export default function CartPage() {
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center gap-2 border border-gray-200 rounded-md">
                     <button
-                      onClick={() =>
-                        updateQuantity(item.productId, item.variantId, item.quantity - 1)
-                      }
+                      onClick={() => updateQuantity(item.productId, item.variantId, item.quantity - 1)}
                       className="px-2 py-1 text-gray-600 hover:text-verdana-charcoal"
                       aria-label="Decrease quantity"
                     >
                       <Minus className="h-3 w-3" />
                     </button>
-                    <span className="text-sm font-medium min-w-[1.5rem] text-center">
-                      {item.quantity}
-                    </span>
+                    <span className="text-sm font-medium min-w-[1.5rem] text-center">{item.quantity}</span>
                     <button
-                      onClick={() =>
-                        updateQuantity(item.productId, item.variantId, item.quantity + 1)
-                      }
+                      onClick={() => updateQuantity(item.productId, item.variantId, item.quantity + 1)}
                       className="px-2 py-1 text-gray-600 hover:text-verdana-charcoal"
                       aria-label="Increase quantity"
                     >
@@ -125,32 +332,245 @@ export default function CartPage() {
         })}
       </div>
 
-      <div className="mt-8 border-t border-gray-200 pt-6">
-        <div className="flex items-center justify-between text-lg">
-          <span className="font-medium">Subtotal</span>
-          <span className="font-bold">{formatPrice(subtotal)}</span>
+      {/* Delivery details */}
+      <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-sm font-semibold text-verdana-charcoal">
+          <Truck className="h-4 w-4 text-verdana-teal" />
+          Delivery details
+        </div>
+        <p className="mt-1 text-xs text-gray-500">
+          Where should we send this order? We use these details to pack and deliver — not the billing
+          address on your card.
+        </p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Receiver's full name"
+            required
+            value={shipping.name}
+            invalid={shippingErrors.name}
+            onChange={(v) => setField("name", v)}
+            autoComplete="name"
+            placeholder="Juan dela Cruz"
+          />
+          <Field
+            label="Contact number"
+            required
+            value={shipping.phone}
+            invalid={shippingErrors.phone}
+            onChange={(v) => setField("phone", v)}
+            autoComplete="tel"
+            inputMode="tel"
+            placeholder="09XX XXX XXXX"
+          />
+          <div className="sm:col-span-2">
+            <Field
+              label="Email"
+              hint="for your receipt and delivery updates"
+              value={shipping.email}
+              onChange={(v) => setField("email", v)}
+              autoComplete="email"
+              type="email"
+              placeholder="you@example.com"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Field
+              label="Street address"
+              required
+              value={shipping.address}
+              invalid={shippingErrors.address}
+              onChange={(v) => setField("address", v)}
+              autoComplete="street-address"
+              placeholder="Unit / house no., street, barangay"
+            />
+          </div>
+          <Field
+            label="City / municipality"
+            required
+            value={shipping.city}
+            invalid={shippingErrors.city}
+            onChange={(v) => setField("city", v)}
+            autoComplete="address-level2"
+            placeholder="Quezon City"
+          />
+          <Field
+            label="ZIP code"
+            value={shipping.zipCode}
+            onChange={(v) => setField("zipCode", v)}
+            autoComplete="postal-code"
+            inputMode="numeric"
+            placeholder="1100"
+          />
+        </div>
+      </div>
+
+      {/* Discount code */}
+      <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-5">
+        <label className="flex items-center gap-2 text-sm font-semibold text-verdana-charcoal">
+          <Tag className="h-4 w-4 text-verdana-teal" />
+          Discount code
+        </label>
+
+        {voucher ? (
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-verdana-teal/30 bg-verdana-teal/5 px-4 py-3">
+            <div>
+              <p className="font-mono font-semibold text-verdana-charcoal">{voucher.code}</p>
+              <p className="text-xs text-gray-600">
+                {[
+                  voucher.discountAmount > 0 ? `${formatPrice(voucher.discountAmount)} off` : null,
+                  voucher.freeShipping ? "Free shipping" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+            <button
+              onClick={removeVoucher}
+              className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-red-500"
+            >
+              <X className="h-4 w-4" /> Remove
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 flex gap-2">
+            <input
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === "Enter" && applyVoucher()}
+              placeholder="Enter code"
+              className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-verdana-teal/30 focus:border-verdana-teal"
+            />
+            <Button variant="outline" onClick={applyVoucher} disabled={applying || !codeInput.trim()}>
+              {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+            </Button>
+          </div>
+        )}
+
+        {voucherError && <p className="mt-2 text-sm text-red-600">{voucherError}</p>}
+      </div>
+
+      {/* Summary */}
+      <div className="mt-6 border-t border-gray-200 pt-6">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-gray-600">
+            <span>Subtotal</span>
+            <span>{formatPrice(subtotal)}</span>
+          </div>
+          {discount > 0 && (
+            <div className="flex items-center justify-between text-verdana-teal">
+              <span>Discount ({voucher?.code})</span>
+              <span>−{formatPrice(discount)}</span>
+            </div>
+          )}
+          {voucher?.freeShipping && (
+            <div className="flex items-center justify-between text-verdana-teal">
+              <span>Shipping</span>
+              <span className="font-semibold">FREE</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-t border-gray-200 pt-2 text-lg font-bold text-verdana-charcoal">
+            <span>{discount > 0 ? "Subtotal after discount" : "Subtotal"}</span>
+            <span>{formatPrice(discountedSubtotal)}</span>
+          </div>
+          {!voucher?.freeShipping && (
+            <p className="text-xs text-gray-400">Shipping is calculated at checkout.</p>
+          )}
         </div>
 
         <div className="mt-6 flex flex-col sm:flex-row gap-4">
           <Button variant="outline" asChild className="flex-1">
             <Link href="/collections">Continue Shopping</Link>
           </Button>
-          <Button
-            className="flex-1"
-            size="lg"
-            onClick={handleCheckout}
-            disabled={isCheckingOut}
-          >
+          <Button className="flex-1" size="lg" onClick={handleCheckout} disabled={isCheckingOut || isLinking}>
             {isCheckingOut ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Processing...
               </>
             ) : (
-              "Checkout"
+              "Checkout & Pay Now"
             )}
           </Button>
         </div>
+
+        {/* Pay-on-behalf option: generate a link someone else can pay */}
+        <div className="mt-4">
+          <Button
+            variant="ghost"
+            className="w-full border border-dashed border-verdana-teal/40 text-verdana-teal hover:bg-verdana-teal/5"
+            onClick={handleGenerateLink}
+            disabled={isLinking || isCheckingOut}
+          >
+            {isLinking ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Creating link...
+              </>
+            ) : (
+              <>
+                <Share2 className="h-4 w-4" />
+                Someone else will pay — get a shareable link
+              </>
+            )}
+          </Button>
+          <p className="mt-2 text-center text-xs text-gray-500">
+            Checking out for a friend? Generate the payment link and send it to whoever will pay.
+          </p>
+        </div>
+
+        {error && (
+          <p className="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
+        {shareLink && (
+          <div className="mt-6 rounded-2xl border border-verdana-teal/20 bg-verdana-cream p-5">
+            <p className="text-sm font-semibold text-verdana-charcoal">Payment link ready</p>
+            <p className="mt-1 text-sm text-gray-600">
+              Send this to the person paying. Once they complete payment, your order is confirmed and
+              we&apos;ll prepare it for delivery.
+            </p>
+
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input
+                readOnly
+                value={shareLink}
+                onFocus={(e) => e.currentTarget.select()}
+                className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-verdana-teal/30"
+              />
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleCopy} className="flex-1 sm:flex-none">
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4 text-green-600" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      Copy
+                    </>
+                  )}
+                </Button>
+                <Button onClick={handleShare} className="flex-1 sm:flex-none">
+                  <Share2 className="h-4 w-4" />
+                  Share
+                </Button>
+              </div>
+            </div>
+
+            <a
+              href={shareLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-block text-sm font-medium text-verdana-teal hover:underline"
+            >
+              Open the payment page →
+            </a>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -95,6 +95,66 @@ async function pwdCheck(q: { email: string; phone: string; firstName: string; la
   return { verified: false, reason: known ? ('NO_PWD_ID' as const) : ('NO_RECORD' as const) }
 }
 
+/**
+ * Mirror a verdanarehab.com store customer into the Patient CRM.
+ *
+ * Intent (from the store team): store buyers should be reachable in Operations-hub
+ * email campaigns, but kept SEPARATE from clinical patients. We do that with the
+ * existing VERDANA_STORE branch — the CRM already offers a "Verdana Store" branch
+ * filter and campaigns already accept a branch audience, so no new model is needed.
+ *
+ * Dedup rule: if the buyer's email (or, failing that, mobile) already belongs to a
+ * patient, they're already in the CRM — we do NOTHING and never touch that clinical
+ * record. Only a buyer who matches nobody is created, as a standalone VERDANA_STORE
+ * contact. This mirrors the request precisely: "separated from the Patient CRM if
+ * their email does not match anyone."
+ */
+async function upsertVerdanaCustomer(q: {
+  firstName: string; lastName: string; email: string; phone: string; address: string; city: string
+}) {
+  const email = lower(q.email), phone = digits(q.phone)
+  if (!email && !phone) return { ok: false, reason: 'MISSING_CONTACT' as const }
+
+  // Strongest signal first: exact email (case-insensitive).
+  let existing = email
+    ? await prisma.patient.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
+        select: { id: true },
+      })
+    : null
+
+  // Fall back to mobile — stored in varied formats, so match last-10-digits in JS.
+  if (!existing && phone) {
+    const candidates = await prisma.patient.findMany({
+      where: { phone: { not: null } },
+      select: { id: true, phone: true },
+    })
+    const hit = candidates.find((c) => digits(c.phone) === phone)
+    if (hit) existing = { id: hit.id }
+  }
+
+  // Already known to the clinic — leave the clinical record completely untouched.
+  if (existing) return { ok: true, matched: true, id: existing.id }
+
+  const uc = (v: string) => (v || '').trim().toUpperCase() || null
+  const created = await prisma.patient.create({
+    data: {
+      firstName: uc(q.firstName) ?? 'VERDANA',
+      lastName: uc(q.lastName) ?? 'CUSTOMER',
+      email: q.email?.trim() || null,
+      phone: q.phone?.trim() || null,
+      patientType: 'ADULT' as any,
+      branch: 'VERDANA_STORE' as any,
+      branches: ['VERDANA_STORE'] as any,
+      address: uc(q.address),
+      city: uc(q.city),
+      notes: 'Auto-created from verdanarehab.com store checkout (Verdana customer).',
+    },
+    select: { id: true },
+  })
+  return { ok: true, matched: false, id: created.id }
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   if (!API_KEY || !authHeader || authHeader !== `Bearer ${API_KEY}`) {
@@ -144,17 +204,30 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    if (body?.action !== 'pwdCheck') {
-      return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+
+    if (body?.action === 'pwdCheck') {
+      return NextResponse.json(await pwdCheck({
+        email: String(body.email || ''),
+        phone: String(body.phone || ''),
+        firstName: String(body.firstName || ''),
+        lastName: String(body.lastName || ''),
+      }))
     }
-    return NextResponse.json(await pwdCheck({
-      email: String(body.email || ''),
-      phone: String(body.phone || ''),
-      firstName: String(body.firstName || ''),
-      lastName: String(body.lastName || ''),
-    }))
+
+    if (body?.action === 'upsertVerdanaCustomer') {
+      return NextResponse.json(await upsertVerdanaCustomer({
+        firstName: String(body.firstName || ''),
+        lastName: String(body.lastName || ''),
+        email: String(body.email || ''),
+        phone: String(body.phone || ''),
+        address: String(body.address || ''),
+        city: String(body.city || ''),
+      }))
+    }
+
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
   } catch (err) {
-    console.error('[external-patients] PWD check failed:', err)
+    console.error('[external-patients] POST failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

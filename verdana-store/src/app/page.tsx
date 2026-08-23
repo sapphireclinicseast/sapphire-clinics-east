@@ -1,26 +1,23 @@
 import Link from "next/link"
-import { HeroBanner } from "@/components/home/HeroBanner"
+import { BackgroundPaths } from "@/components/ui/background-paths"
 import { MarqueeTagline } from "@/components/home/MarqueeTagline"
 import { MarketplaceLinks } from "@/components/home/MarketplaceLinks"
 import { ComplianceBadges } from "@/components/home/ComplianceBadges"
+import { SuggestionForm } from "@/components/home/SuggestionForm"
+import { PartnerPanel } from "@/components/home/PartnerPanel"
 import { Button } from "@/components/ui/button"
+import { getSettings } from "@/lib/settings"
+
+// Re-read settings (catalog link) on each request so an admin upload shows immediately.
+export const dynamic = "force-dynamic"
 
 export default function HomePage() {
+  const catalog = getSettings().catalog
+
   return (
     <>
-      <HeroBanner />
-
-      {/* Introduction section */}
-      <section className="py-16">
-        <div className="mx-auto max-w-3xl px-6 text-center">
-          <h2 className="text-3xl font-bold text-verdana-charcoal">
-            Introducing Verdana Store!
-          </h2>
-          <p className="mt-2 text-lg text-verdana-teal font-semibold">
-            Progress, Made Possible.
-          </p>
-        </div>
-      </section>
+      <PartnerPanel />
+      <BackgroundPaths />
 
       {/* Quote section */}
       <section className="bg-verdana-cream py-16">
@@ -40,9 +37,18 @@ export default function HomePage() {
             unique needs of children in rehabilitation. Every item in our store is evidence-based
             and designed to support developmental milestones while making therapy engaging and fun.
           </p>
-          <Button size="lg" asChild>
-            <Link href="/collections">Shop Now</Link>
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button size="lg" asChild>
+              <Link href="/collections">Shop Now</Link>
+            </Button>
+            {catalog && (
+              <Button size="lg" variant="outline" asChild>
+                <a href={catalog.url} target="_blank" rel="noopener noreferrer" download>
+                  Download Catalog
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
       </section>
 
@@ -60,57 +66,7 @@ export default function HomePage() {
             Have a suggestion? Let us know what products you&apos;d like to see.
           </p>
 
-          <form className="mt-8 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="home-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Name
-                </label>
-                <input
-                  id="home-name"
-                  type="text"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal focus:border-transparent"
-                  placeholder="Your name"
-                />
-              </div>
-              <div>
-                <label htmlFor="home-email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  id="home-email"
-                  type="email"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal focus:border-transparent"
-                  placeholder="you@example.com"
-                />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="home-phone" className="block text-sm font-medium text-gray-700 mb-1">
-                Phone
-              </label>
-              <input
-                id="home-phone"
-                type="tel"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal focus:border-transparent"
-                placeholder="Your phone number"
-              />
-            </div>
-            <div>
-              <label htmlFor="home-comment" className="block text-sm font-medium text-gray-700 mb-1">
-                Comment
-              </label>
-              <textarea
-                id="home-comment"
-                rows={4}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-verdana-teal focus:border-transparent resize-none"
-                placeholder="Tell us what products you'd like to see..."
-              />
-            </div>
-            <Button type="submit" className="w-full sm:w-auto">
-              Submit
-            </Button>
-          </form>
+          <SuggestionForm />
         </div>
       </section>
     </>

@@ -119,3 +119,96 @@ CREATE INDEX IF NOT EXISTS "Schedule_date_idx" ON "Schedule"("date");
 CREATE INDEX IF NOT EXISTS "Schedule_status_idx" ON "Schedule"("status");
 CREATE INDEX IF NOT EXISTS "Schedule_staffId_date_idx" ON "Schedule"("staffId", "date");
 CREATE INDEX IF NOT EXISTS "Schedule_patientId_status_idx" ON "Schedule"("patientId", "status");
+
+-- ── Support Tickets (staff concerns about the portal) ──
+CREATE TABLE IF NOT EXISTS "Ticket" (
+  "id" TEXT PRIMARY KEY,
+  "ticketNumber" TEXT NOT NULL,
+  "branch" TEXT NOT NULL,
+  "subject" TEXT NOT NULL,
+  "description" TEXT NOT NULL,
+  "attachmentPath" TEXT,
+  "attachmentName" TEXT,
+  "status" TEXT NOT NULL DEFAULT 'OPEN',
+  "raisedByAccountId" TEXT NOT NULL,
+  "raisedByName" TEXT NOT NULL,
+  "raisedByEmail" TEXT,
+  "resolution" TEXT,
+  "resolvedByName" TEXT,
+  "resolvedAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "Ticket_ticketNumber_key" ON "Ticket"("ticketNumber");
+CREATE INDEX IF NOT EXISTS "Ticket_raisedByAccountId_idx" ON "Ticket"("raisedByAccountId");
+CREATE INDEX IF NOT EXISTS "Ticket_status_idx" ON "Ticket"("status");
+
+-- Session note edit history (intern author + supervisor edits, with timestamps)
+ALTER TABLE "SessionNote" ADD COLUMN IF NOT EXISTS "editHistory" JSONB;
+
+-- ── Intern Supervision: Balik-Tanaw (weekly intern reflections) ──
+CREATE TABLE IF NOT EXISTS "BalikTanaw" (
+  "id" TEXT PRIMARY KEY,
+  "internStaffId" TEXT NOT NULL,
+  "department" TEXT NOT NULL,
+  "periodLabel" TEXT NOT NULL,
+  "answers" JSONB NOT NULL,
+  "internSignedName" TEXT NOT NULL,
+  "internSignedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "supervisorSignedName" TEXT,
+  "supervisorSignedAt" TIMESTAMP(3),
+  "supervisorSignatureUrl" TEXT,
+  "supervisorAccountId" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "BalikTanaw_internStaffId_idx" ON "BalikTanaw"("internStaffId");
+
+-- ── Intern Supervision: Grades (one grade + computation file per intern) ──
+CREATE TABLE IF NOT EXISTS "InternGrade" (
+  "id" TEXT PRIMARY KEY,
+  "internStaffId" TEXT NOT NULL,
+  "supervisorAccountId" TEXT NOT NULL,
+  "grade" TEXT NOT NULL,
+  "note" TEXT,
+  "fileName" TEXT,
+  "filePath" TEXT,
+  "mimeType" TEXT,
+  "gradedByName" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "InternGrade_internStaffId_supervisorAccountId_key" ON "InternGrade"("internStaffId", "supervisorAccountId");
+CREATE INDEX IF NOT EXISTS "InternGrade_internStaffId_idx" ON "InternGrade"("internStaffId");
+
+-- ── Intern Learning Outcomes & Preferences (one per intern, editable) ──
+CREATE TABLE IF NOT EXISTS "LearningProfile" (
+  "id" TEXT PRIMARY KEY,
+  "internStaffId" TEXT NOT NULL,
+  "data" JSONB NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "LearningProfile_internStaffId_key" ON "LearningProfile"("internStaffId");
+
+-- ── Internship documents (supervisor uploads, department-scoped) ──
+CREATE TABLE IF NOT EXISTS "InternshipDocument" (
+  "id" TEXT PRIMARY KEY,
+  "department" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "description" TEXT,
+  "fileName" TEXT NOT NULL,
+  "filePath" TEXT NOT NULL,
+  "mimeType" TEXT,
+  "uploadedByAccountId" TEXT NOT NULL,
+  "uploadedByName" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "InternshipDocument_department_idx" ON "InternshipDocument"("department");
+CREATE INDEX IF NOT EXISTS "InternshipDocument_createdAt_idx" ON "InternshipDocument"("createdAt");
+
+-- Intern auto-disable: manual re-enable overrides the daily sweep
+ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "internAccessOverride" BOOLEAN NOT NULL DEFAULT false;
+
+-- Fallback staff photo (URL or data URI) for interns without an HR photo
+ALTER TABLE "Staff" ADD COLUMN IF NOT EXISTS "photoPath" TEXT;
