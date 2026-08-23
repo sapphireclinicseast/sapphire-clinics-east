@@ -12,8 +12,14 @@ export interface GlCaseWallet {
   id: string
   patientName: string
   branch?: string | null
-  /** What is still left on the letter's wallet in POS, after consumption. */
+  /**
+   * NOT the POS balance for GL: the AR endpoint overwrites this with the approved
+   * amount, because a GL receivable is approved-amount based. The real remaining
+   * balance has to be rebuilt from consumedOutstanding — see posBalanceOf().
+   */
   balance?: number | string | null
+  /** Approved minus the remaining POS balance, computed server-side. */
+  consumedOutstanding?: number
   totalGlAmount?: number | string | null
   paidTotal?: number
   lastPaymentDate?: string | null
@@ -127,11 +133,26 @@ interface Row {
  * fully discounted, leaves the letter untouched and should still say NO. An
  * untagged entry has no wallet to draw down, so it is always NO.
  */
+/**
+ * What POS still has on the letter. The AR endpoint replaces `balance` with the
+ * approved amount for GL wallets, so reading it directly reports the letter as
+ * untouched however much has been consumed — ARKEEN MIGUEL TAG-AT showed
+ * P49,280 left and "Rendered service? NO" while POS showed P10,840 remaining
+ * against P38,440 consumed. consumedOutstanding survives that substitution.
+ */
+function posBalanceOf(w: GlCaseWallet | null): number | null {
+  if (!w) return null
+  const approved = num(w.totalGlAmount)
+  // Per-session agencies have no approved amount to draw down; their `balance`
+  // is the outstanding figure the endpoint computed, and is already correct.
+  if (approved <= 0) return w.balance != null ? num(w.balance) : null
+  return approved - num(w.consumedOutstanding)
+}
+
 function drawnDown(w: GlCaseWallet | null): boolean {
   if (!w) return false
-  const approved = num(w.totalGlAmount)
-  if (approved <= 0) return false
-  return num(w.balance) < approved
+  if (num(w.totalGlAmount) <= 0) return false
+  return num(w.consumedOutstanding) > 0
 }
 
 function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
@@ -155,7 +176,7 @@ function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
     soaCommissionRate: pick(c?.soaCommissionRate, w?.soaCommissionRate),
     payoutBatch: pick(c?.payoutBatch, w?.payoutBatch),
     qbEntry: pick(c?.qbEntry, w?.qbEntry),
-    posBalance: w && w.balance != null ? num(w.balance) : null,
+    posBalance: posBalanceOf(w),
     rendered: drawnDown(w),
     paid: w ? num(w.paidTotal) > 0 : !!c?.paidAt,
     lastPaymentDate: w ? (w.lastPaymentDate ?? null) : (c?.paidAt ?? null),
@@ -732,7 +753,7 @@ function GlEntryModal({
             <option value="">— not tagged —</option>
             {options.map(w => (
               <option key={w.id} value={w.id} disabled={claimedByOther(w)}>
-                {w.patientName} · {branchLabel(w.branch) || 'no branch'} · {walletTag(w)} · {formatCurrency(num(w.balance))} left
+                {w.patientName} · {branchLabel(w.branch) || 'no branch'} · {walletTag(w)} · {formatCurrency(posBalanceOf(w) ?? 0)} left
                 {claimedByOther(w) ? ' — already tagged to another entry' : ''}
               </option>
             ))}
@@ -743,7 +764,7 @@ function GlEntryModal({
           </p>
           {tagged && (
             <p className="text-[11px] mt-2" style={{ color: 'var(--deep-teal)' }}>
-              Approved {formatCurrency(num(tagged.totalGlAmount))} · {formatCurrency(num(tagged.balance))} left ·
+              Approved {formatCurrency(num(tagged.totalGlAmount))} · {formatCurrency(posBalanceOf(tagged) ?? 0)} left ·
               {' '}{drawnDown(tagged) ? 'drawn down, so “Rendered service?” reads YES' : 'not drawn down yet, so “Rendered service?” reads NO'}
             </p>
           )}
@@ -888,7 +909,7 @@ function GlCaseModal({ wallet, cases, onClose, onSaved }: { wallet: GlCaseWallet
           {field('QB entry', 'qbEntry', 'text', 'e.g. AR25-0027')}
           <div className="sm:col-span-2 rounded-xl px-3 py-2 text-xs" style={{ background: '#f8fafc', border: '1px solid var(--light-gray)' }}>
             <span className="font-semibold" style={{ color: '#334155' }}>POS GL wallet — this row IS the wallet &quot;{wallet.patientName}&quot; ({walletTag(wallet)}), already linked. Live figures (not edited here): </span>
-            approved {formatCurrency(num(wallet.totalGlAmount))} · balance {wallet.balance != null ? formatCurrency(num(wallet.balance)) : '—'} · {num(wallet.paidTotal) > 0 ? `paid — last payment ${wallet.lastPaymentDate ? dayKey(wallet.lastPaymentDate) : '—'}` : 'unpaid'}
+            approved {formatCurrency(num(wallet.totalGlAmount))} · balance {posBalanceOf(wallet) != null ? formatCurrency(posBalanceOf(wallet) as number) : '—'} · {num(wallet.paidTotal) > 0 ? `paid — last payment ${wallet.lastPaymentDate ? dayKey(wallet.lastPaymentDate) : '—'}` : 'unpaid'}
           </div>
           <div>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Tagged recorded entry</label>
