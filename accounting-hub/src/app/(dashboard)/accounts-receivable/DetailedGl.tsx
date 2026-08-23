@@ -204,15 +204,21 @@ function buildRows(wallets: GlCaseWallet[], cases: GlCaseRow[]): Row[] {
  * Tints are deliberately pale — every cell still carries its own text colour,
  * and a saturated fill makes the greyed-out em-dashes unreadable.
  */
-type RowTone = 'paid' | 'soa' | null
+type RowTone = 'nowallet' | 'paid' | 'soa' | null
 function rowTone(r: Row): RowTone {
+  // Red outranks paid and SOA deliberately. Those describe how far the letter has
+  // travelled; this says the row is not wired to POS at all, so none of its live
+  // figures — balance, consumption, payments — can ever populate. It is the one
+  // state that needs someone to go and do something, so it wins the row.
+  if (r.caseId && !r.wallet) return 'nowallet'
   if (r.paid) return 'paid'
   if (r.soaSubmittedAt) return 'soa'
   return null
 }
-const TONE_BG: Record<'paid' | 'soa', string> = {
-  paid: '#f0fdf4',  // green-50
-  soa: '#fefce8',   // yellow-50
+const TONE_BG: Record<'nowallet' | 'paid' | 'soa', string> = {
+  nowallet: '#fef2f2',  // red-50
+  paid: '#f0fdf4',      // green-50
+  soa: '#fefce8',       // yellow-50
 }
 
 /** Whole days between SOA submission and payment — the sheet's "AR running days". */
@@ -274,7 +280,7 @@ function cellText(r: Row, k: ColKey): string {
   switch (k) {
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || '—'
-    case 'linked': return r.wallet ? r.wallet.patientName : 'not tagged'
+    case 'linked': return r.wallet ? r.wallet.patientName : 'needs GL wallet in POS'
     case 'docsDate': return fmtDate(r.glDocsSubmittedAt) || '—'
     case 'requested': return num(r.glRequestedAmount) ? formatCurrency(num(r.glRequestedAmount)) : '—'
     case 'released': return fmtDate(r.glReleasedAt) || '—'
@@ -301,7 +307,7 @@ function sortValue(r: Row, k: ColKey): string | number {
   switch (k) {
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || ''
-    case 'linked': return r.wallet ? 'tagged' : (r.caseId ? 'not tagged' : 'POS')
+    case 'linked': return r.wallet ? 'tagged' : (r.caseId ? 'needs GL wallet in POS' : 'POS')
     case 'docsDate': return dayKey(r.glDocsSubmittedAt) || '￿'
     case 'requested': return num(r.glRequestedAmount)
     case 'released': return dayKey(r.glReleasedAt) || '￿'
@@ -458,7 +464,7 @@ export default function DetailedGl({
                         ? <span className="inline-flex items-center gap-1 whitespace-nowrap" title={`POS GL wallet: ${r.wallet.patientName} · ${walletTag(r.wallet)}`} style={{ color: 'var(--teal)' }}>
                             <Link2 size={11} /> {r.wallet.patientName.length > 26 ? `${r.wallet.patientName.slice(0, 24)}…` : r.wallet.patientName}
                           </span>
-                        : <span style={{ color: '#c44b00' }}>not tagged</span>)
+                        : <span className="font-semibold" style={{ color: '#dc2626' }}>needs GL wallet in POS</span>)
                     : cellText(r, c.key)}
               </td>
             ))}
@@ -480,6 +486,9 @@ export default function DetailedGl({
   // excluded rather than counted as zero, which would drag the average down.
   // Months are derived from the same average (30.44 days, the mean calendar month)
   // rather than averaging the Per months column, so the two figures always agree.
+  // Entries with no POS wallet behind them: nothing can populate their live
+  // figures until someone creates the wallet, so they are counted for the badge.
+  const needsWallet = rows.filter(r => r.caseId && !r.wallet).length
   const arDaysValues = rows.map(arRunningDays).filter((d): d is number => d != null)
   const avgArDays = arDaysValues.length
     ? arDaysValues.reduce((a, b) => a + b, 0) / arDaysValues.length
@@ -548,7 +557,22 @@ export default function DetailedGl({
               style={{ background: TONE_BG.soa, borderColor: 'var(--light-gray)' }} />
             SOA submitted
           </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm border"
+              style={{ background: TONE_BG.nowallet, borderColor: 'var(--light-gray)' }} />
+            Needs a GL wallet in POS
+          </span>
         </span>
+        {/* A count, not just a colour: these are the rows someone has to act on,
+            and they are easy to miss scattered through a long sheet. */}
+        {needsWallet > 0 && (
+          <button
+            onClick={() => setFilters(f => ({ ...f, linked: f.linked ? '' : 'needs' }))}
+            className="text-xs font-semibold px-2.5 py-1.5 rounded-lg"
+            style={{ background: filters.linked ? '#dc2626' : '#fef2f2', color: filters.linked ? 'white' : '#dc2626' }}>
+            {needsWallet} need a GL wallet
+          </button>
+        )}
         {activeFilters > 0 && (
           <button onClick={() => setFilters({})}
             className="text-xs font-semibold px-2.5 py-1.5 rounded-lg"
