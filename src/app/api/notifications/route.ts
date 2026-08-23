@@ -22,7 +22,7 @@ const BRANCH_ENUM_TO_SHORT: Record<string, string> = {
 const FORM_TYPES = [
   { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE' },
   { key: 'group-therapy', title: 'Group Therapy Registration', sbea: 'ChrSrsBF', sbgh: 'tT8QASYo' },
-  { key: 'sip',           title: 'ALAGA Program Registration', sbea: 'SGWVxqcW', sbgh: 'i8rFr7P6' },
+  { key: 'sip',           title: 'ALAGA Program Registration', sbea: 'SGWVxqcW', sbgh: null }, // Greenhills disabled — no ALAGA interns there yet
   { key: 'psych',         title: 'Psych Registration Form',    sbea: 'X2YDKTaH', sbgh: null },
 ] as const
 
@@ -86,6 +86,13 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const role = (session.user as { role?: string })?.role ?? ''
+
+  // This feed is real patient names ("ELISH DENISE CONCINA — new patient
+  // registration") — investor accounts are read-only and must never see
+  // patient identities, so block server-side too, not just hide the bell
+  // in TopBar.tsx (the API had no role check at all before this).
+  if (role === 'INVESTOR') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
   const bookingBranches = bookingBranchesForRole(role)
 
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000)

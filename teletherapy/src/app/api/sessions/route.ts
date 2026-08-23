@@ -38,8 +38,17 @@ export async function GET(req: NextRequest) {
   // consultants never send it, so their behaviour is unchanged.)
   const requestedBranch = (searchParams.get('patientBranch') ?? '').trim()
   const branchWhere = requestedBranch
-    ? scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
+    ? await scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
     : {}
+
+  // Non-admin users see sessions where they're the supervising therapist OR
+  // the assigned intern (for the selected branch). Both this and branchWhere
+  // can independently be an OR clause — compose them under AND rather than
+  // spreading them into one object, or one `OR` key would silently clobber
+  // the other.
+  const staffWhere = isAdmin
+    ? {}
+    : { OR: [{ staffId: effectiveStaffId }, { internStaffId: effectiveStaffId }] }
 
   const schedules = await prisma.schedule.findMany({
     where: {
@@ -48,9 +57,7 @@ export async function GET(req: NextRequest) {
         lte: endOfDay,
       },
       status: 'CONFIRMED',
-      // Non-admin users only see their own sessions (for the selected branch)
-      ...(isAdmin ? {} : { staffId: effectiveStaffId }),
-      ...branchWhere,
+      AND: [staffWhere, branchWhere],
     },
     include: {
       patient: {
@@ -66,6 +73,13 @@ export async function GET(req: NextRequest) {
           firstName: true,
           lastName: true,
           department: true,
+        },
+      },
+      internStaff: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
         },
       },
       sessionNote: {

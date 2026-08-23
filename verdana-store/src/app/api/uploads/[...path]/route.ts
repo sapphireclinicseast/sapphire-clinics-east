@@ -10,7 +10,19 @@ const MIME_TYPES: Record<string, string> = {
   webp: 'image/webp',
   gif: 'image/gif',
   svg: 'image/svg+xml',
+  pdf: 'application/pdf',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  woff2: 'font/woff2',
+  woff: 'font/woff',
+  otf: 'font/otf',
+  ttf: 'font/ttf',
 }
+
+// Fonts (and any asset) loaded cross-origin — e.g. web fonts referenced from
+// marketing emails — need CORS, or WebKit-based mail clients block them.
+const CORS = { 'Access-Control-Allow-Origin': '*' }
 
 export async function GET(
   _request: Request,
@@ -20,7 +32,7 @@ export async function GET(
   const filePath = join(process.cwd(), 'public', 'uploads', ...path)
 
   if (!existsSync(filePath)) {
-    return new NextResponse('Not found', { status: 404 })
+    return new NextResponse('Not found', { status: 404, headers: CORS })
   }
 
   const buffer = await readFile(filePath)
@@ -31,6 +43,13 @@ export async function GET(
     headers: {
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=31536000, immutable',
+      ...CORS,
     },
+  })
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    headers: { ...CORS, 'Access-Control-Allow-Methods': 'GET, OPTIONS' },
   })
 }

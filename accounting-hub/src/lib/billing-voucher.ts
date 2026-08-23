@@ -17,6 +17,26 @@ export interface BillingVoucherOpts {
 
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Payment details used to compose the standard memo. Missing pieces are simply
+// omitted (e.g. an unpaid RFP has no mode/reference yet).
+export interface RfpMemoParts {
+  payee?: string | null        // who was paid
+  purpose?: string | null      // general purpose of the payment
+  bankAccount?: string | null  // branch bank account no. the payment was made from
+  paymentMode?: string | null  // e.g. Check deposit / Online transfer / Cash
+  reference?: string | null    // TT reference number / cheque no.
+}
+
+// Standard memo for EVERY RFP Billing Voucher (Expenses, Petty Cash, Taxes, Refunds):
+//   Paid to <PAYEE> due to <purpose> credited to <branch bank account no> ; <payment mode> ; <TT ref / cheque no>
+export function rfpMemo(p: RfpMemoParts): string {
+  let s = `Paid to ${(p.payee || '').trim() || '—'} due to ${(p.purpose || '').trim() || '—'}`
+  if ((p.bankAccount || '').trim()) s += ` credited to ${p.bankAccount!.trim()}`
+  if ((p.paymentMode || '').trim()) s += ` ; ${p.paymentMode!.trim()}`
+  if ((p.reference || '').trim()) s += ` ; ${p.reference!.trim()}`
+  return s
+}
+
 // Branch header (name / address / phone / email). Address + phone are the SCEI
 // principal office; per-branch email per finance. Keyed by any branch alias.
 interface Header { name: string; lines: string[]; email: string }

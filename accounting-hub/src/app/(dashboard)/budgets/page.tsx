@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { Target, Lock, Unlock, Save, Loader2, LineChart } from 'lucide-react'
+import { PPE_CLASSIFICATION_LABELS, NON_DEPRECIATING_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 import { formatCurrency } from '@/lib/utils'
 
-type LineType = 'REVENUE' | 'COGS' | 'EXPENSE'
+type LineType = 'REVENUE' | 'COGS' | 'EXPENSE' | 'CAPEX'
 interface Line { key: string; label: string; type: LineType }
 interface Acct { accountNumber: string; accountTitle: string }
 interface MonthData { cogs?: number; revenueByAccount?: Record<string, number>; expenseByAccount?: Record<string, number> }
@@ -50,6 +51,14 @@ export default function BudgetsPage() {
     try { const r = await fetch(`/api/reports?${params}`); setReport(r.ok ? await r.json() : null) } catch { setReport(null) }
   }, [year, branch])
 
+  const [capexActual, setCapexActual] = useState<Record<number, Record<string, number>>>({})
+  const loadCapexActual = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/budgets/capex-actual?year=${year}&branch=${branch}`)
+      setCapexActual(r.ok ? (await r.json()).capexByMonth || {} : {})
+    } catch { setCapexActual({}) }
+  }, [year, branch])
+
   const loadBudget = useCallback(async () => {
     try {
       const r = await fetch(`/api/budgets?year=${year}&branch=${branch}`)
@@ -58,7 +67,7 @@ export default function BudgetsPage() {
     } catch { setBudgetsByMonth({}); setLockedMonths([]) }
   }, [year, branch])
 
-  useEffect(() => { setLoading(true); Promise.all([loadReport(), loadBudget()]).finally(() => setLoading(false)) }, [loadReport, loadBudget])
+  useEffect(() => { setLoading(true); Promise.all([loadReport(), loadBudget(), loadCapexActual()]).finally(() => setLoading(false)) }, [loadReport, loadBudget, loadCapexActual])
   useEffect(() => {
     const seed: Record<string, string> = {}
     for (const [m, map] of Object.entries(budgetsByMonth)) for (const [k, v] of Object.entries(map)) seed[`${m}:${k}`] = String(v)
@@ -67,15 +76,19 @@ export default function BudgetsPage() {
   // Keep the vs-actual month pointed at a locked month.
   useEffect(() => { if (lockedMonths.length && !lockedSet.has(vsMonth)) setVsMonth(lockedMonths[0]) }, [lockedMonths]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { revLines, cogsLine, expLines } = useMemo(() => {
+  const { revLines, cogsLine, expLines, capexLines } = useMemo(() => {
     const revAccts = Object.values(report?.accounts?.REVENUE || {}).flat()
     const expAccts = Object.values(report?.accounts?.EXPENSE || {}).flat()
     const revLines: Line[] = revAccts.map(a => { const key = `${a.accountNumber} ${a.accountTitle}`; return { key, label: key, type: 'REVENUE' as LineType } })
     const expLines: Line[] = expAccts.map(a => { const key = `${a.accountNumber} ${a.accountTitle}`; return { key, label: key, type: 'EXPENSE' as LineType } })
     const cogsLine: Line = { key: 'COGS — Cost of Sales', label: 'Cost of Sales (COGS)', type: 'COGS' }
-    return { revLines, cogsLine, expLines }
+    // Capital expenditure: budgeted per asset classification, so Budget vs Actual can be
+    // compared against what Asset Management actually recorded as purchased.
+    const capexLines: Line[] = Object.entries({ ...PPE_CLASSIFICATION_LABELS, ...NON_DEPRECIATING_CLASSIFICATION_LABELS })
+      .map(([code, label]) => ({ key: `${code} ${label}`, label: `${code} ${label}`, type: 'CAPEX' as LineType }))
+    return { revLines, cogsLine, expLines, capexLines }
   }, [report])
-  const allLines = useMemo(() => [...revLines, cogsLine, ...expLines], [revLines, cogsLine, expLines])
+  const allLines = useMemo(() => [...revLines, cogsLine, ...expLines, ...capexLines], [revLines, cogsLine, expLines, capexLines])
 
   const bOf = (m: number, key: string) => parseFloat(inputs[`${m}:${key}`] || '0') || 0
   const yearTotal = (key: string) => MS.reduce((s, m) => s + bOf(m, key), 0)
@@ -146,14 +159,17 @@ export default function BudgetsPage() {
     const rev = m.revenueByAccount || {}, exp = m.expenseByAccount || {}
     const bud = budgetsByMonth[vsMonth] || {}
     const row = (l: Line) => {
-      const actual = l.type === 'REVENUE' ? (rev[l.key] || 0) : l.type === 'COGS' ? (m.cogs || 0) : (exp[l.key] || 0)
+      const actual = l.type === 'REVENUE' ? (rev[l.key] || 0)
+        : l.type === 'COGS' ? (m.cogs || 0)
+        : l.type === 'CAPEX' ? ((capexActual[vsMonth] || {})[l.key.split(' ')[0]] || 0)
+        : (exp[l.key] || 0)
       const budget = bud[l.key] || 0
       const variance = actual - budget
       const favorable = l.type === 'REVENUE' ? actual >= budget : actual <= budget
       return { l, actual, budget, variance, favorable }
     }
-    return { rev: revLines.map(row), cogs: row(cogsLine), exp: expLines.map(row) }
-  }, [report, vsMonth, budgetsByMonth, revLines, cogsLine, expLines])
+    return { rev: revLines.map(row), cogs: row(cogsLine), exp: expLines.map(row), capex: capexLines.map(row) }
+  }, [report, vsMonth, budgetsByMonth, revLines, cogsLine, expLines, capexLines, capexActual])
 
   const VsTable = () => {
     const rows = [...vs.rev, vs.cogs, ...vs.exp]
@@ -187,6 +203,7 @@ export default function BudgetsPage() {
             </tr>
             <Sec title="Cost of Sales" rs={[vs.cogs]} />
             <Sec title="Operating Expenses" rs={vs.exp} />
+            <Sec title="Capital Expenditure (Asset Purchases)" rs={vs.capex} />
             <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)', background: '#f5f8f8' }}>
               <td className="px-4 py-2 text-sm">Total Cost &amp; Expenses</td><td className="px-4 py-2 text-right text-sm font-mono">{peso(tce.b)}</td><td className="px-4 py-2 text-right text-sm font-mono">{peso(tce.a)}</td>
               <td className="px-4 py-2 text-right text-sm font-mono"><VCell v={tce.a - tce.b} ok={tce.a <= tce.b} /></td>
@@ -265,6 +282,12 @@ export default function BudgetsPage() {
                 {expLines.map(l => <LineRow key={l.key} l={l} />)}
                 <TotalRow label="Total Cost & Expenses" lines={[cogsLine, ...expLines]} />
                 <TotalRow label="NET INCOME" lines={[]} net />
+                {/* Capital expenditure — asset purchases, budgeted per classification.
+                    Sits below net income because capex is a balance-sheet outlay, not an
+                    expense; it never feeds the income-statement totals above. */}
+                <SectionHeader title="Capital Expenditure (Asset Purchases)" />
+                {capexLines.map(l => <LineRow key={l.key} l={l} />)}
+                <TotalRow label="Total Asset Purchases" lines={capexLines} />
               </tbody>
             </table>
           </div>

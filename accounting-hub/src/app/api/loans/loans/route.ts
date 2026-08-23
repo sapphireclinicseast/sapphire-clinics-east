@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { postJournalEntry } from '@/lib/accounting/posting'
 import { fromAnnualPct, fromMonthlyAmort } from '@/lib/amortization'
 
@@ -46,6 +47,25 @@ async function releaseJE(tx: unknown, l: { id: string; name: string; principalAm
     ],
   })
   return je.id
+}
+
+// Branch allocation: which branch(es) the loan funds. The interest expense follows
+// this split on the branch income statements. One branch → the full principal;
+// several branches → the entered amounts must add up to the principal.
+const ALLOC_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function allocationRows(b: any, principal: number): { rows: { branch: string; amount: number }[] | null; error?: string } {
+  const raw = Array.isArray(b.branchAllocations) ? b.branchAllocations : []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows = raw.filter((a: any) => a && ALLOC_BRANCHES.includes(a.branch)).map((a: any) => ({ branch: String(a.branch), amount: Math.round(num(a.amount) * 100) / 100 }))
+  if (!rows.length) return { rows: null }
+  const seen = new Set<string>()
+  for (const r of rows) { if (seen.has(r.branch)) return { rows: null, error: 'Each branch can only appear once in the allocation.' }; seen.add(r.branch) }
+  if (rows.length === 1) return { rows: [{ branch: rows[0].branch, amount: principal }] }
+  if (rows.some((r: { amount: number }) => !(r.amount > 0))) return { rows: null, error: 'Enter an amount for every allocated branch.' }
+  const sum = rows.reduce((s: number, r: { amount: number }) => s + r.amount, 0)
+  if (Math.abs(sum - principal) > 0.01) return { rows: null, error: `Branch allocations (₱${sum.toLocaleString()}) must add up to the principal (₱${principal.toLocaleString()}).` }
+  return { rows }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,7 +136,7 @@ export async function GET() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function loanData(b: any, principal: number, interest: ReturnType<typeof computeInterest>, netDebit: number) {
+function loanData(b: any, principal: number, interest: ReturnType<typeof computeInterest>, netDebit: number, allocations: { branch: string; amount: number }[] | null) {
   return {
     loanEntity: b.loanEntity || 'BANK', shareholderId: b.loanEntity === 'SHAREHOLDER' ? (b.shareholderId || null) : null,
     entityName: b.loanEntity === 'SHAREHOLDER' ? null : (b.entityName?.trim() || null),
@@ -138,6 +158,7 @@ function loanData(b: any, principal: number, interest: ReturnType<typeof compute
     loanAgreementUrls: Array.isArray(b.loanAgreementUrls) ? b.loanAgreementUrls : undefined,
     pdcUrls: Array.isArray(b.pdcUrls) ? b.pdcUrls : undefined, netAmountToDebit: netDebit, remarks: b.remarks?.trim() || null,
     fromCreditLineId: b.fromCreditLineId || null,
+    branchAllocations: allocations ?? Prisma.JsonNull,
   }
 }
 
@@ -150,11 +171,13 @@ export async function POST(req: Request) {
     const principal = num(b.principalAmount)
     if (!b.name?.trim() || !(principal > 0) || !b.dateAcquired) return NextResponse.json({ error: 'Name, principal amount and date are required' }, { status: 400 })
     const interest = computeInterest({ ...b, principalAmount: principal })
+    const alloc = allocationRows(b, principal)
+    if (alloc.error) return NextResponse.json({ error: alloc.error }, { status: 400 })
     const charges = chargeRows(b)
     const deducted = charges.filter(c => c.deductedFromDebit).reduce((s, c) => s + c.amount, 0)
     const netDebit = Math.round((principal - deducted) * 100) / 100
     const created = await prisma.$transaction(async (tx) => {
-      const l = await tx.loan.create({ data: { ...loanData(b, principal, interest, netDebit), createdById: userId } })
+      const l = await tx.loan.create({ data: { ...loanData(b, principal, interest, netDebit, alloc.rows), createdById: userId } })
       for (const c of charges) {
         const entryId = await createChargeEntry(tx, c, { name: l.name, dateAcquired: l.dateAcquired, bankAccountId: l.bankAccountId }, userId)
         await tx.loanCharge.create({ data: { ...c, proofUrls: c.proofUrls, loanId: l.id, pettyCashEntryId: entryId } })
@@ -179,6 +202,8 @@ export async function PUT(req: Request) {
     if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
     const principal = num(b.principalAmount)
     const interest = computeInterest({ ...b, principalAmount: principal })
+    const alloc = allocationRows(b, principal)
+    if (alloc.error) return NextResponse.json({ error: alloc.error }, { status: 400 })
     const charges = chargeRows(b)
     const deducted = charges.filter(c => c.deductedFromDebit).reduce((s, c) => s + c.amount, 0)
     const netDebit = Math.round((principal - deducted) * 100) / 100
@@ -189,7 +214,7 @@ export async function PUT(req: Request) {
       const oldEntryIds = oldCharges.map((c: { pettyCashEntryId: string | null }) => c.pettyCashEntryId).filter((x: string | null): x is string => !!x)
       if (oldEntryIds.length) await tx.pettyCashEntry.deleteMany({ where: { id: { in: oldEntryIds } } })
       await tx.loanCharge.deleteMany({ where: { loanId: b.id } })
-      const upd = await tx.loan.update({ where: { id: b.id }, data: loanData(b, principal, interest, netDebit) })
+      const upd = await tx.loan.update({ where: { id: b.id }, data: loanData(b, principal, interest, netDebit, alloc.rows) })
       for (const c of charges) {
         const entryId = await createChargeEntry(tx, c, { name: upd.name, dateAcquired: upd.dateAcquired, bankAccountId: upd.bankAccountId }, userId)
         await tx.loanCharge.create({ data: { ...c, proofUrls: c.proofUrls, loanId: b.id, pettyCashEntryId: entryId } })

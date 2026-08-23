@@ -40,7 +40,38 @@ export async function GET(req: Request) {
     orderBy: { employee: { lastName: 'asc' } },
   })
 
-  return NextResponse.json(adjustments)
+  /* Staff loan suggestions: an ACTIVE loan with a standing per-cutoff amount
+     surfaces here as a prefilled deduction row, so preparing payroll starts
+     from what the loan register says is owed. Rows the user already saved for
+     the same loan are left alone; a suggestion only fills the gap. Suggested
+     rows carry `suggested: true` and no id — they become real adjustments only
+     when the user saves them. */
+  const covered = new Set(adjustments.filter(a => (a as { staffLoanId?: string | null }).staffLoanId).map(a => (a as { staffLoanId?: string | null }).staffLoanId))
+  const loans = await prisma.staffLoan.findMany({
+    where: { status: 'ACTIVE', perCutoff: { gt: 0 }, branch, employeeId: { not: null } },
+    include: {
+      employee: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      deductions: { select: { amount: true } },
+    },
+  })
+  const suggestions = loans
+    .filter(l => !covered.has(l.id) && l.employee)
+    .map(l => {
+      const repaid = l.deductions.reduce((s2, d2) => s2 + Number(d2.amount), 0)
+      const remaining = Math.max(0, Number(l.principal) - repaid)
+      const deduction = Math.min(Number(l.perCutoff), remaining)
+      return deduction > 0 ? {
+        id: null, suggested: true, staffLoanId: l.id,
+        employeeId: l.employeeId, employee: l.employee,
+        cutoffPeriod, branch,
+        allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: null,
+        deduction, deductionType: 'NON_TAXABLE',
+        deductionLabel: `Staff Loan — ${l.category.replace(/_/g, ' ').toLowerCase()} (bal ${remaining.toLocaleString('en-PH', { minimumFractionDigits: 2 })})`,
+      } : null
+    })
+    .filter(Boolean)
+
+  return NextResponse.json([...adjustments, ...suggestions])
 }
 
 // POST: Save/update adjustments (bulk upsert)
@@ -63,8 +94,9 @@ export async function POST(req: Request) {
       .filter((adj: { employeeId?: string; allowance?: number; deduction?: number }) =>
         adj.employeeId && ((adj.allowance && Number(adj.allowance) > 0) || (adj.deduction && Number(adj.deduction) > 0))
       )
-      .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionType?: string; deductionLabel?: string }) => ({
+      .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionType?: string; deductionLabel?: string; staffLoanId?: string }) => ({
         employeeId: adj.employeeId,
+        staffLoanId: adj.staffLoanId || null,
         cutoffPeriod,
         branch,
         allowance: Number(adj.allowance) || 0,
@@ -75,7 +107,45 @@ export async function POST(req: Request) {
         deductionLabel: adj.deductionLabel || null,
       }))
 
-    type AdjRow = { employeeId: string; cutoffPeriod: string; branch: string; allowance: number; allowanceType: string; allowanceLabel: string | null; deduction: number; deductionType: string; deductionLabel: string | null }
+    // Heal orphaned loan rows: a row that reads "Staff Loan — <category>" but lost
+    // its staffLoanId (e.g. copied by the old Pre-fill, which dropped the link) is
+    // re-linked to the employee's matching ACTIVE loan. Unlinked, it would neither
+    // suppress the auto-suggestion (→ duplicate rows) nor credit the loan at
+    // finalize — the employee would just be docked with nothing recorded against
+    // the loan. Re-linking also puts it under the duplicate guard below.
+    const orphans = toCreate.filter((r: { staffLoanId?: string | null; deduction: number; deductionLabel: string | null }) =>
+      !r.staffLoanId && r.deduction > 0 && (r.deductionLabel || '').startsWith('Staff Loan — '))
+    if (orphans.length > 0) {
+      const empIds = [...new Set(orphans.map((r: { employeeId: string }) => r.employeeId))]
+      const activeLoans = await prisma.staffLoan.findMany({
+        where: { status: 'ACTIVE', branch, employeeId: { in: empIds } },
+        select: { id: true, employeeId: true, category: true },
+      })
+      for (const r of orphans) {
+        const label = (r.deductionLabel || '').toLowerCase()
+        const matches = activeLoans.filter(l => l.employeeId === r.employeeId &&
+          label.startsWith(`staff loan — ${l.category.replace(/_/g, ' ').toLowerCase()}`))
+        if (matches.length === 1) r.staffLoanId = matches[0].id
+      }
+    }
+
+    // One cutoff can only ever deduct a given loan once. Two rows pointing at the
+    // same loan would quietly take the money twice, so refuse rather than guess
+    // which was intended.
+    const loanSeen = new Map<string, number>()
+    for (const r of toCreate as { employeeId: string; staffLoanId?: string | null }[]) {
+      if (!r.staffLoanId) continue
+      const key = `${r.employeeId}:${r.staffLoanId}`
+      loanSeen.set(key, (loanSeen.get(key) || 0) + 1)
+    }
+    const duplicated = [...loanSeen.entries()].filter(([, n]) => n > 1)
+    if (duplicated.length > 0) {
+      return NextResponse.json({
+        error: `The same staff loan is deducted more than once in this cutoff (${duplicated.length} case(s)). Use the loan picker to set a single amount per loan.`,
+      }, { status: 409 })
+    }
+
+    type AdjRow = { employeeId: string; cutoffPeriod: string; branch: string; allowance: number; allowanceType: string; allowanceLabel: string | null; deduction: number; deductionType: string; deductionLabel: string | null; staffLoanId?: string | null }
 
     // Helper: merge multiple rows per employee into one (sums amounts, concatenates labels).
     // Used as fallback while the DB still has the legacy unique constraint on

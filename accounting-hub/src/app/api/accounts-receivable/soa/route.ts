@@ -3,7 +3,9 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
-const READ_ROLES = WRITE_ROLES
+// Front desk view and download SOAs but never generate or delete them, so read
+// is a superset of write here rather than the same list.
+const READ_ROLES = [...WRITE_ROLES, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 /** GET /api/accounts-receivable/soa
  *  - No ?id     → list (no pdfData)

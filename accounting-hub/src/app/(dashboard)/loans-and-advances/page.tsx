@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { Landmark, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
+import StaffLoansTab from './StaffLoansTab'
 
 const ALLOWED = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -21,11 +22,12 @@ interface AdvanceRow {
   proofOfDepositUrls: string[] | null; bankAccountId: string | null; creditAccountId: string | null; interestExpenseAccountId: string | null
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null; principalPerPeriod: number | null; paymentBankAccountId: string | null
   pdcUrls: string[] | null; remarks: string | null
+  branchAllocations: BranchAlloc[] | null
 }
 
 export default function LoansAndAdvancesPage() {
   const { data: session, status } = useSession()
-  const [tab, setTab] = useState<'advances' | 'loans' | 'creditline' | 'history'>('advances')
+  const [tab, setTab] = useState<'advances' | 'loans' | 'creditline' | 'staff' | 'history'>('advances')
   const advTableRef = useRef<HTMLTableElement>(null)
   const advRz = useResizableColumns('loans-advances-list', advTableRef)
   const [rows, setRows] = useState<AdvanceRow[]>([])
@@ -63,7 +65,7 @@ export default function LoansAndAdvancesPage() {
       <NearDuePaymentsPopup onGoToHistory={() => setTab('history')} />
 
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['history', 'Payment History']] as const).map(([v, label]) => (
+        {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['staff', 'Staff Loans & Perks'], ['history', 'Payment History']] as const).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
             style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
@@ -76,10 +78,10 @@ export default function LoansAndAdvancesPage() {
             <table ref={advTableRef} className="w-full text-xs" style={advRz.tableStyle}>
               <ResizableColgroup rz={advRz} />
               <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
+                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Branch', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={10} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                {loading ? <tr><td colSpan={11} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 : rows.map(r => {
                   const sh = shareholders.find(s => s.id === r.shareholderId)
                   return (
@@ -89,6 +91,9 @@ export default function LoansAndAdvancesPage() {
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                       <td className="px-3 py-2">{r.advanceType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
                       <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{(r.branchAllocations || []).length
+                        ? (r.branchAllocations || []).map(a => (r.branchAllocations || []).length === 1 ? allocLabel(a.branch) : `${allocLabel(a.branch)} ${peso(a.amount)}`).join(' · ')
+                        : 'Company-wide'}</td>
                       <td className="px-3 py-2 text-right">{r.hasInterest ? `${(r.computedAnnualPct || 0).toFixed(2)}% · ${peso(r.totalInterest || 0)}` : '—'}</td>
                       <td className="px-3 py-2">{r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{acctLabel(r.bankAccountId)}</td>
@@ -109,6 +114,7 @@ export default function LoansAndAdvancesPage() {
 
       {tab === 'loans' && <LoansTab shareholders={shareholders} banks={banks} accts={accts} />}
       {tab === 'creditline' && <CreditLineTab shareholders={shareholders} banks={banks} accts={accts} />}
+      {tab === 'staff' && <StaffLoansTab />}
       {tab === 'history' && <PaymentHistoryTab banks={banks} accts={accts} />}
 
       {(showAdd || edit) && <AdvanceModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
@@ -161,20 +167,29 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
   const [pdcUrls, setPdcUrls] = useState<string[]>(row?.pdcUrls || [])
   const [busy, setBusy] = useState(false)
+  // Branch allocation: ticked branches → entered amount (a single tick takes the whole principal)
+  const [allocs, setAllocs] = useState<Record<string, string>>(() => Object.fromEntries((row?.branchAllocations || []).map(a => [a.branch, String(a.amount)])))
+  const toggleAlloc = (code: string) => setAllocs(p => { const q = { ...p }; if (code in q) delete q[code]; else q[code] = ''; return q })
   const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
   const n = (v: string) => Number(v) || 0
   const prefix = (f.name || 'ADVANCE').replace(/\s+/g, '_')
   const prev = f.hasInterest ? amortPreview(n(f.principalAmount), f.interestMode, n(f.annualPct), n(f.monthlyAmortization), n(f.termMonths), stepMonths(f.payoutSchedule)) : null
 
   const pickSh = (id: string) => { const sh = shareholders.find(s => s.id === id); setF(p => ({ ...p, shareholderId: id, name: sh ? sh.name : p.name })) }
+  const allocBranches = Object.keys(allocs)
+  const allocSum = allocBranches.reduce((sm, b2) => sm + n(allocs[b2]), 0)
+  const allocBalanced = allocBranches.length <= 1 || Math.abs(allocSum - n(f.principalAmount)) <= 0.01
+
   const save = async () => {
     if (!f.name.trim() || !(n(f.principalAmount) > 0)) { alert('Enter name and principal amount.'); return }
+    if (allocBranches.length > 1 && !allocBalanced) { alert('The branch allocation amounts must add up to the principal.'); return }
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, principalAmount: n(f.principalAmount),
         annualPct: f.annualPct ? n(f.annualPct) : null, termMonths: f.termMonths ? Number(f.termMonths) * stepMonths(f.payoutSchedule) : null, monthlyAmortization: f.monthlyAmortization ? n(f.monthlyAmortization) : null,
         payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null,
-        proofOfDepositUrls: proofUrls, pdcUrls }
+        proofOfDepositUrls: proofUrls, pdcUrls,
+        branchAllocations: allocBranches.map(b2 => ({ branch: b2, amount: allocBranches.length === 1 ? n(f.principalAmount) : n(allocs[b2]) })) }
       const r = await fetch('/api/loans/advances', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
@@ -258,6 +273,33 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
             <div className="flex flex-wrap items-center gap-2">{pdcUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="advance" prefix={`${prefix}-PDC`} existingCount={pdcUrls.length} label="Add" onUploaded={u => setPdcUrls(p => [...p, u])} /></div>
           </div>
         </div>
+        {/* Branch allocation — where the interest expense is booked */}
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-sm font-semibold text-gray-700">For which branch? <span className="font-normal text-gray-400">(the interest expense follows this on the branch income statements)</span></p>
+          <div className="flex flex-wrap gap-4 mt-2">
+            {ALLOC_BRANCHES.map(([code, label]) => (
+              <label key={code} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={code in allocs} onChange={() => toggleAlloc(code)} /> {label}
+              </label>
+            ))}
+          </div>
+          {allocBranches.length === 0 && <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>None ticked — the advance stays company-wide (interest shows only in the All Branches view).</p>}
+          {allocBranches.length === 1 && <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>Whole advance on <strong>{allocLabel(allocBranches[0])}</strong> — its payments and interest are booked on that branch.</p>}
+          {allocBranches.length > 1 && (
+            <div className="mt-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {allocBranches.map(code => (
+                  <div key={code}><label className="block text-[10px] font-semibold" style={{ color: 'var(--mid-gray)' }}>{allocLabel(code)} amount</label>
+                    <input value={allocs[code]} onChange={e => setAllocs(pr => ({ ...pr, [code]: e.target.value }))} inputMode="decimal" placeholder="0.00" className="w-full px-2 py-1.5 rounded-lg border text-xs font-mono" style={bc} />
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] mt-2 font-mono" style={{ color: allocBalanced ? '#334155' : '#b91c1c' }}>
+                Allocated {peso(allocSum)} of {peso(n(f.principalAmount))}{allocBalanced ? ' \u2713' : ` — ${allocSum > n(f.principalAmount) ? 'over' : 'short'} by ${peso(Math.abs(n(f.principalAmount) - allocSum))}`}
+              </p>
+            </div>
+          )}
+        </div>
         <div className="mt-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Remarks</label><input value={f.remarks} onChange={e => set('remarks', e.target.value)} className={inp} style={bc} /></div>
 
         <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add advance'}</button>
@@ -267,6 +309,16 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
 }
 
 // ── Loans ─────────────────────────────────────────────────────
+// Branch allocation: which branch(es) a loan funds — drives where the interest
+// expense lands on the branch income statements.
+const ALLOC_BRANCHES: [code: string, label: string][] = [
+  ['SANDBOX_EAST', 'East'],
+  ['SANDBOX_GREENHILLS', 'Greenhills'],
+  ['VERDANA_STORE', 'Verdana'],
+  ['AURA_INSTITUTE', 'Institute'],
+]
+const allocLabel = (code: string) => ALLOC_BRANCHES.find(([c]) => c === code)?.[1] || code
+interface BranchAlloc { branch: string; amount: number }
 interface LoanCharge { id?: string; date: string; description: string; registeredName: string; vatable: string; amount: string; siNumber: string; chargeAccountId: string; deductedFromDebit: boolean; proofUrls: string[] }
 interface LoanRow {
   id: string; loanEntity: string; shareholderId: string | null; entityName: string | null; name: string; dateAcquired: string; loanType: string; kindType: string | null
@@ -275,6 +327,7 @@ interface LoanRow {
   proofOfDepositUrls: string[] | null; bankAccountId: string | null; creditAccountId: string | null; interestExpenseAccountId: string | null
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null; principalPerPeriod: number | null; paymentBankAccountId: string | null
   loanAgreementUrls: string[] | null; pdcUrls: string[] | null; netAmountToDebit: number | null; remarks: string | null; fromCreditLineId: string | null
+  branchAllocations: BranchAlloc[] | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   charges: any[]
 }
@@ -294,15 +347,18 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
       <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Loan</button></div>
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-          {['Entity', 'Name', 'Date', 'Type', 'Principal', 'Interest / Coupon', 'Net Debit', 'Schedule', 'Bank', 'Agreement', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+          {['Entity', 'Name', 'Date', 'Type', 'Branches', 'Principal', 'Interest / Coupon', 'Net Debit', 'Schedule', 'Bank', 'Agreement', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
         </tr></thead><tbody>
-          {loading ? <tr><td colSpan={11} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          {loading ? <tr><td colSpan={12} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           : rows.map(r => (
             <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
               <td className="px-3 py-2">{entityLabel(r)}</td>
               <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
               <td className="px-3 py-2">{r.loanType === 'CORPORATE_BOND' ? 'Corp. Bond' : r.loanType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
+              <td className="px-3 py-2 whitespace-nowrap">{(r.branchAllocations || []).length
+                ? (r.branchAllocations || []).map(a => (r.branchAllocations || []).length === 1 ? allocLabel(a.branch) : `${allocLabel(a.branch)} ${peso(a.amount)}`).join(' · ')
+                : <span style={{ color: 'var(--mid-gray)' }}>Company-wide</span>}</td>
               <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
               <td className="px-3 py-2 text-right">{r.loanType === 'CORPORATE_BOND' ? (r.annualPct != null ? `${r.annualPct}% coupon` : '—') : r.hasInterest ? `${(r.computedAnnualPct || 0).toFixed(2)}% · ${peso(r.totalInterest || 0)}` : '—'}</td>
               <td className="px-3 py-2 text-right">{r.netAmountToDebit != null ? peso(r.netAmountToDebit) : peso(r.principalAmount)}</td>
@@ -312,7 +368,7 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
               <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
             </tr>
           ))}
-          {!loading && rows.length === 0 && <tr><td colSpan={11} className="text-center py-10 text-gray-400">No loans yet.</td></tr>}
+          {!loading && rows.length === 0 && <tr><td colSpan={12} className="text-center py-10 text-gray-400">No loans yet.</td></tr>}
         </tbody></table>
       </div>
       {(showAdd || edit) && <LoanModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
@@ -336,6 +392,8 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
   const [pdcUrls, setPdcUrls] = useState<string[]>(row?.pdcUrls || [])
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.loanAgreementUrls || [])
+  // Branch allocation: ticked branches → entered amount (single tick = full principal automatically)
+  const [allocs, setAllocs] = useState<Record<string, string>>(() => Object.fromEntries((row?.branchAllocations || []).map(a => [a.branch, String(a.amount)])))
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [charges, setCharges] = useState<LoanCharge[]>(() => (row?.charges || []).map((c: any) => ({ id: c.id, date: c.date ? String(c.date).slice(0, 10) : '', description: c.description || '', registeredName: c.registeredName || '', vatable: c.vatable || '', amount: c.amount != null ? String(c.amount) : '', siNumber: c.siNumber || '', chargeAccountId: c.chargeAccountId || '', deductedFromDebit: !!c.deductedFromDebit, proofUrls: c.proofUrls || [] })))
   const [busy, setBusy] = useState(false)
@@ -351,10 +409,15 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
   const removeCharge = (i: number) => setCharges(cs => cs.filter((_, idx) => idx !== i))
 
   const pickSh = (id: string) => { const sh = shareholders.find(s => s.id === id); setF(p => ({ ...p, shareholderId: id, name: sh ? sh.name : p.name })) }
+  const allocBranches = Object.keys(allocs)
+  const toggleAlloc = (code: string) => setAllocs(p => { const q = { ...p }; if (code in q) delete q[code]; else q[code] = ''; return q })
+  const allocSum = allocBranches.reduce((s, b) => s + n(allocs[b]), 0)
+  const allocBalanced = allocBranches.length <= 1 || Math.abs(allocSum - n(f.principalAmount)) <= 0.01
   const save = async () => {
     const nm = (f.loanEntity === 'SHAREHOLDER' ? f.name : f.entityName || f.name).trim()
     if (!nm || !(n(f.principalAmount) > 0)) { alert('Enter entity/name and principal amount.'); return }
     if (isBond && !f.maturityDate) { alert('Corporate bonds need a maturity date.'); return }
+    if (allocBranches.length > 1 && !allocBalanced) { alert('The branch allocation amounts must add up to the principal.'); return }
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, name: nm, principalAmount: n(f.principalAmount),
@@ -362,6 +425,7 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
         payoutStartMonth: f.payoutStartMonth ? Number(f.payoutStartMonth) : null, payoutStartYear: f.payoutStartYear ? Number(f.payoutStartYear) : null, payoutDay: f.payoutDay ? Number(f.payoutDay) : null,
         proofOfDepositUrls: proofUrls, pdcUrls, loanAgreementUrls: agreementUrls,
         fromCreditLineId: preset?.fromCreditLineId ?? row?.fromCreditLineId ?? null,
+        branchAllocations: allocBranches.map(b2 => ({ branch: b2, amount: allocBranches.length === 1 ? n(f.principalAmount) : n(allocs[b2]) })),
         charges: charges.map(c => ({ ...c, amount: n(c.amount) })) }
       const r = await fetch('/api/loans/loans', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
@@ -386,6 +450,34 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
           <div><label className={lbl} style={mg}>Type of Loan</label><select value={f.loanType} onChange={e => set('loanType', e.target.value)} className={inp} style={bc}><option value="CASH">Cash</option><option value="CORPORATE_BOND">Corporate Bond</option><option value="KIND">Kind</option></select></div>
           {f.loanType === 'KIND' && <div><label className={lbl} style={mg}>What kind?</label><input value={f.kindType} onChange={e => set('kindType', e.target.value)} className={inp} style={bc} /></div>}
           <div><label className={lbl} style={mg}>Principal Amount</label><input value={f.principalAmount} onChange={e => set('principalAmount', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
+        </div>
+
+        {/* Branch allocation — where the interest expense is booked */}
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-sm font-semibold text-gray-700">For which branch? <span className="font-normal text-gray-400">(the interest expense follows this on the branch income statements)</span></p>
+          <div className="flex flex-wrap gap-4 mt-2">
+            {ALLOC_BRANCHES.map(([code, label]) => (
+              <label key={code} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={code in allocs} onChange={() => toggleAlloc(code)} /> {label}
+              </label>
+            ))}
+          </div>
+          {allocBranches.length === 0 && <p className="text-[11px] mt-2" style={mg}>None ticked — the loan stays company-wide (interest shows only in the All Branches view).</p>}
+          {allocBranches.length === 1 && <p className="text-[11px] mt-2" style={mg}>Whole loan on <strong>{allocLabel(allocBranches[0])}</strong> — its payments and interest are booked on that branch.</p>}
+          {allocBranches.length > 1 && (
+            <div className="mt-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {allocBranches.map(code => (
+                  <div key={code}><label className="block text-[10px] font-semibold" style={mg}>{allocLabel(code)} amount</label>
+                    <input value={allocs[code]} onChange={e => setAllocs(p => ({ ...p, [code]: e.target.value }))} inputMode="decimal" placeholder="0.00" className="w-full px-2 py-1.5 rounded-lg border text-xs font-mono" style={bc} />
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] mt-2 font-mono" style={{ color: allocBalanced ? '#334155' : '#b91c1c' }}>
+                Allocated {peso(allocSum)} of {peso(n(f.principalAmount))}{allocBalanced ? ' ✓' : ` — ${allocSum > n(f.principalAmount) ? 'over' : 'short'} by ${peso(Math.abs(n(f.principalAmount) - allocSum))}`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Interest / bond terms */}
@@ -838,6 +930,7 @@ function BatchRecordModal({ occs, banks, accts, onClose, onSaved }: { occs: PayR
   // amortization into one ledger month.
   const hasPastDues = occs.some(o => String(o.dueDate).slice(0, 10) < new Date().toISOString().slice(0, 10))
   const [useDueDates, setUseDueDates] = useState(hasPastDues)
+  const [memo, setMemo] = useState('')
   const [bankAccountId, setBankAccountId] = useState(occs[0]?.paymentBankAccountId || occs[0]?.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [otherExp, setOtherExp] = useState<OtherExp[]>([])
@@ -853,7 +946,7 @@ function BatchRecordModal({ occs, banks, accts, onClose, onSaved }: { occs: PayR
       const cleaned = cleanOtherExp(otherExp)
       for (let i = 0; i < occs.length; i++) {
         const occ = occs[i]
-        const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate: useDueDates ? String(occ.dueDate).slice(0, 10) : paidDate, bankAccountId, proofUrls, otherExpenses: i === 0 ? cleaned : [] }) })
+        const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate: useDueDates ? String(occ.dueDate).slice(0, 10) : paidDate, bankAccountId, proofUrls, otherExpenses: i === 0 ? cleaned : [], memo }) })
         if (!r.ok) { alert(`Failed on ${occ.name} (${String(occ.dueDate).slice(0, 10)}): ${(await r.json()).error || 'error'}`); return }
         setDone(d => d + 1)
       }
@@ -881,6 +974,7 @@ function BatchRecordModal({ occs, banks, accts, onClose, onSaved }: { occs: PayR
             </label>
           </div>
           <div><label className={lbl} style={mg}>Bank account credited</label><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div className="mt-2"><label className={lbl} style={mg}>Memo (optional)</label><textarea value={memo} onChange={e => setMemo(e.target.value)} rows={2} maxLength={500} placeholder="Description saved with this payment and shown in the books" className={inp} style={bc} /></div>
         </div>
         <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit <span className="font-normal text-gray-400">(applied to all)</span></label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix="BATCH-PAYMENT" existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
         <OtherExpensesSection rows={otherExp} setRows={setOtherExp} accts={accts} />
@@ -899,6 +993,7 @@ function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayR
     const today = new Date().toISOString().slice(0, 10)
     return due < today ? due : today
   })
+  const [memo, setMemo] = useState('')
   const [bankAccountId, setBankAccountId] = useState(occ.paymentBankAccountId || occ.bankAccountId || '')
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [otherExp, setOtherExp] = useState<OtherExp[]>([])
@@ -908,7 +1003,7 @@ function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayR
     if (!bankAccountId) { alert('Select the bank account.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls, otherExpenses: cleanOtherExp(otherExp) }) })
+      const r = await fetch('/api/loans/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: occ.kind, parentId: occ.parentId, dueDate: occ.dueDate, principalPortion: occ.principalPortion, interestPortion: occ.interestPortion, amount: occ.amount, paidDate, bankAccountId, proofUrls, otherExpenses: cleanOtherExp(otherExp), memo }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
     } finally { setBusy(false) }
@@ -922,6 +1017,7 @@ function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayR
         <div className="grid grid-cols-2 gap-3">
           <div><label className={lbl} style={mg}>Date paid</label><input type="date" value={paidDate} onChange={e => setPaidDate(e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Bank account credited</label><select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div className="mt-2"><label className={lbl} style={mg}>Memo (optional)</label><textarea value={memo} onChange={e => setMemo(e.target.value)} rows={2} maxLength={500} placeholder="Description saved with this payment and shown in the books" className={inp} style={bc} /></div>
         </div>
         <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit</label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="loan" prefix={`${(occ.name || 'PAY').replace(/\s+/g, '_')}-PAYMENT`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
         <OtherExpensesSection rows={otherExp} setRows={setOtherExp} accts={accts} />

@@ -24,11 +24,19 @@ import {
   Contact,
   HeartHandshake,
   User,
+  HandCoins,
+  LifeBuoy,
+  UserCog,
+  Sparkles,
+  NotebookPen,
+  Target,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { allowedSections } from '@/lib/section-access'
+import { branchLabel } from '@/lib/branch-label'
 import BranchSwitcher, { BranchProvider, useBranchSwitcher } from '@/components/BranchSwitcher'
+import ConcernsWidget from '@/components/ConcernsWidget'
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
@@ -44,7 +52,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const initials = fullName
     ? fullName.split(' ').filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase()
     : (userEmail?.[0]?.toUpperCase() ?? '')
-  const metaLine = [session?.user?.department, session?.user?.branch].filter(Boolean).join(' · ')
+  const metaLine = [session?.user?.department, branchLabel(session?.user?.branch)].filter(Boolean).join(' · ')
 
   const isAdmin = session?.user?.role === 'ADMIN'
 
@@ -63,13 +71,21 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: '/directory', label: 'Directory', icon: Contact },
     { href: '/wellness-check', label: 'Wellness Check', icon: HeartPulse },
     { href: '/payroll', label: 'Payroll', icon: Wallet },
+    { href: '/loans-perks', label: 'Loans & Perks', icon: HandCoins },
+    { href: '/intern-supervision', label: 'Intern Supervision', icon: UserCog },
+    { href: '/mentorship', label: 'Mentorship', icon: Sparkles },
+    { href: '/balik-tanaw', label: 'Balik-Tanaw', icon: NotebookPen },
+    { href: '/learning-outcomes', label: 'Learning Outcomes & Preferences', icon: Target },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
 
   const navItems = [
     ...allNavItems.filter((item) => allowed.includes(item.href)),
     ...(isAdmin
-      ? [{ href: '/admin', label: 'Admin Panel', icon: Shield }]
+      ? [
+          { href: '/tickets', label: 'Tickets', icon: LifeBuoy },
+          { href: '/admin', label: 'Admin Panel', icon: Shield },
+        ]
       : []),
   ]
 
@@ -218,10 +234,14 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-5 lg:p-8 overflow-y-auto">
+        <main className="flex-1 p-5 lg:p-8 overflow-y-auto overflow-x-hidden min-w-0">
           {children}
         </main>
       </div>
+
+      {/* Floating "Concerns?" widget for staff to raise portal tickets.
+          Hidden for the main admin, who manages tickets in the Tickets section. */}
+      {!isAdmin && <ConcernsWidget />}
     </div>
   )
 }

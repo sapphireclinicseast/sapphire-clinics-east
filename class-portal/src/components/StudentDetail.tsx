@@ -34,6 +34,7 @@ import {
 import HeadshotEditor from './HeadshotEditor'
 import EnrollmentEditor from './EnrollmentEditor'
 import PlanSwitchCalculator from './PlanSwitchCalculator'
+import { PeriodPicker } from './PeriodPicker'
 
 interface Props {
   student: StoredUser
@@ -1759,17 +1760,10 @@ function PayMongoRecorder({ student, onRecorded }: {
           </select>
         </label>
 
-        <label className="block mb-3">
+        <div className="block mb-3">
           <span className="label">Period covered</span>
-          <input
-            type="text"
-            className="input"
-            value={period}
-            onChange={e => setPeriod(e.target.value)}
-            placeholder='e.g. "AY 2026–2027" or "Aug 2026"'
-            disabled={busy}
-          />
-        </label>
+          <PeriodPicker plan={plan} value={period} onChange={setPeriod} disabled={busy} />
+        </div>
 
         <label className="block mb-4">
           <span className="label">PayMongo reference / receipt no. (optional)</span>

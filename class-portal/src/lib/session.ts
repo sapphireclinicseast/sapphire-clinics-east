@@ -281,9 +281,23 @@ export type AuthRole = UserRole | 'ADMIN'
 /** Clinic branch a record is scoped to. */
 export type Branch = 'EAST' | 'GREENHILLS'
 
+/** The 2 branches, in display order. Was independently re-declared as
+ *  ALL_BRANCHES in classes/page.tsx and AssignmentsPanel.tsx, and as
+ *  BRANCH_ORDER in admin/page.tsx — this is the one copy. */
+export const ALL_BRANCHES: Branch[] = ['EAST', 'GREENHILLS']
+
 export function branchLabel(b: Branch | undefined | null): string {
   if (b === 'EAST') return 'East Branch'
   if (b === 'GREENHILLS') return 'Greenhills Branch'
+  return '—'
+}
+
+/** Short form ("East"/"Greenhills") — table cells, chips, anywhere the full
+ *  "X Branch" wording is too long. Was independently duplicated in
+ *  lib/calendar.ts and inline in StudentListPanel.tsx; this is the one copy. */
+export function branchShortLabel(b: Branch | undefined | null): string {
+  if (b === 'EAST') return 'East'
+  if (b === 'GREENHILLS') return 'Greenhills'
   return '—'
 }
 
@@ -320,6 +334,20 @@ export interface StoredUser {
   disabledAt?: string | null
   /** Email of the admin who disabled the account. Cleared on re-enable. */
   disabledBy?: string | null
+  /** TEACHER accounts minted from an HR-hub intern row. Same permissions
+   *  as any other teacher, but the intern-lifecycle cron auto-disables
+   *  the account 15 days after their contract-end month. */
+  isIntern?: boolean
+  /** ops-hub Staff.id — populated when minted from Staff Module. Powers
+   *  the auto-disable cron and lets the Users list surface the intern's
+   *  live contract end date without a second round trip. */
+  linkedStaffId?: string | null
+  /** ISO timestamp of the linked Staff row's contractExpiry, joined
+   *  server-side on GET. Only set for intern rows. */
+  internContractExpiry?: string | null
+  /** Whether the linked HR-hub Staff row is still active. Null for
+   *  non-intern rows. */
+  internStaffActive?: boolean | null
 }
 
 export interface AuthSession {
@@ -365,6 +393,10 @@ interface ApiUser {
   passwordSetBy?: string | null
   disabledAt?: string | null
   disabledBy?: string | null
+  isIntern?: boolean
+  linkedStaffId?: string | null
+  internContractExpiry?: string | null
+  internStaffActive?: boolean | null
   createdAt: string
   updatedAt: string
 }
@@ -384,6 +416,10 @@ function apiToStored(u: ApiUser, password = ''): StoredUser {
     passwordSetBy: u.passwordSetBy ?? null,
     disabledAt: u.disabledAt ?? null,
     disabledBy: u.disabledBy ?? null,
+    isIntern: !!u.isIntern,
+    linkedStaffId: u.linkedStaffId ?? null,
+    internContractExpiry: u.internContractExpiry ?? null,
+    internStaffActive: u.internStaffActive ?? null,
     createdAt: u.createdAt,
   }
 }
@@ -419,6 +455,10 @@ export async function addUser(u: Omit<StoredUser, 'id' | 'createdAt'>): Promise<
       level: u.level,
       branch: u.branch,
       enrollment: u.enrollment,
+      // Intern-lifecycle metadata. Server drops both fields on non-
+      // TEACHER roles, so it's safe to always pass through.
+      isIntern: u.isIntern ?? false,
+      linkedStaffId: u.linkedStaffId ?? null,
     }),
   })
   const stored = apiToStored(user, u.password)
@@ -711,20 +751,33 @@ function writeWaivers(records: WaiverRecord[]) {
   localStorage.setItem(WAIVERS_KEY, JSON.stringify(records))
 }
 
-export function saveWaiver(record: WaiverRecord) {
+/** Save the waiver locally AND push to the server. Returns { ok, error? }
+ *  so the caller can surface failures — the old signature was `void` +
+ *  fire-and-forget upload, which meant a silently-failed sync (401,
+ *  network, upstream 5xx) left the teacher believing she had signed
+ *  when the admin's view of the world still shows nothing.
+ *
+ *  Local write is always attempted first — so even on server failure
+ *  the signer's own device shows the signature and the next
+ *  syncLocalWaiversToServer / hydrate cycle will re-push. */
+export async function saveWaiver(record: WaiverRecord): Promise<{ ok: boolean; error?: string }> {
   const all = getWaivers()
   const idx = all.findIndex(w => w.id === record.id)
   if (idx >= 0) all[idx] = record
   else all.push(record)
   writeWaivers(all)
-  // Best-effort server persistence so admins / teachers on other
-  // devices see the latest signed state. Without this push, the
-  // record only lives in the signing device's localStorage and the
-  // student-detail card shows "Not yet signed." even after the
-  // parent + teacher have both signed.
   const student = getUsers().find(u => u.email.toLowerCase() === record.studentEmail.toLowerCase())
-  if (student?.id) {
-    void uploadWaiverRecord(student.id, record)
+  if (!student?.id) {
+    return { ok: false, error: 'Signature saved on this device, but we could not find the student on the server to sync it to. Ask the main admin to look up the student — the signature will push next time this device signs in.' }
+  }
+  try {
+    await uploadWaiverRecord(student.id, record)
+    return { ok: true }
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Signature saved on this device, but the server sync failed (${(e as Error).message}). The next sign-in will retry — or ask the admin to have you re-sign after refreshing.`,
+    }
   }
 }
 
@@ -744,13 +797,15 @@ function saveWaiverLocal(record: WaiverRecord) {
  *  the structured record (witness sig, SCEI ack sig, etc.) in sync
  *  across devices without needing a new Prisma model + migration. */
 async function uploadWaiverRecord(studentId: string, record: WaiverRecord): Promise<void> {
-  try {
-    const json = JSON.stringify(record)
-    const file = new File([new Blob([json], { type: 'application/json' })], 'waiver-record.json', { type: 'application/json' })
-    await uploadDocumentBlob(studentId, 'waiver_record', file)
-  } catch (e) {
-    console.warn('[uploadWaiverRecord]', e)
-  }
+  const json = JSON.stringify(record)
+  const file = new File([new Blob([json], { type: 'application/json' })], 'waiver-record.json', { type: 'application/json' })
+  // Rethrow so saveWaiver's caller can surface a sync failure to the
+  // signer — old version swallowed the error and left the teacher
+  // thinking her signature was saved when the server hadn't received
+  // it. Callers that want fire-and-forget behavior should wrap in
+  // `void … .catch(() => {})` at the call site instead of relying on
+  // this helper to swallow.
+  await uploadDocumentBlob(studentId, 'waiver_record', file)
 }
 
 /** Fetch the server-stored WaiverRecord for a student and merge it
@@ -796,8 +851,9 @@ export async function hydrateWaiverForStudent(studentId: string): Promise<Waiver
     }
     // Local is newer-or-equal: try to push it up so the server catches
     // up. Fire-and-forget; we don't want to block render. Returns the
-    // local copy unchanged.
-    void uploadWaiverRecord(studentId, local)
+    // local copy unchanged. Suppress rejections — the sync loop will
+    // retry on the next sign-in.
+    uploadWaiverRecord(studentId, local).catch(() => { /* retry via syncLocalWaiversToServer */ })
     return local
   } catch (e) {
     console.warn('[hydrateWaiverForStudent]', e)
@@ -863,21 +919,27 @@ export async function fetchServerWaiverPdfBlob(studentId: string): Promise<Blob 
 }
 
 /** Push any local WaiverRecord rows up to the server, ONE PER STUDENT.
- *  Only pushes if the server doesn't already have a record for that
- *  student. Existence is checked via a non-destructive HEAD-style
- *  probe so we don't accidentally pull a partial server copy into
- *  the local cache and clobber a more-complete local record (e.g.
- *  one that carries a witnessSig the server hasn't seen yet because
- *  the witness teacher's device hasn't synced yet).
+ *  Pushes when the server has no record at all OR when this device's
+ *  local record is strictly newer than the server copy (by internal
+ *  updatedAt timestamp). The old version bailed on any existing
+ *  server row — which stranded fresh witness signatures on the
+ *  teacher's device forever whenever the parent had already signed
+ *  and uploaded a witness-less copy first.
+ *
+ *  Also uploads a copy back to the LOCAL cache when the server has a
+ *  strictly newer version (defensive: keeps local from drifting
+ *  behind server too). Never overwrites local with an OLDER server
+ *  copy — that regression is what got us the parent-only server
+ *  version in the first place.
  *
  *  Runs fire-and-forget after every sign-in and on every
- *  StudentListPanel mount, so whichever device the SCEI-ACK signer
- *  used eventually pushes the full structured record — closing the
- *  gap for any waiver signed before PR #169 deployed.
+ *  StudentListPanel mount, so whichever device holds the fullest
+ *  record eventually converges everyone onto it.
  */
 export async function syncLocalWaiversToServer(): Promise<number> {
   if (typeof window === 'undefined') return 0
-  if (!getToken()) return 0
+  const tok = getToken()
+  if (!tok) return 0
   const all = getWaivers()
   if (all.length === 0) return 0
   const users = getUsers()
@@ -885,14 +947,36 @@ export async function syncLocalWaiversToServer(): Promise<number> {
   for (const w of all) {
     const student = users.find(u => u.email.toLowerCase() === w.studentEmail.toLowerCase())
     if (!student?.id) continue
-    // Non-destructive existence check — does NOT mutate local cache,
-    // unlike hydrateWaiverForStudent. Avoids racing-overwrite when
-    // multiple signers each hold a different snapshot in their
-    // localStorage.
-    const onServer = await hasServerWaiverRecord(student.id)
-    if (onServer) continue
-    await uploadWaiverRecord(student.id, w)
-    pushed += 1
+    try {
+      // Fetch the server's current copy so we can compare timestamps.
+      // Do NOT write to local cache from this fetch — that's what
+      // hydrateWaiverForStudent is for; we just want the timestamp.
+      const res = await fetch(
+        `${backendOrigin()}/api/public/class-portal/document-blobs/${encodeURIComponent(student.id)}/waiver_record`,
+        { headers: { authorization: `Bearer ${tok}` } },
+      )
+      if (!res.ok) {
+        // No record on server (404) or auth failure — push our local
+        // copy so at least SOMETHING lands. On auth failure the push
+        // will 401 harmlessly and we retry next time.
+        await uploadWaiverRecord(student.id, w)
+        pushed += 1
+        continue
+      }
+      const text = await res.text()
+      let remote: WaiverRecord | null = null
+      try { remote = JSON.parse(text) as WaiverRecord } catch { remote = null }
+      const localTs = new Date(w.updatedAt).getTime()
+      const remoteTs = remote ? new Date(remote.updatedAt).getTime() : 0
+      // Strictly-newer wins the push. Equal timestamps do nothing —
+      // we assume the caller already has the correct copy locally.
+      if (!Number.isFinite(remoteTs) || (Number.isFinite(localTs) && localTs > remoteTs)) {
+        await uploadWaiverRecord(student.id, w)
+        pushed += 1
+      }
+    } catch (e) {
+      console.warn('[syncLocalWaiversToServer]', student.id, e)
+    }
   }
   return pushed
 }
@@ -1089,6 +1173,10 @@ export async function recordPayMongoPayment(args: {
  * caller can optionally one-click Confirm it right after; returns null
  * on any failure (network, auth, validation).
  */
+export type RecordPaymentOutcome =
+  | { ok: true; classPortalPaymentId: string }
+  | { ok: false; reason: 'auth-expired' | 'validation' | 'server' | 'network'; message: string; status?: number }
+
 export async function recordPaymentOnBehalfOf(args: {
   studentId: string
   studentEmail: string
@@ -1107,10 +1195,10 @@ export async function recordPaymentOnBehalfOf(args: {
   reference?: string
   /** Optional extra context appended to the auto-generated notes. */
   extraNotes?: string
-}): Promise<string | null> {
-  if (typeof window === 'undefined') return null
+}): Promise<RecordPaymentOutcome> {
+  if (typeof window === 'undefined') return { ok: false, reason: 'network', message: 'Not in a browser context.' }
   const tok = getToken()
-  if (!tok) return null
+  if (!tok) return { ok: false, reason: 'auth-expired', message: 'You are signed out. Sign in again to record payments.' }
   try {
     // Per-method prefix on the dedupe key keeps these distinct from
     // student-originated /pay rows in any future audit.
@@ -1166,12 +1254,39 @@ export async function recordPaymentOnBehalfOf(args: {
     })
     if (!res.ok) {
       console.warn('[recordPaymentOnBehalfOf] failed:', res.status)
-      return null
+      // Pull the server's own error message so the modal can surface it.
+      let serverMessage = ''
+      try { const j = await res.json() as { error?: string }; serverMessage = j?.error ?? '' } catch { /* ignore */ }
+      if (res.status === 401) {
+        // Token expired / missing / signed under a rotated secret. Drop the
+        // stale token so the next page load bounces to /sign-in cleanly.
+        try { clearToken() } catch { /* ignore */ }
+        return {
+          ok: false,
+          reason: 'auth-expired',
+          status: 401,
+          message: 'Your session has expired. Sign out and sign back in, then retry.',
+        }
+      }
+      if (res.status >= 400 && res.status < 500) {
+        return {
+          ok: false,
+          reason: 'validation',
+          status: res.status,
+          message: serverMessage || 'The payment details were rejected by the server.',
+        }
+      }
+      return {
+        ok: false,
+        reason: 'server',
+        status: res.status,
+        message: serverMessage || `Server error (${res.status}).`,
+      }
     }
-    return classPortalPaymentId
+    return { ok: true, classPortalPaymentId }
   } catch (e) {
     console.warn('[recordPaymentOnBehalfOf] error:', e)
-    return null
+    return { ok: false, reason: 'network', message: 'Network error — check your connection and retry.' }
   }
 }
 
@@ -1395,6 +1510,29 @@ export async function patchFrontDeskPayment(
       const msg = (j?.error as string) || `HTTP ${res.status}`
       return { ok: false, error: msg }
     }
+    // Mirror the patch into the local cache immediately so downstream
+    // badge readers (paymentStatusFor / paymentBadgeInfoFor /
+    // PaymentsGrouped) see the new state on the very next render,
+    // instead of waiting for the next hydrateFrontDeskPayments cycle.
+    // Without this the parent tree sees the row still labelled with
+    // the old period even after the edit modal closes.
+    try {
+      const local = getPayments()
+      const idx = local.findIndex(r => r.id === classPortalPaymentId)
+      if (idx >= 0) {
+        const cur = local[idx]
+        const merged: PaymentRecord = {
+          ...cur,
+          ...(patch.plan            !== undefined ? { plan: patch.plan as PaymentPlan } : {}),
+          ...(patch.period          !== undefined ? { period: patch.period } : {}),
+          ...(patch.tuitionCentavos !== undefined ? { tuitionAmount: patch.tuitionCentavos } : {}),
+          ...(patch.miscCentavos    !== undefined ? { miscAmount: patch.miscCentavos } : {}),
+          ...(patch.method          !== undefined ? { method: patch.method ?? undefined } : {}),
+        }
+        local[idx] = merged
+        writePayments(local)
+      }
+    } catch { /* non-fatal — hydrate will catch up */ }
     return { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error).message }
@@ -1538,14 +1676,35 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
       const existing = localById.get(remote.classPortalPaymentId)
       const targetStatus: PaymentStatus = remote.status === 'CONVERTED' ? 'PAID' : 'PENDING'
       if (existing) {
-        // Update status if it drifted from the server's view.
+        // Reconcile every mutable field, not just status. Without this the
+        // local cache silently keeps stale period / plan / amount / method
+        // whenever an admin edits the row server-side — which broke badge
+        // logic ("Owes for June 2026" persisting after the period was
+        // re-tagged from "AY 2026 - 2027" to "June 2026").
         const idx = next.findIndex(r => r.id === existing.id)
-        if (existing.status !== targetStatus) {
+        const remotePlan = (remote.plan as PaymentPlan) ?? existing.plan
+        const remoteMethod = remote.method ?? undefined
+        const drifted =
+          existing.status !== targetStatus ||
+          existing.period !== remote.period ||
+          existing.plan !== remotePlan ||
+          existing.tuitionAmount !== remote.tuitionCentavos ||
+          existing.miscAmount !== remote.miscCentavos ||
+          existing.method !== remoteMethod
+        if (drifted) {
           mutated = true
+          const base: PaymentRecord = {
+            ...existing,
+            plan: remotePlan,
+            period: remote.period,
+            tuitionAmount: remote.tuitionCentavos,
+            miscAmount: remote.miscCentavos,
+            method: remoteMethod,
+          }
           if (targetStatus === 'PAID') {
-            next[idx] = { ...existing, status: 'PAID', paidAt: remote.convertedAt ?? new Date().toISOString() }
+            next[idx] = { ...base, status: 'PAID', paidAt: remote.convertedAt ?? existing.paidAt ?? new Date().toISOString() }
           } else {
-            const { paidAt: _drop, ...rest } = existing
+            const { paidAt: _drop, ...rest } = base
             void _drop
             next[idx] = { ...rest, status: 'PENDING' }
           }
@@ -3486,8 +3645,6 @@ export interface FeeSchedule {
   updatedBy: string | null
 }
 
-const ALL_BRANCHES_ARR: Branch[] = ['EAST', 'GREENHILLS']
-
 /** Fall-back values used when no row exists yet so the pay page is never
  *  empty. These match the historical hardcoded constants. Centavos = PHP × 100. */
 export const DEFAULT_FEE_VALUES = {
@@ -3510,7 +3667,7 @@ function defaultFeeForBranch(branch: Branch): FeeSchedule {
 }
 
 function defaultFees(): FeeSchedule[] {
-  return ALL_BRANCHES_ARR.map(defaultFeeForBranch)
+  return ALL_BRANCHES.map(defaultFeeForBranch)
 }
 
 export function getFees(): FeeSchedule[] {
@@ -3521,7 +3678,7 @@ export function getFees(): FeeSchedule[] {
     const parsed = JSON.parse(raw) as FeeSchedule[]
     if (!Array.isArray(parsed) || parsed.length === 0) return defaultFees()
     // Ensure every branch has a row, even if the cache is partial.
-    return ALL_BRANCHES_ARR.map(b => parsed.find(p => p.branch === b) ?? defaultFeeForBranch(b))
+    return ALL_BRANCHES.map(b => parsed.find(p => p.branch === b) ?? defaultFeeForBranch(b))
   } catch { return defaultFees() }
 }
 
@@ -3538,7 +3695,7 @@ export async function hydrateFees(): Promise<FeeSchedule[]> {
   if (!getToken()) return getFees()
   try {
     const { fees } = await backendJson<{ fees: FeeSchedule[] }>('/api/public/class-portal/fees')
-    const merged = ALL_BRANCHES_ARR.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
+    const merged = ALL_BRANCHES.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
     writeFees(merged)
     return merged
   } catch { return getFees() }
@@ -3550,7 +3707,7 @@ export async function saveFees(next: FeeSchedule[]): Promise<FeeSchedule[]> {
     method: 'PUT',
     body: JSON.stringify({ fees: next }),
   })
-  const merged = ALL_BRANCHES_ARR.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
+  const merged = ALL_BRANCHES.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
   writeFees(merged)
   return merged
 }

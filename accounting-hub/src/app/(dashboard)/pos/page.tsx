@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { redirect } from 'next/navigation'
+import { redirect, useSearchParams } from 'next/navigation'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import {
   ShoppingCart, Search, Plus, X, Trash2, ChevronDown, ChevronUp,
   CreditCard, Wallet, FileText, Download, Printer,
   RefreshCw, Ban, Star, Filter, Undo2, RotateCcw,
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
-  Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign,
+  Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign, Wand2,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
@@ -175,6 +176,8 @@ interface PaymentModeDeductionType {
   name: string
   rate: number
   valueType?: string  // 'PERCENTAGE' | 'FIXED'
+  effectiveFrom?: string | null
+  effectiveTo?: string | null
   accountId?: string | null
   account?: { id: string; accountNumber: string; accountTitle: string } | null
 }
@@ -187,6 +190,8 @@ interface PaymentModeType {
   isActive: boolean
   accountId?: string | null
   account?: { id: string; accountNumber: string; accountTitle: string } | null
+  settlementBankAccountId?: string | null
+  settlementBankAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   deductions: PaymentModeDeductionType[]
 }
 
@@ -551,6 +556,17 @@ export default function POSPage() {
   // ── Services sub-tab
   const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes'>('cashier')
   const [loading, setLoading] = useState(true)
+  // ── Deep link (?tab=orders&focus=<orderId>): a SALE/ORDER hit in the global
+  // search lands on the Orders tab with that order's detail modal open. The
+  // focus param is stripped via done() once the modal opens (useFocusTarget),
+  // so a refresh doesn't re-trigger it and re-searching the same order works.
+  const searchParams = useSearchParams()
+  const { focus: focusOrderId, done: focusDone } = useFocusTarget()
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab === 'services' || tab === 'orders' || tab === 'products' || tab === 'sales') setMainTab(tab)
+    else if (focusOrderId) setMainTab('orders')
+  }, [searchParams, focusOrderId])
 
   useEffect(() => {
     if (session?.user) setLoading(false)
@@ -626,7 +642,7 @@ export default function POSPage() {
         />
       )}
       {mainTab === 'orders' && (
-        <OrdersPanel branch={branch} canSelectBranch={true} />
+        <OrdersPanel branch={branch} canSelectBranch={true} focusOrderId={focusOrderId} onFocusHandled={focusDone} />
       )}
       {mainTab === 'products' && (
         <ProductsSection branch={branch} canSelectBranch={canSelectBranch} session={session} />
@@ -2416,7 +2432,7 @@ function OrderFormModal({
    ORDERS PANEL
    ══════════════════════════════════════════════════════════════ */
 
-function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
+function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: { branch: string; canSelectBranch: boolean; focusOrderId?: string; onFocusHandled?: () => void }) {
   const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? '' : branch)
   const [dateFrom, setDateFrom] = useState(firstOfMonth())
   const [dateTo, setDateTo] = useState(today())
@@ -2434,7 +2450,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [ordSortDir, setOrdSortDir] = useState<'asc' | 'desc'>('desc')
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
-  const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string }[]>([])
+  const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string; inventoryItemId?: string }[]>([])
   const [editPayments, setEditPayments] = useState<{ method: string; amount: number; paymentModeId?: string; walletId?: string; reference?: string }[]>([])
   const [editPatient, setEditPatient] = useState('')
   const [editClinician, setEditClinician] = useState('')
@@ -2459,7 +2475,10 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const editPatientTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editClinicianTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Per-item service search for the line-items list in Edit Order
-  const [editItemResults, setEditItemResults] = useState<ServiceItem[][]>([])
+  // A search result the item editor can offer is either a Service or an Inventory
+  // product — searched together so re-linking a PRODUCT order (previously impossible;
+  // this box only ever queried /api/services) works the same way as a service order.
+  const [editItemResults, setEditItemResults] = useState<({ kind: 'service' | 'product'; id: string; name: string; price: number; sub?: string })[][]>([])
   const editItemTimers = useRef<(ReturnType<typeof setTimeout> | null)[]>([])
   const [editConfiguredModes, setEditConfiguredModes] = useState<PaymentModeType[]>([])
   const [editIssuedOfficialInvoice, setEditIssuedOfficialInvoice] = useState(false)
@@ -2495,6 +2514,17 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       .then(d => setEditConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : []))
       .catch(() => {})
   }, [branch, canSelectBranch])
+
+  // Deep link from global search: fetch the focused order (it may fall outside
+  // the panel's current date-range filter) and open its detail modal directly.
+  useEffect(() => {
+    if (!focusOrderId) return
+    fetch(`/api/pos/orders/${encodeURIComponent(focusOrderId)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(o => { if (o?.id) setViewOrder(o as Order) })
+      .catch(() => {})
+      .finally(() => onFocusHandled?.())
+  }, [focusOrderId, onFocusHandled])
 
   // useEffect-based search for edit patient (same pattern as new order)
   useEffect(() => {
@@ -2636,6 +2666,12 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       unitPrice: toNum(it.unitPrice),
       lineTotal: toNum(it.lineTotal),
       serviceId: it.serviceId,
+      // Preserve the product link untouched unless the cashier actually retypes this
+      // line (the name-field handler below clears it then). Without this, saving ANY
+      // change on this form — even just the date or a discount — silently dropped
+      // every item's inventory link and rerouted its revenue to the 7000 fallback,
+      // regardless of whether that item was ever edited.
+      inventoryItemId: (it as { inventoryItemId?: string }).inventoryItemId,
     })))
     setEditItemResults(o.items.map(() => []))
     editItemTimers.current = o.items.map(() => null)
@@ -2702,6 +2738,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         discountType: computedEditDiscount.type,
         items: editItems.map(it => ({
           serviceId: it.serviceId || null,
+          inventoryItemId: it.inventoryItemId || null,
           name: it.name,
           quantity: it.quantity,
           unitPrice: it.unitPrice,
@@ -3160,17 +3197,30 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                           value={it.name}
                           onChange={e => {
                             const val = e.target.value
-                            setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: val, serviceId: undefined } : x))
-                            // Debounced service search
+                            // Retyping this line means the cashier is replacing it, not
+                            // just re-saving the order — drop BOTH links so a stale one
+                            // can't silently survive a rename.
+                            setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: val, serviceId: undefined, inventoryItemId: undefined } : x))
+                            // Debounced search — services AND inventory products together,
+                            // since this form edits both order types and used to only ever
+                            // search services (the reason product links kept disappearing).
                             if (editItemTimers.current[idx]) clearTimeout(editItemTimers.current[idx]!)
                             if (val.length >= 1) {
                               editItemTimers.current[idx] = setTimeout(async () => {
                                 try {
-                                  const r = await fetch(`/api/services?pageSize=20&branch=${editOrder?.branch || ''}&search=${encodeURIComponent(val)}`)
-                                  const d = await r.json()
+                                  const branch = editOrder?.branch || ''
+                                  const [svcRes, prodRes] = await Promise.all([
+                                    fetch(`/api/services?pageSize=20&branch=${branch}&search=${encodeURIComponent(val)}`),
+                                    fetch(`/api/inventory?pageSize=20&branch=${branch}&search=${encodeURIComponent(val)}`),
+                                  ])
+                                  const [svcData, prodData] = await Promise.all([svcRes.json(), prodRes.json()])
+                                  const services = ((Array.isArray(svcData) ? svcData : svcData.data || []) as ServiceItem[])
+                                    .map(s => ({ kind: 'service' as const, id: s.id, name: s.name, price: Number(s.price), sub: s.department }))
+                                  const products = ((Array.isArray(prodData) ? prodData : prodData.data || []) as InventoryProduct[])
+                                    .map(p => ({ kind: 'product' as const, id: p.id, name: p.name, price: Number(p.sellingPrice) || 0, sub: p.sku }))
                                   setEditItemResults(prev => {
                                     const next = [...prev]
-                                    next[idx] = (Array.isArray(d) ? d : d.data || []) as ServiceItem[]
+                                    next[idx] = [...products, ...services]
                                     return next
                                   })
                                 } catch { /* ignore */ }
@@ -3179,26 +3229,28 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                               setEditItemResults(prev => { const next = [...prev]; next[idx] = []; return next })
                             }
                           }}
-                          placeholder="Search service…"
+                          placeholder="Search service or product…"
                           className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
                         />
                         {(editItemResults[idx]?.length ?? 0) > 0 && (
                           <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                            {editItemResults[idx].map(svc => (
-                              <button key={svc.id} onMouseDown={e => e.preventDefault()} onClick={() => {
+                            {editItemResults[idx].map(hit => (
+                              <button key={`${hit.kind}-${hit.id}`} onMouseDown={e => e.preventDefault()} onClick={() => {
                                 setEditItems(prev => prev.map((x, i) => i === idx ? {
                                   ...x,
-                                  name: svc.name,
-                                  unitPrice: Number(svc.price),
-                                  lineTotal: Number(svc.price) * x.quantity,
-                                  serviceId: svc.id,
+                                  name: hit.name,
+                                  unitPrice: hit.price,
+                                  lineTotal: hit.price * x.quantity,
+                                  serviceId: hit.kind === 'service' ? hit.id : undefined,
+                                  inventoryItemId: hit.kind === 'product' ? hit.id : undefined,
                                 } : x))
                                 setEditItemResults(prev => { const next = [...prev]; next[idx] = []; return next })
                               }}
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
-                                {svc.name}
-                                {svc.department && <span className="ml-1 text-xs" style={{ color: 'var(--mid-gray)' }}>({svc.department})</span>}
-                                <span className="ml-2 text-xs font-medium" style={{ color: 'var(--teal)' }}>{formatCurrency(Number(svc.price))}</span>
+                                <span className="text-[10px] font-semibold uppercase mr-1.5 px-1 py-0.5 rounded" style={hit.kind === 'product' ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { background: '#f3f4f6', color: 'var(--mid-gray)' }}>{hit.kind === 'product' ? 'Product' : 'Service'}</span>
+                                {hit.name}
+                                {hit.sub && <span className="ml-1 text-xs" style={{ color: 'var(--mid-gray)' }}>({hit.sub})</span>}
+                                <span className="ml-2 text-xs font-medium" style={{ color: 'var(--teal)' }}>{formatCurrency(hit.price)}</span>
                               </button>
                             ))}
                           </div>
@@ -7761,6 +7813,10 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [loading, setLoading] = useState(false)
   const [actualAmounts, setActualAmounts] = useState<Record<string, Record<string, number>>>({})
   const [confirmed, setConfirmed] = useState<Record<string, Record<string, boolean>>>({})
+  // Which OK ticks bank rec set for us: { date: { method: true } }
+  const [autoConfirmed, setAutoConfirmed] = useState<Record<string, Record<string, boolean>>>({})
+  const [autoTagging, setAutoTagging] = useState(false)
+  const [autoResult, setAutoResult] = useState<string | null>(null)
   const [remarks, setRemarks] = useState<Record<string, Record<string, string>>>({}) // { date: { method: remark } }
   // cleared days: { "YYYY-MM-DD|branch": true }
   const [clearedDays, setClearedDays] = useState<Record<string, { clearedAt: string; clearedById: string }>>({})
@@ -7816,6 +7872,8 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         const map: Record<string, { clearedAt: string; clearedById: string }> = {}
         const dbActualAmounts: Record<string, Record<string, number>> = {}
         const dbRemarks: Record<string, Record<string, string>> = {}
+        const dbConfirmed: Record<string, Record<string, boolean>> = {}
+        const dbAuto: Record<string, Record<string, boolean>> = {}
         for (const rec of data) {
           if (rec.isCleared) {
             map[`${rec.date}|${rec.branch}`] = { clearedAt: rec.clearedAt, clearedById: rec.clearedById }
@@ -7832,8 +7890,28 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
               if (item.remarks) dbRemarks[rec.date][item.method] = item.remarks
             }
           }
+          if (Array.isArray(rec.confirmed)) {
+            dbConfirmed[rec.date] = {}
+            dbAuto[rec.date] = {}
+            for (const item of rec.confirmed as { method: string; confirmed: boolean; source?: string }[]) {
+              dbConfirmed[rec.date][item.method] = !!item.confirmed
+              if (item.source === 'BANK_REC') dbAuto[rec.date][item.method] = true
+            }
+          }
         }
         setClearedDays(map)
+        setConfirmed(prev => {
+          const merged = { ...prev }
+          for (const [d, methods] of Object.entries(dbConfirmed)) {
+            const dayMerged = { ...(merged[d] || {}) }
+            for (const [method, v] of Object.entries(methods)) {
+              if (dayMerged[method] === undefined) dayMerged[method] = v
+            }
+            merged[d] = dayMerged
+          }
+          return merged
+        })
+        setAutoConfirmed(dbAuto)
         // Merge DB saved data per method: preserve any field the user has already edited locally,
         // but fill in DB values for methods the user hasn't touched yet.
         setActualAmounts(prev => {
@@ -7939,6 +8017,9 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
       const remarksList = allMethodKeys
         .map(m => ({ method: m, remarks: getRemark(day, m) }))
         .filter(r => r.remarks)
+      const confirmedList = allMethodKeys
+        .filter(m => isConfirmed(day, m))
+        .map(m => ({ method: m, confirmed: true, source: autoConfirmed[day]?.[m] ? 'BANK_REC' : 'USER' }))
       await fetch('/api/pos/sales-clearing', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -7947,6 +8028,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           branch: br,
           actualAmounts: amountsList,
           remarks: remarksList.length ? remarksList : null,
+          confirmed: confirmedList,
         }),
       })
       setSavedDayFeedback(prev => ({ ...prev, [day]: true }))
@@ -7969,6 +8051,9 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
       const remarksList = allMethodKeys
         .map(m => ({ method: m, remarks: getRemark(day, m) }))
         .filter(r => r.remarks)
+      const confirmedList = allMethodKeys
+        .filter(m => isConfirmed(day, m))
+        .map(m => ({ method: m, confirmed: true, source: autoConfirmed[day]?.[m] ? 'BANK_REC' : 'USER' }))
       const res = await fetch('/api/pos/sales-clearing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -7977,6 +8062,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           branch: br,
           actualAmounts: amountsList,
           remarks: remarksList.length ? remarksList : null,
+          confirmed: confirmedList,
         }),
       })
       if (!res.ok) {
@@ -7997,6 +8083,35 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     if (!br) return
     await fetch(`/api/pos/sales-clearing?date=${day}&branch=${br}`, { method: 'DELETE' })
     await fetchClearing()
+  }
+
+  // Fill this range from what bank reconciliation already accounts for: a day's
+  // method is ticked only when every one of its payments is linked to a
+  // reconciled bank line, and figures the accountant typed are never overwritten.
+  const runAutoTag = async () => {
+    const br = selectedBranch || branch
+    if (!br) return
+    setAutoTagging(true)
+    setAutoResult(null)
+    try {
+      const res = await fetch('/api/pos/sales-clearing/auto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: br, dateFrom, dateTo }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setAutoResult(d.error || `Failed (${res.status})`); return }
+      const kept = (d.days || []).reduce((n: number, x: { skipped?: string[] }) => n + (x.skipped?.length || 0), 0)
+      setAutoResult(
+        `Tagged ${d.tagged} method row(s) across ${(d.days || []).length} day(s); ${d.cleared} day(s) cleared.`
+        + (kept ? ` ${kept} row(s) left alone — already filled in by hand.` : '')
+      )
+      await fetchClearing()
+    } catch (e) {
+      setAutoResult(e instanceof Error ? e.message : 'Network error')
+    } finally {
+      setAutoTagging(false)
+    }
   }
 
   // Calendar: days that have sales data
@@ -8033,7 +8148,17 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
           className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        <button onClick={runAutoTag} disabled={autoTagging}
+          title="Fill Actual Amounts and tick OK for every day whose payments are already matched to a bank line in Bank Reconciliation"
+          className="px-4 py-2 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5"
+          style={{ background: 'var(--teal)', opacity: autoTagging ? 0.6 : 1, cursor: autoTagging ? 'not-allowed' : 'pointer' }}>
+          {autoTagging ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
+          {autoTagging ? 'Tagging…' : 'Auto-tag from bank rec'}
+        </button>
       </div>
+      {autoResult && (
+        <p className="text-xs -mt-2" style={{ color: 'var(--deep-teal)' }}>{autoResult}</p>
+      )}
 
       {loading ? (
         <div className="py-12 text-center"><Loader2 size={20} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
@@ -8085,10 +8210,17 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                             {actualAmt ? (diff >= 0 ? '+' : '') + formatCurrency(diff) : '—'}
                           </td>
                           <td className="px-4 py-2 text-center">
-                            {diff === 0 && actualAmt > 0 ? (
+                            {/* Bank rec's own tick stands even when Difference is non-zero — a card
+                                settlement legitimately lands net of merchant fees. */}
+                            {autoConfirmed[day]?.[method] ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: '#166534' }}
+                                title="Matched in Bank Reconciliation">
+                                <CheckCircle size={12} /> Bank rec
+                              </span>
+                            ) : actualAmt > 0 ? (
                               <label className="cursor-pointer">
                                 <input type="checkbox" checked={isConfirmed(day, method)}
-                                  onChange={() => toggleConfirm(day, method)} className="rounded" />
+                                  onChange={() => { toggleConfirm(day, method); debouncedSave(day) }} className="rounded" />
                               </label>
                             ) : (
                               <span className="text-xs" style={{ color: 'var(--light-gray)' }}>—</span>
@@ -8566,10 +8698,11 @@ function PaymentModeSettingsPanel() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', paymentMethod: '', branch: '', accountId: '', isActive: true })
+  const [form, setForm] = useState({ name: '', paymentMethod: '', branch: '', accountId: '', settlementBankAccountId: '', isActive: true })
   const [accountSearch, setAccountSearch] = useState('')
+  const [settleSearch, setSettleSearch] = useState('')
   const [allAccounts, setAllAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; accountType: string }[]>([])
-  const [deductions, setDeductions] = useState<{ name: string; rate: number; valueType: string; accountId: string; accountSearch: string }[]>([])
+  const [deductions, setDeductions] = useState<{ name: string; rate: number; valueType: string; accountId: string; accountSearch: string; effectiveFrom: string; effectiveTo: string }[]>([])
   const [error, setError] = useState('')
 
   const fetchModes = useCallback(async () => {
@@ -8599,8 +8732,9 @@ function PaymentModeSettingsPanel() {
 
   const openCreate = () => {
     setEditingId(null)
-    setForm({ name: '', paymentMethod: '', branch: '', accountId: '', isActive: true })
+    setForm({ name: '', paymentMethod: '', branch: '', accountId: '', settlementBankAccountId: '', isActive: true })
     setAccountSearch('')
+    setSettleSearch('')
     setDeductions([])
     setError('')
     setShowForm(true)
@@ -8608,20 +8742,23 @@ function PaymentModeSettingsPanel() {
 
   const openEdit = (m: PaymentModeType) => {
     setEditingId(m.id)
-    setForm({ name: m.name, paymentMethod: m.paymentMethod || '', branch: m.branch || '', accountId: m.accountId || '', isActive: m.isActive })
+    setForm({ name: m.name, paymentMethod: m.paymentMethod || '', branch: m.branch || '', accountId: m.accountId || '', settlementBankAccountId: m.settlementBankAccountId || '', isActive: m.isActive })
     setAccountSearch(m.account ? `${m.account.accountNumber} ${m.account.accountTitle}` : '')
+    setSettleSearch(m.settlementBankAccount ? `${m.settlementBankAccount.accountNumber} ${m.settlementBankAccount.accountTitle}` : '')
     setDeductions((m.deductions || []).map(d => ({
       name: d.name,
       rate: Number(d.rate),
       valueType: d.valueType === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
       accountId: d.accountId || '',
       accountSearch: d.account ? `${d.account.accountNumber} ${d.account.accountTitle}` : '',
+      effectiveFrom: d.effectiveFrom ? String(d.effectiveFrom).slice(0, 10) : '',
+      effectiveTo: d.effectiveTo ? String(d.effectiveTo).slice(0, 10) : '',
     })))
     setError('')
     setShowForm(true)
   }
 
-  const addDeduction = () => setDeductions(prev => [...prev, { name: '', rate: 0, valueType: 'PERCENTAGE', accountId: '', accountSearch: '' }])
+  const addDeduction = () => setDeductions(prev => [...prev, { name: '', rate: 0, valueType: 'PERCENTAGE', accountId: '', accountSearch: '', effectiveFrom: '', effectiveTo: '' }])
   const removeDeduction = (i: number) => setDeductions(prev => prev.filter((_, idx) => idx !== i))
   const updateDeduction = (i: number, updates: Record<string, string | number>) =>
     setDeductions(prev => prev.map((d, idx) => idx === i ? { ...d, ...updates } : d))
@@ -8635,12 +8772,15 @@ function PaymentModeSettingsPanel() {
       paymentMethod: form.paymentMethod || null,
       branch: form.branch || null,
       accountId: form.accountId || null,
+      settlementBankAccountId: form.settlementBankAccountId || null,
       isActive: form.isActive,
       deductions: deductions.filter(d => d.name.trim() && d.rate > 0).map(d => ({
         name: d.name.trim(),
         rate: d.rate,
         valueType: d.valueType || 'PERCENTAGE',
         accountId: d.accountId || null,
+        effectiveFrom: d.effectiveFrom || null,
+        effectiveTo: d.effectiveTo || null,
       })),
     }
     const res = await fetch('/api/pos/payment-modes', {
@@ -8821,6 +8961,37 @@ function PaymentModeSettingsPanel() {
                 )}
               </div>
 
+              {/* Settlement bank account — where the processor's payout actually lands
+                  when that is NOT the net-proceeds account (e.g. TikTok lodges into a
+                  clearing account but pays out into VER BDO Checking). Bank recon
+                  offers this mode's sales when reconciling this account too. */}
+              <div className="relative">
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Settlement Deposited To <span className="font-normal">(optional — bank account the payout lands in, if different; used by bank recon)</span>
+                </label>
+                <input type="text" value={settleSearch}
+                  onChange={e => { setSettleSearch(e.target.value); if (!e.target.value) setForm({ ...form, settlementBankAccountId: '' }) }}
+                  placeholder="Search bank account..."
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: form.settlementBankAccountId ? 'var(--teal)' : 'var(--light-gray)', background: form.settlementBankAccountId ? '#f0fdfa' : 'white' }} />
+                {form.settlementBankAccountId && (
+                  <button type="button" onClick={() => { setForm({ ...form, settlementBankAccountId: '' }); setSettleSearch('') }}
+                    className="absolute right-2 top-7 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                )}
+                {settleSearch && !form.settlementBankAccountId && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-36 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                    {filteredAccounts(settleSearch).map(a => (
+                      <button key={a.id} type="button"
+                        onClick={() => { setForm({ ...form, settlementBankAccountId: a.id }); setSettleSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50">
+                        <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                        <span className="ml-1 text-gray-400">({a.accountType})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Deductions */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -8854,6 +9025,18 @@ function PaymentModeSettingsPanel() {
                         <button type="button" onClick={() => removeDeduction(i)} className="p-1 rounded hover:bg-red-50">
                           <X size={13} className="text-red-400" />
                         </button>
+                      </div>
+                      {/* Rate era: this deduction applies only to sales dated inside the
+                          window (blank = open-ended). Lets an old MDR (2.5%) end Sep 2025
+                          and the new one (2.2%) start Oct 2025 on the same mode. */}
+                      <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                        <span>Applies to sales from</span>
+                        <input type="date" value={d.effectiveFrom} onChange={e => updateDeduction(i, { effectiveFrom: e.target.value })}
+                          className="px-2 py-1 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        <span>to</span>
+                        <input type="date" value={d.effectiveTo} onChange={e => updateDeduction(i, { effectiveTo: e.target.value })}
+                          className="px-2 py-1 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        <span>(blank = always)</span>
                       </div>
                       {/* Deduction COA */}
                       <div className="relative">

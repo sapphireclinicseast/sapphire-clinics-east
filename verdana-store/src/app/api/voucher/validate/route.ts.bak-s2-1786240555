@@ -1,0 +1,16 @@
+import { NextResponse } from 'next/server'
+import { evaluateVoucher } from '@/lib/vouchers'
+
+// Public: customers call this from the cart to check a code before checkout.
+export async function POST(request: Request) {
+  try {
+    const { code, subtotal } = (await request.json()) as {
+      code?: string
+      subtotal?: number
+    }
+    const result = evaluateVoucher(code || '', Number(subtotal) || 0)
+    return NextResponse.json(result)
+  } catch {
+    return NextResponse.json({ valid: false, reason: 'Could not check that code.' }, { status: 400 })
+  }
+}

@@ -1,3 +1,5 @@
+import { branchForBankAccount } from '@/lib/branch'
+
 // A rule matches a PENDING bank line when its pattern appears (case-
 // insensitively) in the description or the payee, the direction agrees, and
 // the account scope (if any) agrees. First matching rule wins, in creation
@@ -27,7 +29,7 @@ export function ruleMatches(
    a per-line judgment), as are self-categorisations and lines dated
    before a rule's effectiveFrom. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function applyBankRules(prisma: any, userId: string, opts: { ruleId?: string; importBatch?: string; dryRun?: boolean; cap?: number } = {}) {
+export async function applyBankRules(prisma: any, userId: string, opts: { ruleId?: string; importBatch?: string; transactionId?: string; dryRun?: boolean; cap?: number } = {}) {
   const cap = opts.cap ?? 500
   const rules = await prisma.bankCategoryRule.findMany({
     where: { active: true, ...(opts.ruleId ? { id: opts.ruleId } : {}) },
@@ -35,14 +37,26 @@ export async function applyBankRules(prisma: any, userId: string, opts: { ruleId
   })
   if (!rules.length) return { posted: 0, skippedFx: 0, skippedSelf: 0, capped: false, perRule: {}, errors: [] as string[] }
   const pending = await prisma.bankTransaction.findMany({
-    where: { status: 'PENDING', ...(opts.importBatch ? { importBatch: opts.importBatch } : {}) },
+    where: {
+      status: 'PENDING',
+      ...(opts.importBatch ? { importBatch: opts.importBatch } : {}),
+      // The per-row "Auto-post" button applies the rules to exactly one line.
+      ...(opts.transactionId ? { id: opts.transactionId } : {}),
+    },
     orderBy: { date: 'asc' },
   })
+  const bankAccts = await prisma.account.findMany({
+    where: { id: { in: [...new Set(pending.map((t: { bankAccountId: string }) => t.bankAccountId))] } },
+    select: { id: true, currency: true, accountTitle: true },
+  })
   const currencies = new Map<string, string>(
-    (await prisma.account.findMany({
-      where: { id: { in: [...new Set(pending.map((t: { bankAccountId: string }) => t.bankAccountId))] } },
-      select: { id: true, currency: true },
-    })).map((a: { id: string; currency: string | null }) => [a.id, a.currency || 'PHP']),
+    bankAccts.map((a: { id: string; currency: string | null }) => [a.id, a.currency || 'PHP']),
+  )
+  // Reports filter journal entries by branch, so a rule-posted entry left on the
+  // 'ALL' default would never reach a per-branch statement. Same derivation the
+  // manual categorise uses.
+  const branches = new Map<string, string>(
+    bankAccts.map((a: { id: string; accountTitle: string }) => [a.id, branchForBankAccount(a.accountTitle)]),
   )
   let posted = 0, skippedFx = 0, skippedSelf = 0
   const perRule: Record<string, number> = {}
@@ -70,6 +84,7 @@ export async function applyBankRules(prisma: any, userId: string, opts: { ruleId
             entryDate: txn.date,
             description: `Bank: ${txn.description} (rule: ${rule.pattern})`,
             referenceType: 'BANK_REC', referenceId: txn.id,
+            branch: branches.get(txn.bankAccountId) || 'ALL',
             totalAmount: amount, createdById: userId,
             lines: { create: lines.map(l => ({ accountId: l.accountId, debit: l.debit, credit: l.credit, description: txn.description })) },
           },

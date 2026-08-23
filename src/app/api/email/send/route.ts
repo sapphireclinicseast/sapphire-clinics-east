@@ -8,10 +8,24 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { subject, body, recipientGroup, gmailAccountId, scheduledAt, branches } = await req.json()
+  const { subject, body, recipientGroup, gmailAccountId, scheduledAt, branches, ccEmails } = await req.json()
 
   if (!subject || !body) {
     return NextResponse.json({ error: 'Subject and body are required' }, { status: 400 })
+  }
+
+  // Optional "copy me" address(es). Accept comma/semicolon separated, validate
+  // each, and store normalised — an invalid address here must fail loudly
+  // rather than silently dropping the operator's copy at send time.
+  let ccNormalised: string | null = null
+  if (typeof ccEmails === 'string' && ccEmails.trim()) {
+    const parts = ccEmails.split(/[,;]/).map((e: string) => e.trim()).filter(Boolean)
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const bad = parts.find((e: string) => !re.test(e))
+    if (bad) {
+      return NextResponse.json({ error: `Invalid CC email address: ${bad}` }, { status: 400 })
+    }
+    ccNormalised = parts.join(',')
   }
 
   // Resolve recipient IDs with raw SQL branch filter (avoids enum array type mismatch)
@@ -62,6 +76,7 @@ export async function POST(req: NextRequest) {
       body,
       recipientGroup: storedGroup,
       recipientCount,
+      ccEmails: ccNormalised,
       gmailAccountId: gmailAccountId || null,
       scheduledAt: scheduledDate,
       status: isScheduled ? 'scheduled' : 'sending',

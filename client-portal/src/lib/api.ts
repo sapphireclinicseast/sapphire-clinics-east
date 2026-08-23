@@ -74,6 +74,29 @@ export function listTherapists(branch: string, department: string) {
   return jsonFetch<{ therapists: Therapist[] }>(`/therapists?${qs}`)
 }
 
+export interface Branch {
+  id: string
+  shortCode: string
+  name: string
+  brandName: string | null
+  address: string | null
+  phone: string | null
+  emailMain: string | null
+  departmentsOffered: string[]
+  operatingDays: string[]
+  operatingHoursOpen: string | null
+  operatingHoursClose: string | null
+}
+
+/**
+ * Pulls the Branches Registry from HR Platform via marketing's synced
+ * cache. HR Platform is the source of truth; this is a read-only mirror.
+ */
+export async function listBranches(): Promise<Branch[]> {
+  const { branches } = await jsonFetch<{ branches: Branch[] }>('/branches')
+  return branches
+}
+
 export function listAvailableSlots(
   branch: string,
   department: string,
@@ -176,8 +199,11 @@ export interface PatientSessionRecord {
   endTime: string
   clinician: string
   department: string
+  departmentCode?: string
+  branch?: string
   status: string
   isTeletherapy: boolean
+  notes?: string | null
   source: 'schedule' | 'booking'
 }
 export interface ActiveSurvey {
@@ -185,15 +211,55 @@ export interface ActiveSurvey {
   surveyType: string
   expiresAt: string
 }
+export interface SessionStats {
+  total: number
+  confirmed: number
+  confirmedPct: number
+  cancelledRescheduled: number
+  cancelledRescheduledPct: number
+}
 export interface MeResult {
   profile: PatientProfile
   servicesAvailed: string[]
   sessions: PatientSessionRecord[]
   surveys: ActiveSurvey[]
+  stats?: SessionStats
 }
 
 export function getMe(token: string) {
   return jsonFetch<MeResult>(`/patients/me?token=${encodeURIComponent(token)}`)
+}
+
+// ── Clinical documents (read-only, uploaded by therapists) ───────────────────
+export interface PatientDocRow {
+  id: string
+  fileName: string
+  documentType: string
+  department: string
+  description: string | null
+  createdAt: string
+}
+export interface PatientDocuments {
+  initialEvaluations: PatientDocRow[]
+  progressReports: PatientDocRow[]
+  otherDocuments: PatientDocRow[]
+  total: number
+}
+
+export function listMyDocuments(
+  token: string,
+  opts?: { department?: string; scheduleId?: string },
+) {
+  const qs = new URLSearchParams({ token })
+  // scheduleId (a session's attachments) takes precedence over department.
+  if (opts?.scheduleId) qs.set('scheduleId', opts.scheduleId)
+  else if (opts?.department) qs.set('department', opts.department)
+  return jsonFetch<PatientDocuments>(`/patients/documents?${qs.toString()}`)
+}
+
+// Same-origin URL for viewing a document file (through the binary-safe proxy).
+export function documentFileUrl(id: string, token: string) {
+  return `${API_BASE}/patients/documents/${encodeURIComponent(id)}/file?token=${encodeURIComponent(token)}`
 }
 
 // Update the signed-in patient's own account (photo / username / password).
@@ -255,4 +321,106 @@ export function cancelBooking(bookingId: string, token: string) {
     `/bookings/${encodeURIComponent(bookingId)}/cancel`,
     { method: 'POST', body: JSON.stringify({ token }) },
   )
+}
+
+// ── Portal concern/support tickets ───────────────────────────────────────────
+export interface PortalTicket {
+  id: string
+  subject: string
+  description: string
+  status: string // OPEN | RESOLVED
+  adminResponse: string | null
+  resolvedAt: string | null
+  createdAt: string
+}
+
+export function submitTicket(
+  token: string,
+  payload: { subject: string; description: string; screenshot?: string | null },
+) {
+  return jsonFetch<{ ok: boolean; id: string }>(`/patients/tickets`, {
+    method: 'POST',
+    body: JSON.stringify({ token, ...payload }),
+  })
+}
+
+export function listMyTickets(token: string) {
+  return jsonFetch<{ tickets: PortalTicket[] }>(
+    `/patients/tickets?token=${encodeURIComponent(token)}`,
+  )
+}
+
+// ── Home Progress (patient-uploaded voice / video / photo log) ───────────────
+export interface HomeProgressFileRow {
+  id: string
+  kind: string // AUDIO | VIDEO | PHOTO
+  fileName: string
+  mimeType: string
+  sizeBytes: number
+}
+export interface HomeProgressEntryRow {
+  id: string
+  date: string
+  remarks: string | null
+  createdAt: string
+  files: HomeProgressFileRow[]
+}
+
+export function listHomeProgress(token: string) {
+  return jsonFetch<{ entries: HomeProgressEntryRow[] }>(
+    `/patients/home-progress?token=${encodeURIComponent(token)}`,
+  )
+}
+
+export function createHomeProgressEntry(token: string, date: string, remarks: string) {
+  return jsonFetch<{ ok: boolean; entryId: string }>(`/patients/home-progress`, {
+    method: 'POST',
+    body: JSON.stringify({ token, date, remarks }),
+  })
+}
+
+export function deleteHomeProgressEntry(token: string, entryId: string) {
+  return jsonFetch<{ ok: boolean }>(
+    `/patients/home-progress/${encodeURIComponent(entryId)}?token=${encodeURIComponent(token)}`,
+    { method: 'DELETE' },
+  )
+}
+
+// Same-origin URL for playing back / viewing a Home Progress media file.
+export function homeProgressFileUrl(fileId: string, token: string) {
+  return `${API_BASE}/patients/home-progress/file/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`
+}
+
+// Multipart upload of one media file with progress (%), via XHR.
+export function uploadHomeProgressFile(
+  token: string,
+  entryId: string,
+  kind: 'AUDIO' | 'VIDEO' | 'PHOTO',
+  file: Blob,
+  fileName: string,
+  onProgress: (pct: number) => void,
+): Promise<{ ok: boolean }> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData()
+    fd.append('token', token)
+    fd.append('kind', kind)
+    fd.append('file', file, fileName)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/patients/home-progress/${encodeURIComponent(entryId)}/file`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100)
+        try { resolve(JSON.parse(xhr.responseText || '{}')) } catch { resolve({ ok: true }) }
+      } else {
+        let msg = `HTTP ${xhr.status}`
+        try { msg = JSON.parse(xhr.responseText).error || msg } catch { /* ignore */ }
+        reject(new Error(msg))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Upload failed — check your connection.'))
+    xhr.send(fd)
+  })
 }

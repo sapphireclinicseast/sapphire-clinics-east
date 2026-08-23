@@ -144,6 +144,15 @@ services:
       # Pinned to the class-portal-specific key; falls back to the global
       # PAYMONGO_SECRET_KEY if the class-specific one isn't set.
       PAYMONGO_SECRET_KEY: ${PAYMONGO_CLASS_SECRET_KEY:-${PAYMONGO_SECRET_KEY}}
+      # Per-branch PayMongo keys — /api/pay/create-checkout picks the
+      # right one so East tuition settles into East's PayMongo account
+      # and Greenhills into Greenhills'. Falls back to PAYMONGO_SECRET_KEY
+      # (above) when a branch key isn't set. Prefer class-portal-specific
+      # per-branch keys if you want to segregate the school's PayMongo
+      # merchant accounts from the clinic's; otherwise the shared keys
+      # (populated for the operations hub) are the sane default.
+      PAYMONGO_SECRET_KEY_SBEA: ${PAYMONGO_CLASS_SECRET_KEY_SBEA:-${PAYMONGO_SECRET_KEY_SBEA}}
+      PAYMONGO_SECRET_KEY_SBGH: ${PAYMONGO_CLASS_SECRET_KEY_SBGH:-${PAYMONGO_SECRET_KEY_SBGH}}
       NODE_ENV: production
     ports:
       - "127.0.0.1:3006:3000"

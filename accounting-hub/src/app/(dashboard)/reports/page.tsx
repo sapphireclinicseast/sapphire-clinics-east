@@ -5,14 +5,18 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
-  Calendar, Building2, LayoutList, BarChart3, X,
+  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp, Percent,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { DISPLAY_CURRENCIES, type DisplayCurrency, setDisplay, inDisplay, fmt, fmtSigned } from './display-currency'
 import { computeIncomeStatementTotals, INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { computeCashFlowTotals } from '@/lib/reports/cash-flow-totals'
 import HistoricalReport from './HistoricalReport'
 import LedgerStatements from './LedgerStatements'
+import GraphsView from './GraphsView'
+import ContributionMargin, { type CmPayload } from './ContributionMargin'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
+import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -97,9 +101,9 @@ interface ReportData {
   unearnedRevenueFromAR?: number
 }
 
-type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
-// 'quarterly' is offered on the Ledger engine only; the standard components
-// treat it as 'annual' if it ever reaches them.
+type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow' | 'graphs' | 'contribution'
+// 'quarterly' is offered on the full statements only; the med-rep revenue view
+// treats it as 'annual' if it ever reaches it.
 type ViewMode = 'annual' | 'quarterly' | 'monthly'
 type OnDrillDown = (label: string, category: string, month: number, accountKey?: string, opts?: { subtype?: string; portion?: string }) => void
 
@@ -138,6 +142,8 @@ const TABS: { key: ReportTab; label: string; icon: typeof FileText }[] = [
   { key: 'balance-sheet', label: 'Balance Sheet', icon: FileText },
   { key: 'income-statement', label: 'Income Statement', icon: BarChart3 },
   { key: 'cash-flow', label: 'Cash Flow Statement', icon: LayoutList },
+  { key: 'graphs', label: 'Graphs', icon: TrendingUp },
+  { key: 'contribution', label: 'Contribution Margin', icon: Percent },
 ]
 
 const DEPT_LABELS: Record<string, string> = {
@@ -261,17 +267,15 @@ function getMonthlyArray(data: Record<number, MonthData>, getter: (m: MonthData)
   return Array.from({ length: 12 }, (_, i) => getter(data[i + 1]))
 }
 
-function fmt(n: number): string {
-  if (n === 0) return '—'
-  return formatCurrency(n)
-}
+/* ── Display currency ──────────────────────────────────────────────────────
+   The ledger is, and stays, PHP. This is presentation only: every figure is
+   divided by one rate so the statements can be read in USD or EUR — useful for
+   a foreign reader, but it is NOT a restatement into a functional currency
+   (which would need closing rates for the balance sheet, average rates for the
+   income statement, and a translation reserve). The rate in force is printed
+   above the report and carried into the Excel export so a downloaded copy can
+   never be mistaken for pesos. */
 
-function fmtSigned(n: number): string {
-  if (n === 0) return '—'
-  const prefix = n < 0 ? '(' : ''
-  const suffix = n < 0 ? ')' : ''
-  return prefix + formatCurrency(Math.abs(n)) + suffix
-}
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED ROW COMPONENTS  (QuickBooks-style clean design)
@@ -1607,15 +1611,76 @@ export default function ReportsPage() {
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const [activeTab, setActiveTab] = useState<ReportTab>('income-statement')
   const [year, setYear] = useState(new Date().getFullYear())
+  // Presentation currency. The rate is entered by hand because the hub holds no
+  // USD/EUR rates — only CNY — and an invented rate would be worse than an explicit one.
+  const [dispCcy, setDispCcy] = useState<DisplayCurrency>('PHP')
+  const [dispRate, setDispRate] = useState('')
+  const dispRateNum = parseFloat(dispRate) || 0
+  const dispReady = dispCcy === 'PHP' || dispRateNum > 0
+  const [dispRateMeta, setDispRateMeta] = useState<{ rateDate: string; onOrBefore: boolean } | null>(null)
+  const [savingRate, setSavingRate] = useState(false)
+  setDisplay(dispCcy, dispRateNum)
+
+  // Default to the rate in force for the period being viewed, so the same report
+  // shows the same figures for everyone rather than depending on who typed what.
+  useEffect(() => {
+    if (dispCcy === 'PHP') { setDispRateMeta(null); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/reports/fx-rate?currency=${dispCcy}&asOf=${year}-12-31`)
+        if (!r.ok) return
+        const d = await r.json()
+        if (cancelled) return
+        if (d.phpPerUnit) { setDispRate(String(d.phpPerUnit)); setDispRateMeta({ rateDate: d.rateDate, onOrBefore: d.onOrBefore }) }
+        else setDispRateMeta(null)
+      } catch { /* leave whatever was typed */ }
+    })()
+    return () => { cancelled = true }
+  }, [dispCcy, year])
+
+  const saveDispRate = async () => {
+    if (!(dispRateNum > 0)) return
+    setSavingRate(true)
+    try {
+      const r = await fetch('/api/reports/fx-rate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currency: dispCcy, date: `${year}-12-31`, phpPerUnit: dispRateNum }),
+      })
+      if (r.ok) { const d = await r.json(); setDispRateMeta({ rateDate: d.rateDate, onOrBefore: true }) }
+    } finally { setSavingRate(false) }
+  }
   const [viewMode, setViewMode] = useState<ViewMode>('annual')
   const [branch, setBranch] = useState(scope.short || 'ALL')
   useEffect(() => { if (scope.short && branch !== scope.short) setBranch(scope.short) }, [scope.short]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Income-statement branch tickboxes: tick a subset and the statement totals
+  // only those branches (each branch's derived statement, summed). All ticked
+  // = the combined books. Kept in sync with `branch` when the selection
+  // resolves to ALL or a single branch, so the other tabs and exports behave
+  // exactly as the dropdown did.
+  const TICK_BRANCHES = BRANCHES.filter(b => b.value !== 'ALL')
+  const [isTicked, setIsTicked] = useState<string[]>(TICK_BRANCHES.map(b => b.value))
+  // Contribution-margin: the latest payload (for exports).
+  const [cmData, setCmData] = useState<CmPayload | null>(null)
+  const toggleIsBranch = (v: string) => {
+    setIsTicked(prev => {
+      const next = prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]
+      if (next.length === 0) return prev // at least one branch stays ticked
+      if (next.length === TICK_BRANCHES.length) setBranch('ALL')
+      else if (next.length === 1) setBranch(next[0])
+      return next
+    })
+  }
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
-  // 'standard' = current derivation engine; 'ledger' = v2 beta (one balanced
-  // dataset, statements interconnected). Only applies to derived years (2026+).
-  const [engine, setEngine] = useState<'standard' | 'ledger'>('standard')
+  // The Ledger engine is the only one. The old "Standard" engine derived each
+  // statement separately, so the three never had to agree and Assets = L + E
+  // was not guaranteed; it produced figures we could not stand behind. Ledger
+  // builds one balanced double-entry dataset and derives all three from it,
+  // which is why it is now the sole engine. Med-reps keep the restricted
+  // revenue-only components below — that is a permissions view, not a
+  // competing set of books.
 
   const handleDrillDown: OnDrillDown = (label, category, month, accountKey, opts) => {
     setDrillDown({ label, category, month, accountKey, subtype: opts?.subtype, portion: opts?.portion })
@@ -1625,9 +1690,23 @@ export default function ReportsPage() {
   // filter still applies. These "effective" values override the (hidden) tab/view controls.
   const role = (session?.user as { role?: string })?.role || ''
   const isMedrep = role === 'MEDREP'
+  // Investor: read-only statements + Graphs. Balance sheet and cash flow are
+  // whole-company only (no branch filter); the income statement may be
+  // branch-filtered. Amounts are never clickable — drill-downs reach
+  // patient-level lines, which investors must not see (also enforced API-side).
+  const isInvestor = role === 'INVESTOR'
   const effTab: ReportTab = isMedrep ? 'income-statement' : activeTab
   const effView: ViewMode = isMedrep ? 'monthly' : viewMode
-  const effDrill: OnDrillDown = isMedrep ? () => {} : handleDrillDown
+  const effDrill: OnDrillDown = (isMedrep || isInvestor) ? () => {} : handleDrillDown
+  const branchLocked = isInvestor && effTab !== 'income-statement' && effTab !== 'graphs'
+  const effBranch = branchLocked ? 'ALL' : branch
+  // Tickboxes replace the dropdown on the income-statement tab (whole-company
+  // users only — branch-scoped admins keep their pinned branch, med-reps keep
+  // the dropdown-driven restricted view).
+  const isTickboxes = (effTab === 'income-statement' || effTab === 'contribution') && !isMedrep && !scope.short
+  const allIsTicked = isTicked.length === TICK_BRANCHES.length
+  const isBranchSel = allIsTicked ? 'ALL' : isTicked.length === 1 ? isTicked[0] : isTicked.join('+')
+  const effIsBranch = isTickboxes ? isBranchSel : effBranch
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
@@ -1651,8 +1730,11 @@ export default function ReportsPage() {
     fetchData()
   }, [fetchData])
 
-  const handlePrint = () => {
-    window.print()
+  // Export filename branch tag — reflects the income-statement tickboxes
+  // when they drive the view (e.g. "AHEA+AHGH"), else the dropdown branch.
+  const exportBranchTag = () => {
+    const bsel = ((activeTab === 'income-statement' || activeTab === 'contribution') && isTickboxes) ? isBranchSel : branch
+    return bsel.split('+').map(p => branchCode(p)).join('+').replace(/\s+/g, '-')
   }
 
   const downloadRowsAsCSV = (rows: string[][]) => {
@@ -1661,179 +1743,346 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${activeTab}-${year}-${branch}.csv`
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const handleDownloadCSV = () => {
-    if (!data) return
-    if (data.historical) {
-      const h = data.historical
-      const stmt = activeTab === 'income-statement' ? h.incomeStatement
-        : activeTab === 'balance-sheet' ? h.balanceSheet
-        : h.cashFlow
-      if (!stmt) return
-      const withMonths = activeTab !== 'balance-sheet' && viewMode === 'monthly'
-      const rows: string[][] = []
-      const title = 'title' in stmt ? stmt.title : ''
-      rows.push([`${title} — ${year}`, ...(withMonths ? FULL_MONTHS : []), activeTab === 'balance-sheet' ? 'Amount (PHP)' : 'FY Total'])
-      for (const r of stmt.rows) {
-        if (r.kind === 'header') {
-          rows.push([r.label, ...(withMonths ? Array(12).fill('') : []), r.total !== null ? r.total.toFixed(2) : ''])
-        } else {
-          const label = r.kind === 'line' ? `  ${r.label}` : r.label
-          const months = withMonths ? (r.monthly ?? Array(12).fill(0)).map((v: number) => v.toFixed(2)) : []
-          rows.push([label, ...months, r.total !== null ? r.total.toFixed(2) : ''])
-        }
+  // Excel: a real .xlsx built in the browser — a stored (uncompressed) zip of
+  // the minimal OOXML parts, so Excel opens it with no compatibility warning
+  // and numbers stay numbers. No extra library.
+  const downloadRowsAsExcel = (rows: string[][]) => {
+    const esc = (c: string) => String(c).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const colRef = (i: number) => {
+      let s = ''
+      for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s
+      return s
+    }
+    const sheetRows = rows.map((r, ri) => {
+      const cells = r.map((c, ci) => {
+        const ref = `${colRef(ci)}${ri + 1}`
+        const n = String(c).replace(/,/g, '')
+        const isNum = n !== '' && !isNaN(Number(n)) && /\d/.test(n)
+        if (isNum) return `<c r="${ref}" s="1"><v>${Number(n)}</v></c>`
+        if (c === '') return ''
+        return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(c)}</t></is></c>`
+      }).join('')
+      return `<row r="${ri + 1}">${cells}</row>`
+    }).join('')
+    const files: [string, string][] = [
+      ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+      ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+      ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+      ['xl/styles.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf/><xf numFmtId="164" applyNumberFormat="1"/></cellXfs></styleSheet>'],
+      ['xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`],
+    ]
+    // stored zip: CRC32 + local headers + central directory + EOCD
+    const crcTable = (() => {
+      const t = new Uint32Array(256)
+      for (let i = 0; i < 256; i++) {
+        let c = i
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+        t[i] = c >>> 0
       }
-      downloadRowsAsCSV(rows)
+      return t
+    })()
+    const crc32 = (b: Uint8Array) => {
+      let c = 0xffffffff
+      for (let i = 0; i < b.length; i++) c = crcTable[(c ^ b[i]) & 0xff] ^ (c >>> 8)
+      return (c ^ 0xffffffff) >>> 0
+    }
+    const enc = new TextEncoder()
+    const parts: Uint8Array[] = []
+    const central: Uint8Array[] = []
+    let offset = 0
+    const u16 = (v: number) => [v & 0xff, (v >> 8) & 0xff]
+    const u32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff]
+    for (const [name, content] of files) {
+      const nameB = enc.encode(name)
+      const dataB = enc.encode(content)
+      const crc = crc32(dataB)
+      const head = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(dataB.length), ...u32(dataB.length), ...u16(nameB.length), ...u16(0)])
+      parts.push(head, nameB, dataB)
+      central.push(new Uint8Array([0x50, 0x4b, 0x01, 0x02, ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(dataB.length), ...u32(dataB.length), ...u16(nameB.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset)]), nameB)
+      offset += head.length + nameB.length + dataB.length
+    }
+    const centralSize = central.reduce((s, p) => s + p.length, 0)
+    const eocd = new Uint8Array([0x50, 0x4b, 0x05, 0x06, ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0)])
+    const pieces = [...parts, ...central, eocd]
+    const merged = new Uint8Array(pieces.reduce((s, p) => s + p.length, 0))
+    let pos = 0
+    for (const p of pieces) { merged.set(p, pos); pos += p.length }
+    const blob = new Blob([merged], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  // PDF: a real financial-report PDF built in the browser — letterhead,
+  // accounting number format (parenthesized negatives), section rules,
+  // landscape for monthly columns, page footers. Plain PDF 1.4, no library.
+  const downloadRowsAsPDF = (rows: string[][]) => {
+    if (!rows.length) return
+    const ncols = Math.max(...rows.map(r => r.length))
+    const landscape = ncols > 3
+    const W = landscape ? 841.89 : 595.28
+    const H = landscape ? 595.28 : 841.89
+    const M = 40
+    const fs = landscape ? 6.6 : 8.5
+    const lh = fs * 1.6
+    const labelW = landscape ? 168 : (W - 2 * M) * 0.62
+    const colW = (W - 2 * M - labelW) / Math.max(1, ncols - 1)
+    const clean = (s: string) => String(s).replace(/₱/g, 'P').replace(/[—–]/g, '-')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '')
+    const esc = (s: string) => clean(s).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+    const isNum = (s: string) => s !== '' && !isNaN(Number(String(s).replace(/,/g, ''))) && /\d/.test(s)
+    const fmtNum = (s: string) => {
+      if (!isNum(s)) return s
+      const n = Number(String(s).replace(/,/g, ''))
+      const a = Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      return n < 0 ? `(${a})` : a
+    }
+    const numWidth = (s: string) => {
+      let w = 0
+      for (const ch of s) w += (ch === ',' || ch === '.') ? 278 : (ch === '(' || ch === ')' || ch === '-') ? 333 : 556
+      return (w * fs) / 1000
+    }
+    const pageOps: string[][] = []
+    let ops: string[] = []
+    let y = 0
+    const text = (x: number, yy: number, s: string, bold = false, size = fs, gray = false) => {
+      if (!s) return
+      ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${gray ? '0.45 0.45 0.45' : '0 0 0'} rg ${x.toFixed(1)} ${yy.toFixed(1)} Td (${esc(s)}) Tj ET`)
+    }
+    const rule = (x1: number, yy: number, x2: number, w = 0.5, dark = false) =>
+      ops.push(`${w} w ${dark ? '0.25 0.25 0.25' : '0.72 0.72 0.72'} RG ${x1.toFixed(1)} ${yy.toFixed(1)} m ${x2.toFixed(1)} ${yy.toFixed(1)} l S`)
+    const drawRow = (r: string[], bold: boolean, size = fs) => {
+      text(M + (bold ? 0 : 8), y, r[0], bold, size)
+      for (let c = 1; c < ncols; c++) {
+        const v = fmtNum(r[c] ?? '')
+        if (v === '') continue
+        const right = M + labelW + c * colW - 2
+        text(right - numWidth(v), y, v, bold, size)
+      }
+    }
+    const header = rows[0]
+    const stmtTitle = header[0]
+    const body = rows.slice(1)
+    const colHeader = () => {
+      rule(M, y + lh * 0.55, W - M, 0.8, true)
+      text(M, y, 'Line Item', true, fs)
+      for (let c = 1; c < ncols; c++) {
+        const v = header[c] ?? ''
+        if (!v) continue
+        const right = M + labelW + c * colW - 2
+        text(right - (v.length * 0.52 * fs), y, v, true, fs)
+      }
+      y -= lh * 0.5
+      rule(M, y + lh * 0.35, W - M, 0.5, true)
+      y -= lh
+    }
+    const startPage = (first: boolean) => {
+      y = H - M
+      if (first) {
+        text(M, y - 4, 'SAPPHIRE CLINICS EAST INCORPORATED', true, 13)
+        y -= 18
+        text(M, y, stmtTitle, true, 10.5)
+        y -= 13
+        text(M, y, `Amounts in ${dispCcy === 'PHP' ? 'Philippine pesos' : dispCcy}. Negative amounts are shown in parentheses.`, false, 7.5, true)
+        y -= lh * 1.6
+      }
+      colHeader()
+    }
+    startPage(true)
+    for (const r of body) {
+      if (y < M + lh * 2) { pageOps.push(ops); ops = []; startPage(false) }
+      const label = r[0] ?? ''
+      const bold = !label.startsWith('  ')
+      const hasAmounts = r.slice(1).some(c => isNum(c ?? ''))
+      if (bold && hasAmounts) { rule(M, y + lh * 0.42, W - M, 0.4); y -= 1.5 }
+      if (bold && !hasAmounts) y -= lh * 0.35
+      drawRow(r, bold)
+      y -= lh
+    }
+    rule(M, y + lh * 0.42, W - M, 0.8, true)
+    pageOps.push(ops)
+    // footers
+    const stamp = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+    pageOps.forEach((p, i) => {
+      p.push(`BT /F1 7 Tf 0.45 0.45 0.45 rg ${M} ${(M * 0.5).toFixed(1)} Td (Generated ${esc(stamp)} - SCEI Accounting Hub) Tj ET`)
+      const pn = `Page ${i + 1} of ${pageOps.length}`
+      p.push(`BT /F1 7 Tf 0.45 0.45 0.45 rg ${(W - M - pn.length * 3.6).toFixed(1)} ${(M * 0.5).toFixed(1)} Td (${pn}) Tj ET`)
+    })
+    // assemble PDF
+    const objs: string[] = []
+    const kids = pageOps.map((_, i) => `${5 + i * 2} 0 R`).join(' ')
+    objs.push('<< /Type /Catalog /Pages 2 0 R >>')
+    objs.push(`<< /Type /Pages /Kids [${kids}] /Count ${pageOps.length} >>`)
+    objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>')
+    objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>')
+    for (let i = 0; i < pageOps.length; i++) {
+      objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W.toFixed(2)} ${H.toFixed(2)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + i * 2} 0 R >>`)
+      const stream = pageOps[i].join('\n')
+      objs.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`)
+    }
+    let pdf = '%PDF-1.4\n'
+    const offsets: number[] = []
+    objs.forEach((o, i) => { offsets.push(pdf.length); pdf += `${i + 1} 0 obj\n${o}\nendobj\n` })
+    const xref = pdf.length
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` +
+      offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('') +
+      `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
+    const bytes = new Uint8Array(pdf.length)
+    for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff
+    const blob = new Blob([bytes], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeTab}-${year}-${exportBranchTag()}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const exportRows = (rows: string[][], fmt: 'csv' | 'xls' | 'pdf') =>
+    fmt === 'xls' ? downloadRowsAsExcel(rows) : fmt === 'pdf' ? downloadRowsAsPDF(rows) : downloadRowsAsCSV(rows)
+
+  const handleDownloadCSV = (fmt: 'csv' | 'xls' | 'pdf' = 'csv') => {
+    if (activeTab === 'contribution') {
+      if (!cmData) return
+      const shown = cmData.rows
+      const branchLbl = (isTickboxes ? isBranchSel : effBranch).split('+').map(pt => BRANCHES.find(b => b.value === pt)?.label || (pt === 'ALL' ? 'All Branches' : pt)).join(' + ')
+      const t = shown.reduce((a, r) => ({ gross: a.gross + r.gross, discounts: a.discounts + r.discounts, net: a.net + r.net, fees: a.fees + r.fees, cm: a.cm + r.cm, other: a.other + r.other, rent: a.rent + r.rent, nm: a.nm + r.nm }), { gross: 0, discounts: 0, net: 0, fees: 0, cm: 0, other: 0, rent: 0, nm: 0 })
+      const rows: string[][] = [[`Contribution Margin — ${year} — ${branchLbl}`, ...shown.map(r => r.label), 'Total']]
+      rows.push(['Gross Sales', ...shown.map(r => r.gross.toFixed(2)), t.gross.toFixed(2)])
+      rows.push(['Discounts (allocated)', ...shown.map(r => (-r.discounts).toFixed(2)), (-t.discounts).toFixed(2)])
+      rows.push(['Net Sales', ...shown.map(r => r.net.toFixed(2)), t.net.toFixed(2)])
+      rows.push(['Professional Fees', ...shown.map(r => (-r.fees).toFixed(2)), (-t.fees).toFixed(2)])
+      rows.push(['Contribution Margin', ...shown.map(r => r.cm.toFixed(2)), t.cm.toFixed(2)])
+      rows.push(['Other Expenses (allocated)', ...shown.map(r => (-r.other).toFixed(2)), (-t.other).toFixed(2)])
+      rows.push(['Rent (allocated)', ...shown.map(r => (-r.rent).toFixed(2)), (-t.rent).toFixed(2)])
+      rows.push(['Net Margin', ...shown.map(r => r.nm.toFixed(2)), t.nm.toFixed(2)])
+      rows.push(['Net Margin % of Net Sales', ...shown.map(r => r.nmPct != null ? `${r.nmPct.toFixed(1)}%` : ''), t.net > 0 ? `${((t.nm / t.net) * 100).toFixed(1)}%` : ''])
+      if (cmData.adminFees > 0) rows.push([`Administration consultants (overhead): ${(-cmData.adminFees).toFixed(2)}`])
+      if (Math.abs(cmData.untaggedFees) > 0.5) rows.push([`Professional fees not yet department-tagged: ${(-cmData.untaggedFees).toFixed(2)}`])
+      if (cmData.rentUnallocated > 0.5) rows.push([`Rent not covered by allocation percentages: ${(-cmData.rentUnallocated).toFixed(2)}`])
+      exportRows(rows, fmt)
       return
     }
-    const t = computeIncomeStatementTotals(data)
-    const { monthly, accounts } = data
-    const allRevSubs = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
-    const grossRevAccts = allRevSubs.filter(a => a.normalBalance !== 'DEBIT')
-    const discAccts = allRevSubs.filter(a => a.normalBalance === 'DEBIT')
-    const dirExpAccts = accounts.EXPENSE?.DIRECT_EXPENSES || []
-    const indirExpAccts = accounts.EXPENSE?.INDIRECT_EXPENSES || []
-
-    const acctAmt = (n: string, t: string) => sumMonths(monthly, m => (m.revenueByAccount || {})[`${n} ${t}`] || 0)
-    const expAmt = (n: string, t: string) => sumMonths(monthly, m => (m.expenseByAccount || {})[`${n} ${t}`] || 0)
-
-    const totalGross = grossRevAccts.reduce((s, a) => s + acctAmt(a.accountNumber, a.accountTitle), 0)
-    const totalDisc = discAccts.reduce((s, a) => s + acctAmt(a.accountNumber, a.accountTitle), 0)
-    const ns = totalGross - totalDisc
-    const totalDirExp = dirExpAccts.reduce((s, a) => s + expAmt(a.accountNumber, a.accountTitle), 0)
-    const tCOGS = sumMonths(monthly, m => m.cogs) + totalDirExp
-    const gp = ns - tCOGS
-    const tOpex = indirExpAccts.reduce((s, a) => s + expAmt(a.accountNumber, a.accountTitle), 0)
-    const ebda = gp - tOpex
-    const branchLbl = branch === 'ALL' ? 'All Branches' : BRANCHES.find(b => b.value === branch)?.label || branch
-
-    const rows: string[][] = []
-
-    // Per-month helpers for CSV
-    const mGross = (m: MonthData) => {
-      const r = grossRevAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-      const u = Object.keys(m.revenueByAccount || {}).filter(k =>
-        !grossRevAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k) &&
-        !discAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k)
-      ).reduce((s, k) => s + ((m.revenueByAccount || {})[k] || 0), 0)
-      return (r + u) > 0 ? (r + u) : (m.serviceRevenue + m.productRevenue)
-    }
-    const mDisc = (m: MonthData) => discAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-    const mDirExp = (m: MonthData) => dirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-    const mIndirExp = (m: MonthData) => indirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-
-    if (activeTab === 'income-statement') {
-      if (viewMode === 'annual') {
-        rows.push([`Income Statement — ${year} — ${branchLbl}`, 'Amount (PHP)'])
-        rows.push(['7000 GROSS REVENUE', ''])
-        grossRevAccts.forEach(a => {
-          const amt = acctAmt(a.accountNumber, a.accountTitle)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
-        })
-        rows.push(['Total for 7000 Gross Revenue', totalGross.toFixed(2)])
-        rows.push(['7002 DISCOUNTS AND REFUNDS', ''])
-        discAccts.forEach(a => {
-          const amt = acctAmt(a.accountNumber, a.accountTitle)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, (-amt).toFixed(2)])
-        })
-        rows.push(['Total for 7002 Discounts and Refunds', (-totalDisc).toFixed(2)])
-        rows.push(['TOTAL FOR NET SALES', ns.toFixed(2)])
-        rows.push(['COST OF SALES', ''])
-        // COGS by account
-        const cogsByAcctCSV: Record<string, number> = {}
-        for (let m = 1; m <= 12; m++) {
-          for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
-            cogsByAcctCSV[key] = (cogsByAcctCSV[key] || 0) + val
+    if (!data) return
+    // Ticked subset of branches on the income statement: export the summed
+    // engine statements (matches the screen).
+    // (defined below; invoked after exportEngineStatement exists)
+    // Export the derived ledger-engine statement (what LedgerStatements shows
+    // on screen). Used when the manual FY2024–FY2025 package has no statement
+    // for this tab/branch (Verdana 2025, any 2024 cash flow), when monthly
+    // columns are requested but the manual statement is annual-only, and for
+    // live-year balance sheet / cash flow exports.
+    const exportEngineStatement = (branchOverride?: string) => {
+        void (async () => {
+          try {
+            const bsel = branchOverride || branch
+            const parts = bsel.split('+')
+            const resps = await Promise.all(parts.map(p => fetch(`/api/reports/v2?year=${year}&branch=${p}`)))
+            if (resps.some(r => !r.ok)) return
+            const payloads = await Promise.all(resps.map(r => r.json()))
+            const v2 = parts.length > 1 ? mergeLedgerStatements(payloads) : payloads[0]
+            const rows: string[][] = []
+            const withMonths = viewMode === 'monthly'
+            const mcols = withMonths ? FULL_MONTHS : []
+            const blank = () => (withMonths ? Array(12).fill('') : [])
+            const num = (v: number) => (Number(v) || 0).toFixed(2)
+            const mrow = (m?: number[]) => (withMonths ? (m && m.length === 12 ? m.map(num) : Array(12).fill('')) : [])
+            const branchLbl = bsel === 'ALL' ? 'All Branches'
+              : parts.map(p => BRANCHES.find(b => b.value === p)?.label || p).join(' + ')
+            if (activeTab === 'income-statement' && v2.incomeStatement) {
+              const t = v2.incomeStatement
+              rows.push([`Income Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
+              // Section totals and summary lines carry monthly columns too —
+              // summed from the section rows' monthly arrays.
+              const secM: Record<string, number[]> = {}
+              for (const sec of t.sections || []) {
+                const m12 = Array.from({ length: 12 }, (_, i) =>
+                  (sec.rows || []).reduce((s: number, r: { monthly?: number[] }) => s + (r.monthly?.[i] || 0), 0))
+                secM[sec.key] = m12
+                rows.push([sec.label, ...blank(), ''])
+                for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, ...mrow(r.monthly), num(r.closing)])
+                rows.push([`Total ${sec.label}`, ...mrow(m12), num(sec.total)])
+              }
+              const z = () => Array(12).fill(0) as number[]
+              const sub = (a: number[], b: number[]) => a.map((v, i) => v - (b[i] || 0))
+              const rev = secM['REVENUE'] || z(), disc = secM['DISCOUNTS'] || z(), cogs = secM['COGS'] || z()
+              const opex = secM['OPEX'] || z(), dep = secM['DEPRECIATION'] || z(), intr = secM['INTEREST'] || z()
+              const nonop = secM['NON_OPERATING'] || secM['NONOP'] || z()
+              const nsM = sub(rev, disc)
+              const gpM = sub(nsM, cogs)
+              const ebitdaM = sub(gpM, opex)
+              const niM = sub(sub(sub(ebitdaM, dep), intr), nonop)
+              const summary: [string, number[], number][] = [
+                ['Net Sales', nsM, t.netSales], ['Total Cost of Sales', cogs, t.totalCOGS], ['Gross Profit', gpM, t.grossProfit],
+                ['Total Operating Expenses', opex, t.totalOpex], ['EBITDA', ebitdaM, t.ebitda], ['Depreciation', dep, t.depreciation],
+                ['Interest', intr, t.interest], ['Net Income', niM, t.netIncome],
+              ]
+              for (const [l, m, v] of summary) rows.push([l, ...mrow(m), num(v)])
+            } else if (activeTab === 'balance-sheet' && v2.balanceSheet) {
+              const t = v2.balanceSheet
+              rows.push([`Balance Sheet — ${year} — ${branchLbl}`, ...mcols, withMonths ? 'Closing' : `Amount (${dispCcy})`])
+              for (const sec of t.sections || []) {
+                rows.push([sec.label, ...blank(), ''])
+                for (const r of sec.rows || []) rows.push([`  ${r.number} ${r.title}`, ...mrow(r.monthly), num(r.closing)])
+                rows.push([`Total ${sec.label}`, ...blank(), num(sec.total)])
+              }
+              rows.push(['Net Income (current year)', ...blank(), num(t.netIncome)])
+              rows.push(['TOTAL ASSETS', ...blank(), num(t.totalAssets)])
+              rows.push(['TOTAL LIABILITIES', ...blank(), num(t.totalLiabilities)])
+              rows.push(['TOTAL EQUITY', ...blank(), num(t.totalEquity)])
+            } else if (activeTab === 'cash-flow' && v2.cashFlow) {
+              const cf = v2.cashFlow
+              rows.push([`Cash Flow Statement — ${year} — ${branchLbl}`, ...mcols, 'FY Total'])
+              const z12 = () => Array(12).fill(0) as number[]
+              const sumRows = (rs?: { monthly?: number[] }[]) => (rs || []).reduce((acc, r) =>
+                acc.map((v, i) => v + (r.monthly?.[i] || 0)), z12())
+              const niM = (cf.monthly?.netIncome as number[] | undefined) || z12()
+              const depM = (cf.monthly?.depreciation as number[] | undefined) || z12()
+              const wcM = sumRows(cf.workingCapital)
+              const invM = sumRows(cf.investing)
+              const finM = sumRows(cf.financing)
+              const opM = niM.map((v, i) => v + depM[i] + wcM[i])
+              const deltaM = (cf.monthly?.cashDelta as number[] | undefined) || z12()
+              const beginM = z12(); const endM = z12()
+              let run = Number(cf.beginningCash) || 0
+              for (let i = 0; i < 12; i++) { beginM[i] = run; endM[i] = run + (deltaM[i] || 0); run = endM[i] }
+              rows.push(['Net Income', ...mrow(niM), num(cf.netIncome)])
+              rows.push(['Depreciation', ...mrow(depM), num(cf.depreciation)])
+              rows.push(['Working capital changes', ...blank(), ''])
+              for (const r of cf.workingCapital || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Operating Activities', ...mrow(opM), num(cf.netOperating)])
+              rows.push(['Investing activities', ...blank(), ''])
+              for (const r of cf.investing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Investing Activities', ...mrow(invM), num(cf.netInvesting)])
+              rows.push(['Financing activities', ...blank(), ''])
+              for (const r of cf.financing || []) rows.push([`  ${r.label}`, ...mrow(r.monthly), num(r.amount)])
+              rows.push(['Net Cash from Financing Activities', ...mrow(finM), num(cf.netFinancing)])
+              rows.push(['Net Change in Cash', ...mrow(deltaM), num(cf.netChange)])
+              rows.push(['Beginning Cash', ...mrow(beginM), num(cf.beginningCash)])
+              rows.push(['Ending Cash', ...mrow(endM), num(cf.endingCash)])
+            }
+            if (rows.length > 1) exportRows(rows, fmt)
+          } catch (err) {
+            console.error('Engine export fallback failed:', err)
           }
-        }
-        Object.keys(cogsByAcctCSV).sort().forEach(key => rows.push([`  ${key}`, cogsByAcctCSV[key].toFixed(2)]))
-        dirExpAccts.forEach(a => {
-          const amt = expAmt(a.accountNumber, a.accountTitle)
-          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
-        })
-        rows.push(['Total for Cost of Sales', tCOGS.toFixed(2)])
-        rows.push(['GROSS PROFIT', gp.toFixed(2)])
-        rows.push(['EXPENSES', ''])
-        indirExpAccts.forEach(a => {
-          const amt = expAmt(a.accountNumber, a.accountTitle)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
-        })
-        rows.push(['Total for Expenses', tOpex.toFixed(2)])
-        rows.push(['EBITDA', ebda.toFixed(2)])
-        rows.push(['Depreciation', t.totalDepreciation.toFixed(2)])
-        rows.push(['Interest', t.totalInterest.toFixed(2)])
-        if (t.totalNonOperating !== 0) rows.push(['Non-Operating Expenses', t.totalNonOperating.toFixed(2)])
-        rows.push(['EBT', t.ebt.toFixed(2)])
-        rows.push(['Provision for Income Tax (20%)', t.taxProvision.toFixed(2)])
-        rows.push(['NET INCOME', t.netIncome.toFixed(2)])
-      } else {
-        const mv = (getter: (m: MonthData) => number) =>
-          Array.from({ length: 12 }, (_, i) => getter(monthly[i + 1]).toFixed(2))
-        const mAcctRev = (n: string, t: string) =>
-          Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].revenueByAccount || {})[`${n} ${t}`] || 0).toFixed(2))
-        const mAcctExp = (n: string, t: string) =>
-          Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].expenseByAccount || {})[`${n} ${t}`] || 0).toFixed(2))
-
-        rows.push([`Income Statement — ${year} — ${branchLbl}`, ...FULL_MONTHS, 'Total'])
-        // Gross Revenue section
-        rows.push(['7000 GROSS REVENUE', ...Array(12).fill(''), ''])
-        grossRevAccts.forEach(a => {
-          const mVals = mAcctRev(a.accountNumber, a.accountTitle)
-          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
-        })
-        rows.push(['Total for 7000 Gross Revenue', ...mv(mGross), totalGross.toFixed(2)])
-        // Discounts section
-        rows.push(['7002 DISCOUNTS AND REFUNDS', ...Array(12).fill(''), ''])
-        discAccts.forEach(a => {
-          const mVals = mAcctRev(a.accountNumber, a.accountTitle).map(v => (-parseFloat(v)).toFixed(2))
-          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
-        })
-        rows.push(['Total for 7002 Discounts and Refunds', ...mv(m => -mDisc(m)), (-totalDisc).toFixed(2)])
-        rows.push(['TOTAL FOR NET SALES', ...mv(m => mGross(m) - mDisc(m)), ns.toFixed(2)])
-        // Cost of Sales section
-        rows.push(['COST OF SALES', ...Array(12).fill(''), ''])
-        const cogsByAcctCSV: Record<string, number> = {}
-        for (let m = 1; m <= 12; m++) {
-          for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
-            cogsByAcctCSV[key] = (cogsByAcctCSV[key] || 0) + val
-          }
-        }
-        Object.keys(cogsByAcctCSV).sort().forEach(key => {
-          const mVals = Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].cogsByAccount || {})[key] || 0).toFixed(2))
-          rows.push([`  ${key}`, ...mVals, cogsByAcctCSV[key].toFixed(2)])
-        })
-        dirExpAccts.forEach(a => {
-          const mVals = mAcctExp(a.accountNumber, a.accountTitle)
-          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
-          if (tot > 0) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
-        })
-        rows.push(['Total for Cost of Sales', ...mv(m => m.cogs + mDirExp(m)), tCOGS.toFixed(2)])
-        rows.push(['GROSS PROFIT', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m)), gp.toFixed(2)])
-        // Expenses section
-        rows.push(['EXPENSES', ...Array(12).fill(''), ''])
-        indirExpAccts.forEach(a => {
-          const mVals = mAcctExp(a.accountNumber, a.accountTitle)
-          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
-          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
-        })
-        rows.push(['Total for Expenses', ...mv(mIndirExp), tOpex.toFixed(2)])
-        rows.push(['EBITDA', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m) - mIndirExp(m)), ebda.toFixed(2)])
-        rows.push(['EBT', ...Array(12).fill(''), t.ebt.toFixed(2)])
-        rows.push(['Provision for Income Tax (20%)', ...Array(12).fill(''), t.taxProvision.toFixed(2)])
-        rows.push(['NET INCOME', ...Array(12).fill(''), t.netIncome.toFixed(2)])
-      }
-    } else {
-      rows.push([`${reportTitle} — ${year} — ${branchLbl}`])
-      rows.push(['Note: For Balance Sheet and Cash Flow, use Print (PDF) for a formatted version.'])
+        })()
     }
-
-    downloadRowsAsCSV(rows)
+    if (activeTab === 'income-statement' && isTickboxes && isBranchSel.includes('+')) {
+      exportEngineStatement(isBranchSel)
+      return
+    }
+    // All years export from the ledger engine — the manual FY2024–FY2025
+    // package is display metadata only; downloads always match the screen.
+    // Live years: every statement exports from the ledger engine — the same
+    // derivation the screen shows (the legacy /api/reports builder diverged).
+    exportEngineStatement()
   }
 
   const reportTitle = activeTab === 'balance-sheet'
@@ -1863,10 +2112,10 @@ export default function ReportsPage() {
             Generate and review financial statements for Sapphire Clinics East Incorporated
           </p>
         </div>
-        <div className="flex gap-2" style={{ display: isMedrep ? 'none' : undefined }}>
+        <div className="flex gap-2" style={{ display: (isMedrep || isInvestor || effTab === 'graphs') ? 'none' : undefined }}>
           <button
-            onClick={handleDownloadCSV}
-            disabled={!data}
+            onClick={() => handleDownloadCSV('csv')}
+            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
@@ -1874,8 +2123,18 @@ export default function ReportsPage() {
             CSV
           </button>
           <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            onClick={() => handleDownloadCSV('xls')}
+            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
+            style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+          >
+            <Download size={16} />
+            Excel
+          </button>
+          <button
+            onClick={() => handleDownloadCSV('pdf')}
+            disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
             <Printer size={16} />
@@ -1887,7 +2146,7 @@ export default function ReportsPage() {
       {/* ── Tab Navigation ─────────────────────────────────────── */}
       {!isMedrep && (
       <div className="flex gap-1 mb-4 p-1 rounded-xl print:hidden" style={{ background: 'var(--light-gray)' }}>
-        {TABS.map((tab) => {
+        {TABS.filter(t => !(isInvestor && t.key === 'contribution')).map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
           return (
@@ -1910,8 +2169,92 @@ export default function ReportsPage() {
       </div>
       )}
 
+      {effTab === 'contribution' ? (
+        <>
+          {/* Year + branch filters — the shared filter row lives in the
+              statements branch below, so this tab carries its own. */}
+          <div className="flex flex-wrap items-center gap-3 mb-5 px-4 pt-4 print:hidden">
+            <div className="flex items-center gap-2">
+              <Calendar size={16} style={{ color: 'var(--mid-gray)' }} />
+              <div className="relative">
+                <select
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
+                  style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
+                >
+                  {years.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
+              {TICK_BRANCHES.map(b => (
+                <label
+                  key={b.value}
+                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-medium cursor-pointer select-none"
+                  style={{
+                    border: `1px solid ${isTicked.includes(b.value) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`,
+                    color: 'var(--charcoal)',
+                    background: isTicked.includes(b.value) ? '#f0f7f2' : 'white',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isTicked.includes(b.value)}
+                    onChange={() => toggleIsBranch(b.value)}
+                    className="accent-current"
+                  />
+                  {b.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <ContributionMargin
+            year={year}
+            branch={isTickboxes ? isBranchSel : effBranch}
+            onData={setCmData}
+          />
+        </>
+      ) : effTab === 'graphs' ? <GraphsView /> : <>
       {/* ── Filters ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-5 print:hidden">
+        {/* Presentation currency — display only, the ledger stays in pesos */}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <select
+              value={dispCcy}
+              onChange={(e) => setDispCcy(e.target.value as DisplayCurrency)}
+              title="Show every figure in this currency. The ledger itself stays in pesos."
+              className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
+              style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
+            >
+              {DISPLAY_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+            </select>
+            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+          </div>
+          {dispCcy !== 'PHP' && (
+            <input
+              value={dispRate}
+              onChange={(e) => setDispRate(e.target.value)}
+              inputMode="decimal"
+              placeholder={`₱ per 1 ${dispCcy}`}
+              title={`How many pesos to one ${dispCcy}. Every figure is divided by this.`}
+              className="w-32 px-3 py-2 rounded-lg text-sm font-mono outline-none"
+              style={{ border: `1px solid ${dispReady ? 'var(--light-gray)' : '#fca5a5'}`, background: 'white' }}
+            />
+          )}
+          {dispCcy !== 'PHP' && dispRateNum > 0 && (
+            <button onClick={saveDispRate} disabled={savingRate}
+              title={`Remember ${dispRateNum} as the ${dispCcy} rate for ${year}, so this report opens with it next time`}
+              className="px-2.5 py-2 rounded-lg text-xs font-semibold disabled:opacity-50"
+              style={{ border: '1px solid var(--light-gray)', color: 'var(--teal)', background: 'white' }}>
+              {savingRate ? 'Saving…' : 'Save rate'}
+            </button>
+          )}
+        </div>
+
         {/* Year */}
         <div className="flex items-center gap-2">
           <Calendar size={16} style={{ color: 'var(--mid-gray)' }} />
@@ -1933,7 +2276,7 @@ export default function ReportsPage() {
         {/* View Mode */}
         {!isMedrep && (
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-          {((engine === 'ledger' && year >= 2024 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
+          {((!isMedrep && year >= 2024 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
@@ -1949,46 +2292,63 @@ export default function ReportsPage() {
         </div>
         )}
 
-        {/* Branch */}
+        {/* Branch — tickboxes on the income statement (tick a subset to total
+            only those branches); dropdown elsewhere. */}
+        {isTickboxes ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
+            {TICK_BRANCHES.map(b => (
+              <label
+                key={b.value}
+                className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-medium cursor-pointer select-none"
+                style={{
+                  border: `1px solid ${isTicked.includes(b.value) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`,
+                  color: 'var(--charcoal)',
+                  background: isTicked.includes(b.value) ? '#f0f7f2' : 'white',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isTicked.includes(b.value)}
+                  onChange={() => toggleIsBranch(b.value)}
+                  className="accent-current"
+                />
+                {b.label}
+              </label>
+            ))}
+          </div>
+        ) : (
         <div className="flex items-center gap-2">
           <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
           <div className="relative">
             <select
-              value={branch}
+              value={effBranch}
+              disabled={branchLocked}
+              title={branchLocked ? 'Balance sheet and cash flow are whole-company statements' : undefined}
               onChange={(e) => setBranch(e.target.value)}
               className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
               style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
             >
-              {(scope.short ? BRANCHES.filter(b => b.value === scope.short) : BRANCHES).map((b) => (
+              {(branchLocked ? BRANCHES.filter(b => b.value === 'ALL')
+                : scope.short ? BRANCHES.filter(b => b.value === scope.short) : BRANCHES).map((b) => (
                 <option key={b.value} value={b.value}>{b.label}</option>
               ))}
             </select>
             <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
           </div>
         </div>
-
-        {/* Engine. From 2024 on: 2026+ derives both ways; 2024-25 default to the
-            audited manual statements, with the Ledger beta deriving from the
-            imported transaction history for those who need to drill in. */}
-        {!isMedrep && year >= 2024 && (
-          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-            {([['standard', 'Standard'], ['ledger', 'Ledger (beta)']] as const).map(([mode, label]) => (
-              <button
-                key={mode}
-                onClick={() => { setEngine(mode); if (mode === 'standard' && viewMode === 'quarterly') setViewMode('annual') }}
-                title={mode === 'ledger' ? 'Derive all three statements from one balanced double-entry dataset (A = L + E guaranteed)' : 'Current derivation engine'}
-                className="px-3 py-2 text-sm font-medium transition-colors"
-                style={{
-                  background: engine === mode ? 'var(--teal)' : 'white',
-                  color: engine === mode ? 'white' : 'var(--charcoal)',
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         )}
+
       </div>
+
+      {/* A translated statement must never be mistaken for pesos. */}
+      {dispCcy !== 'PHP' && (
+        <div className="mb-4 px-3 py-2 rounded-lg text-xs" style={{ background: dispReady ? '#eff6ff' : '#fef2f2', color: dispReady ? '#1e40af' : '#b91c1c', border: `1px solid ${dispReady ? '#bfdbfe' : '#fecaca'}` }}>
+          {dispReady
+            ? <>Figures shown in <strong>{dispCcy}</strong> at <strong>₱{dispRateNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong> = 1 {dispCcy}. Books are maintained in Philippine pesos.{dispRateMeta ? <span style={{ opacity: 0.75 }}> Rate recorded {dispRateMeta.rateDate}{dispRateMeta.onOrBefore ? '' : ' (the earliest on file — none yet for this period)'}.</span> : null}</>
+            : <>Enter how many pesos make one {dispCcy} to see the statements in {dispCcy}. Until then the figures below are still pesos.</>}
+        </div>
+      )}
 
       {/* ── Report Container ───────────────────────────────────── */}
       <div
@@ -2008,7 +2368,7 @@ export default function ReportsPage() {
             {reportTitle}
           </p>
           <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '1px' }}>
-            {reportSubtitle}{branch !== 'ALL' ? ` · ${branchLabel}` : ''}
+            {reportSubtitle}{effBranch !== 'ALL' ? ` · ${branchLabel}` : ''}
           </p>
         </div>
 
@@ -2023,18 +2383,10 @@ export default function ReportsPage() {
         )}
 
         {/* Report content */}
-        {!loading && data?.historical && engine === 'standard' && (
-          <div className="mx-4 mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b' }}>
-            {year} figures are the audited / manually entered historical statements — fixed numbers with nothing
-            underneath to click. To drill into the {year} transaction history that has been imported into the Hub
-            (orders, equity, asset purchases…), switch the engine to <strong>Ledger (beta)</strong>; its integrity
-            card will say plainly which modules are missing for {year}.
-          </div>
+        {!loading && data?.historical && !isMedrep && (
+          <LedgerStatements year={year} branch={effIsBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
-        {!loading && data?.historical && engine === 'ledger' && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
-        )}
-        {!loading && data?.historical && engine === 'standard' && (
+        {!loading && data?.historical && isMedrep && (
           <HistoricalReport
             hist={data.historical}
             tab={effTab}
@@ -2042,10 +2394,10 @@ export default function ReportsPage() {
             revenueOnly={isMedrep}
           />
         )}
-        {!loading && !data?.historical && engine === 'ledger' && year >= 2026 && !isMedrep && (
-          <LedgerStatements year={year} branch={branch} tab={effTab} view={effView} />
+        {!loading && !data?.historical && !isMedrep && (
+          <LedgerStatements year={year} branch={effIsBranch} tab={effTab} view={effView} readOnly={isInvestor} />
         )}
-        {!loading && data && !data.historical && (engine === 'standard' || year < 2026 || isMedrep) && (
+        {!loading && data && !data.historical && isMedrep && (
           <div className="py-2">
             {effTab === 'balance-sheet' && (
               <BalanceSheet data={data} viewMode={effView} onDrillDown={effDrill} />
@@ -2068,8 +2420,10 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      </>}
+
       {/* Drill-down panel */}
-      {drillDown && (
+      {!isInvestor && drillDown && (
         <DrillDownPanel
           target={drillDown}
           year={year}

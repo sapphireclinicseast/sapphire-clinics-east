@@ -3,23 +3,12 @@
 import { useSession } from 'next-auth/react'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { MapPin } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 interface BranchInfo {
   staffId: string
   branch: string
   department: string
-}
-
-const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
-  VERDANA_STORE: 'Verdana Store',
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-}
-
-function branchLabel(branch: string) {
-  return BRANCH_LABELS[branch] ?? branch
 }
 
 interface BranchSwitcherState {

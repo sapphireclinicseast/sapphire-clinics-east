@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   PackageSearch, Filter, Loader2, BarChart3, TrendingUp, TrendingDown,
-  PackageX, Gift, Sparkles, CreditCard, Globe, RotateCcw, CalendarDays, Layers,
+  PackageX, Gift, Sparkles, CreditCard, Globe, RotateCcw, CalendarDays, Layers, Ban,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -46,6 +46,10 @@ interface AnalysisData {
   rewardPoints: NamedQty[]
   paymentModes: PayMode[]
   topPlatforms: PlatformRow[]
+  cancellations: {
+    total: number
+    topReasons: { reason: string; count: number; orderAmount: number }[]
+  } | null
 }
 
 const BRANCHES = [
@@ -283,6 +287,41 @@ export default function ProductsAnalysisPage() {
               </div>
             )}
           </div>
+
+          {/* Top Cancellation Reasons (TikTok) — orders that never became a sale.
+              Verdana/TikTok-only; upload via POS > Products > Bulk Upload TikTok Shop. */}
+          {data.cancellations && data.cancellations.total > 0 && (
+            <div className="rounded-2xl border p-4 mb-6" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <Ban size={16} style={{ color: 'var(--teal)' }} />
+                <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Top Cancellation Reasons (TikTok)</h3>
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{data.cancellations.total} order{data.cancellations.total !== 1 ? 's' : ''} that never became a sale</span>
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
+                    <th className="py-1.5 pr-3 font-semibold">Reason</th>
+                    <th className="py-1.5 pr-3 font-semibold text-right">Orders</th>
+                    <th className="py-1.5 pr-3 font-semibold text-right">% of total</th>
+                    <th className="py-1.5 font-semibold text-right">Order Amount (lost)</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.cancellations.topReasons.map((r, i) => (
+                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{r.reason}</td>
+                        <td className="py-1.5 pr-3 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{r.count}</td>
+                        <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--mid-gray)' }}>{((r.count / data.cancellations!.total) * 100).toFixed(1)}%</td>
+                        <td className="py-1.5 text-right" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(r.orderAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>
+                From TikTok&apos;s own Cancelled / Failed Delivery exports — informational, not part of gross/net sales above. &quot;Package delivery failed&quot; and &quot;Failed delivery — not yet formally cancelled&quot; are the same underlying problem at different stages (TikTok auto-cancels most failed deliveries within a few days).
+              </p>
+            </div>
+          )}
 
           {/* ── Monthly products sold: overall + per SKU classification ── */}
           {(() => {

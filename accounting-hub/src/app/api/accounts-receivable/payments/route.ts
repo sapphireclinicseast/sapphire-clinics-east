@@ -64,7 +64,14 @@ export async function POST(req: Request) {
           paymentDate: new Date(paymentDate),
           amount: thisAmount,
           discount: thisDiscount,
-          discountAccountId: discountAccountId || null,
+          // The GL discount field carries the processor-commission arrangement
+          // (20-25% to the processing office) — a balance-sheet item. Unless the
+          // bookkeeper picks a different account, it clears through 1190 and
+          // never lands on the income statement.
+          discountAccountId: discountAccountId
+            || (wallet.walletType === 'GL' && thisDiscount > 0
+              ? (await prisma.account.findFirst({ where: { accountNumber: '1190' }, select: { id: true } }))?.id || null
+              : null),
           cashAccountId: cashAccountId || null,
           overpayment: overpayAmount,
           overpaymentAccountId: overpayAmount > 0 ? overpaymentAccountId : null,

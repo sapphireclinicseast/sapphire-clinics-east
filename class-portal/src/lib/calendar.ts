@@ -1,6 +1,7 @@
 // Thin client wrappers around /api/public/class-portal/calendar/*.
 
 import { backendFetch, backendJson, backendOrigin, getToken } from './backend'
+export { branchShortLabel } from './session'
 
 export type CalendarEventType = 'CLASS_CANCELLED' | 'HOLIDAY' | 'FIELD_TRIP' | 'IEP_REVIEW' | 'EVENT'
 export type CalendarBranch = 'EAST' | 'GREENHILLS'
@@ -92,14 +93,6 @@ export async function uploadCalendarPdf(file: File, branch: CalendarBranch): Pro
 
 export async function deleteCalendarPdf(branch: CalendarBranch): Promise<void> {
   await backendJson(`/api/public/class-portal/calendar/pdf?branch=${branch}`, { method: 'DELETE' })
-}
-
-export function branchLabel(b: CalendarBranch): string {
-  return b === 'EAST' ? 'Sapphire Clinics East' : 'Sapphire Clinics Greenhills'
-}
-
-export function branchShortLabel(b: CalendarBranch): string {
-  return b === 'EAST' ? 'East' : 'Greenhills'
 }
 
 export function eventTypeLabel(t: CalendarEventType): string {

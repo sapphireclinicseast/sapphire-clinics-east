@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -190,6 +191,10 @@ const emptyCalcRow: CalcRow = { name: '', classification: '', dimL: '', dimW: ''
 // ── Page ──────────────────────────────────────────────────────
 
 export default function AssetManagementPage() {
+  return <Suspense fallback={null}><AssetManagementInner /></Suspense>
+}
+
+function AssetManagementInner() {
   const { data: session, status } = useSession()
 
   const userRole = session?.user?.role as string
@@ -247,6 +252,10 @@ export default function AssetManagementPage() {
 
   // Search & sort & column filters
   const [search, setSearch] = useState('')
+  // Deep link from global search — seed the search box so the list narrows to
+  // the asset that was clicked, then drop ?focus= from the URL.
+  const { focus, done } = useFocusTarget()
+  useEffect(() => { if (focus) { setSearch(focus); done() } }, [focus, done])
   type SortKey = 'name' | 'classification' | 'branch' | 'totalAmount' | 'monthlyDepreciation' | 'depreciationEndDate' | 'utilized' | 'controlNumber'
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search, Link as LinkIcon } from 'lucide-react'
+import { CreditCard, Loader2, ExternalLink, RefreshCw, Ticket, Plus, Trash2, X, CheckCircle2, Copy, AlertTriangle, Landmark, Search, Link as LinkIcon, AlertCircle
+} from 'lucide-react'
 import { PosLinksPanel } from './PosLinksPanel'
 import { allowedPaymongoAccounts, canWritePaymongo } from '@/lib/paymongo-access'
 
@@ -78,11 +79,15 @@ const todayStr = () => new Date().toISOString().slice(0, 10)
 
 interface Txn {
   id: string; checkoutId: string; referenceCode: string | null; itemName: string | null; description: string | null
+  cartItems?: CartItem[] | null; shippingFee?: number | null
   customerName: string; customerEmail: string | null; customerPhone: string | null
   department: string | null; departmentLabel: string | null; kind: string | null
   voucherCode: string | null; grossAmount: number | null; discountAmount: number | null
   amount: number; status: string; checkoutUrl: string | null; fee: number | null; netAmount: number | null
   paymentMethodUsed: string | null
+  paymentId: string | null   // set once PayMongo confirms — used to match against live payments
+  external?: boolean         // a payment PayMongo holds that no link here created (storefront sale)
+  belongsToAccount?: string | null // settled here but earned by another branch
   paidAt: string | null; payoutId: string | null; livemode: boolean; createdAt: string
 }
 interface PayLink {
@@ -91,6 +96,9 @@ interface PayLink {
   allowVoucher: boolean; isActive: boolean; kind: string; paidCount: number; createdAt: string
 }
 interface Payout { payoutId: string; net: number; fee: number; status: string; settled: boolean; paidAt: string | null }
+// A payment as PayMongo itself reports it, independent of anything recorded here.
+interface CartItem { title: string; variant: string | null; quantity: number; price: number }
+interface LivePayment { paymentId: string; amount: number; fee: number; net: number; status: string; paidAt: string | null; description: string; payer: string; paymentMethod: string | null; belongsToAccount: string | null; cartItems: CartItem[] | null; shippingFee: number | null; voucherCode: string | null }
 interface Item { id: string; name: string; price: number; sku?: string; stock?: number; department?: string }
 interface Voucher {
   id: string; name: string; code: string; discountType: string; discountValue: number
@@ -119,6 +127,11 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState('')
+  // Payments the account received that did NOT come from a link created here —
+  // the storefront makes its own PayMongo checkouts, so its sales never appear
+  // in the transactions table below. The API has always returned these; the
+  // page simply dropped them, which is why website payments looked missing.
+  const [livePayments, setLivePayments] = useState<LivePayment[]>([])
 
   const [kind, setKind] = useState<'SERVICE' | 'PRODUCT'>('SERVICE')
   const [itemId, setItemId] = useState('')
@@ -151,18 +164,46 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
 
   // Absolute URL for the payer page — resolved client-side so it works on any host.
   const [origin, setOrigin] = useState('')
+  const [itemsPopup, setItemsPopup] = useState<Txn | null>(null)
   useEffect(() => { setOrigin(window.location.origin) }, [])
+
+  // Storefront sales exist only as raw PayMongo payments — no checkout row is
+  // ever created here — so fold them into the same table rather than stranding
+  // them somewhere separate. Matched on paymentId so nothing appears twice.
+  const rows = useMemo<Txn[]>(() => {
+    const known = new Set(txns.map(t => t.paymentId).filter(Boolean))
+    const external: Txn[] = livePayments
+      .filter(lp => lp.paymentId && !known.has(lp.paymentId))
+      .map(lp => ({
+        id: `live-${lp.paymentId}`, checkoutId: '', referenceCode: null,
+        itemName: lp.description || null, description: lp.description || null,
+        cartItems: lp.cartItems ?? null, shippingFee: lp.shippingFee ?? null,
+        customerName: lp.payer || '', customerEmail: null, customerPhone: null,
+        department: null, departmentLabel: null, kind: null,
+        voucherCode: lp.voucherCode ?? null, grossAmount: null, discountAmount: null,
+        amount: lp.amount, status: lp.status === 'paid' ? 'PAID' : lp.status.toUpperCase(),
+        checkoutUrl: null, fee: lp.fee, netAmount: lp.net,
+        paymentMethodUsed: lp.paymentMethod, paymentId: lp.paymentId,
+        belongsToAccount: lp.belongsToAccount,
+        paidAt: lp.paidAt, payoutId: null, livemode: true,
+        createdAt: lp.paidAt || new Date().toISOString(),
+        external: true,
+      }))
+    return [...txns, ...external].sort((a, b) =>
+      new Date(b.paidAt || b.createdAt).getTime() - new Date(a.paidAt || a.createdAt).getTime())
+  }, [txns, livePayments])
 
   const load = useCallback(async (sync = false) => {
     setLoading(true); setError('')
     try {
       const [t, p, l] = await Promise.all([
-        fetch(`/api/paymongo/transactions?account=${account}${sync ? '&sync=1' : ''}`).then(r => r.json()),
+        fetch(`/api/paymongo/transactions?account=${account}${sync ? '&sync=1' : '&live=1'}`).then(r => r.json()),
         fetch(`/api/paymongo/payouts?account=${account}`).then(r => r.json()),
         fetch(`/api/paymongo/links?account=${account}`).then(r => r.ok ? r.json() : []),
       ])
       setLinks(Array.isArray(l) ? l : [])
       setTxns(t.transactions || []); setConfigured(t.configured !== false)
+      if (Array.isArray(t.livePayments)) setLivePayments(t.livePayments)
       if (t.syncError) setError(t.syncError)
       // Sales that couldn't be booked to the GL (e.g. an item with no revenue account).
       if (Array.isArray(t.postWarnings) && t.postWarnings.length) {
@@ -240,6 +281,167 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
       )}
       {error && <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>}
 
+      {/* Money that landed in this account but was earned by another branch.
+          Display only — it changes nothing in the ledger, it just stops the tab
+          quietly implying the cash belongs here. */}
+      {(() => {
+        const strays = rows.filter(r => r.belongsToAccount)
+        if (strays.length === 0) return null
+        const total = strays.reduce((sum, r) => sum + r.amount, 0)
+        const net = strays.reduce((sum, r) => sum + (r.netAmount ?? r.amount), 0)
+        const owed = [...new Set(strays.map(r => r.belongsToAccount))].join(', ')
+        return (
+          <div className="mb-4 p-3 rounded-xl border flex items-start gap-2" style={{ background: '#fffbeb', borderColor: '#f59e0b', color: '#92400e' }}>
+            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold">
+                {strays.length} payment{strays.length === 1 ? '' : 's'} here {strays.length === 1 ? 'was' : 'were'} earned by {owed} — {peso(total)} gross, {peso(net)} net settled into this account.
+              </p>
+              <p className="text-xs mt-1">
+                Class-portal tuition taken before the portal sent the student&apos;s branch, so the cash settled here instead of {owed}. The revenue is already recognised under {owed} — these were booked as POS orders on the day they were paid — so nothing is missing from the income statement. Only the cash sits in the wrong account, and squaring that needs a bank transfer, not a change here.
+              </p>
+              <ul className="text-xs mt-1.5 space-y-0.5">
+                {strays.map(r => (
+                  <li key={r.id}>· {r.customerName || r.itemName || '—'} — {peso(r.amount)} gross, {peso(r.netAmount ?? r.amount)} net → belongs to {r.belongsToAccount}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Transactions ── */}
+      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Transactions Received — {label}</span>
+          <button onClick={async () => { setSyncing(true); await load(true); setSyncing(false) }} disabled={syncing || !configured}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+            {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sync from PayMongo
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Date</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Customer</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Item</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Voucher</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Gross</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Disc.</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Charged</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Net</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Paid via</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Status</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>
+            </tr></thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No transactions yet for this account.</td></tr>
+              ) : rows.map(t => (
+                <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(t.createdAt).toLocaleDateString('en-PH')}</td>
+                  <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                    {/* Populated from the payer's own entries on the PayMongo page once paid. */}
+                    {t.customerName || <span style={{ color: 'var(--mid-gray)' }}>{t.status === 'PENDING' ? 'awaiting payer' : '—'}</span>}
+                    {(t.customerEmail || t.customerPhone) && (
+                      <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                        {[t.customerEmail, t.customerPhone].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {t.cartItems?.length
+                      ? <button onClick={() => setItemsPopup(t)} className="text-left underline decoration-dotted cursor-pointer" style={{ color: 'var(--teal)' }} title="Show the items in this purchase">{t.itemName || t.description || '—'}</button>
+                      : <span style={{ color: 'var(--charcoal)' }}>{t.itemName || t.description || '—'}</span>}
+                    {/* Paid straight to the PayMongo account — a storefront sale or a
+                        payment taken outside any link created here. */}
+                    {t.external && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#ede9fe', color: '#5b21b6' }}>Website / direct</span>
+                    )}
+                    {t.belongsToAccount && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: '#fef3c7', color: '#92400e' }}
+                        title={`Earned by ${t.belongsToAccount} but settled into this account`}>
+                        ⚠ {t.belongsToAccount}&apos;s money
+                      </span>
+                    )}
+                    {(t.departmentLabel || t.kind === 'PRODUCT') && (
+                      <span className="block mt-0.5">
+                        {t.department && <DeptBadge dept={t.department} />}
+                        {t.kind === 'PRODUCT' && (
+                          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>
+                        )}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>{t.voucherCode || '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.grossAmount != null ? peso(t.grossAmount) : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono" style={{ color: (t.discountAmount || 0) > 0 ? '#c44b00' : 'var(--light-gray)' }}>{(t.discountAmount || 0) > 0 ? peso(t.discountAmount!) : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(t.amount)}</td>
+                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.fee != null ? peso(t.fee) : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{t.netAmount != null ? peso(t.netAmount) : '—'}</td>
+                  <td className="px-3 py-2"><MethodBadge method={t.paymentMethodUsed} status={t.status} /></td>
+                  <td className="px-3 py-2"><Badge s={t.status} />{t.payoutId && <span className="block text-[10px] mt-0.5" style={{ color: '#166534' }}>settled</span>}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {t.checkoutUrl && t.status === 'PENDING' && <a href={t.checkoutUrl} target="_blank" rel="noreferrer" className="mr-2" title="Open link"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>}
+                    {/* A link the payer abandoned can sit PENDING forever, so it must be
+                        removable. A settled payment never is — the money is real. */}
+                    {canWrite && t.status !== 'PAID' && !t.external && (
+                      <button onClick={() => del(t)} title="Expire this link at PayMongo and remove the row"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border"
+                        style={{ borderColor: '#fecaca', color: '#b91c1c', background: '#fef2f2' }}>
+                        <Trash2 size={11} /> Delete
+                      </button>
+                    )}
+                    {t.status === 'PAID' && (
+                      <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }} title="A settled payment cannot be deleted">paid — locked</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Payouts ── */}
+      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+          <Landmark size={15} style={{ color: 'var(--teal)' }} />
+          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Payouts to Bank — {label}</span>
+          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>· for bank reconciliation</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Payout ID</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Date</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Net to Bank</th>
+              <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
+              <th className="px-3 py-2 text-left font-semibold uppercase">Settled?</th>
+            </tr></thead>
+            <tbody>
+              {payouts.length === 0 ? (
+                <tr><td colSpan={5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>{configured ? 'No payouts reported by PayMongo for this account yet.' : 'Configure this account to see payouts.'}</td></tr>
+              ) : payouts.map(p => (
+                <tr key={p.payoutId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--charcoal)' }}>{p.payoutId}</td>
+                  <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.paidAt ? new Date(p.paidAt).toLocaleDateString('en-PH') : '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(p.net)}</td>
+                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(p.fee)}</td>
+                  <td className="px-3 py-2">
+                    {p.settled
+                      ? <span className="flex items-center gap-1 font-medium" style={{ color: '#166534' }}><CheckCircle2 size={12} /> In bank</span>
+                      : <span style={{ color: '#854d0e' }}>{p.status || 'pending'}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
       {/* ── Generate a payment link (writers only; front desk is view-only) ── */}
       {canWrite && (
       <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
@@ -391,125 +593,60 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
         </div>
       </div>
 
-      {/* ── Transactions ── */}
-      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Transactions Received — {label}</span>
-          <button onClick={async () => { setSyncing(true); await load(true); setSyncing(false) }} disabled={syncing || !configured}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
-            {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sync from PayMongo
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Date</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Customer</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Item</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Voucher</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Gross</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Disc.</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Charged</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Net</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Paid via</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Status</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Actions</th>
-            </tr></thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></td></tr>
-              ) : txns.length === 0 ? (
-                <tr><td colSpan={12} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No transactions yet for this account.</td></tr>
-              ) : txns.map(t => (
-                <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(t.createdAt).toLocaleDateString('en-PH')}</td>
-                  <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
-                    {/* Populated from the payer's own entries on the PayMongo page once paid. */}
-                    {t.customerName || <span style={{ color: 'var(--mid-gray)' }}>{t.status === 'PENDING' ? 'awaiting payer' : '—'}</span>}
-                    {(t.customerEmail || t.customerPhone) && (
-                      <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>
-                        {[t.customerEmail, t.customerPhone].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <span style={{ color: 'var(--charcoal)' }}>{t.itemName || t.description || '—'}</span>
-                    {(t.departmentLabel || t.kind === 'PRODUCT') && (
-                      <span className="block mt-0.5">
-                        {t.department && <DeptBadge dept={t.department} />}
-                        {t.kind === 'PRODUCT' && (
-                          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>Product</span>
-                        )}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>{t.voucherCode || '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.grossAmount != null ? peso(t.grossAmount) : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: (t.discountAmount || 0) > 0 ? '#c44b00' : 'var(--light-gray)' }}>{(t.discountAmount || 0) > 0 ? peso(t.discountAmount!) : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(t.amount)}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{t.fee != null ? peso(t.fee) : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{t.netAmount != null ? peso(t.netAmount) : '—'}</td>
-                  <td className="px-3 py-2"><MethodBadge method={t.paymentMethodUsed} status={t.status} /></td>
-                  <td className="px-3 py-2"><Badge s={t.status} />{t.payoutId && <span className="block text-[10px] mt-0.5" style={{ color: '#166534' }}>settled</span>}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
-                    {t.checkoutUrl && t.status === 'PENDING' && <a href={t.checkoutUrl} target="_blank" rel="noreferrer" className="mr-2" title="Open link"><ExternalLink size={13} style={{ color: 'var(--teal)' }} className="inline" /></a>}
-                    {/* A link the payer abandoned can sit PENDING forever, so it must be
-                        removable. A settled payment never is — the money is real. */}
-                    {canWrite && t.status !== 'PAID' && (
-                      <button onClick={() => del(t)} title="Expire this link at PayMongo and remove the row"
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border"
-                        style={{ borderColor: '#fecaca', color: '#b91c1c', background: '#fef2f2' }}>
-                        <Trash2 size={11} /> Delete
-                      </button>
-                    )}
-                    {t.status === 'PAID' && (
-                      <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }} title="A settled payment cannot be deleted">paid — locked</span>
-                    )}
-                  </td>
+      {/* ── Purchased-items popup (storefront cart detail) ── */}
+      {itemsPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setItemsPopup(null)}>
+          <div className="rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-5" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <div>
+                <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{itemsPopup.itemName || 'Purchase'}</p>
+                <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{itemsPopup.customerName || '—'}{itemsPopup.paymentId ? ` · ${itemsPopup.paymentId}` : ''}</p>
+              </div>
+              <button onClick={() => setItemsPopup(null)}><X size={16} style={{ color: '#6b7280' }} /></button>
+            </div>
+            <table className="w-full text-xs mt-3" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e5e7eb', color: '#374151' }}>
+                  <th className="text-left py-1.5">Item</th>
+                  <th className="text-right py-1.5 px-2">Qty</th>
+                  <th className="text-right py-1.5 px-2">Price</th>
+                  <th className="text-right py-1.5">Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── Payouts ── */}
-      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
-        <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-          <Landmark size={15} style={{ color: 'var(--teal)' }} />
-          <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Payouts to Bank — {label}</span>
-          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>· for bank reconciliation</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Payout ID</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Date</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Net to Bank</th>
-              <th className="px-3 py-2 text-right font-semibold uppercase">Fee</th>
-              <th className="px-3 py-2 text-left font-semibold uppercase">Settled?</th>
-            </tr></thead>
-            <tbody>
-              {payouts.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>{configured ? 'No payouts reported by PayMongo for this account yet.' : 'Configure this account to see payouts.'}</td></tr>
-              ) : payouts.map(p => (
-                <tr key={p.payoutId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-3 py-2 font-mono text-[11px]" style={{ color: 'var(--charcoal)' }}>{p.payoutId}</td>
-                  <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.paidAt ? new Date(p.paidAt).toLocaleDateString('en-PH') : '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(p.net)}</td>
-                  <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(p.fee)}</td>
-                  <td className="px-3 py-2">
-                    {p.settled
-                      ? <span className="flex items-center gap-1 font-medium" style={{ color: '#166534' }}><CheckCircle2 size={12} /> In bank</span>
-                      : <span style={{ color: '#854d0e' }}>{p.status || 'pending'}</span>}
-                  </td>
+              </thead>
+              <tbody>
+                {(itemsPopup.cartItems || []).map((c, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td className="py-1.5" style={{ color: '#111827' }}>{c.title}{c.variant ? <span style={{ color: '#6b7280' }}> — {c.variant}</span> : null}</td>
+                    <td className="text-right py-1.5 px-2 tabular-nums">{c.quantity}</td>
+                    <td className="text-right py-1.5 px-2 tabular-nums">{peso(c.price)}</td>
+                    <td className="text-right py-1.5 tabular-nums">{peso(c.price * c.quantity)}</td>
+                  </tr>
+                ))}
+                {itemsPopup.shippingFee != null && itemsPopup.shippingFee > 0 && (
+                  <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td className="py-1.5" style={{ color: '#6b7280' }}>Delivery</td>
+                    <td className="text-right py-1.5 px-2">—</td>
+                    <td className="text-right py-1.5 px-2">—</td>
+                    <td className="text-right py-1.5 tabular-nums">{peso(itemsPopup.shippingFee)}</td>
+                  </tr>
+                )}
+                {itemsPopup.voucherCode && (
+                  <tr style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td className="py-1.5" style={{ color: '#6b7280' }}>Voucher</td>
+                    <td className="text-right py-1.5 px-2" colSpan={3}>{itemsPopup.voucherCode}</td>
+                  </tr>
+                )}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="py-2 font-bold" style={{ color: '#111827' }}>Charged</td>
+                  <td colSpan={3} className="text-right py-2 font-bold tabular-nums" style={{ color: '#111827' }}>{peso(itemsPopup.amount)}</td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </tfoot>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

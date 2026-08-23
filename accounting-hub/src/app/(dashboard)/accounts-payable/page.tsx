@@ -211,14 +211,15 @@ function CloseModal({ item, coa, onClose, onDone }: { item: Item; coa: Coa[]; on
   const [closeAccountId, setCloseAccountId] = useState('')
   const [closedOn, setClosedOn] = useState(new Date().toISOString().slice(0, 10))
   const [note, setNote] = useState('')
+  const [noJournal, setNoJournal] = useState(false)
   const [busy, setBusy] = useState(false)
   const filtered = useMemo(() => coa.filter(c => q && `${c.accountNumber} ${c.accountTitle}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8), [coa, q])
   const chosen = coa.find(c => c.id === closeAccountId)
   const save = async () => {
-    if (!closeAccountId) { alert('Choose the account that settles this payable.'); return }
+    if (!noJournal && !closeAccountId) { alert('Choose the account that settles this payable.'); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/accounts-payable', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, action: 'close', closeAccountId, closedOn, note }) })
+      const r = await fetch('/api/accounts-payable', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, action: 'close', closeAccountId, closedOn, note, noJournal }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onDone()
     } finally { setBusy(false) }
@@ -231,6 +232,12 @@ function CloseModal({ item, coa, onClose, onDone }: { item: Item; coa: Coa[]; on
         or an income/equity account if it is being written off.
       </p>
       <div className="space-y-2">
+        <label className="flex items-start gap-2 text-xs rounded-xl border p-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={noJournal} onChange={e => setNoJournal(e.target.checked)} className="mt-0.5" />
+          <span><strong>Already settled — close without posting.</strong> For items the ledger never carried (e.g. old
+          QuickBooks bills whose payments were recorded separately). Nothing posts; the item is just marked closed.</span>
+        </label>
+        {!noJournal && (
         <div className="relative">
           <input value={chosen ? `${chosen.accountNumber} ${chosen.accountTitle}` : q}
             onChange={e => { setQ(e.target.value); setCloseAccountId('') }}
@@ -243,6 +250,7 @@ function CloseModal({ item, coa, onClose, onDone }: { item: Item; coa: Coa[]; on
             </div>
           )}
         </div>
+        )}
         <div className="flex gap-2">
           <input type="date" value={closedOn} onChange={e => setClosedOn(e.target.value)} className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
           <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional — e.g. check no., write-off reason)" className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />

@@ -25,7 +25,9 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+// Roles that never see GL wallets — ?type= is ignored for them, not trusted.
+const HMO_ONLY_ROLES = ['HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const DAY_MS = 24 * 60 * 60 * 1000
 
 type Bucket = 'b0_30' | 'b31_60' | 'b61_90' | 'b90plus'
@@ -44,7 +46,9 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url)
-  const type = (searchParams.get('type') || 'HMO') as 'HMO' | 'GL'
+  const type = (HMO_ONLY_ROLES.includes(session.user.role as string)
+    ? 'HMO'
+    : (searchParams.get('type') || 'HMO')) as 'HMO' | 'GL'
   const periodDays = Math.max(1, Number(searchParams.get('periodDays') || '90'))
   const branch = searchParams.get('branch') || ''
   const isGL = type === 'GL'

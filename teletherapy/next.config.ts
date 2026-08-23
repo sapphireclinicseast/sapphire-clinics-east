@@ -27,8 +27,12 @@ const nextConfig: NextConfig = {
           // icon — no console error visible to a non-developer.
           // Same origin is also added for any future HR-hosted asset
           // we want to embed directly.
-          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://hr.sapphireclinicseast.org; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'" },
-          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(), payment=()' },
+          // media-src includes blob: so in-portal voice/video recordings can be
+          // previewed (the recorder builds a blob: URL for the <audio>/<video>).
+          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://hr.sapphireclinicseast.org; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'" },
+          // microphone=(self) so clinicians can record voice notes / video (video
+          // recording needs the mic too). camera already allowed for same-origin.
+          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=(), payment=()' },
           { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
         ],
       },

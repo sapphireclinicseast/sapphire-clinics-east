@@ -32,6 +32,13 @@ export async function GET(
           department: true,
         },
       },
+      internStaff: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
       sessionNote: true,
     },
   })
@@ -40,10 +47,13 @@ export async function GET(
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  // Non-admin can only view their own sessions (including interbranch staff IDs)
+  // Non-admin can only view their own sessions (including interbranch staff
+  // IDs) — or a session they were assigned to as the intern.
   if (session.user.role !== 'ADMIN') {
     const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
-    if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
+    const isSupervisor = allowedStaffIds.includes(schedule.staffId) || schedule.staffId === session.user.staffId
+    const isAssignedIntern = !!schedule.internStaffId && schedule.internStaffId === session.user.staffId
+    if (!isSupervisor && !isAssignedIntern) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
   }

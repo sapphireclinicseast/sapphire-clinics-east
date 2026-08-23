@@ -55,11 +55,20 @@ export async function GET(req: NextRequest) {
   // silently disappear). Legacy per-branch-staffId consultants never send it.
   const requestedBranch = (searchParams.get('patientBranch') ?? '').trim()
   const branchWhere = requestedBranch
-    ? scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
+    ? await scheduleBranchWhere(requestedBranch, session.user.branch ?? '')
     : {}
 
   const dayStart = new Date(`${startDate}T00:00:00.000Z`)
   const dayEnd = new Date(`${endDate}T23:59:59.999Z`)
+
+  // Own schedule OR a session this clinician was assigned to as the intern
+  // (booked under a supervisor's card — staffId is the supervisor's, not
+  // theirs). branchWhere can independently be an OR clause too, so these are
+  // composed under AND rather than spread into one object, or one `OR` key
+  // would silently clobber the other.
+  const staffOrIntern = {
+    OR: [{ staffId: { in: effectiveStaffIds } }, { internStaffId: { in: effectiveStaffIds } }],
+  }
 
   // Pull schedules for the visible date range (drives the day/week/month grid)
   // AND, in parallel, the full lifetime CONFIRMED set used for the summary
@@ -68,9 +77,8 @@ export async function GET(req: NextRequest) {
   const [schedules, lifetimeConfirmed] = await Promise.all([
     prisma.schedule.findMany({
       where: {
-        staffId: { in: effectiveStaffIds },
         date: { gte: dayStart, lte: dayEnd },
-        ...branchWhere,
+        AND: [staffOrIntern, branchWhere],
       },
       include: {
         patient: {
@@ -80,14 +88,14 @@ export async function GET(req: NextRequest) {
           },
         },
         staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+        internStaff: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
     }),
     prisma.schedule.findMany({
       where: {
-        staffId: { in: effectiveStaffIds },
         status: 'CONFIRMED',
-        ...branchWhere,
+        AND: [staffOrIntern, branchWhere],
       },
       select: { date: true, patientId: true },
     }),
@@ -129,6 +137,7 @@ export async function GET(req: NextRequest) {
           }
         : null,
       staff: s.staff,
+      intern: s.internStaff,
     })),
     summary: {
       confirmedSessions: lifetimeConfirmed.length,

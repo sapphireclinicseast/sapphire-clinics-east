@@ -1,25 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Resend } from 'resend'
 import { getGmailClient } from '@/lib/email'
+import { getBranchNotifyConfig, getBranchSender, branchCc, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
-// ─── Branch config ────────────────────────────────────────────────────────────
-const BRANCH_CONFIG: Record<string, { subject: string; ccEmail: string; location: string; phone: string; teamName: string }> = {
-  SBEA: {
-    subject: 'Appointment Confirmation - Aura Health Rehab East',
-    ccEmail: 'east@sapphireclinicseast.org',
-    location: 'Aura Health Rehab – East Branch, Level 4, Robinsons MetroEast, Marcos Highway, Brgy. Dela Paz, Pasig City',
-    phone: '0917 118 9289 | (02) 5310-4991',
-    teamName: 'The Aura Health Rehab – East Team',
-  },
-  SBGH: {
-    subject: 'Appointment Confirmation - Aura Health Rehab Greenhills',
-    ccEmail: 'greenhills@sapphireclinicseast.org',
-    location: 'Aura Health Rehab – Greenhills Branch, Unit 8L, GH Tower Offices at Greenhills, South Drive, Brgy. Greenhills, Ortigas Avenue, San Juan City',
-    phone: '0917 770 1686 | (02) 8529-1590',
-    teamName: 'The Aura Health Rehab – Greenhills Team',
-  },
+function subjectFor(cfg: BranchNotifyConfig): string {
+  return `Appointment Confirmation - Aura Health Rehab ${cfg.brandShort}`
 }
 
 function formatDate(dateStr: string): string {
@@ -42,10 +28,10 @@ function buildEmailHtml(opts: {
   startTime: string
   endTime: string
   sessionType: string
-  branch: string
+  cfg: BranchNotifyConfig
   meetLink?: string | null
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   const ccEmail = cfg.ccEmail
   const phone1 = cfg.phone.split('|')[0].trim()
 
@@ -123,10 +109,10 @@ function buildEmailPlainText(opts: {
   startTime: string
   endTime: string
   sessionType: string
-  branch: string
+  cfg: BranchNotifyConfig
   meetLink?: string | null
 }): string {
-  const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
+  const cfg = opts.cfg
   const ccEmail = cfg.ccEmail
 
   return [
@@ -170,13 +156,13 @@ function buildEmailPlainText(opts: {
 }
 
 function makeRawEmail(opts: {
-  to: string; cc: string; from: string; subject: string; html: string; text: string
+  to: string; cc: string; from: string; fromName: string; subject: string; html: string; text: string
 }): string {
   const boundary = 'sb_boundary_' + Date.now()
   const message = [
-    `From: Aura Health Rehab <${opts.from}>`,
+    `From: ${opts.fromName} <${opts.from}>`,
     `To: ${opts.to}`,
-    `Cc: ${opts.cc}`,
+    ...(opts.cc ? [`Cc: ${opts.cc}`] : []),
     `Subject: ${opts.subject}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -197,39 +183,29 @@ function makeRawEmail(opts: {
 }
 
 async function sendEmail(opts: {
-  to: string; subject: string; html: string; text: string; cc: string
+  to: string; subject: string; html: string; text: string; cfg: BranchNotifyConfig
 }): Promise<void> {
-  // Try Resend first
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const resend = new Resend(process.env.RESEND_API_KEY)
-      const { error } = await resend.emails.send({
-        from: 'Aura Health Rehab <noreply@do-not-reply.sapphireclinicseast.org>',
-        to: [opts.to],
-        cc: [opts.cc],
-        subject: opts.subject,
-        html: opts.html,
-        text: opts.text,
-      })
-      if (error) throw new Error(error.message)
-      return
-    } catch (err) {
-      console.error('[send-reminder] Resend failed, falling back to Gmail API:', err)
+  // Sender is the branch's own mailbox (HR Platform → Branches → main email),
+  // not whichever account happens to be first in the table — a Greenhills
+  // appointment must not arrive from main@.
+  const sender = await getBranchSender(opts.cfg)
+  if (sender) {
+    if (!sender.isBranchMailbox) {
+      console.warn(
+        `[send-reminder] ${opts.cfg.ccEmail} is not a connected Gmail account — ` +
+        `sending as ${sender.email} instead. Connect it under Settings → Email.`,
+      )
     }
-  }
-
-  // Fallback: Gmail API
-  const gmailAcct = await prisma.gmailAccount.findFirst()
-  if (gmailAcct) {
     const raw = makeRawEmail({
       to: opts.to,
-      cc: opts.cc,
-      from: gmailAcct.email,
+      cc: branchCc(opts.cfg, sender.email),
+      from: sender.email,
+      fromName: opts.cfg.brandName,
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
     })
-    const gmail = await getGmailClient(gmailAcct.refreshToken)
+    const gmail = await getGmailClient(sender.refreshToken)
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
   }
 }
@@ -255,23 +231,23 @@ export async function POST(req: NextRequest) {
     const dateStr = schedule.date.toISOString().split('T')[0]
     // Use scheduling branch (for interbranch consultants) if provided, else staff home branch
     const branch = reqBranch || schedule.staff.branch
-    const cfg = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
+    const cfg = await getBranchNotifyConfig(branch)
     const emailOpts = {
       patientName: `${schedule.patient.firstName} ${schedule.patient.lastName}`,
       date: dateStr,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
       sessionType: schedule.sessionType,
-      branch,
+      cfg,
       meetLink: (schedule as Record<string, unknown>).meetLink as string | null,
     }
 
     await sendEmail({
       to: schedule.patient.email,
-      subject: cfg.subject,
+      subject: subjectFor(cfg),
       html: buildEmailHtml(emailOpts),
       text: buildEmailPlainText(emailOpts),
-      cc: cfg.ccEmail,
+      cfg,
     })
     console.log(`[send-reminder] Sent to ${schedule.patient.email}, CC: ${cfg.ccEmail}`)
     return NextResponse.json({ ok: true, sent: 1 })
@@ -301,24 +277,24 @@ export async function POST(req: NextRequest) {
       if (!schedule.patient?.email) continue
       // Use scheduling branch (for interbranch consultants) if provided, else staff home branch
       const branch = reqBranch || schedule.staff.branch
-      const cfg = BRANCH_CONFIG[branch] ?? BRANCH_CONFIG['SBEA']
+      const cfg = await getBranchNotifyConfig(branch)
       const emailOpts = {
         patientName: `${schedule.patient.firstName} ${schedule.patient.lastName}`,
         date,
         startTime: schedule.startTime,
         endTime: schedule.endTime,
         sessionType: schedule.sessionType,
-        branch,
+        cfg,
         meetLink: (schedule as Record<string, unknown>).meetLink as string | null,
       }
 
       try {
         await sendEmail({
           to: schedule.patient.email,
-          subject: cfg.subject,
+          subject: subjectFor(cfg),
           html: buildEmailHtml(emailOpts),
           text: buildEmailPlainText(emailOpts),
-          cc: cfg.ccEmail,
+          cfg,
         })
         sent++
       } catch (err) {

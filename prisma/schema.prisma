@@ -88,6 +88,46 @@ model BranchCCEmail {
   updatedAt   DateTime @default(now()) @updatedAt
 }
 
+// ── HR Branch Registry (synced cache) ─────────────────────────────────────
+// Local read-only cache of HR Platform's Branches Registry — HR Platform is
+// the source of truth (see HR Platform's `modules/branches`). Populated via
+// admin-triggered POST /api/branches/sync (full replace, same pattern as
+// /api/staff/sync); read by unauthenticated GET /api/public/branches, which
+// is what Class Portal and Client Portal hit through their booking-proxy
+// relay. Do not edit rows here directly — edits belong in HR Platform.
+model HrBranch {
+  id                       String   @id // HR Platform's kebab-case branch id — the sync key
+  shortCode                String
+  aliases                  String[] @default([])
+  // Per-system identity this branch maps to — null when it doesn't
+  // participate in that system (e.g. Verdana has no ClassPortalBranch value).
+  opsHubBranch             String?
+  opsHubClassPortalBranch  String?
+  acctHubBranch            String?
+  acctHubServiceBranch     String?
+  teletherapyBranch        String?
+  name                     String
+  brandName                String?
+  tin                      String?
+  address                  String?
+  phone                    String?
+  emailMain                String?
+  emailHr                  String?
+  emailAccounting          String?
+  // Automation sender addresses — null means "fall back to emailHr, then
+  // emailMain" (the consuming app's job, not the sync's). See HR Platform's
+  // Branches Registry "Email Automation" section.
+  emailPayslips            String?
+  emailSchedules           String?
+  emailSessionNotes        String?
+  departmentsOffered       String[] @default([])
+  operatingDays            String[] @default([])
+  operatingHoursOpen       String?
+  operatingHoursClose      String?
+  active                   Boolean  @default(true)
+  syncedAt                 DateTime @default(now())
+}
+
 enum Role {
   ADMIN
   MARKETING_ADMIN
@@ -96,6 +136,10 @@ enum Role {
   VERDANA_ADMIN
   AHEA_FRONT_DESK
   AHGH_FRONT_DESK
+  // Read-only, locked to Clinic Utilization + Patient Dashboard only (see
+  // (dashboard)/layout.tsx for the route gate) — clinician names appear as
+  // initials on Clinic Utilization for this role.
+  INVESTOR
 }
 
 enum Platform {
@@ -120,12 +164,6 @@ enum TemplateType {
 enum PatientType {
   PEDIATRIC
   ADULT
-}
-
-enum Branch {
-  SANDBOX_EAST
-  SANDBOX_GREENHILLS
-  VERDANA_STORE
 }
 
 enum StaffDepartment {
@@ -200,6 +238,18 @@ model Template {
   updatedAt  DateTime     @updatedAt
 }
 
+// NOTE: patient branches are plain strings, not a Prisma enum.
+//
+// They used to be `enum Branch`, which meant a branch created in HR Platform
+// could never become a patient option without a schema change and a deploy —
+// a Postgres enum cannot grow at runtime. Staff already stored its branches as
+// text (Staff.branch / Staff.extraBranches), which is why interbranch staff
+// worked and interbranch patients did not.
+//
+// Valid values are the `opsHubBranch` codes in the HrBranch registry, which
+// syncs hourly from HR Platform. Validate against that (see
+// @/lib/branch-options), never against a hardcoded list.
+
 model Patient {
   id          String      @id @default(cuid())
   firstName   String
@@ -209,8 +259,8 @@ model Patient {
   passwordHash String?         // optional self-service portal login (bcrypt); null = no portal account yet
   dob         DateTime?
   patientType PatientType
-  branch      Branch?          // legacy single-branch (kept for backward compat)
-  branches    Branch[]    @default([])  // multi-branch (primary)
+  branch      String?          // legacy single-branch (kept for backward compat)
+  branches    String[]    @default([])  // multi-branch (primary)
   sex         String?
   civilStatus String?
   religion    String?
@@ -223,8 +273,15 @@ model Patient {
   pwdIdUrl           String?    // optional PWD ID photo URL
   firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
   pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
+  username           String?    @unique  // portal login handle (siblings sharing an email get distinct usernames)
+  profilePhoto       String?             // portal avatar, stored as a base64 data URL
   unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
   smsUnsubscribed    Boolean    @default(false)  // opt-out from SMS marketing campaigns (does NOT block schedule reminders, birthdays, or clinical follow-ups)
+  // Aura the Alpaca plush toy perk — one piece, given once, to VIP Digital
+  // Wallet holders (checked live against Accounting Hub) or patients who've
+  // reached 100 CONFIRMED sessions since 2026-04-01 (see /api/plush-toy-eligible).
+  plushToyGivenAt    DateTime?
+  plushToyGivenBy    String?    // front-desk User.name/id who marked it given
   createdAt          DateTime   @default(now())
   updatedAt           DateTime             @updatedAt
   schedules           Schedule[]
@@ -238,6 +295,56 @@ model Patient {
   patientBookings     PatientBooking[]
   followUpReminders   FollowUpReminder[]
   documents           PatientDocument[]
+  tickets             PatientTicket[]
+  homeProgress        HomeProgressEntry[]
+}
+
+// Patient-submitted portal concern/support ticket. Patient files it from the
+// portal "Concerns" widget; admin resolves it in the admin console; the
+// resolution then shows in the patient's "My tickets".
+model PatientTicket {
+  id            String    @id @default(cuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  subject       String
+  description   String
+  screenshot    String?   // optional screenshot, base64 data URL
+  status        String    @default("OPEN")   // OPEN | RESOLVED
+  adminResponse String?   // reply shown to the patient when resolved
+  resolvedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([patientId])
+}
+
+// Patient-created "Home Progress" log: a dated entry with remarks and one or
+// more media files (voice / video / photo) the parent uploads or records at
+// home. Visible to their clinicians in the CRM.
+model HomeProgressEntry {
+  id        String             @id @default(cuid())
+  patientId String
+  patient   Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date      DateTime
+  remarks   String?
+  createdAt DateTime           @default(now())
+  files     HomeProgressFile[]
+
+  @@index([patientId])
+}
+
+model HomeProgressFile {
+  id        String            @id @default(cuid())
+  entryId   String
+  entry     HomeProgressEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  kind      String            // AUDIO | VIDEO | PHOTO | OTHER
+  fileName  String
+  filePath  String            // relative path under ./uploads
+  mimeType  String
+  sizeBytes Int               @default(0)
+  createdAt DateTime          @default(now())
+
+  @@index([entryId])
 }
 
 model ReferralUploadToken {
@@ -286,6 +393,11 @@ model EmailCampaign {
   scheduledAt    DateTime?
   sentAt         DateTime?
   gmailAccountId String?
+  // Comma-separated address(es) that get ONE copy of the campaign when it
+  // starts sending — not a per-recipient Cc header (a 2,700-recipient send
+  // would otherwise put 2,700 mails in the operator's inbox and expose the
+  // address to every patient).
+  ccEmails       String?
   userId         String
   createdBy      User      @relation(fields: [userId], references: [id])
   createdAt      DateTime  @default(now())
@@ -369,8 +481,14 @@ model Staff {
   // overwritten by the HR sync. Absent/empty = use employmentType for every branch.
   employmentByBranch Json?
   dob             DateTime?       // Birthday — synced from HR Platform
+  dateHired       DateTime?       // Date Hired ("Start Month" for interns) — synced from HR
+                                   // Platform Staff Profile; used to exclude pre-hire days from
+                                   // Therapist Utilization capacity
+  contractExpiry  DateTime?       // Contract Expiration ("End Month" for interns) — synced from
+                                   // HR Platform; gates the Clinic Schedule intern picker to only
+                                   // currently-active interns
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
-  employmentType  String?         // "employee" | "consultant"
+  employmentType  String?         // "employee" | "consultant" | "intern"
   tin             String?         // TIN from HR Platform
   sss             String?         // SSS No. from HR Platform
   pagibig         String?         // Pag-IBIG No. from HR Platform
@@ -384,6 +502,7 @@ model Staff {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   schedules       Schedule[]
+  internSchedules Schedule[]      @relation("ScheduleIntern") // sessions this person did as an intern
   surveyAssignments SurveyAssignment[]
   surveyResponses   SurveyResponse[]
   assessmentTargets AssessmentTarget[]
@@ -463,7 +582,7 @@ model AssessmentTarget {
 
 model Schedule {
   id          String         @id @default(cuid())
-  staffId     String
+  staffId     String         // supervising therapist — whoever's card this was booked under
   staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
   patientId   String?
   patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
@@ -476,6 +595,25 @@ model Schedule {
   notes       String?
   isTeletherapy Boolean @default(false)
   meetLink      String?
+  // Which intern actually did the session, when sessionType is "IE Intern" /
+  // "Session Intern" — the intern writes the note; staffId above stays the
+  // supervisor. Null for every non-intern session.
+  internStaffId String?
+  internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
+  // Where the session actually happens ("SBEA" | "SBGH" | "VER"), captured
+  // from the branch calendar it was booked on. Interbranch clinicians hold one
+  // staff profile pinned to a single branch, so staff.branch cannot attribute
+  // their cross-branch sessions; this field can. Null = legacy row — consumers
+  // (POS cashier queue) fall back to patient/staff-branch inference.
+  branch        String?
+  // Documentation age lock — owned by the staff portal (teletherapy), which
+  // shares this physical table. Sessions past the documentation window are
+  // read-only there until a clinician deliberately re-opens one; these record
+  // that decision. Declared here purely to keep the two schemas in lockstep —
+  // nothing in Operations Hub reads or writes them.
+  // See teletherapy/src/lib/note-age-lock.ts.
+  noteUnlockedAt   DateTime?
+  noteUnlockedById String?
   createdAt     DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   surveyAssignments SurveyAssignment[]
@@ -826,6 +964,17 @@ model ClassPortalUser {
   disabledAt   DateTime?
   /// Email of the admin who disabled the account. Cleared on re-enable.
   disabledBy   String?
+  /// TEACHER accounts minted from an HR-hub intern row. When true, the
+  /// class portal treats them as a regular teacher (same upload / edit
+  /// permissions) but the intern-lifecycle cron will auto-disable the
+  /// account 15 days after the end of the internship-end month tracked
+  /// on the linked Staff row. Cleared to make it a permanent teacher.
+  isIntern      Boolean          @default(false)
+  /// Optional link to the ops-hub Staff row this account was created
+  /// from. Powers the auto-disable cron (needs Staff.contractExpiry)
+  /// and the Users-list badge that surfaces the intern's contract end
+  /// date. Nullable so admins can still create teachers directly.
+  linkedStaffId String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -833,6 +982,8 @@ model ClassPortalUser {
   @@index([role])
   @@index([branch])
   @@index([disabledAt])
+  @@index([isIntern])
+  @@index([linkedStaffId])
 }
 
 enum ClassPortalEventType {

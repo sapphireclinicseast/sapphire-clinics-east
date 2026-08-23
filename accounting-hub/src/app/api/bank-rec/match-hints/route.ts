@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { rateFor } from '@/lib/fx'
 import { prisma } from '@/lib/prisma'
 import { candidates, forDirection } from '@/lib/bank-rec-candidates'
+import { ruleMatches } from '@/lib/bank-rec-rules'
 
 // Which bank lines look like they correspond to something already recorded in
 // the Hub, so the grid can flag them instead of the user opening every row.
@@ -21,7 +22,7 @@ type Hint = { kind: string; label: string; amount: number; date: string; n: numb
 const KIND: Record<string, string> = {
   FUND_TRANSFER: 'Fund transfer', RFP: 'Paid RFP', ORDER: 'Sale', AR_PAYMENT: 'AR receipt',
   SALARY: 'Salaries payable', BENEFIT: 'Benefits payable', TAX: 'Tax payment',
-  CASH_ADVANCE: 'Cash advance', EQUITY: 'Equity deposit',
+  CASH_ADVANCE: 'Cash advance', EQUITY: 'Equity deposit', ADVANCE: 'Advance received',
 }
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10)
@@ -69,14 +70,22 @@ export async function GET(req: Request) {
 
   // ── money in: settlements expected to land in this bank account ───────────
   const modes = await prisma.paymentMode.findMany({
-    where: { accountId: bankAccountId },
-    select: { id: true, name: true, deductions: { select: { rate: true, valueType: true } } },
+    // accountId: NET lodges here directly. settlementBankAccountId: sales post
+    // to a clearing account but the processor's payout lands here (e.g. TikTok
+    // settlements deposited into VER BDO Checking).
+    where: { OR: [{ accountId: bankAccountId }, { settlementBankAccountId: bankAccountId }] },
+    select: { id: true, name: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } },
   })
-  const netOf = (modeId: string, gross: number) => {
+  // Rate eras: the deduction in force on the SALE date applies (see
+  // netOfDeductions in pos-settlement-shapes).
+  const netOf = (modeId: string, gross: number, onDate?: Date) => {
     const m = modes.find(x => x.id === modeId)
     if (!m) return gross
-    const cut = m.deductions.reduce((s, d) =>
-      s + (d.valueType === 'PERCENTAGE' ? gross * Number(d.rate) / 100 : Number(d.rate)), 0)
+    const cut = m.deductions.reduce((s, d) => {
+      if (onDate && d.effectiveFrom && onDate < d.effectiveFrom) return s
+      if (onDate && d.effectiveTo && onDate > d.effectiveTo) return s
+      return s + (d.valueType === 'PERCENTAGE' ? gross * Number(d.rate) / 100 : Number(d.rate))
+    }, 0)
     return Math.round((gross - cut) * 100) / 100
   }
 
@@ -95,7 +104,7 @@ export async function GET(req: Request) {
     })
     for (const p of payments) {
       if (!p.order || !p.paymentModeId) continue
-      const net = netOf(p.paymentModeId, Number(p.amount))
+      const net = netOf(p.paymentModeId, Number(p.amount), p.order.transactionDate)
       const mode = modes.find(m => m.id === p.paymentModeId)!
       singles.push({
         date: p.order.transactionDate, amount: net,
@@ -138,6 +147,20 @@ export async function GET(req: Request) {
     ? await prisma.bankTransaction.findMany({
         where: { bankAccountId: { in: crossIds }, date: { gte: lo, lte: hi }, status: 'PENDING' },
         select: { bankAccountId: true, date: true, spent: true, received: true },
+      })
+    : []
+
+  // ── the other leg of an internal transfer ─────────────────────────────────
+  // Money moved between two of our own same-currency accounts (AUB → BDO,
+  // checking → petty cash): a SPENT here and an equal RECEIVED there, landing
+  // the same banking day or the next.
+  const sameCcyIds = otherCurrencyAccounts
+    .filter(a => (a.currency || 'PHP') === (thisAccount?.currency || 'PHP'))
+    .map(a => a.id)
+  const sameCcyLines = sameCcyIds.length
+    ? await prisma.bankTransaction.findMany({
+        where: { bankAccountId: { in: sameCcyIds }, date: { gte: lo, lte: hi }, status: 'PENDING' },
+        select: { bankAccountId: true, date: true, spent: true, received: true, description: true },
       })
     : []
 
@@ -213,6 +236,31 @@ export async function GET(req: Request) {
     }
   }
 
+  // Internal-transfer legs: an equal-amount pending line on another of our own
+  // same-currency accounts within 3 banking days, either direction. Electronic
+  // transfers land same-day, but the LCK/DEPN check transfers are deposited at
+  // the receiving bank first and only clear at the source 1–2 banking days
+  // later (more over a weekend) — so the window is symmetric and counted in
+  // banking days. Exact amount + a unique counterpart is the evidence.
+  for (const t of txns) {
+    if (hints[t.id]) continue
+    const out = Number(t.spent) > 0
+    const amount = out ? Number(t.spent) : Number(t.received)
+    if (!amount) continue
+    const legs = sameCcyLines.filter(l => {
+      const opp = out ? Number(l.received) : Number(l.spent)
+      if (Math.abs(opp - amount) > 0.01) return false
+      return Math.abs(bankingDaysBetween(new Date(l.date), new Date(t.date))) <= 3
+    })
+    if (legs.length !== 1) continue      // ambiguous, so say nothing
+    const acct = otherCurrencyAccounts.find(a => a.id === legs[0].bankAccountId)!
+    hints[t.id] = {
+      kind: 'Internal transfer',
+      label: `${out ? '→' : '←'} ${acct.accountNumber} ${acct.accountTitle} · ${legs[0].description || ''} — use Match to pair both legs`,
+      amount, date: dayKey(legs[0].date), n: 1,
+    }
+  }
+
   // Currency-exchange legs, applied last so a real settlement match wins: this
   // one is only a direction-and-date coincidence, since the two sides of an
   // exchange never share an amount.
@@ -246,5 +294,21 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ hints, windowDays: WINDOW_DAYS })
+  // Which active auto-rule would post each line — powers the per-row
+  // "Auto-post" button so a matching line is one click, not a dialog.
+  const activeRules = await prisma.bankCategoryRule.findMany({ where: { active: true }, orderBy: { createdAt: 'asc' } })
+  const ruleAccts = new Map(
+    (await prisma.account.findMany({ where: { id: { in: [...new Set(activeRules.map(r => r.categoryAccountId))] } }, select: { id: true, accountNumber: true, accountTitle: true } }))
+      .map(a => [a.id, `${a.accountNumber} ${a.accountTitle}`]),
+  )
+  const autoRules: Record<string, { ruleId: string; label: string }> = {}
+  if (status === 'PENDING') {
+    for (const t of txns) {
+      const full = { description: t.description || '', fromToName: null, spent: t.spent, received: t.received, bankAccountId }
+      const rule = activeRules.find(r => ruleMatches(r, full) && (!r.effectiveFrom || t.date >= r.effectiveFrom) && r.categoryAccountId !== bankAccountId)
+      if (rule) autoRules[t.id] = { ruleId: rule.id, label: `"${rule.pattern}" → ${ruleAccts.get(rule.categoryAccountId) || 'account'}` }
+    }
+  }
+
+  return NextResponse.json({ hints, autoRules, windowDays: WINDOW_DAYS })
 }

@@ -117,12 +117,72 @@ export async function POST(req: Request) {
     if (parent.interestExpenseAccountId && interestPortion > 0) lines.push({ accountId: parent.interestExpenseAccountId, debit: interestPortion, description: 'Interest expense' })
     for (const e of otherExpenses) lines.push({ accountId: e.accountId, debit: num(e.amount), description: (e.description || 'Other expense').trim() })
     lines.push({ accountId: b.bankAccountId, credit: amount + otherTotal, description: `${isLoan ? 'Loan' : 'Advance'} payment — ${parent.name}` })
+    // A loan or advance dedicated to a single branch books its payment JE (and so its
+    // interest) on that branch; multi-branch ones stay 'ALL' and the report engine
+    // splits the interest by the branch allocation.
+    const allocs = Array.isArray(parent.branchAllocations)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (parent.branchAllocations as any[]).filter(a => a?.branch && Number(a?.amount) > 0)
+      : []
+    const jeBranch = allocs.length === 1 ? String(allocs[0].branch) : 'ALL'
+    // Free-text memo from the recording form — stored on the payout and carried
+    // into the journal-entry description so it reads in the books.
+    const memo = typeof b.memo === 'string' && b.memo.trim() ? b.memo.trim().slice(0, 500) : null
+    /* ── Accrual split ───────────────────────────────────────────────────────
+       Interest belongs to the month the installment is FOR; the cash movement
+       belongs to the month it was actually paid. When a payment is settled late
+       those are different months, and a single JE cannot carry both dates — so
+       the interest is accrued at the due date against Interest Payable, and the
+       payment then clears that payable instead of hitting the expense again:
+
+         dueDate   DR interest expense      CR 4140 Interest Payable
+         paidDate  DR 4140 Interest Payable
+                   DR liability (principal) CR bank
+
+       Paid in the same month as due (the overwhelming majority), the two would
+       net out inside one month, so the original single entry is kept — fewer
+       entries, identical statements.
+
+       Without an Interest Payable account in the chart there is nothing to
+       accrue against, so it also falls back to the single entry rather than
+       failing the payment. */
+    const dueDateObj = new Date(b.dueDate)
+    const sameMonth = dueDateObj.getUTCFullYear() === paidDate.getUTCFullYear()
+      && dueDateObj.getUTCMonth() === paidDate.getUTCMonth()
+    const interestPayable = (!sameMonth && interestPortion > 0 && parent.interestExpenseAccountId)
+      ? await prisma.account.findFirst({ where: { accountNumber: '4140' }, select: { id: true } })
+      : null
+    const splitAccrual = !!interestPayable
+
+    const jeDesc = `${isLoan ? 'Loan' : 'Advance'} amortization — ${parent.name}${memo ? ` — ${memo}` : ''}`.slice(0, 250)
+
     let jeId: string | null = null
-    if (lines.length >= 2 && parent.creditAccountId) {
-      const je = await postJournalEntry(prisma as never, { entryDate: paidDate, description: `${isLoan ? 'Loan' : 'Advance'} amortization — ${parent.name}`, referenceType: isLoan ? 'LOAN_PAYMENT' : 'ADVANCE_PAYMENT', referenceId: b.parentId, branch: 'ALL', createdById: userId, lines })
+    if (splitAccrual) {
+      // Expense in the month it covers.
+      await postJournalEntry(prisma as never, {
+        entryDate: dueDateObj,
+        description: `Interest accrual — ${parent.name} (due ${String(b.dueDate).slice(0, 10)})`.slice(0, 250),
+        referenceType: isLoan ? 'LOAN_INTEREST_ACCRUAL' : 'ADVANCE_INTEREST_ACCRUAL',
+        referenceId: b.parentId, branch: jeBranch, createdById: userId,
+        lines: [
+          { accountId: parent.interestExpenseAccountId as string, debit: interestPortion, description: 'Interest expense' },
+          { accountId: interestPayable!.id, credit: interestPortion, description: 'Interest payable' },
+        ],
+      })
+      // Cash in the month it moved: the interest leg clears the payable rather
+      // than debiting the expense a second time.
+      const settleLines = lines.map(l =>
+        l.accountId === parent.interestExpenseAccountId && l.debit === interestPortion
+          ? { ...l, accountId: interestPayable!.id, description: 'Interest payable settled' }
+          : l)
+      const je = await postJournalEntry(prisma as never, { entryDate: paidDate, description: jeDesc, referenceType: isLoan ? 'LOAN_PAYMENT' : 'ADVANCE_PAYMENT', referenceId: b.parentId, branch: jeBranch, createdById: userId, lines: settleLines })
+      // The payout points at the CASH entry, as it always has.
+      jeId = je.id
+    } else if (lines.length >= 2 && parent.creditAccountId) {
+      const je = await postJournalEntry(prisma as never, { entryDate: paidDate, description: jeDesc, referenceType: isLoan ? 'LOAN_PAYMENT' : 'ADVANCE_PAYMENT', referenceId: b.parentId, branch: jeBranch, createdById: userId, lines })
       jeId = je.id
     }
-    const data = { dueDate: new Date(b.dueDate), principalPortion, interestPortion, amount, status: 'PAID', paidDate, bankAccountId: b.bankAccountId, proofUrls, journalEntryId: jeId, createdById: userId }
+    const data = { dueDate: new Date(b.dueDate), principalPortion, interestPortion, amount, status: 'PAID', paidDate, bankAccountId: b.bankAccountId, proofUrls, memo, journalEntryId: jeId, createdById: userId }
     const rec = isLoan
       ? await prisma.loanPayout.create({ data: { loanId: b.parentId, ...data } })
       : await prisma.advancePayout.create({ data: { advanceId: b.parentId, ...data } })

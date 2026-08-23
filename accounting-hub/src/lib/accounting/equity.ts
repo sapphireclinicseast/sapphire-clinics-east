@@ -4,11 +4,63 @@ import { postJournalEntry } from './posting'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = PrismaClient | any
 
-// Issuance: DR bank (money in) / CR the chosen equity account. Requires both accounts.
+// One item of consideration received for a shareholding: a cash deposit into a
+// bank account, or non-cash consideration (equipment, say) debited to an asset
+// account. `accountId` is whichever of the two applies.
+export type EquityConsideration = {
+  accountId: string
+  amount: number
+  date?: Date | null
+  note?: string | null
+}
+
+// Issuance: DR whatever was received / CR the chosen equity account.
+//
+// The simple case is one debit to a single bank account, which is what a caller
+// passing `bankAccountId` gets. Passing `considerations` instead itemises the
+// debits — several deposits across different bank accounts and dates, plus any
+// non-cash consideration — while still crediting equity once for the full
+// capitalization. Anything not covered by the itemised consideration is debited
+// to `receivableAccountId` as an unpaid subscription; without that account a
+// short-paid holding cannot balance, so no entry is posted at all rather than
+// an unbalanced one.
 export async function postEquityIssuance(db: Db, opts: {
-  kind: 'COMMON' | 'PREFERRED'; refId: string; date: Date; amount: number; bankAccountId?: string | null; equityAccountId?: string | null; investor: string; createdById: string
+  kind: 'COMMON' | 'PREFERRED'; refId: string; date: Date; amount: number
+  bankAccountId?: string | null; equityAccountId?: string | null
+  considerations?: EquityConsideration[] | null
+  receivableAccountId?: string | null
+  investor: string; createdById: string
 }): Promise<string | null> {
-  if (!opts.bankAccountId || !opts.equityAccountId || !(opts.amount > 0)) return null
+  if (!opts.equityAccountId || !(opts.amount > 0)) return null
+
+  const items = (opts.considerations || []).filter(c => c.accountId && c.amount > 0)
+
+  // No itemised consideration → legacy single-bank behaviour, unchanged.
+  const debits: { accountId: string; debit: number; description: string }[] = []
+  if (items.length === 0) {
+    if (!opts.bankAccountId) return null
+    debits.push({ accountId: opts.bankAccountId, debit: opts.amount, description: `Investment from ${opts.investor}` })
+  } else {
+    const received = items.reduce((s, c) => s + c.amount, 0)
+    // Guard against itemised consideration exceeding what the shares are worth —
+    // that is a data-entry error, not an over-payment to book.
+    if (received > opts.amount + 0.005) return null
+    for (const c of items) {
+      debits.push({
+        accountId: c.accountId,
+        debit: c.amount,
+        description: c.note?.trim()
+          ? `Investment from ${opts.investor} — ${c.note.trim()}`
+          : `Investment from ${opts.investor}`,
+      })
+    }
+    const shortfall = opts.amount - received
+    if (shortfall > 0.005) {
+      if (!opts.receivableAccountId) return null
+      debits.push({ accountId: opts.receivableAccountId, debit: shortfall, description: `Subscription receivable — ${opts.investor}` })
+    }
+  }
+
   const je = await postJournalEntry(db, {
     entryDate: opts.date,
     description: `${opts.kind === 'COMMON' ? 'Common' : 'Preferred'} share issuance — ${opts.investor}`,
@@ -17,11 +69,92 @@ export async function postEquityIssuance(db: Db, opts: {
     branch: 'ALL',
     createdById: opts.createdById,
     lines: [
-      { accountId: opts.bankAccountId, debit: opts.amount, description: `Investment from ${opts.investor}` },
+      ...debits,
       { accountId: opts.equityAccountId, credit: opts.amount, description: `Share capital — ${opts.investor}` },
     ],
   })
   return je.id
+}
+
+// Re-post a common holding's issuance entry from whatever is currently stored:
+// its itemised deposits if it has any, else its single bank account. Call this
+// after anything that changes the consideration — adding, editing or removing a
+// deposit — so the journal always mirrors the deposit list.
+//
+// Returns the new journal entry id, or null when the entry could not be posted
+// (no equity account, or short-paid with no receivable account). A null result
+// leaves the holding with no issuance entry, which is deliberate: better an
+// obviously missing entry than a quietly wrong one.
+export async function repostCommonIssuance(db: Db, commonShareId: string, createdById: string): Promise<string | null> {
+  const share = await db.commonShare.findUnique({
+    where: { id: commonShareId },
+    include: { shareholder: { select: { name: true } }, deposits: { orderBy: { date: 'asc' } } },
+  })
+  if (!share) return null
+
+  const n = (v: unknown) => Number(v || 0)
+  const considerations: EquityConsideration[] = (share.deposits || [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((d: any) => ({
+      accountId: (d.kind === 'NON_CASH' ? d.assetAccountId : d.bankAccountId) || '',
+      amount: n(d.amount),
+      date: d.date,
+      note: d.note,
+    }))
+    .filter((c: EquityConsideration) => c.accountId && c.amount > 0)
+
+  await reverseEquityJournal(db, 'EQUITY_COMMON', commonShareId)
+  const jeId = await postEquityIssuance(db, {
+    kind: 'COMMON',
+    refId: share.id,
+    date: share.dateAcquired,
+    amount: n(share.numberOfShares) * n(share.pricePerShare),
+    bankAccountId: share.bankAccountId,
+    equityAccountId: share.equityAccountId,
+    considerations: considerations.length ? considerations : null,
+    receivableAccountId: share.receivableAccountId,
+    investor: share.shareholder.name,
+    createdById,
+  })
+  await db.commonShare.update({ where: { id: commonShareId }, data: { journalEntryId: jeId } })
+  return jeId
+}
+
+/** Same as repostCommonIssuance, for a preferred holding. Preferred shares are paid
+ *  for the same way, so their deposits drive the issuance entry identically. */
+export async function repostPreferredIssuance(db: Db, preferredShareId: string, createdById: string): Promise<string | null> {
+  const share = await db.preferredShare.findUnique({
+    where: { id: preferredShareId },
+    include: { shareholder: { select: { name: true } }, deposits: { orderBy: { date: 'asc' } } },
+  })
+  if (!share) return null
+
+  const n = (v: unknown) => Number(v || 0)
+  const considerations: EquityConsideration[] = (share.deposits || [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((d: any) => ({
+      accountId: (d.kind === 'NON_CASH' ? d.assetAccountId : d.bankAccountId) || '',
+      amount: n(d.amount),
+      date: d.date,
+      note: d.note,
+    }))
+    .filter((c: EquityConsideration) => c.accountId && c.amount > 0)
+
+  await reverseEquityJournal(db, 'EQUITY_PREFERRED', preferredShareId)
+  const jeId = await postEquityIssuance(db, {
+    kind: 'PREFERRED',
+    refId: share.id,
+    date: share.dateAcquired,
+    amount: n(share.numberOfShares) * n(share.pricePerShare),
+    bankAccountId: share.bankAccountId,
+    equityAccountId: share.equityAccountId,
+    considerations: considerations.length ? considerations : null,
+    receivableAccountId: share.receivableAccountId,
+    investor: share.shareholder.name,
+    createdById,
+  })
+  await db.preferredShare.update({ where: { id: preferredShareId }, data: { journalEntryId: jeId } })
+  return jeId
 }
 
 // Buyback → Treasury: DR the chosen treasury/equity account / CR bank (money out).

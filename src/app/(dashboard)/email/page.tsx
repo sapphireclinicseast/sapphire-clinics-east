@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw, Zap, Code, Monitor, FlaskConical, Check } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 const BRANCH_FILTERS = [
-  { value: 'SANDBOX_EAST',       label: 'East Branch' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
-  { value: 'VERDANA_STORE',      label: 'Verdana Store' },
+  { value: 'SANDBOX_EAST',       label: branchLabel('SANDBOX_EAST') },
+  { value: 'SANDBOX_GREENHILLS', label: branchLabel('SANDBOX_GREENHILLS') },
+  { value: 'VERDANA_STORE',      label: branchLabel('VERDANA_STORE') },
 ]
 
 const RECIPIENT_GROUPS = [
@@ -91,6 +92,9 @@ export default function EmailPage() {
   const [pasteUploading, setPasteUploading] = useState(false)
   const bodyRef = useRef<HTMLTextAreaElement | null>(null)
   const [recipientGroup, setRecipientGroup] = useState('all')
+  // Address(es) that get a single copy of the campaign. Pre-filled from the
+  // most recent campaign that used one (see the load effect below).
+  const [ccEmails, setCcEmails] = useState('')
   const [branchFilter, setBranchFilter] = useState<Set<string>>(new Set())  // empty = no filter
   const [recipientCount, setRecipientCount] = useState<number | null>(null)
   const [sending, setSending] = useState(false)
@@ -122,6 +126,19 @@ export default function EmailPage() {
         setGmailAccounts(accts)
         if (accts.length > 0) setSelectedGmailId(accts[0].id)
       })
+  }, [])
+
+  // Pre-fill the "send me a copy" box with the address used on the most recent
+  // campaign that had one, so it doesn't have to be retyped every send. Still
+  // fully editable/clearable per campaign.
+  useEffect(() => {
+    fetch('/api/email/campaigns?status=all')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { campaigns?: { ccEmails?: string | null }[] } | null) => {
+        const last = d?.campaigns?.find(c => c.ccEmails && c.ccEmails.trim())
+        if (last?.ccEmails) setCcEmails(last.ccEmails)
+      })
+      .catch(() => { /* pre-fill is a convenience; never block composing */ })
   }, [])
 
   useEffect(() => {
@@ -234,6 +251,7 @@ export default function EmailPage() {
         recipientGroup,
         gmailAccountId: selectedGmailId || undefined,
         branches: branchFilter.size > 0 ? Array.from(branchFilter) : undefined,
+        ccEmails: ccEmails.trim() || undefined,
       }
       if (sendMode === 'schedule' && scheduledAt) payload.scheduledAt = new Date(scheduledAt).toISOString()
       const res = await fetch('/api/email/send', {
@@ -468,6 +486,25 @@ export default function EmailPage() {
           />
         </div>
 
+        {/* Copy me — one copy of the campaign, not a per-recipient Cc header */}
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--mid-gray)' }}>
+            Send me a copy (optional)
+          </label>
+          <input
+            type="text"
+            value={ccEmails}
+            onChange={(e) => setCcEmails(e.target.value)}
+            placeholder="you@sapphireclinicseast.org"
+            className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+            style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
+          />
+          <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+            Gets <strong>one</strong> copy of this campaign when it starts sending — not one per recipient.
+            Patients never see this address. Separate multiple addresses with commas.
+          </p>
+        </div>
+
         {/* AI generation */}
         <div className="rounded-lg p-4 space-y-2" style={{ background: 'var(--pale-teal)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
@@ -665,6 +702,18 @@ export default function EmailPage() {
 
 // ── Campaign History ─────────────────────────────────────────────────────────
 
+// recipientGroup is stored as the raw internal encoding (e.g.
+// "all|SANDBOX_EAST,VERDANA_STORE" — see /api/email/send's storedGroup).
+// Render it through the same friendly labels used in the compose form
+// above, instead of the raw group/branch codes.
+function formatRecipientGroup(raw: string): string {
+  const [groupKey, branchPart] = raw.split('|')
+  const groupLabel = RECIPIENT_GROUPS.find(g => g.value === groupKey)?.label ?? groupKey
+  if (!branchPart) return groupLabel
+  const branchLabels = branchPart.split(',').map(b => BRANCH_FILTERS.find(f => f.value === b)?.label ?? b)
+  return `${groupLabel} — ${branchLabels.join(', ')}`
+}
+
 interface HistoryRow {
   id: string
   subject: string
@@ -844,7 +893,7 @@ function CampaignHistory() {
                 <tr key={r.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
                   <td className="px-4 py-3">
                     <div className="font-semibold text-xs truncate max-w-[300px]" style={{ color: 'var(--charcoal)' }} title={r.subject}>{r.subject || '(no subject)'}</div>
-                    <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.recipientGroup}</div>
+                    <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{formatRecipientGroup(r.recipientGroup)}</div>
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>{r.recipientCount}</td>
                   <td className="px-4 py-3">{statusBadge(r)}</td>
