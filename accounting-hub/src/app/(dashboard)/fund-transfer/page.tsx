@@ -149,7 +149,10 @@ interface CheckRow { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' 
   recordedTotal?: number
   /** True when the recorded lines do not add up to the cheque as written. */
   mismatch?: boolean
-  registerStatus?: string }
+  registerStatus?: string
+  /** True when bank reconciliation has matched a bank line to this cheque. */
+  cleared?: boolean
+  clearedOn?: string | null }
 
 function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [accounts, setAccounts] = useState<{ id: string; label: string }[]>([])
@@ -190,9 +193,18 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const cols = [
     { key: 'checkNumber', label: 'Check No.' }, { key: 'date', label: 'Date' }, { key: 'source', label: 'Source' },
     { key: 'reference', label: 'Reference' }, { key: 'payee', label: 'Payee / Description' },
-    { key: 'bankAccount', label: 'Bank Account' }, { key: 'amount', label: 'Amount' },
+    { key: 'bankAccount', label: 'Bank Account' }, { key: 'cleared', label: 'Bank Rec' }, { key: 'amount', label: 'Amount' },
   ]
-  const get = (c: CheckRow, k: string): string | number => k === 'amount' ? c.amount : ((c[k as keyof CheckRow] as string | number) ?? '')
+  // The Bank Rec column filters on the words you would actually type, not on a
+  // raw boolean — "not cleared" is how the state is read aloud.
+  const clearedText = (c: CheckRow): string =>
+    (c.source === 'Cancelled' || c.registerStatus === 'CANCELLED') ? 'Cancelled'
+      : c.registerStatus === 'UNUSED' ? 'Unused'
+      : c.cleared ? 'Matched' : 'Not matched'
+  const get = (c: CheckRow, k: string): string | number =>
+    k === 'amount' ? c.amount
+      : k === 'cleared' ? clearedText(c)
+      : ((c[k as keyof CheckRow] as string | number) ?? '')
   const shown = applySortFilter(checks, get, sort.key, sort.dir, filters)
 
   const load = useCallback(async () => {
@@ -242,7 +254,7 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
           <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={filters} onToggleSort={toggleSort} onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))} trailing={canWrite} />
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
             ) : shown.map((c, i) => {
               const isCancelled = c.source === 'Cancelled' || c.registerStatus === 'CANCELLED'
               const isUnused = c.registerStatus === 'UNUSED'
@@ -282,6 +294,25 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankAccount}</td>
+                <td className="px-3 py-2.5 text-xs whitespace-nowrap">
+                  {/* A cancelled or unused leaf was never going to clear, so asking
+                      whether it did would be noise. */}
+                  {isCancelled ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Cancelled</span>
+                  ) : isUnused ? (
+                    <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>—</span>
+                  ) : c.cleared ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#15803d' }}
+                      title={c.clearedOn ? `Matched in Bank Reconciliation — cleared the bank ${c.clearedOn}` : 'Matched in Bank Reconciliation'}>
+                      Cleared{c.clearedOn ? ` ${c.clearedOn}` : ''}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#ffedd5', color: '#c2410c' }}
+                      title="Nothing in Bank Reconciliation is matched to this cheque, so the hub cannot show it leaving the account. Either it has not cleared, or the bank line exists but has not been tagged to it yet.">
+                      Not matched
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: isUnused ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
                   {isUnused ? '—' : `₱${peso(c.amount)}`}
                   {c.mismatch && c.recordedTotal !== undefined && (
@@ -308,13 +339,14 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                   <td className="px-3 py-1.5 text-[11px] font-mono" style={{ color: 'var(--charcoal)' }}>{p.reference}</td>
                   <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--charcoal)' }}>{p.payee}</td>
                   <td></td>
+                  <td></td>
                   <td className="px-3 py-1.5 text-right text-[11px] font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(p.amount)}</td>
                   {canWrite && <td></td>}
                 </tr>
               ))}
               </Fragment>
             )})}
-            {!loading && shown.length === 0 && accounts.length > 0 && <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{checks.length === 0 ? 'No checks recorded for the selected checking account(s).' : 'No checks match the current filters.'}</td></tr>}
+            {!loading && shown.length === 0 && accounts.length > 0 && <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{checks.length === 0 ? 'No checks recorded for the selected checking account(s).' : 'No checks match the current filters.'}</td></tr>}
           </tbody>
         </table>
       </div>
