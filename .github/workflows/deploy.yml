@@ -469,7 +469,7 @@ jobs:
               grep "^GOOGLE_SERVICE_ACCOUNT_KEY" "$MENV" >> .env 2>/dev/null || true
               grep "^GMAIL_FROM_EMAIL" "$MENV" >> .env 2>/dev/null || true
               echo "UPLOAD_DIR=./uploads" >> .env
-              echo "TELETHERAPY_HR_API_KEY=scei-teletherapy-hr-2026" >> .env
+              echo "TELETHERAPY_HR_API_KEY=${{ secrets.TELETHERAPY_HR_API_KEY }}" >> .env
               # Manual chatbot (Phase 2) — key lives in the marketing .env.production
               grep "^ANTHROPIC_API_KEY" "$MENV" >> .env 2>/dev/null || true
               grep "^ANTHROPIC_MODEL" "$MENV" >> .env 2>/dev/null || true
@@ -479,7 +479,7 @@ jobs:
               echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> .env
               echo "AUTH_TRUST_HOST=true" >> .env
               echo "UPLOAD_DIR=./uploads" >> .env
-              echo "TELETHERAPY_HR_API_KEY=scei-teletherapy-hr-2026" >> .env
+              echo "TELETHERAPY_HR_API_KEY=${{ secrets.TELETHERAPY_HR_API_KEY }}" >> .env
             fi
             echo "✅ .env created."
           fi
