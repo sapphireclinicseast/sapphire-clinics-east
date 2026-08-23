@@ -163,7 +163,10 @@ export async function POST(req: Request) {
   }
   try {
     const body = await req.json()
-    const patientName = String(body.patientName ?? '').trim()
+    // Stored in caps, matching how the sheet reads and how every wallet name is
+    // written. Normalising here rather than only on display keeps the database
+    // consistent for anything that searches or matches on the name.
+    const patientName = String(body.patientName ?? '').trim().toUpperCase()
     if (!patientName) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
 
     const walletId = body.walletId ? String(body.walletId) : null
@@ -222,7 +225,7 @@ export async function PUT(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     if ('patientName' in body) {
-      const n = String(body.patientName ?? '').trim()
+      const n = String(body.patientName ?? '').trim().toUpperCase()
       if (!n) return NextResponse.json({ error: 'Name cannot be blank' }, { status: 400 })
       data.patientName = n
     }
