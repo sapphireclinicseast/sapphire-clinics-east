@@ -164,7 +164,11 @@ function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
     caseId: c?.id ?? null,
     wallet: w,
     source: c,
-    patientName: c?.patientName ?? w!.patientName,
+    // House convention: patient names read in caps throughout. Applied on the way
+    // into the row so the table, the search, the filters and both exports agree —
+    // uppercasing only in the cell would leave a lowercase name unsearchable by
+    // its capitalised form.
+    patientName: (c?.patientName ?? w!.patientName).toUpperCase(),
     branch: pick(c?.branch, w?.branch),
     glRequestedAmount: pick(c?.glRequestedAmount, w?.glRequestedAmount),
     glDocsSubmittedAt: pick(c?.glDocsSubmittedAt, w?.glDocsSubmittedAt),
@@ -212,7 +216,7 @@ function rowTone(r: Row): RowTone {
   // state that needs someone to go and do something, so it wins the row.
   if (r.caseId && !r.wallet) return 'nowallet'
   if (r.paid) return 'paid'
-  if (soaSubmittedOn(r)) return 'soa'
+  if (soaSubmitted(r)) return 'soa'
   return null
 }
 const TONE_BG: Record<'nowallet' | 'paid' | 'soa', string> = {
@@ -255,6 +259,18 @@ function arRunningDays(r: Row): number | null {
 function soaSubmittedOn(r: Row): string | null {
   if (!r.soaSubmittedAt) return null
   return new Date(r.soaSubmittedAt).getTime() <= Date.now() ? r.soaSubmittedAt : null
+}
+
+/**
+ * Whether the SOA has been submitted at all. A letter cannot be paid without one
+ * — the agency settles against the SOA — so a payment proves submission even
+ * when nobody recorded the date. Four letters are in that state today; reporting
+ * them as "SOA submitted NO" while showing a payment beside it was the
+ * contradiction. The date column still shows blank, because the date genuinely
+ * is not known and inventing one would be worse than admitting the gap.
+ */
+function soaSubmitted(r: Row): boolean {
+  return !!soaSubmittedOn(r) || r.paid
 }
 
 /** A payment that has actually landed — a post-dated cheque has not. */
@@ -336,7 +352,7 @@ function cellText(r: Row, k: ColKey): string {
     case 'soaAmount': return num(r.soaAmount) ? formatCurrency(num(r.soaAmount)) : '—'
     case 'posBalance': return r.posBalance == null ? '—' : formatCurrency(r.posBalance)
     case 'rendered': return r.rendered ? 'YES' : 'NO'
-    case 'soaSubmitted': return soaSubmittedOn(r) ? 'YES' : 'NO'
+    case 'soaSubmitted': return soaSubmitted(r) ? 'YES' : 'NO'
     // The recorded date still shows even when it is in the future — it is the
     // planned filing date, and hiding it would lose information the sheet holds.
     case 'soaDate': return fmtDate(r.soaSubmittedAt) || '—'
@@ -372,7 +388,7 @@ function sortValue(r: Row, k: ColKey): string | number {
     case 'soaAmount': return num(r.soaAmount)
     case 'posBalance': return r.posBalance ?? Number.MAX_SAFE_INTEGER
     case 'rendered': return r.rendered ? 'YES' : 'NO'
-    case 'soaSubmitted': return soaSubmittedOn(r) ? 'YES' : 'NO'
+    case 'soaSubmitted': return soaSubmitted(r) ? 'YES' : 'NO'
     case 'soaDate': return dayKey(r.soaSubmittedAt) || '￿'
     case 'status': return r.paid ? 'PAID' : 'UNPAID'
     case 'paidDate': return dayKey(r.lastPaymentDate) || '￿'
@@ -446,7 +462,7 @@ export default function DetailedGl({
       // One box, every column — staff search by guardian or QB ref as often as by name.
       out = out.filter(r => COLS.some(c => cellText(r, c.key).toLowerCase().includes(q)))
     }
-    if (noSoaOnly) out = out.filter(r => !soaSubmittedOn(r))
+    if (noSoaOnly) out = out.filter(r => !soaSubmitted(r))
     for (const [k, v] of Object.entries(filters)) {
       const needle = (v || '').trim().toLowerCase()
       if (!needle) continue
@@ -591,7 +607,7 @@ export default function DetailedGl({
   const needsWallet = rows.filter(r => r.caseId && !r.wallet).length
   // Counted over everything the other filters allow, so the number on the box is
   // what ticking it would actually show.
-  const noSoaCount = rows.filter(r => !soaSubmittedOn(r)).length
+  const noSoaCount = rows.filter(r => !soaSubmitted(r)).length
   const arDaysValues = rows.map(arRunningDays).filter((d): d is number => d != null)
   const avgArDays = arDaysValues.length
     ? arDaysValues.reduce((a, b) => a + b, 0) / arDaysValues.length
