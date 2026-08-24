@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { scheduleBranchWhere } from '@/lib/branch-filter'
+import { hostifyMeetLink } from '@/lib/meet-link'
 
 // GET /api/clinic-schedule?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
 // Returns the logged-in clinician's confirmed/pending sessions in the
@@ -122,7 +123,7 @@ export async function GET(req: NextRequest) {
       duration: s.duration,
       sessionType: s.sessionType,
       status: s.status,
-      meetLink: s.meetLink,
+      meetLink: hostifyMeetLink(s.meetLink, session.user.name),
       notes: s.notes,
       patient: s.patient
         ? {

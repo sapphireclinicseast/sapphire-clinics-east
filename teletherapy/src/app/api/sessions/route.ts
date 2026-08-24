@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { hostifyMeetLink } from '@/lib/meet-link'
 import { scheduleBranchWhere } from '@/lib/branch-filter'
 
 export async function GET(req: NextRequest) {
@@ -93,5 +94,5 @@ export async function GET(req: NextRequest) {
     take: 200,
   })
 
-  return NextResponse.json({ sessions: schedules })
+  return NextResponse.json({ sessions: schedules.map((s) => ({ ...s, meetLink: hostifyMeetLink(s.meetLink, session.user.name) })) })
 }
