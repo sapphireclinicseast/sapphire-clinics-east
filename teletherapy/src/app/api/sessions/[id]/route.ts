@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { hostifyMeetLink } from '@/lib/meet-link'
 
 export async function GET(
   req: NextRequest,
@@ -58,5 +59,5 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({ session: schedule })
+  return NextResponse.json({ session: { ...schedule, meetLink: hostifyMeetLink(schedule.meetLink, session.user.name) } })
 }
