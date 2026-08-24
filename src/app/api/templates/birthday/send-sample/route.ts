@@ -11,6 +11,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient, getLegacyRefreshToken } from '@/lib/email'
 import { BRANCHES } from '@/lib/image-gen'
+import { getBranchNotifyConfig, getBranchSender } from '@/lib/branch-notify-config'
 
 const esc = (s: string) =>
   String(s || '').replace(/[&<>"']/g, c =>
@@ -64,10 +65,20 @@ export async function POST(req: NextRequest) {
 
   const html = buildEmailHtml(staffName, message, signoff, hasPhoto)
 
-  // Resolve Gmail credentials (connected account, else legacy env token)
+  // Resolve Gmail credentials (branch mailbox, else any connected account, else
+  // legacy env token). This is the PREVIEW of the real birthday greeting, so it
+  // has to come from the same address the real one does — otherwise the sample
+  // arrives from main@ and the actual send from east@, which is exactly the
+  // mismatch that made the sender bug hard to spot.
+  // BRANCHES here uses its own ids ('east'/'greenhills'), not the SBEA/SBGH
+  // short codes the notify config keys on.
+  const SAMPLE_BRANCH_CODE: Record<string, string> = { east: 'SBEA', greenhills: 'SBGH' }
   let refreshToken: string | null = null
   let senderEmail = 'noreply@sapphireclinicseast.org'
-  const gmailAcct = await prisma.gmailAccount.findFirst()
+  const sampleCode = SAMPLE_BRANCH_CODE[branchData.id]
+  const gmailAcct = sampleCode
+    ? await getBranchSender(await getBranchNotifyConfig(sampleCode))
+    : await prisma.gmailAccount.findFirst()
   if (gmailAcct) { refreshToken = gmailAcct.refreshToken; senderEmail = gmailAcct.email }
   if (!refreshToken) refreshToken = getLegacyRefreshToken()
   if (!refreshToken) return NextResponse.json({ error: 'No Gmail account connected.' }, { status: 500 })
