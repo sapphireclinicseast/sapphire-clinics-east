@@ -246,6 +246,31 @@ export async function computeLedgerStatements(
     byNumber.set(number, info)
     return info
   }
+  /* ── Line-level branch derivation (branch views only) ──────────────
+     A journal entry carries ONE branch tag for both its legs, so any
+     interbranch movement is invisible to one side's view. The accounts
+     themselves know better: a line touching a bank account owned by a
+     branch IS that branch's line, whoever tagged the entry. A branch view
+     therefore keeps a line when its DERIVED branch matches the view — the
+     account's own branch first, the entry's tag as fallback — and balances
+     the kept remainder of each entry through a virtual interbranch line.
+     Negative = this branch has funded the group; positive = the group has
+     funded this branch. The consolidated view never derives (branchValues
+     is null), so it is untouched by construction. LOAN/ADVANCE entries
+     tagged ALL are excluded from derivation: section 2b already allocates
+     them by the loan's branchAllocations, and deriving their bank leg too
+     would double-count. */
+  /* One line, not two: the derived interbranch legs and the bank true-up
+     offsets are the same economic thing seen through different instruments
+     (the entries we can attribute vs the residue we can only measure), so
+     both post to 3985. Splitting them showed East a -12.4M and a +7.4M
+     that only mean something summed. Drilling 3985 shows the composition:
+     derived legs carry their journal labels; true-ups say which account. */
+  const interbranchAcct = () => virt('3985', 'Net Position with Head Office / Other Branches', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
+  const ALLOC_2B_TYPES = new Set(['LOAN_PAYMENT', 'ADVANCE_PAYMENT', 'LOAN_INTEREST_ACCRUAL', 'ADVANCE_INTEREST_ACCRUAL'])
+  const lineBranchOf = (acctBranch: string | null | undefined, jeBranch: string | null | undefined): string =>
+    acctBranch || jeBranch || 'ALL'
+
   const findByTitle = (re: RegExp, type?: AcctInfo['type']): AcctInfo | undefined => {
     for (const a of byNumber.values()) if ((!type || a.type === type) && re.test(a.title)) return a
     return undefined
@@ -477,28 +502,42 @@ export async function computeLedgerStatements(
        Prior-year revenue and expense collapse into one retained-earnings line —
        their detail belongs to their own year, but their net is this branch's
        accumulated result and the sheet cannot balance without it. */
+    /* All prior lines, not just this branch's tag: the derivation keeps a
+       line when its account's own branch (or, failing that, the entry's
+       tag) matches the view. Money another branch's entry moved through
+       THIS branch's bank finally opens on this branch's sheet, and the
+       imbalance the filtering creates is exactly the accumulated
+       interbranch position — carried on 3980, not scattered as plugs. */
     const priorLines = await prisma.journalEntryLine.findMany({
       where: {
         journalEntry: {
           entryDate: { lt: start },
           referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
-          branch: { in: branchValues! as never[] },
         },
       },
-      select: { debit: true, credit: true, account: { select: { accountNumber: true } } },
+      select: { debit: true, credit: true, account: { select: { accountNumber: true } }, journalEntry: { select: { branch: true } } },
     })
-    let priorPL = 0, carried = 0
+    let priorPL = 0, carried = 0, interOpen = 0
     for (const l of priorLines) {
       if (!l.account) continue
       const acct = byNumber.get(l.account.accountNumber)
       if (!acct) continue
+      if (!branchValues!.includes(lineBranchOf(acct.branch, l.journalEntry?.branch))) continue
       const d = Number(l.debit) || 0, c = Number(l.credit) || 0
+      interOpen += d - c
       if (acct.type === 'REVENUE' || acct.type === 'EXPENSE') {
         priorPL += c - d // credit-positive: net income of prior years
       } else {
         const move = acct.normalBalance === 'DEBIT' ? d - c : c - d
         if (move) { opening.set(acct.number, (opening.get(acct.number) || 0) + move); carried++ }
       }
+    }
+    if (Math.abs(round2(interOpen)) >= 0.01) {
+      // Kept debits exceeding kept credits need a balancing credit (and vice
+      // versa) — the opening interbranch position, signed credit-normal.
+      const ib = interbranchAcct()
+      opening.set(ib.number, round2((opening.get(ib.number) || 0) + interOpen))
+      carried++
     }
     if (Math.abs(priorPL) >= 0.01) {
       const re = virt('3995', 'Retained Earnings — prior years (this branch)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
@@ -523,12 +562,14 @@ export async function computeLedgerStatements(
       },
     ],
     referenceType: qbEra ? 'QB_IMPORT_JE' as never : { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
-    ...(branchValues ? { branch: { in: branchValues } } : {}),
+    // No branch filter even in a branch view: lines are kept or dropped by
+    // their DERIVED branch below, so another branch's entry that moved this
+    // branch's bank finally shows up here.
   }
   const journalEntries = await prisma.journalEntry.findMany({
     where: jeWhere,
     select: {
-      id: true, referenceType: true, referenceId: true, entryDate: true, description: true,
+      id: true, referenceType: true, referenceId: true, entryDate: true, description: true, branch: true,
       lines: { select: { debit: true, credit: true, account: { select: { accountNumber: true } } } },
     },
   })
@@ -554,10 +595,20 @@ export async function computeLedgerStatements(
       const cm = parseInt(je.referenceId?.split('-')[1] ?? '', 10)
       if (je.referenceId?.startsWith(`${year}-`) && cm >= 1 && cm <= 12) jeMonth = cm
     }
-    postBalanced(`journal:${je.referenceType || 'manual'}`, jeMonth, je.description || `Journal entry ${je.id.slice(-6)}`, je.lines.map(l => ({
+    if (branchValues && je.branch === 'ALL' && ALLOC_2B_TYPES.has(je.referenceType || '')) continue // 2b allocates these
+    let jeLines: { acct: AcctInfo; debit?: number; credit?: number }[] = je.lines.map(l => ({
       acct: l.account ? (byNumber.get(l.account.accountNumber) || virt(l.account.accountNumber, 'Unknown account', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT')) : virt('9998', 'Unmapped journal line', 'EXPENSE', 'UNCLASSIFIED', 'DEBIT'),
       debit: Number(l.debit), credit: Number(l.credit),
-    })))
+    }))
+    if (branchValues) {
+      jeLines = jeLines.filter(l => branchValues.includes(lineBranchOf(l.acct.branch, je.branch)))
+      if (!jeLines.length) continue
+      const net = round2(jeLines.reduce((sum, l) => sum + (l.debit || 0) - (l.credit || 0), 0))
+      if (Math.abs(net) >= 0.01) jeLines.push(net > 0
+        ? { acct: interbranchAcct(), credit: net }
+        : { acct: interbranchAcct(), debit: -net })
+    }
+    postBalanced(`journal:${je.referenceType || 'manual'}`, jeMonth, je.description || `Journal entry ${je.id.slice(-6)}`, jeLines)
   }
   validation.fromLedger = Array.from(glRefTypes).sort()
   const hasRef = (type: string, id: string) => glRefIds.get(type)?.has(id) || false
