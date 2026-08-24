@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient, getLegacyRefreshToken } from '@/lib/email'
+import { getBranchNotifyConfig, getBranchSender } from '@/lib/branch-notify-config'
 
 const LOGO_URL = 'https://operations.sapphireclinicseast.org/brand/aura-logo-color.png'
 
@@ -110,10 +111,21 @@ export async function POST(req: NextRequest) {
   let refreshToken: string | null = null
   let senderEmail = 'noreply@sapphireclinicseast.org'
 
-  const gmailAcct = await prisma.gmailAccount.findFirst()
-  if (gmailAcct) {
-    refreshToken = gmailAcct.refreshToken
-    senderEmail = gmailAcct.email
+  // Send from the branch's own mailbox, the same way reminders and absence
+  // notices already do (getBranchSender). `findFirst()` returned whichever
+  // account sorted first — main@ — so an East patient's greeting arrived from
+  // the corporate mailbox and any reply landed in the wrong inbox.
+  const cfg = await getBranchNotifyConfig(branch)
+  const sender = await getBranchSender(cfg)
+  if (sender) {
+    refreshToken = sender.refreshToken
+    senderEmail = sender.email
+    if (!sender.isBranchMailbox) {
+      console.warn(
+        `[birthday/send-email] ${cfg.ccEmail} is not a connected Gmail account — ` +
+        `sending as ${sender.email} instead. Connect it under Settings → Email.`,
+      )
+    }
   }
   if (!refreshToken) refreshToken = getLegacyRefreshToken()
   if (!refreshToken) return NextResponse.json({ error: 'No Gmail account connected' }, { status: 500 })
