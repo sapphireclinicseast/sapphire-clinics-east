@@ -17,7 +17,7 @@ export default async function RoomPage({
     return (
       <div className="screen">
         <div className="card">
-          <div className="brandbar"><span className="dot" /> Sapphire Clinics East</div>
+          <img className="brand-logo" src="/aura-health-rehab.png" alt="Aura Health Rehab" />
           <h1>This link isn’t valid</h1>
           <p>Your meeting link is invalid or has expired. Please use the latest link from your appointment reminder, or contact your clinic.</p>
         </div>
@@ -25,5 +25,5 @@ export default async function RoomPage({
     )
   }
 
-  return <RoomClient linkToken={t} defaultName={claims.name ?? ''} />
+  return <RoomClient linkToken={t} defaultName={claims.name ?? ''} role={claims.role ?? 'guest'} />
 }
