@@ -17,6 +17,7 @@ import { normalizeSI } from '@/lib/sales-invoice'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
 import { TiktokImportModal } from './TiktokImportModal'
 import Pagination from '@/components/ui/Pagination'
+import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -2171,7 +2172,7 @@ function OrderFormModal({
                         className="w-full text-left px-3 py-2 text-sm hover:bg-orange-50 rounded-lg flex justify-between">
                         <span className="font-medium">{w.patientName}</span>
                         <span className="text-xs" style={{ color: '#c2410c' }}>
-                          Receivable: {formatCurrency(toNum(w.balance))}
+                          HMO
                         </span>
                       </button>
                     ))}
@@ -3464,7 +3465,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                             }}
                               className="w-full text-left px-3 py-2 text-sm hover:bg-orange-50 rounded-lg flex justify-between">
                               <span className="font-medium">{w.patientName}</span>
-                              <span className="text-xs" style={{ color: '#c2410c' }}>Receivable: {formatCurrency(toNum(w.balance))}</span>
+                              <span className="text-xs" style={{ color: '#c2410c' }}>HMO</span>
                             </button>
                           ))}
                         </div>
@@ -3705,6 +3706,68 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [selectedWallet, setSelectedWallet] = useState<DigitalWallet | null>(null)
   const [showDeletedWallets, setShowDeletedWallets] = useState(false)
   const [walletDetail, setWalletDetail] = useState<DigitalWallet | null>(null)
+  /* ── HMO Statement of Account ──────────────────────────────
+     Front desk prints the SOA here rather than walking to Accounts
+     Receivable. Same generator, so the document is identical to the one
+     Accounts Receivable produces, and it is saved to the SOA register so
+     both screens show the same history. */
+  const [soaMonth, setSoaMonth] = useState(MONTH_OPTIONS[1]?.value || MONTH_OPTIONS[0]?.value || '')
+  const [soaBusy, setSoaBusy] = useState(false)
+
+  const printSoa = async () => {
+    if (!walletDetail || soaBusy) return
+    setSoaBusy(true)
+    try {
+      const settingsRes = await fetch('/api/accounts-receivable/soa-settings')
+      const settings: SoaSettings = settingsRes.ok ? await settingsRes.json() : {}
+
+      /* Read the sessions from the Accounts Receivable endpoint, not from
+         walletDetail.orders. The wallet detail returns only unpaid orders and
+         caps at 200, so building from it would print a different statement
+         than Accounts Receivable does for the same provider and month. */
+      const [year, month] = soaMonth.split('-')
+      const dateFrom = `${year}-${month}-01`
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate()
+      const dateTo = `${year}-${month}-${String(lastDay).padStart(2, '0')}`
+
+      const ordersRes = await fetch(
+        `/api/accounts-receivable?type=HMO&walletId=${walletDetail.id}&dateFrom=${dateFrom}&dateTo=${dateTo}`
+      )
+      if (!ordersRes.ok) { alert('Could not load the sessions for this statement.'); return }
+      const orders: SoaOrder[] = (await ordersRes.json()).orders || []
+      if (orders.length === 0) {
+        alert(`No ${walletDetail.patientName} sessions in ${periodLabel(soaMonth)}.`)
+        return
+      }
+
+      const pdfData = await buildSoaPdf(orders, walletDetail.id, walletDetail.patientName, soaMonth, settings)
+
+      // Save to the SOA register so Accounts Receivable sees what was printed.
+      // A duplicate for the same provider and month is kept, not blocked — the
+      // front desk may legitimately reprint after a correction.
+      const save = await fetch('/api/accounts-receivable/soa', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletId: walletDetail.id, walletName: walletDetail.patientName,
+          period: soaMonth, pdfData, branch: walletDetail.branch, forceCreate: true,
+        }),
+      })
+      if (!save.ok) {
+        const err = await save.json().catch(() => ({}))
+        alert(err.error || 'The SOA was generated but could not be saved to the register.')
+      }
+
+      const bytes = Uint8Array.from(atob(pdfData), c => c.charCodeAt(0))
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    } catch {
+      alert('Could not generate the SOA.')
+    } finally {
+      setSoaBusy(false)
+    }
+  }
+
   const [walletEditing, setWalletEditing] = useState(false)
   const [walletEditForm, setWalletEditForm] = useState<Record<string, string>>({})
   const [adjustOpen, setAdjustOpen] = useState(false)
@@ -5572,10 +5635,17 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </>
                 )
               })()}
-              {walletDetail.walletType !== 'GL' && (
+              {/* HMO receivables are not shown here. The stored wallet balance drifts;
+                  Accounts Receivable computes the real figure from unpaid order draws,
+                  and that is the only number anyone should quote. */}
+              {walletDetail.walletType !== 'GL' && walletDetail.walletType !== 'HMO' && (
                 <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
-                  {walletDetail.walletType === 'HMO' ? 'Outstanding: ' : 'Balance: '}
-                  {formatCurrency(toNum(walletDetail.balance))}
+                  Balance: {formatCurrency(toNum(walletDetail.balance))}
+                </span>
+              )}
+              {walletDetail.walletType === 'HMO' && (
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  Receivable shown in Accounts Receivable
                 </span>
               )}
             </div>
@@ -5748,10 +5818,23 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <>
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Transactions</h4>
-                    <a href={`/accounts-receivable?type=HMO&wallet=${walletDetail.id}`}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                      See Accounts Receivables
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <select value={soaMonth} onChange={e => setSoaMonth(e.target.value)}
+                        className="px-2 py-1.5 rounded-lg border text-xs outline-none bg-white"
+                        style={{ borderColor: 'var(--light-gray)' }} aria-label="Statement month">
+                        {MONTH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                      <button type="button" onClick={printSoa} disabled={soaBusy}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-60"
+                        style={{ background: 'var(--off-white)', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                        {soaBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                        {soaBusy ? 'Generating…' : 'Print SOA'}
+                      </button>
+                      <a href={`/accounts-receivable?type=HMO&wallet=${walletDetail.id}`}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                        See Accounts Receivables
+                      </a>
+                    </div>
                   </div>
                   {(walletDetail as unknown as { orders?: { id: string; orderNumber: number; transactionDate: string; patientName: string; clinicianName: string; items: { name: string }[]; payments: { method: string; amount: string | number; walletId?: string }[] }[] }).orders?.length ? (
                     <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
