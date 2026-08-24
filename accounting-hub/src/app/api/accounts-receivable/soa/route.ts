@@ -3,9 +3,11 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
-// Front desk view and download SOAs but never generate or delete them, so read
-// is a superset of write here rather than the same list.
-const READ_ROLES = [...WRITE_ROLES, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+// Front desk print SOAs from the POS wallet detail, so they generate as well as
+// read. Deleting stays with WRITE_ROLES: printing a statement again is routine,
+// removing one from the register is not.
+const GENERATE_ROLES = [...WRITE_ROLES, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+const READ_ROLES = GENERATE_ROLES
 
 /** GET /api/accounts-receivable/soa
  *  - No ?id     → list (no pdfData)
@@ -59,7 +61,7 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   const session = await auth()
-  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+  if (!session?.user || !GENERATE_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
