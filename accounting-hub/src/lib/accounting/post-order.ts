@@ -67,7 +67,7 @@ export async function postOrderJournal(
     include: {
       items: {
         include: {
-          service:       { select: { revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } } } },
+          service:       { select: { hmoPaysClinicianDirect: true, revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } } } },
           inventoryItem: {
             select: {
               revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
@@ -79,12 +79,25 @@ export async function postOrderJournal(
       },
       payments: {
         include: {
-          wallet: { select: { walletType: true, account: { select: { id: true, accountNumber: true, accountTitle: true } } } },
+          wallet: { select: { walletType: true, paysClinicForMd: true, account: { select: { id: true, accountNumber: true, accountTitle: true } } } },
         },
       },
     },
   })
   if (!order) return { posted: false, reason: 'order not found' }
+
+  // MD pass-through: when every item's service is settled by the HMO with the
+  // clinician directly (and no paying wallet is a pays-the-clinic exception),
+  // nothing here is our revenue or receivable — the books get no entry at all
+  // (owner directive 2026-08-24).
+  if (
+    order.items.length > 0 &&
+    order.items.every(i => (i.service as { hmoPaysClinicianDirect?: boolean } | null)?.hmoPaysClinicianDirect) &&
+    order.payments.some(p => p.method === 'HMO') &&
+    !order.payments.some(p => p.wallet?.paysClinicForMd)
+  ) {
+    return { posted: false, reason: 'MD pass-through — HMO pays the clinician directly; not our revenue or AR' }
+  }
 
   // Cache lookups we may need
   const [paymentModes, discountSettings, defaultARAccount, defaultUnearnedAccount, defaultInventoryAccount, defaultUnclassifiedRevenue] = await Promise.all([
