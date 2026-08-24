@@ -1,6 +1,8 @@
-// Shared Jitsi Meet link generator. Mirrors the inline helper in
-// src/app/api/clinic-schedule/route.ts so teletherapy links are identical
-// format across the admin app and the new patient portal.
+// Shared meeting-link generator. Now emits LiveKit join links
+// (meet.sapphireclinicseast.org) instead of public meet.jit.si — anyone with
+// the link joins directly, no moderator login. Name kept for signature
+// compatibility across the admin app and the patient portal.
+import { meetRoomUrl, expiryFromDate } from './meet-link'
 
 export function generateMeetLink(
   staffName: string,
@@ -12,5 +14,7 @@ export function generateMeetLink(
   const random = Math.random().toString(36).substring(2, 14)
   void staffName
   const roomName = `SandboxClinic-${cleanPatient}-${dateSlug}-${random}`
-  return `https://meet.jit.si/${roomName}`
+  // Guest link (anyone joins). Clinicians get a host variant from the staff
+  // portal for elective recording.
+  return meetRoomUrl(roomName, { name: patientName, role: 'guest' }, expiryFromDate(date))
 }
