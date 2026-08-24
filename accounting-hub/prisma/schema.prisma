@@ -268,6 +268,7 @@ model Service {
   thresholdQty          Decimal       @default(1) // sessions credited per unit (e.g. 2 for a 2-hour, 0.5 for a half session)
   issuedOfficialInvoice Boolean       @default(false)
   isHmoGl               Boolean       @default(false) // service billed to HMO / Guarantee Letter → sales are receivables
+  hmoPaysClinicianDirect Boolean      @default(false) // HMO pays the clinician directly — sessions are monitored apart from our AR
   isActive              Boolean       @default(true)
   createdById           String
   createdBy             User          @relation("ServiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

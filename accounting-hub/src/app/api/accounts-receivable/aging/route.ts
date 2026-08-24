@@ -70,6 +70,11 @@ export async function GET(req: Request) {
         status: { not: 'VOIDED' },
         payments: { some: { walletId: { in: walletIds }, method: type } },
         arPaymentItems: { none: {} },
+        // Direct-to-clinician sessions never become our receivable.
+        ...(type === 'HMO' ? { OR: [
+          { items: { none: {} } },
+          { items: { some: { OR: [{ service: { is: null } }, { service: { is: { hmoPaysClinicianDirect: false } } }] } } },
+        ] } : {}),
         ...(branch ? { branch: { in: [branch, 'ALL'] } } : {}),
       },
       select: {
@@ -90,6 +95,10 @@ export async function GET(req: Request) {
           status: 'COMPLETED',
           transactionDate: { gte: periodStart, lte: now },
           ...(branch ? { branch: { in: [branch, 'ALL'] } } : {}),
+          ...(type === 'HMO' ? { OR: [
+            { items: { none: {} } },
+            { items: { some: { OR: [{ service: { is: null } }, { service: { is: { hmoPaysClinicianDirect: false } } }] } } },
+          ] } : {}),
         },
       },
       select: { walletId: true, amount: true, orderId: true },

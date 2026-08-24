@@ -113,7 +113,7 @@ export async function GET(req: Request) {
         netAmount: true,
         arProofUrl: true,
         createdBy: { select: { name: true } },
-        items: { select: { name: true, service: { select: { department: true } } } },
+        items: { select: { name: true, service: { select: { department: true, hmoPaysClinicianDirect: true } } } },
         payments: {
           where: { method: type as 'HMO' | 'GL' },
           select: { amount: true, walletId: true },
@@ -129,6 +129,17 @@ export async function GET(req: Request) {
       take: walletId ? 5000 : 500,
     })
 
+    // HMO sessions whose service the HMO settles with the clinician directly
+    // are not money passing through us — they are monitored apart from AR.
+    // An order counts as direct-to-clinician only when EVERY item is such a
+    // service; itemless orders always count as ours.
+    const keepOurAr = {
+      OR: [
+        { items: { none: {} } },
+        { items: { some: { OR: [{ service: { is: null } }, { service: { is: { hmoPaysClinicianDirect: false } } }] } } },
+      ],
+    }
+
     // ── Compute outstanding balance per wallet from actual unpaid orders ──
     // This is more reliable than the stored balance field which can drift
     // (e.g. voided orders whose reversal predates the void-handler code).
@@ -141,6 +152,7 @@ export async function GET(req: Request) {
           order: {
             status: { not: 'VOIDED' },
             arPaymentItems: { none: {} },
+            ...(type === 'HMO' ? keepOurAr : {}),
           },
         },
         select: { walletId: true, amount: true },
@@ -236,16 +248,30 @@ export async function GET(req: Request) {
           where: { method: type as 'HMO' | 'GL' },
           select: { amount: true, walletId: true },
         },
-        items: { select: { service: { select: { department: true } } } },
+        items: { select: { service: { select: { department: true, hmoPaysClinicianDirect: true } } } },
       },
     })
 
     const walletNameById = new Map(wallets.map(w => [w.id, w.patientName]))
     const deptTotals = new Map<string, number>()
     const providerTotals = new Map<string, number>()
+    const directProviderTotals = new Map<string, number>()
     let totalBilled = 0
+    let directBilled = 0
+    let directOrderCount = 0
 
     for (const o of aggOrders) {
+      const isDirect = o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
+      if (isDirect) {
+        directOrderCount++
+        for (const p of o.payments) {
+          const amt = Number(p.amount) || 0
+          directBilled += amt
+          const name = (p.walletId && walletNameById.get(p.walletId)) || 'Unknown'
+          directProviderTotals.set(name, (directProviderTotals.get(name) || 0) + amt)
+        }
+        continue
+      }
       for (const p of o.payments) {
         const amt = Number(p.amount) || 0
         totalBilled += amt
@@ -268,8 +294,15 @@ export async function GET(req: Request) {
     }
 
     const summary = {
-      orderCount: aggOrders.length,
+      orderCount: aggOrders.length - directOrderCount,
       totalBilled,
+      directToClinician: {
+        orderCount: directOrderCount,
+        total: directBilled,
+        byProvider: Array.from(directProviderTotals.entries())
+          .map(([label, amount]) => ({ label, amount }))
+          .sort((a, b) => b.amount - a.amount),
+      },
       byDepartment: Array.from(deptTotals.entries())
         .map(([label, amount]) => ({ label, amount }))
         .sort((a, b) => b.amount - a.amount),
