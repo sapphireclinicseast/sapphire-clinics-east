@@ -13,7 +13,7 @@ const SESSION_TYPES = [
   'PTC',
 ]
 
-const BRANCHES = ['BGC', 'Clark', 'East', 'Greenhills']
+const BRANCHES = ['East', 'Greenhills']
 
 const OBJECTIVE_TARGETS = [
   'Receptive Language',

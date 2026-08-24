@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { CheckCircle2, Loader2, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 
-const BRANCHES = ['BGC', 'Clark', 'East', 'Greenhills']
+const BRANCHES = ['East', 'Greenhills']
 
 export interface PTFormData {
   formType: 'PT_SESSION_NOTES'
