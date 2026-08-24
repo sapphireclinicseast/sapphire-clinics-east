@@ -1,21 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-
-// ─── Generate Jitsi Meet link ─────────────────────────────────────────────
-function generateMeetLink(
-  staffName: string,
-  patientName: string,
-  date: string,
-): string {
-  // Build a unique, readable room name: SandboxClinic-FIRSTNAME-YYYYMMDD-random
-  const cleanStaff = staffName.replace(/[^a-zA-Z]/g, '').toUpperCase()
-  const cleanPatient = patientName.replace(/[^a-zA-Z]/g, '').toUpperCase()
-  const dateSlug = date.replace(/-/g, '')
-  const random = Math.random().toString(36).substring(2, 14)
-  const roomName = `SandboxClinic-${cleanPatient}-${dateSlug}-${random}`
-  return `https://meet.jit.si/${roomName}`
-}
+// Shared LiveKit meeting-link generator (was an inline meet.jit.si helper).
+import { generateMeetLink } from '@/lib/jitsi'
 
 // Maps Staff.branch short codes to Patient.branch enum values
 const STAFF_BRANCH_TO_PATIENT_BRANCH: Record<string, string> = {

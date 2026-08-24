@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { tokenFromRequest } from '@/lib/ugat-auth'
 import { sendUgatInterviewEmail } from '@/lib/ugat-email'
+import { meetRoomUrl } from '@/lib/meet-link'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +42,9 @@ export async function POST(req: Request) {
   if (booked >= slot.capacity) return NextResponse.json({ error: 'That slot is already fully booked. Please pick another.' }, { status: 409 })
 
   const room = `UGAT-Interview-${(scholar.firstName || 'fellow').replace(/[^a-zA-Z]/g, '')}-${Math.random().toString(36).slice(2, 12)}`
-  const jitsiUrl = `https://meet.jit.si/${room}`
+  // LiveKit join link (anyone joins directly). Valid until the interview + 2 days.
+  const interviewExp = Math.floor(new Date(slot.startsAt).getTime() / 1000) + 2 * 86400
+  const jitsiUrl = meetRoomUrl(room, { name: scholar.firstName || 'Fellow', role: 'guest' }, interviewExp)
 
   await prisma.ugatApplication.update({
     where: { scholarId: tok.scholarId },
