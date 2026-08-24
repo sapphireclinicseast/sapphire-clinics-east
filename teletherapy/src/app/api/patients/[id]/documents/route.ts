@@ -46,13 +46,17 @@ export async function GET(
     return NextResponse.json({ error: 'Department not found' }, { status: 400 })
   }
 
-  // Verify clinician has access to this patient (any branch staffId or endorsed)
+  // Verify clinician has access to this patient (any branch staffId or endorsed).
+  // Interns are the schedule's internStaffId (the session is booked under their
+  // supervisor's staffId), so match either — otherwise a decked intern is 403'd
+  // from the documents they can upload from the session view.
   if (!isAdmin) {
     const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
+    const ids = allowedStaffIds.length > 0 ? allowedStaffIds : [session.user.staffId]
     const hasSession = await prisma.schedule.findFirst({
       where: {
         patientId,
-        staffId: { in: allowedStaffIds.length > 0 ? allowedStaffIds : [session.user.staffId] },
+        OR: [{ staffId: { in: ids } }, { internStaffId: { in: ids } }],
       },
       select: { id: true },
     })
