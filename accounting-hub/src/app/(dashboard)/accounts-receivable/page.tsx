@@ -58,7 +58,7 @@ interface AROrder {
   branch: string
   netAmount: number | string
   arProofUrl?: string | null
-  items: { name: string; service?: { department?: string | null } | null }[]
+  items: { name: string; service?: { department?: string | null; hmoPaysClinicianDirect?: boolean } | null }[]
   payments: { amount: number | string; walletId?: string }[]
   arPaymentItems: { paymentId: string }[]
 }
@@ -68,6 +68,7 @@ interface ARSummary {
   totalBilled: number
   byDepartment: { label: string; amount: number }[]
   byProvider: { label: string; amount: number }[]
+  directToClinician?: { orderCount: number; total: number; byProvider: { label: string; amount: number }[] }
 }
 
 interface InvoiceSetting {
@@ -750,6 +751,9 @@ export default function AccountsReceivablePage() {
 
   const totalReceivable = wallets.reduce((s, w) => s + toNum(w.balance), 0)
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
+  // Sessions the HMO settles with the clinician directly — never our receivable.
+  const isDirectToClinician = (o: AROrder) =>
+    o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
 
   // ---- Payment-modal tag-list filters (shared by HMO transaction tagging and GL patient tagging) ----
   const tagQuery = payTagSearch.trim().toLowerCase()
@@ -1594,6 +1598,18 @@ export default function AccountsReceivablePage() {
                 <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalHmoOrders)}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Total outstanding: {formatCurrency(totalHmoOrders - totalPaid)}</p>
               </div>
+              {(summary?.directToClinician?.orderCount ?? 0) > 0 && (
+                <div className="rounded-xl p-4 border" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
+                  <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: '#9a3412' }}>Paid Direct to Clinician</p>
+                  <p className="text-xl font-bold" style={{ color: '#9a3412' }}>{formatCurrency(summary!.directToClinician!.total)}</p>
+                  <p className="text-xs mt-1" style={{ color: '#9a3412' }}>
+                    {summary!.directToClinician!.orderCount} session{summary!.directToClinician!.orderCount === 1 ? '' : 's'} the HMO settles with the clinician — not in our AR
+                  </p>
+                  <p className="text-[11px] mt-1" style={{ color: '#c2410c' }}>
+                    {summary!.directToClinician!.byProvider.slice(0, 3).map(pv => `${pv.label} ${formatCurrency(pv.amount)}`).join(' · ')}
+                  </p>
+                </div>
+              )}
             </div>
             {/* Two pie charts side by side */}
             {(deptSlices.length > 0 || provSlices.length > 0) && (
@@ -2297,12 +2313,18 @@ export default function AccountsReceivablePage() {
                     const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
                     const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
                     const isPaid = o.arPaymentItems.length > 0
+                    const isDirect = isDirectToClinician(o)
                     const isEditingDate = changeDateEditId === o.id
                     const isBusyDate = changeDateBusy === o.id
                     return (
-                      <tr key={o.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                      <tr key={o.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)', background: isDirect ? '#fff7ed' : undefined }}>
                         {/* Original transaction date */}
-                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          {formatDate(o.transactionDate)}
+                          {isDirect && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap" title="The HMO pays the clinician directly — not part of our AR" style={{ background: '#ffedd5', color: '#c2410c' }}>direct to clinician</span>
+                          )}
+                        </td>
                         {/* Change Date cell */}
                         <td className="px-3 py-2 text-center" style={{ minWidth: 130 }}>
                           {isEditingDate ? (

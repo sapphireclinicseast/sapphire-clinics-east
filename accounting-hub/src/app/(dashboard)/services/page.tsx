@@ -30,6 +30,7 @@ interface Service {
   noPwdDiscount: boolean
   issuedOfficialInvoice: boolean
   isHmoGl?: boolean
+  hmoPaysClinicianDirect?: boolean
   newPrice?: string | number | null
   newPriceEffectiveDate?: string | null
   branchPrices?: { id?: string; branch: string; price: string | number; newPrice?: string | number | null; newPriceEffectiveDate?: string | null }[]
@@ -149,6 +150,7 @@ export default function ServicesPage() {
   const [fNoPwdDiscount, setFNoPwdDiscount] = useState(false)
   const [fIssuedOfficialInvoice, setFIssuedOfficialInvoice] = useState(false)
   const [fIsHmoGl, setFIsHmoGl] = useState(false)
+  const [fHmoDirect, setFHmoDirect] = useState(false)
   const [fDescription, setFDescription] = useState('')
   const [fWalletType, setFWalletType] = useState('')
   const [fVipTier, setFVipTier] = useState('')
@@ -258,7 +260,7 @@ export default function ServicesPage() {
     setEditing(null)
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice(''); setFNewPrice(''); setFNewPriceDate(''); setFBranchPrices([])
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
-    setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFDescription('')
+    setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFHmoDirect(false); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     setError(''); setModalOpen(true)
   }
@@ -276,6 +278,7 @@ export default function ServicesPage() {
     setFNoPwdDiscount(s.noPwdDiscount)
     setFIssuedOfficialInvoice(s.issuedOfficialInvoice)
     setFIsHmoGl(!!s.isHmoGl)
+    setFHmoDirect(!!s.hmoPaysClinicianDirect)
     setFDescription(s.description || '')
     setFWalletType(s.walletType || '')
     setFVipTier(s.vipTier || '')
@@ -323,6 +326,7 @@ export default function ServicesPage() {
       noPwdDiscount: fNoPwdDiscount,
       issuedOfficialInvoice: fIssuedOfficialInvoice,
       isHmoGl: fIsHmoGl,
+      hmoPaysClinicianDirect: fHmoDirect,
       description: fDescription,
       revenueAccountId: fRevenueAccountId || null,
       unitPayId: fUnitPayEnabled ? (fUnitPayId || null) : null,
@@ -1046,6 +1050,17 @@ export default function ServicesPage() {
                 {fIsHmoGl && (
                   <p className="mt-1.5 text-xs" style={{ color: '#9a3412' }}>
                     Sales of this service are receivables — they show under &ldquo;Receivables Sales&rdquo; in the income statement.
+                  </p>
+                )}
+                <label className="mt-2 flex items-center gap-2 text-sm font-medium cursor-pointer" style={{ color: fHmoDirect ? '#9a3412' : 'var(--charcoal)' }}>
+                  <input type="checkbox" checked={fHmoDirect}
+                    onChange={(e) => setFHmoDirect(e.target.checked)}
+                    className="rounded" />
+                  If HMO, pays directly to the clinician
+                </label>
+                {fHmoDirect && (
+                  <p className="mt-1.5 text-xs" style={{ color: '#9a3412' }}>
+                    The HMO settles these sessions with the clinician, not with us — they are monitored separately in Accounts Receivable (retroactively) and excluded from our AR totals and aging.
                   </p>
                 )}
               </div>
