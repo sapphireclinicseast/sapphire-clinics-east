@@ -1864,6 +1864,22 @@ export default function AccountsReceivablePage() {
                   ))}
                   <th className="text-left px-3 py-2" />
                 </tr>
+                {/* Subtotals follow the filters: what the rows below add up to,
+                    not the all-time total. */}
+                {shownPayments.length > 0 && (
+                  <tr className="sticky z-10" style={{ top: '58px', background: 'var(--pale-teal)' }}>
+                    {payCols.map(c => (
+                      <td key={c.key} className={`px-3 py-1.5 font-bold ${c.numeric ? 'text-right font-mono' : ''}`}
+                        style={{ color: 'var(--deep-teal)' }}>
+                        {c.key === 'date' ? `Subtotal (${shownPayments.length})`
+                          : c.key === 'amount' ? formatCurrency(shownPayments.reduce((sum, pp) => sum + toNum(pp.amount), 0))
+                          : c.key === 'discount' ? formatCurrency(shownPayments.reduce((sum, pp) => sum + toNum(pp.discount), 0))
+                          : ''}
+                      </td>
+                    ))}
+                    <td />
+                  </tr>
+                )}
               </thead>
               <tbody>
                 {shownPayments.length === 0 && (
