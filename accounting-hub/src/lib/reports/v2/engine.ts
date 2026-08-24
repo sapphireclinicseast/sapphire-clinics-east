@@ -217,8 +217,12 @@ export async function computeLedgerStatements(
   }
 
   /* ── Account registry ── */
+  /* Retired accounts stay in the registry: their journal history doesn't
+     retire with them. Excluding 11300 (deactivated petty cash float) silently
+     dropped P26,139.75 of prior-year East debits from the branch opening
+     rebuild, which is exactly how East's sheet stopped balancing. Rows with a
+     zero balance never render, so retired-and-empty accounts stay invisible. */
   const dbAccounts = await prisma.account.findMany({
-    where: { isActive: true },
     select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true, isBankAccount: true, branch: true, currency: true },
   })
   const byNumber = new Map<string, AcctInfo>()
@@ -1063,6 +1067,16 @@ export async function computeLedgerStatements(
         if (!firstMonth.has(t.bankAccountId)) firstMonth.set(t.bankAccountId, m)
       }
       const pendReconcile = virt('3990', 'Cash Pending Reconciliation (uncategorized bank items)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
+      /* Branch views: interbranch and corporate flows cannot reconcile inside
+         one branch — East's sweeps to the corporate pool leave its banks
+         moving in ways East's own entries never explain. Dumping that into
+         3990 buried a real story under ±10M offsetting plugs. In a branch
+         view every true-up offset goes to an explicit head-office line
+         instead, and 3990 keeps meaning what it means on the consolidated
+         sheet: genuinely unreconciled cash, which is a company-level concept.
+         The consolidated view is untouched: reconTarget === pendReconcile. */
+      const headOffice = virt('3985', 'Net Position with Head Office / Other Branches', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
+      const reconTarget = branch === 'ALL' ? pendReconcile : headOffice
       /* Whose cash is this? All Branches owns everything; a branch owns only the
          accounts tagged to it. An untagged (shared/corporate) account belongs to
          no branch, so it shows in the All Branches view alone. */
@@ -1100,7 +1114,7 @@ export async function computeLedgerStatements(
         // Drilling 3990 should show its opening component too, not just the
         // monthly true-ups: which account opened away from the bank, and by
         // how much.
-        if (collect && collect.account === pendReconcile.number && (!collect.month || collect.cumulative)) {
+        if (collect && collect.account === reconTarget.number && (!collect.month || collect.cumulative)) {
           collected.push({
             month: 0, source: 'bank-opening-trueup',
             label: `${acct.number} ${acct.title} — books opened at ${(opening.get(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}, bank read ${bankOpen.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
@@ -1109,7 +1123,7 @@ export async function computeLedgerStatements(
           })
         }
         opening.set(n, bankOpen)                                             // cash: debit-normal
-        opening.set(pendReconcile.number, round2((opening.get(pendReconcile.number) || 0) + delta)) // equity: credit-normal
+        opening.set(reconTarget.number, round2((opening.get(reconTarget.number) || 0) + delta)) // equity: credit-normal
         openingTrued++
       }
       if (openingTrued) validation.synthesized.push(`bank-opening-trueup (${openingTrued})`)
@@ -1150,7 +1164,7 @@ export async function computeLedgerStatements(
             ? `True-up to bank statement — ${acct.title}`
             : `Not this branch's account — ${acct.title}`, [
             want < 0 ? { acct, credit: -want } : { acct, debit: want },
-            want < 0 ? { acct: pendReconcile, debit: -want } : { acct: pendReconcile, credit: want },
+            want < 0 ? { acct: reconTarget, debit: -want } : { acct: reconTarget, credit: want },
           ])
           carried = round2(carried + want)
           trueups++
@@ -1187,7 +1201,7 @@ export async function computeLedgerStatements(
           if (Math.abs(delta) < 0.01) continue
           postBalanced('float-floor', m, `Unfunded petty cash float — ${acct.title}`, [
             delta < 0 ? { acct, credit: -delta } : { acct, debit: delta },
-            delta < 0 ? { acct: pendReconcile, debit: -delta } : { acct: pendReconcile, credit: delta },
+            delta < 0 ? { acct: reconTarget, debit: -delta } : { acct: reconTarget, credit: delta },
           ])
           carried = want
           floored++
@@ -1195,6 +1209,14 @@ export async function computeLedgerStatements(
       }
       if (floored) validation.synthesized.push(`unfunded-float-floor (${floored})`)
 
+      if (trueups && branch !== 'ALL') {
+        validation.notes.push(
+          'Branch view: interbranch and corporate cash flows cannot reconcile within a single branch, so bank ' +
+          'true-up offsets sit on "3985 Net Position with Head Office / Other Branches" — the amount of this ' +
+          'branch\'s money held (or funded) by the rest of the group. Genuinely unreconciled cash is a ' +
+          'company-level concept and stays on 3990 in the All Branches view.',
+        )
+      }
       if (trueups) {
         validation.synthesized.push(`bank-statement-trueup (${trueups})`)
         validation.notes.push(
