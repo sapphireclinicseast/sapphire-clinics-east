@@ -859,6 +859,7 @@ model DigitalWallet {
   diagnosis        String? // GL wallets: patient diagnosis from CRM (snapshot at creation)
   approvedServices Json? // GL wallets: approved service types (e.g. ["PT","OT","SLP"])
   soaStatus        String?      @default("With GL/No SOA") // GL wallets: "With GL/No SOA" blocks checkout; "With GL and SOA" allows it
+  paysClinicForMd  Boolean      @default(false) // HMO exception: pays the clinic even for MD consults (e.g. Intellicare)
 
   // ── GL case tracking (the "Detailed GL" sheet) ──────────────────────────
   // A Guarantee Letter is a paper trail before it is a receivable: documents go

@@ -70,10 +70,12 @@ export async function GET(req: Request) {
         status: { not: 'VOIDED' },
         payments: { some: { walletId: { in: walletIds }, method: type } },
         arPaymentItems: { none: {} },
-        // Direct-to-clinician sessions never become our receivable.
+        // Direct-to-clinician sessions never become our receivable — unless the
+        // paying HMO is a pays-the-clinic exception (e.g. Intellicare).
         ...(type === 'HMO' ? { OR: [
           { items: { none: {} } },
           { items: { some: { OR: [{ service: { is: null } }, { service: { is: { hmoPaysClinicianDirect: false } } }] } } },
+          { payments: { some: { wallet: { paysClinicForMd: true } } } },
         ] } : {}),
         ...(branch ? { branch: { in: [branch, 'ALL'] } } : {}),
       },
@@ -98,6 +100,7 @@ export async function GET(req: Request) {
           ...(type === 'HMO' ? { OR: [
             { items: { none: {} } },
             { items: { some: { OR: [{ service: { is: null } }, { service: { is: { hmoPaysClinicianDirect: false } } }] } } },
+            { payments: { some: { wallet: { paysClinicForMd: true } } } },
           ] } : {}),
         },
       },

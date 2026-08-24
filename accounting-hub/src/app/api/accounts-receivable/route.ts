@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     // Get all active HMO or GL wallets
     const wallets = await prisma.digitalWallet.findMany({
       where: { walletType: type as 'HMO' | 'GL', isActive: true },
-      select: { id: true, patientName: true, balance: true, totalGlAmount: true, accountId: true, approvedServices: true,
+      select: { id: true, patientName: true, balance: true, totalGlAmount: true, accountId: true, approvedServices: true, paysClinicForMd: true,
         // When the letter/SOA was actually obtained — the aging calc already
         // prefers this over createdAt, and the Consumption table now shows it.
         dateObtained: true,
@@ -149,11 +149,13 @@ export async function GET(req: Request) {
         where: {
           walletId: { in: walletIds },
           method: type as 'HMO' | 'GL',
-          order: {
-            status: { not: 'VOIDED' },
-            arPaymentItems: { none: {} },
-            ...(type === 'HMO' ? keepOurAr : {}),
-          },
+          ...(type === 'HMO'
+            ? { OR: [
+                { wallet: { paysClinicForMd: true } },
+                { order: { status: { not: 'VOIDED' }, arPaymentItems: { none: {} }, ...keepOurAr } },
+              ],
+              order: { status: { not: 'VOIDED' }, arPaymentItems: { none: {} } } }
+            : { order: { status: { not: 'VOIDED' }, arPaymentItems: { none: {} } } }),
         },
         select: { walletId: true, amount: true },
       }),
@@ -253,6 +255,7 @@ export async function GET(req: Request) {
     })
 
     const walletNameById = new Map(wallets.map(w => [w.id, w.patientName]))
+    const exceptionWalletIds = new Set(wallets.filter(w => (w as { paysClinicForMd?: boolean }).paysClinicForMd).map(w => w.id))
     const deptTotals = new Map<string, number>()
     const providerTotals = new Map<string, number>()
     const directProviderTotals = new Map<string, number>()
@@ -262,6 +265,7 @@ export async function GET(req: Request) {
 
     for (const o of aggOrders) {
       const isDirect = o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
+        && !o.payments.some(p => p.walletId && exceptionWalletIds.has(p.walletId))
       if (isDirect) {
         directOrderCount++
         for (const p of o.payments) {

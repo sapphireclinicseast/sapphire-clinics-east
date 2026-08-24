@@ -754,6 +754,7 @@ export default function AccountsReceivablePage() {
   // Sessions the HMO settles with the clinician directly — never our receivable.
   const isDirectToClinician = (o: AROrder) =>
     o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
+    && !o.payments.some(p => p.walletId && wallets.find(w => w.id === p.walletId && (w as { paysClinicForMd?: boolean }).paysClinicForMd))
 
   // ---- Payment-modal tag-list filters (shared by HMO transaction tagging and GL patient tagging) ----
   const tagQuery = payTagSearch.trim().toLowerCase()
