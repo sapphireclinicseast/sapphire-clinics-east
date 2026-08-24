@@ -50,6 +50,10 @@ import { isPastNoteWindow, NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
 // parent as a File so it joins the session's attachments. Kept self-contained:
 // idle = a tile button; recording = live timer (+ camera preview for video);
 // preview = playback with Add / Re-record.
+// Max per-file upload size — kept in sync with the nginx client_max_body_size
+// on the staff vhost and the /api/upload route cap.
+const MAX_UPLOAD_MB = 100
+
 function MediaCapture({ kind, onAdd }: { kind: 'audio' | 'video'; onAdd: (file: File) => void }) {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'preview'>('idle')
   const [elapsed, setElapsed] = useState(0)
@@ -256,7 +260,7 @@ function AttachOthersField({
         <MediaCapture kind="audio" onAdd={(f) => onAdd(f)} />
         <MediaCapture kind="video" onAdd={(f) => onAdd(f)} />
       </div>
-      <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Or upload files</p>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Or upload files <span className="normal-case font-medium text-[var(--mid-gray)]">· max {MAX_UPLOAD_MB} MB per file</span></p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {tiles.map((opt) => (
           <label key={opt.label}
@@ -455,8 +459,24 @@ export default function SessionDetailPage() {
     setLoading(false)
   }
 
+  // Stage files, but reject anything over the server limit up front with a
+  // friendly message — so an oversized file never fails mid-upload as an
+  // opaque "network error" (nginx + /api/upload both cap at MAX_UPLOAD_MB).
+  function stageFiles(incoming: File | File[]) {
+    const arr = Array.isArray(incoming) ? incoming : [incoming]
+    const max = MAX_UPLOAD_MB * 1024 * 1024
+    const ok = arr.filter((f) => f.size <= max)
+    const tooBig = arr.filter((f) => f.size > max)
+    if (tooBig.length === 1) {
+      showToast(`"${tooBig[0].name}" is too large (max ${MAX_UPLOAD_MB} MB per file). Please compress or split it.`)
+    } else if (tooBig.length > 1) {
+      showToast(`${tooBig.length} files exceed the ${MAX_UPLOAD_MB} MB limit and were skipped.`)
+    }
+    if (ok.length) setFiles((prev) => [...prev, ...ok])
+  }
+
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)])
+    if (e.target.files) stageFiles(Array.from(e.target.files))
   }
 
   function removeFile(index: number) {
@@ -1509,6 +1529,7 @@ export default function SessionDetailPage() {
               </div>
 
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple onChange={handleFileUpload} className="hidden" />
+              <p className="text-[11px] text-[var(--mid-gray)] mt-2 text-center">Photo or PDF · <span className="font-semibold">Max {MAX_UPLOAD_MB} MB per file</span></p>
 
               {qrUrl && (
                 <div className="mb-6 text-center bg-[var(--off-white)] p-6 rounded-xl border border-[var(--light-gray)]">
@@ -1782,7 +1803,7 @@ export default function SessionDetailPage() {
           <p className="text-[12px] text-[var(--mid-gray)] mb-4">Record a voice note or video, or upload photos/videos/files. These are saved together with the form when you complete the session.</p>
           <AttachOthersField
             files={files}
-            onAdd={(f) => setFiles((prev) => [...prev, ...(Array.isArray(f) ? f : [f])])}
+            onAdd={(f) => stageFiles(f)}
             onRemove={removeFile}
           />
         </div>
@@ -2144,12 +2165,12 @@ export default function SessionDetailPage() {
 
               {/* Record in the portal (uses the device mic / camera) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                <MediaCapture kind="audio" onAdd={(f) => setFiles((prev) => [...prev, f])} />
-                <MediaCapture kind="video" onAdd={(f) => setFiles((prev) => [...prev, f])} />
+                <MediaCapture kind="audio" onAdd={(f) => stageFiles(f)} />
+                <MediaCapture kind="video" onAdd={(f) => stageFiles(f)} />
               </div>
 
               {/* Or upload existing files */}
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Or upload files</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Or upload files <span className="normal-case font-medium text-[var(--mid-gray)]">· max {MAX_UPLOAD_MB} MB per file</span></p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   { icon: Mic, label: 'Voice Notes', hint: 'audio', accept: 'audio/*' },
