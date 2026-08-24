@@ -158,8 +158,9 @@ export async function GET(req: NextRequest) {
     department: string
     branch: string
     totalSlots: number
-    deckedSlots: number
-    shiftSlots: number
+    deckedPerWeek: number
+    rosteredPerWeek: number
+    deckedOffRoster: number
     confirmed: number
     rescheduled: number
     cancelled: number
@@ -210,20 +211,38 @@ export async function GET(req: NextRequest) {
     // people in it turn up.
     const deckedByDay = deckedTimeslotsByStaff.get(cfg.staffId)
     const shiftHours = hoursBetween(cfg.startTime, cfg.endTime)
+
     let totalSlots = 0
-    let deckedSlots = 0
-    let shiftSlots = 0
     for (const day of workDays) {
       const daysInRange = dayCountsForStaff[day] ?? 0
       if (daysInRange === 0) continue
-
       // Distinct active timeslots for this day (always 1 per (day, hour)
       // regardless of seat count).
       const activeTimeslotsForDay = byDay?.get(day)?.size ?? 0
       totalSlots += activeTimeslotsForDay * daysInRange
-      deckedSlots += (deckedByDay?.get(day)?.size ?? 0) * daysInRange
-      shiftSlots += shiftHours * daysInRange
     }
+
+    // Decking figures are a CURRENT-WEEK SNAPSHOT and deliberately ignore the
+    // date range. There is no history of DeckingTherapistConfig or DeckingSlot
+    // — both hold only today's state — so multiplying them across a past range
+    // measures that period against a roster that may not have existed then.
+    //
+    // Real case: CRISTI worked Sat/Sun/Thu (and more) through 2026-05, dropped
+    // to Saturday-only in 2026-07, and her config was updated to match. Spread
+    // over a March–May range, today's one-day roster would understate her old
+    // capacity roughly fivefold. Reported per week, the numbers stay honest and
+    // the attendance side keeps the range.
+    //
+    // deckedOffRoster counts decked hours on days the therapist is no longer
+    // rostered for — stale slots left behind when someone reduces their days,
+    // which is what pushes fill above 100%.
+    let deckedPerWeek = 0
+    let deckedOffRoster = 0
+    for (const [day, times] of (deckedByDay ?? new Map())) {
+      if (workDays.includes(day)) deckedPerWeek += times.size
+      else deckedOffRoster += times.size
+    }
+    const rosteredPerWeek = shiftHours * workDays.length
 
     therapistMap.set(cfg.staffId, {
       staffId: cfg.staffId,
@@ -231,8 +250,9 @@ export async function GET(req: NextRequest) {
       department: cfg.staff.department,
       branch: cfg.staff.branch,
       totalSlots,
-      deckedSlots,
-      shiftSlots,
+      deckedPerWeek,
+      rosteredPerWeek,
+      deckedOffRoster,
       confirmed: 0,
       rescheduled: 0,
       cancelled: 0,
@@ -299,8 +319,9 @@ export async function GET(req: NextRequest) {
   // ── 6. Compute aggregated summary ─────────────────────────────────────────
   const summary = {
     totalSlots: 0,
-    deckedSlots: 0,
-    shiftSlots: 0,
+    deckedPerWeek: 0,
+    rosteredPerWeek: 0,
+    deckedOffRoster: 0,
     confirmed: 0,
     rescheduled: 0,
     cancelled: 0,
@@ -310,8 +331,9 @@ export async function GET(req: NextRequest) {
   }
   for (const t of therapists) {
     summary.totalSlots  += t.totalSlots
-    summary.deckedSlots += t.deckedSlots
-    summary.shiftSlots  += t.shiftSlots
+    summary.deckedPerWeek    += t.deckedPerWeek
+    summary.rosteredPerWeek  += t.rosteredPerWeek
+    summary.deckedOffRoster  += t.deckedOffRoster
     summary.confirmed   += t.confirmed
     summary.rescheduled += t.rescheduled
     summary.cancelled   += t.cancelled
