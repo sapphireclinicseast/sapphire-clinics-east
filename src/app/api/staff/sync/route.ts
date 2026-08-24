@@ -54,6 +54,7 @@ interface HRStaff {
   philhealth: string | null
   bankName: string | null
   bankAccountNo: string | null
+  isInternshipSupervisor?: boolean
 }
 
 export async function POST() {
@@ -199,6 +200,7 @@ export async function POST() {
       bankName:         hr.bankName,
       bankAccountNo:    hr.bankAccountNo,
       hrPlatformId:     hr.hrId,
+      isInternshipSupervisor: !!hr.isInternshipSupervisor,
     }
 
     try {

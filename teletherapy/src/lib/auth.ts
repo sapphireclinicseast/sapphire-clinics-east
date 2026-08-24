@@ -24,6 +24,7 @@ declare module 'next-auth' {
       branch?: string
       branches?: BranchInfo[]
       employmentType?: string
+      isInternshipSupervisor?: boolean
     }
   }
   interface User {
@@ -34,6 +35,7 @@ declare module 'next-auth' {
     branch?: string
     branches?: BranchInfo[]
     employmentType?: string
+    isInternshipSupervisor?: boolean
   }
 }
 
@@ -158,6 +160,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           branch: account.staff.branch,
           branches,
           employmentType: account.staff.employmentType ?? undefined,
+          isInternshipSupervisor: account.staff.isInternshipSupervisor ?? false,
         }
       },
     }),
@@ -173,21 +176,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.branch = user.branch
         token.branches = user.branches
         token.employmentType = user.employmentType
+        token.isInternshipSupervisor = user.isInternshipSupervisor
       }
 
       // On every token refresh, check if account is still active and keep the
-      // employment type fresh (drives the employees-only Company Loan tab, and
-      // backfills sessions that logged in before this field existed).
+      // employment type + supervisor tag fresh (drives the employees-only
+      // Company Loan tab and the Intern Supervision "All Interns" view;
+      // backfills sessions that logged in before either field existed) —
+      // ticking the tag in HR Staff Profiles takes effect without re-login.
       if (token.id) {
         const account = await prisma.therapistAccount.findUnique({
           where: { id: token.id as string },
-          select: { isActive: true, staff: { select: { employmentType: true } } },
+          select: { isActive: true, staff: { select: { employmentType: true, isInternshipSupervisor: true } } },
         })
         if (!account?.isActive) {
           // Force sign out by returning empty token
           return { ...token, isActive: false }
         }
         token.employmentType = account.staff?.employmentType ?? undefined
+        token.isInternshipSupervisor = account.staff?.isInternshipSupervisor ?? false
       }
 
       return token
@@ -207,6 +214,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.branch = token.branch as string
         session.user.branches = (token.branches as BranchInfo[]) ?? []
         session.user.employmentType = (token.employmentType as string) ?? undefined
+        session.user.isInternshipSupervisor = (token.isInternshipSupervisor as boolean) ?? false
       }
       return session
     },

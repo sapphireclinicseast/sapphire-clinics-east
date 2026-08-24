@@ -236,7 +236,22 @@ function DocumentsPanel({ docs, myAccountId, isAdmin, onChanged, onToast }: {
   )
 }
 
-type Tab = 'interns' | 'balik-tanaw' | 'grades' | 'documents' | 'learning'
+type Tab = 'interns' | 'all-interns' | 'balik-tanaw' | 'grades' | 'documents' | 'learning'
+interface InternNote {
+  scheduleId: string
+  date: string
+  patientName: string
+  supervisorName: string
+  id: string
+  status: string
+  notes: string | null
+  isInitialEvaluation: boolean
+  discontinuedRemarks: string | null
+  lockedAt: string | null
+  editHistory: { name: string; accountType?: string; action: 'created' | 'edited'; at: string }[] | null
+  createdAt: string
+  updatedAt: string
+}
 
 export default function InternSupervisionPage() {
   const [loading, setLoading] = useState(true)
@@ -254,10 +269,45 @@ export default function InternSupervisionPage() {
   const [btSort, setBtSort] = useState<'desc' | 'asc'>('desc')
   const [openWeek, setOpenWeek] = useState<string | null>(null)
   const [openEntry, setOpenEntry] = useState<string | null>(null)
+  // All Interns (Clinical Internship Supervisor / admin only) — org-wide
+  // roster, loaded lazily the first time that tab is opened, plus a
+  // per-intern notes panel expanded on demand.
+  const [allInterns, setAllInterns] = useState<Intern[] | null>(null)
+  const [allInternsLoading, setAllInternsLoading] = useState(false)
+  const [notesForIntern, setNotesForIntern] = useState<string | null>(null)
+  const [notesByIntern, setNotesByIntern] = useState<Record<string, InternNote[]>>({})
+  const [notesLoading, setNotesLoading] = useState<string | null>(null)
+  const [openNote, setOpenNote] = useState<string | null>(null)
 
   const { data: sess } = useSession()
   const myAccountId = (sess?.user as { id?: string } | undefined)?.id
   const isAdmin = (sess?.user as { role?: string } | undefined)?.role === 'ADMIN'
+  const isTaggedSupervisor = !!(sess?.user as { isInternshipSupervisor?: boolean } | undefined)?.isInternshipSupervisor
+  const canSeeAllInterns = isAdmin || isTaggedSupervisor
+
+  async function loadAllInterns() {
+    if (allInterns !== null) return // already loaded this session
+    setAllInternsLoading(true)
+    try {
+      const res = await fetch('/api/intern-supervision/interns?scope=all')
+      const data = await res.json()
+      setAllInterns(res.ok ? (data.interns ?? []) : [])
+    } catch { setAllInterns([]) }
+    setAllInternsLoading(false)
+  }
+
+  async function toggleNotes(internId: string) {
+    if (notesForIntern === internId) { setNotesForIntern(null); return }
+    setNotesForIntern(internId)
+    if (notesByIntern[internId]) return // cached
+    setNotesLoading(internId)
+    try {
+      const res = await fetch(`/api/intern-supervision/interns/${internId}/notes`)
+      const data = await res.json()
+      setNotesByIntern((prev) => ({ ...prev, [internId]: res.ok ? (data.notes ?? []) : [] }))
+    } catch { setNotesByIntern((prev) => ({ ...prev, [internId]: [] })) }
+    setNotesLoading(null)
+  }
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(null), 4000) }
 
@@ -280,6 +330,12 @@ export default function InternSupervisionPage() {
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+  // A tagged supervisor with zero decked interns would otherwise land on the
+  // (button-less, empty) "interns" tab — default them straight to All Interns.
+  useEffect(() => {
+    if (!loading && interns.length === 0 && canSeeAllInterns) { setTab('all-interns'); loadAllInterns() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, canSeeAllInterns])
 
   async function sign(id: string) {
     setSigning(id)
@@ -318,7 +374,7 @@ export default function InternSupervisionPage() {
         <p className="text-white/60 text-sm mt-1">Interns decked to you, their Balik-Tanaw, and grades</p>
       </div>
 
-      {!isActiveSupervisor ? (
+      {!isActiveSupervisor && !canSeeAllInterns ? (
         <div className="card-static text-center py-16">
           <div className="w-14 h-14 rounded-full bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-4">
             <UserCog size={24} className="text-[var(--teal)]" />
@@ -333,14 +389,96 @@ export default function InternSupervisionPage() {
         <>
           {/* Tabs */}
           <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] mb-6">
-            {([['interns', 'List of Interns'], ['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles']] as [Tab, string][]).map(([t, label]) => (
-              <button key={t} onClick={() => setTab(t)}
+            {([
+              ...(isActiveSupervisor ? [['interns', 'List of Interns']] as [Tab, string][] : []),
+              ...(canSeeAllInterns ? [['all-interns', 'All Interns']] as [Tab, string][] : []),
+              ['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles'],
+            ] as [Tab, string][]).map(([t, label]) => (
+              <button key={t} onClick={() => { setTab(t); if (t === 'all-interns') loadAllInterns() }}
                 className={cn('flex-1 min-w-[110px] px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
                   tab === t ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]')}>
                 {label}
               </button>
             ))}
           </div>
+
+          {tab === 'all-interns' && (
+            <div className="space-y-3">
+              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Every intern org-wide — Clinical Internship Supervisor view. Open an intern to read every note they've written, not just sessions decked to you.</p>
+              {allInternsLoading ? (
+                <div className="flex justify-center py-10"><Loader2 size={22} className="animate-spin text-[var(--teal)]" /></div>
+              ) : (allInterns ?? []).length === 0 ? (
+                <div className="card-static text-center py-12 text-[13px] text-[var(--mid-gray)]">No interns found.</div>
+              ) : (
+                (allInterns ?? []).map((i) => {
+                  const open = notesForIntern === i.id
+                  const notes = notesByIntern[i.id]
+                  return (
+                    <div key={i.id} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
+                      <button onClick={() => toggleNotes(i.id)}
+                        className="w-full flex items-center justify-between gap-3 flex-wrap px-4 py-3 text-left hover:bg-[var(--off-white)]">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[var(--pale-teal)] flex items-center justify-center font-bold text-[var(--teal)] text-[13px]">
+                            {i.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-[var(--charcoal)] text-[14px]">{i.name}</p>
+                            <p className="text-[12px] text-[var(--mid-gray)]">{i.department} · {i.branch}</p>
+                          </div>
+                        </div>
+                        <span className="flex items-center gap-2">
+                          {notesLoading === i.id && <Loader2 size={14} className="animate-spin text-[var(--mid-gray)]" />}
+                          {notes && <span className="text-[11px] text-[var(--mid-gray)]">{notes.length} note{notes.length === 1 ? '' : 's'}</span>}
+                          {open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+                        </span>
+                      </button>
+                      {open && (
+                        <div className="border-t border-[var(--light-gray)] p-2 space-y-2">
+                          {notes && notes.length === 0 && (
+                            <p className="text-[12px] text-[var(--mid-gray)] px-2 py-3">No session notes yet.</p>
+                          )}
+                          {(notes ?? []).map((n) => {
+                            const nOpen = openNote === n.id
+                            return (
+                              <div key={n.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
+                                <button onClick={() => setOpenNote(nOpen ? null : n.id)}
+                                  className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]">
+                                  <span className="flex items-center gap-2 flex-wrap">
+                                    <FileText size={14} className="text-[var(--teal)]" />
+                                    <span className="font-semibold text-[var(--charcoal)] text-[13.5px]">{new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    <span className="text-[12px] text-[var(--mid-gray)]">{n.patientName}</span>
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--pale-teal)] text-[var(--teal)]">{n.status}</span>
+                                    {n.lockedAt && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Locked</span>}
+                                  </span>
+                                  {nOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
+                                </button>
+                                {nOpen && (
+                                  <div className="px-3 pb-3 border-t border-[var(--light-gray)] pt-3 space-y-2">
+                                    <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{n.notes || <span className="italic text-[var(--mid-gray)]">No note text.</span>}</p>
+                                    {n.discontinuedRemarks && (
+                                      <p className="text-[12px] text-[var(--mid-gray)]"><span className="font-semibold">Discontinued remarks:</span> {n.discontinuedRemarks}</p>
+                                    )}
+                                    <p className="text-[11px] text-[var(--mid-gray)]">Supervising clinician: <span className="font-semibold text-[var(--charcoal)]">{n.supervisorName}</span></p>
+                                    {n.editHistory && n.editHistory.length > 0 && (
+                                      <p className="text-[11px] text-[var(--mid-gray)]">
+                                        {n.editHistory.map((e, idx) => (
+                                          <span key={idx}>{idx > 0 ? ' · ' : ''}{e.name} {e.action} {new Date(e.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                        ))}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          )}
 
           {tab === 'interns' && (
             <div className="space-y-3">

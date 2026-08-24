@@ -48,6 +48,11 @@ model Staff {
   jobTitle        String?
   employmentType  String?
   hrPlatformId    String?
+  // Clinical Internship Supervisor (HR Staff Profile checkbox, synced one-way
+  // into the shared DB by Operations Hub — see its schema.prisma for the
+  // column/migration owner). Grants the "All Interns" view: every intern's
+  // notes, not just this person's own decked interns.
+  isInternshipSupervisor Boolean @default(false)
   // Fallback profile photo (URL or data URI) used when there is no HR photo —
   // e.g. sample/demo interns that aren't real HR records.
   photoPath       String?

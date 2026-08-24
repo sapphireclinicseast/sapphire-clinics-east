@@ -4,7 +4,7 @@
  * staffId is the supervisor). Month range + branch = HR Platform (dateHired /
  * contractExpiry are the intern's Start / End months).
  */
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isRotationLapsed, maybeSweepExpiredInterns } from '@/lib/intern-access'
@@ -28,7 +28,7 @@ function fmtMonth(d?: string | null): string | null {
   return dt.toLocaleString('en-US', { month: 'short', year: 'numeric' })
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -36,25 +36,43 @@ export async function GET() {
   // fire-and-forget) so it works without a cron.
   maybeSweepExpiredInterns()
 
-  const user = session.user as { role?: string; staffId?: string; branches?: { staffId: string }[] }
+  const user = session.user as { role?: string; staffId?: string; branches?: { staffId: string }[]; isInternshipSupervisor?: boolean }
   const isAdmin = user.role === 'ADMIN'
+  const isTaggedSupervisor = !!user.isInternshipSupervisor
   const myStaffIds = (user.branches ?? []).map((b) => b.staffId).filter(Boolean)
   const staffPool = myStaffIds.length > 0 ? myStaffIds : [user.staffId].filter(Boolean) as string[]
 
-  // Interns decked to me: supervisor = schedule.staffId, intern = internStaffId.
-  const rows = await prisma.schedule.findMany({
-    where: {
-      internStaffId: { not: null },
-      ...(isAdmin ? {} : { staffId: { in: staffPool } }),
-    },
-    select: {
-      internStaff: {
+  // ?scope=all — every intern org-wide (Clinical Internship Supervisor tag or
+  // admin only), not just the ones decked to this person. Source of truth is
+  // Staff.employmentType, not the Schedule decking used below — an intern
+  // who hasn't been decked to anyone yet still belongs on this roster.
+  const scopeAll = new URL(req.url).searchParams.get('scope') === 'all'
+  if (scopeAll && !isAdmin && !isTaggedSupervisor) {
+    return NextResponse.json({ error: 'Clinical Internship Supervisor access required.' }, { status: 403 })
+  }
+
+  const interns = scopeAll
+    ? await prisma.staff.findMany({
+        where: { employmentType: 'intern' },
         select: { id: true, firstName: true, lastName: true, department: true, branch: true, hrPlatformId: true },
-      },
-    },
-    distinct: ['internStaffId'],
-  })
-  const interns = rows.map((r) => r.internStaff).filter((s): s is NonNullable<typeof s> => !!s)
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      })
+    : await (async () => {
+        // Interns decked to me: supervisor = schedule.staffId, intern = internStaffId.
+        const rows = await prisma.schedule.findMany({
+          where: {
+            internStaffId: { not: null },
+            ...(isAdmin ? {} : { staffId: { in: staffPool } }),
+          },
+          select: {
+            internStaff: {
+              select: { id: true, firstName: true, lastName: true, department: true, branch: true, hrPlatformId: true },
+            },
+          },
+          distinct: ['internStaffId'],
+        })
+        return rows.map((r) => r.internStaff).filter((s): s is NonNullable<typeof s> => !!s)
+      })()
 
   // Pull HR data for the month range + branch, matched by hrPlatformId.
   const hrMap = new Map<string, { dateHired?: string | null; contractExpiry?: string | null; branch?: string | null }>()

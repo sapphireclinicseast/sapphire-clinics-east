@@ -497,6 +497,10 @@ model Staff {
   bankAccountNo   String?         // Bank Account Number from HR Platform
   hrPlatformId    String?         // ID from HR Platform for sync matching
   active          Boolean         @default(true) // false = inactive in HR; hidden from Staff Module, Top 5, etc.
+  isInternshipSupervisor Boolean  @default(false) // Clinical Internship Supervisor (HR Staff Profile
+                                   // checkbox, synced one-way). Staff Portal reads this off the shared
+                                   // DB to grant an "All Interns" view — every intern's notes, not just
+                                   // this person's own decked interns.
   createdById     String?
   createdBy       User?           @relation(fields: [createdById], references: [id])
   createdAt       DateTime        @default(now())
