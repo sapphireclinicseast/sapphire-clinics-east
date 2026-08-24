@@ -696,6 +696,75 @@ function KpiCard({ icon, value, label, color }: { icon: React.ReactNode; value: 
 // `unit` is the y-axis unit per day — "sessions", or "pp" (percentage points)
 // for the utilization chart, where "%/week" would be ambiguous between a
 // relative change and a change in the rate itself.
+// Two measures that answer different questions and are easy to conflate:
+//
+//   Decking fill  = decked / available     — how full the WEEK is. A permanent
+//                                            patient holds the hour. Low fill is
+//                                            a caseload problem.
+//   Show-up rate  = confirmed / booked     — how often those patients actually
+//                                            come. Low show-up is an attendance
+//                                            problem, and no amount of decking
+//                                            fixes it.
+//
+// A therapist can be 100% decked and still half-empty in practice, which is
+// precisely the case the single utilization figure used to hide.
+function DeckingVsAttendance({ rosteredPerWeek, deckedPerWeek, deckedOffRoster, confirmed, rescheduled, cancelled, pending }: {
+  rosteredPerWeek: number; deckedPerWeek: number; deckedOffRoster: number
+  confirmed: number; rescheduled: number; cancelled: number; pending: number
+}) {
+  const booked  = confirmed + rescheduled + cancelled + pending
+  // Fill is a CURRENT-WEEK snapshot; the decking module stores no history, so it
+  // cannot be re-expanded over a past date range. Show-up is measured over the
+  // selected range. The labels say which is which, because mixing the two
+  // frames is exactly what makes these numbers untrustworthy.
+  const fillPct = rosteredPerWeek > 0 ? (deckedPerWeek / rosteredPerWeek) * 100 : 0
+  const showPct = booked > 0 ? (confirmed / booked) * 100 : 0
+
+  const tone = (p: number) => p >= 80 ? '#10b981' : p >= 50 ? '#f59e0b' : '#ef4444'
+
+  const Meter = ({ label, frame, pct, detail }: { label: string; frame: string; pct: number; detail: string }) => (
+    <div className="flex-1 min-w-[210px]">
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">{label}</span>
+        <span className="text-sm font-extrabold" style={{ color: tone(pct) }}>{pct.toFixed(1)}%</span>
+      </div>
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: '#e5e7eb' }}>
+        <div style={{ width: `${Math.min(100, pct)}%`, background: tone(pct), height: '100%', transition: 'width 0.3s' }} />
+      </div>
+      <div className="text-[10px] text-gray-500 mt-1">{detail}</div>
+      <div className="text-[10px] text-gray-400 italic">{frame}</div>
+    </div>
+  )
+
+  return (
+    <div className="flex flex-wrap gap-5 items-start">
+      <Meter
+        label="Decking fill"
+        frame="current week — decking has no history"
+        pct={fillPct}
+        detail={`${deckedPerWeek} of ${rosteredPerWeek} rostered hours held by a permanent patient`}
+      />
+      <Meter
+        label="Show-up rate"
+        frame="selected date range"
+        pct={showPct}
+        detail={`${confirmed} confirmed of ${booked} booked`}
+      />
+      {deckedOffRoster > 0 && (
+        <div className="min-w-[170px]">
+          <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: '#be123c' }}>
+            Off-roster decking
+          </div>
+          <div className="text-sm font-extrabold" style={{ color: '#be123c' }}>{deckedOffRoster}h</div>
+          <div className="text-[10px] text-gray-500 mt-1">
+            decked on days no longer in the roster — usually left behind when someone reduces their days
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TrendEquation({ fit, unit }: {
   fit: { slope: number; intercept: number; r2: number; change: number } | null
   unit: string
@@ -747,6 +816,9 @@ interface TherapistUtil {
   department: string
   branch: string
   totalSlots: number
+  deckedPerWeek: number
+  rosteredPerWeek: number
+  deckedOffRoster: number
   confirmed: number
   rescheduled: number
   cancelled: number
@@ -757,6 +829,9 @@ interface TherapistUtil {
 
 interface UtilSummary {
   totalSlots: number
+  deckedPerWeek: number
+  rosteredPerWeek: number
+  deckedOffRoster: number
   confirmed: number
   rescheduled: number
   cancelled: number
@@ -859,10 +934,13 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
   const byDept = useMemo(() => {
     const map = new Map<string, { therapists: TherapistUtil[]; totals: UtilSummary }>()
     for (const t of data) {
-      if (!map.has(t.department)) map.set(t.department, { therapists: [], totals: { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0 } })
+      if (!map.has(t.department)) map.set(t.department, { therapists: [], totals: { totalSlots: 0, deckedPerWeek: 0, rosteredPerWeek: 0, deckedOffRoster: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0 } })
       const g = map.get(t.department)!
       g.therapists.push(t)
       g.totals.totalSlots  += t.totalSlots
+      g.totals.deckedPerWeek   += t.deckedPerWeek
+      g.totals.rosteredPerWeek += t.rosteredPerWeek
+      g.totals.deckedOffRoster += t.deckedOffRoster
       g.totals.confirmed   += t.confirmed
       g.totals.rescheduled += t.rescheduled
       g.totals.cancelled   += t.cancelled
@@ -876,9 +954,12 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
   const byBranch = useMemo(() => {
     const map = new Map<string, UtilSummary>()
     for (const t of data) {
-      if (!map.has(t.branch)) map.set(t.branch, { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0 })
+      if (!map.has(t.branch)) map.set(t.branch, { totalSlots: 0, deckedPerWeek: 0, rosteredPerWeek: 0, deckedOffRoster: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0 })
       const g = map.get(t.branch)!
       g.totalSlots  += t.totalSlots
+      g.deckedPerWeek   += t.deckedPerWeek
+      g.rosteredPerWeek += t.rosteredPerWeek
+      g.deckedOffRoster += t.deckedOffRoster
       g.confirmed   += t.confirmed
       g.rescheduled += t.rescheduled
       g.cancelled   += t.cancelled
@@ -965,6 +1046,9 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
                 </span>
                 <span className="text-xs text-gray-400">({startDate} to {endDate})</span>
               </div>
+              <div className="mb-4">
+                <DeckingVsAttendance {...summary} />
+              </div>
               <UtilBar {...summary} total={summary.totalSlots} />
               <div className="flex flex-wrap gap-3 mt-3">
                 {statBox('Confirmed', summary.confirmed, summary.totalSlots, '#10b981')}
@@ -1013,6 +1097,9 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
                     </button>
                     {isExpanded && (
                       <div className="px-5 pb-4 pt-1">
+                        <div className="mb-3 pb-3 border-b border-gray-100">
+                          <DeckingVsAttendance {...t} />
+                        </div>
                         <div className="flex flex-wrap gap-3">
                           {statBox('Confirmed', t.confirmed, t.totalSlots, '#10b981')}
                           {statBox('Rescheduled', t.rescheduled, t.totalSlots, '#f59e0b')}

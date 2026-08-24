@@ -16,6 +16,16 @@ function initials(fullName: string): string {
   return parts.map(p => p[0].toUpperCase()).join('')
 }
 
+// Rostered hours in a shift. Times are "HH:MM" 24h strings; a shift never
+// crosses midnight here, so a plain difference is enough. Guards against a
+// malformed or inverted config rather than emitting a negative capacity.
+function hoursBetween(startTime: string, endTime: string): number {
+  const [sh, sm] = (startTime ?? '').split(':').map(Number)
+  const [eh, em] = (endTime ?? '').split(':').map(Number)
+  if ([sh, sm, eh, em].some(n => !Number.isFinite(n))) return 0
+  return Math.max(0, (eh * 60 + em - (sh * 60 + sm)) / 60)
+}
+
 const DAY_MAP: Record<number, string> = {
   0: 'SUN', 1: 'MON', 2: 'TUE', 3: 'WED', 4: 'THU', 5: 'FRI', 6: 'SAT',
 }
@@ -67,7 +77,7 @@ export async function GET(req: NextRequest) {
 
   const allSlots = await prisma.deckingSlot.findMany({
     where: { staffId: { in: staffIds } },
-    select: { staffId: true, dayOfWeek: true, startTime: true, disabled: true },
+    select: { staffId: true, dayOfWeek: true, startTime: true, disabled: true, patientId: true },
   })
 
   // Group by (staffId, day, time) and mark each group active if AT LEAST
@@ -86,14 +96,21 @@ export async function GET(req: NextRequest) {
   // for that (day, time) tuple is NOT disabled. We do this by first
   // collecting all timeslots, then removing those where ALL rows are
   // disabled.
-  const slotStateByStaff = new Map<string, Map<string, Map<string, { anyActive: boolean }>>>()
+  const slotStateByStaff = new Map<string, Map<string, Map<string, { anyActive: boolean; anyDecked: boolean }>>>()
+  const deckedTimeslotsByStaff = new Map<string, Map<string, Set<string>>>() // staffId -> day -> Set of startTimes
   for (const ds of allSlots) {
     if (!slotStateByStaff.has(ds.staffId)) slotStateByStaff.set(ds.staffId, new Map())
     const byDay = slotStateByStaff.get(ds.staffId)!
     if (!byDay.has(ds.dayOfWeek)) byDay.set(ds.dayOfWeek, new Map())
     const byTime = byDay.get(ds.dayOfWeek)!
-    if (!byTime.has(ds.startTime)) byTime.set(ds.startTime, { anyActive: false })
-    if (!ds.disabled) byTime.get(ds.startTime)!.anyActive = true
+    if (!byTime.has(ds.startTime)) byTime.set(ds.startTime, { anyActive: false, anyDecked: false })
+    if (!ds.disabled) {
+      byTime.get(ds.startTime)!.anyActive = true
+      // A timeslot counts as DECKED when a permanent patient holds it. This is
+      // the decking module's own measure of how full a therapist's week is,
+      // independent of whether those patients then turn up.
+      if (ds.patientId) byTime.get(ds.startTime)!.anyDecked = true
+    }
   }
   // Now materialize the active sets
   for (const [staffId, byDay] of slotStateByStaff.entries()) {
@@ -101,6 +118,12 @@ export async function GET(req: NextRequest) {
       for (const [time, state] of byTime.entries()) {
         if (state.anyActive) {
           activeTimeslotsByStaff.get(staffId)?.get(day)?.add(time)
+          if (state.anyDecked) {
+            if (!deckedTimeslotsByStaff.has(staffId)) deckedTimeslotsByStaff.set(staffId, new Map())
+            const dd = deckedTimeslotsByStaff.get(staffId)!
+            if (!dd.has(day)) dd.set(day, new Set())
+            dd.get(day)!.add(time)
+          }
         }
       }
     }
@@ -135,6 +158,9 @@ export async function GET(req: NextRequest) {
     department: string
     branch: string
     totalSlots: number
+    deckedPerWeek: number
+    rosteredPerWeek: number
+    deckedOffRoster: number
     confirmed: number
     rescheduled: number
     cancelled: number
@@ -166,16 +192,57 @@ export async function GET(req: NextRequest) {
       dayCountsForStaff = cached
     }
 
+    // THREE measures, each answering a different question:
+    //
+    //   shiftSlots  — hours the therapist is rostered for, from their decking
+    //                 config (endTime - startTime, over their work days). This
+    //                 is true capacity.
+    //   totalSlots  — hours that exist as live decking slots. NOTE these are
+    //                 the same rows as deckedSlots: the decking module only
+    //                 creates a slot when a patient is placed in it, and marks
+    //                 removals `disabled`. Kept unchanged because the existing
+    //                 utilization figure is measured against it.
+    //   deckedSlots — hours held by a permanent patient.
+    //
+    // Because a slot only exists once a patient occupies it, decked/total is
+    // always 100% and says nothing. Fill has to be measured against the ROSTER:
+    // decked / shift. Set that beside the attendance statuses and the two
+    // questions separate cleanly — how full the week is, versus how often the
+    // people in it turn up.
+    const deckedByDay = deckedTimeslotsByStaff.get(cfg.staffId)
+    const shiftHours = hoursBetween(cfg.startTime, cfg.endTime)
+
     let totalSlots = 0
     for (const day of workDays) {
       const daysInRange = dayCountsForStaff[day] ?? 0
       if (daysInRange === 0) continue
-
       // Distinct active timeslots for this day (always 1 per (day, hour)
       // regardless of seat count).
       const activeTimeslotsForDay = byDay?.get(day)?.size ?? 0
       totalSlots += activeTimeslotsForDay * daysInRange
     }
+
+    // Decking figures are a CURRENT-WEEK SNAPSHOT and deliberately ignore the
+    // date range. There is no history of DeckingTherapistConfig or DeckingSlot
+    // — both hold only today's state — so multiplying them across a past range
+    // measures that period against a roster that may not have existed then.
+    //
+    // Real case: CRISTI worked Sat/Sun/Thu (and more) through 2026-05, dropped
+    // to Saturday-only in 2026-07, and her config was updated to match. Spread
+    // over a March–May range, today's one-day roster would understate her old
+    // capacity roughly fivefold. Reported per week, the numbers stay honest and
+    // the attendance side keeps the range.
+    //
+    // deckedOffRoster counts decked hours on days the therapist is no longer
+    // rostered for — stale slots left behind when someone reduces their days,
+    // which is what pushes fill above 100%.
+    let deckedPerWeek = 0
+    let deckedOffRoster = 0
+    for (const [day, times] of (deckedByDay ?? new Map())) {
+      if (workDays.includes(day)) deckedPerWeek += times.size
+      else deckedOffRoster += times.size
+    }
+    const rosteredPerWeek = shiftHours * workDays.length
 
     therapistMap.set(cfg.staffId, {
       staffId: cfg.staffId,
@@ -183,6 +250,9 @@ export async function GET(req: NextRequest) {
       department: cfg.staff.department,
       branch: cfg.staff.branch,
       totalSlots,
+      deckedPerWeek,
+      rosteredPerWeek,
+      deckedOffRoster,
       confirmed: 0,
       rescheduled: 0,
       cancelled: 0,
@@ -249,6 +319,9 @@ export async function GET(req: NextRequest) {
   // ── 6. Compute aggregated summary ─────────────────────────────────────────
   const summary = {
     totalSlots: 0,
+    deckedPerWeek: 0,
+    rosteredPerWeek: 0,
+    deckedOffRoster: 0,
     confirmed: 0,
     rescheduled: 0,
     cancelled: 0,
@@ -258,6 +331,9 @@ export async function GET(req: NextRequest) {
   }
   for (const t of therapists) {
     summary.totalSlots  += t.totalSlots
+    summary.deckedPerWeek    += t.deckedPerWeek
+    summary.rosteredPerWeek  += t.rosteredPerWeek
+    summary.deckedOffRoster  += t.deckedOffRoster
     summary.confirmed   += t.confirmed
     summary.rescheduled += t.rescheduled
     summary.cancelled   += t.cancelled
