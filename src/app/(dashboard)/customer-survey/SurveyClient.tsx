@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { branchLabel } from '@/lib/branch-label'
 import Script from 'next/script'
 import {
   ClipboardCheck, BarChart3, ListChecks, Star, Target, Clock,
@@ -803,7 +804,7 @@ export default function SurveyClient({ role }: { role: string }) {
                 className="px-3 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
                 <option value="">All Branches</option>
                 {resultsDash?.availableBranches.map(b => (
-                  <option key={b} value={b}>{b === 'SBEA' ? 'East Branch' : b === 'SBGH' ? 'Greenhills' : b}</option>
+                  <option key={b} value={b}>{branchLabel(b) || b}</option>
                 ))}
               </select>
             )}

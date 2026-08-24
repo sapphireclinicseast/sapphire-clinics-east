@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { branchLabel } from '@/lib/branch-label'
 import { MessageSquare, Send, Trash2, Play, Eye, Clock, Zap, Calendar, CheckCircle2 } from 'lucide-react'
 
 const MAX_LEN = 160
@@ -62,10 +63,12 @@ export default function SmsCampaignsPage() {
 
 // ── New Campaign ────────────────────────────────────────────────────────────
 type Branch = 'BOTH' | 'SBEA' | 'SBGH'
+// Labels come from the shared branchLabel() so the wording matches every other
+// screen; SBEA/SBGH are internal codes and were never meant to reach the UI.
 const BRANCH_OPTIONS: { value: Branch; label: string }[] = [
   { value: 'BOTH', label: 'Both branches' },
-  { value: 'SBEA', label: 'East (SBEA)' },
-  { value: 'SBGH', label: 'Greenhills (SBGH)' },
+  { value: 'SBEA', label: branchLabel('SBEA') },
+  { value: 'SBGH', label: branchLabel('SBGH') },
 ]
 // Prominent segmented branch selector — controls both the recipient filter and
 // which clinic phone the SMS is sent from.
@@ -415,8 +418,8 @@ function CampaignHistory({ branch, setBranch }: { branch: Branch; setBranch: (b:
             className="text-xs px-2 py-1 rounded border"
             style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
             <option value="BOTH">Both branches</option>
-            <option value="SBEA">East (SBEA)</option>
-            <option value="SBGH">Greenhills (SBGH)</option>
+            <option value="SBEA">{branchLabel('SBEA')}</option>
+            <option value="SBGH">{branchLabel('SBGH')}</option>
           </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
             className="text-xs px-2 py-1 rounded border"
