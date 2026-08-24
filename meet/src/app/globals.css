@@ -1,0 +1,55 @@
+@import '@livekit/components-styles';
+
+:root {
+  --aura-deep: #1f5a43;
+  --aura-green: #2c6a4e;
+  --aura-light: #8fb56f;
+  --aura-grey: #7e969f;
+  --ink: #1f2a30;
+  --bg: #0e1512;
+  /* LiveKit theme accents */
+  --lk-accent-bg: #2c6a4e;
+  --lk-accent-fg: #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: #eef2f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+#root, main { height: 100%; }
+
+.screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  background: #fff;
+  color: var(--ink);
+  border-radius: 16px;
+  padding: 32px 28px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+
+.card h1 { font-size: 20px; margin: 0 0 6px; color: var(--aura-deep); }
+.card p { font-size: 14px; line-height: 1.5; color: #4a6a63; margin: 0 0 4px; }
+.brandbar {
+  display: inline-flex; align-items: center; gap: 10px;
+  margin-bottom: 18px; font-weight: 700; color: var(--aura-deep); letter-spacing: .02em;
+}
+.brandbar .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--aura-light); box-shadow: 0 0 0 4px rgba(143,181,111,.25); }
+
+.lk-room-container { height: 100dvh; }
