@@ -117,7 +117,7 @@ export async function GET(req: Request) {
               quantity: true,
               lineTotal: true,
               refundAmount: true,
-              service: { select: { department: true, isHmoGl: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } } },
+              service: { select: { department: true, isHmoGl: true, recognitionMonths: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } } },
               cogsCost: true,
               inventoryItem: { select: { unitCost: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } }, expenseAccount: { select: { accountNumber: true, accountTitle: true } } } },
             },
@@ -478,10 +478,78 @@ export async function GET(req: Request) {
     let unearnedRevenueFromAR = 0
     const AR_PAYMENT_METHODS = new Set(['HMO', 'GL'])
 
+    /* Period fees paid in EARLIER years keep releasing into this year's
+       months (an AY-2026-27 annual paid in June 2026 has Jan-May 2027 shares).
+       The main query only fetches this year's orders, so the tail is read
+       separately. Inert before 2027. */
+    if (year >= 2027) {
+      const priorPeriodFeeOrders = await prisma.order.findMany({
+        where: {
+          status: 'COMPLETED',
+          revenueType: { not: 'UNEARNED' },
+          transactionDate: { gte: new Date(year - 2, 0, 1), lt: new Date(year, 0, 1) },
+          ...branchFilter,
+          items: { some: { service: { recognitionMonths: { gt: 1 } } } },
+        },
+        select: {
+          transactionDate: true, branch: true, subtotal: true, discountAmount: true, orderType: true,
+          items: { select: { name: true, lineTotal: true,
+            service: { select: { department: true, recognitionMonths: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } } } } },
+        },
+      })
+      for (const order of priorPeriodFeeOrders) {
+        const td = new Date(order.transactionDate)
+        const startAbs = (td.getFullYear() - year) * 12 + td.getMonth() + 1
+        const subtotalNum = Number(order.subtotal) || 0
+        for (const item of order.items) {
+          const N = item.service?.recognitionMonths || 0
+          if (N <= 1) continue
+          const lineAmt = Number(item.lineTotal)
+          const discShare = subtotalNum > 0 ? Number(order.discountAmount || 0) * lineAmt / subtotalNum : 0
+          const itemNet = lineAmt - discShare
+          const per = Math.round((itemNet / N) * 100) / 100
+          for (let k = 0; k < N; k++) {
+            const mk = startAbs + k
+            if (mk < 1 || mk > 12) continue
+            const amt = k === N - 1 ? Math.round((itemNet - per * (N - 1)) * 100) / 100 : per
+            const mm = monthly[mk]
+            if (order.orderType === 'SERVICE') mm.serviceRevenue += amt
+            else mm.productRevenue += amt
+            mm.revenueByBranch[order.branch] = (mm.revenueByBranch[order.branch] || 0) + amt
+            mm.revenueByDept[item.service?.department || 'OTHER'] = (mm.revenueByDept[item.service?.department || 'OTHER'] || 0) + amt
+            const acctKey = resolveItemAccount(item as never)
+            mm.revenueByAccount[acctKey] = (mm.revenueByAccount[acctKey] || 0) + amt
+          }
+        }
+      }
+    }
+
     for (const order of orders) {
       const month = new Date(order.transactionDate).getMonth() + 1
       const net = Number(order.netAmount)
       const m = monthly[month]
+
+      /* Period fees (tuition): a service tagged recognitionMonths = N covers
+         N months, so its net leaves the payment month here and one Nth lands
+         in each covered month instead — the same earned basis the ledger
+         engine gives the statements. The item's share of the order discount
+         travels inside that net (and is kept out of the discount deduction
+         below), so net sales stay identical in total. */
+      const periodFees: { N: number; acctKey: string; dept: string; itemNet: number }[] = []
+      let deferredNet = 0, deferredDiscount = 0
+      if (order.revenueType !== 'UNEARNED') {
+        const subtotalNum = Number(order.subtotal) || 0
+        for (const item of order.items) {
+          const N = item.service?.recognitionMonths || 0
+          if (N <= 1) continue
+          const lineAmt = Number(item.lineTotal)
+          const discShare = subtotalNum > 0 ? Number(order.discountAmount || 0) * lineAmt / subtotalNum : 0
+          const itemNet = lineAmt - discShare
+          periodFees.push({ N, acctKey: resolveItemAccount(item), dept: item.service?.department || 'OTHER', itemNet })
+          deferredNet += itemNet
+          deferredDiscount += discShare
+        }
+      }
 
       // Revenue classification
       if (order.revenueType === 'UNEARNED') {
@@ -491,13 +559,29 @@ export async function GET(req: Request) {
           if (AR_PAYMENT_METHODS.has(p.method)) unearnedRevenueFromAR += Number(p.amount)
         }
       } else if (order.orderType === 'SERVICE') {
-        m.serviceRevenue += net
+        m.serviceRevenue += net - deferredNet
       } else {
-        m.productRevenue += net
+        m.productRevenue += net - deferredNet
       }
 
       // Revenue by branch
-      m.revenueByBranch[order.branch] = (m.revenueByBranch[order.branch] || 0) + net
+      m.revenueByBranch[order.branch] = (m.revenueByBranch[order.branch] || 0) + net - deferredNet
+
+      // Release the period fees one Nth per covered month (within this year).
+      for (const pf of periodFees) {
+        const per = Math.round((pf.itemNet / pf.N) * 100) / 100
+        for (let k = 0; k < pf.N; k++) {
+          const mk = month + k
+          if (mk < 1 || mk > 12) continue
+          const amt = k === pf.N - 1 ? Math.round((pf.itemNet - per * (pf.N - 1)) * 100) / 100 : per
+          const mm = monthly[mk]
+          if (order.orderType === 'SERVICE') mm.serviceRevenue += amt
+          else mm.productRevenue += amt
+          mm.revenueByBranch[order.branch] = (mm.revenueByBranch[order.branch] || 0) + amt
+          mm.revenueByDept[pf.dept] = (mm.revenueByDept[pf.dept] || 0) + amt
+          mm.revenueByAccount[pf.acctKey] = (mm.revenueByAccount[pf.acctKey] || 0) + amt
+        }
+      }
 
       // Receivable sale? Paid via an HMO/GL wallet (agency owes us). Per-item HMO/GL
       // services are also treated as receivables below.
@@ -505,6 +589,9 @@ export async function GET(req: Request) {
 
       // Revenue by department, by COA account + COGS from product items
       for (const item of order.items) {
+        // Period-fee items were spread above — their month-by-month share is
+        // already in place, so the payment-month attribution skips them.
+        if ((item.service?.recognitionMonths || 0) > 1 && order.revenueType !== 'UNEARNED') continue
         const nameKey = item.name?.trim().toUpperCase() || ''
         const dept = item.service?.department || item.inventoryItem?.skuDepartment
           || serviceNameToAccount[nameKey]?.department || inventoryNameToAccount[nameKey]?.department || 'OTHER'
@@ -562,7 +649,7 @@ export async function GET(req: Request) {
       // recognized later, pro-rata, on the earned per-session orders. Booking
       // it here too would double-count it (once at purchase, again at
       // consumption) against revenue that isn't on the IS yet.
-      const discAmt = order.revenueType === 'UNEARNED' ? 0 : Number(order.discountAmount)
+      const discAmt = order.revenueType === 'UNEARNED' ? 0 : Math.max(0, Number(order.discountAmount) - deferredDiscount)
       if (discAmt > 0) {
         let discAcctKey = ''
 
