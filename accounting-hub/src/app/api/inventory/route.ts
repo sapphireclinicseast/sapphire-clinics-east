@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { resolveProductAccounts, inventorySubTypeForDept } from '@/lib/inventory-accounts'
+import { consumeFifoLots } from '@/lib/fifo'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -165,6 +166,27 @@ export async function POST(req: Request) {
       if (!sync.pushed) console.warn(`[STORE SYNC] weight for ${item.sku} not pushed: ${sync.reason}`)
     }
 
+    // An item born with stock needs an opening lot, or its sales have no FIFO
+    // cost and its movement history starts from a phantom balance. (The petty-
+    // cash flow already posts its own INCREASE via /adjustments — it sends
+    // quantity 0 here, so this doesn't double up.)
+    if (item.quantity > 0) {
+      await prisma.inventoryAdjustment.create({
+        data: {
+          itemId: item.id,
+          type: 'INCREASE',
+          quantityChange: item.quantity,
+          previousQuantity: 0,
+          newQuantity: item.quantity,
+          remainingQuantity: item.quantity,
+          localCost: Number(item.unitCost) || null,
+          adjustmentDate: new Date(),
+          remarks: 'Opening quantity at item creation',
+          adjustedById: session.user.id,
+        },
+      })
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
@@ -228,7 +250,8 @@ export async function PUT(req: Request) {
     const current = await prisma.inventoryItem.findUnique({
       where: { id },
       select: { sku: true, skuDepartment: true, skuCategory: true, skuSubcategory: true, skuSequence: true,
-                revenueAccountId: true, expenseAccountId: true, sourceAccountId: true, accountSubType: true },
+                revenueAccountId: true, expenseAccountId: true, sourceAccountId: true, accountSubType: true,
+                quantity: true, unitCost: true },
     })
 
     // Reclassification. The edit form has always SENT these three fields; the API
@@ -293,6 +316,36 @@ export async function PUT(req: Request) {
       if (filled.accountSubType) data.accountSubType = filled.accountSubType
     }
 
+    // A quantity edit through the item form used to overwrite the counter
+    // silently — no adjustment row, no lot, no history — so every stale form
+    // save erased real sales and consignments (the "phantom opening balance"
+    // in movement history). Now the change is recorded as a real adjustment:
+    // an INCREASE lot when raised, a lot-consuming SHRINKAGE when lowered.
+    let quantityEdit: { from: number; to: number } | null = null
+    if (current && data.quantity !== undefined && data.quantity !== current.quantity) {
+      quantityEdit = { from: current.quantity, to: data.quantity }
+      const delta = data.quantity - current.quantity
+      if (delta < 0) await consumeFifoLots(prisma, id, -delta)
+      await prisma.inventoryAdjustment.create({
+        data: {
+          itemId: id,
+          type: delta > 0 ? 'INCREASE' : 'SHRINKAGE',
+          quantityChange: Math.abs(delta),
+          previousQuantity: current.quantity,
+          newQuantity: data.quantity,
+          remainingQuantity: delta > 0 ? delta : null,
+          localCost: delta > 0 ? Number(data.unitCost ?? current.unitCost) : null,
+          adjustmentDate: new Date(),
+          remarks: 'Quantity edited via item form',
+          adjustedById: session.user.id,
+        },
+      })
+    } else if (current && data.quantity !== undefined) {
+      // Unchanged — don't touch the counter at all (a stale form re-sending
+      // the same number must not clobber concurrent sales).
+      delete data.quantity
+    }
+
     const item = await prisma.inventoryItem.update({ where: { id }, data })
 
     // The storefront prices delivery by weight, so its copy has to follow this
@@ -310,7 +363,7 @@ export async function PUT(req: Request) {
         action: reclassified ? 'RECLASSIFY' : 'UPDATE',
         entity: 'inventoryItem',
         entityId: item.id,
-        details: { updated: Object.keys(data), ...(reclassified ? { skuChanged: reclassified } : {}) },
+        details: { updated: Object.keys(data), ...(quantityEdit ? { quantityEdit } : {}), ...(reclassified ? { skuChanged: reclassified } : {}) },
       },
     })
 

@@ -828,6 +828,11 @@ function InventoryInner() {
   const [fSellingPrice, setFSellingPrice] = useState('')
   const [fRewardPointsPrice, setFRewardPointsPrice] = useState('')
   const [fInitialQty, setFInitialQty] = useState('')
+  // Quantity as loaded when the edit modal opened. On save, quantity is only
+  // sent when the user actually changed the field — a stale form resaving the
+  // number it loaded must never overwrite sales/consignments that happened in
+  // the meantime (that overwrite is how phantom stock losses used to appear).
+  const [fQtyAsLoaded, setFQtyAsLoaded] = useState('')
   const [fReorderLevel, setFReorderLevel] = useState('')
   const [fSupplierId, setFSupplierId] = useState('')
   const [fSupplierProductName, setFSupplierProductName] = useState('')
@@ -1588,6 +1593,7 @@ function InventoryInner() {
     setFSellingPrice(item.sellingPrice != null ? String(item.sellingPrice) : '')
     setFRewardPointsPrice(item.rewardPointsPrice != null ? String(item.rewardPointsPrice) : '')
     setFInitialQty(String(item.quantity))
+    setFQtyAsLoaded(String(item.quantity))
     setFReorderLevel(item.reorderLevel != null ? String(item.reorderLevel) : '')
     setFSupplierId(item.supplierId || '')
     setFExchangeRate(item.supplierExchangeRate != null ? String(item.supplierExchangeRate) : '')
@@ -1756,7 +1762,10 @@ function InventoryInner() {
       unitCost: fUnitCost || '0',
       sellingPrice: fSellingPrice || null,
       rewardPointsPrice: fRewardPointsPrice || null,
-      quantity: isPcfCreate ? '0' : (fInitialQty || '0'),
+      // Edits only carry quantity when the user actually touched the field.
+      ...(editingItem && fInitialQty === fQtyAsLoaded
+        ? {}
+        : { quantity: isPcfCreate ? '0' : (fInitialQty || '0') }),
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
       supplierProductName: fSupplierProductName || null,

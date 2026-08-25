@@ -157,18 +157,23 @@ export async function GET(
     }
   }
 
-  // ── Consignment transfers (informational — direction 0, does not move the
-  //    running balance, since the transfer's own stock effect is already
-  //    reflected in adjustments/current qty) ──────────────────────────
+  // ── Consignment transfers. RECEIVED is the moment stock actually leaves
+  //    this (source) item for the branch copy, so it moves the running
+  //    balance (−qty). APPROVED/SHIPPED are still in transit — informational
+  //    only. The branch copy's own history shows the arrival as a STOCK_IN
+  //    lot created by the receive. ──────────────────────────────────────
   for (const c of consignments) {
+    const received = c.status === 'RECEIVED'
     entries.push({
       date: c.receivedAt || c.createdAt,
       type: 'CONSIGNMENT',
       qty: c.quantity,
-      direction: 0,
+      direction: received ? -1 : 0,
       costPerUnit: null,
       reference: `${BR[c.fromBranch] || c.fromBranch} → ${BR[c.toBranch] || c.toBranch}`,
-      remarks: `Consigned to ${BR[c.toBranch] || c.toBranch} · ${c.status}${c.remarks ? ` — ${c.remarks}` : ''}`,
+      remarks: received
+        ? `Consigned to ${BR[c.toBranch] || c.toBranch} — stock moved to the branch`
+        : `Consigned to ${BR[c.toBranch] || c.toBranch} · ${c.status}${c.status === 'SHIPPED' || c.status === 'APPROVED' ? ' (in transit — not yet deducted)' : ''}${c.remarks ? ` — ${c.remarks}` : ''}`,
     })
   }
 

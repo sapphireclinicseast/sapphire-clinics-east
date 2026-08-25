@@ -351,7 +351,22 @@ export async function POST(req: Request) {
       createdById: session.user.id,
     })
 
-    // Deduct inventory for product orders using FIFO lot consumption
+    // Deduct inventory for product orders using FIFO lot consumption.
+    //
+    // Branch consignment attribution: product checkouts are store orders on
+    // paper, but a sale rung by a clinic front-desk account walked out of that
+    // clinic's consigned stock. When the cashier's branch is a clinic and the
+    // clinic holds a consignment copy of the item (linked by sourceItemId) with
+    // enough stock, the deduction — quantity, FIFO lot, COGS — hits the branch
+    // copy, and the order line is re-pointed at it so movement history and a
+    // later void land on the same row. No copy or not enough stock → the pool
+    // deducts as before.
+    const CLINIC_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
+    const cashier = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { branch: true },
+    })
+    const cashierClinic = cashier?.branch && CLINIC_BRANCHES.includes(cashier.branch) ? cashier.branch : null
     if (orderType === 'PRODUCT') {
       for (const item of items) {
         if (!item.inventoryItemId) continue
@@ -396,10 +411,35 @@ export async function POST(req: Request) {
             }
           }
         } else {
-          // Regular item: FIFO consumption
-          const fifo = await consumeFifoLots(prisma, item.inventoryItemId, orderQty)
+          // Regular item: resolve which row actually gives up the stock —
+          // the clinic's consignment copy when the cashier is clinic front
+          // desk and the copy can cover the sale, else the pool item.
+          let stockItemId = item.inventoryItemId
+          if (cashierClinic && invItem.branch !== cashierClinic && !item.variantId) {
+            const branchCopy = await prisma.inventoryItem.findFirst({
+              where: {
+                branch: cashierClinic,
+                isActive: true,
+                OR: [
+                  { sourceItemId: invItem.id },
+                  { sku: { startsWith: `${invItem.sku}-` } },
+                ],
+              },
+              select: { id: true, quantity: true },
+            })
+            if (branchCopy && branchCopy.quantity >= orderQty) {
+              stockItemId = branchCopy.id
+              if (orderItem) {
+                await prisma.orderItem.update({
+                  where: { id: orderItem.id },
+                  data: { inventoryItemId: branchCopy.id },
+                })
+              }
+            }
+          }
+          const fifo = await consumeFifoLots(prisma, stockItemId, orderQty)
           await prisma.inventoryItem.update({
-            where: { id: item.inventoryItemId },
+            where: { id: stockItemId },
             data: { quantity: { decrement: orderQty } },
           })
           // If a specific variant was selected, deduct from variant stock too
@@ -419,9 +459,9 @@ export async function POST(req: Request) {
             }
           }
           // Update weighted-average unitCost
-          const newCost = await recalcWeightedUnitCost(prisma, item.inventoryItemId)
+          const newCost = await recalcWeightedUnitCost(prisma, stockItemId)
           if (newCost > 0) {
-            await prisma.inventoryItem.update({ where: { id: item.inventoryItemId }, data: { unitCost: newCost } })
+            await prisma.inventoryItem.update({ where: { id: stockItemId }, data: { unitCost: newCost } })
           }
         }
       }

@@ -453,8 +453,17 @@ export async function PUT(
 
     // Use a transaction to replace items/payments atomically
     const updated = await prisma.$transaction(async (tx) => {
-      // Delete and recreate items if provided
+      // Delete and recreate items if provided. The client often resends lines
+      // without their inventoryItemId / cogsCost / free-sample flag — recreating
+      // them bare severs the line from its stock item, and with it the movement
+      // history and any later void's stock restore. Carry those over from the
+      // old line (matched by name) whenever the new line doesn't provide them.
       if (items?.length) {
+        const oldItems = await tx.orderItem.findMany({
+          where: { orderId: id },
+          select: { name: true, inventoryItemId: true, cogsCost: true, isFreeSample: true, variantId: true },
+        })
+        const oldByName = new Map(oldItems.map(oi => [oi.name, oi]))
         await tx.orderItem.deleteMany({ where: { orderId: id } })
         await tx.orderItem.createMany({
           data: items.map((item: {
@@ -464,15 +473,21 @@ export async function PUT(
             quantity: number
             unitPrice: number
             lineTotal: number
-          }) => ({
-            orderId: id,
-            serviceId: item.serviceId || null,
-            inventoryItemId: item.inventoryItemId || null,
-            name: item.name,
-            quantity: item.quantity || 1,
-            unitPrice: Number(item.unitPrice),
-            lineTotal: Number(item.lineTotal),
-          })),
+          }) => {
+            const prev = oldByName.get(item.name)
+            return {
+              orderId: id,
+              serviceId: item.serviceId || null,
+              inventoryItemId: item.inventoryItemId || prev?.inventoryItemId || null,
+              name: item.name,
+              quantity: item.quantity || 1,
+              unitPrice: Number(item.unitPrice),
+              lineTotal: Number(item.lineTotal),
+              cogsCost: prev?.cogsCost ?? null,
+              isFreeSample: prev?.isFreeSample ?? false,
+              variantId: prev?.variantId ?? null,
+            }
+          }),
         })
       }
 

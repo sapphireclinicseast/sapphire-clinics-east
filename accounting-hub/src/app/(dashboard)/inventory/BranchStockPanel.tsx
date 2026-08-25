@@ -18,7 +18,7 @@ const BRANCHES = [
   ['VERDANA_STORE', 'VER Store'],
 ] as const
 
-interface Cell { received: number; inTransit: number; returned: number; sold: number; remaining: number }
+interface Cell { received: number; inTransit: number; returned: number; sold: number; onHand: number | null }
 interface Row { itemId: string; name: string; sku: string; totalStock: number; branches: Record<string, Cell> }
 
 export default function BranchStockPanel() {
@@ -46,9 +46,9 @@ export default function BranchStockPanel() {
           className="px-3 py-1.5 rounded-lg border text-xs w-64" style={{ borderColor: 'var(--light-gray)' }} />
       </div>
       <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
-        In = consignments received at the branch. Sold counts every POS sale rung by that branch&apos;s front-desk cashier
-        account — product sales are recorded as store orders, but the cashier says where the unit actually walked out.
-        Remaining = received − returned − sold. In-transit consignments are shown in parentheses and not yet counted.
+        Each branch holds its consigned stock as its own live counter: consignments received add to it, sales rung by
+        that branch&apos;s front desk deduct from it. <strong>Left</strong> is that live counter. In = consignments
+        received to date (in-transit shown in parentheses — on the way, not yet stock).
       </p>
       {loading ? <div className="py-10 text-center"><Loader2 className="animate-spin inline" size={18} /></div> : (
         <div className="overflow-x-auto">
@@ -81,7 +81,7 @@ export default function BranchStockPanel() {
                   <td className="px-2 py-1.5 text-right tabular-nums">{r.totalStock}</td>
                   {BRANCHES.map(([b]) => {
                     const c = r.branches[b]
-                    const rem = c ? c.received - c.returned - c.sold : 0
+                    const rem = c ? (c.onHand ?? c.received - c.returned - c.sold) : 0
                     return (
                       <>
                         <td key={`${r.itemId}-${b}-i`} className="px-2 py-1.5 text-right tabular-nums border-l" style={{ borderColor: '#f3f4f6' }}>
@@ -107,7 +107,7 @@ export default function BranchStockPanel() {
                   <>
                     <td key={`t-${b}-i`} className="px-2 py-2 text-right tabular-nums border-l" style={{ borderColor: '#f3f4f6' }}>{tot(b, 'received')}</td>
                     <td key={`t-${b}-s`} className="px-2 py-2 text-right tabular-nums">{tot(b, 'sold')}</td>
-                    <td key={`t-${b}-l`} className="px-2 py-2 text-right tabular-nums">{tot(b, 'received') - tot(b, 'returned') - tot(b, 'sold')}</td>
+                    <td key={`t-${b}-l`} className="px-2 py-2 text-right tabular-nums">{visible.reduce((s, r) => { const c = r.branches[b]; return s + (c ? (c.onHand ?? c.received - c.returned - c.sold) : 0) }, 0)}</td>
                   </>
                 ))}
               </tr>

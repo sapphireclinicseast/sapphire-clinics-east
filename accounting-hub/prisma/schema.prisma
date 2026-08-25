@@ -486,6 +486,7 @@ model InventoryItem {
   rewardPointsPrice     Int? // Price in reward points (e.g., 1000 pts)
   quantity              Int       @default(0)
   branchStock           Json? // Display-only per-branch split of `quantity` for consigned stock, e.g. { "SANDBOX_GREENHILLS": 2 }. `quantity` remains the authoritative TOTAL for FIFO/COGS/BS; this only records where the units physically sit (folded-in from the retired '-SAND' consignment rows).
+  sourceItemId          String? // For a branch consignment copy: the pool (source) item it was received from. Lets checkout/receive find the branch row without guessing at SKU suffixes.
   reorderLevel          Int?
   supplierId            String?
   supplier              Supplier? @relation(fields: [supplierId], references: [id])
@@ -529,6 +530,7 @@ model InventoryItem {
   @@index([revenueAccountId])
   @@index([sourceAccountId])
   @@index([expenseAccountId])
+  @@index([sourceItemId])
   supplierRequestItems SupplierRequestItem[]
 }
 

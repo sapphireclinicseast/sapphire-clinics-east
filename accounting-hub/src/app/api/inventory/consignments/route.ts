@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { resolveProductAccounts } from '@/lib/inventory-accounts'
+import { consumeFifoLots } from '@/lib/fifo'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -203,25 +204,39 @@ export async function PUT(req: Request) {
         updateData.status = 'RECEIVED'
         updateData.receivedAt = new Date()
 
-        // Deduct from source item
+        // Deduct from source item — quantity AND its FIFO lots, so the cost
+        // rides along with the stock instead of staying behind on the pool.
+        const fifo = await consumeFifoLots(prisma, transfer.itemId, transfer.quantity)
+        const costPerUnit = transfer.quantity > 0
+          ? Math.round((fifo.totalCost / transfer.quantity) * 100) / 100
+          : Number(transfer.item.unitCost)
         await prisma.inventoryItem.update({
           where: { id: transfer.itemId },
           data: { quantity: { decrement: transfer.quantity } },
         })
 
-        // Find or create destination item
-        const destItem = await prisma.inventoryItem.findFirst({
+        // Find the destination branch copy. Prefer the explicit sourceItemId
+        // link; fall back to SKU-family match for rows created before the link
+        // existed. (The old exact-SKU lookup could never find the very row this
+        // handler creates — it appends a branch suffix — so every second receive
+        // to the same branch crashed on the unique SKU.)
+        let destItem = await prisma.inventoryItem.findFirst({
           where: {
-            sku: transfer.item.sku,
             branch: transfer.toBranch,
             isActive: true,
+            OR: [
+              { sourceItemId: transfer.itemId },
+              { sku: transfer.item.sku },
+              { sku: { startsWith: `${transfer.item.sku}-` } },
+            ],
           },
         })
 
+        const destPrevQty = destItem?.quantity ?? 0
         if (destItem) {
           await prisma.inventoryItem.update({
             where: { id: destItem.id },
-            data: { quantity: { increment: transfer.quantity } },
+            data: { quantity: { increment: transfer.quantity }, sourceItemId: transfer.itemId },
           })
         } else {
           const destAcct = await resolveProductAccounts(prisma, transfer.item.skuDepartment, {
@@ -230,11 +245,16 @@ export async function PUT(req: Request) {
             sourceAccountId: transfer.item.sourceAccountId,
             accountSubType: transfer.item.accountSubType,
           })
-          // Create new item at destination branch
-          await prisma.inventoryItem.create({
+          // Create new item at destination branch. The suffix must be unique
+          // per branch: substring(0,4) made every SANDBOX_* clinic "-SAND", so
+          // the second clinic's receive collided with the first on the unique SKU.
+          const SUFFIX: Record<string, string> = { SANDBOX_EAST: 'EAST', SANDBOX_GREENHILLS: 'GH' }
+          const suffix = SUFFIX[transfer.toBranch] || transfer.toBranch.substring(0, 4)
+          destItem = await prisma.inventoryItem.create({
             data: {
               name: transfer.item.name,
-              sku: `${transfer.item.sku}-${transfer.toBranch.substring(0, 4)}`,
+              sku: `${transfer.item.sku}-${suffix}`,
+              sourceItemId: transfer.itemId,
               skuDepartment: transfer.item.skuDepartment,
               skuCategory: transfer.item.skuCategory,
               skuSubcategory: transfer.item.skuSubcategory,
@@ -242,7 +262,7 @@ export async function PUT(req: Request) {
               barcode: transfer.item.barcode,
               branch: transfer.toBranch,
               accountSubType: transfer.item.accountSubType,
-              unitCost: transfer.item.unitCost,
+              unitCost: costPerUnit || transfer.item.unitCost,
               sellingPrice: transfer.item.sellingPrice,
               quantity: transfer.quantity,
               reorderLevel: transfer.item.reorderLevel,
@@ -259,6 +279,25 @@ export async function PUT(req: Request) {
             },
           })
         }
+
+        // Give the branch copy a real FIFO lot for the received units, at the
+        // cost consumed from the source lots. Without it the copy has no lot,
+        // so its sales carry zero COGS and its movement history shows nothing
+        // arriving.
+        await prisma.inventoryAdjustment.create({
+          data: {
+            itemId: destItem.id,
+            type: 'INCREASE',
+            quantityChange: transfer.quantity,
+            previousQuantity: destPrevQty,
+            newQuantity: destPrevQty + transfer.quantity,
+            remainingQuantity: transfer.quantity,
+            localCost: costPerUnit || Number(transfer.item.unitCost),
+            adjustmentDate: new Date(),
+            remarks: `Consignment received from ${transfer.fromBranch}${transfer.referenceNumber ? ` · ${transfer.referenceNumber}` : ''}`,
+            adjustedById: session.user.id,
+          },
+        })
         break
       }
     }

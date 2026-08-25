@@ -3,19 +3,23 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 /**
- * Per-branch inventory position, computed live from the two record streams
- * that actually exist:
+ * Per-branch inventory position.
  *
- *   IN   — ConsignmentTransfer rows RECEIVED at the branch
- *   OUT  — RETURNED transfers, plus POS sales attributed to the branch by the
- *          CASHIER who rang them (policy from the user, 2026-08-11): product
- *          sales are recorded as store orders, but a sale rung by a clinic
- *          front-desk account (e.g. "AHEA Front Desk") happened at that
- *          clinic, out of its consigned stock. Attribution = the cashier's
- *          User.branch when it is a clinic; otherwise the order's own branch.
+ * Custody model: consigned stock physically lives in a branch COPY of the
+ * item — a real InventoryItem row at the clinic, created/incremented when a
+ * consignment is RECEIVED and decremented when the clinic's front desk rings
+ * a sale (the POS re-points such order lines at the copy). So:
  *
- * remaining = received − returned − sold. In-transit (APPROVED/SHIPPED) is
- * reported separately and not yet part of the branch's stock.
+ *   onHand   — the branch copy's live quantity. This is the truth.
+ *   received — lifetime consignments RECEIVED at the branch (context)
+ *   inTransit— APPROVED/SHIPPED consignments on the way (not yet stock)
+ *   returned — RETURNED transfers (context)
+ *   sold     — order lines linked to the branch copy, plus (legacy, from
+ *              before the re-pointing existed) clinic-cashier-rung lines
+ *              still linked to the pool item
+ *
+ * The Verdana column is the pool row itself: onHand = pool quantity, sold =
+ * pool-linked sales not attributed to a clinic cashier.
  */
 export async function GET() {
   const session = await auth()
@@ -30,22 +34,37 @@ export async function GET() {
       where: { inventoryItemId: { not: null }, order: { status: 'COMPLETED' } },
       select: {
         inventoryItemId: true, quantity: true,
-        order: { select: { branch: true, createdBy: { select: { name: true, branch: true } } } },
+        order: { select: { branch: true, createdBy: { select: { branch: true } } } },
       },
     }),
     prisma.inventoryItem.findMany({
       where: { isActive: true },
-      select: { id: true, name: true, sku: true, quantity: true, branchStock: true },
+      select: { id: true, name: true, sku: true, branch: true, quantity: true, sourceItemId: true },
     }),
   ])
 
-  type Cell = { received: number; inTransit: number; returned: number; sold: number; remaining: number }
-  const blank = (): Cell => ({ received: 0, inTransit: 0, returned: 0, sold: 0, remaining: 0 })
   const CLINICS = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS'] as const
+  type Cell = { received: number; inTransit: number; returned: number; sold: number; onHand: number | null }
+  const blank = (): Cell => ({ received: 0, inTransit: 0, returned: 0, sold: 0, onHand: null })
+
+  // Map branch copies to their pool parent: explicit sourceItemId link first,
+  // legacy SKU-suffix rows ("<pool sku>-SAND" etc.) as fallback.
+  const bySku = new Map(items.map(i => [i.sku, i]))
+  const byId = new Map(items.map(i => [i.id, i]))
+  const parentOf = new Map<string, string>() // copyId -> poolId
+  for (const it of items) {
+    if (it.sourceItemId) { parentOf.set(it.id, it.sourceItemId); continue }
+    const dash = it.sku.lastIndexOf('-')
+    if (dash > 0) {
+      const base = bySku.get(it.sku.slice(0, dash))
+      if (base && base.id !== it.id && base.branch !== it.branch) parentOf.set(it.id, base.id)
+    }
+  }
+
   const byItem = new Map<string, Record<string, Cell>>()
-  const cell = (itemId: string, branch: string): Cell => {
-    if (!byItem.has(itemId)) byItem.set(itemId, {})
-    const m = byItem.get(itemId)!
+  const cell = (poolId: string, branch: string): Cell => {
+    if (!byItem.has(poolId)) byItem.set(poolId, {})
+    const m = byItem.get(poolId)!
     if (!m[branch]) m[branch] = blank()
     return m[branch]
   }
@@ -54,31 +73,46 @@ export async function GET() {
     const c = cell(t.itemId, t.toBranch)
     if (t.status === 'RECEIVED') c.received += t.quantity
     else if (t.status === 'RETURNED') c.returned += t.quantity
-    else c.inTransit += t.quantity // APPROVED or SHIPPED — on the way
+    else c.inTransit += t.quantity
   }
+
+  // Live on-hand from the copies themselves; the pool's own branch cell too.
+  for (const it of items) {
+    const poolId = parentOf.get(it.id)
+    if (poolId) {
+      cell(poolId, it.branch).onHand = (cell(poolId, it.branch).onHand ?? 0) + it.quantity
+    } else if (byItem.has(it.id) || items.some(x => parentOf.get(x.id) === it.id)) {
+      cell(it.id, it.branch).onHand = it.quantity
+    }
+  }
+
   for (const l of soldLines) {
     if (!l.inventoryItemId) continue
-    // The cashier's clinic wins over the order's branch: product sales are
-    // store orders on paper, but the front-desk account says where the unit
-    // physically walked out.
-    const cashierBranch = l.order.createdBy?.branch as string | null
-    const branch = cashierBranch && (CLINICS as readonly string[]).includes(cashierBranch)
-      ? cashierBranch
-      : l.order.branch
-    cell(l.inventoryItemId, branch).sold += l.quantity
+    const poolId = parentOf.get(l.inventoryItemId)
+    if (poolId) {
+      // Line already points at a branch copy — its branch is authoritative.
+      const copy = byId.get(l.inventoryItemId)
+      cell(poolId, copy?.branch || l.order.branch).sold += l.quantity
+    } else {
+      // Pool-linked line: legacy cashier attribution (pre-re-pointing sales).
+      const cashierBranch = l.order.createdBy?.branch as string | null
+      const branch = cashierBranch && (CLINICS as readonly string[]).includes(cashierBranch)
+        ? cashierBranch
+        : l.order.branch
+      cell(l.inventoryItemId, branch).sold += l.quantity
+    }
   }
 
   const rows = items
+    .filter(i => !parentOf.has(i.id) && byItem.has(i.id))
     .map(i => {
-      const branches = byItem.get(i.id) || {}
-      for (const b of Object.keys(branches)) {
-        const c = branches[b]
-        c.remaining = c.received - c.returned - c.sold
-      }
+      const branches = byItem.get(i.id)!
+      const copiesQty = items.filter(x => parentOf.get(x.id) === i.id).reduce((s, x) => s + x.quantity, 0)
       return {
-        itemId: i.id, name: i.name, sku: i.sku, totalStock: i.quantity,
+        itemId: i.id, name: i.name, sku: i.sku,
+        totalStock: i.quantity + copiesQty,
         branches,
-        hasActivity: Object.values(branches).some(c => c.received || c.sold || c.inTransit || c.returned),
+        hasActivity: Object.values(branches).some(c => c.received || c.sold || c.inTransit || c.returned || (c.onHand ?? 0) !== 0),
       }
     })
     .filter(r => r.hasActivity)
@@ -86,6 +120,6 @@ export async function GET() {
 
   return NextResponse.json({
     rows,
-    note: 'Sales are attributed to a clinic when rung by its front-desk cashier account; all other sales belong to the order’s own branch.',
+    note: 'On-hand is the branch copy’s live counter — consignments received minus branch sales. In-transit consignments are not yet stock.',
   })
 }
