@@ -22,7 +22,7 @@ interface FeedData {
   checkout: CheckoutPayload | null
 }
 
-type Screen = 'home' | 'survey'
+type Screen = 'home' | 'survey' | 'embed'
 
 /** Idle timeout — the tablet returns to the welcome screen by itself. */
 const IDLE_MS = 60_000
@@ -30,6 +30,15 @@ const IDLE_MS = 60_000
 export default function PatientViewClient({ slug, branchName, shortName }: { slug: string; branchName: string; shortName: string }) {
   const [data, setData] = useState<FeedData | null>(null)
   const [screen, setScreen] = useState<Screen>('home')
+  // A page from another of our sites, shown inside this one. The tablet is a
+  // kiosk: opening tabs it cannot close, or navigating away with no way back,
+  // both end with someone having to fix the device by hand.
+  const [embed, setEmbed] = useState<{ url: string; title: string } | null>(null)
+  const openEmbed = (url: string | undefined, title: string) => {
+    if (!url) return
+    setEmbed({ url, title })
+    setScreen('embed')
+  }
 
   const load = useCallback(async () => {
     try {
@@ -51,6 +60,8 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
   // When the sale finishes, leave the patient on the welcome screen rather than
   // on whatever they had open before their bill appeared.
   useEffect(() => { if (!checkout) setScreen('home') }, [checkout])
+
+  useEffect(() => { if (screen !== 'embed') setEmbed(null) }, [screen])
 
   // Any sub-screen holds someone's name or points; don't leave it up.
   useEffect(() => {
@@ -77,6 +88,13 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
         {screen === 'home' && (
           <div className="w-full max-w-5xl">
             <div className="text-center mb-8">
+              {/* The mark, at a size a patient actually registers — this screen
+                  is the longest look most of them get at it. */}
+              <img
+                src="/aura-logo.png"
+                alt="Aura Health Rehab"
+                className="mx-auto mb-5 h-20 sm:h-24 w-auto"
+              />
               <h1 className="text-4xl sm:text-5xl font-bold tracking-tight" style={{ color: '#1c3f38', fontFamily: 'var(--font-display)' }}>
                 Welcome to Aura Health Rehab
               </h1>
@@ -106,7 +124,7 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
                 title="Tell us what went wrong"
                 body="Something not right? Tell us directly and privately. Every message is read by our clinic management."
                 cta="Open the form"
-                onClick={() => { if (data?.complaintFormUrl) window.open(data.complaintFormUrl, '_blank', 'noopener') }}
+                onClick={() => openEmbed(data?.complaintFormUrl, 'Tell us what went wrong')}
               />
               <Card
                 tone="violet"
@@ -114,7 +132,7 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
                 title="Check your reward points"
                 body="For VIP and Prepaid Card holders. Check your points balance and what you can redeem."
                 cta="Check my points"
-                onClick={() => { if (data?.rewardPointsUrl) window.open(data.rewardPointsUrl, '_blank', 'noopener') }}
+                onClick={() => openEmbed(data?.rewardPointsUrl, 'Your reward points')}
               />
             </div>
 
@@ -124,7 +142,27 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
           </div>
         )}
 
-        {screen === 'survey' && <SurveyScreen invitations={data?.survey.invitations ?? []} onDone={() => setScreen('home')} />}
+        {screen === 'survey' && (
+          <SurveyScreen
+            invitations={data?.survey.invitations ?? []}
+            onOpen={(inv) => openEmbed(inv.surveyUrl, 'Share your experience')}
+          />
+        )}
+        {screen === 'embed' && embed && (
+          <div className="w-full h-full max-w-5xl flex flex-col" style={{ minHeight: '70vh' }}>
+            <div className="flex-1 rounded-3xl overflow-hidden bg-white" style={{ boxShadow: '0 14px 40px rgba(16,52,45,0.09)' }}>
+              <iframe
+                src={embed.url}
+                title={embed.title}
+                className="w-full h-full"
+                style={{ border: 0, minHeight: '70vh' }}
+                // Enough to let our own pages work; not enough for a framed
+                // page to navigate the tablet away from the kiosk.
+                sandbox="allow-forms allow-scripts allow-same-origin allow-popups"
+              />
+            </div>
+          </div>
+        )}
         </>)}
       </div>
 
@@ -212,7 +250,7 @@ function Card({ tone, icon, title, body, cta, badge, disabled, onClick }: {
 
 /* ── Survey ──────────────────────────────────────────────────────────────── */
 
-function SurveyScreen({ invitations, onDone }: { invitations: Invitation[]; onDone: () => void }) {
+function SurveyScreen({ invitations, onOpen }: { invitations: Invitation[]; onOpen: (inv: Invitation) => void }) {
   const [q, setQ] = useState('')
   const needle = q.trim().toLowerCase()
   // Names are only revealed on this screen, never on the welcome screen, and
@@ -250,9 +288,8 @@ function SurveyScreen({ invitations, onDone }: { invitations: Invitation[]; onDo
           </p>
         )}
         {shown.map(i => (
-          <a key={i.id} href={i.surveyUrl} target="_blank" rel="noopener noreferrer"
-            onClick={() => setTimeout(onDone, 400)}
-            className="flex items-center justify-between gap-4 px-5 py-4 rounded-2xl bg-white shadow-sm">
+          <button key={i.id} onClick={() => onOpen(i)}
+            className="w-full text-left flex items-center justify-between gap-4 px-5 py-4 rounded-2xl bg-white shadow-sm">
             <span>
               <span className="block font-semibold" style={{ color: '#1c3f38' }}>{i.name}</span>
               <span className="block text-xs mt-0.5" style={{ color: '#8aa39b' }}>
@@ -262,7 +299,7 @@ function SurveyScreen({ invitations, onDone }: { invitations: Invitation[]; onDo
             <span className="px-4 py-2 rounded-xl text-xs font-semibold text-white shrink-0" style={{ background: '#0f766e' }}>
               That&apos;s me
             </span>
-          </a>
+          </button>
         ))}
       </div>
     </div>
