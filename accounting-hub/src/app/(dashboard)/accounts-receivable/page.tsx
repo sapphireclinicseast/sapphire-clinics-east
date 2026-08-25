@@ -297,7 +297,6 @@ function ProofCell({ orderId, currentUrl, onChange }: {
   orderId: string; currentUrl: string | null; onChange: (url: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
 
   const urls = parseProofUrls(currentUrl)
 
@@ -312,21 +311,16 @@ function ProofCell({ orderId, currentUrl, onChange }: {
     onChange(serialized)
   }
 
-  const upload = async (file: File) => {
-    setBusy(true)
-    try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const up = await fetch('/api/upload', { method: 'POST', body: fd })
-      const ud = await up.json()
-      if (!up.ok || !ud.url) throw new Error(ud.error || 'Upload failed')
-      await persist([...urls, ud.url])
-    } catch (e) {
-      alert((e as Error).message || 'Failed to attach proof')
-    } finally {
-      setBusy(false)
-      if (inputRef.current) inputRef.current.value = ''
-    }
+  /* ScanUpload streams several photos back-to-back from the phone poll, so
+     additions accumulate through a ref — two photos arriving in one tick must
+     not each persist against the same stale list and drop one another. */
+  const pendingRef = useRef<string[] | null>(null)
+  const addUrl = (url: string) => {
+    const next = [...(pendingRef.current ?? urls), url]
+    pendingRef.current = next
+    persist(next)
+      .catch(e => alert((e as Error).message || 'Failed to attach proof'))
+      .finally(() => { if (pendingRef.current === next) pendingRef.current = null })
   }
 
   const remove = async (urlToRemove: string) => {
@@ -354,15 +348,11 @@ function ProofCell({ orderId, currentUrl, onChange }: {
           </button>
         </div>
       ))}
-      <label
-        className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg border cursor-pointer text-[10px] font-medium"
-        style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', opacity: busy ? 0.5 : 1 }}>
-        <Upload size={10} />
-        {busy ? '…' : urls.length > 0 ? '+ Add' : 'Upload'}
-        <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden"
-          disabled={busy}
-          onChange={async (e) => { const f = e.target.files?.[0]; if (f) await upload(f) }} />
-      </label>
+      {/* File pick or QR scan — the phone photographs the proof and it lands
+          on this order automatically, same session flow as everywhere else. */}
+      <ScanUpload compact section="ar-proof" prefix={`ARPROOF-${orderId.slice(-6).toUpperCase()}`}
+        existingCount={urls.length} onUploaded={addUrl}
+        label={urls.length > 0 ? '+ Add' : 'Upload'} />
     </div>
   )
 }
