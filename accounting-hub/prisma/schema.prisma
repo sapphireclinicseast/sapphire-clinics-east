@@ -269,6 +269,9 @@ model Service {
   issuedOfficialInvoice Boolean       @default(false)
   isHmoGl               Boolean       @default(false) // service billed to HMO / Guarantee Letter → sales are receivables
   hmoPaysClinicianDirect Boolean      @default(false) // HMO pays the clinician directly — sessions are monitored apart from our AR
+  // Revenue recognized over N months starting the transaction month (tuition
+  // and other period fees). null/1 = immediate. Applied by the reports engine.
+  recognitionMonths     Int?
   isActive              Boolean       @default(true)
   createdById           String
   createdBy             User          @relation("ServiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

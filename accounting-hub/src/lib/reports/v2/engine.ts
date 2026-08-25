@@ -808,6 +808,71 @@ export async function computeLedgerStatements(
   }
   if (synthesizedOrders) validation.synthesized.push(`orders (${synthesizedOrders})`)
 
+  /* ── 3b. Period-fee revenue recognition (tuition) ──
+     A service tagged recognitionMonths = N covers a period, not a session:
+     tuition is owed for the month whether or not the student attends, and an
+     annual payment covers ten school months. The checkout entry recognizes
+     the full amount on payment day; this family reshapes it for reporting
+     the way depreciation is computed from schedules — the payment month is
+     reversed into Unearned Revenue and one Nth releases into each covered
+     month, starting the payment month. Months past December stay in
+     Unearned and release in the next year's run (items are read back two
+     years for that). Engine-only: no journal entries are written, so the
+     journal keeps the cash-basis posting and the statements show the earned
+     basis. */
+  if (!qbEra) {
+    const periodFeeItems = await prisma.orderItem.findMany({
+      where: {
+        service: { recognitionMonths: { gt: 1 } },
+        order: {
+          status: 'COMPLETED',
+          revenueType: { not: 'UNEARNED' },
+          transactionDate: { gte: new Date(Date.UTC(year - 2, 0, 1)), lt: end },
+          ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
+        },
+      },
+      select: {
+        lineTotal: true,
+        service: { select: { name: true, recognitionMonths: true, revenueAccount: { select: { accountNumber: true } } } },
+        order: { select: { orderNumber: true, patientName: true, transactionDate: true, subtotal: true, netAmount: true } },
+      },
+    })
+    let periodFees = 0
+    for (const it of periodFeeItems) {
+      const N = it.service?.recognitionMonths || 1
+      if (N <= 1) continue
+      const o = it.order
+      const gross = Number(it.lineTotal)
+      const subtotal = Number(o.subtotal)
+      // Recognize what was actually charged: the item's share of the order's
+      // net (discounts apportioned by line weight).
+      const net = round2(subtotal > 0 ? gross * Number(o.netAmount) / subtotal : gross)
+      if (net <= 0) continue
+      const revNum = it.service?.revenueAccount?.accountNumber
+      const rev = revNum ? (byNumber.get(revNum) || virt(revNum, 'Revenue', 'REVENUE', 'OPERATING_REVENUE', 'CREDIT'))
+        : (byNumber.get('7000') || virt('7000', 'Gross Revenue', 'REVENUE', 'OPERATING_REVENUE', 'CREDIT'))
+      const td = new Date(o.transactionDate)
+      const startAbs = (td.getUTCFullYear() - year) * 12 + td.getUTCMonth() + 1 // Jan of `year` = 1
+      const label = `${it.service?.name || 'Period fee'} — Order #${o.orderNumber}${o.patientName ? ` — ${o.patientName}` : ''}`
+      if (startAbs >= 1 && startAbs <= 12) {
+        postBalanced('period-fee-deferral', startAbs, `${label} — deferred over ${N} months`, [
+          { acct: rev, debit: net }, { acct: unearnedAccount(), credit: net },
+        ])
+        periodFees++
+      }
+      const per = round2(net / N)
+      for (let k = 0; k < N; k++) {
+        const m = startAbs + k
+        if (m < 1 || m > 12) continue
+        const amt = k === N - 1 ? round2(net - per * (N - 1)) : per
+        postBalanced('period-fee-recognition', m, `${label} — month ${k + 1} of ${N}`, [
+          { acct: unearnedAccount(), debit: amt }, { acct: rev, credit: amt },
+        ])
+      }
+    }
+    if (periodFees) validation.synthesized.push(`period-fee-recognition (${periodFees})`)
+  }
+
   /* ── 4. AR collections (synthesized when no AR_PAYMENT JE) ── */
   const arPayments = qbEra ? [] : await prisma.aRPayment.findMany({
     where: {

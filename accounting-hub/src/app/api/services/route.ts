@@ -136,7 +136,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { name, department, branch, price, newPrice, newPriceEffectiveDate, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, hmoPaysClinicianDirect, eligibleServices, branchPrices } = body
+            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, hmoPaysClinicianDirect, recognitionMonths, eligibleServices, branchPrices } = body
 
     const hasBranchPrices = Array.isArray(branchPrices) && branchPrices.some((bp: { price?: unknown }) => bp.price != null && bp.price !== '')
     if (!name?.trim() || !department || !branch || (price == null && !hasBranchPrices)) {
@@ -178,6 +178,7 @@ export async function POST(req: Request) {
         thresholdCounted: thresholdCounted || false,
         isHmoGl: isHmoGl || false,
         hmoPaysClinicianDirect: hmoPaysClinicianDirect || false,
+        recognitionMonths: recognitionMonths ? Number(recognitionMonths) : null,
         thresholdQty: thresholdQty != null ? Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2) : 1,
         issuedOfficialInvoice: issuedOfficialInvoice || false,
         createdById: session.user.id,
@@ -239,7 +240,7 @@ export async function PUT(req: Request) {
     const body = await req.json()
     const { id, name, department, branch, price, newPrice, newPriceEffectiveDate, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, hmoPaysClinicianDirect, eligibleServices, branchPrices } = body
+            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, hmoPaysClinicianDirect, recognitionMonths, eligibleServices, branchPrices } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
@@ -281,6 +282,7 @@ export async function PUT(req: Request) {
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
     if (isHmoGl !== undefined) data.isHmoGl = !!isHmoGl
     if (hmoPaysClinicianDirect !== undefined) data.hmoPaysClinicianDirect = !!hmoPaysClinicianDirect
+    if (recognitionMonths !== undefined) data.recognitionMonths = recognitionMonths ? Number(recognitionMonths) : null
 
     // Capture the money figures before the write so any movement can be recorded.
     const before = await prisma.service.findUnique({
