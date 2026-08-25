@@ -53,7 +53,7 @@ export default function HomeProgressSection({ token }: { token: string }) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Home Progress</h3>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-1">Record or upload your child&apos;s progress at home — voice, video, or photos.</p>
+          <p className="text-sm text-[color:var(--mid-gray)] mt-1">Record or upload your child&apos;s progress at home — voice, video, or photos. These are shared with your therapist&apos;s portal so they can follow your child&apos;s progress at home between sessions.</p>
         </div>
         <button onClick={() => setShowForm(true)} className="btn-primary shrink-0">+ Add progress</button>
       </div>

@@ -424,3 +424,37 @@ export function uploadHomeProgressFile(
     xhr.send(fd)
   })
 }
+
+// Authenticated upload/replace of a patient document (Doctor's Referral or PWD /
+// Senior ID) with progress (%), via XHR. Saves to the patient record so it also
+// shows in the Operations Hub CRM. Returns the new file URL.
+export function uploadPatientDocument(
+  token: string,
+  docType: 'referral' | 'pwd-id',
+  file: File,
+  onProgress: (pct: number) => void,
+): Promise<{ ok: boolean; url: string }> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData()
+    fd.append('token', token)
+    fd.append('docType', docType)
+    fd.append('file', file, file.name)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/patients/documents/upload`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100)
+        try { resolve(JSON.parse(xhr.responseText || '{}')) } catch { resolve({ ok: true, url: '' }) }
+      } else {
+        let msg = `HTTP ${xhr.status}`
+        try { msg = JSON.parse(xhr.responseText).error || msg } catch { /* ignore */ }
+        reject(new Error(msg))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Upload failed — check your connection.'))
+    xhr.send(fd)
+  })
+}

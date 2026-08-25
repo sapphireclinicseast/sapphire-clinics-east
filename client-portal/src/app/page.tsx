@@ -12,6 +12,7 @@ import {
   updatePatientProfile,
   listMyDocuments,
   documentFileUrl,
+  uploadPatientDocument,
   InvalidTokenError,
   type MeResult,
   type PatientSessionRecord,
@@ -578,7 +579,7 @@ function ProfileSection({
         </p>
       </div>
 
-      <MyDocumentsCard profile={p} />
+      <MyDocumentsCard profile={p} token={token} onUploaded={onUpdated} />
 
       <AccountSettings token={token} currentUsername={p.username} onUpdated={onUpdated} />
     </div>
@@ -961,11 +962,18 @@ function SessionDetailModal({ session, token, onClose }: { session: PatientSessi
           <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
             Therapist&apos;s Session Notes
           </div>
-          {session.notes && session.notes.trim() ? (
-            <p className="mt-2 text-sm text-[color:var(--deep-teal)] whitespace-pre-wrap leading-relaxed">{session.notes}</p>
-          ) : (
-            <p className="mt-2 text-sm text-[color:var(--mid-gray)] italic">No notes were recorded for this session.</p>
-          )}
+          {(() => {
+            const raw = (session.notes ?? '').trim()
+            // Backfilled sessions carry an import marker, not real notes.
+            if (/^\[backfill:/i.test(raw)) {
+              return <p className="mt-2 text-sm text-[color:var(--mid-gray)] italic">Backfilled session history — session notes were not created in the system for this session.</p>
+            }
+            return raw ? (
+              <p className="mt-2 text-sm text-[color:var(--deep-teal)] whitespace-pre-wrap leading-relaxed">{raw}</p>
+            ) : (
+              <p className="mt-2 text-sm text-[color:var(--mid-gray)] italic">No notes were recorded for this session.</p>
+            )
+          })()}
 
           {/* Attachments the therapist included with this session's note (if any) */}
           <div className="mt-5 text-[11px] font-bold uppercase tracking-[0.1em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
@@ -1257,11 +1265,40 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // Patient-facing copies of the docs they uploaded at sign-up (or that the front
 // desk attached in the CRM). Links open the file served from the Operations Hub.
-function MyDocumentsCard({ profile }: { profile: MeResult['profile'] }) {
-  const items = [
-    { label: "Doctor's Referral", url: profile.referralUrl ?? null },
-    { label: 'PWD ID / Senior ID', url: profile.pwdIdUrl ?? null },
+function MyDocumentsCard({ profile, token, onUploaded }: {
+  profile: MeResult['profile']
+  token: string
+  onUploaded: (patch: Partial<MeResult['profile']>) => void
+}) {
+  const items: { label: string; url: string | null; docType: 'referral' | 'pwd-id'; field: 'referralUrl' | 'pwdIdUrl' }[] = [
+    { label: "Doctor's Referral", url: profile.referralUrl ?? null, docType: 'referral', field: 'referralUrl' },
+    { label: 'PWD ID / Senior ID', url: profile.pwdIdUrl ?? null, docType: 'pwd-id', field: 'pwdIdUrl' },
   ]
+  const [busy, setBusy] = useState<string | null>(null)
+  const [pct, setPct] = useState(0)
+  const [err, setErr] = useState<string | null>(null)
+
+  function pick(docType: 'referral' | 'pwd-id', field: 'referralUrl' | 'pwdIdUrl') {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*,application/pdf'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      if (file.size > 20 * 1024 * 1024) { setErr(`"${file.name}" is too large. Please keep it under 20 MB.`); return }
+      setErr(null); setPct(0); setBusy(docType)
+      try {
+        const res = await uploadPatientDocument(token, docType, file, setPct)
+        onUploaded({ [field]: res.url } as Partial<MeResult['profile']>)
+      } catch (e) {
+        setErr((e as Error).message || 'Upload failed.')
+      } finally {
+        setBusy(null)
+      }
+    }
+    input.click()
+  }
+
   return (
     <div className="card-static">
       <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">My Documents</h3>
@@ -1269,25 +1306,37 @@ function MyDocumentsCard({ profile }: { profile: MeResult['profile'] }) {
         {items.map((it) => (
           <div key={it.label} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[color:var(--light-gray)]">
             <span className="text-sm font-semibold text-[color:var(--deep-teal)]">{it.label}</span>
-            {it.url ? (
-              <a
-                href={it.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-semibold text-[color:var(--teal)] hover:underline inline-flex items-center gap-1"
-              >
-                View <span aria-hidden>→</span>
-              </a>
-            ) : (
-              <span className="text-[13px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                Not uploaded
-              </span>
-            )}
+            <div className="flex items-center gap-3 shrink-0">
+              {it.url && (
+                <a
+                  href={it.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-semibold text-[color:var(--teal)] hover:underline inline-flex items-center gap-1"
+                >
+                  View <span aria-hidden>→</span>
+                </a>
+              )}
+              {busy === it.docType ? (
+                <span className="text-[13px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>{pct}%…</span>
+              ) : (
+                <button
+                  onClick={() => pick(it.docType, it.field)}
+                  disabled={!!busy}
+                  className="text-sm font-semibold text-[color:var(--moss)] hover:underline disabled:opacity-50"
+                >
+                  {it.url ? 'Replace' : 'Upload'}
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
+      {err && (
+        <p className="mt-3 text-[12.5px] text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">{err}</p>
+      )}
       <p className="mt-4 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
-        Uploaded these at sign-up? They&apos;ll show here. To add or replace a document, please ask the front desk.
+        Upload a clear photo or PDF of your Doctor&apos;s Referral or PWD / Senior ID (max 20 MB). It&apos;s saved to your patient record so the clinic can see it — no need to visit the front desk.
       </p>
     </div>
   )
