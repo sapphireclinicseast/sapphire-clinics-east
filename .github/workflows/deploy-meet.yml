@@ -1,0 +1,98 @@
+# ══════════════════════════════════════════════════════════════════
+#  SAPPHIRE CLINICS EAST — Deploy the LiveKit "meet" join app
+#  → meet.sapphireclinicseast.org  (pm2 "scei-meet", port 3011)
+#
+#  The meet app is a standalone Next app in meet/ that is NOT part of
+#  the main Docker deploy. It used to be deployed by hand (rsync +
+#  npm build + pm2 restart), which meant two people deploying at once
+#  clobbered each other's work. This workflow makes feat/livekit-meet
+#  the single source of truth: any push under meet/ redeploys it.
+#
+#  Uses the same GitHub Secrets as deploy.yml:
+#    VPS_HOST, VPS_USER, VPS_SSH_KEY
+#
+#  The app's .env (LIVEKIT_*, MEET_LINK_SECRET, MEET_BASE_URL,
+#  YOUTUBE_*) lives ON the VPS and is never synced — it is preserved
+#  across deploys.
+# ══════════════════════════════════════════════════════════════════
+
+name: Deploy Meet App
+
+on:
+  push:
+    branches: [feat/livekit-meet]
+    paths:
+      - 'meet/**'
+      - '.github/workflows/deploy-meet.yml'
+  workflow_dispatch:
+
+# Serialize meet deploys — two concurrent `next build`s in the same
+# folder corrupt the shared .next and fail with _buildManifest ENOENT.
+concurrency:
+  group: deploy-meet
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & Deploy meet.sapphireclinicseast.org
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        continue-on-error: true   # ssh-keyscan failure must not cascade
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts || true
+
+      # Sync ONLY meet/ → the app dir. Excludes node_modules/.next so the
+      # server keeps its installed deps and previous build until the new
+      # build below replaces it (no window where the app can't serve).
+      # .env is never synced — it is VPS-only.
+      - name: Sync meet/ to VPS
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            --exclude='node_modules' \
+            --exclude='.next' \
+            --exclude='.env' \
+            --exclude='.git' \
+            --exclude='.DS_Store' \
+            meet/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/meet.sapphireclinicseast.org/
+
+      - name: Build & restart meet app
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -e
+            APP=/var/www/meet.sapphireclinicseast.org
+            cd "$APP"
+
+            if [ ! -f .env ]; then
+              echo "❌ $APP/.env missing — meet app needs LIVEKIT_* + MEET_LINK_SECRET. Aborting so the old build keeps serving."
+              exit 1
+            fi
+
+            echo "→ Installing deps (idempotent)…"
+            npm install --no-audit --no-fund
+
+            echo "→ Building (next build)…"
+            # Build first; if it fails, `set -e` bails BEFORE the pm2 restart,
+            # so the previously-built app keeps running (no downtime).
+            npm run build
+
+            echo "→ Restarting pm2 scei-meet…"
+            pm2 restart scei-meet --update-env || pm2 start npm --name scei-meet -- start
+
+            sleep 2
+            pm2 describe scei-meet | grep -E 'status|uptime|restarts' | head -3
+            echo "→ Local serve check:"
+            curl -s -o /dev/null -w '   home %{http_code}\n' http://localhost:3011/ || true
