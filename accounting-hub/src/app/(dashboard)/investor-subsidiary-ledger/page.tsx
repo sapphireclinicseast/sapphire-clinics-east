@@ -13,7 +13,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { ScrollText, X, Loader2, CheckCircle, AlertCircle, Search } from 'lucide-react'
+import { ScrollText, X, Loader2, CheckCircle, AlertCircle, Search, Download } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 interface Row {
@@ -92,6 +92,42 @@ export default function InvestorSubsidiaryLedger() {
     const cDiff = Math.round((drill.totals.credit - m0c - drill.row.credit) * 100) / 100
     return { ok: Math.abs(dDiff) < 0.01 && Math.abs(cDiff) < 0.01, dDiff, cDiff }
   })()
+
+  /* Per-account Excel export: the drill exactly as shown — every line with
+     month, source, detail, and amounts — plus the totals, the statement row,
+     and the tie verdict, so the file carries its own proof. House pattern:
+     BOM-prefixed CSV, which Excel opens natively. */
+  const downloadDrill = () => {
+    if (!drill) return
+    const m0 = drill.lines.filter(l => l.month === 0)
+    const m0d = m0.reduce((s, l) => s + l.debit, 0), m0c = m0.reduce((s, l) => s + l.credit, 0)
+    const rows: (string | number)[][] = [
+      [`${drill.row.number} ${drill.row.title}`],
+      [`Subsidiary ledger ${year} — All Branches — from the same dataset as the financial statements`],
+      [],
+      ['Month', 'Source', 'Detail', 'Debit', 'Credit'],
+      ...drill.lines.map(l => [
+        l.month === 0 ? 'Opening' : MONTHS[l.month - 1], nice(l.source), l.label,
+        l.debit ? l.debit.toFixed(2) : '', l.credit ? l.credit.toFixed(2) : '',
+      ]),
+    ]
+    if (drill.truncated) rows.push(['', '', '(long account — list truncated; the totals below cover every line)', '', ''])
+    rows.push([])
+    rows.push(['', '', 'PERIOD TOTALS (all lines)', (drill.totals.debit - m0d).toFixed(2), (drill.totals.credit - m0c).toFixed(2)])
+    rows.push(['', '', 'STATEMENT ROW', drill.row.debit.toFixed(2), drill.row.credit.toFixed(2)])
+    rows.push(['', '', tie?.ok ? 'TIES TO THE STATEMENTS' : `DIFFERENCE: ${((tie?.dDiff ?? 0)).toFixed(2)} / ${((tie?.cDiff ?? 0)).toFixed(2)}`, '', ''])
+    const csv = rows.map(r => r.map(c => {
+      const v = String(c)
+      return (v.includes(',') || v.includes('"') || v.includes('\n')) ? `"${v.replace(/"/g, '""')}"` : v
+    }).join(',')).join('\r\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${drill.row.number} ${drill.row.title.replace(/[/\\?%*:|"<>]/g, '-')} — ${year} — Subsidiary Ledger.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   if (role && !['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'INVESTOR'].includes(role)) {
     return <div className="p-8 text-sm" style={{ color: 'var(--mid-gray)' }}>This page is available to investors and finance users.</div>
@@ -180,6 +216,11 @@ export default function InvestorSubsidiaryLedger() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <button onClick={downloadDrill}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-80 transition-opacity"
+                  style={{ background: 'var(--teal)', color: 'white' }} title="Download this account as Excel/CSV">
+                  <Download size={13} /> Download Excel
+                </button>
                 {tie && (tie.ok ? (
                   <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: '#f0fdf4', color: '#15803d' }}>
                     <CheckCircle size={13} /> Ties to the statements
