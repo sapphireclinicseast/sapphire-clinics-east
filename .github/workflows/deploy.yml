@@ -930,6 +930,21 @@ jobs:
               echo "   (GL processor migration file not found — skipped.)"
             fi
 
+            # Same deliberate-single-migration pattern: this pipeline never
+            # replays prisma/migrations, so each schema change is named here.
+            PVC_SQL="$DEPLOY_DIR/prisma/migrations/20260826_patient_view_checkout/migration.sql"
+            if [ -f "$PVC_SQL" ]; then
+              echo "→ Applying patient-view checkout table..."
+              docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$PVC_SQL" \
+                && echo "   PatientViewCheckout applied." \
+                || echo "   ⚠ PatientViewCheckout apply failed (non-fatal) — Patient View checkout will error until fixed."
+              docker exec accounting_db psql -U sapphire -d sapphire_accounting -tAc \
+                "SELECT count(*) FROM information_schema.tables WHERE table_name='PatientViewCheckout';" \
+                | sed 's/^/   PatientViewCheckout table present: /' || true
+            else
+              echo "   (Patient-view migration file not found — skipped.)"
+            fi
+
             # NOTE: the admin-password reset that used to live here has been removed
             # on the owner's instruction (2026-08-20). It hardcoded a bcrypt hash for
             # the password "SCEI" and reapplied it to main@ and admin@ on every
