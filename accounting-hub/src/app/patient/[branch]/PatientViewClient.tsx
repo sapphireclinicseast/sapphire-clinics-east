@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { MessageSquareHeart, MessageSquareWarning, Gift, ArrowLeft, Search, X } from 'lucide-react'
+import CheckoutScreen, { type CheckoutPayload } from './CheckoutScreen'
 
 /**
  * The three things a patient can do while they are at the counter.
@@ -17,6 +18,8 @@ interface FeedData {
   survey: { count: number; invitations: Invitation[]; error: string | null }
   complaintFormUrl: string
   rewardPointsUrl: string
+  /** Set while the till is ringing up a sale at this branch. */
+  checkout: CheckoutPayload | null
 }
 
 type Screen = 'home' | 'survey'
@@ -37,28 +40,40 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
 
   useEffect(() => {
     load()
-    // Refresh through the day so invitations appear without anyone touching it.
-    const t = setInterval(load, 120_000)
+    // Fast enough that the bill appears to follow the cashier, slow enough to
+    // be a negligible load: one small request per tablet per two seconds.
+    const t = setInterval(load, 2_000)
     return () => clearInterval(t)
   }, [load])
 
+  const checkout = data?.checkout ?? null
+
+  // When the sale finishes, leave the patient on the welcome screen rather than
+  // on whatever they had open before their bill appeared.
+  useEffect(() => { if (!checkout) setScreen('home') }, [checkout])
+
   // Any sub-screen holds someone's name or points; don't leave it up.
   useEffect(() => {
-    if (screen === 'home') return
+    if (screen === 'home' || checkout) return
     let timer = setTimeout(() => setScreen('home'), IDLE_MS)
     const bump = () => { clearTimeout(timer); timer = setTimeout(() => setScreen('home'), IDLE_MS) }
     window.addEventListener('pointerdown', bump)
     window.addEventListener('keydown', bump)
     return () => { clearTimeout(timer); window.removeEventListener('pointerdown', bump); window.removeEventListener('keydown', bump) }
-  }, [screen])
+  }, [screen, checkout])
 
   const surveyCount = data?.survey.count ?? 0
 
   return (
     <main className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(160deg,#f6f9f4 0%,#eef4ef 45%,#e9f1ee 100%)' }}>
-      <Header branchName={branchName} shortName={shortName} onHome={() => setScreen('home')} showBack={screen !== 'home'} />
+      <Header branchName={branchName} shortName={shortName} onHome={() => setScreen('home')} showBack={screen !== 'home' && !checkout} />
 
       <div className="flex-1 flex items-center justify-center px-6 pb-10">
+        {/* A live checkout outranks everything: while the cashier is ringing up
+            a sale, that is the only thing this screen should be showing. */}
+        {checkout ? (
+          <CheckoutScreen slug={slug} data={checkout} />
+        ) : (<>
         {screen === 'home' && (
           <div className="w-full max-w-5xl">
             <div className="text-center mb-8">
@@ -110,6 +125,7 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
         )}
 
         {screen === 'survey' && <SurveyScreen invitations={data?.survey.invitations ?? []} onDone={() => setScreen('home')} />}
+        </>)}
       </div>
 
       <footer className="pb-6 text-center text-xs" style={{ color: '#8aa39b' }}>

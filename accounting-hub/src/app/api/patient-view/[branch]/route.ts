@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { resolvePatientViewBranch, COMPLAINT_FORM_URL, REWARD_POINTS_URL } from '@/lib/patient-view'
 
 /**
@@ -18,6 +19,9 @@ const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://operations.s
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
 export const dynamic = 'force-dynamic'
+
+/** How long a published checkout stays on screen without being refreshed. */
+const CHECKOUT_TTL_MS = 5 * 60_000
 
 interface DailyTarget {
   assignmentId?: string
@@ -76,7 +80,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ branch:
     surveyError = 'Survey list unavailable right now'
   }
 
+  // What the till is showing right now, if anything. Stale rows are ignored
+  // rather than trusted: a browser closed mid-sale would otherwise leave a
+  // patient's bill on the screen indefinitely.
+  let checkout: unknown = null
+  try {
+    const row = await prisma.patientViewCheckout.findUnique({
+      where: { branch: branch.branch },
+      select: { active: true, payload: true, updatedAt: true },
+    })
+    const fresh = row && Date.now() - new Date(row.updatedAt).getTime() < CHECKOUT_TTL_MS
+    if (row?.active && fresh) checkout = row.payload
+  } catch {
+    // Table not yet applied, or the DB is briefly unavailable — the tablet
+    // falls back to the welcome screen rather than erroring.
+  }
+
   return NextResponse.json({
+    checkout,
     branch: { slug: branch.slug, name: branch.name, shortName: branch.shortName },
     survey: { count: invitations.length, invitations, error: surveyError },
     complaintFormUrl: COMPLAINT_FORM_URL,

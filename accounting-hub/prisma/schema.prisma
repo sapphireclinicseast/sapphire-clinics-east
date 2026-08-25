@@ -3689,3 +3689,31 @@ model ContributionRentAllocation {
 
   @@unique([branch, department, category])
 }
+
+/// What the till is currently showing the patient at one branch.
+///
+/// One row per branch, overwritten in place: the tablet is fixed at that
+/// branch's address, so the branch is the pairing key and there is never more
+/// than one live checkout to choose between. Ephemeral by nature — a stale row
+/// is harmless because `active` is cleared when the cashier closes the form,
+/// and the tablet ignores anything older than a few minutes.
+model PatientViewCheckout {
+  id     String  @id @default(cuid())
+  branch String  @unique
+  active Boolean @default(true)
+
+  /// { patientName, items[], discountLabel, subtotal, discountAmount, netAmount, payments[] }
+  /// Held as JSON because this mirrors an unsaved cart, not a persisted order —
+  /// giving it columns would imply it is a record of something that happened.
+  payload Json
+
+  /// A card barcode the tablet scanned, for the till to pick up and apply.
+  /// Cleared once the till has consumed it.
+  scannedCode String?
+  scannedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+}

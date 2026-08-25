@@ -1169,6 +1169,61 @@ function OrderFormModal({
     return s + toNum(p.amount)
   }, 0)
   const changeDue = totalPayments - netAmount
+
+  /* ── Mirror this sale to the branch's patient tablet ──────────────────────
+     Published as the cart changes, cleared when the form closes. Debounced so
+     typing an amount is one request at the end rather than one per keystroke.
+     Every call is best-effort: a tablet that is off, or a branch that has none,
+     must never interfere with taking a payment. */
+  const patientTabletBranch = patientViewPath(branch) ? branch : null
+
+  useEffect(() => {
+    if (!patientTabletBranch) return
+    const t = setTimeout(() => {
+      fetch('/api/patient-view/checkout', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch: patientTabletBranch,
+          patientName, clinicianName,
+          items: items.map(it => ({ name: it.name, quantity: it.quantity, unitPrice: it.unitPrice, lineTotal: it.lineTotal })),
+          discountLabel, subtotal, discountAmount, netAmount: netAmountDisplay,
+          payments: payments
+            .map(p => ({ method: p.method, amount: p.method === 'PACKAGE' ? netAmountDisplay : toNum(p.amount) }))
+            .filter(p => p.amount > 0),
+        }),
+      }).catch(() => {})
+    }, 400)
+    return () => clearTimeout(t)
+  }, [patientTabletBranch, patientName, clinicianName, items, discountLabel, subtotal, discountAmount, netAmountDisplay, payments])
+
+  // Take the bill off the tablet when this form goes away, however it goes.
+  useEffect(() => {
+    if (!patientTabletBranch) return
+    return () => {
+      fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}`, { method: 'DELETE' }).catch(() => {})
+    }
+  }, [patientTabletBranch])
+
+  // A card the patient scanned on the tablet, waiting to be applied here.
+  const [scannedCard, setScannedCard] = useState<string | null>(null)
+  useEffect(() => {
+    if (!patientTabletBranch) return
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}`)
+        if (!r.ok) return
+        const d = await r.json()
+        if (d.scannedCode) {
+          setScannedCard(String(d.scannedCode))
+          // Consume it so the same card is not offered again on the next sale.
+          fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}&consumeScan=1`, { method: 'DELETE' }).catch(() => {})
+        }
+      } catch { /* the tablet is optional; never surface this */ }
+    }, 2500)
+    return () => clearInterval(poll)
+  }, [patientTabletBranch])
+
   // Snap net to displayed 2-dp precision so floating-point arithmetic in stacked
   // discounts never creates a sub-cent gap between what's shown and what's compared.
   const servicePaymentShort = totalPayments < netAmountDisplay - 0.005
@@ -1320,10 +1375,13 @@ function OrderFormModal({
   }
 
   // Wallet barcode scan
-  const scanBarcode = async () => {
-    if (!walletBarcode.trim()) return
+  const scanBarcode = async (codeOverride?: string) => {
+    // The code can come from the cashier's own scanner (walletBarcode) or from
+    // the patient scanning their card on the tablet.
+    const code = (codeOverride ?? walletBarcode).trim()
+    if (!code) return
     try {
-      const r = await fetch(`/api/pos/wallets/scan/${encodeURIComponent(walletBarcode.trim())}`)
+      const r = await fetch(`/api/pos/wallets/scan/${encodeURIComponent(code)}`)
       const d = await r.json()
       if (d.error) { setError(d.error); return }
       // Replace primary payment with wallet — map walletType to PaymentMethod enum
@@ -1623,6 +1681,30 @@ function OrderFormModal({
         {error && (
           <div className="mb-4 px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700 flex items-center gap-2">
             <AlertCircle size={14} /> {error}
+          </div>
+        )}
+
+        {/* The patient scanned their card on the tablet. Applying it replaces
+            the payment lines, so it waits for the cashier rather than doing that
+            to a part-entered sale on its own. */}
+        {scannedCard && (
+          <div className="mb-4 px-4 py-3 rounded-xl flex items-center justify-between gap-3"
+            style={{ background: '#f1ecf7', border: '1px solid #ddd0ee' }}>
+            <span className="text-sm" style={{ color: '#4b3670' }}>
+              Patient scanned a card on the tablet —{' '}
+              <span className="font-mono font-semibold">{scannedCard}</span>
+            </span>
+            <span className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => { const c = scannedCard; setScannedCard(null); scanBarcode(c) }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                style={{ background: '#6d5192' }}>
+                Apply card
+              </button>
+              <button onClick={() => setScannedCard(null)} className="p-1 rounded-lg hover:bg-white/60">
+                <X size={14} style={{ color: '#7d6a9a' }} />
+              </button>
+            </span>
           </div>
         )}
 
@@ -2052,7 +2134,7 @@ function OrderFormModal({
                   <input value={walletBarcode} onChange={e => setWalletBarcode(e.target.value)} placeholder="Scan barcode..."
                     onKeyDown={e => e.key === 'Enter' && scanBarcode()}
                     className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  <button onClick={scanBarcode} className="px-3 py-2 rounded-xl text-sm text-white" style={{ background: 'var(--teal)' }}>
+                  <button onClick={() => scanBarcode()} className="px-3 py-2 rounded-xl text-sm text-white" style={{ background: 'var(--teal)' }}>
                     <ScanLine size={14} />
                   </button>
                 </div>
