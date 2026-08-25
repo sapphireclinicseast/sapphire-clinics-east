@@ -119,6 +119,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/budgets', icon: Target, label: 'Budgets', roles: FULL_ACCESS },
       { href: '/reports', icon: BarChart3, label: 'Reports', roles: [...FULL_ACCESS, 'MEDREP', 'INVESTOR'] },
+      { href: '/investor-subsidiary-ledger', icon: ScrollText, label: 'Investor · Subsidiary Ledger', roles: [...FULL_ACCESS, 'INVESTOR'] },
       { href: '/sales-summary', icon: Receipt, label: 'Sales Summary', roles: SERVICES_POS_ACCESS },
       { href: '/products-analysis', icon: PackageSearch, label: 'Products Analysis', roles: [...ANALYSIS_ACCESS, 'ACCOUNTANT', 'BOOKKEEPER'] },
       { href: '/sales-analysis', icon: TrendingUp, label: 'Sales Analysis', roles: ANALYSIS_ACCESS },
