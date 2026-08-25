@@ -4,8 +4,10 @@
 //   • Registration documents — Doctor's Referral + PWD ID (captured at
 //     sign-up; served as public Operations Hub URLs).
 //   • Home Progress — videos / audio / photos the patient posts from the
-//     client portal between sessions. Streamed (with Range) by
-//     /api/patients/[id]/home-progress/file/[fileId]. Read-only.
+//     client portal between sessions, shown as collapsible per-DATE rows
+//     (like Session History) with a From/To date filter. Each file streams
+//     (with Range) from /api/patients/[id]/home-progress/file/[fileId].
+// Read-only — these are owned/created on the Operations Hub side.
 
 import { useEffect, useState } from 'react'
 import {
@@ -17,6 +19,9 @@ import {
   Image as ImageIcon,
   Download,
   Inbox,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 
 interface HPFile {
@@ -38,7 +43,7 @@ interface HPEntry {
 function fmtDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
 }
 function fmtSize(n: number): string {
   if (!n) return ''
@@ -62,6 +67,9 @@ export default function PatientUploads({
 }) {
   const [entries, setEntries] = useState<HPEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [filterFrom, setFilterFrom] = useState('')
+  const [filterTo, setFilterTo] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -82,6 +90,13 @@ export default function PatientUploads({
   const fileSrc = (fileId: string) => `/api/patients/${patientId}/home-progress/file/${fileId}`
   const hasRegDocs = !!(referralUrl || pwdIdUrl || pwdSeniorId)
 
+  const filtered = (entries ?? []).filter((e) => {
+    const t = new Date(`${e.date}T00:00:00`).getTime()
+    const from = filterFrom ? new Date(`${filterFrom}T00:00:00`).getTime() : -Infinity
+    const to = filterTo ? new Date(`${filterTo}T00:00:00`).getTime() + 86400000 : Infinity
+    return t >= from && t < to
+  })
+
   return (
     <div className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--light-gray)] bg-[var(--off-white)]">
@@ -96,38 +111,22 @@ export default function PatientUploads({
         <section>
           <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Registration Documents</p>
           {hasRegDocs ? (
-            <div className="space-y-2">
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
               {referralUrl && (
-                <a
-                  href={referralUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-[var(--deep-teal)] hover:underline"
-                >
+                <a href={referralUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-[var(--deep-teal)] hover:underline">
                   <FileText className="w-4 h-4 shrink-0" /> Doctor&apos;s Referral
                 </a>
               )}
               {pwdIdUrl && (
-                <div className="space-y-1.5">
-                  <a
-                    href={pwdIdUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-[var(--deep-teal)] hover:underline"
-                  >
-                    <CreditCard className="w-4 h-4 shrink-0" /> PWD ID
-                    {pwdSeniorId && <span className="text-[var(--mid-gray)] font-normal">· {pwdSeniorId}</span>}
-                  </a>
-                  {isImageUrl(pwdIdUrl) && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={pwdIdUrl} alt="PWD ID" className="max-h-40 rounded-lg border border-[var(--light-gray)]" />
-                  )}
-                </div>
+                <a href={pwdIdUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-[var(--deep-teal)] hover:underline">
+                  <CreditCard className="w-4 h-4 shrink-0" /> PWD ID
+                  {pwdSeniorId && <span className="text-[var(--mid-gray)] font-normal">· {pwdSeniorId}</span>}
+                </a>
               )}
               {!referralUrl && !pwdIdUrl && pwdSeniorId && (
-                <p className="text-sm text-[var(--charcoal)] flex items-center gap-2">
+                <span className="flex items-center gap-2 text-sm text-[var(--charcoal)]">
                   <CreditCard className="w-4 h-4 shrink-0" /> PWD/Senior ID No.: <span className="font-medium">{pwdSeniorId}</span>
-                </p>
+                </span>
               )}
             </div>
           ) : (
@@ -135,7 +134,7 @@ export default function PatientUploads({
           )}
         </section>
 
-        {/* ── Home Progress media ──────────────────────────────── */}
+        {/* ── Home Progress — per-date rows + date filter ──────── */}
         <section>
           <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Home Progress</p>
 
@@ -152,44 +151,80 @@ export default function PatientUploads({
           )}
 
           {entries && entries.length > 0 && (
-            <div className="space-y-4">
-              {entries.map((e) => (
-                <div key={e.id} className="rounded-lg border border-[var(--light-gray)] p-3">
-                  <div className="flex items-baseline justify-between gap-2 mb-2">
-                    <span className="text-[13px] font-semibold text-[var(--charcoal)]">{fmtDate(e.date)}</span>
-                    <span className="text-[11px] text-[var(--mid-gray)]">{e.files.length} file{e.files.length === 1 ? '' : 's'}</span>
-                  </div>
-                  {e.remarks && <p className="text-[13px] text-[var(--charcoal)] mb-2 whitespace-pre-wrap">{e.remarks}</p>}
-
-                  <div className="space-y-3">
-                    {e.files.map((f) => {
-                      const src = fileSrc(f.id)
-                      const kind = (f.kind || '').toUpperCase()
-                      return (
-                        <div key={f.id}>
-                          {kind === 'VIDEO' ? (
-                            <video controls preload="metadata" className="w-full rounded-lg bg-black max-h-72" src={src} />
-                          ) : kind === 'AUDIO' ? (
-                            <audio controls preload="metadata" className="w-full" src={src} />
-                          ) : kind === 'PHOTO' ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={src} alt={f.fileName} className="max-h-72 rounded-lg border border-[var(--light-gray)]" />
-                          ) : null}
-                          <div className="flex items-center gap-2 mt-1 text-[11px] text-[var(--mid-gray)]">
-                            {kind === 'VIDEO' ? <VideoIcon className="w-3.5 h-3.5" /> : kind === 'AUDIO' ? <Mic className="w-3.5 h-3.5" /> : <ImageIcon className="w-3.5 h-3.5" />}
-                            <span className="truncate">{f.fileName}</span>
-                            {f.sizeBytes ? <span>· {fmtSize(f.sizeBytes)}</span> : null}
-                            <a href={src} download={f.fileName} className="ml-auto inline-flex items-center gap-1 text-[var(--deep-teal)] hover:underline">
-                              <Download className="w-3.5 h-3.5" /> Save
-                            </a>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+            <>
+              {/* Date filter (matches Session History) */}
+              <div className="rounded-lg border border-[var(--light-gray)] bg-[var(--off-white)] p-3 mb-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--mid-gray)] uppercase tracking-wider shrink-0">
+                  <Calendar size={13} /> Filter by date
                 </div>
-              ))}
-            </div>
+                <div className="flex flex-wrap items-center gap-2 flex-1 w-full">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-[11px] text-[var(--mid-gray)]">From</label>
+                    <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="px-2 py-1 text-[12px] rounded-lg border border-[var(--light-gray)] bg-white" />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-[11px] text-[var(--mid-gray)]">To</label>
+                    <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="px-2 py-1 text-[12px] rounded-lg border border-[var(--light-gray)] bg-white" />
+                  </div>
+                  {(filterFrom || filterTo) && (
+                    <button onClick={() => { setFilterFrom(''); setFilterTo('') }} className="text-[11px] text-[var(--mid-gray)] hover:text-[var(--deep-teal)] underline ml-auto">Clear</button>
+                  )}
+                </div>
+              </div>
+
+              {filtered.length === 0 ? (
+                <p className="text-[13px] text-[var(--mid-gray)] italic">No uploads in this date range.</p>
+              ) : (
+                <div className="space-y-2">
+                  {filtered.map((e) => {
+                    const isOpen = expanded === e.id
+                    return (
+                      <div key={e.id} className="rounded-lg border border-[var(--light-gray)] overflow-hidden">
+                        <button
+                          onClick={() => setExpanded(isOpen ? null : e.id)}
+                          className="w-full flex items-center gap-3 p-3 hover:bg-[var(--off-white)] transition-colors text-left"
+                        >
+                          <Calendar size={15} className="text-[var(--mid-gray)] shrink-0" />
+                          <span className="text-[13px] font-semibold text-[var(--charcoal)]">{fmtDate(e.date)}</span>
+                          <span className="text-[11px] text-[var(--mid-gray)]">{e.files.length} file{e.files.length === 1 ? '' : 's'}</span>
+                          <span className="ml-auto text-[var(--mid-gray)]">{isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</span>
+                        </button>
+
+                        {isOpen && (
+                          <div className="p-3 border-t border-[var(--light-gray)] space-y-3">
+                            {e.remarks && <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{e.remarks}</p>}
+                            {e.files.map((f) => {
+                              const src = fileSrc(f.id)
+                              const kind = (f.kind || '').toUpperCase()
+                              return (
+                                <div key={f.id}>
+                                  {kind === 'VIDEO' ? (
+                                    <video controls preload="metadata" className="w-full max-w-2xl rounded-lg bg-black max-h-80" src={src} />
+                                  ) : kind === 'AUDIO' ? (
+                                    <audio controls preload="metadata" className="w-full max-w-lg" src={src} />
+                                  ) : kind === 'PHOTO' ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={src} alt={f.fileName} className="max-h-80 rounded-lg border border-[var(--light-gray)]" />
+                                  ) : null}
+                                  <div className="flex items-center gap-2 mt-1 text-[11px] text-[var(--mid-gray)]">
+                                    {kind === 'VIDEO' ? <VideoIcon className="w-3.5 h-3.5" /> : kind === 'AUDIO' ? <Mic className="w-3.5 h-3.5" /> : <ImageIcon className="w-3.5 h-3.5" />}
+                                    <span className="truncate">{f.fileName}</span>
+                                    {f.sizeBytes ? <span>· {fmtSize(f.sizeBytes)}</span> : null}
+                                    <a href={src} download={f.fileName} className="ml-auto inline-flex items-center gap-1 text-[var(--deep-teal)] hover:underline">
+                                      <Download className="w-3.5 h-3.5" /> Save
+                                    </a>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>
