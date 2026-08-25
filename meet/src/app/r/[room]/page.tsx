@@ -12,9 +12,8 @@ export default async function RoomPage({
   searchParams: Promise<{ t?: string }>
 }) {
   const { room } = await params
-  const roomId = decodeURIComponent(room)
   const { t } = await searchParams
-  const claims = t ? await verifyMeetLink(t, roomId) : null
+  const claims = t ? await verifyMeetLink(room, t) : null
 
   if (!t || !claims) {
     return (
@@ -28,5 +27,7 @@ export default async function RoomPage({
     )
   }
 
-  return <RoomClient linkToken={t} room={roomId} defaultName={claims.name ?? ''} role={claims.role ?? 'guest'} />
+  const youtubeConfigured = !!(process.env.YOUTUBE_STREAM_KEY && process.env.YOUTUBE_WATCH_URL)
+
+  return <RoomClient room={room} linkToken={t} defaultName={claims.name ?? ''} role={claims.role ?? 'guest'} youtubeConfigured={youtubeConfigured} />
 }

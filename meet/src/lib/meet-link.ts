@@ -1,81 +1,110 @@
 /**
- * Meeting-link verification.
+ * Signed meeting links — the canonical implementation.
  *
- * Two token formats are accepted (the verifier is format-agnostic so old links
- * keep working while generators migrate):
+ * A meeting link is `https://meet.sapphireclinicseast.org/r/<room>?t=<token>`.
+ * Any app that hands out links (Operations Hub, HR Hub) signs one of these;
+ * the join app verifies it before minting a LiveKit token, so links can't be
+ * forged for other rooms, names can't be spoofed, and links expire on their
+ * own. Generators mirror the signing logic here with the SAME secret — keep
+ * this the source of truth.
  *
- *  - COMPACT (new, short): `t = <payloadB64>.<sig>`  — payloadB64 is
- *    base64url("<exp>|<h|g>|<name>"), sig is the first 16 bytes of
- *    HMAC-SHA256(secret, "<room>.<payloadB64>") base64url. The room comes from
- *    the URL path (not the token), and is bound into the signature so a token
- *    can't be reused for another room. ~⅓ the length of the JWT form.
- *  - LEGACY JWT (2-dot HS256, sub=room): verified with jose.
+ * TWO token formats are accepted, both HMAC-SHA256 with MEET_LINK_SECRET:
  *
- * Signed with the shared MEET_LINK_SECRET (also used by the Ops Hub / HR / staff
- * generators). Keep the compact serialization identical across all of them.
+ * 1. COMPACT (current — Ops Hub's signCompact, HR Hub's signMeetRoomLink):
+ *    `<payloadB64>.<sig16>` where payloadB64 = base64url("exp|role|name")
+ *    and sig = first 16 bytes of HMAC-SHA256(secret, "<room>.<payloadB64>").
+ *    The room is NOT in the token — it's the URL path segment, and it's
+ *    bound into the signature so a token can't be replayed against a
+ *    different room. ~1/3 the length of the old JWT form below.
+ *
+ * 2. LEGACY JWT (kept for backward compatibility — links issued before the
+ *    format switch are still honored until they expire, up to 180 days out):
+ *    a standard 3-part `header.payload.sig` HS256 JWT (jose-verifiable) whose
+ *    payload carries `sub` (room), `name`, `role`, `iat`, `exp`. Self-describes
+ *    its own room, so it's checked against the URL's room after decoding
+ *    rather than needing it up front.
+ *
+ * verifyMeetLink needs the room from the URL (it's a required argument, not
+ * optional) because the compact format can't be verified without it. Format
+ * is auto-detected by dot count (compact has exactly one, JWT has exactly
+ * two) — nothing about the URL or caller needs to know which is in play.
  */
 import crypto from 'crypto'
 import { jwtVerify } from 'jose'
 
 export type MeetRole = 'host' | 'guest'
+
 export interface MeetClaims {
   room: string
   name?: string
   role?: MeetRole
 }
 
-function secretStr(): string {
+function secret(): string {
   const s = process.env.MEET_LINK_SECRET
   if (!s) throw new Error('MEET_LINK_SECRET is not set')
   return s
 }
-const b64url = (b: Buffer): string => b.toString('base64url')
 
-// Compact signer — exported so generators in THIS codebase (and as the
-// reference impl for the others) stay byte-identical.
+const b64url = (input: string | Buffer): string => Buffer.from(input).toString('base64url')
+
+// Sign a COMPACT token for `room` — matches Ops Hub's signCompact() and HR
+// Hub's signMeetRoomLink() byte-for-byte. New links should use this; the
+// legacy JWT signer has been removed as a generator (verify-only above).
 export function signCompact(room: string, claims: Omit<MeetClaims, 'room'>, expiresAtSec: number): string {
-  const payloadB64 = Buffer.from(`${expiresAtSec}|${claims.role === 'host' ? 'h' : 'g'}|${claims.name ?? ''}`).toString('base64url')
-  const sig = b64url(crypto.createHmac('sha256', secretStr()).update(`${room}.${payloadB64}`).digest().subarray(0, 16))
+  const payloadB64 = b64url(`${expiresAtSec}|${claims.role === 'host' ? 'h' : 'g'}|${claims.name ?? ''}`)
+  const sig = crypto.createHmac('sha256', secret()).update(`${room}.${payloadB64}`).digest().subarray(0, 16).toString('base64url')
   return `${payloadB64}.${sig}`
 }
 
-export function meetRoomUrl(room: string, claims: Omit<MeetClaims, 'room'>, expiresAtSec: number): string {
-  const base = process.env.MEET_BASE_URL ?? 'https://meet.sapphireclinicseast.org'
-  return `${base}/r/${encodeURIComponent(room)}?t=${signCompact(room, claims, expiresAtSec)}`
+function verifyCompact(room: string, token: string): MeetClaims | null {
+  const dot = token.indexOf('.')
+  if (dot < 0 || token.indexOf('.', dot + 1) !== -1) return null // exactly one dot
+  const payloadB64 = token.slice(0, dot)
+  const sig = token.slice(dot + 1)
+  const expectedSig = crypto.createHmac('sha256', secret()).update(`${room}.${payloadB64}`).digest().subarray(0, 16).toString('base64url')
+  // Constant-time comparison — sig is attacker-influenced input.
+  const a = Buffer.from(sig)
+  const b = Buffer.from(expectedSig)
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null
+
+  let decoded: string
+  try {
+    decoded = Buffer.from(payloadB64, 'base64url').toString()
+  } catch {
+    return null
+  }
+  const parts = decoded.split('|')
+  if (parts.length < 2) return null
+  const [expStr, roleChar, ...nameParts] = parts
+  const exp = Number(expStr)
+  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null
+  return {
+    room,
+    name: nameParts.join('|') || undefined,
+    role: roleChar === 'h' ? 'host' : 'guest',
+  }
 }
 
-// Verify a token for a given room (room comes from the URL path). Returns the
-// claims or null. Accepts compact (1 dot) and legacy JWT (2 dots).
-export async function verifyMeetLink(token: string, room: string): Promise<MeetClaims | null> {
-  if (!token || !room) return null
-  const dots = token.split('.').length - 1
-
-  if (dots === 1) {
-    try {
-      const [payloadB64, sig] = token.split('.')
-      const expected = b64url(crypto.createHmac('sha256', secretStr()).update(`${room}.${payloadB64}`).digest().subarray(0, 16))
-      const a = Buffer.from(sig), b = Buffer.from(expected)
-      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null
-      const parts = Buffer.from(payloadB64, 'base64url').toString('utf8').split('|')
-      const exp = Number(parts[0])
-      if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null
-      return { room, role: parts[1] === 'h' ? 'host' : 'guest', name: parts.slice(2).join('|') || undefined }
-    } catch {
-      return null
-    }
-  }
-
-  // Legacy JWT (sub = room)
+async function verifyLegacyJwt(room: string, token: string): Promise<MeetClaims | null> {
   try {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(secretStr()))
-    const sub = typeof payload.sub === 'string' ? payload.sub : ''
-    if (!sub) return null
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret()))
+    const tokenRoom = typeof payload.sub === 'string' ? payload.sub : ''
+    if (!tokenRoom || tokenRoom !== room) return null // signature valid but for a different room
     return {
-      room: sub,
+      room,
       name: typeof payload.name === 'string' ? payload.name : undefined,
       role: payload.role === 'host' ? 'host' : 'guest',
     }
   } catch {
     return null
   }
+}
+
+export async function verifyMeetLink(room: string, token: string): Promise<MeetClaims | null> {
+  if (!room || !token) return null
+  const dotCount = (token.match(/\./g) || []).length
+  if (dotCount === 1) return verifyCompact(room, token)
+  if (dotCount === 2) return verifyLegacyJwt(room, token)
+  return null
 }
