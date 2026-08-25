@@ -17,10 +17,12 @@ interface Connection {
 
 export default function RoomClient({
   linkToken,
+  room,
   defaultName,
   role,
 }: {
   linkToken: string
+  room: string
   defaultName: string
   role: 'host' | 'guest'
 }) {
@@ -38,7 +40,7 @@ export default function RoomClient({
         const res = await fetch('/api/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ t: linkToken, name: choices.username }),
+          body: JSON.stringify({ t: linkToken, name: choices.username, room }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data?.error || 'Could not join the meeting.')
@@ -49,7 +51,7 @@ export default function RoomClient({
         setJoining(false)
       }
     },
-    [linkToken],
+    [linkToken, room],
   )
 
   if (ended) {

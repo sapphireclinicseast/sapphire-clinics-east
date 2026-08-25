@@ -5,13 +5,16 @@ import RoomClient from './RoomClient'
 // expiry; we verify it up front so an invalid/expired link shows a friendly
 // message instead of a broken video screen.
 export default async function RoomPage({
+  params,
   searchParams,
 }: {
   params: Promise<{ room: string }>
   searchParams: Promise<{ t?: string }>
 }) {
+  const { room } = await params
+  const roomId = decodeURIComponent(room)
   const { t } = await searchParams
-  const claims = t ? await verifyMeetLink(t) : null
+  const claims = t ? await verifyMeetLink(t, roomId) : null
 
   if (!t || !claims) {
     return (
@@ -25,5 +28,5 @@ export default async function RoomPage({
     )
   }
 
-  return <RoomClient linkToken={t} defaultName={claims.name ?? ''} role={claims.role ?? 'guest'} />
+  return <RoomClient linkToken={t} room={roomId} defaultName={claims.name ?? ''} role={claims.role ?? 'guest'} />
 }

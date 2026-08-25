@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'LiveKit is not configured.' }, { status: 500 })
   }
 
-  let body: { t?: string; name?: string }
+  let body: { t?: string; name?: string; room?: string }
   try {
     body = await req.json()
   } catch {
@@ -24,8 +24,9 @@ export async function POST(req: NextRequest) {
 
   const linkToken = (body.t ?? '').trim()
   if (!linkToken) return NextResponse.json({ error: 'Missing link token.' }, { status: 400 })
+  const room = (body.room ?? '').trim()
 
-  const claims = await verifyMeetLink(linkToken)
+  const claims = await verifyMeetLink(linkToken, room)
   if (!claims) {
     return NextResponse.json({ error: 'This meeting link is invalid or has expired.' }, { status: 403 })
   }
