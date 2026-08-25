@@ -27,7 +27,11 @@ export default async function RoomPage({
     )
   }
 
+  // Broadcasting is offered only when the server has YouTube configured AND
+  // this specific link is broadcast-capable (HR seminars/trainings). Clinical
+  // sessions and HR meetings get host/record but never the Broadcast button.
   const youtubeConfigured = !!(process.env.YOUTUBE_STREAM_KEY && process.env.YOUTUBE_WATCH_URL)
+  const canBroadcast = youtubeConfigured && claims.canBroadcast === true
 
-  return <RoomClient room={room} linkToken={t} defaultName={claims.name ?? ''} role={claims.role ?? 'guest'} youtubeConfigured={youtubeConfigured} />
+  return <RoomClient room={room} linkToken={t} defaultName={claims.name ?? ''} role={claims.role ?? 'guest'} youtubeConfigured={canBroadcast} />
 }

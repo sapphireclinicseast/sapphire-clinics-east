@@ -40,11 +40,23 @@ export async function POST(req: NextRequest) {
   }
   if (!isHost) return NextResponse.json({ error: 'Only the host can start a broadcast.' }, { status: 403 })
 
+  // Broadcasting is limited to broadcast-capable links (HR seminars/trainings).
+  // Enforce it server-side too, so it can't be triggered by calling this route
+  // directly with a plain host link.
+  if (!claims.canBroadcast) {
+    return NextResponse.json({ error: 'This meeting is not enabled for broadcasting.' }, { status: 403 })
+  }
+
   try {
     // Reuse an already-running broadcast for this room rather than starting a
     // second one — e.g. the host refreshed mid-broadcast, or clicked twice.
+    // listEgress(active:true) already filters to non-terminal egresses, so any
+    // result means a broadcast is live — don't additionally require
+    // streamResults to be populated (it's empty for the first seconds while
+    // the RTMP stream connects, which previously let a second egress start and
+    // hid the Stop button).
     const existing = await egress.listEgress({ roomName: claims.room, active: true })
-    const already = existing.find((e) => e.streamResults && e.streamResults.length > 0)
+    const already = existing[0]
     if (already) return NextResponse.json({ egressId: already.egressId, watchUrl: yt.watchUrl })
 
     const rtmpUrl = `rtmp://a.rtmp.youtube.com/live2/${yt.streamKey}`

@@ -21,8 +21,12 @@ export async function POST(req: NextRequest) {
 
   const yt = youtubeConfig()
   try {
+    // Any non-terminal egress for the room means we're live. Don't gate on
+    // streamResults being populated — it's empty for the first few seconds
+    // while the RTMP stream connects, which previously suppressed the "live"
+    // banner and the host's Stop button.
     const existing = await egress.listEgress({ roomName: claims.room, active: true })
-    const active = existing.find((e) => e.streamResults && e.streamResults.length > 0)
+    const active = existing[0]
     return NextResponse.json({
       active: !!active,
       egressId: active?.egressId ?? null,

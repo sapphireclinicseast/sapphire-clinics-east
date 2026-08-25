@@ -38,6 +38,11 @@ export interface MeetClaims {
   room: string
   name?: string
   role?: MeetRole
+  // True only for links that are allowed to start a public YouTube broadcast
+  // (HR seminars/trainings). Regular host links — clinical sessions, HR
+  // meetings — are host (can Record) but NOT broadcast. Encoded as role char
+  // 'b' in the compact token.
+  canBroadcast?: boolean
 }
 
 function secret(): string {
@@ -52,7 +57,8 @@ const b64url = (input: string | Buffer): string => Buffer.from(input).toString('
 // Hub's signMeetRoomLink() byte-for-byte. New links should use this; the
 // legacy JWT signer has been removed as a generator (verify-only above).
 export function signCompact(room: string, claims: Omit<MeetClaims, 'room'>, expiresAtSec: number): string {
-  const payloadB64 = b64url(`${expiresAtSec}|${claims.role === 'host' ? 'h' : 'g'}|${claims.name ?? ''}`)
+  const roleChar = claims.canBroadcast ? 'b' : claims.role === 'host' ? 'h' : 'g'
+  const payloadB64 = b64url(`${expiresAtSec}|${roleChar}|${claims.name ?? ''}`)
   const sig = crypto.createHmac('sha256', secret()).update(`${room}.${payloadB64}`).digest().subarray(0, 16).toString('base64url')
   return `${payloadB64}.${sig}`
 }
@@ -79,10 +85,12 @@ function verifyCompact(room: string, token: string): MeetClaims | null {
   const [expStr, roleChar, ...nameParts] = parts
   const exp = Number(expStr)
   if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return null
+  // 'b' = host WITH broadcast capability; 'h' = host (record only); else guest.
   return {
     room,
     name: nameParts.join('|') || undefined,
-    role: roleChar === 'h' ? 'host' : 'guest',
+    role: roleChar === 'h' || roleChar === 'b' ? 'host' : 'guest',
+    canBroadcast: roleChar === 'b',
   }
 }
 
@@ -94,7 +102,8 @@ async function verifyLegacyJwt(room: string, token: string): Promise<MeetClaims 
     return {
       room,
       name: typeof payload.name === 'string' ? payload.name : undefined,
-      role: payload.role === 'host' ? 'host' : 'guest',
+      role: payload.role === 'host' || payload.role === 'broadcast' ? 'host' : 'guest',
+      canBroadcast: payload.role === 'broadcast',
     }
   } catch {
     return null
