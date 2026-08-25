@@ -30,6 +30,7 @@ interface Service {
   noPwdDiscount: boolean
   issuedOfficialInvoice: boolean
   isHmoGl?: boolean
+  recognitionMonths?: number | null
   hmoPaysClinicianDirect?: boolean
   newPrice?: string | number | null
   newPriceEffectiveDate?: string | null
@@ -150,6 +151,7 @@ export default function ServicesPage() {
   const [fNoPwdDiscount, setFNoPwdDiscount] = useState(false)
   const [fIssuedOfficialInvoice, setFIssuedOfficialInvoice] = useState(false)
   const [fIsHmoGl, setFIsHmoGl] = useState(false)
+  const [fRecognitionMonths, setFRecognitionMonths] = useState('')
   const [fHmoDirect, setFHmoDirect] = useState(false)
   const [fDescription, setFDescription] = useState('')
   const [fWalletType, setFWalletType] = useState('')
@@ -260,7 +262,7 @@ export default function ServicesPage() {
     setEditing(null)
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice(''); setFNewPrice(''); setFNewPriceDate(''); setFBranchPrices([])
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
-    setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFHmoDirect(false); setFDescription('')
+    setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     setError(''); setModalOpen(true)
   }
@@ -278,6 +280,7 @@ export default function ServicesPage() {
     setFNoPwdDiscount(s.noPwdDiscount)
     setFIssuedOfficialInvoice(s.issuedOfficialInvoice)
     setFIsHmoGl(!!s.isHmoGl)
+    setFRecognitionMonths(s.recognitionMonths ? String(s.recognitionMonths) : '')
     setFHmoDirect(!!s.hmoPaysClinicianDirect)
     setFDescription(s.description || '')
     setFWalletType(s.walletType || '')
@@ -326,6 +329,7 @@ export default function ServicesPage() {
       noPwdDiscount: fNoPwdDiscount,
       issuedOfficialInvoice: fIssuedOfficialInvoice,
       isHmoGl: fIsHmoGl,
+      recognitionMonths: fRecognitionMonths ? parseInt(fRecognitionMonths, 10) : null,
       hmoPaysClinicianDirect: fHmoDirect,
       description: fDescription,
       revenueAccountId: fRevenueAccountId || null,
@@ -1063,6 +1067,24 @@ export default function ServicesPage() {
                     The HMO settles these sessions with the clinician, not with us — they are monitored separately in Accounts Receivable (retroactively) and excluded from our AR totals and aging.
                   </p>
                 )}
+              </div>
+
+              {/* Period-fee recognition (tuition): revenue earned over N months */}
+              <div className="p-3 rounded-xl border" style={{ borderColor: fRecognitionMonths ? '#93c5fd' : 'var(--light-gray)', background: fRecognitionMonths ? '#eff6ff' : 'var(--off-white)' }}>
+                <label className="block text-sm font-medium" style={{ color: fRecognitionMonths ? '#1e40af' : 'var(--charcoal)' }}>
+                  Tuition / period fee — recognize over
+                  <input type="number" min={2} max={24} value={fRecognitionMonths}
+                    onChange={(e) => setFRecognitionMonths(e.target.value)}
+                    placeholder="—"
+                    className="mx-2 w-16 px-2 py-1 rounded-lg border text-sm text-center outline-none bg-white"
+                    style={{ borderColor: 'var(--light-gray)' }} />
+                  months
+                </label>
+                <p className="mt-1.5 text-xs" style={{ color: fRecognitionMonths ? '#1e40af' : 'var(--mid-gray)' }}>
+                  Leave blank for normal services (revenue on payment day). Set for period fees the payer owes
+                  whether or not they attend: the reports recognize one part per covered month, starting the payment
+                  month, and hold the rest as Unearned Revenue. Tuition: annual 10, biannual 5, monthly blank.
+                </p>
               </div>
 
               {/* Revenue Account (COA) — searchable */}
