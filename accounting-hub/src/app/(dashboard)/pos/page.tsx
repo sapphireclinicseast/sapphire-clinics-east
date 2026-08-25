@@ -10,13 +10,14 @@ import {
   RefreshCw, Ban, Star, Filter, Undo2, RotateCcw,
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
-  Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign, Wand2,
+  Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign, Wand2, MonitorSmartphone,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
 import { TiktokImportModal } from './TiktokImportModal'
 import Pagination from '@/components/ui/Pagination'
+import { patientViewPath } from '@/lib/patient-view'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
@@ -798,6 +799,22 @@ function CashierPanel({
         >
           <Plus size={16} /> New Payment
         </button>
+
+        {/* Opens the counter tablet's own address, so front desk can put it on
+            the patient-facing screen without being told the URL. Branches with
+            no patient tablet (Verdana, the Institute) simply don't show it. */}
+        {patientViewPath(selectedBranch) && (
+          <a
+            href={patientViewPath(selectedBranch)!}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open the patient-facing screen for this branch"
+            className="ml-auto flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border"
+            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
+          >
+            <MonitorSmartphone size={16} /> Patient View
+          </a>
+        )}
       </div>
 
       {/* Queue — hidden for Verdana (retail/seminars branch has no appointment queue) */}
