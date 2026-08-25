@@ -58,4 +58,4 @@ export function patientViewPath(branchEnum: string): string | null {
  * a second, publicly reachable copy of cardholder balances to keep in step.
  */
 export const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
-export const REWARD_POINTS_URL = 'https://sapphireclinicseast.org/reward-points/'
+export const REWARD_POINTS_URL = 'https://client.sapphireclinicseast.org/rewards'
