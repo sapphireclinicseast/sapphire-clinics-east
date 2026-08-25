@@ -134,8 +134,8 @@ export default function RewardsPanel() {
           <UseCard
             title="Clinic seminars"
             body="Attend Aura Health Rehab seminars that accept reward points as payment. Browse upcoming events on our seminars site."
-            href="https://seminars.sapphireclinicseast.org"
-            cta="Visit seminars.sapphireclinicseast.org →"
+            href="https://institute.sapphireclinicseast.org"
+            cta="Visit institute.sapphireclinicseast.org →"
             icon={<IconTicket />}
           />
           <UseCard
