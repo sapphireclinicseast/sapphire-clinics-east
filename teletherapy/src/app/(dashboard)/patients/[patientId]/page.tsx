@@ -1094,17 +1094,20 @@ export default function PatientDetailPage() {
         )}
       </div>
       )}
+        {/* Patient-submitted uploads — full-width at the end of the main column
+            so a long list gets its own scroll space instead of bloating the
+            sidebar. Collapsible per-date rows + a From/To date filter. */}
+        <PatientUploads
+          patientId={patient.id}
+          referralUrl={patient.referralUrl}
+          pwdIdUrl={patient.pwdIdUrl}
+          pwdSeniorId={patient.pwdSeniorId}
+        />
         </div>
 
         {/* Right sidebar: Patient Widgets — own documents, part of the "own" view. */}
         {showSidebar && (
         <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
-          <PatientUploads
-            patientId={patient.id}
-            referralUrl={patient.referralUrl}
-            pwdIdUrl={patient.pwdIdUrl}
-            pwdSeniorId={patient.pwdSeniorId}
-          />
           <PatientWidgets patient={patient} canManage={!readOnly} />
         </aside>
         )}
