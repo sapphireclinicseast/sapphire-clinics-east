@@ -772,6 +772,17 @@ a.hero-brand-chip:hover {
 .branch-address { opacity: .75; font-size: 14px; margin-bottom: 6px; display: flex; align-items: flex-start; gap: 6px; }
 .branch-contact { opacity: .75; font-size: 14px; margin-bottom: 4px; display: flex; align-items: flex-start; gap: 6px; }
 
+/* Branch message buttons (Messenger / Viber) */
+.branch-msg { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; position: relative; z-index: 1; }
+.branch-msg a { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; padding: 11px 20px; border-radius: 100px; transition: .2s; }
+.branch-msg svg { width: 17px; height: 17px; flex: 0 0 auto; }
+.b-msgr { background: #fff; color: var(--primary-dark); }
+.b-msgr svg { fill: var(--primary); }
+.b-msgr:hover { background: #eef3e6; transform: translateY(-1px); }
+.b-viber { background: #7360f2; color: #fff; }
+.b-viber svg { fill: #fff; }
+.b-viber:hover { background: #5b48d8; transform: translateY(-1px); }
+
 /* Services list */
 .services-grid {
   display: grid;
