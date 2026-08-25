@@ -114,11 +114,43 @@ model Patient {
   diagnosis   String?
   notes       String?
   referralUrl String?
+  pwdIdUrl    String?
+  pwdSeniorId String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   schedules           Schedule[]
   patientAssignments  PatientAssignment[]
   documents           PatientDocument[]
+  homeProgress        HomeProgressEntry[]
+}
+
+// Patient-uploaded "Home Progress" log (videos / audio / photos from the
+// client portal). Maps to the same tables the Operations Hub owns — this app
+// only READS them for the assigned therapist's view.
+model HomeProgressEntry {
+  id        String             @id @default(cuid())
+  patientId String
+  patient   Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date      DateTime
+  remarks   String?
+  createdAt DateTime           @default(now())
+  files     HomeProgressFile[]
+
+  @@index([patientId])
+}
+
+model HomeProgressFile {
+  id        String            @id @default(cuid())
+  entryId   String
+  entry     HomeProgressEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  kind      String            // AUDIO | VIDEO | PHOTO | OTHER
+  fileName  String
+  filePath  String            // relative path under the Ops Hub uploads dir
+  mimeType  String
+  sizeBytes Int               @default(0)
+  createdAt DateTime          @default(now())
+
+  @@index([entryId])
 }
 
 // Documents uploaded per patient per department

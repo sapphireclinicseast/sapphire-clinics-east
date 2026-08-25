@@ -30,6 +30,8 @@ export async function GET(
       city: true,
       address: true,
       referralUrl: true,
+      pwdIdUrl: true,
+      pwdSeniorId: true,
     },
   })
 
