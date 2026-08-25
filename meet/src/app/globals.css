@@ -79,7 +79,12 @@ html, body {
 .meet-tool:hover { background: rgba(255,255,255,.18); }
 .meet-tool.on { background: var(--aura-green); color: #fff; }
 .meet-tool.rec-on { background: #e11d48; color: #fff; animation: recpulse 1.4s ease-in-out infinite; }
+.meet-tool.leave { background: rgba(225,29,72,.85); color: #fff; }
+.meet-tool.leave:hover { background: #e11d48; }
 @keyframes recpulse { 0%,100% { opacity: 1 } 50% { opacity: .72 } }
+/* Use our own guarded Leave button (top toolbar) so a still-running recording
+   is never lost — hide LiveKit's built-in leave. */
+.lk-disconnect-button { display: none !important; }
 
 /* Whiteboard */
 .wb { display: flex; flex-direction: column; height: 100%; }
