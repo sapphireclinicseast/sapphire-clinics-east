@@ -10,11 +10,16 @@ export interface Branch {
   emailHref: string
   phones: string
   social: string
+  messengerHref: string
+  viberHref: string
 }
 
 export const AURA_WEBSITE = 'https://www.sapphireclinicseast.org'
 export const AURA_TIKTOK = '@aurahealthrehab'
 export const AURA_TIKTOK_URL = 'https://www.tiktok.com/@aurahealthrehab'
+
+// Viber deep link — international number, no spaces, "+" encoded as %2B.
+const viberHref = (intlNumber: string) => `viber://chat?number=%2B${intlNumber}`
 
 export const AURA_BRANCHES: Branch[] = [
   {
@@ -24,6 +29,8 @@ export const AURA_BRANCHES: Branch[] = [
     emailHref: 'mailto:hr.east@sapphireclinicseast.org',
     phones: '+63 917 118 9289 · (02) 5310-4991',
     social: 'Facebook / Instagram @aurahealthrehabeast',
+    messengerHref: 'https://m.me/aurahealthrehabeast',
+    viberHref: viberHref('639171189289'),
   },
   {
     name: 'Greenhills Branch',
@@ -32,6 +39,8 @@ export const AURA_BRANCHES: Branch[] = [
     emailHref: 'mailto:hr.gh@sapphireclinicseast.org',
     phones: '+63 917 770 1686 · (02) 8529-1590',
     social: 'Facebook / Instagram @aurahealthrehabgh',
+    messengerHref: 'https://m.me/aurahealthrehabgh',
+    viberHref: viberHref('639177701686'),
   },
 ]
 
@@ -57,6 +66,37 @@ function Row({ icon, children }: { icon: string; children: ReactNode }) {
 
 const linkCls = 'text-[color:var(--moss)] hover:underline underline-offset-2 break-words'
 
+function MessengerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="h-4 w-4 shrink-0">
+      <path d="M12 2C6.5 2 2 6.13 2 11.2c0 2.9 1.44 5.48 3.7 7.17V22l3.38-1.85c.9.25 1.86.39 2.92.39 5.5 0 10-4.13 10-9.2S17.5 2 12 2zm.98 12.39l-2.54-2.71-4.96 2.71 5.45-5.79 2.6 2.71 4.9-2.71-5.45 5.79z" />
+    </svg>
+  )
+}
+
+function ViberIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="h-4 w-4 shrink-0">
+      <path d="M12 2C6.7 2 2.4 5.9 2.4 10.7c0 2 .8 3.9 2.1 5.4-.1 1.1-.5 2.5-1.3 3.5 1.5-.2 2.8-.8 3.7-1.4 1.4.6 2.9.9 4.5.9 5.3 0 9.6-3.9 9.6-8.7S17.3 2 12 2zm4.7 12.2c-.3.7-1.5 1.3-2.3 1.2-.6-.1-1.5-.3-3.3-1.1-2.6-1.1-4.2-3.8-4.4-4-.1-.2-1-1.3-1-2.5s.6-1.8.9-2c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5.2.5.7 1.7.7 1.8.1.1.1.3 0 .4l-.3.5c-.1.2-.3.3-.1.6.1.2.6 1 1.3 1.6.9.8 1.6 1 1.9 1.2.2.1.4.1.5-.1.2-.2.6-.7.8-.9.1-.2.3-.2.5-.1.2.1 1.3.6 1.5.8.2.1.4.2.4.3.1.1.1.6-.1 1.2z" />
+    </svg>
+  )
+}
+
+// Messenger + Viber quick-chat buttons for a branch, side by side.
+export function ChatButtons({ b }: { b: Branch }) {
+  const btn = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90 transition-opacity'
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-2">
+      <a href={b.messengerHref} target="_blank" rel="noreferrer" className={btn} style={{ background: '#0A7CFF' }} aria-label={`Message ${b.name} on Messenger`}>
+        <MessengerIcon /> Messenger
+      </a>
+      <a href={b.viberHref} className={btn} style={{ background: '#7360F2' }} aria-label={`Chat with ${b.name} on Viber`}>
+        <ViberIcon /> Viber
+      </a>
+    </div>
+  )
+}
+
 export function BranchBlock({ b }: { b: Branch }) {
   return (
     <div>
@@ -69,6 +109,7 @@ export function BranchBlock({ b }: { b: Branch }) {
         <Row icon="📞">{b.phones}</Row>
         <Row icon="💬">{b.social}</Row>
       </div>
+      <ChatButtons b={b} />
     </div>
   )
 }
