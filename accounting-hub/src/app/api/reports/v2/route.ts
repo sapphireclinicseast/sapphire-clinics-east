@@ -17,11 +17,6 @@ export async function GET(req: Request) {
   }
   // Optional drill-down: return the underlying lines for one account (+month)
   const account = searchParams.get('account') || undefined
-  // Investors read statements only: the drill-down returns the underlying
-  // entries (order/patient-level lines), which stay confidential.
-  if (account && (session.user.role as string) === 'INVESTOR') {
-    return NextResponse.json({ error: 'Drill-down is not available for investor accounts' }, { status: 403 })
-  }
   const monthParam = searchParams.get('month')
   const month = monthParam ? parseInt(monthParam) : undefined
   const cumulative = searchParams.get('cumulative') === '1'
@@ -30,6 +25,20 @@ export async function GET(req: Request) {
       year, branch,
       account ? { account, ...(month && month >= 1 && month <= 12 ? { month, ...(cumulative ? { cumulative: true } : {}) } : {}) } : undefined,
     )
+    /* Investors see the subsidiary ledger — every line, every amount, so the
+       ledger provably ties to the statements — but not who was treated or
+       paid: patient and personnel identities are clinic-confidential. Lines
+       from mechanical sources carry no person, so their labels pass through;
+       everything else keeps its reference (order #, PCV, cutoff) and loses
+       the free text after it. */
+    if (account && (session.user.role as string) === 'INVESTOR' && statements.collected) {
+      const KEEP_FULL = /^(bank-trueup|bank-opening-trueup|float-floor|period-fee|depreciation|interbranch|opening|history:)/
+      statements.collected = statements.collected.map(l => {
+        if (KEEP_FULL.test(l.source)) return l
+        const head = l.label.split(' — ')[0].split(' | ')[0]
+        return { ...l, label: head === l.label ? head : `${head} — (details withheld for privacy)` }
+      })
+    }
     return NextResponse.json(statements)
   } catch (err) {
     console.error('Reports v2 error:', err)

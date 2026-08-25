@@ -789,7 +789,9 @@ function ChartOfAccountsInner() {
       {/* ── Create/Edit Modal ────────────────────────────────── */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+          {/* The bank-account panels can grow the form past the viewport, so the
+              card scrolls — without this the Save button is unreachable. */}
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
                 {editingAccount ? 'Edit Account' : 'Add Account'}
