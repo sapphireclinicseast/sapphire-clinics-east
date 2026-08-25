@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Contact, Plus, Trash2, Loader2, X, Mail, Lock, Pencil, Globe, Building2, Save, ExternalLink, Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { Contact, Plus, Trash2, Loader2, X, Mail, Lock, Pencil, Globe, Building2, Save, ExternalLink, Search, ChevronUp, ChevronDown, ChevronsUpDown, MessageCircle, Phone } from 'lucide-react'
 
 type SortState = { col: string; dir: 'asc' | 'desc' }
 
@@ -47,6 +47,11 @@ const DEPT_LABELS: Record<string, string> = {
 }
 const DEPT_ORDER = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'FRONT_DESK', 'ADMINISTRATION']
 const BRANCH_LABELS: Record<string, string> = { EAST: 'East', GREENHILLS: 'Greenhills', VERDANA: 'Verdana', CORPORATE: 'Corporate' }
+// Public patient-facing contact channels per branch (fixed brand handles).
+const BRANCH_CONTACTS: Record<string, { messenger: string; viberNumber: string; viberDisplay: string }> = {
+  EAST: { messenger: 'https://m.me/aurahealthrehabeast', viberNumber: '+639171189289', viberDisplay: '+63 917 118 9289' },
+  GREENHILLS: { messenger: 'https://m.me/aurahealthrehabgh', viberNumber: '+639177701686', viberDisplay: '+63 917 770 1686' },
+}
 const BRANCH_ORDER = ['EAST', 'GREENHILLS', 'VERDANA', 'CORPORATE']
 
 // HR forms that have fillable online versions — shown as scannable QR cards at
@@ -367,6 +372,24 @@ export default function DirectoryPage() {
                     <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap leading-relaxed">
                       {(branchInfo.find((x) => x.branch === b)?.info || '').trim() || <span className="text-[var(--mid-gray)] italic">No information yet.</span>}
                     </p>
+                  )}
+                  {BRANCH_CONTACTS[b] && (
+                    <div className="mt-3 pt-3 border-t border-[var(--light-gray)]">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--mid-gray)] mb-2">Chat with this branch</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <a href={BRANCH_CONTACTS[b].messenger} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+                          style={{ background: '#0084FF' }}>
+                          <MessageCircle size={14} /> Messenger
+                        </a>
+                        <a href={`viber://chat?number=${encodeURIComponent(BRANCH_CONTACTS[b].viberNumber)}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+                          style={{ background: '#7360F2' }}>
+                          <Phone size={14} /> Viber
+                        </a>
+                        <span className="text-[12px] text-[var(--mid-gray)]">{BRANCH_CONTACTS[b].viberDisplay}</span>
+                      </div>
+                    </div>
                   )}
                 </div>
               ))}
