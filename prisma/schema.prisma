@@ -1984,3 +1984,28 @@ model UserNotificationState {
   dismissedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+/// Hard bounces harvested from the sending mailboxes' delivery-failure reports.
+/// Gmail's API confirms a message was ACCEPTED, never that it was delivered — a
+/// bounce comes back afterwards as a separate mailer-daemon message, so the only
+/// way to learn about it is to read the mailbox back.
+model EmailBounce {
+  id           String   @id @default(cuid())
+  email        String
+  patientId    String?
+  /// HARD = the address does not exist and never will (5.1.1 / user unknown).
+  /// SOFT = temporary (full mailbox, throttling). Only HARD unsubscribes.
+  kind         String
+  /// Enhanced status code (e.g. "5.1.1") when the report carries one.
+  statusCode   String?
+  reason       String?
+  /// Gmail message id of the failure report, so a rescan cannot double-count.
+  gmailMsgId   String   @unique
+  mailbox      String
+  detectedAt   DateTime @default(now())
+  /// Set when this bounce is what took the patient off the mailing list.
+  unsubscribed Boolean  @default(false)
+
+  @@index([email])
+  @@index([kind, detectedAt])
+}
