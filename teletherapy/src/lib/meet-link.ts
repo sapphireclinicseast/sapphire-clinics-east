@@ -9,15 +9,14 @@ import crypto from 'crypto'
 const MEET_BASE_URL = process.env.MEET_BASE_URL ?? 'https://meet.sapphireclinicseast.org'
 const b64url = (i: string | Buffer) => Buffer.from(i).toString('base64url')
 
+// Compact host token — byte-identical to the meet app verifier + Ops Hub
+// generator: `<payloadB64>.<sig16>`, payloadB64 = base64url("exp|h|name"),
+// sig = first 16 bytes of HMAC-SHA256(secret, "room.payloadB64").
 function signHost(room: string, name: string | undefined, expiresAtSec: number): string {
   const secret = process.env.MEET_LINK_SECRET as string
-  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-  const payload = b64url(
-    JSON.stringify({ sub: room, name, role: 'host', iat: Math.floor(Date.now() / 1000), exp: expiresAtSec }),
-  )
-  const data = `${header}.${payload}`
-  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url')
-  return `${data}.${sig}`
+  const payloadB64 = b64url(`${expiresAtSec}|h|${name ?? ''}`)
+  const sig = crypto.createHmac('sha256', secret).update(`${room}.${payloadB64}`).digest().subarray(0, 16).toString('base64url')
+  return `${payloadB64}.${sig}`
 }
 
 // Turn a stored guest meet link into a host link for the same room. Passes
