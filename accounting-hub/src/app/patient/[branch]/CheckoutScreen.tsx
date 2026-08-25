@@ -134,25 +134,31 @@ export default function CheckoutScreen({
               rather than leaving the patient to find their own name in a list. */}
           {done ? (
             data.surveyInvite ? (
-              <div className="mt-6 rounded-2xl p-6 text-center" style={{ background: '#e6f2ef' }}>
+              /* Gold rather than the page's green: this is the one thing on the
+                 screen we are asking the patient to act on, and in green it read
+                 as another panel of the receipt above it. Dark brown on the
+                 button, not white — white on this yellow is about 2.4:1 and
+                 unreadable at arm's length on a counter tablet. */
+              <div className="mt-6 rounded-2xl p-6 text-center"
+                style={{ background: '#fefbe8', border: '1px solid #fcdf6b', boxShadow: '0 6px 18px rgba(202,138,4,0.13)' }}>
                 <span className="inline-flex items-center justify-center rounded-2xl"
-                  style={{ width: 54, height: 54, background: '#ffffff', color: '#0f766e' }}>
+                  style={{ width: 54, height: 54, background: '#ffffff', color: '#a16207' }}>
                   <MessageSquareHeart size={26} />
                 </span>
-                <p className="mt-3 text-lg font-bold" style={{ color: '#1c3f38' }}>
+                <p className="mt-3 text-lg font-bold" style={{ color: '#442d05' }}>
                   You were chosen for today&apos;s feedback
                 </p>
-                <p className="mt-1 text-sm" style={{ color: '#4a6d64' }}>
+                <p className="mt-1 text-sm" style={{ color: '#6b5316' }}>
                   We pick a few patients at random each day. Would you tell us how your visit went?
                   It takes about a minute.
                 </p>
                 <button
                   onClick={() => onOpenSurvey(data.surveyInvite!)}
-                  className="mt-4 w-full py-4 rounded-2xl text-sm font-semibold text-white"
-                  style={{ background: '#0f766e' }}>
+                  className="mt-4 w-full py-4 rounded-2xl text-base font-bold"
+                  style={{ background: '#eab308', color: '#3f2a04' }}>
                   Yes, I&apos;ll answer
                 </button>
-                <p className="mt-2 text-[11px]" style={{ color: '#7d968e' }}>
+                <p className="mt-2 text-[11px]" style={{ color: '#8a7333' }}>
                   Not now? Just leave the tablet — it clears on its own.
                 </p>
               </div>
