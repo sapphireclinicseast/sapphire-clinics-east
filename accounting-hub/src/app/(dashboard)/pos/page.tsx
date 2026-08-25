@@ -17,6 +17,7 @@ import { normalizeSI } from '@/lib/sales-invoice'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
 import { TiktokImportModal } from './TiktokImportModal'
 import Pagination from '@/components/ui/Pagination'
+import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
@@ -2447,6 +2448,8 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [orderSearch, setOrderSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [showOrdDownload, setShowOrdDownload] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [ordSortField, setOrdSortField] = useState('orderNumber')
   const [ordSortDir, setOrdSortDir] = useState<'asc' | 'desc'>('desc')
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
@@ -2596,6 +2599,23 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
     } catch { setter([]) }
   }
 
+  /**
+   * The same narrowing the table applies on top of what the API returned:
+   * the voided toggle, and date/branch guards that protect against a server
+   * returning unfiltered rows. The export reuses it so the downloaded totals
+   * match the rows on screen rather than being a second opinion.
+   */
+  const applyOrderGuards = useCallback((list: Order[]) => (
+    (showVoided || statusFilter === 'VOIDED' ? list : list.filter(o => o.status !== 'VOIDED'))
+      .filter(o => {
+        const d = new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+        if (dateFrom && d < dateFrom) return false
+        if (dateTo && d > dateTo) return false
+        if (selectedBranch && o.branch !== selectedBranch) return false
+        return true
+      })
+  ), [showVoided, statusFilter, dateFrom, dateTo, selectedBranch])
+
   const fetchOrders = useCallback(async () => {
     setLoading(true)
     try {
@@ -2617,6 +2637,119 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   }, [selectedBranch, dateFrom, dateTo, statusFilter, debouncedSearch])
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
+
+  /* ── Download: gross / discount / net for the current filters ──────────────
+     The table is fed by a capped fetch, so exporting `orders` would silently
+     stop at that cap and understate the totals. This re-queries with the same
+     filters and walks every page, so the figures are the whole period. */
+  const buildOrdersExport = useCallback(async () => {
+    const params = new URLSearchParams()
+    if (selectedBranch) params.set('branch', selectedBranch)
+    if (dateFrom) params.set('dateFrom', dateFrom)
+    if (dateTo) params.set('dateTo', dateTo)
+    if (statusFilter) params.set('status', statusFilter)
+    if (debouncedSearch) params.set('search', debouncedSearch)
+    params.set('pageSize', '1000') // server caps at 1000
+
+    const all: Order[] = []
+    for (let page = 1; page <= 200; page++) {
+      params.set('page', String(page))
+      const r = await fetch(`/api/pos/orders?${params}`)
+      if (!r.ok) break
+      const d = await r.json()
+      const rows = normalize(d) as Order[]
+      all.push(...rows)
+      const totalPages = Number(d?.totalPages ?? 1)
+      if (page >= totalPages || rows.length === 0) break
+    }
+
+    const rows = applyOrderGuards(all)
+    const money = (v: unknown) => Number(v ?? 0) || 0
+    // netAmount = subtotal − discount − refunds (see the POS order route), so
+    // gross and discount alone do not reconcile to net on a refunded order.
+    // Deriving the refund from the three figures keeps every row adding up
+    // regardless of where the refund was recorded; it is 0.00 on normal orders.
+    const refundOf = (o: Order) => money(o.subtotal) - money(o.discountAmount) - money(o.netAmount)
+    const totals = rows.reduce(
+      (t, o) => ({
+        gross: t.gross + money(o.subtotal),
+        discount: t.discount + money(o.discountAmount),
+        refund: t.refund + refundOf(o),
+        net: t.net + money(o.netAmount),
+      }),
+      { gross: 0, discount: 0, refund: 0, net: 0 },
+    )
+
+    const scope = [
+      selectedBranch ? (BRANCHES.find(b => b.value === selectedBranch)?.label || selectedBranch) : 'All branches',
+      `${dateFrom || 'start'} to ${dateTo || 'today'}`,
+      statusFilter || 'All statuses',
+      showVoided || statusFilter === 'VOIDED' ? 'incl. voided' : 'excl. voided',
+      debouncedSearch ? `search: ${debouncedSearch}` : null,
+    ].filter(Boolean).join(' · ')
+
+    const headers = ['Order #', 'Date', 'Branch', 'Type', 'Patient', 'Item(s)', 'Clinician',
+                     'Ref #', 'Gross', 'Discount', 'Refund', 'Net', 'Payment', 'Status']
+    const body = rows.map(o => [
+      o.orderNumber,
+      new Date(o.transactionDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' }),
+      BRANCHES.find(b => b.value === o.branch)?.label || o.branch,
+      o.orderType || '',
+      o.patientName || '',
+      (o.items || []).map(i => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ''}`).join(', '),
+      o.clinicianName || '',
+      o.referenceNumber || '',
+      money(o.subtotal).toFixed(2),
+      money(o.discountAmount).toFixed(2),
+      refundOf(o).toFixed(2),
+      money(o.netAmount).toFixed(2),
+      (o.payments || []).map(p => p.method).join(', '),
+      o.status,
+    ])
+    const totalRow = ['TOTAL', '', '', '', '', '', '', '',
+                      totals.gross.toFixed(2), totals.discount.toFixed(2), totals.refund.toFixed(2),
+                      totals.net.toFixed(2), '', `${rows.length} orders`]
+
+    return { rows, headers, body, totalRow, totals, scope }
+  }, [selectedBranch, dateFrom, dateTo, statusFilter, debouncedSearch, showVoided, applyOrderGuards])
+
+  const downloadOrdersExcel = async () => {
+    setExporting(true)
+    try {
+      const x = await buildOrdersExport()
+      downloadXlsx(`sales-orders-${dateFrom || 'start'}_to_${dateTo || 'today'}`, [
+        { name: 'Summary', headers: ['Figure', 'Value'], rows: [
+          ['Filters', x.scope],
+          ['Orders', String(x.rows.length)],
+          ['Gross sales', x.totals.gross.toFixed(2)],
+          ['Discounts', x.totals.discount.toFixed(2)],
+          ['Refunds', x.totals.refund.toFixed(2)],
+          ['Net sales', x.totals.net.toFixed(2)],
+        ] },
+        { name: 'Orders', headers: x.headers, rows: [...x.body, x.totalRow] },
+      ])
+    } finally { setExporting(false); setShowOrdDownload(false) }
+  }
+
+  const downloadOrdersPdf = async () => {
+    setExporting(true)
+    try {
+      const x = await buildOrdersExport()
+      downloadReportPdf({
+        title: 'Sales Orders',
+        subtitle: x.scope,
+        landscape: true,
+        kpis: [
+          { label: 'Orders', value: String(x.rows.length) },
+          { label: 'Gross sales', value: formatCurrency(x.totals.gross) },
+          { label: 'Discounts', value: formatCurrency(x.totals.discount) },
+          ...(x.totals.refund > 0.005 ? [{ label: 'Refunds', value: formatCurrency(x.totals.refund) }] : []),
+          { label: 'Net sales', value: formatCurrency(x.totals.net) },
+        ],
+        sections: [{ heading: 'Orders', headers: x.headers, rows: x.body, totalRow: x.totalRow }],
+      })
+    } finally { setExporting(false); setShowOrdDownload(false) }
+  }
 
   const handleAction = async (id: string, action: 'reopen' | 'void' | 'returnByBuyer' | 'refund') => {
     if (action === 'refund') {
@@ -2817,6 +2950,30 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
           <input type="checkbox" checked={showVoided} onChange={e => setShowVoided(e.target.checked)} />
           Show voided
         </label>
+
+        {/* Download — gross / discount / net for exactly these filters */}
+        <div className="relative ml-auto">
+          <button
+            onClick={() => setShowOrdDownload(v => !v)}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border text-sm font-medium disabled:opacity-50"
+            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+            {exporting
+              ? <><Loader2 size={14} className="animate-spin" /> Preparing…</>
+              : <><Download size={14} /> Download</>}
+          </button>
+          {showOrdDownload && !exporting && (
+            <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border bg-white shadow-lg"
+              style={{ borderColor: 'var(--light-gray)', minWidth: 170 }}>
+              <button onClick={downloadOrdersExcel}
+                className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl"
+                style={{ color: 'var(--charcoal)' }}>Download as Excel</button>
+              <button onClick={downloadOrdersPdf}
+                className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-b-xl"
+                style={{ color: 'var(--charcoal)' }}>Download as PDF</button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Orders Table */}
@@ -2828,14 +2985,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
         ) : (() => {
           // Search is server-side; apply voided toggle + date + branch guards client-side
           // Guards ensure correct results even if the API returns unfiltered data (e.g. old server code)
-          const displayOrders = (showVoided || statusFilter === 'VOIDED' ? orders : orders.filter(o => o.status !== 'VOIDED'))
-            .filter(o => {
-              const d = new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
-              if (dateFrom && d < dateFrom) return false
-              if (dateTo && d > dateTo) return false
-              if (selectedBranch && o.branch !== selectedBranch) return false
-              return true
-            })
+          const displayOrders = applyOrderGuards(orders)
           return displayOrders.length === 0 ? (
           <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No orders found.</div>
         ) : (
@@ -2963,7 +3113,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
         )
           })()}
         {orders.length > 0 && (
-          <Pagination totalItems={(showVoided || statusFilter === 'VOIDED' ? orders : orders.filter(o => o.status !== 'VOIDED')).length} page={ordPage} pageSize={ordPageSize}
+          <Pagination totalItems={applyOrderGuards(orders).length} page={ordPage} pageSize={ordPageSize}
             onPageChange={setOrdPage} onPageSizeChange={setOrdPageSize} />
         )}
       </div>
