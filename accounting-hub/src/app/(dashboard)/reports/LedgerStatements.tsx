@@ -505,7 +505,30 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
   // showed September–December repeating August to the centavo, which reads as
   // real data. Past years keep all twelve columns.
   const nowD = new Date()
-  const lastRealMonth = year === nowD.getFullYear() ? nowD.getMonth() + 1 : 12
+  const currentMonth = year === nowD.getFullYear() ? nowD.getMonth() + 1 : 12
+
+  /* The income statement is the exception. A period fee — annual or biannual
+     tuition — recognises a share in every month it covers, so a payment taken
+     in June puts real revenue in September through December. Capping at today
+     hid exactly the months the spreading was introduced to show. So for this
+     one statement the columns run to the last month that actually holds a
+     figure, and no further: a year with nothing deferred still stops at today
+     rather than trailing empty columns. */
+  const lastDataMonth = (() => {
+    if (tab !== 'income-statement') return 0
+    let last = 0
+    for (const sct of data.incomeStatement?.sections || []) {
+      for (const r of sct.rows || []) {
+        const m = r.monthly
+        if (!m) continue
+        for (let i = 11; i >= last; i--) {
+          if (Math.abs(m[i] || 0) > 0.005) { last = i + 1; break }
+        }
+      }
+    }
+    return last
+  })()
+  const lastRealMonth = Math.max(currentMonth, lastDataMonth)
   const cutM = <T,>(arr: T[]) => (view === 'monthly' ? arr.slice(0, lastRealMonth) : arr)
   const cutQ = <T,>(arr: T[]) => (view === 'quarterly' ? arr.slice(0, Math.ceil(lastRealMonth / 3)) : arr)
   const cutCols = <T,>(arr: T[]) => (view === 'quarterly' ? cutQ(arr) : cutM(arr))
