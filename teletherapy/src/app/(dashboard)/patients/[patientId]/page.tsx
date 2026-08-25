@@ -36,6 +36,7 @@ import SLPNoteDisplay from '@/components/SLPNoteDisplay'
 import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
 import PatientWidgets from '@/components/PatientWidgets'
+import PatientUploads from '@/components/PatientUploads'
 import { NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
 
 interface PatientDetail {
@@ -51,6 +52,8 @@ interface PatientDetail {
   city?: string | null
   address?: string | null
   referralUrl?: string | null
+  pwdIdUrl?: string | null
+  pwdSeniorId?: string | null
 }
 
 interface SessionItem {
@@ -1096,6 +1099,12 @@ export default function PatientDetailPage() {
         {/* Right sidebar: Patient Widgets — own documents, part of the "own" view. */}
         {showSidebar && (
         <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
+          <PatientUploads
+            patientId={patient.id}
+            referralUrl={patient.referralUrl}
+            pwdIdUrl={patient.pwdIdUrl}
+            pwdSeniorId={patient.pwdSeniorId}
+          />
           <PatientWidgets patient={patient} canManage={!readOnly} />
         </aside>
         )}
