@@ -16,28 +16,22 @@ export interface MeetClaims {
   role?: 'host' | 'guest'
 }
 
-export function signMeetLink(claims: MeetClaims, expiresAtSec: number): string {
+// Compact token: `<payloadB64>.<sig16>` where payloadB64 = base64url("exp|role|name")
+// and sig = first 16 bytes of HMAC-SHA256(secret, "room.payloadB64"). The room
+// lives in the URL path and is bound into the signature (can't be reused for
+// another room). ~1/3 the length of the old JWT. Must stay byte-identical to
+// the meet app's verifier (meet/src/lib/meet-link.ts signCompact/verify).
+export function signCompact(room: string, claims: Omit<MeetClaims, 'room'>, expiresAtSec: number): string {
   const secret = process.env.MEET_LINK_SECRET
   if (!secret) throw new Error('MEET_LINK_SECRET is not set')
-  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-  const payload = b64url(
-    JSON.stringify({
-      sub: claims.room,
-      name: claims.name,
-      role: claims.role ?? 'guest',
-      iat: Math.floor(Date.now() / 1000),
-      exp: expiresAtSec,
-    }),
-  )
-  const data = `${header}.${payload}`
-  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64url')
-  return `${data}.${sig}`
+  const payloadB64 = b64url(`${expiresAtSec}|${claims.role === 'host' ? 'h' : 'g'}|${claims.name ?? ''}`)
+  const sig = crypto.createHmac('sha256', secret).update(`${room}.${payloadB64}`).digest().subarray(0, 16).toString('base64url')
+  return `${payloadB64}.${sig}`
 }
 
 // Full join URL. `expiresAtSec` is absolute epoch seconds.
 export function meetRoomUrl(room: string, claims: Omit<MeetClaims, 'room'>, expiresAtSec: number): string {
-  const t = signMeetLink({ room, ...claims }, expiresAtSec)
-  return `${MEET_BASE_URL}/r/${encodeURIComponent(room)}?t=${t}`
+  return `${MEET_BASE_URL}/r/${encodeURIComponent(room)}?t=${signCompact(room, claims, expiresAtSec)}`
 }
 
 // Link expiry from a session date "YYYY-MM-DD": end of that day + 2-day buffer
