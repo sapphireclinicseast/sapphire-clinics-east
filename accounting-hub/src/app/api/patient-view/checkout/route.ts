@@ -35,6 +35,12 @@ function shapePayload(body: Record<string, unknown>) {
   const payments = Array.isArray(body.payments) ? body.payments : []
   return {
     patientName: String(body.patientName ?? '').trim(),
+    // The CRM id when the sale came from the appointment queue. Used to match
+    // the survey invitation exactly; names collide and vary in punctuation.
+    patientId: String(body.patientId ?? '').trim() || null,
+    // ACTIVE while the cashier is ringing up; COMPLETED once the sale is saved,
+    // which is what turns the tablet into the thank-you and survey prompt.
+    status: body.status === 'COMPLETED' ? 'COMPLETED' : 'ACTIVE',
     clinicianName: String(body.clinicianName ?? '').trim(),
     items: items.slice(0, 40).map((raw) => {
       const i = raw as Record<string, unknown>
