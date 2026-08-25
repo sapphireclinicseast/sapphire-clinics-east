@@ -88,13 +88,19 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
         {screen === 'home' && (
           <div className="w-full max-w-5xl">
             <div className="text-center mb-8">
-              {/* The mark, at a size a patient actually registers — this screen
-                  is the longest look most of them get at it. */}
-              <img
-                src="/aura-logo.png"
-                alt="Aura Health Rehab"
-                className="mx-auto mb-5 h-20 sm:h-24 w-auto"
-              />
+              {/* The arch mark alone — the wordmark would only repeat the
+                  heading directly beneath it. Drawn inline rather than loaded
+                  as an image so it stays sharp at this size on any tablet, and
+                  so the screen has one less asset that can fail to arrive. */}
+              <svg viewBox="0 0 220 116" role="img" aria-label="Aura Health Rehab"
+                className="mx-auto mb-6 h-24 sm:h-28 w-auto">
+                <path d="M10,110 A100,100 0 0 1 210,110 L188,110 A78,78 0 0 0 32,110 Z" fill="#296354" />
+                <path d="M32,110 A78,78 0 0 1 188,110 L182,110 A72,72 0 0 0 38,110 Z" fill="#ffffff" />
+                <path d="M38,110 A72,72 0 0 1 182,110 L160,110 A50,50 0 0 0 60,110 Z" fill="#8EAF74" />
+                <path d="M60,110 A50,50 0 0 1 160,110 L154,110 A44,44 0 0 0 66,110 Z" fill="#ffffff" />
+                <path d="M66,110 A44,44 0 0 1 154,110 L132,110 A22,22 0 0 0 88,110 Z" fill="#6E8E8E" />
+                <path d="M88,110 A22,22 0 0 1 132,110 Z" fill="#ffffff" />
+              </svg>
               <h1 className="text-4xl sm:text-5xl font-bold tracking-tight" style={{ color: '#1c3f38', fontFamily: 'var(--font-display)' }}>
                 Welcome to Aura Health Rehab
               </h1>
