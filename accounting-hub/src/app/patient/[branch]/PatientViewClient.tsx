@@ -82,8 +82,12 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
       <div className="flex-1 flex items-center justify-center px-6 pb-10">
         {/* A live checkout outranks everything: while the cashier is ringing up
             a sale, that is the only thing this screen should be showing. */}
-        {checkout ? (
-          <CheckoutScreen slug={slug} data={checkout} />
+        {checkout && screen !== 'embed' ? (
+          <CheckoutScreen
+            slug={slug}
+            data={checkout}
+            onOpenSurvey={(inv) => openEmbed(inv.surveyUrl, 'Share your experience')}
+          />
         ) : (<>
         {screen === 'home' && (
           <div className="w-full max-w-5xl">

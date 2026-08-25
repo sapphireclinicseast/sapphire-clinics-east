@@ -20,8 +20,11 @@ const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
 export const dynamic = 'force-dynamic'
 
-/** How long a published checkout stays on screen without being refreshed. */
+/** How long a live checkout stays up without being refreshed. */
 const CHECKOUT_TTL_MS = 5 * 60_000
+/** A settled sale clears sooner — the next patient should not read the last
+ *  one's bill, and by then it is only a thank-you. */
+const COMPLETED_TTL_MS = 90_000
 
 interface DailyTarget {
   assignmentId?: string
@@ -41,7 +44,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ branch:
     return NextResponse.json({ error: 'Unknown branch' }, { status: 404 })
   }
 
-  let invitations: { id: string; name: string; clinician: string; time: string; surveyUrl: string }[] = []
+  let invitations: { id: string; patientId: string; name: string; clinician: string; time: string; surveyUrl: string }[] = []
   let surveyError: string | null = null
 
   try {
@@ -65,6 +68,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ branch:
         .filter(t => t.surveyUrl && String(t.status || 'PENDING').toUpperCase() !== 'COMPLETED')
         .map(t => ({
           id: String(t.assignmentId || t.patientId || t.patientName || ''),
+          patientId: String(t.patientId || ''),
           name: String(t.patientName || '').trim(),
           clinician: String(t.staffName || '').trim(),
           time: String(t.startTime || '').trim(),
@@ -89,8 +93,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ branch:
       where: { branch: branch.branch },
       select: { active: true, payload: true, updatedAt: true },
     })
-    const fresh = row && Date.now() - new Date(row.updatedAt).getTime() < CHECKOUT_TTL_MS
-    if (row?.active && fresh) checkout = row.payload
+    const p0 = row?.payload as Record<string, unknown> | null
+    const ttl = p0?.status === 'COMPLETED' ? COMPLETED_TTL_MS : CHECKOUT_TTL_MS
+    const fresh = row && Date.now() - new Date(row.updatedAt).getTime() < ttl
+    if (row?.active && fresh) {
+      const p = p0
+      // Match this patient against today's invitations, so a completed sale can
+      // ask them directly instead of making them find their own name in a list.
+      // The CRM id is authoritative; the name is a fallback for walk-ins typed
+      // in by hand, normalised because O'CONNOR and OCONNOR are one person.
+      const norm = (v: unknown) => String(v ?? '').toUpperCase().replace(/[^A-Z]/g, '')
+      const pid = String(p?.patientId ?? '')
+      const pname = norm(p?.patientName)
+      const invite =
+        (pid && invitations.find(i => i.patientId && i.patientId === pid)) ||
+        (pname && invitations.find(i => norm(i.name) === pname)) ||
+        null
+      checkout = { ...(p || {}), surveyInvite: invite ? { name: invite.name, surveyUrl: invite.surveyUrl } : null }
+    }
   } catch {
     // Table not yet applied, or the DB is briefly unavailable — the tablet
     // falls back to the welcome screen rather than erroring.

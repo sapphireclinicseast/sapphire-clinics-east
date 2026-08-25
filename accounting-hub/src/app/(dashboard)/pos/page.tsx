@@ -1186,7 +1186,7 @@ function OrderFormModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           branch: patientTabletBranch,
-          patientName, clinicianName,
+          patientName, patientId, clinicianName,
           items: items.map(it => ({ name: it.name, quantity: it.quantity, unitPrice: it.unitPrice, lineTotal: it.lineTotal })),
           discountLabel, subtotal, discountAmount, netAmount: netAmountDisplay,
           payments: payments
@@ -1196,12 +1196,16 @@ function OrderFormModal({
       }).catch(() => {})
     }, 400)
     return () => clearTimeout(t)
-  }, [patientTabletBranch, patientName, clinicianName, items, discountLabel, subtotal, discountAmount, netAmountDisplay, payments])
+  }, [patientTabletBranch, patientName, patientId, clinicianName, items, discountLabel, subtotal, discountAmount, netAmountDisplay, payments])
 
-  // Take the bill off the tablet when this form goes away, however it goes.
+  // Take the bill off the tablet when this form goes away — unless the sale
+  // completed, in which case the thank-you screen owns the tablet and clears
+  // itself on its own timer.
+  const skipClearRef = useRef(false)
   useEffect(() => {
     if (!patientTabletBranch) return
     return () => {
+      if (skipClearRef.current) return
       fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}`, { method: 'DELETE' }).catch(() => {})
     }
   }, [patientTabletBranch])
@@ -1635,6 +1639,28 @@ function OrderFormModal({
             console.error('Package session deduction error:', e)
           }
         }
+      }
+
+      // Turn the tablet into the thank-you — and the survey prompt, if this
+      // patient is one of today's. Published rather than cleared, because the
+      // unmount handler below would otherwise wipe the screen the instant the
+      // form closes and the patient would never see it.
+      if (patientTabletBranch) {
+        fetch('/api/patient-view/checkout', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            branch: patientTabletBranch, status: 'COMPLETED',
+            patientName, patientId, clinicianName,
+            items: items.map(it => ({ name: it.name, quantity: it.quantity, unitPrice: it.unitPrice, lineTotal: it.lineTotal })),
+            discountLabel, subtotal, discountAmount, netAmount: netAmountDisplay,
+            payments: payments
+              .map(p => ({ method: p.method, amount: p.method === 'PACKAGE' ? netAmountDisplay : toNum(p.amount) }))
+              .filter(p => p.amount > 0),
+          }),
+        }).catch(() => {})
+        // The unmount clear would undo what was just published, so skip it once.
+        skipClearRef.current = true
       }
 
       onSuccess()

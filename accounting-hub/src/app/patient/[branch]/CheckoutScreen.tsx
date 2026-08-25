@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Camera, CheckCircle2, Loader2, X } from 'lucide-react'
+import { Camera, CheckCircle2, Loader2, X, MessageSquareHeart } from 'lucide-react'
 
 /**
  * What the patient sees while the cashier is ringing up their sale.
@@ -13,8 +13,15 @@ import { Camera, CheckCircle2, Loader2, X } from 'lucide-react'
 
 export interface CheckoutLine { name: string; quantity: number; unitPrice: number; lineTotal: number }
 export interface CheckoutPayment { method: string; label: string; amount: number }
+export interface SurveyInvite { name: string; surveyUrl: string }
+
 export interface CheckoutPayload {
   patientName: string
+  patientId?: string | null
+  /** ACTIVE while the cashier is ringing up; COMPLETED once the sale is saved. */
+  status?: 'ACTIVE' | 'COMPLETED'
+  /** Present only when this patient is one of today's randomly chosen. */
+  surveyInvite?: SurveyInvite | null
   clinicianName: string
   items: CheckoutLine[]
   discountLabel: string
@@ -38,8 +45,15 @@ const METHOD_LABELS: Record<string, string> = {
 const methodLabel = (p: CheckoutPayment) =>
   p.label || METHOD_LABELS[p.method] || p.method.replace(/_/g, ' ').toLowerCase()
 
-export default function CheckoutScreen({ slug, data }: { slug: string; data: CheckoutPayload }) {
+export default function CheckoutScreen({
+  slug, data, onOpenSurvey,
+}: {
+  slug: string
+  data: CheckoutPayload
+  onOpenSurvey: (inv: SurveyInvite) => void
+}) {
   const [scanning, setScanning] = useState(false)
+  const done = data.status === 'COMPLETED'
   const paid = data.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
   const due = Math.max(0, (Number(data.netAmount) || 0) - paid)
 
@@ -48,7 +62,7 @@ export default function CheckoutScreen({ slug, data }: { slug: string; data: Che
       <div className="rounded-3xl bg-white overflow-hidden" style={{ boxShadow: '0 14px 40px rgba(16,52,45,0.09)' }}>
         <div className="px-8 py-6" style={{ background: 'linear-gradient(135deg,#134e46,#0f766e)' }}>
           <p className="text-[11px] uppercase tracking-[0.18em]" style={{ color: 'rgba(255,255,255,0.72)' }}>
-            Your visit today
+            {done ? 'Payment complete — thank you' : 'Your visit today'}
           </p>
           <h1 className="text-3xl font-bold text-white mt-1">{data.patientName || 'Welcome'}</h1>
           {data.clinicianName && (
@@ -115,15 +129,49 @@ export default function CheckoutScreen({ slug, data }: { slug: string; data: Che
             </div>
           )}
 
-          <button
-            onClick={() => setScanning(true)}
-            className="mt-6 w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-semibold text-white"
-            style={{ background: '#6d5192' }}>
-            <Camera size={18} /> Pay with my VIP or Prepaid Card
-          </button>
-          <p className="mt-2 text-center text-[11px]" style={{ color: '#9db4ad' }}>
-            Hold the barcode on the back of your card up to the camera.
-          </p>
+          {/* Once the sale is settled there is nothing left to pay with, so the
+              card scanner gives way to the survey invitation — asked directly,
+              rather than leaving the patient to find their own name in a list. */}
+          {done ? (
+            data.surveyInvite ? (
+              <div className="mt-6 rounded-2xl p-6 text-center" style={{ background: '#e6f2ef' }}>
+                <span className="inline-flex items-center justify-center rounded-2xl"
+                  style={{ width: 54, height: 54, background: '#ffffff', color: '#0f766e' }}>
+                  <MessageSquareHeart size={26} />
+                </span>
+                <p className="mt-3 text-lg font-bold" style={{ color: '#1c3f38' }}>
+                  You were chosen for today&apos;s feedback
+                </p>
+                <p className="mt-1 text-sm" style={{ color: '#4a6d64' }}>
+                  We pick a few patients at random each day. Would you tell us how your visit went?
+                  It takes about a minute.
+                </p>
+                <button
+                  onClick={() => onOpenSurvey(data.surveyInvite!)}
+                  className="mt-4 w-full py-4 rounded-2xl text-sm font-semibold text-white"
+                  style={{ background: '#0f766e' }}>
+                  Yes, I&apos;ll answer
+                </button>
+                <p className="mt-2 text-[11px]" style={{ color: '#7d968e' }}>
+                  Not now? Just leave the tablet — it clears on its own.
+                </p>
+              </div>
+            ) : (
+              <p className="mt-6 text-center text-sm" style={{ color: '#5b7a72' }}>
+                Thank you, and see you next time.
+              </p>
+            )
+          ) : (<>
+            <button
+              onClick={() => setScanning(true)}
+              className="mt-6 w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-semibold text-white"
+              style={{ background: '#6d5192' }}>
+              <Camera size={18} /> Pay with my VIP or Prepaid Card
+            </button>
+            <p className="mt-2 text-center text-[11px]" style={{ color: '#9db4ad' }}>
+              Hold the barcode on the back of your card up to the camera.
+            </p>
+          </>)}
         </div>
       </div>
 
