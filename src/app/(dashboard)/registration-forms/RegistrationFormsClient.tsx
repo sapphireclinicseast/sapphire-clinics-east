@@ -30,14 +30,26 @@ const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string
 const HR_FORM_BASE = 'https://hr.sapphireclinicseast.org/forms/fill/'
 
 // Partner institutions get priority — the front desk should schedule them first.
-const PARTNER_INSTITUTIONS = new Set([
+//
+// This list is now editable in Settings, so it is fetched rather than hardcoded:
+// a hardcoded copy would stop matching the form the moment someone added a
+// partner, and the badge would silently go missing for exactly the registrations
+// it exists to highlight. The constant below is only a fallback for when the
+// form service can't be reached, so an outage degrades the badge rather than
+// removing it.
+const PARTNER_INSTITUTIONS_FALLBACK = [
   'Asian Institute of Management', 'BOMBA Pilipinas', 'Light Bearer Christian Academy',
   'NU East Ortigas', "The Abba's Orchard", 'Xavier School San Juan',
-])
-function isPartnerResponse(item: any): boolean {
+]
+
+// Compared case-insensitively: the form stores what an admin typed, and a
+// stray capital shouldn't drop the flag.
+function isPartnerResponse(item: any, partners: Set<string>): boolean {
+  if (partners.size === 0) return false
+  const hit = (l: unknown) => typeof l === 'string' && partners.has(l.trim().toLowerCase())
   return (item?.answers || []).some((a: any) => {
-    if (a?.choice?.label && PARTNER_INSTITUTIONS.has(a.choice.label)) return true
-    if (Array.isArray(a?.choices?.labels)) return a.choices.labels.some((l: string) => PARTNER_INSTITUTIONS.has(l))
+    if (hit(a?.choice?.label)) return true
+    if (Array.isArray(a?.choices?.labels)) return a.choices.labels.some(hit)
     return false
   })
 }
@@ -55,6 +67,11 @@ interface Props { role: string }
 
 export default function RegistrationFormsClient({ role }: Props) {
   const [selectedForm, setSelectedForm] = useState<FormType | null>(null)
+  // Live partner names for the selected form, lowercased for matching. Unions
+  // both branch forms because the responses table can list both at once.
+  const [partnerNames, setPartnerNames] = useState<Set<string>>(
+    () => new Set(PARTNER_INSTITUTIONS_FALLBACK.map(n => n.toLowerCase())),
+  )
   const [tab, setTab]                   = useState<'qr' | 'results' | 'settings'>('qr')
   const [qrBranch, setQrBranch]         = useState<'SBEA' | 'SBGH'>('SBEA')
   const [copied, setCopied]             = useState(false)
@@ -134,6 +151,25 @@ export default function RegistrationFormsClient({ role }: Props) {
   useEffect(() => {
     if (selectedForm) setQrBranch(isSBGH ? 'SBGH' : 'SBEA')
   }, [selectedForm, isSBGH])
+
+  useEffect(() => {
+    if (!selectedForm) return
+    let cancelled = false
+    const ids = [selectedForm.sbea, selectedForm.sbgh].filter(Boolean) as string[]
+    Promise.all(ids.map(id =>
+      fetch(`/api/registration-forms/${id}/partner-options`)
+        .then(r => r.json())
+        .then(d => (d?.ok && Array.isArray(d.names) ? d.names : []))
+        .catch(() => []),
+    )).then(lists => {
+      if (cancelled) return
+      const all = lists.flat().map((n: string) => n.trim().toLowerCase()).filter(Boolean)
+      // Keep the fallback if the service answered with nothing — an empty set
+      // would quietly un-flag every partner registration.
+      if (all.length > 0) setPartnerNames(new Set(all))
+    })
+    return () => { cancelled = true }
+  }, [selectedForm])
 
   // Public link prefers a clean slug when the form defines one, falling back to
   // the raw id. Response-fetching still uses the ids (form.sbea / form.sbgh).
@@ -353,6 +389,14 @@ export default function RegistrationFormsClient({ role }: Props) {
               />
             )}
 
+            {tab === 'settings' && (
+              <PartnerInstitutionsSettings
+                formId={qrBranch === 'SBGH' && selectedForm.sbgh ? selectedForm.sbgh : selectedForm.sbea}
+                branchLabel={qrBranch === 'SBGH' && selectedForm.sbgh ? 'Greenhills Branch' : 'East Branch'}
+                canEdit={isAdmin}
+              />
+            )}
+
             {tab === 'qr' && (
               <div className="flex flex-col items-center py-4">
                 {/* Branch toggle — hidden for single-branch front desk */}
@@ -484,7 +528,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                             : false
                           const respName = getResponsePatientName(item, results.fields).toLowerCase().trim()
                           const converted = respName !== '' && patientNames.has(respName)
-                          const partner = isPartnerResponse(item)
+                          const partner = isPartnerResponse(item, partnerNames)
                           return (
                           <tr
                             key={item.landing_id || i}
@@ -697,6 +741,142 @@ function extractAnswer(answer: any): string {
 // Platform). Toggling here never edits the form definition itself — the HR
 // Platform keeps an overlay, so a disabled department is hidden rather than
 // deleted and can be switched back on at any time.
+// Partner institutions for this form's "Are you from one of our partner
+// institutions?" question. Unlike services — which toggle choices the form
+// definition already ships — partners are added, renamed and removed, so this
+// is a full-list editor.
+//
+// Each branch's form holds its own list, so the branch toggle above changes
+// which one is edited. "None (not from a partner institution)" is managed by
+// the HR Platform and never appears here; it cannot be removed by accident.
+function PartnerInstitutionsSettings({ formId, branchLabel, canEdit }: {
+  formId: string
+  branchLabel: string
+  canEdit: boolean
+}) {
+  const [names, setNames] = useState<string[]>([])
+  const [saved, setSaved] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [unavailable, setUnavailable] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true); setMsg(null); setUnavailable(null)
+    fetch(`/api/registration-forms/${formId}/partner-options`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        if (d?.ok) { setNames(d.names || []); setSaved(d.names || []) }
+        // A form without the question isn't an error worth shouting about —
+        // most forms don't have one. Hide the section instead.
+        else setUnavailable(d?.error || 'Not available for this form.')
+      })
+      .catch(() => { if (!cancelled) setUnavailable('Could not reach the form service.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [formId])
+
+  const dirty = names.length !== saved.length || names.some((n, i) => n !== saved[i])
+
+  async function save() {
+    if (!canEdit || saving) return
+    const cleaned = names.map(n => n.trim()).filter(Boolean)
+    // Case-insensitive duplicates would render as the same choice twice.
+    const dupe = cleaned.find((n, i) => cleaned.findIndex(m => m.toLowerCase() === n.toLowerCase()) !== i)
+    if (dupe) { setMsg({ kind: 'err', text: `"${dupe}" is listed twice.` }); return }
+
+    setSaving(true); setMsg(null)
+    try {
+      const r = await fetch(`/api/registration-forms/${formId}/partner-options`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names: cleaned }),
+      })
+      const d = await r.json()
+      if (!r.ok || !d?.ok) throw new Error(d?.error || 'Save failed')
+      setNames(d.names || cleaned); setSaved(d.names || cleaned)
+      setMsg({ kind: 'ok', text: 'Saved — the public form updates immediately.' })
+    } catch (e) {
+      setMsg({ kind: 'err', text: (e as Error).message })
+    } finally { setSaving(false) }
+  }
+
+  if (unavailable) return null
+  if (loading) return <div className="py-4 text-sm text-center" style={{ color: 'var(--mid-gray)' }}>Loading partner institutions…</div>
+
+  const inputStyle = {
+    border: '1px solid var(--border, #e5e7eb)', borderRadius: '0.5rem',
+    padding: '0.45rem 0.7rem', fontSize: '0.85rem', width: '100%', background: '#fff',
+  }
+
+  return (
+    <div className="py-4 max-w-xl mx-auto border-t" style={{ borderColor: 'var(--border, #e5e7eb)' }}>
+      <h3 className="text-sm font-bold mb-1">Partner institutions — {branchLabel}</h3>
+      <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+        The choices under “Are you from one of our partner institutions?”. Registrations from
+        these institutions are flagged <strong>For prioritization</strong> in the Responses tab.
+        “None” is always offered and isn’t listed here.
+      </p>
+
+      <div className="space-y-2">
+        {names.map((n, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              style={inputStyle}
+              value={n}
+              disabled={!canEdit || saving}
+              placeholder="Institution name"
+              onChange={e => setNames(names.map((v, j) => (j === i ? e.target.value : v)))}
+            />
+            {canEdit && (
+              <button type="button" onClick={() => setNames(names.filter((_, j) => j !== i))}
+                disabled={saving}
+                className="p-1.5 rounded" title="Remove"
+                style={{ color: '#dc2626', background: '#fef2f2' }}>
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        ))}
+        {names.length === 0 && (
+          <p className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>
+            No partner institutions — the question will show “None” only.
+          </p>
+        )}
+      </div>
+
+      {canEdit && (
+        <div className="flex items-center gap-2 mt-4">
+          <button type="button" onClick={() => setNames([...names, ''])} disabled={saving}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+            style={{ background: 'var(--pale-teal, #e6f4f5)', color: 'var(--teal, #1a7b8a)' }}>
+            + Add institution
+          </button>
+          <button type="button" onClick={save} disabled={saving || !dirty}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg text-white"
+            style={{ background: dirty ? 'var(--teal, #1a7b8a)' : '#9ca3af' }}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+          {dirty && !saving && (
+            <button type="button" onClick={() => { setNames(saved); setMsg(null) }}
+              className="text-xs px-2 py-1.5 rounded-lg" style={{ color: 'var(--mid-gray)' }}>
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+
+      {msg && (
+        <p className="text-xs mt-3" style={{ color: msg.kind === 'ok' ? '#15803d' : '#dc2626' }}>
+          {msg.text}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ServiceOptionsSettings({
   formId, branchLabel, canEdit, showBranchToggle, qrBranch, onBranchChange,
 }: {
