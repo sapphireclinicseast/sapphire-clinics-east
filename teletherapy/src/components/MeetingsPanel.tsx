@@ -44,6 +44,7 @@ export default function MeetingsPanel({
   const [picked, setPicked] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<'upcoming' | 'past'>('upcoming')
 
   const load = useCallback(async () => {
     try {
@@ -103,6 +104,16 @@ export default function MeetingsPanel({
     const d = new Date(iso)
     return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
   }
+
+  // Split into upcoming vs past (history) by the meeting day. Upcoming shows
+  // soonest first; past (history) shows most-recent first.
+  const n = new Date()
+  const todayMid = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime()
+  const list = meetings ?? []
+  const isPast = (m: Meeting) => { const t = new Date(m.date).getTime(); return !Number.isNaN(t) && t < todayMid }
+  const upcoming = list.filter((m) => !isPast(m)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  const past = list.filter(isPast).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  const shown = view === 'upcoming' ? upcoming : past
 
   return (
     <div className="space-y-4">
@@ -171,14 +182,23 @@ export default function MeetingsPanel({
 
       {meetings === null ? (
         <p className="text-[13px] text-[var(--mid-gray)] flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
-      ) : meetings.length === 0 ? (
-        <div className="card-static text-center py-10">
-          <Video size={26} className="text-[var(--light-gray)] mx-auto mb-2" />
-          <p className="text-[13px] text-[var(--mid-gray)]">No meetings yet. Click <strong>Add meeting</strong> to schedule one.</p>
-        </div>
       ) : (
-        <div className="space-y-2">
-          {meetings.map((m) => (
+        <>
+          <div className="flex gap-1 p-1 rounded-lg bg-[var(--off-white)] border border-[var(--light-gray)] w-fit mb-1">
+            {(['upcoming', 'past'] as const).map((v) => (
+              <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors ${view === v ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]'}`}>
+                {v === 'upcoming' ? `Upcoming (${upcoming.length})` : `Past (${past.length})`}
+              </button>
+            ))}
+          </div>
+          {shown.length === 0 ? (
+            <div className="card-static text-center py-10">
+              <Video size={26} className="text-[var(--light-gray)] mx-auto mb-2" />
+              <p className="text-[13px] text-[var(--mid-gray)]">{view === 'upcoming' ? 'No upcoming meetings. Click Add meeting to schedule one.' : 'No past meetings yet.'}</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {shown.map((m) => (
             <div key={m.id} className="card-static !p-4 flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-semibold text-[var(--charcoal)]">{m.title || 'Supervision meeting'}</div>
@@ -195,8 +215,10 @@ export default function MeetingsPanel({
                 <button onClick={() => cancel(m.id)} title="Cancel meeting" className="text-[var(--mid-gray)] hover:text-red-600 p-1"><Trash2 size={16} /></button>
               )}
             </div>
-          ))}
-        </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
