@@ -53,6 +53,14 @@ model Staff {
   // column/migration owner). Grants the "All Interns" view: every intern's
   // notes, not just this person's own decked interns.
   isInternshipSupervisor Boolean @default(false)
+  // Clinical Mentor (HR Staff Profile checkbox + mentee picker, synced
+  // one-way — column/migration owned by Operations Hub, same as above).
+  // Narrower than the supervisor flag: grants visibility into only the
+  // specific mentees' notes below, not everyone's. menteeIds are already
+  // THIS table's local Staff.id values by the time they land here — Ops
+  // Hub's sync route translates from HR's own ids before writing.
+  isClinicalMentor Boolean @default(false)
+  menteeIds        String[] @default([])
   // Fallback profile photo (URL or data URI) used when there is no HR photo —
   // e.g. sample/demo interns that aren't real HR records.
   photoPath       String?

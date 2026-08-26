@@ -55,6 +55,8 @@ interface HRStaff {
   bankName: string | null
   bankAccountNo: string | null
   isInternshipSupervisor?: boolean
+  isClinicalMentor?: boolean
+  menteeIds?: string[] // HR's OWN staff ids — translated to local Staff.id below
 }
 
 export async function POST() {
@@ -126,6 +128,10 @@ export async function POST() {
   const errors: string[] = []
   const matchedIds = new Set<string>()
   const nameChanges: string[] = []
+  // HR's own staff id -> this table's local Staff.id. Built during the main
+  // loop below, consumed after the delete pass (so it reflects final
+  // post-sync state) to translate menteeIds — see the pass after `toDelete`.
+  const hrIdToLocalId = new Map<string, string>()
 
   for (const hr of hrStaff) {
     if (!hr.department || !VALID_DEPTS.has(hr.department)) continue
@@ -201,16 +207,19 @@ export async function POST() {
       bankAccountNo:    hr.bankAccountNo,
       hrPlatformId:     hr.hrId,
       isInternshipSupervisor: !!hr.isInternshipSupervisor,
+      isClinicalMentor: !!hr.isClinicalMentor,
     }
 
     try {
       if (match) {
         await prisma.staff.update({ where: { id: match.id }, data: payload })
         matchedIds.add(match.id)
+        hrIdToLocalId.set(hr.hrId, match.id)
         updated++
       } else {
         const newStaff = await prisma.staff.create({ data: payload })
         matchedIds.add(newStaff.id)
+        hrIdToLocalId.set(hr.hrId, newStaff.id)
         created++
       }
     } catch (err) {
@@ -231,6 +240,30 @@ export async function POST() {
     }
   }
 
-  console.log('[staff-sync] Done:', { created, updated, deleted, nameChanges, errors: errors.length })
-  return NextResponse.json({ synced: created + updated, created, updated, deleted, nameChanges, errors, total: hrStaff.length })
+  // ── menteeIds translation ────────────────────────────────────────
+  // Must run after the delete pass above: hrIdToLocalId needs to reflect
+  // the FINAL post-sync state (a just-created mentee's local id, and no
+  // stale id for anyone just deleted). HR sends its own staff ids; the
+  // notes-visibility queries in Teletherapy key off local Staff.id, so
+  // every id gets translated (or dropped if unresolvable — e.g. a mentee
+  // who left and was never synced this run) before being written here.
+  let menteesSynced = 0
+  for (const hr of hrStaff) {
+    if (!hr.menteeIds || !hr.menteeIds.length) continue
+    const localMentorId = hrIdToLocalId.get(hr.hrId)
+    if (!localMentorId) continue // mentor's own row wasn't synced this run
+    const localMenteeIds = hr.menteeIds
+      .map(id => hrIdToLocalId.get(id))
+      .filter((id): id is string => !!id)
+    try {
+      await prisma.staff.update({ where: { id: localMentorId }, data: { menteeIds: localMenteeIds } })
+      menteesSynced++
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push(hr.firstName + ' ' + hr.lastName + ' (mentees): ' + msg)
+    }
+  }
+
+  console.log('[staff-sync] Done:', { created, updated, deleted, menteesSynced, nameChanges, errors: errors.length })
+  return NextResponse.json({ synced: created + updated, created, updated, deleted, menteesSynced, nameChanges, errors, total: hrStaff.length })
 }

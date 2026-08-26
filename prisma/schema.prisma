@@ -514,6 +514,14 @@ model Staff {
                                    // checkbox, synced one-way). Staff Portal reads this off the shared
                                    // DB to grant an "All Interns" view — every intern's notes, not just
                                    // this person's own decked interns.
+  isClinicalMentor Boolean        @default(false) // Clinical Mentor (HR Staff Profile checkbox,
+                                   // synced one-way, same pattern as isInternshipSupervisor above).
+                                   // Narrower than the supervisor flag: grants visibility into only
+                                   // the specific mentees below, not everyone.
+  menteeIds        String[]       @default([]) // HR sends its OWN staff ids here; Ops Hub's sync
+                                   // route translates them to THIS table's local Staff.id values
+                                   // (same physical row Teletherapy reads) before writing — see
+                                   // src/app/api/staff/sync/route.ts.
   createdById     String?
   createdBy       User?           @relation(fields: [createdById], references: [id])
   createdAt       DateTime        @default(now())
