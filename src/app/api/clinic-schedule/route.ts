@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
       } : {}),
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, branch: true, branches: true } },
       staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
       internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
       branch: sessionBranch,
     },
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, branch: true, branches: true } },
       staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
       internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
       where: { id: schedule.id },
       data: { meetLink },
       include: {
-        patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, branch: true, branches: true } },
         staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
       },
     })
@@ -235,7 +235,7 @@ export async function PUT(req: NextRequest) {
     where: { id },
     data,
     include: {
-      patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      patient: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, branch: true, branches: true } },
       internStaff: { select: { id: true, firstName: true, lastName: true } },
     },
   })

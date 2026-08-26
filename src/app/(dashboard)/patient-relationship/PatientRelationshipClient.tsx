@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, Fragment } from 'react'
+import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
 import {
   HeartHandshake, Phone, Mail, Clock, AlertTriangle, CheckCircle, MessageSquare, Check,
   Calendar, Filter, Users, XCircle, ChevronDown, ChevronRight,
@@ -67,6 +67,83 @@ const WAITLIST_FORMS = [
   { key: 'sip', label: 'SIP Registration' },
   { key: 'psych', label: 'Psych Registration' },
 ]
+
+// ── Sorting ──────────────────────────────────────────────────────────────────
+// All four tabs render the same table shell over different row shapes, so the
+// sort lives here once and each tab supplies accessors for its own columns.
+//
+// A column with no accessor (row-expand chevrons, contact buttons) is rendered
+// as a plain, unclickable header — sorting by a button is meaningless.
+
+type SortDir = 'asc' | 'desc'
+type SortCol = { key: string; label: string; get?: (row: any) => string | number | null | undefined }
+
+function useSort(cols: SortCol[], rows: any[]) {
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  function toggle(key: string) {
+    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  const sorted = useMemo(() => {
+    const col = cols.find(c => c.key === sortKey)
+    if (!col?.get) return rows
+    // Copy before sorting: rows is the caller's filtered array, and sorting it
+    // in place mutates component state.
+    return [...rows].sort((a, b) => {
+      const av = col.get!(a), bv = col.get!(b)
+      // Blanks sort last in BOTH directions — a patient with no first session
+      // is missing data, not the earliest one, and flipping the arrow should
+      // not parade empty rows to the top.
+      const aEmpty = av === null || av === undefined || av === ''
+      const bEmpty = bv === null || bv === undefined || bv === ''
+      if (aEmpty && bEmpty) return 0
+      if (aEmpty) return 1
+      if (bEmpty) return -1
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [cols, rows, sortKey, sortDir])
+
+  return { sorted, sortKey, sortDir, toggle }
+}
+
+function SortHeaders({ cols, sortKey, sortDir, onToggle }: {
+  cols: SortCol[]; sortKey: string | null; sortDir: SortDir; onToggle: (key: string) => void
+}) {
+  return (
+    <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+      {cols.map(c => {
+        const active = sortKey === c.key
+        const sortable = !!c.get
+        return (
+          <th key={c.key} className="px-4 py-3 font-semibold"
+            onClick={sortable ? () => onToggle(c.key) : undefined}
+            title={sortable ? `Sort by ${c.label}` : undefined}
+            style={{
+              color: active ? 'var(--teal)' : 'var(--mid-gray)',
+              fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em',
+              cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap',
+            }}>
+            {c.label}
+            {sortable && (
+              // Reserve the arrow's width always, so turning sorting on does not
+              // nudge the column headers sideways.
+              <span style={{ display: 'inline-block', width: '0.9em', marginLeft: 2,
+                             opacity: active ? 1 : 0.25 }}>
+                {active ? (sortDir === 'asc' ? '\u2191' : '\u2193') : '\u2195'}
+              </span>
+            )}
+          </th>
+        )
+      })}
+    </tr>
+  )
+}
 
 function WaitlistTab({ branch }: { branch: string }) {
   const [formKey, setFormKey] = useState('registration')
@@ -153,7 +230,15 @@ function WaitlistTab({ branch }: { branch: string }) {
     ? responses.filter(r => getName(r).toLowerCase().includes(search.toLowerCase()))
     : responses
 
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+  const COLS: SortCol[] = [
+    { key: 'expand', label: '' },                                   // chevron
+    { key: 'name',   label: 'Name', get: r => getName(r) },
+    { key: 'form',   label: 'Form', get: r => r._formTitle ?? '' },
+    // Raw ISO timestamp, not the formatted cell — "Mar" vs "Apr" would sort alphabetically.
+    { key: 'date',   label: 'Date', get: r => r.submitted_at ?? '' },
+  ]
+  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, filtered)
+  const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
   async function convertToPatient(item: any) {
     setConverting(item.landing_id)
@@ -255,11 +340,7 @@ function WaitlistTab({ branch }: { branch: string }) {
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
         <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
           <thead>
-            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-              {['', 'Name', 'Form', 'Date'].map(h => (
-                <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-              ))}
-            </tr>
+            <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
           </thead>
           <tbody>
             {paginated.length === 0 ? (
@@ -387,7 +468,22 @@ function FollowUpTab({ branch }: { branch: string }) {
   const filtered = search
     ? patients.filter((p: any) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase()))
     : patients
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+
+  const COLS: SortCol[] = [
+    { key: 'patient',   label: 'Patient',       get: p => `${p.lastName} ${p.firstName}` },
+    { key: 'clinician', label: 'Clinician',     get: p => p.clinicianName ?? '' },
+    // Sort the raw date, not the "Mar 3, 2026" the cell prints — the formatted
+    // string would sort alphabetically by month name.
+    { key: 'first',     label: 'First Session', get: p => p.firstSessionDate ?? '' },
+    { key: 'reference', label: 'Reference',     get: p => p.referenceSource ?? '' },
+    // Numeric so 9 sorts before 10 rather than after it.
+    { key: 'days',      label: 'Days',          get: p => (p.daysSince ?? null) === null ? null : Number(p.daysSince) },
+    // Sort by the label shown in the pill, so the order matches what is on screen.
+    { key: 'status',    label: 'Status',        get: p => (statusConfig[p.status] || statusConfig.ok).label },
+    { key: 'contact',   label: 'Contact' },                          // buttons
+  ]
+  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, filtered)
+  const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
   return (
     <div className="space-y-4">
@@ -433,11 +529,7 @@ function FollowUpTab({ branch }: { branch: string }) {
           <div style={{ overflowX: 'auto' }}>
             <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
               <thead>
-                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                  {['Patient', 'Clinician', 'First Session', 'Reference', 'Days', 'Status', 'Contact'].map(h => (
-                    <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-                  ))}
-                </tr>
+                <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
               </thead>
               <tbody>
                 {paginated.length === 0 ? (
@@ -507,7 +599,16 @@ function NoShowTab({ branch }: { branch: string }) {
   const filtered = search
     ? patients.filter((p: any) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase()))
     : patients
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+
+  const COLS: SortCol[] = [
+    { key: 'expand',  label: '' },                                  // chevron
+    { key: 'patient', label: 'Patient',   get: p => `${p.lastName} ${p.firstName}` },
+    { key: 'branch',  label: 'Branch',    get: p => branchLabel(p.branch) ?? '' },
+    // The whole reason to sort this tab: who is closest to the no-show limit.
+    { key: 'count',   label: 'No-Shows',  get: p => Number(p.noShowCount ?? 0) },
+  ]
+  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, filtered)
+  const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
   async function saveLog() {
     if (!logForm) return
@@ -545,11 +646,7 @@ function NoShowTab({ branch }: { branch: string }) {
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
         <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
           <thead>
-            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-              {['', 'Patient', 'Branch', 'No-Shows'].map(h => (
-                <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-              ))}
-            </tr>
+            <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
           </thead>
           <tbody>
             {paginated.length === 0 ? (
@@ -714,7 +811,17 @@ function CancellationTab({ branch }: { branch: string }) {
   const filtered = search
     ? patients.filter((p: any) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase()))
     : patients
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+
+  const COLS: SortCol[] = [
+    { key: 'expand',  label: '' },                                  // chevron
+    { key: 'patient', label: 'Patient',        get: p => `${p.lastName} ${p.firstName}` },
+    { key: 'branch',  label: 'Branch',         get: p => branchLabel(p.branch) ?? '' },
+    { key: 'free',    label: 'Free Allowance', get: p => Number(p.windowUsed ?? 0) },
+    // Sorting by this surfaces who is at the 12-cancellation slot-removal line.
+    { key: 'slot',    label: 'Slot Removal',   get: p => Number(p.cancellationsUsed ?? 0) },
+  ]
+  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, filtered)
+  const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
   async function saveLog() {
     if (!logForm) return
@@ -792,11 +899,7 @@ function CancellationTab({ branch }: { branch: string }) {
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
         <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
           <thead>
-            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-              {['', 'Patient', 'Branch', 'Free Allowance', 'Slot Removal'].map(h => (
-                <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-              ))}
-            </tr>
+            <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
           </thead>
           <tbody>
             {paginated.length === 0 ? (

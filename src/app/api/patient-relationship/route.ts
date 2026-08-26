@@ -370,26 +370,45 @@ export async function POST(req: NextRequest) {
 
   // No-show log creation
   if (body.tab === 'noshow') {
-    const { patientId, branch, remarks } = body
+    const { patientId, branch, remarks, scheduleId } = body
     if (!patientId || !branch) {
       return NextResponse.json({ error: 'patientId, branch required' }, { status: 400 })
     }
+    // Logged from a Clinic Schedule status change: a status can be edited back
+    // and forth (mis-click, patient turns up late), and each pass through
+    // NO_SHOW must not stack another log on the patient's record. Deleted logs
+    // are ignored so a deliberate delete-then-relog still works.
+    if (scheduleId) {
+      const existing = await prisma.noShowLog.findFirst({
+        where: { scheduleId, deletedAt: null },
+      })
+      if (existing) return NextResponse.json({ ok: true, log: existing, deduped: true })
+    }
     const log = await prisma.noShowLog.create({
-      data: { patientId, branch, remarks },
+      data: { patientId, branch, remarks, scheduleId: scheduleId || null },
     })
     return NextResponse.json({ ok: true, log })
   }
 
   // Cancellation log creation
-  const { patientId, type, branch, remarks } = body
+  const { patientId, type, branch, remarks, scheduleId } = body
   if (!patientId || !type || !branch) {
     return NextResponse.json({ error: 'patientId, type, branch required' }, { status: 400 })
   }
 
   const isValid = type.includes('VALID') && !type.includes('INVALID')
 
+  // Same dedupe as no-shows above: one log per session, so toggling a status
+  // does not charge a patient twice.
+  if (scheduleId) {
+    const existing = await prisma.cancellationLog.findFirst({
+      where: { scheduleId, deletedAt: null },
+    })
+    if (existing) return NextResponse.json({ ok: true, log: existing, deduped: true })
+  }
+
   const log = await prisma.cancellationLog.create({
-    data: { patientId, type, branch, isValid, remarks },
+    data: { patientId, type, branch, isValid, remarks, scheduleId: scheduleId || null },
   })
 
   return NextResponse.json({ ok: true, log })

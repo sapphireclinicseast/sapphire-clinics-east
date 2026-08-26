@@ -1,16 +1,19 @@
 'use client'
 
 import { useEffect, useState, type CSSProperties } from 'react'
+import { statusLabel, NON_ATTENDED_STATUSES } from '@/lib/schedule-status'
+import SessionOutcomePrompt, { type OutcomeTarget } from '@/components/SessionOutcomePrompt'
 import { Pencil, X, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
 
-const ALL_STATUSES = ['PENDING', 'CONFIRMED', 'CANCELLED', 'RESCHEDULED']
+const ALL_STATUSES = ['PENDING', 'CONFIRMED', 'CANCELLED', 'RESCHEDULED', 'NO_SHOW']
 
 const STATUS_COLORS: Record<string, { background: string; color: string }> = {
   PENDING:     { background: '#FFF9EC', color: '#92400E' },
   CONFIRMED:   { background: 'var(--pale-teal)', color: 'var(--teal)' },
   CANCELLED:   { background: '#FEE2E2', color: '#DC2626' },
   RESCHEDULED: { background: '#EDE9FE', color: '#5B21B6' },
+  NO_SHOW: { background: '#FFEDD5', color: '#9A3412' },   // amber: not cancelled, not rescheduled
 }
 
 function formatTime(t: string): string {
@@ -27,7 +30,7 @@ function visibleBranches(role: string): string[] {
 }
 
 interface StaffInfo { id: string; firstName: string; lastName: string; department: string; branch: string }
-interface PatientInfo { id: string; firstName: string; lastName: string; email: string | null }
+interface PatientInfo { id: string; firstName: string; lastName: string; email: string | null; branch?: string | null; branches?: string[] }
 interface StatusSchedule {
   id: string; startTime: string; endTime: string; sessionType: string; status: string
   staff: StaffInfo; patient: PatientInfo | null
@@ -71,6 +74,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
   const [activeBranch, setActiveBranch] = useState<string>('All')
   const [statusFilter, setStatusFilter] = useState<string>('All')
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null)
+  const [outcome, setOutcome] = useState<OutcomeTarget | null>(null)
 
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -90,6 +94,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
   }, [selectedDate])
 
   async function handleStatusChange(id: string, newStatus: string) {
+    const sched = schedules.find(s => s.id === id)
     setSchedules(prev => prev.map(s => s.id === id ? { ...s, status: newStatus } : s))
     try {
       await fetch('/api/clinic-schedule', {
@@ -99,6 +104,22 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
       })
     } catch (err) {
       console.error('[StatusView] Failed to update status', err)
+      return   // status did not save — do not offer to log an outcome that is not recorded
+    }
+
+    // Offer the Patient Relationship log only for statuses that carry a fee
+    // consequence, and only after the status itself is safely saved.
+    if ((NON_ATTENDED_STATUSES as readonly string[]).includes(newStatus)) {
+      // Patient.branches is the current multi-branch field; .branch is the
+      // legacy single-branch column kept for older records.
+      const branch = sched?.patient?.branches?.[0] ?? sched?.patient?.branch ?? null
+      setOutcome({
+        scheduleId: id,
+        status: newStatus as OutcomeTarget['status'],
+        patientId: sched?.patient?.id ?? null,
+        patientName: sched?.patient ? `${sched.patient.firstName} ${sched.patient.lastName}` : 'This session',
+        branch,
+      })
     }
   }
 
@@ -229,7 +250,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
                       ? { background: colors.background, color: colors.color, border: `2px solid ${colors.color}` }
                       : { background: 'var(--teal)', color: '#fff', border: '2px solid var(--teal)' })
                   : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
-                {st === 'All' ? 'All' : st.charAt(0) + st.slice(1).toLowerCase()}
+                {st === 'All' ? 'All' : statusLabel(st)}
               </button>
             )
           })}
@@ -293,7 +314,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
                         style={{ ...filterInputStyle }}>
                         <option value="">All</option>
                         {ALL_STATUSES.map(st => (
-                          <option key={st} value={st.toLowerCase()}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
+                          <option key={st} value={st.toLowerCase()}>{statusLabel(st)}</option>
                         ))}
                       </select>
                     ) : (
@@ -355,7 +376,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
                           className="text-xs rounded-lg px-2 py-1 cursor-pointer"
                           style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}>
                           {ALL_STATUSES.map(st => (
-                            <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
+                            <option key={st} value={st}>{statusLabel(st)}</option>
                           ))}
                         </select>
                         <button onClick={() => setEditingStatusId(null)}
@@ -367,7 +388,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
                       <div className="flex items-center gap-2">
                         <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
                           style={STATUS_COLORS[s.status] ?? { background: '#f3f4f6', color: '#374151' }}>
-                          {s.status.charAt(0) + s.status.slice(1).toLowerCase()}
+                          {statusLabel(s.status)}
                         </span>
                         <button onClick={() => setEditingStatusId(s.id)}
                           className="p-1 rounded hover:bg-gray-100" title="Edit status">
@@ -381,6 +402,9 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
             </tbody>
           </table>
         </div>
+      )}
+      {outcome && (
+        <SessionOutcomePrompt target={outcome} onClose={() => setOutcome(null)} />
       )}
     </div>
   )

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { statusLabel } from '@/lib/schedule-status'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { localTodayStr, localTomorrowStr } from '@/lib/utils'
@@ -116,6 +117,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   CONFIRMED:   { bg: 'var(--pale-teal)', color: 'var(--teal)' },
   CANCELLED:   { bg: '#FEE2E2', color: '#DC2626' },
   RESCHEDULED: { bg: '#EDE9FE', color: '#5B21B6' },
+  NO_SHOW: { bg: '#FFEDD5', color: '#9A3412' },   // amber: not cancelled, not rescheduled
 }
 
 // ─── Patient search typeahead ─────────────────────────────────────────────────
@@ -343,6 +345,7 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
             <option value="CONFIRMED">Confirmed</option>
             <option value="CANCELLED">Cancelled</option>
             <option value="RESCHEDULED">Rescheduled</option>
+            <option value="NO_SHOW">No-Show</option>
           </select>
         </div>
         <div className="col-span-2">
@@ -873,7 +876,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                         <td className="px-3 py-2">
                           <span className="px-2 py-0.5 rounded-full font-semibold"
                             style={STATUS_COLORS[s.status] ?? { bg: '#f3f4f6', color: '#374151' }}>
-                            {s.status.charAt(0) + s.status.slice(1).toLowerCase()}
+                            {statusLabel(s.status)}
                           </span>
                         </td>
                         <td className="px-3 py-2">
