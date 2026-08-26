@@ -59,6 +59,9 @@ export async function GET(req: Request) {
       department: item.department || '',
       branch: item.branch || branch,
       status: item.status || 'CONFIRMED',
+      // Set when the Clinic Schedule ticked "With Mentor": a mentor sat in on
+      // a mentee's session, so it bills as a mentorship session.
+      withMentor: item.withMentor === true,
       converted: convertedIds.has(item.id as string),
     }))
 

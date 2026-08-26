@@ -31,6 +31,13 @@ interface StaffMember {
   bankName: string | null
   bankAccountNo: string | null
   hrPlatformId: string | null
+  // Mentorship + supervision roles, synced from HR. Independent of each other
+  // and of employmentType — one person can be an intern, a mentee, and later a
+  // supervisor, so these are flags rather than a single role.
+  isInternshipSupervisor?: boolean | null
+  isClinicalMentor?: boolean | null
+  mentorStaffId?: string | null
+  mentor?: { id: string; firstName: string; lastName: string } | null
   extraBranches: string[]
   branchEmployment: Record<string, { employmentType?: string | null; employeeId?: string | null; department?: string | null; jobTitle?: string | null }> | null
   createdAt: string
@@ -171,6 +178,61 @@ function ExtraBranchToggle({
         })}
       </div>
     </div>
+  )
+}
+
+// Role badges. Deliberately additive: a person can be a Clinical Supervisor,
+// a Clinical Mentor AND a mentee at once, and the Staff module has to show all
+// of it rather than pick one.
+//
+//   Clinical Supervisor — licensed clinician overseeing STUDENTS on placement
+//   Clinical Mentor     — senior clinician guiding junior/newly licensed staff
+//   Mentee              — the junior clinician on the receiving end
+//   Intern              — the student themself (employmentType)
+export function RoleBadges({ staff, compact = false }: {
+  staff: {
+    employmentType?: string | null
+    isInternshipSupervisor?: boolean | null
+    isClinicalMentor?: boolean | null
+    mentor?: { firstName: string; lastName: string } | null
+    mentorStaffId?: string | null
+  }
+  compact?: boolean
+}) {
+  const badges: { label: string; title: string; bg: string; fg: string }[] = []
+
+  if (staff.employmentType === 'intern') {
+    badges.push({ label: 'Intern', title: 'Student on clinical placement',
+      bg: '#E0E7FF', fg: '#3730A3' })
+  }
+  if (staff.isInternshipSupervisor) {
+    badges.push({ label: compact ? 'Supervisor' : 'Clinical Supervisor',
+      title: 'Supervises students on clinical placement',
+      bg: '#DBEAFE', fg: '#1E40AF' })
+  }
+  if (staff.isClinicalMentor) {
+    badges.push({ label: compact ? 'Mentor' : 'Clinical Mentor',
+      title: 'Mentors junior or newly licensed clinicians',
+      bg: '#FEF3C7', fg: '#92400E' })
+  }
+  if (staff.mentorStaffId) {
+    const who = staff.mentor ? `${staff.mentor.firstName} ${staff.mentor.lastName}` : null
+    badges.push({ label: 'Mentee',
+      title: who ? `Mentored by ${who}` : 'Mentored by a Clinical Mentor',
+      bg: '#FDE68A', fg: '#78350F' })
+  }
+  if (!badges.length) return null
+
+  return (
+    <span className="inline-flex flex-wrap gap-1 align-middle">
+      {badges.map(b => (
+        <span key={b.label} title={b.title}
+          style={{ background: b.bg, color: b.fg, fontSize: compact ? 9 : 10, fontWeight: 700,
+                   padding: '1px 5px', borderRadius: 9999, letterSpacing: '.02em', whiteSpace: 'nowrap' }}>
+          {b.label}
+        </span>
+      ))}
+    </span>
   )
 }
 
@@ -590,6 +652,7 @@ export default function StaffClient({ role }: { role: string }) {
                           {s.lastName}, {s.firstName}
                         </span>
                       )}
+                      <span className="ml-1.5"><RoleBadges staff={s} /></span>
                     </td>
                     <td className="px-4 py-3"><DeptBadge dept={s.department} /></td>
                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--mid-gray)' }}>

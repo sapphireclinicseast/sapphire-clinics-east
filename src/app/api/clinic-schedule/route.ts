@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, internStaffId, branch } = await req.json()
+  const { staffId, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, internStaffId, branch, withMentor } = await req.json()
   // Where the session happens — the branch calendar it was booked on. Needed
   // because interbranch clinicians hold one staff profile pinned to a single
   // branch, so staff.branch cannot attribute their cross-branch sessions.
@@ -144,6 +144,9 @@ export async function POST(req: NextRequest) {
       status: status || 'PENDING',
       notes: notes || null,
       isTeletherapy: isTeletherapy || false,
+      // Mentor sitting in on a mentee's session — drives the cashiering flag
+      // and the payroll "Mentorship" service tag.
+      withMentor: withMentor === true,
       internStaffId: internStaffId || null,
       branch: sessionBranch,
     },
@@ -180,7 +183,7 @@ export async function PUT(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, meetLink, internStaffId, branch } = await req.json()
+  const { id, patientId, date, startTime, endTime, duration, sessionType, status, notes, isTeletherapy, meetLink, internStaffId, branch, withMentor } = await req.json()
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
   const data: Record<string, unknown> = {}
@@ -193,6 +196,7 @@ export async function PUT(req: NextRequest) {
   if (status !== undefined) data.status = status
   if (notes !== undefined) data.notes = notes || null
   if (isTeletherapy !== undefined) data.isTeletherapy = isTeletherapy
+  if (withMentor !== undefined) data.withMentor = withMentor === true
   if (meetLink !== undefined) data.meetLink = meetLink || null
   if (internStaffId !== undefined) data.internStaffId = internStaffId || null
   if (branch !== undefined) data.branch = ['SBEA', 'SBGH', 'VER'].includes(branch) ? branch : null

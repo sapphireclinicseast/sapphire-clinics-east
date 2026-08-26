@@ -55,6 +55,11 @@ interface HRStaff {
   bankName: string | null
   bankAccountNo: string | null
   isInternshipSupervisor?: boolean
+  // Clinical Mentor flag and the mentor's chosen mentees (HR staff ids, same
+  // department). HR has been sending both since the mentor-mentee profile
+  // went in; this sync previously dropped them on the floor.
+  isClinicalMentor?: boolean
+  menteeIds?: string[]
 }
 
 export async function POST() {
@@ -201,6 +206,7 @@ export async function POST() {
       bankAccountNo:    hr.bankAccountNo,
       hrPlatformId:     hr.hrId,
       isInternshipSupervisor: !!hr.isInternshipSupervisor,
+      isClinicalMentor:       !!hr.isClinicalMentor,
     }
 
     try {
@@ -219,6 +225,59 @@ export async function POST() {
     }
   }
 
+  // ── Mentorship pass ────────────────────────────────────────────────────
+  // Runs AFTER the main loop on purpose: a mentee may be created later in the
+  // same sync than their mentor, so resolving ids inline would silently drop
+  // the link for anyone processed out of order.
+  //
+  // HR gives the relationship from the MENTOR's side (menteeIds). It is stored
+  // on the MENTEE (mentorStaffId) so the Clinic Schedule can label a mentee
+  // without loading every mentor first.
+  //
+  // Every mentee link is rebuilt from scratch each sync — HR is the source of
+  // truth, so a mentee removed there must lose the link here rather than
+  // linger.
+  let mentorLinks = 0
+  try {
+    const hrIdToStaffId = new Map<string, string>()
+    for (const st of await prisma.staff.findMany({
+      where: { hrPlatformId: { not: null } },
+      select: { id: true, hrPlatformId: true },
+    })) {
+      if (st.hrPlatformId) hrIdToStaffId.set(st.hrPlatformId, st.id)
+    }
+
+    const desired = new Map<string, string>()   // menteeStaffId -> mentorStaffId
+    for (const hr of hrStaff) {
+      if (!hr.isClinicalMentor || !Array.isArray(hr.menteeIds)) continue
+      const mentorStaffId = hrIdToStaffId.get(hr.hrId)
+      if (!mentorStaffId) continue
+      for (const menteeHrId of hr.menteeIds) {
+        const menteeStaffId = hrIdToStaffId.get(String(menteeHrId))
+        // Self-mentoring would make the Clinic Schedule label nonsense.
+        if (!menteeStaffId || menteeStaffId === mentorStaffId) continue
+        desired.set(menteeStaffId, mentorStaffId)
+      }
+    }
+
+    const currentlyLinked = await prisma.staff.findMany({
+      where: { mentorStaffId: { not: null } },
+      select: { id: true, mentorStaffId: true },
+    })
+    const clear = currentlyLinked
+      .filter(st => desired.get(st.id) !== st.mentorStaffId)
+      .map(st => st.id)
+    if (clear.length) {
+      await prisma.staff.updateMany({ where: { id: { in: clear } }, data: { mentorStaffId: null } })
+    }
+    for (const [menteeId, mentorId] of desired) {
+      await prisma.staff.update({ where: { id: menteeId }, data: { mentorStaffId: mentorId } })
+      mentorLinks++
+    }
+  } catch (err) {
+    errors.push('mentorship links: ' + (err instanceof Error ? err.message : String(err)))
+  }
+
   const toDelete = existing.filter(s => !matchedIds.has(s.id))
   let deleted = 0
   for (const s of toDelete) {
@@ -232,5 +291,5 @@ export async function POST() {
   }
 
   console.log('[staff-sync] Done:', { created, updated, deleted, nameChanges, errors: errors.length })
-  return NextResponse.json({ synced: created + updated, created, updated, deleted, nameChanges, errors, total: hrStaff.length })
+  return NextResponse.json({ synced: created + updated, created, updated, deleted, mentorLinks, nameChanges, errors, total: hrStaff.length })
 }

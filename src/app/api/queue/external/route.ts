@@ -81,6 +81,10 @@ export async function GET(req: NextRequest) {
         startTime:   s.startTime,
         endTime:     s.endTime,
         sessionType: s.sessionType,
+        // Mentorship flag travels to the Accounting Hub cashier queue, which
+        // highlights the row and prompts for the "Mentorship" service so the
+        // session is tagged for payroll.
+        withMentor:  s.withMentor === true,
         status:      s.status,
         department:  s.staff.department,
         branch:      effectiveBranch,
@@ -158,6 +162,7 @@ export async function GET(req: NextRequest) {
           clinician:   '— (class portal)',
           patientId:   patientIdByEmail.get(email) ?? null,
           patientName: p.studentName,
+          withMentor:  false,   // class-portal tuition is never a mentorship session
         }
       })
     } catch (e) {
@@ -223,6 +228,7 @@ export async function GET(req: NextRequest) {
         clinician:   b.staff ? `${b.staff.lastName}, ${b.staff.firstName}` : '—',
         patientId:   b.patient?.id ?? null,
         patientName: b.patient ? `${b.patient.firstName} ${b.patient.lastName}` : '—',
+        withMentor:  false,   // patient bookings carry no mentorship flag
       }
     })
   } catch (e) {

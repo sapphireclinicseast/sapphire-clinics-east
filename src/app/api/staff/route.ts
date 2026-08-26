@@ -22,6 +22,9 @@ export async function GET() {
       ? { active: true, OR: [{ branch: { in: allowed } }, { extraBranches: { hasSome: allowed } }] }
       : { active: true },
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    // The mentor's name, so the Staff module and Clinic Schedule can label a
+    // mentee with who mentors them rather than just that they are one.
+    include: { mentor: { select: { id: true, firstName: true, lastName: true } } },
   })
   return NextResponse.json(staff)
 }

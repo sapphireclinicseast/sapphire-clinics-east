@@ -31,6 +31,9 @@ interface QueueItem {
   sessionType: string
   clinician: string
   converted?: boolean
+  // Ticked on the Clinic Schedule when a mentor sits in on a mentee's session.
+  // Cashiering must add the "Mentorship" service so payroll can tag it.
+  withMentor?: boolean
   [key: string]: unknown
 }
 
@@ -855,9 +858,26 @@ function CashierPanel({
               </thead>
               <tbody>
                 {queue.map(q => (
-                  <tr key={q.id} className="border-b hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                  <tr key={q.id} className="border-b hover:bg-gray-50"
+                    style={{
+                      borderColor: 'var(--light-gray)',
+                      // Yellow row = mentorship session. Loud on purpose: the
+                      // "Mentorship" service has to be added at payment time or
+                      // payroll has nothing to tag it by afterwards.
+                      background: q.withMentor ? '#FEF9C3' : undefined,
+                      borderLeft: q.withMentor ? '3px solid #EAB308' : '3px solid transparent',
+                    }}>
                     <td className="px-5 py-3" style={{ color: 'var(--charcoal)' }}>{q.time}</td>
-                    <td className="px-5 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{q.patientName}</td>
+                    <td className="px-5 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
+                      {q.patientName}
+                      {q.withMentor && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+                          style={{ background: '#FDE047', color: '#854D0E' }}
+                          title="A mentor sat in on this session — add the Mentorship service before completing payment">
+                          Mentorship
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{q.sessionType}</td>
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{formatClinicianName(q.clinician)}</td>
                     <td className="px-5 py-3">
@@ -1732,6 +1752,22 @@ function OrderFormModal({
                 <X size={14} style={{ color: '#7d6a9a' }} />
               </button>
             </span>
+          </div>
+        )}
+
+        {/* Mentorship reminder — the whole point of the flag. The session was
+            booked with a mentor sitting in, and payroll can only pay the mentor
+            if the "Mentorship" service is on the order. Nothing enforces it, so
+            it has to be visible at the moment the cashier picks services. */}
+        {prefill?.withMentor && (
+          <div className="mb-4 rounded-lg px-4 py-3 flex items-start gap-3"
+            style={{ background: '#FEF9C3', border: '1px solid #EAB308' }}>
+            <span className="text-lg leading-none" aria-hidden="true">⚠️</span>
+            <div className="text-xs" style={{ color: '#854D0E' }}>
+              <div className="font-bold mb-0.5">Mentorship session — add the “Mentorship” service</div>
+              A mentor sat in on this session. Add <strong>Mentorship</strong> to the items below before
+              completing payment, otherwise it will not be tagged for the mentor’s payroll.
+            </div>
           </div>
         )}
 

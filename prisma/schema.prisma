@@ -7,7 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-
 // ── Follow-Up SMS Reminder ────────────────────────────────────────────────────
 // Tracks SMS reminders sent from Patient Relationship → Follow Up tab.
 // Uniqueness on (patientId, department) enforces one reminder per patient per
@@ -16,18 +15,16 @@ model FollowUpReminder {
   id         String   @id @default(cuid())
   patientId  String
   patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  department String   // "OT" | "PT" | "SLP" | "SPED" | "PSYCHOLOGY" | "MD"
-  branch     String   // "SBEA" | "SBGH"
-  message    String   // the actual SMS text sent
-  sentBy     String?  // user id who clicked Send
+  department String // "OT" | "PT" | "SLP" | "SPED" | "PSYCHOLOGY" | "MD"
+  branch     String // "SBEA" | "SBGH"
+  message    String // the actual SMS text sent
+  sentBy     String? // user id who clicked Send
   sentAt     DateTime @default(now())
 
   @@unique([patientId, department])
   @@index([patientId])
   @@index([sentAt])
 }
-
-
 
 // ── Patient Documents (Progress Reports, Initial Evaluations, etc.) ──────────
 // Created by clinicians via teletherapy.sapphireclinicseast.org. The marketing
@@ -72,7 +69,6 @@ model PatientDocument {
   @@index([emailedToPatientAt])
 }
 
-
 // ── Branch CC Emails ─────────────────────────────────────────────────────────
 // Per-branch list of email addresses to CC when sending patient-facing emails
 // (Progress Reports, Initial Evaluations, etc). Managed in Settings →
@@ -80,8 +76,8 @@ model PatientDocument {
 // Schema mirrors the existing table created by the teletherapy app.
 model BranchCCEmail {
   id          String   @id @default(cuid())
-  branch      String   @unique  // 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE'
-  email       String   // primary CC address (or comma-separated list)
+  branch      String   @unique // 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE'
+  email       String // primary CC address (or comma-separated list)
   notes       String?
   updatedById String?
   createdAt   DateTime @default(now())
@@ -96,36 +92,36 @@ model BranchCCEmail {
 // is what Class Portal and Client Portal hit through their booking-proxy
 // relay. Do not edit rows here directly — edits belong in HR Platform.
 model HrBranch {
-  id                       String   @id // HR Platform's kebab-case branch id — the sync key
-  shortCode                String
-  aliases                  String[] @default([])
+  id                      String   @id // HR Platform's kebab-case branch id — the sync key
+  shortCode               String
+  aliases                 String[] @default([])
   // Per-system identity this branch maps to — null when it doesn't
   // participate in that system (e.g. Verdana has no ClassPortalBranch value).
-  opsHubBranch             String?
-  opsHubClassPortalBranch  String?
-  acctHubBranch            String?
-  acctHubServiceBranch     String?
-  teletherapyBranch        String?
-  name                     String
-  brandName                String?
-  tin                      String?
-  address                  String?
-  phone                    String?
-  emailMain                String?
-  emailHr                  String?
-  emailAccounting          String?
+  opsHubBranch            String?
+  opsHubClassPortalBranch String?
+  acctHubBranch           String?
+  acctHubServiceBranch    String?
+  teletherapyBranch       String?
+  name                    String
+  brandName               String?
+  tin                     String?
+  address                 String?
+  phone                   String?
+  emailMain               String?
+  emailHr                 String?
+  emailAccounting         String?
   // Automation sender addresses — null means "fall back to emailHr, then
   // emailMain" (the consuming app's job, not the sync's). See HR Platform's
   // Branches Registry "Email Automation" section.
-  emailPayslips            String?
-  emailSchedules           String?
-  emailSessionNotes        String?
-  departmentsOffered       String[] @default([])
-  operatingDays            String[] @default([])
-  operatingHoursOpen       String?
-  operatingHoursClose      String?
-  active                   Boolean  @default(true)
-  syncedAt                 DateTime @default(now())
+  emailPayslips           String?
+  emailSchedules          String?
+  emailSessionNotes       String?
+  departmentsOffered      String[] @default([])
+  operatingDays           String[] @default([])
+  operatingHoursOpen      String?
+  operatingHoursClose     String?
+  active                  Boolean  @default(true)
+  syncedAt                DateTime @default(now())
 }
 
 enum Role {
@@ -182,19 +178,19 @@ enum StaffDepartment {
 }
 
 model User {
-  id                String          @id @default(cuid())
-  name              String
-  email             String          @unique
-  passwordHash      String
-  role              Role            @default(MARKETING_ADMIN)
-  avatar            String?
-  resetToken        String?
-  resetTokenExpiry  DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  posts             ScheduledPost[]
-  campaigns         EmailCampaign[]
-  staff             Staff[]
+  id               String          @id @default(cuid())
+  name             String
+  email            String          @unique
+  passwordHash     String
+  role             Role            @default(MARKETING_ADMIN)
+  avatar           String?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  posts            ScheduledPost[]
+  campaigns        EmailCampaign[]
+  staff            Staff[]
 }
 
 model SocialAccount {
@@ -214,8 +210,8 @@ model ScheduledPost {
   content     String
   caption     String?
   imageUrl    String?
-  imageUrls   String[]   @default([])   // all image URLs — for carousel posts
-  mediaType   String?    // 'image' | 'video' — null treated as image
+  imageUrls   String[]   @default([]) // all image URLs — for carousel posts
+  mediaType   String? // 'image' | 'video' — null treated as image
   platforms   Platform[]
   accountIds  String[]   @default([])
   scheduledAt DateTime
@@ -251,52 +247,52 @@ model Template {
 // @/lib/branch-options), never against a hardcoded list.
 
 model Patient {
-  id          String      @id @default(cuid())
-  firstName   String
-  lastName    String
-  email       String?
-  phone       String?
-  passwordHash String?         // optional self-service portal login (bcrypt); null = no portal account yet
-  dob         DateTime?
-  patientType PatientType
-  branch      String?          // legacy single-branch (kept for backward compat)
-  branches    String[]    @default([])  // multi-branch (primary)
-  sex         String?
-  civilStatus String?
-  religion    String?
-  nationality String?
-  address     String?          // full address or barangay
-  city        String?          // city/municipality (for map choropleth)
+  id                 String                @id @default(cuid())
+  firstName          String
+  lastName           String
+  email              String?
+  phone              String?
+  passwordHash       String? // optional self-service portal login (bcrypt); null = no portal account yet
+  dob                DateTime?
+  patientType        PatientType
+  branch             String? // legacy single-branch (kept for backward compat)
+  branches           String[]              @default([]) // multi-branch (primary)
+  sex                String?
+  civilStatus        String?
+  religion           String?
+  nationality        String?
+  address            String? // full address or barangay
+  city               String? // city/municipality (for map choropleth)
   diagnosis          String?
   notes              String?
-  referralUrl        String?    // optional doctor's referral document URL
-  pwdIdUrl           String?    // optional PWD ID photo URL
-  firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
-  pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
-  username           String?    @unique  // portal login handle (siblings sharing an email get distinct usernames)
-  profilePhoto       String?             // portal avatar, stored as a base64 data URL
-  unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
-  smsUnsubscribed    Boolean    @default(false)  // opt-out from SMS marketing campaigns (does NOT block schedule reminders, birthdays, or clinical follow-ups)
+  referralUrl        String? // optional doctor's referral document URL
+  pwdIdUrl           String? // optional PWD ID photo URL
+  firstDayOfConsult  DateTime? // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
+  pwdSeniorId        String? // PWD or Senior Citizen ID Number (optional, for discount eligibility)
+  username           String?               @unique // portal login handle (siblings sharing an email get distinct usernames)
+  profilePhoto       String? // portal avatar, stored as a base64 data URL
+  unsubscribed       Boolean               @default(false) // opt-out from email campaigns
+  smsUnsubscribed    Boolean               @default(false) // opt-out from SMS marketing campaigns (does NOT block schedule reminders, birthdays, or clinical follow-ups)
   // Aura the Alpaca plush toy perk — one piece, given once, to VIP Digital
   // Wallet holders (checked live against Accounting Hub) or patients who've
   // reached 100 CONFIRMED sessions since 2026-04-01 (see /api/plush-toy-eligible).
   plushToyGivenAt    DateTime?
-  plushToyGivenBy    String?    // front-desk User.name/id who marked it given
-  createdAt          DateTime   @default(now())
-  updatedAt           DateTime             @updatedAt
-  schedules           Schedule[]
-  viberSubscriptions  ViberSubscription[]
-  surveyAssignments   SurveyAssignment[]
-  deckingSlots        DeckingSlot[]
-  referralTokens      ReferralUploadToken[]
-  pwdIdTokens         PwdIdUploadToken[]
-  cancellationLogs    CancellationLog[]
-  noShowLogs          NoShowLog[]
-  patientBookings     PatientBooking[]
-  followUpReminders   FollowUpReminder[]
-  documents           PatientDocument[]
-  tickets             PatientTicket[]
-  homeProgress        HomeProgressEntry[]
+  plushToyGivenBy    String? // front-desk User.name/id who marked it given
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  schedules          Schedule[]
+  viberSubscriptions ViberSubscription[]
+  surveyAssignments  SurveyAssignment[]
+  deckingSlots       DeckingSlot[]
+  referralTokens     ReferralUploadToken[]
+  pwdIdTokens        PwdIdUploadToken[]
+  cancellationLogs   CancellationLog[]
+  noShowLogs         NoShowLog[]
+  patientBookings    PatientBooking[]
+  followUpReminders  FollowUpReminder[]
+  documents          PatientDocument[]
+  tickets            PatientTicket[]
+  homeProgress       HomeProgressEntry[]
 }
 
 // Patient-submitted portal concern/support ticket. Patient files it from the
@@ -308,9 +304,9 @@ model PatientTicket {
   patient       Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
   subject       String
   description   String
-  screenshot    String?   // optional screenshot, base64 data URL
-  status        String    @default("OPEN")   // OPEN | RESOLVED
-  adminResponse String?   // reply shown to the patient when resolved
+  screenshot    String? // optional screenshot, base64 data URL
+  status        String    @default("OPEN") // OPEN | RESOLVED
+  adminResponse String? // reply shown to the patient when resolved
   resolvedAt    DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -337,9 +333,9 @@ model HomeProgressFile {
   id        String            @id @default(cuid())
   entryId   String
   entry     HomeProgressEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  kind      String            // AUDIO | VIDEO | PHOTO | OTHER
+  kind      String // AUDIO | VIDEO | PHOTO | OTHER
   fileName  String
-  filePath  String            // relative path under ./uploads
+  filePath  String // relative path under ./uploads
   mimeType  String
   sizeBytes Int               @default(0)
   createdAt DateTime          @default(now())
@@ -374,8 +370,8 @@ model ViberSubscription {
   id          String   @id @default(cuid())
   patientId   String
   patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  viberUserId String   @unique          // Viber's internal user ID for this subscriber
-  branch      String                    // "SBEA" | "SBGH"
+  viberUserId String   @unique // Viber's internal user ID for this subscriber
+  branch      String // "SBEA" | "SBGH"
   createdAt   DateTime @default(now())
 
   @@unique([patientId, branch])
@@ -389,7 +385,7 @@ model EmailCampaign {
   status         String    @default("draft")
   recipientCount Int       @default(0)
   sentCount      Int       @default(0)
-  nextTrancheAt   DateTime? @db.Timestamp(3)
+  nextTrancheAt  DateTime? @db.Timestamp(3)
   scheduledAt    DateTime?
   sentAt         DateTime?
   gmailAccountId String?
@@ -406,7 +402,7 @@ model EmailCampaign {
 
 model BrandGuide {
   id         String    @id @default(cuid())
-  name       String?   // e.g. "Sandbox Clinic", "Verdana Store"
+  name       String? // e.g. "Sandbox Clinic", "Verdana Store"
   fileName   String
   fileUrl    String
   analyzedAt DateTime?
@@ -456,66 +452,81 @@ enum ScheduleStatus {
 model QueueAd {
   id        String   @id @default(cuid())
   fileName  String
-  filePath  String   // relative path under UPLOAD_DIR, e.g. "queue-ads/file.mp4"
-  mimeType  String   // "video/mp4", "image/jpeg", etc.
-  branch    String   @default("ALL")  // "ALL" | "SBEA" | "SBGH"
+  filePath  String // relative path under UPLOAD_DIR, e.g. "queue-ads/file.mp4"
+  mimeType  String // "video/mp4", "image/jpeg", etc.
+  branch    String   @default("ALL") // "ALL" | "SBEA" | "SBGH"
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Staff {
-  id              String          @id @default(cuid())
-  employeeId      String?         // Employee ID from HR Platform
-  firstName       String          // stored ALL CAPS
-  lastName        String          // stored ALL CAPS
-  email           String?
-  phone           String?
-  sex             String?         // "M" | "F" — shown in patient portal (icon only)
-  department      StaffDepartment
-  branch          String          // "SBEA" | "SBGH" — primary branch (from HR)
-  extraBranches      String[]        @default([]) // additional branches; never overwritten by sync
-  branchEmployment   Json            @default("{}") // per-branch employment: { SBEA: { employmentType, employeeId, department, jobTitle }, SBGH: {...} }
+  id                     String          @id @default(cuid())
+  employeeId             String? // Employee ID from HR Platform
+  firstName              String // stored ALL CAPS
+  lastName               String // stored ALL CAPS
+  email                  String?
+  phone                  String?
+  sex                    String? // "M" | "F" — shown in patient portal (icon only)
+  department             StaffDepartment
+  branch                 String // "SBEA" | "SBGH" — primary branch (from HR)
+  extraBranches          String[]        @default([]) // additional branches; never overwritten by sync
+  branchEmployment       Json            @default("{}") // per-branch employment: { SBEA: { employmentType, employeeId, department, jobTitle }, SBGH: {...} }
   // Per-branch role owned by Operations: {"SBEA":"consultant","SBGH":"employee"}. HR carries
   // a single employmentType, so this is set here and — like extraBranches — is never
   // overwritten by the HR sync. Absent/empty = use employmentType for every branch.
-  employmentByBranch Json?
-  dob             DateTime?       // Birthday — synced from HR Platform
-  dateHired       DateTime?       // Date Hired ("Start Month" for interns) — synced from HR
-                                   // Platform Staff Profile; used to exclude pre-hire days from
-                                   // Therapist Utilization capacity
-  contractExpiry  DateTime?       // Contract Expiration ("End Month" for interns) — synced from
-                                   // HR Platform; gates the Clinic Schedule intern picker to only
-                                   // currently-active interns
-  jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
-  employmentType  String?         // "employee" | "consultant" | "intern"
-  tin             String?         // TIN from HR Platform
-  sss             String?         // SSS No. from HR Platform
-  pagibig         String?         // Pag-IBIG No. from HR Platform
-  philhealth      String?         // PhilHealth No. from HR Platform
-  bankName        String?         // Bank Name from HR Platform
-  bankAccountNo   String?         // Bank Account Number from HR Platform
-  hrPlatformId    String?         // ID from HR Platform for sync matching
-  active          Boolean         @default(true) // false = inactive in HR; hidden from Staff Module, Top 5, etc.
-  isInternshipSupervisor Boolean  @default(false) // Clinical Internship Supervisor (HR Staff Profile
-                                   // checkbox, synced one-way). Staff Portal reads this off the shared
-                                   // DB to grant an "All Interns" view — every intern's notes, not just
-                                   // this person's own decked interns.
-  createdById     String?
-  createdBy       User?           @relation(fields: [createdById], references: [id])
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  schedules       Schedule[]
-  internSchedules Schedule[]      @relation("ScheduleIntern") // sessions this person did as an intern
-  surveyAssignments SurveyAssignment[]
-  surveyResponses   SurveyResponse[]
-  assessmentTargets AssessmentTarget[]
-  deckingConfigs  DeckingTherapistConfig[]
-  deckingSlots    DeckingSlot[]
-  peerEvalAssor       PeerEvalAssignment[] @relation("PeerEvalAssor")
-  peerEvalAssee       PeerEvalAssignment[] @relation("PeerEvalAssee")
-  peerEvalRespAssor   PeerEvalResponse[]   @relation("PeerEvalRespAssor")
-  peerEvalRespAssee   PeerEvalResponse[]   @relation("PeerEvalRespAssee")
+  employmentByBranch     Json?
+  dob                    DateTime? // Birthday — synced from HR Platform
+  dateHired              DateTime? // Date Hired ("Start Month" for interns) — synced from HR
+  // Platform Staff Profile; used to exclude pre-hire days from
+  // Therapist Utilization capacity
+  contractExpiry         DateTime? // Contract Expiration ("End Month" for interns) — synced from
+  // HR Platform; gates the Clinic Schedule intern picker to only
+  // currently-active interns
+  jobTitle               String? // HR Platform job title slug (e.g. "front-desk-officer")
+  employmentType         String? // "employee" | "consultant" | "intern"
+  tin                    String? // TIN from HR Platform
+  sss                    String? // SSS No. from HR Platform
+  pagibig                String? // Pag-IBIG No. from HR Platform
+  philhealth             String? // PhilHealth No. from HR Platform
+  bankName               String? // Bank Name from HR Platform
+  bankAccountNo          String? // Bank Account Number from HR Platform
+  hrPlatformId           String? // ID from HR Platform for sync matching
+  active                 Boolean         @default(true) // false = inactive in HR; hidden from Staff Module, Top 5, etc.
+  isInternshipSupervisor Boolean         @default(false) // Clinical Internship Supervisor (HR Staff Profile
+  // checkbox, synced one-way). Staff Portal reads this off the shared
+  // DB to grant an "All Interns" view — every intern's notes, not just
+  // this person's own decked interns.
+  createdById            String?
+  createdBy              User?           @relation(fields: [createdById], references: [id])
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  schedules              Schedule[]
+  // ── Mentorship (Clinical Mentor ↔ mentee) ───────────────────────────────
+  // Distinct from internship supervision: a Clinical Supervisor oversees
+  // STUDENTS on placement, while a Clinical Mentor guides junior or newly
+  // licensed CLINICIANS. A person can be both, and either can also be an
+  // intern, so these are independent flags rather than one role field.
+  //
+  // HR is the source of truth. It sends `isClinicalMentor` plus `menteeIds`
+  // (the mentor's chosen mentees, same department only); the sync resolves
+  // those ids and writes `mentorStaffId` onto each mentee, so the relationship
+  // is queryable from either side.
+  isClinicalMentor       Boolean         @default(false)
+  mentorStaffId          String?
+  mentor                 Staff?          @relation("StaffMentorship", fields: [mentorStaffId], references: [id], onDelete: SetNull)
+  mentees                Staff[]         @relation("StaffMentorship")
+
+  internSchedules     Schedule[]               @relation("ScheduleIntern") // sessions this person did as an intern
+  surveyAssignments   SurveyAssignment[]
+  surveyResponses     SurveyResponse[]
+  assessmentTargets   AssessmentTarget[]
+  deckingConfigs      DeckingTherapistConfig[]
+  deckingSlots        DeckingSlot[]
+  peerEvalAssor       PeerEvalAssignment[]     @relation("PeerEvalAssor")
+  peerEvalAssee       PeerEvalAssignment[]     @relation("PeerEvalAssee")
+  peerEvalRespAssor   PeerEvalResponse[]       @relation("PeerEvalRespAssor")
+  peerEvalRespAssee   PeerEvalResponse[]       @relation("PeerEvalRespAssee")
   peerEvalAdminConfig PeerEvalAdminConfig?
   peerEvalEmailLogs   PeerEvalEmailLog[]
   patientBookings     PatientBooking[]
@@ -524,10 +535,10 @@ model Staff {
 // ── Satisfaction Survey ──────────────────────────────────────────────────────
 
 enum SurveyType {
-  HR10  // Pedia Patient Satisfaction (age ≤ 17)
-  HR11  // Adult Patient Satisfaction (age ≥ 18)
-  HR12  // Admin/Front Desk Satisfaction
-  HR16  // Group Therapy Satisfaction
+  HR10 // Pedia Patient Satisfaction (age ≤ 17)
+  HR11 // Adult Patient Satisfaction (age ≥ 18)
+  HR12 // Admin/Front Desk Satisfaction
+  HR16 // Group Therapy Satisfaction
 }
 
 enum SurveyStatus {
@@ -538,23 +549,23 @@ enum SurveyStatus {
 }
 
 model SurveyAssignment {
-  id          String       @id @default(cuid())
+  id          String          @id @default(cuid())
   staffId     String
-  staff       Staff        @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  staff       Staff           @relation(fields: [staffId], references: [id], onDelete: Cascade)
   scheduleId  String?
-  schedule    Schedule?    @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  schedule    Schedule?       @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   patientId   String?
-  patient     Patient?     @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  patient     Patient?        @relation(fields: [patientId], references: [id], onDelete: SetNull)
   surveyType  SurveyType
   patientName String?
   patientAge  Int?
-  branch      String       // "SBEA" | "SBGH"
-  sessionType String?      // "individual" | "group"
-  status      SurveyStatus @default(PENDING)
+  branch      String // "SBEA" | "SBGH"
+  sessionType String? // "individual" | "group"
+  status      SurveyStatus    @default(PENDING)
   assignedBy  String?
   expiresAt   DateTime
   completedAt DateTime?
-  createdAt   DateTime     @default(now())
+  createdAt   DateTime        @default(now())
   response    SurveyResponse?
 }
 
@@ -585,49 +596,53 @@ model AssessmentTarget {
 }
 
 model Schedule {
-  id          String         @id @default(cuid())
-  staffId     String         // supervising therapist — whoever's card this was booked under
-  staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
-  patientId   String?
-  patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
-  date        DateTime
-  startTime   String         // "08:00"
-  endTime     String         // "09:00"
-  duration    String         // "1h" | "1.5h" | "2h" | "custom"
-  sessionType String
-  status      ScheduleStatus @default(PENDING)
-  notes       String?
-  isTeletherapy Boolean @default(false)
-  meetLink      String?
+  id                String             @id @default(cuid())
+  staffId           String // supervising therapist — whoever's card this was booked under
+  staff             Staff              @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  patientId         String?
+  patient           Patient?           @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  date              DateTime
+  startTime         String // "08:00"
+  endTime           String // "09:00"
+  duration          String // "1h" | "1.5h" | "2h" | "custom"
+  sessionType       String
+  status            ScheduleStatus     @default(PENDING)
+  notes             String?
+  isTeletherapy     Boolean            @default(false)
+  meetLink          String?
   // Which intern actually did the session, when sessionType is "IE Intern" /
   // "Session Intern" — the intern writes the note; staffId above stays the
   // supervisor. Null for every non-intern session.
-  internStaffId String?
-  internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
+  // Set by the "With Mentor" tickbox on the session form. Means a mentor will
+  // sit in on this session alongside the mentee clinician — which makes it
+  // billable as a mentorship service, so cashiering flags it at payment time.
+  withMentor        Boolean            @default(false)
+  internStaffId     String?
+  internStaff       Staff?             @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
   // Where the session actually happens ("SBEA" | "SBGH" | "VER"), captured
   // from the branch calendar it was booked on. Interbranch clinicians hold one
   // staff profile pinned to a single branch, so staff.branch cannot attribute
   // their cross-branch sessions; this field can. Null = legacy row — consumers
   // (POS cashier queue) fall back to patient/staff-branch inference.
-  branch        String?
+  branch            String?
   // Documentation age lock — owned by the staff portal (teletherapy), which
   // shares this physical table. Sessions past the documentation window are
   // read-only there until a clinician deliberately re-opens one; these record
   // that decision. Declared here purely to keep the two schemas in lockstep —
   // nothing in Operations Hub reads or writes them.
   // See teletherapy/src/lib/note-age-lock.ts.
-  noteUnlockedAt   DateTime?
-  noteUnlockedById String?
-  createdAt     DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  noteUnlockedAt    DateTime?
+  noteUnlockedById  String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   surveyAssignments SurveyAssignment[]
 }
 
 // ── Decking Module ─────────────────────────────────────────────────────────────
 
 model DeckingClinicHours {
-  id        String   @id  // "SBEA" | "SBGH"
-  schedule  Json     // { MON: { open: bool, openTime: "10:00", closeTime: "20:00" }, ... }
+  id        String   @id // "SBEA" | "SBGH"
+  schedule  Json // { MON: { open: bool, openTime: "10:00", closeTime: "20:00" }, ... }
   updatedAt DateTime @updatedAt
 }
 
@@ -638,9 +653,9 @@ model DeckingTherapistConfig {
   // the primary-branch one. (staffId, branch) is now the unique key instead.
   staffId    String
   staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
-  workDays   Json     // ["MON", "TUE", "WED", "THU", "FRI"]
-  startTime  String   // "10:00"
-  endTime    String   // "20:00"
+  workDays   Json // ["MON", "TUE", "WED", "THU", "FRI"]
+  startTime  String // "10:00"
+  endTime    String // "20:00"
   useDefault Boolean  @default(true)
   branch     String
   department String
@@ -651,53 +666,53 @@ model DeckingTherapistConfig {
 }
 
 model DeckingSlot {
-  id         String   @id @default(cuid())
-  staffId    String
-  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
-  patientId  String?
-  patient    Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
-  dayOfWeek  String   // "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN"
-  startTime  String   // "10:00"
-  endTime    String   // "11:00"
-  branch     String
-  department String
-  notes      String?
-  disabled   Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              String           @id @default(cuid())
+  staffId         String
+  staff           Staff            @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  patientId       String?
+  patient         Patient?         @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  dayOfWeek       String // "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN"
+  startTime       String // "10:00"
+  endTime         String // "11:00"
+  branch          String
+  department      String
+  notes           String?
+  disabled        Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   patientBookings PatientBooking[]
 }
 
 // ── Clinic Capacity Settings (max daily sessions per dept per branch) ────────
 model ClinicCapSettings {
-  id           String   @id @default("default")
-  seaOt        Int      @default(8)
-  seaPt        Int      @default(8)
-  seaSlp       Int      @default(8)
-  seaSped      Int      @default(8)
-  seaMd        Int      @default(8)
-  seaPsych     Int      @default(8)
-  seaOrthosis  Int      @default(8)
-  sghOt        Int      @default(8)
-  sghPt        Int      @default(8)
-  sghSlp       Int      @default(8)
-  sghSped      Int      @default(8)
-  sghMd        Int      @default(8)
-  sghPsych     Int      @default(8)
-  sghOrthosis  Int      @default(8)
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default("default")
+  seaOt       Int      @default(8)
+  seaPt       Int      @default(8)
+  seaSlp      Int      @default(8)
+  seaSped     Int      @default(8)
+  seaMd       Int      @default(8)
+  seaPsych    Int      @default(8)
+  seaOrthosis Int      @default(8)
+  sghOt       Int      @default(8)
+  sghPt       Int      @default(8)
+  sghSlp      Int      @default(8)
+  sghSped     Int      @default(8)
+  sghMd       Int      @default(8)
+  sghPsych    Int      @default(8)
+  sghOrthosis Int      @default(8)
+  updatedAt   DateTime @updatedAt
 }
 
 // ── Survey Settings (leaderboard metric weights) ─────────────────────────────
 model SurveySettings {
-  id                    String   @id @default("default")
-  weightConfirmed       Int      @default(50)  // % weight for confirmed sessions
-  weightRescheduled     Int      @default(0)   // % weight for rescheduled sessions
-  weightCancelled       Int      @default(0)   // % weight for cancelled sessions (negative impact)
-  weightSatisfaction    Int      @default(50)  // % weight for avg satisfaction score
-  showLeaderboard       Boolean  @default(false) // Show leaderboard on TV queue display
-  showComplaintForm     Boolean  @default(false) // Show patient complaint form QR on TV display
-  updatedAt             DateTime @updatedAt
+  id                 String   @id @default("default")
+  weightConfirmed    Int      @default(50) // % weight for confirmed sessions
+  weightRescheduled  Int      @default(0) // % weight for rescheduled sessions
+  weightCancelled    Int      @default(0) // % weight for cancelled sessions (negative impact)
+  weightSatisfaction Int      @default(50) // % weight for avg satisfaction score
+  showLeaderboard    Boolean  @default(false) // Show leaderboard on TV queue display
+  showComplaintForm  Boolean  @default(false) // Show patient complaint form QR on TV display
+  updatedAt          DateTime @updatedAt
 }
 
 // ── Peer Evaluation ──────────────────────────────────────────────────────────
@@ -705,8 +720,8 @@ model SurveySettings {
 enum PeerEvalType {
   HR08_ADMIN
   HR08_PEER
-  HR09_CLINICAL  // Clinical staff assess each admin staff member (≥10 assessors)
-  HR09_ADMIN     // Admin peers assess each admin staff member (≥5 assessors)
+  HR09_CLINICAL // Clinical staff assess each admin staff member (≥10 assessors)
+  HR09_ADMIN // Admin peers assess each admin staff member (≥5 assessors)
 }
 
 enum PeerEvalStatus {
@@ -722,16 +737,16 @@ model PeerEvalAssignment {
   assesseeId  String
   branch      String
   periodYear  Int
-  periodMonth Int            // 0 = full-year (HR08/HR09); 1-12 for monthly
+  periodMonth Int // 0 = full-year (HR08/HR09); 1-12 for monthly
   status      PeerEvalStatus @default(PENDING)
   notes       String?
   completedAt DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  assessor  Staff              @relation("PeerEvalAssor", fields: [assessorId], references: [id], onDelete: Cascade)
-  assessee  Staff              @relation("PeerEvalAssee", fields: [assesseeId], references: [id], onDelete: Cascade)
-  response  PeerEvalResponse?
+  assessor Staff             @relation("PeerEvalAssor", fields: [assessorId], references: [id], onDelete: Cascade)
+  assessee Staff             @relation("PeerEvalAssee", fields: [assesseeId], references: [id], onDelete: Cascade)
+  response PeerEvalResponse?
 
   @@unique([assessorId, assesseeId, formType, periodYear, periodMonth])
 }
@@ -760,8 +775,8 @@ model CancellationLog {
   patientId       String
   patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
   staffId         String?
-  branch          String    // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
-  type            String    // e.g. "Cancellation >24 hrs (VALID)"
+  branch          String // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
+  type            String // e.g. "Cancellation >24 hrs (VALID)"
   isValid         Boolean   @default(false)
   proofUrl        String?
   remarks         String?
@@ -786,7 +801,7 @@ model NoShowLog {
   patientId       String
   patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
   staffId         String?
-  branch          String    // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
+  branch          String // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
   remarks         String?
   feeDeducted     Boolean   @default(false)
   feeDeductedAt   DateTime?
@@ -808,8 +823,8 @@ model PeerEvalAdminConfig {
   id        String   @id @default(cuid())
   staffId   String   @unique
   staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
-  workDays  Json     // ["MON","TUE","WED","THU","FRI"]
-  branch    String   // "SBEA" | "SBGH"
+  workDays  Json // ["MON","TUE","WED","THU","FRI"]
+  branch    String // "SBEA" | "SBGH"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -826,39 +841,39 @@ enum BookingStatus {
 }
 
 model PatientBooking {
-  id              String        @id @default(cuid())
-  patientId       String
-  patient         Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  staffId         String?
-  staff           Staff?        @relation(fields: [staffId], references: [id], onDelete: SetNull)
-  deckingSlotId   String?
-  deckingSlot     DeckingSlot?  @relation(fields: [deckingSlotId], references: [id], onDelete: SetNull)
-  branch          String        // "SBEA" | "SBGH"
-  department      String        // StaffDepartment string
-  date            DateTime?     // actual appointment date (UTC date); null for teletherapy until assigned
-  startTime       String        // "10:00"
-  endTime         String        // "11:00"
-  isTeletherapy   Boolean       @default(false)
-  meetLink        String?
-  notes           String?
-  status          BookingStatus @default(PENDING)
-  rejectionReason String?
-  downpayment     Decimal?
-  approvedAt      DateTime?
-  approvedBy      String?
-  paidAt          DateTime?
-  alternateChoices Json?        // up to 2 alternates the patient offered; {staffId,date,startTime,endTime}[]
-  source          String        @default("PORTAL")
+  id                 String          @id @default(cuid())
+  patientId          String
+  patient            Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  staffId            String?
+  staff              Staff?          @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  deckingSlotId      String?
+  deckingSlot        DeckingSlot?    @relation(fields: [deckingSlotId], references: [id], onDelete: SetNull)
+  branch             String // "SBEA" | "SBGH"
+  department         String // StaffDepartment string
+  date               DateTime? // actual appointment date (UTC date); null for teletherapy until assigned
+  startTime          String // "10:00"
+  endTime            String // "11:00"
+  isTeletherapy      Boolean         @default(false)
+  meetLink           String?
+  notes              String?
+  status             BookingStatus   @default(PENDING)
+  rejectionReason    String?
+  downpayment        Decimal?
+  approvedAt         DateTime?
+  approvedBy         String?
+  paidAt             DateTime?
+  alternateChoices   Json? // up to 2 alternates the patient offered; {staffId,date,startTime,endTime}[]
+  source             String          @default("PORTAL")
   // Front-desk action flags (post-2026-05-18 self-service flow). When the
   // patient pays, the booking lands as PAID and the front desk just runs
   // these two follow-ups: add the patient to the recurring Decking grid
   // for that therapist, and tick that the downpayment was logged in
   // accounting-hub. Each button is one-shot — booleans disable after click.
-  addedToDeck         Boolean   @default(false)
-  accountingRecorded  Boolean   @default(false)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  payment         PatientPayment?
+  addedToDeck        Boolean         @default(false)
+  accountingRecorded Boolean         @default(false)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  payment            PatientPayment?
 
   @@index([branch, department, date])
   @@index([status])
@@ -943,19 +958,19 @@ enum ClassPortalLrnStatus {
 /// Class-portal users (teachers + students/parents). Admin is hardcoded
 /// in the app, NOT stored here. Passwords are bcrypt'd.
 model ClassPortalUser {
-  id           String           @id @default(cuid())
-  role         ClassPortalRole
-  email        String
-  passwordHash String
-  firstName    String?
-  lastName     String?
-  level        ClassPortalLevel?
+  id            String             @id @default(cuid())
+  role          ClassPortalRole
+  email         String
+  passwordHash  String
+  firstName     String?
+  lastName      String?
+  level         ClassPortalLevel?
   /// Clinic branch this student is enrolled under. Null for teachers
   /// (their branch coverage lives in ClassPortalTeacherAssignment).
-  branch       ClassPortalBranch?
+  branch        ClassPortalBranch?
   /// Snapshot of the parent-submitted enrollment form (JSON). For STUDENT
   /// rows only; null for TEACHER rows. Mirrors the EnrollmentDraft shape.
-  enrollment   Json?
+  enrollment    Json?
   /// Audit trail for password changes — who and when. Plaintext is NEVER
   /// stored; this is just so the admin list can show "Last reset by X on
   /// 2026-05-22" instead of the unhelpful "not on device" placeholder.
@@ -965,22 +980,22 @@ model ClassPortalUser {
   /// from teacher / front-desk / branch-admin views. Re-enabled by
   /// setting back to null. Hard delete is intentionally not exposed —
   /// disabled rows preserve enrollment history and payment audit trail.
-  disabledAt   DateTime?
+  disabledAt    DateTime?
   /// Email of the admin who disabled the account. Cleared on re-enable.
-  disabledBy   String?
+  disabledBy    String?
   /// TEACHER accounts minted from an HR-hub intern row. When true, the
   /// class portal treats them as a regular teacher (same upload / edit
   /// permissions) but the intern-lifecycle cron will auto-disable the
   /// account 15 days after the end of the internship-end month tracked
   /// on the linked Staff row. Cleared to make it a permanent teacher.
-  isIntern      Boolean          @default(false)
+  isIntern      Boolean            @default(false)
   /// Optional link to the ops-hub Staff row this account was created
   /// from. Powers the auto-disable cron (needs Staff.contractExpiry)
   /// and the Users-list badge that surfaces the intern's contract end
   /// date. Nullable so admins can still create teachers directly.
   linkedStaffId String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   @@unique([role, email])
   @@index([role])
@@ -1002,16 +1017,16 @@ enum ClassPortalEventType {
 /// (date..endDate inclusive) for multi-day items like field trips.
 /// Per-branch — EAST and GREENHILLS each maintain their own set.
 model ClassPortalCalendarEvent {
-  id          String                @id @default(cuid())
+  id          String               @id @default(cuid())
   branch      ClassPortalBranch
-  date        DateTime              @db.Date
-  endDate     DateTime?             @db.Date
+  date        DateTime             @db.Date
+  endDate     DateTime?            @db.Date
   title       String
   description String?
-  type        ClassPortalEventType  @default(EVENT)
+  type        ClassPortalEventType @default(EVENT)
   createdBy   String
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   @@index([branch, date])
 }
@@ -1019,13 +1034,13 @@ model ClassPortalCalendarEvent {
 /// One PDF per branch — uploads replace the previous PDF for that
 /// branch so admins always show the latest official calendar.
 model ClassPortalCalendarPdf {
-  id          String              @id @default(cuid())
-  branch      ClassPortalBranch   @unique
-  fileName    String
-  mimeType    String              @default("application/pdf")
-  data        Bytes
-  uploadedBy  String
-  uploadedAt  DateTime            @default(now())
+  id         String            @id @default(cuid())
+  branch     ClassPortalBranch @unique
+  fileName   String
+  mimeType   String            @default("application/pdf")
+  data       Bytes
+  uploadedBy String
+  uploadedAt DateTime          @default(now())
 }
 
 enum ClassPortalBranch {
@@ -1157,16 +1172,16 @@ model ClassPortalFrontDeskPayment {
 /// the live student + payment data, so no blob storage needed here —
 /// regenerating the same row produces the same letter.
 model ClassPortalRegistrationLetter {
-  id               String   @id @default(cuid())
-  referenceNumber  String   @unique          // AURA-REG-YYYY-NNNN
-  studentId        String
-  issuedBy         String                    // email of admin/frontdesk
-  issuedAt         DateTime @default(now())
+  id                    String   @id @default(cuid())
+  referenceNumber       String   @unique // AURA-REG-YYYY-NNNN
+  studentId             String
+  issuedBy              String // email of admin/frontdesk
+  issuedAt              DateTime @default(now())
   /// Snapshot of the annual tuition + misc at the moment of issuance
   /// (centavos). Lets the same reference number always reproduce the
   /// numbers we issued, even if the student's payment rows change later.
   annualTuitionCentavos Int
-  annualMiscCentavos    Int                  @default(500000) // ₱5,000
+  annualMiscCentavos    Int      @default(500000) // ₱5,000
   /// Convenience field — `tuition + misc` at issuance time.
   annualTotalCentavos   Int
 
@@ -1183,11 +1198,11 @@ model ClassPortalPaymentReminderLog {
   id        String   @id @default(cuid())
   studentId String
   email     String
-  plan      String   // MONTHLY | BIANNUAL | ANNUAL
+  plan      String // MONTHLY | BIANNUAL | ANNUAL
   period    String
   dueOn     DateTime @db.Date
-  reason    String   // WINDOW_OPEN | DUE_SOON | PAST_DUE
-  severity  String   // INFO | WARNING
+  reason    String // WINDOW_OPEN | DUE_SOON | PAST_DUE
+  severity  String // INFO | WARNING
   sentAt    DateTime @default(now())
 
   @@unique([studentId, period, reason])
@@ -1203,29 +1218,29 @@ model ClassPortalPaymentReminderLog {
 /// effort — the helper swallows errors so audit failures never break
 /// the user-facing flow.
 model ClassPortalEnrollmentAudit {
-  id         String   @id @default(cuid())
+  id        String   @id @default(cuid())
   /// One of: 'upload_token_init', 'upload_token_complete',
   /// 'upload_blob', 'account_create_attempt', 'account_create_success',
   /// 'account_create_failure'. Free text so future kinds slot in without
   /// a migration.
-  kind       String
+  kind      String
   /// Email at the moment of the event (lowercased when known).
-  email      String?
+  email     String?
   /// Class-portal student id or draft_xxx prefix from the upload flow.
-  studentId  String?
+  studentId String?
   /// e.g. psa_birth_cert, school_id, parent_valid_id.
-  docKey     String?
+  docKey    String?
   /// 'ok' on success, 'error' on any thrown / rejected path.
-  outcome    String
+  outcome   String
   /// Error message captured at the call site. Free text.
-  error      String?
+  error     String?
   /// Source IP from the X-Forwarded-For header (first hop).
-  ip         String?
-  userAgent  String?
+  ip        String?
+  userAgent String?
   /// Free-form bag for per-event extras (file size, role, validation
   /// errors, etc.). Easier to extend than adding columns.
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  metadata  Json?
+  createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([email])
@@ -1240,15 +1255,15 @@ model ClassPortalEnrollmentAudit {
 /// served on demand via a dedicated route, not joined into the bulk
 /// list query, so the panel stays fast even when posters are large.
 model ClassPortalAnnouncement {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   title           String
   body            String
   /// Empty array means "applies to every grade level".
   levels          String[]
   /// If true, teachers ALSO see this announcement. (Admins always see
   /// all announcements; students see them filtered by levels.)
-  includeTeachers Boolean  @default(false)
-  authorRole      String   // 'ADMIN' | 'TEACHER'
+  includeTeachers Boolean   @default(false)
+  authorRole      String // 'ADMIN' | 'TEACHER'
   authorEmail     String
   authorName      String
   /// Optional poster image. fileData lives in the same row so a single
@@ -1263,7 +1278,7 @@ model ClassPortalAnnouncement {
   emailedAt       DateTime?
   emailedBy       String?
   emailedCount    Int?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
   @@index([createdAt])
   @@index([authorEmail])
@@ -1274,14 +1289,14 @@ model ClassPortalAnnouncement {
 /// token; the reset page verifies + consumes it. Expires 24h after issue
 /// and may only be used once.
 model ClassPortalPasswordReset {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  token       String   @unique
+  token       String    @unique
   expiresAt   DateTime
   usedAt      DateTime?
   /// Email of the admin who minted the link, or null for self-service flows.
   requestedBy String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
@@ -1292,12 +1307,12 @@ model ClassPortalPasswordReset {
 /// always click "Return to admin", but the per-tab sessionStorage scope
 /// keeps the practical blast radius small.
 model ClassPortalImpersonationLog {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   adminEmail   String
   targetUserId String
   targetEmail  String
   targetRole   String
-  startedAt    DateTime @default(now())
+  startedAt    DateTime  @default(now())
   endedAt      DateTime?
   reason       String?
 
@@ -1391,7 +1406,7 @@ model ClassPortalLessonAttachment {
 /// work. Stored inline. makeupDate is set when an absent student
 /// submitted later (the teacher records the makeup date alongside).
 model ClassPortalLessonOutput {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   lessonId   String
   studentId  String
   fileName   String
@@ -1399,8 +1414,8 @@ model ClassPortalLessonOutput {
   fileSize   Int
   fileData   Bytes
   makeupDate DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@unique([lessonId, studentId])
   @@index([lessonId])
@@ -1444,16 +1459,16 @@ model ClassPortalLessonTestProof {
 /// lesson). Title + description + optional deadline + total score.
 /// Roster-wide grade entry + per-student proof upload.
 model ClassPortalProject {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   classId     String
   title       String
   description String?
   deadline    DateTime?
   totalScore  Int
   /// grades: JSON map studentId → { score, makeupDate? }
-  grades      Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  grades      Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([classId])
 }
@@ -1478,7 +1493,7 @@ model ClassPortalProjectProof {
 /// Date range (fromDate / toDate) and a gallery of photos uploaded by
 /// the teacher.
 model ClassPortalActivity {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   classId     String
   name        String
   /// Free-form classification (e.g. "School Event", "Field Trip",
@@ -1487,8 +1502,8 @@ model ClassPortalActivity {
   description String?
   fromDate    DateTime?
   toDate      DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([classId])
 }
@@ -1556,15 +1571,15 @@ model ClassPortalTemplate {
 /// items (uniforms, books, etc.) the admin wants surfaced on the pay page.
 model ClassPortalFeeSchedule {
   branch                  ClassPortalBranch @id
-  tuitionAnnualCentavos   Int      @default(0)
-  tuitionBiannualCentavos Int      @default(0)
-  tuitionMonthlyCentavos  Int      @default(0)
-  miscAnnualCentavos      Int      @default(0)
-  miscBiannualCentavos    Int      @default(0)
-  miscMonthlyCentavos     Int      @default(0)
+  tuitionAnnualCentavos   Int               @default(0)
+  tuitionBiannualCentavos Int               @default(0)
+  tuitionMonthlyCentavos  Int               @default(0)
+  miscAnnualCentavos      Int               @default(0)
+  miscBiannualCentavos    Int               @default(0)
+  miscMonthlyCentavos     Int               @default(0)
   /// JSON: Array<{ label: string; amountCentavos: number; notes?: string }>
-  extraItems              Json     @default("[]")
-  updatedAt               DateTime @updatedAt
+  extraItems              Json              @default("[]")
+  updatedAt               DateTime          @updatedAt
   updatedBy               String?
 }
 
@@ -1573,20 +1588,20 @@ model ClassPortalFeeSchedule {
 /// date, the tuition portion is reduced by discountPercent. Managed from
 /// the main admin account (Fees tab → Voucher codes).
 model ClassPortalVoucher {
-  id              String   @id @default(cuid())
-  code            String   @unique // stored upper-cased
-  discountPercent Int      @default(0) // 0–100
-  validUntil      DateTime // last date the discount applies (inclusive)
-  enabled         Boolean  @default(true)
+  id                 String   @id @default(cuid())
+  code               String   @unique // stored upper-cased
+  discountPercent    Int      @default(0) // 0–100
+  validUntil         DateTime // last date the discount applies (inclusive)
+  enabled            Boolean  @default(true)
   /// When set, only this ClassPortalUser.id may validate/use this
   /// voucher. Powers the "personal early-bird" vouchers issued to
   /// individual monthly students after the public AURA30 code expired
   /// — each of them keeps their 30% discount for the rest of the SY.
   /// Null = public voucher (anyone with the code can use it).
   dedicatedStudentId String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  updatedBy       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  updatedBy          String?
 
   @@index([dedicatedStudentId])
 }
@@ -1598,8 +1613,8 @@ model ClassPortalVoucher {
 model ChatFaq {
   id        String   @id @default(cuid())
   label     String   @default("") // quick-reply button text ("" = hidden as a button)
-  keywords  String   // comma-separated trigger keywords (matched as substrings)
-  answer    String   // the template response shown to the patient
+  keywords  String // comma-separated trigger keywords (matched as substrings)
+  answer    String // the template response shown to the patient
   sortOrder Int      @default(0)
   enabled   Boolean  @default(true)
   updatedBy String?
@@ -1621,15 +1636,15 @@ model ChatSetting {
 // ── Restored: models wiped by a stale-base schema.prisma overwrite ──
 
 model UgatScholar {
-  id           String   @id @default(cuid())
+  id                String @id @default(cuid())
   /// Login handle (lowercased). Sign-in is by username, not email.
-  username     String   @unique
+  username          String @unique
   /// School / professional email + personal email. Verification links are
   /// sent to both. Not unique — two scholars could share a school domain
   /// alias in edge cases; uniqueness is enforced on username only.
   professionalEmail String
   personalEmail     String
-  passwordHash String
+  passwordHash      String
 
   /// Which track the scholar registered for: ARAL (final-year interns) |
   /// TINDIG (graduates preparing for the licensure exam). Chosen at sign-up.
@@ -1642,17 +1657,17 @@ model UgatScholar {
   awardMonthly Int?
   awardMonths  Int?
 
-  firstName   String
-  middleName  String?
-  lastName    String
-  studentNumber        String
+  firstName              String
+  middleName             String?
+  lastName               String
+  studentNumber          String
   expectedGraduationYear Int
-  birthdate   DateTime
+  birthdate              DateTime
 
   /// Snapshots of the chosen dropdown labels (see UgatOption).
-  school         String
-  program        String
-  preferredField String
+  school            String
+  program           String
+  preferredField    String
   /// Clinic branch(es) the applicant is interested to work in after licensure,
   /// comma-joined (chosen from the admin-managed BRANCH options). "" = none.
   preferredBranches String @default("")
@@ -1702,12 +1717,12 @@ model UgatScholar {
 }
 
 model UgatVerificationToken {
-  id        String    @id @default(cuid())
-  scholarId String
-  token     String    @unique
-  expiresAt DateTime
+  id         String    @id @default(cuid())
+  scholarId  String
+  token      String    @unique
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
 
   scholar UgatScholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
 
@@ -1738,18 +1753,18 @@ enum UgatOptionKind {
 }
 
 model UgatAdmin {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  passwordHash String
+  id            String    @id @default(cuid())
+  username      String    @unique
+  passwordHash  String
   /// Admin-viewable password copy (User Access shows usernames + passwords).
   passwordPlain String?
-  name         String
+  name          String
   /// Account type: STAFF | UNIVERSITY. University admins get a read-only,
   /// restricted view (About Us + Application only).
-  kind         String   @default("STAFF")
-  createdAt    DateTime @default(now())
-  createdBy    String?
-  disabledAt   DateTime?
+  kind          String    @default("STAFF")
+  createdAt     DateTime  @default(now())
+  createdBy     String?
+  disabledAt    DateTime?
 
   @@index([disabledAt])
 }
@@ -1776,12 +1791,12 @@ model UgatApplication {
   signedAt      DateTime?
 
   /// Null while a draft; set when the applicant submits Part I.
-  submittedAt DateTime?
+  submittedAt     DateTime?
   /// Academic year this application belongs to (e.g. "2026-2027"), stamped at
   /// submission from whichever UgatApplicationCycle was open at the time.
-  academicYear String?
+  academicYear    String?
   /// Admin decision on Part I: NOT_CONSIDERED | PENDING | FOR_INTERVIEW
-  initialDecision String @default("PENDING")
+  initialDecision String    @default("PENDING")
 
   // ── Part II: Interview ──────────────────────────────────────────
   /// The interview slot the scholar booked, plus a snapshot of its time so
@@ -1791,7 +1806,7 @@ model UgatApplication {
   interviewDurationMins Int?
   jitsiUrl              String?
   /// Admin decision after interview: NOT_CONSIDERED | PENDING | FOR_ACCEPTANCE
-  interviewDecision String @default("PENDING")
+  interviewDecision     String    @default("PENDING")
 
   /// Set when the empathic "not considered" email has been sent (prevents
   /// double-sending).
@@ -1809,10 +1824,10 @@ model UgatApplication {
 }
 
 model UgatApplicationCycle {
-  id           String   @id @default(cuid())
-  academicYear String   @unique
-  opensAt      DateTime
-  closesAt     DateTime
+  id                String    @id @default(cuid())
+  academicYear      String    @unique
+  opensAt           DateTime
+  closesAt          DateTime
   /// Deadline to finish deciding Part I (Initial). Used for the reminder popup
   /// + the empathic "not considered" notification.
   initialDeadline   DateTime?
@@ -1822,8 +1837,8 @@ model UgatApplicationCycle {
   /// hard-copy signing of the Return Service Agreement.
   softCopyDeadline  DateTime?
   hardCopyDeadline  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([opensAt, closesAt])
 }
@@ -1876,7 +1891,7 @@ model UgatAcceptance {
   cmOccZip      String?
 
   /// Fellow ticked the truthfulness / agreement statement.
-  truthAffirmed Boolean @default(false)
+  truthAffirmed    Boolean   @default(false)
   /// Fellow submitted the signed soft copy (RSA + co-maker + IDs + signature).
   softCopySignedAt DateTime?
   /// Admin marked the in-person hard copy as signed.
@@ -1972,7 +1987,7 @@ model PeerEvalEmailLog {
   periodYear  Int
   periodMonth Int
   sentAt      DateTime @default(now())
-  sentBy      String?  // user email/name who triggered the send
+  sentBy      String? // user email/name who triggered the send
 
   assessor Staff @relation(fields: [assessorId], references: [id], onDelete: Cascade)
 
@@ -1980,7 +1995,7 @@ model PeerEvalEmailLog {
 }
 
 model UserNotificationState {
-  userId      String   @id  // = User.id (session.user.id)
+  userId      String   @id // = User.id (session.user.id)
   dismissedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
