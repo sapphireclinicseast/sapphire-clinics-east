@@ -1,8 +1,10 @@
 'use client'
 
-// Therapist-facing view of what the PATIENT uploaded:
-//   • Registration documents — Doctor's Referral + PWD ID (captured at
-//     sign-up; served as public Operations Hub URLs).
+// Therapist-facing view of what the PATIENT submitted (its own tab on the
+// patient page):
+//   • PWD / Senior ID — captured at sign-up (served as a public Ops Hub URL).
+//     (Doctor's Referral is intentionally NOT here — it has its own dedicated
+//     card, which already covers both front-desk and client-portal uploads.)
 //   • Home Progress — videos / audio / photos the patient posts from the
 //     client portal between sessions, shown as collapsible per-DATE rows
 //     (like Session History) with a From/To date filter. Each file streams
@@ -12,7 +14,6 @@
 import { useEffect, useState } from 'react'
 import {
   Loader2,
-  FileText,
   CreditCard,
   Video as VideoIcon,
   Mic,
@@ -50,18 +51,13 @@ function fmtSize(n: number): string {
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
-function isImageUrl(u: string): boolean {
-  return /\.(jpe?g|png|webp|gif|heic|heif)(\?|$)/i.test(u)
-}
 
 export default function PatientUploads({
   patientId,
-  referralUrl,
   pwdIdUrl,
   pwdSeniorId,
 }: {
   patientId: string
-  referralUrl?: string | null
   pwdIdUrl?: string | null
   pwdSeniorId?: string | null
 }) {
@@ -88,7 +84,6 @@ export default function PatientUploads({
   }, [patientId])
 
   const fileSrc = (fileId: string) => `/api/patients/${patientId}/home-progress/file/${fileId}`
-  const hasRegDocs = !!(referralUrl || pwdIdUrl || pwdSeniorId)
 
   const filtered = (entries ?? []).filter((e) => {
     const t = new Date(`${e.date}T00:00:00`).getTime()
@@ -103,32 +98,22 @@ export default function PatientUploads({
         <h3 className="text-sm font-bold text-[var(--deep-teal)] flex items-center gap-2">
           <Inbox className="w-4 h-4" /> Patient Uploads
         </h3>
-        <p className="text-[11px] text-[var(--mid-gray)] mt-0.5">Documents &amp; home-practice media the patient submitted.</p>
+        <p className="text-[11px] text-[var(--mid-gray)] mt-0.5">PWD/Senior ID and home-practice media the patient submitted.</p>
       </div>
 
       <div className="p-4 space-y-5">
-        {/* ── Registration documents ───────────────────────────── */}
+        {/* ── PWD / Senior ID ──────────────────────────────────── */}
         <section>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">Registration Documents</p>
-          {hasRegDocs ? (
-            <div className="flex flex-wrap gap-x-6 gap-y-2">
-              {referralUrl && (
-                <a href={referralUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-[var(--deep-teal)] hover:underline">
-                  <FileText className="w-4 h-4 shrink-0" /> Doctor&apos;s Referral
-                </a>
-              )}
-              {pwdIdUrl && (
-                <a href={pwdIdUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-[var(--deep-teal)] hover:underline">
-                  <CreditCard className="w-4 h-4 shrink-0" /> PWD ID
-                  {pwdSeniorId && <span className="text-[var(--mid-gray)] font-normal">· {pwdSeniorId}</span>}
-                </a>
-              )}
-              {!referralUrl && !pwdIdUrl && pwdSeniorId && (
-                <span className="flex items-center gap-2 text-sm text-[var(--charcoal)]">
-                  <CreditCard className="w-4 h-4 shrink-0" /> PWD/Senior ID No.: <span className="font-medium">{pwdSeniorId}</span>
-                </span>
-              )}
-            </div>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] mb-2">PWD / Senior ID</p>
+          {pwdIdUrl ? (
+            <a href={pwdIdUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-[var(--deep-teal)] hover:underline">
+              <CreditCard className="w-4 h-4 shrink-0" /> PWD ID
+              {pwdSeniorId && <span className="text-[var(--mid-gray)] font-normal">· {pwdSeniorId}</span>}
+            </a>
+          ) : pwdSeniorId ? (
+            <p className="flex items-center gap-2 text-sm text-[var(--charcoal)]">
+              <CreditCard className="w-4 h-4 shrink-0" /> <span className="font-medium">{pwdSeniorId}</span>
+            </p>
           ) : (
             <p className="text-[13px] text-[var(--mid-gray)] italic">None on file.</p>
           )}

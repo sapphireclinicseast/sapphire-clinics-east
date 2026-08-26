@@ -28,6 +28,7 @@ import {
   Lock,
   ShieldX,
   Unlock,
+  Inbox,
 } from 'lucide-react'
 import { formatTime, formatDate, cn } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
@@ -149,7 +150,7 @@ export default function PatientDetailPage() {
   // Interdisciplinary patients get a two-tab view (own notes vs other
   // departments' records) so the page isn't crowded; openDept drives the
   // per-department accordion inside the "other" tab.
-  const [activeTab, setActiveTab] = useState<'own' | 'other'>('own')
+  const [activeTab, setActiveTab] = useState<'own' | 'other' | 'uploads'>('own')
   const [openDept, setOpenDept] = useState<string | null>(null)
   // Which other-department note (by session id) is expanded. Notes collapse to
   // a per-day list first so a year of sessions isn't one giant scroll.
@@ -390,7 +391,7 @@ export default function PatientDetailPage() {
     ...otherDeptDocuments.map((d) => d.department),
   ])).sort()
   // The own-documents sidebar belongs to the "own" view; hide it on the other tab.
-  const showSidebar = !isInterdisciplinary || activeTab === 'own'
+  const showSidebar = activeTab === 'own'
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -666,20 +667,20 @@ export default function PatientDetailPage() {
         )
       })()}
 
-      {/* Interdisciplinary tab switcher — only for patients seen by more than
-          one department. Keeps the clinician's own notes separate from the
-          (read-only) records of the other departments so the page isn't crowded. */}
-      {isInterdisciplinary && (
-        <div className="mb-6 flex gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] animate-fade-up">
-          <button
-            onClick={() => setActiveTab('own')}
-            className={cn(
-              'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
-              activeTab === 'own' ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
-            )}
-          >
-            Own Session Notes
-          </button>
+      {/* Tab switcher: own notes, other-department records (interdisciplinary
+          patients only), and patient uploads. Always shown so Patient Uploads
+          is a first-class tab for every patient, next to the others. */}
+      <div className="mb-6 flex gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] animate-fade-up">
+        <button
+          onClick={() => setActiveTab('own')}
+          className={cn(
+            'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
+            activeTab === 'own' ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
+          )}
+        >
+          Own Session Notes
+        </button>
+        {isInterdisciplinary && (
           <button
             onClick={() => setActiveTab('other')}
             className={cn(
@@ -692,8 +693,18 @@ export default function PatientDetailPage() {
               <span className="text-[10px] font-bold text-white bg-[var(--narra)] px-1.5 py-0.5 rounded-full">{otherDeptSessions.length + otherDeptDocuments.length}</span>
             )}
           </button>
-        </div>
-      )}
+        )}
+        <button
+          onClick={() => setActiveTab('uploads')}
+          className={cn(
+            'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-2',
+            activeTab === 'uploads' ? 'bg-white text-[var(--narra)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
+          )}
+        >
+          <Inbox size={15} />
+          Patient Uploads
+        </button>
+      </div>
 
       {/* OTHER tab — per-department, read-only records (notes + IE / Progress
           Reports / uploads). One accordion per department the patient sees. */}
@@ -800,7 +811,18 @@ export default function PatientDetailPage() {
 
       {/* OWN tab — the clinician's own session history + note-making. Always
           shown for single-department patients; the "own" tab for the rest. */}
-      {(!isInterdisciplinary || activeTab === 'own') && (
+      {/* UPLOADS tab — patient-submitted PWD/Senior ID + home-practice media. */}
+      {activeTab === 'uploads' && (
+        <div className="mb-6 animate-fade-up">
+          <PatientUploads
+            patientId={patient.id}
+            pwdIdUrl={patient.pwdIdUrl}
+            pwdSeniorId={patient.pwdSeniorId}
+          />
+        </div>
+      )}
+
+      {activeTab === 'own' && (
       <div className="animate-fade-up stagger-4">
         <button
           type="button"
@@ -1094,15 +1116,6 @@ export default function PatientDetailPage() {
         )}
       </div>
       )}
-        {/* Patient-submitted uploads — full-width at the end of the main column
-            so a long list gets its own scroll space instead of bloating the
-            sidebar. Collapsible per-date rows + a From/To date filter. */}
-        <PatientUploads
-          patientId={patient.id}
-          referralUrl={patient.referralUrl}
-          pwdIdUrl={patient.pwdIdUrl}
-          pwdSeniorId={patient.pwdSeniorId}
-        />
         </div>
 
         {/* Right sidebar: Patient Widgets — own documents, part of the "own" view. */}
