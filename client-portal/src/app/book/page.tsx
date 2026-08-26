@@ -129,6 +129,7 @@ export default function BookStep1Page() {
           const enabledList = services.filter((s) => isEnabled(s))
           const disabledList = services.filter((s) => !isEnabled(s))
           return (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <section>
                 <div className="flex items-center justify-between mb-2">
@@ -163,7 +164,6 @@ export default function BookStep1Page() {
                     {disabledList.length} services
                   </span>
                 </div>
-                <BranchQuickContact branch={branch} />
                 <div className="flex flex-col gap-2">
                   {disabledList.length === 0 && (
                     <div className="text-xs italic text-[color:var(--mid-gray)] px-1 py-2">
@@ -183,6 +183,8 @@ export default function BookStep1Page() {
                 </div>
               </section>
             </div>
+            <BranchQuickContact branch={branch} />
+            </>
           )
         })()}
 
@@ -211,8 +213,8 @@ function BranchQuickContact({ branch }: { branch: 'SBEA' | 'SBGH' }) {
   const viber = `viber://chat?number=${encodeURIComponent('+63' + phoneClean.replace(/^0/, ''))}`
   const pill = 'inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-semibold text-white hover:opacity-90 transition-opacity'
   return (
-    <div className="mb-3">
-      <p className="text-[12px] text-[color:var(--mid-gray)] mb-2">Message {c.name} directly — our front desk will help you book.</p>
+    <div className="mt-6 pt-5 border-t border-[color:var(--paper-3)]">
+      <p className="text-[12px] text-[color:var(--mid-gray)] mb-2">Prefer to message us? Contact {c.name} directly — our front desk will help you book.</p>
       <div className="flex flex-wrap gap-2">
         <a href={c.messenger} target="_blank" rel="noreferrer" className={pill} style={{ background: '#0A7CFF' }} aria-label={`Message ${c.name} on Messenger`}>
           <IconMessengerSolid /> Messenger
