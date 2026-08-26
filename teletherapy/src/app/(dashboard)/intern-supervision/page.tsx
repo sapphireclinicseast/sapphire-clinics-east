@@ -330,9 +330,19 @@ export default function InternSupervisionPage() {
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+  // Deep-link: /intern-supervision?tab=learning|documents|balik-tanaw (used by
+  // the notification bell). Applied once on mount and given precedence over the
+  // empty-state auto-switch below.
+  const [deepLinked, setDeepLinked] = useState(false)
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    const valid: Tab[] = ['interns', 'all-interns', 'balik-tanaw', 'grades', 'documents', 'learning']
+    if (t && valid.includes(t as Tab)) { setTab(t as Tab); setDeepLinked(true) }
+  }, [])
   // A tagged supervisor with zero decked interns would otherwise land on the
   // (button-less, empty) "interns" tab — default them straight to All Interns.
   useEffect(() => {
+    if (deepLinked) return
     if (!loading && interns.length === 0 && canSeeAllInterns) { setTab('all-interns'); loadAllInterns() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, canSeeAllInterns])

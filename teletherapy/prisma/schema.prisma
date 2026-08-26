@@ -594,3 +594,17 @@ model InternshipDocument {
   @@index([department])
   @@index([createdAt])
 }
+
+// ── Notification bell read cursor ────────────────────────────────
+// One row per TherapistAccount. `seenKeys` holds the stable keys of the
+// notifications the user has already viewed. Opening the bell marks every
+// currently-shown notification seen (the red count clears; they turn grey).
+// Most notification sources are read-only mirrors of Hub tables that can't
+// carry a per-user "read" flag, so the read-state lives here instead. Kept
+// bounded to the most-recent keys since only recent notifications are ever
+// surfaced.
+model NotificationSeen {
+  accountId String   @id
+  seenKeys  String[] @default([])
+  updatedAt DateTime @updatedAt @default(now())
+}

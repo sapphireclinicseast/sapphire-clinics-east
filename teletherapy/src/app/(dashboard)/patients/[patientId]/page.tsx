@@ -151,6 +151,12 @@ export default function PatientDetailPage() {
   // departments' records) so the page isn't crowded; openDept drives the
   // per-department accordion inside the "other" tab.
   const [activeTab, setActiveTab] = useState<'own' | 'other' | 'uploads'>('own')
+  // Deep-link: /patients/[id]?tab=uploads opens the Patient Uploads tab (used by
+  // the notification bell). Read once on mount.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    if (t === 'uploads' || t === 'own' || t === 'other') setActiveTab(t as 'own' | 'other' | 'uploads')
+  }, [])
   const [openDept, setOpenDept] = useState<string | null>(null)
   // Which other-department note (by session id) is expanded. Notes collapse to
   // a per-day list first so a year of sessions isn't one giant scroll.
