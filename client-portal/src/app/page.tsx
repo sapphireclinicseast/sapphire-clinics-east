@@ -83,8 +83,12 @@ function HomeInner() {
             <Hero3D />
             <ComplaintCard />
           </div>
-          {/* Right column — the (larger) Get started / sign-in + register form. */}
-          <AuthCard expired={expired} onAuthed={handleAuthed} />
+          {/* Right column — the (larger) Get started / sign-in + register form,
+              with the Homecare PT promo filling the space beneath it. */}
+          <div className="space-y-6">
+            <AuthCard expired={expired} onAuthed={handleAuthed} />
+            <HomecareBanner />
+          </div>
         </section>
       )}
     </div>
@@ -1207,6 +1211,47 @@ function fmtStatus(s: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
+
+// Promo card under the Get-started panel: announces Homecare PT and routes to
+// the /homecare booking flow. The whole card is the link; "Schedule Now" is the
+// visual affordance.
+function HomecareBanner() {
+  return (
+    <a
+      href="/homecare"
+      aria-label="Schedule Homecare Physical Therapy"
+      className="group relative block overflow-hidden rounded-[18px] p-6 text-white shadow-[0_10px_30px_rgba(27,63,56,0.25)] transition-transform duration-200 hover:-translate-y-0.5"
+      style={{ background: 'linear-gradient(135deg, var(--deep-teal), var(--teal))' }}
+    >
+      <span className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full opacity-20" style={{ background: 'var(--gold)' }} />
+      <span className="pointer-events-none absolute -bottom-12 right-8 h-24 w-24 rounded-full bg-white opacity-10" />
+      <div className="relative flex items-start gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 10.5 12 3l9 7.5" />
+            <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
+            <path d="M12 21v-5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2" />
+            <path d="M9.2 12.3c.9-.9 2.2-.2 2.8.4.6-.6 1.9-1.3 2.8-.4.7.8.5 1.8-.2 2.5L12 17.2l-2.6-2.4c-.7-.7-.9-1.7-.2-2.5Z" />
+          </svg>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--gold)' }}>New service</div>
+          <h3 className="mt-1 text-[20px] font-bold leading-tight">Homecare Physical Therapy now available!</h3>
+          <p className="mt-1.5 text-[13px] leading-snug text-white/80">
+            A licensed physical therapist comes to your home. Choose your city and a schedule that works for you.
+          </p>
+          <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[14px] font-semibold transition-transform duration-200 group-hover:gap-3" style={{ color: 'var(--deep-teal)' }}>
+            Schedule Now
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12h14" />
+              <path d="m13 6 6 6-6 6" />
+            </svg>
+          </span>
+        </div>
+      </div>
+    </a>
+  )
+}
 
 function ComplaintCard() {
   return (

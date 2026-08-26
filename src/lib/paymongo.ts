@@ -10,8 +10,12 @@ const PAYMONGO_API = 'https://api.paymongo.com/v1'
 // PAYMONGO_SECRET_KEY_SBEA / _SBGH select per branch; PAYMONGO_SECRET_KEY is the
 // backward-compatible fallback when a per-branch key isn't configured.
 function branchShort(branch?: string): 'SBEA' | 'SBGH' | null {
-  if (branch === 'SANDBOX_EAST') return 'SBEA'
-  if (branch === 'SANDBOX_GREENHILLS') return 'SBGH'
+  // Accept both the ops-hub branch value ("SANDBOX_EAST") and the short code
+  // ("SBEA") — PatientBooking.branch stores the short code, so the previous
+  // SANDBOX_*-only mapping meant per-branch key selection never triggered and
+  // every charge fell back to the single PAYMONGO_SECRET_KEY.
+  if (branch === 'SANDBOX_EAST' || branch === 'SBEA') return 'SBEA'
+  if (branch === 'SANDBOX_GREENHILLS' || branch === 'SBGH') return 'SBGH'
   return null
 }
 

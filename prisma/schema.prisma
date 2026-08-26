@@ -897,6 +897,20 @@ model PatientBooking {
   // accounting-hub. Each button is one-shot — booleans disable after click.
   addedToDeck         Boolean   @default(false)
   accountingRecorded  Boolean   @default(false)
+  // ── Homecare PT fields (source == "HOMECARE") ──────────────────────────────
+  // For traveling-PT home visits booked via /homecare. The city + open-day tie
+  // the visit to an admin-scheduled batch date; the fare fields snapshot the
+  // computed transport charge (session fee lives in PatientPayment.amount minus
+  // transportFee). serviceLat/Lng cache the geocoded destination so we never
+  // re-geocode. All null for ordinary in-clinic/teletherapy bookings.
+  homecareCityId    String?
+  homecareOpenDayId String?
+  serviceAddress    String?
+  serviceLat        Float?
+  serviceLng        Float?
+  distanceKm        Float?
+  transportFee      Decimal?
+  surgeMultiplier   Float?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   payment         PatientPayment?
@@ -905,6 +919,78 @@ model PatientBooking {
   @@index([status])
   @@index([patientId])
   @@index([staffId, date])
+  @@index([homecareOpenDayId])
+}
+
+// ── Homecare Physical Therapy (traveling PT home visits) ─────────────────────
+// A clinic admin configures which cities are served, from which branch the PT
+// travels, and which specific dates each city has open. Slots are city×date
+// (not therapist-week like the clinic decking) so all clients in a city are
+// batched onto one travel day. Config is edited from client.sapphireclinics
+// east.org/homecare/admin via token-guarded /api/homecare-admin/* endpoints.
+
+model HomecareCity {
+  id        String            @id @default(cuid())
+  name      String            // "Quezon City", "Mandaluyong", ...
+  province  String?           // optional, for disambiguation / display
+  active    Boolean           @default(true)
+  openDays  HomecareOpenDay[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([name, province])
+}
+
+model HomecareOpenDay {
+  id        String       @id @default(cuid())
+  cityId    String
+  city      HomecareCity @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  branch    String       // "SBEA" | "SBGH" — which clinic the PT travels from
+  date      DateTime     // the specific open travel date (date-only, UTC midnight)
+  startTime String       @default("09:00") // daily service window (front desk sequences exact times)
+  endTime   String       @default("17:00")
+  capacity  Int          @default(6)        // max home visits that day
+  disabled  Boolean      @default(false)
+  notes     String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([cityId, branch, date])
+  @@index([branch, date])
+}
+
+// Per-branch clinic origin coordinates the PT travels from. Admin-editable so
+// the exact pin can be set/adjusted without a code change. id == branch short
+// code ("SBEA" | "SBGH").
+model HomecareClinic {
+  id        String   @id            // "SBEA" | "SBGH"
+  name      String                  // "Aura Health Rehab – East"
+  address   String?
+  latitude  Float
+  longitude Float
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+// Singleton fare configuration (id == "default"). All money in whole PHP.
+// The tiered transport fare: base covers the first `baseKm` km; each km from
+// there to `shortMaxKm` adds `shortRatePerKm`; each km beyond adds
+// `longRatePerKm`. surge is a JSON array of time-of-day windows that multiply
+// the transport fare during peak hours/days.
+model HomecareSettings {
+  id                  String   @id @default("default")
+  sessionFee          Decimal  @default(2000)
+  baseFare            Decimal  @default(70)
+  baseKm              Float    @default(2)
+  shortRatePerKm      Decimal  @default(20)
+  shortMaxKm          Float    @default(7)
+  longRatePerKm       Decimal  @default(20)
+  // [{ label, days:[0-6], startHour, endHour, multiplier }]; first match wins.
+  surge               Json     @default("[]")
+  surgeCap            Float    @default(2)   // regulatory cap on the multiplier
+  defaultTransportFee Decimal? // fallback when geocoding/routing fails
+  orsEnabled          Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
 }
 
 model PatientPayment {
