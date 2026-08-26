@@ -50,6 +50,9 @@ model PatientDocument {
   mimeType            String
   description         String?
   scheduleId          String?
+  // Psychology / MD reports are confidential by default — hidden from other
+  // departments and the patient unless shared. Ignored for other departments.
+  sharedWithOthers    Boolean             @default(false)
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @default(now()) @updatedAt
   // Lifecycle timestamps
@@ -462,6 +465,16 @@ model QueueAd {
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Minimal read model for the client-portal confidentiality gate. The full
+// SessionNote table is owned by teletherapy; the ops hub only needs
+// scheduleId + sharedWithOthers to hide Psychology/MD session notes from the
+// patient (Client Hub) unless the author opted in. Only these columns are read.
+model SessionNote {
+  id               String  @id
+  scheduleId       String  @unique
+  sharedWithOthers Boolean @default(false)
 }
 
 model Staff {

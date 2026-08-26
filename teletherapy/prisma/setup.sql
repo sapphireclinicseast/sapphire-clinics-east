@@ -237,3 +237,7 @@ CREATE TABLE IF NOT EXISTS "SupervisionMeeting" (
 );
 CREATE INDEX IF NOT EXISTS "SupervisionMeeting_context_idx" ON "SupervisionMeeting"("context");
 CREATE INDEX IF NOT EXISTS "SupervisionMeeting_createdByAccountId_idx" ON "SupervisionMeeting"("createdByAccountId");
+
+-- Psychology / MD confidentiality: notes & reports are private unless "Show to Others"
+ALTER TABLE "SessionNote"     ADD COLUMN IF NOT EXISTS "sharedWithOthers" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "PatientDocument" ADD COLUMN IF NOT EXISTS "sharedWithOthers" BOOLEAN NOT NULL DEFAULT false;

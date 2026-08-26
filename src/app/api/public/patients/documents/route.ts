@@ -41,6 +41,13 @@ export async function GET(req: NextRequest) {
     where: {
       patientId: { in: patientIds },
       ...(scheduleId ? { scheduleId } : department ? { department } : {}),
+      // Psychology / Medical (MD) reports are confidential — the patient only
+      // sees them if the author ticked "Show to Others". Other departments'
+      // documents are unaffected.
+      OR: [
+        { department: { notIn: ['PSYCHOLOGY', 'MD'] } },
+        { sharedWithOthers: true },
+      ],
     },
     orderBy: { createdAt: 'desc' },
     take: 200,
