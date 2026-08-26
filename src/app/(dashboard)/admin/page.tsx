@@ -1,6 +1,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
+import { branchLabel } from '@/lib/branch-label'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -275,7 +276,7 @@ export default function AdminPage() {
               <select value={selectedStaffId} onChange={(e) => onStaffSelect(e.target.value)} required className="input bg-white">
                 <option value="">Select staff member...</option>
                 {availableStaff.map((s) => (
-                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {s.branch})</option>
+                  <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {branchLabel(s.branch) || s.branch})</option>
                 ))}
               </select>
             </div>
