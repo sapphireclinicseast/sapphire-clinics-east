@@ -74,8 +74,10 @@ export async function GET(req: Request) {
           select: {
             inventoryItemId: true, name: true, quantity: true, lineTotal: true,
             isFreeSample: true, returnedQuantity: true, refundAmount: true,
-            // SKU classification for the monthly per-category breakdown.
-            inventoryItem: { select: { skuDepartment: true, skuCategory: true } },
+            // SKU classification for the monthly per-category breakdown, plus
+            // sourceItemId so a branch consignment copy aggregates under its
+            // pool item instead of appearing as a duplicate product row.
+            inventoryItem: { select: { skuDepartment: true, skuCategory: true, sourceItemId: true } },
           },
         },
         payments: { select: { method: true, amount: true } },
@@ -104,7 +106,9 @@ export async function GET(req: Request) {
       const monthKey = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7)
 
       for (const item of order.items) {
-        const id = item.inventoryItemId as string
+        // Branch consignment copies roll up under their pool item — same
+        // product, different custody row — so tables don't show duplicates.
+        const id = (item.inventoryItem?.sourceItemId || item.inventoryItemId) as string
         const qty = item.quantity
 
         if (item.isFreeSample) {
