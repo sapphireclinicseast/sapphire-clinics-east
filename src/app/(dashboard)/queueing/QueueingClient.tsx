@@ -23,6 +23,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   CONFIRMED:   { bg: '#CCFBF1', color: '#0F766E' },
   CANCELLED:   { bg: '#FEE2E2', color: '#DC2626' },
   RESCHEDULED: { bg: '#EDE9FE', color: '#5B21B6' },
+  NO_SHOW: { bg: '#FFEDD5', color: '#9A3412' },   // amber: not cancelled, not rescheduled
 }
 
 const TIME_SLOTS = [

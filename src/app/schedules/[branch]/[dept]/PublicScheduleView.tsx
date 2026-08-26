@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type CSSProperties } from 'react'
+import { statusLabel } from '@/lib/schedule-status'
 import { localTodayStr } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 
@@ -10,6 +11,7 @@ const STATUS_COLORS: Record<string, { background: string; color: string }> = {
   CONFIRMED:   { background: '#ECFDF5', color: '#065F46' },
   CANCELLED:   { background: '#FEE2E2', color: '#DC2626' },
   RESCHEDULED: { background: '#EDE9FE', color: '#5B21B6' },
+  NO_SHOW: { background: '#FFEDD5', color: '#9A3412' },   // amber: not cancelled, not rescheduled
 }
 
 // Single-letter day labels so calendar fits on mobile
@@ -626,7 +628,7 @@ export default function PublicScheduleView({
                               style={filterInput}>
                               <option value="">All</option>
                               {['PENDING','CONFIRMED','CANCELLED','RESCHEDULED'].map(st => (
-                                <option key={st} value={st.toLowerCase()}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
+                                <option key={st} value={st.toLowerCase()}>{statusLabel(st)}</option>
                               ))}
                             </select>
                           ) : (
@@ -670,7 +672,7 @@ export default function PublicScheduleView({
                             whiteSpace: 'nowrap',
                             ...(STATUS_COLORS[s.status] ?? { background: '#f3f4f6', color: '#374151' })
                           }}>
-                            {s.status.charAt(0) + s.status.slice(1).toLowerCase()}
+                            {statusLabel(s.status)}
                           </span>
                         </td>
                       </tr>
@@ -831,7 +833,7 @@ export default function PublicScheduleView({
                                 whiteSpace: 'nowrap',
                                 ...(STATUS_COLORS[s.status] ?? { background: '#f3f4f6', color: '#374151' })
                               }}>
-                                {s.status.charAt(0) + s.status.slice(1).toLowerCase()}
+                                {statusLabel(s.status)}
                               </span>
                             </td>
                           </tr>

@@ -454,6 +454,10 @@ enum ScheduleStatus {
   CONFIRMED
   CANCELLED
   RESCHEDULED
+  // A booked session the patient never attended and never called about. Distinct
+  // from CANCELLED, which means they told us: the fee policy treats the two
+  // differently, and lumping them together hid no-shows entirely.
+  NO_SHOW
 }
 
 model QueueAd {
@@ -784,6 +788,11 @@ model CancellationLog {
   id              String    @id @default(cuid())
   patientId       String
   patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // The session this came from, when it was logged by a Clinic Schedule status
+  // change rather than typed in by hand. Nullable because manual entry
+  // predates this and still works. Used to avoid logging the same session twice
+  // when a status is edited back and forth.
+  scheduleId      String?
   staffId         String?
   branch          String    // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
   type            String    // e.g. "Cancellation >24 hrs (VALID)"
@@ -800,6 +809,7 @@ model CancellationLog {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  @@index([scheduleId])
   @@index([patientId])
   @@index([createdAt])
 }
@@ -810,6 +820,11 @@ model NoShowLog {
   id              String    @id @default(cuid())
   patientId       String
   patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // The session this came from, when it was logged by a Clinic Schedule status
+  // change rather than typed in by hand. Nullable because manual entry
+  // predates this and still works. Used to avoid logging the same session twice
+  // when a status is edited back and forth.
+  scheduleId      String?
   staffId         String?
   branch          String    // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
   remarks         String?
@@ -823,6 +838,7 @@ model NoShowLog {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  @@index([scheduleId])
   @@index([patientId])
   @@index([createdAt])
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { statusLabel } from '@/lib/schedule-status'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
 
@@ -16,6 +17,7 @@ const STATUS_COLORS: Record<string, { background: string; color: string }> = {
   CONFIRMED:   { background: 'var(--pale-teal)', color: 'var(--teal)' },
   CANCELLED:   { background: '#FEE2E2', color: '#DC2626' },
   RESCHEDULED: { background: '#EDE9FE', color: '#5B21B6' },
+  NO_SHOW: { background: '#FFEDD5', color: '#9A3412' },   // amber: not cancelled, not rescheduled
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -23,6 +25,7 @@ const STATUS_DOT: Record<string, string> = {
   CONFIRMED:   '#1a7b8a',
   CANCELLED:   '#DC2626',
   RESCHEDULED: '#5B21B6',
+  NO_SHOW: '#9A3412',
 }
 
 function formatTime(t: string): string {
@@ -385,7 +388,7 @@ export default function CalendarView({ role }: { role: string }) {
                         <td className="px-4 py-2.5">
                           <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
                             style={STATUS_COLORS[s.status] ?? { background: '#f3f4f6', color: '#374151' }}>
-                            {s.status.charAt(0) + s.status.slice(1).toLowerCase()}
+                            {statusLabel(s.status)}
                           </span>
                         </td>
                       </tr>
