@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils'
 import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
 import InternProfileModal from '@/components/InternProfileModal'
 import MeetingsHub from '@/components/MeetingsHub'
+import LearningOutcomesForm from '@/components/LearningOutcomesForm'
+import BalikTanawForm from '@/components/BalikTanawForm'
 
 interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null; hasAccount?: boolean; accountActive?: boolean | null; rotationLapsed?: boolean }
 interface GradeInfo { grade: string; note: string | null; fileName: string | null; filePath: string | null; gradedByName: string | null; updatedAt: string }
@@ -296,7 +298,7 @@ function DocumentsPanel({ docs, myAccountId, isAdmin, onChanged, onToast }: {
   )
 }
 
-type Tab = 'interns' | 'all-interns' | 'balik-tanaw' | 'grades' | 'documents' | 'learning' | 'meeting'
+type Tab = 'interns' | 'all-interns' | 'balik-tanaw' | 'grades' | 'documents' | 'learning' | 'meeting' | 'my-learning' | 'my-balik'
 interface InternNote {
   scheduleId: string
   date: string
@@ -396,7 +398,7 @@ export default function InternSupervisionPage() {
   const [deepLinked, setDeepLinked] = useState(false)
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab')
-    const valid: Tab[] = ['interns', 'all-interns', 'balik-tanaw', 'grades', 'documents', 'learning', 'meeting']
+    const valid: Tab[] = ['interns', 'all-interns', 'balik-tanaw', 'grades', 'documents', 'learning', 'meeting', 'my-learning', 'my-balik']
     if (t && valid.includes(t as Tab)) { setTab(t as Tab); setDeepLinked(true) }
   }, [])
   // A tagged supervisor with zero decked interns would otherwise land on the
@@ -405,7 +407,7 @@ export default function InternSupervisionPage() {
     if (deepLinked) return
     if (!loading && interns.length === 0) {
       if (canSeeAllInterns) { setTab('all-interns'); loadAllInterns() }
-      else setTab('meeting') // non-supervisors (e.g. interns) land on Meetings
+      else setTab('my-learning') // interns land on their Learning Outcomes form
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, canSeeAllInterns])
@@ -455,6 +457,7 @@ export default function InternSupervisionPage() {
               ...(isActiveSupervisor ? [['interns', 'List of Interns']] as [Tab, string][] : []),
               ...(canSeeAllInterns ? [['all-interns', 'All Interns']] as [Tab, string][] : []),
               ...((isActiveSupervisor || canSeeAllInterns) ? [['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles']] as [Tab, string][] : []),
+              ...(!(isActiveSupervisor || canSeeAllInterns) ? [['my-learning', 'Learning Outcomes'], ['my-balik', 'Balik-Tanaw']] as [Tab, string][] : []),
               ['meeting', 'Meetings'],
             ] as [Tab, string][]).map(([t, label]) => (
               <button key={t} onClick={() => { setTab(t); if (t === 'all-interns') loadAllInterns() }}
@@ -467,7 +470,11 @@ export default function InternSupervisionPage() {
 
           {tab === 'meeting' && <MeetingsHub context="INTERNSHIP" canSetAvailability={isActiveSupervisor || canSeeAllInterns} />}
 
-          {!isActiveSupervisor && !canSeeAllInterns && tab !== 'meeting' && (
+          {/* Intern-facing forms (moved here from the standalone pages) */}
+          {tab === 'my-learning' && <LearningOutcomesForm showHero={false} />}
+          {tab === 'my-balik' && <BalikTanawForm showHero={false} />}
+
+          {!isActiveSupervisor && !canSeeAllInterns && tab !== 'meeting' && tab !== 'my-learning' && tab !== 'my-balik' && (
             <div className="card-static text-center py-16">
               <div className="w-14 h-14 rounded-full bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-4">
                 <UserCog size={24} className="text-[var(--teal)]" />

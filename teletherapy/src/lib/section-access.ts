@@ -45,12 +45,14 @@ const PRESETS: Record<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'INTERN', str
     '/seminars', '/templates', '/manuals', '/directory', '/wellness-check',
     '/payroll', '/loans-perks', '/intern-supervision', '/mentorship', '/settings',
   ],
-  // Interns get the clinical pages plus their own Balik-Tanaw submission section,
-  // but not the supervisor-facing Intern Supervision / Mentorship sections.
+  // Interns get the clinical pages plus the Internship section, where their
+  // Learning Outcomes + Balik-Tanaw forms now live as tabs (they see the
+  // intern view of that page, not the supervisor tabs). The old standalone
+  // routes stay allowed for back-compat but are no longer in the nav.
   INTERN: [
     '/', '/clinic-schedule', '/patients', '/patients-love', '/peers-love',
     '/seminars', '/templates', '/manuals', '/directory', '/wellness-check',
-    '/payroll', '/loans-perks', '/balik-tanaw', '/learning-outcomes', '/settings',
+    '/payroll', '/loans-perks', '/intern-supervision', '/balik-tanaw', '/learning-outcomes', '/settings',
   ],
   FRONT_DESK: [
     '/patients-love', '/peers-love', '/seminars', '/templates', '/manuals',
