@@ -173,6 +173,9 @@ model PatientDocument {
   mimeType     String
   description  String?
   scheduleId   String?             // optional link to a session (e.g. IE flagged from session)
+  // Psychology / Medical (MD) reports are confidential by default — hidden from
+  // other departments AND the patient. True = shared. Ignored for other depts.
+  sharedWithOthers Boolean         @default(false)
 
   // ── IE workflow: clinician emails the IE directly to the patient
   sentToPatientAt   DateTime?
@@ -435,6 +438,11 @@ model SessionNote {
   attachments         Json?
   discontinuedRemarks String?
   isInitialEvaluation Boolean           @default(false)
+  // Psychology / Medical (MD) notes are confidential by default — hidden from
+  // other departments AND the patient (Client Hub). When the author ticks
+  // "Show to Others" on completion this becomes true and the note is shared.
+  // Ignored for all other departments (their notes are visible as before).
+  sharedWithOthers    Boolean           @default(false)
   emailSentAt         DateTime?
   emailSentTo         String?
   // Permanent freeze marker. Set when the authoring clinician is

@@ -331,6 +331,7 @@ interface SessionDetail {
     emailSentTo: string | null
     isInitialEvaluation: boolean
     lockedAt: string | null
+    sharedWithOthers?: boolean
     editHistory?: { name: string; accountType: string; action: string; at: string }[] | null
   } | null
 }
@@ -376,6 +377,8 @@ export default function SessionDetailPage() {
   const [sendingEmail, setSendingEmail] = useState(false)
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [sharedOverride, setSharedOverride] = useState<boolean | null>(null)
+  const [sharing, setSharing] = useState(false)
   const [clinicianSettings, setClinicianSettings] = useState<{ licenseNo?: string | null; ptrNo?: string | null; signatureDataUrl?: string | null } | null>(null)
 
   // Department detection — based on the SESSION's staff dept, not logged-in user
@@ -383,6 +386,10 @@ export default function SessionDetailPage() {
   const { data: authSession } = useSession()
   const sessionDept = session?.staff?.department?.toUpperCase() ?? authSession?.user?.department?.toUpperCase() ?? ''
   const isPsychDept = sessionDept === 'PSYCHOLOGY'
+  // Psychology + Medical (MD) notes are confidential by default; a "Show to
+  // Others" toggle on the completed note opts into sharing with other
+  // departments and the patient.
+  const isConfidentialDept = isPsychDept || sessionDept === 'MD'
   const isOTDept = sessionDept === 'OT' || sessionDept === 'OCCUPATIONAL THERAPY'
   const isSLPDept = sessionDept === 'SLP' || sessionDept === 'SPEECH LANGUAGE PATHOLOGY' || sessionDept === 'ST'
   const isSPEDDept = sessionDept === 'SPED' || sessionDept === 'SPECIAL EDUCATION'
@@ -621,6 +628,27 @@ export default function SessionDetailPage() {
     else setPsychEditUseForm(false)
     setShowClearFormPrompt(false)
     setClearFormTarget(null)
+  }
+
+  // "Show to Others" state for confidential (Psychology/MD) completed notes.
+  const noteShared = sharedOverride ?? (session?.sessionNote?.sharedWithOthers ?? false)
+  async function toggleShare(next: boolean) {
+    setSharedOverride(next)
+    setSharing(true)
+    try {
+      const res = await fetch(`/api/sessions/${scheduleId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shared: next }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to update') }
+      setToast(next ? 'Note is now visible to others' : 'Note is now confidential')
+    } catch (e) {
+      setSharedOverride(!next) // revert on failure
+      setToast(e instanceof Error ? e.message : 'Failed to update')
+    } finally {
+      setSharing(false)
+    }
   }
 
   async function handleComplete() {
@@ -1109,6 +1137,27 @@ export default function SessionDetailPage() {
               </button>
             )}
           </div>
+
+          {/* Psychology / MD confidentiality: "Show to Others" toggle. Private
+              by default; ticking shares the note with other departments in the
+              patient's care AND the patient in the Client Hub. */}
+          {isConfidentialDept && session.sessionNote!.status === 'COMPLETED' && (
+            <label className={`flex items-start gap-2.5 mb-4 p-3 rounded-xl border cursor-pointer transition-colors ${noteShared ? 'bg-[var(--pale-teal)] border-[var(--teal)]' : 'bg-[var(--off-white)] border-[var(--light-gray)]'} ${(sharing || readOnly) ? 'opacity-60 cursor-default' : ''}`}>
+              <input
+                type="checkbox"
+                checked={noteShared}
+                disabled={sharing || readOnly}
+                onChange={(e) => toggleShare(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[var(--teal)]"
+              />
+              <span className="text-[13px]">
+                <span className="font-semibold text-[var(--charcoal)]">Show to Others</span>
+                <span className="block text-[11px] text-[var(--mid-gray)] leading-snug mt-0.5">
+                  {sessionDept === 'MD' ? 'Medical' : 'Psychology'} notes are confidential by default. Tick to let other departments involved in this patient&apos;s care — and the patient in their portal — view this note.
+                </span>
+              </span>
+            </label>
+          )}
 
           {/* Attachments — show FIRST so they're always visible */}
           {session.sessionNote!.attachments && (session.sessionNote!.attachments as any[]).length > 0 && (

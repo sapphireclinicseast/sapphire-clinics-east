@@ -21,11 +21,15 @@ export async function GET(
 
   const doc = await prisma.patientDocument.findUnique({
     where: { id },
-    select: { patientId: true, filePath: true, mimeType: true, fileName: true },
+    select: { patientId: true, filePath: true, mimeType: true, fileName: true, department: true, sharedWithOthers: true },
   })
   // Ownership: the doc may sit on any of the person's interbranch records.
   const patientIds = await linkedPatientIds(session.patientId)
   if (!doc || !patientIds.includes(doc.patientId)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+  // Psychology / Medical (MD) reports are confidential unless shared.
+  if (['PSYCHOLOGY', 'MD'].includes(doc.department) && !doc.sharedWithOthers) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

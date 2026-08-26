@@ -71,6 +71,11 @@ export async function PATCH(
     updateData.discontinuedRemarks = body.discontinuedRemarks || null
   }
 
+  // Psychology/MD "Show to Others" toggle (confidentiality opt-in).
+  if (body.sharedWithOthers !== undefined) {
+    updateData.sharedWithOthers = body.sharedWithOthers === true
+  }
+
   // Reset email sent status when notes are edited (so they can re-send)
   if (body.notes !== undefined || body.attachments !== undefined) {
     updateData.emailSentAt = null

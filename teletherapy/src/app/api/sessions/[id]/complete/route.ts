@@ -84,6 +84,7 @@ export async function POST(
           at: new Date().toISOString(),
         }),
         ...(body.isInitialEvaluation === true ? { isInitialEvaluation: true } : {}),
+        ...(body.sharedWithOthers !== undefined ? { sharedWithOthers: body.sharedWithOthers === true } : {}),
       },
     })
 
@@ -99,6 +100,7 @@ export async function POST(
       notes: body.notes || null,
       attachments: body.attachments || null,
       isInitialEvaluation: body.isInitialEvaluation === true,
+      sharedWithOthers: body.sharedWithOthers === true,
       editHistory: appendHistory(null, {
         name: session.user.name ?? session.user.email ?? 'Staff',
         accountType: session.user.accountType ?? 'CLINICIAN',

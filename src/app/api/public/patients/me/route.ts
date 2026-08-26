@@ -126,6 +126,16 @@ export async function GET(req: NextRequest) {
     linkedRecords.map((r) => [r.id, (r.branches?.[0] ?? r.branch) as string | null]),
   )
 
+  // Psychology / Medical (MD) session notes are confidential — the patient only
+  // sees the note text if the clinician ticked "Show to Others" on it. The flag
+  // lives on the teletherapy SessionNote (keyed by scheduleId).
+  const CONFIDENTIAL_DEPTS = new Set(['PSYCHOLOGY', 'MD'])
+  const scheduleIds = schedules.map((s) => s.id)
+  const sharedNotes = scheduleIds.length
+    ? await prisma.sessionNote.findMany({ where: { scheduleId: { in: scheduleIds } }, select: { scheduleId: true, sharedWithOthers: true } }).catch(() => [])
+    : []
+  const sharedByScheduleId = new Map(sharedNotes.map((n) => [n.scheduleId, n.sharedWithOthers]))
+
   // ── Services availed (distinct departments across both session sources) ──
   const deptSet = new Set<string>()
   for (const s of schedules) if (s.staff?.department) deptSet.add(s.staff.department)
@@ -178,7 +188,7 @@ export async function GET(req: NextRequest) {
         branch: branchShort(branchByPatientId.get(s.patientId ?? '') ?? s.staff?.branch),
         status: s.status,
         isTeletherapy: s.isTeletherapy,
-        notes: s.notes ?? null,
+        notes: (CONFIDENTIAL_DEPTS.has(code) && !sharedByScheduleId.get(s.id)) ? null : (s.notes ?? null),
         source: 'schedule',
       }
     }),
@@ -195,7 +205,9 @@ export async function GET(req: NextRequest) {
         branch: branchShort(b.branch ?? b.staff?.branch),
         status: b.status,
         isTeletherapy: b.isTeletherapy,
-        notes: b.notes ?? null,
+        // Bookings carry no per-note share flag, so Psychology/MD booking notes
+        // stay hidden from the patient.
+        notes: CONFIDENTIAL_DEPTS.has(code) ? null : (b.notes ?? null),
         source: 'booking',
       }
     }),

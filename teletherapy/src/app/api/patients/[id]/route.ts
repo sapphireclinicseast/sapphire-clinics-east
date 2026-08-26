@@ -3,6 +3,11 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isNoteAgeLocked } from '@/lib/note-age-lock'
 
+// Psychology / Medical (MD) session notes & reports are confidential by
+// default — hidden from OTHER departments (and the patient) unless the author
+// ticked "Show to Others". All other departments are unaffected.
+const CONFIDENTIAL_DEPTS: ('PSYCHOLOGY' | 'MD')[] = ['PSYCHOLOGY', 'MD']
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -58,6 +63,7 @@ export async function GET(
     attachments: true,
     discontinuedRemarks: true,
     emailSentAt: true,
+    sharedWithOthers: true,
     createdAt: true,
     // Permanent freeze marker. Set when the authoring clinician was
     // endorsed/discharged off this patient. The frontend uses it to
@@ -151,6 +157,11 @@ export async function GET(
           status: 'CONFIRMED',
           staff: { department: { not: currentDepartment } },
           sessionNote: { isNot: null },
+          // Psychology/MD notes are confidential unless the author shared them.
+          OR: [
+            { staff: { department: { notIn: CONFIDENTIAL_DEPTS } } },
+            { sessionNote: { sharedWithOthers: true } },
+          ],
         },
         include: { staff: { select: staffSelect }, sessionNote: { select: sessionNoteSelect } },
         orderBy: { date: 'desc' },
@@ -162,7 +173,15 @@ export async function GET(
       // record is visible for coordination. File download is auth-gated only,
       // so linking these is safe.
       const otherDocs = await prisma.patientDocument.findMany({
-        where: { patientId: id, department: { not: currentDepartment } },
+        where: {
+          patientId: id,
+          department: { not: currentDepartment },
+          // Psychology/MD reports are confidential unless shared.
+          OR: [
+            { department: { notIn: CONFIDENTIAL_DEPTS } },
+            { sharedWithOthers: true },
+          ],
+        },
         orderBy: { createdAt: 'desc' },
         select: {
           id: true, department: true, documentType: true, fileName: true,
