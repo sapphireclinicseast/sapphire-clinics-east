@@ -31,8 +31,7 @@ import {
   ScrollText,
   X,
   FileText,
-  PiggyBank,
-} from 'lucide-react'
+  PiggyBank, AlertTriangle } from 'lucide-react'
 
 // Roles that see all accounting modules (excludes front desk and HMO Officer).
 // Bookkeeper now has the same visibility as Accountant (everything except Analysis).
@@ -121,6 +120,10 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/reports', icon: BarChart3, label: 'Reports', roles: [...FULL_ACCESS, 'MEDREP', 'INVESTOR'] },
       { href: '/investor-subsidiary-ledger', icon: ScrollText, label: 'Investor · Subsidiary Ledger', roles: [...FULL_ACCESS, 'INVESTOR'] },
       { href: '/sales-summary', icon: Receipt, label: 'Sales Summary', roles: SERVICES_POS_ACCESS },
+      // Catches mentorship sessions that were paid for without the "Mentorship"
+      // service. The cashier prompt is advisory by design, so this is where a
+      // miss surfaces.
+      { href: '/mentorship-audit', icon: AlertTriangle, label: 'Mentorship Audit', roles: SERVICES_POS_ACCESS },
       { href: '/products-analysis', icon: PackageSearch, label: 'Products Analysis', roles: [...ANALYSIS_ACCESS, 'ACCOUNTANT', 'BOOKKEEPER'] },
       { href: '/sales-analysis', icon: TrendingUp, label: 'Sales Analysis', roles: ANALYSIS_ACCESS },
     ],
