@@ -26,9 +26,11 @@ const MINUTES = ['00', '15', '30', '45']
 export default function MeetingsPanel({
   context,
   title = 'Meetings',
+  canAddMeeting = true,
 }: {
   context: 'INTERNSHIP' | 'MENTORSHIP'
   title?: string
+  canAddMeeting?: boolean
 }) {
   const [meetings, setMeetings] = useState<Meeting[] | null>(null)
   const [currentAccountId, setCurrentAccountId] = useState('')
@@ -124,9 +126,11 @@ export default function MeetingsPanel({
           </h2>
           <p className="text-[12px] text-[var(--mid-gray)]">Schedule a video meeting — everyone invited can join and record.</p>
         </div>
-        <button onClick={() => { setShowForm((v) => !v); setError(null) }} className="inline-flex items-center gap-2 bg-[var(--narra)] text-white text-[13px] font-semibold px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">
-          <Plus size={16} /> Add meeting
-        </button>
+        {canAddMeeting && (
+          <button onClick={() => { setShowForm((v) => !v); setError(null) }} className="inline-flex items-center gap-2 bg-[var(--narra)] text-white text-[13px] font-semibold px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">
+            <Plus size={16} /> Add meeting
+          </button>
+        )}
       </div>
 
       {showForm && (

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Loader2, ChevronDown, ChevronUp, FileText, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import MeetingsPanel from '@/components/MeetingsPanel'
+import MeetingsHub from '@/components/MeetingsHub'
 
 interface Mentee { id: string; name: string; department: string; branch: string }
 interface MenteeNote {
@@ -84,7 +84,7 @@ export default function MentorshipPage() {
         </div>
       )}
 
-      {tab === 'meeting' && <MeetingsPanel context="MENTORSHIP" title="Mentorship Meetings" />}
+      {tab === 'meeting' && <MeetingsHub context="MENTORSHIP" canSetAvailability={canSeeMentees} />}
 
       {tab === 'mentees' && canSeeMentees && (
         <div className="space-y-3">

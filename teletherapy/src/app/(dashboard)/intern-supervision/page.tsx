@@ -6,7 +6,7 @@ import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, Fil
 import { cn } from '@/lib/utils'
 import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
 import InternProfileModal from '@/components/InternProfileModal'
-import MeetingsPanel from '@/components/MeetingsPanel'
+import MeetingsHub from '@/components/MeetingsHub'
 
 interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null; hasAccount?: boolean; accountActive?: boolean | null; rotationLapsed?: boolean }
 interface GradeInfo { grade: string; note: string | null; fileName: string | null; filePath: string | null; gradedByName: string | null; updatedAt: string }
@@ -443,7 +443,7 @@ export default function InternSupervisionPage() {
       {profileFor && <InternProfileModal internId={profileFor} onClose={() => setProfileFor(null)} />}
 
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-8">
-        <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Intern Supervision</h1>
+        <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Internship</h1>
         <p className="text-white/60 text-sm mt-1">Interns decked to you, their Balik-Tanaw, and grades</p>
       </div>
 
@@ -465,7 +465,7 @@ export default function InternSupervisionPage() {
             ))}
           </div>
 
-          {tab === 'meeting' && <MeetingsPanel context="INTERNSHIP" title="Meetings" />}
+          {tab === 'meeting' && <MeetingsHub context="INTERNSHIP" canSetAvailability={isActiveSupervisor || canSeeAllInterns} />}
 
           {!isActiveSupervisor && !canSeeAllInterns && tab !== 'meeting' && (
             <div className="card-static text-center py-16">
