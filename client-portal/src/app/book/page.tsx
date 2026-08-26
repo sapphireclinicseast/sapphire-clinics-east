@@ -53,18 +53,20 @@ const SERVICE_LABELS: Record<string, string> = {
   ORTHOSIS: 'Orthosis / Prosthesis',
 }
 
-const BRANCH_CONTACTS: Record<'SBEA' | 'SBGH', { name: string; phone: string; email: string; facebook: string }> = {
+const BRANCH_CONTACTS: Record<'SBEA' | 'SBGH', { name: string; phone: string; email: string; facebook: string; messenger: string }> = {
   SBEA: {
     name: 'East Branch',
     phone: '0917 118 9289',
     email: 'east.sandboxclinic@gmail.com',
     facebook: 'https://www.facebook.com/sandboxcliniceast',
+    messenger: 'https://m.me/aurahealthrehabeast',
   },
   SBGH: {
     name: 'Greenhills Branch',
     phone: '0917 770 1686',
     email: 'greenhills.sandboxclinic@gmail.com',
     facebook: 'https://www.facebook.com/sandboxclinicgreenhills',
+    messenger: 'https://m.me/aurahealthrehabgh',
   },
 }
 
@@ -161,6 +163,7 @@ export default function BookStep1Page() {
                     {disabledList.length} services
                   </span>
                 </div>
+                <BranchQuickContact branch={branch} />
                 <div className="flex flex-col gap-2">
                   {disabledList.length === 0 && (
                     <div className="text-xs italic text-[color:var(--mid-gray)] px-1 py-2">
@@ -197,6 +200,26 @@ export default function BookStep1Page() {
             {selectedIsTele ? 'Continue → Choose a service' : 'Continue → Pick a slot'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function BranchQuickContact({ branch }: { branch: 'SBEA' | 'SBGH' }) {
+  const c = BRANCH_CONTACTS[branch]
+  const phoneClean = c.phone.replace(/\s+/g, '')
+  const viber = `viber://chat?number=${encodeURIComponent('+63' + phoneClean.replace(/^0/, ''))}`
+  const pill = 'inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-semibold text-white hover:opacity-90 transition-opacity'
+  return (
+    <div className="mb-3">
+      <p className="text-[12px] text-[color:var(--mid-gray)] mb-2">Message {c.name} directly — our front desk will help you book.</p>
+      <div className="flex flex-wrap gap-2">
+        <a href={c.messenger} target="_blank" rel="noreferrer" className={pill} style={{ background: '#0A7CFF' }} aria-label={`Message ${c.name} on Messenger`}>
+          <IconMessengerSolid /> Messenger
+        </a>
+        <a href={viber} className={pill} style={{ background: '#7360F2' }} aria-label={`Chat with ${c.name} on Viber`}>
+          <IconViberSolid /> Viber
+        </a>
       </div>
     </div>
   )
@@ -432,3 +455,5 @@ function IconPhone() { return <SvgWrap><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.
 function IconViber() { return <SvgWrap><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 11a4 4 0 0 1 8 0"/><path d="M11 11a1 1 0 0 1 2 0"/></SvgWrap> }
 function IconMail() { return <SvgWrap><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></SvgWrap> }
 function IconFacebook() { return <SvgWrap><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></SvgWrap> }
+function IconMessengerSolid() { return <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden width="16" height="16"><path d="M12 2C6.5 2 2 6.13 2 11.2c0 2.9 1.44 5.48 3.7 7.17V22l3.38-1.85c.9.25 1.86.39 2.92.39 5.5 0 10-4.13 10-9.2S17.5 2 12 2zm.98 12.39l-2.54-2.71-4.96 2.71 5.45-5.79 2.6 2.71 4.9-2.71-5.45 5.79z"/></svg> }
+function IconViberSolid() { return <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden width="16" height="16"><path d="M12 2C6.7 2 2.4 5.9 2.4 10.7c0 2 .8 3.9 2.1 5.4-.1 1.1-.5 2.5-1.3 3.5 1.5-.2 2.8-.8 3.7-1.4 1.4.6 2.9.9 4.5.9 5.3 0 9.6-3.9 9.6-8.7S17.3 2 12 2zm4.7 12.2c-.3.7-1.5 1.3-2.3 1.2-.6-.1-1.5-.3-3.3-1.1-2.6-1.1-4.2-3.8-4.4-4-.1-.2-1-1.3-1-2.5s.6-1.8.9-2c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5.2.5.7 1.7.7 1.8.1.1.1.3 0 .4l-.3.5c-.1.2-.3.3-.1.6.1.2.6 1 1.3 1.6.9.8 1.6 1 1.9 1.2.2.1.4.1.5-.1.2-.2.6-.7.8-.9.1-.2.3-.2.5-.1.2.1 1.3.6 1.5.8.2.1.4.2.4.3.1.1.1.6-.1 1.2z"/></svg> }
