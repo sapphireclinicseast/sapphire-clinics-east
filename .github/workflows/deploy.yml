@@ -495,11 +495,24 @@ jobs:
           # node_modules. Log to a file and check the exit code instead,
           # matching the later `npm install --include=dev` block.
           if ! npm ci --production=false > /tmp/tt-ci.log 2>&1; then
-            echo "❌ npm ci failed — last 20 lines:"
+            echo "⚠ npm ci failed — clearing npm cache + node_modules and retrying."
+            echo "   (heals a corrupted install, e.g. a dangling napi-postinstall"
+            echo "    symlink whose target is missing — see"
+            echo "    project_teletherapy_deploy_corrupted_node_modules)"
             tail -20 /tmp/tt-ci.log
-            exit 1
+            npm cache clean --force > /dev/null 2>&1 || true
+            rm -rf node_modules
+            if ! npm ci --production=false > /tmp/tt-ci.log 2>&1; then
+              echo "⚠ npm ci still failing after clean — last resort: fresh npm install."
+              rm -rf node_modules
+              if ! npm install --no-audit --no-fund > /tmp/tt-ci.log 2>&1; then
+                echo "❌ FATAL: install failed even after a clean reinstall — last 20 lines:"
+                tail -20 /tmp/tt-ci.log
+                exit 1
+              fi
+            fi
           fi
-          echo "   ✓ npm ci OK ($(wc -l < /tmp/tt-ci.log) log lines)"
+          echo "   ✓ dependencies installed ($(wc -l < /tmp/tt-ci.log) log lines)"
 
           echo "→ Generating Prisma client..."
           npx prisma generate 2>&1 | tail -2
@@ -516,6 +529,13 @@ jobs:
           if [ ! -f "$QC" ]; then
             echo "⚠ Still incomplete — reinstalling prisma packages and regenerating..."
             npm install @prisma/client prisma @prisma/adapter-pg 2>&1 | tail -3
+            npx prisma generate 2>&1 | tail -2
+          fi
+          if [ ! -f "$QC" ]; then
+            echo "⚠ Query compiler STILL missing — full clean reinstall (rm -rf node_modules) + regenerate, last resort."
+            npm cache clean --force > /dev/null 2>&1 || true
+            rm -rf node_modules
+            npm install --no-audit --no-fund > /tmp/tt-reinstall.log 2>&1 || tail -20 /tmp/tt-reinstall.log
             npx prisma generate 2>&1 | tail -2
           fi
           if [ ! -f "$QC" ]; then
