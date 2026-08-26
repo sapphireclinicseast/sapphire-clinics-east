@@ -76,6 +76,29 @@ export async function GET() {
       }
     })(),
 
+    // ── All users: meeting invitations (supervision / mentorship) ──
+    (async () => {
+      if (myStaffIds.length === 0) return
+      const ms = await prisma.supervisionMeeting.findMany({
+        where: { inviteeStaffIds: { hasSome: myStaffIds } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      })
+      for (const m of ms) {
+        const label = m.context === 'MENTORSHIP' ? 'Mentorship' : 'Intern Supervision'
+        const when = new Date(m.date)
+        const dayStr = Number.isNaN(when.getTime()) ? '' : when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        items.push({
+          key: `meeting:${m.id}`,
+          type: 'supervision',
+          title: `You're invited to a meeting${m.title ? ': ' + m.title : ''}`,
+          body: `${label} · ${dayStr} at ${m.timeLabel}`,
+          createdAt: m.createdAt.toISOString(),
+          href: m.context === 'MENTORSHIP' ? '/mentorship' : '/intern-supervision?tab=meeting',
+        })
+      }
+    })(),
+
     // ── Clinician: patient uploads (home progress) for ACTIVE assignments ──
     (async () => {
       const assigns = await prisma.patientAssignment.findMany({

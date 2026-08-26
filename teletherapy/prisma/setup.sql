@@ -219,3 +219,21 @@ CREATE TABLE IF NOT EXISTS "NotificationSeen" (
   "seenKeys"  TEXT[] NOT NULL DEFAULT '{}',
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Supervision / Mentorship meetings (see schema.prisma SupervisionMeeting)
+CREATE TABLE IF NOT EXISTS "SupervisionMeeting" (
+  "id" TEXT PRIMARY KEY,
+  "context" TEXT NOT NULL,
+  "title" TEXT,
+  "date" TIMESTAMP(3) NOT NULL,
+  "timeLabel" TEXT NOT NULL,
+  "room" TEXT NOT NULL,
+  "meetLink" TEXT NOT NULL,
+  "createdByAccountId" TEXT NOT NULL,
+  "createdByName" TEXT NOT NULL,
+  "inviteeStaffIds" TEXT[] NOT NULL DEFAULT '{}',
+  "inviteeNames" TEXT[] NOT NULL DEFAULT '{}',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "SupervisionMeeting_context_idx" ON "SupervisionMeeting"("context");
+CREATE INDEX IF NOT EXISTS "SupervisionMeeting_createdByAccountId_idx" ON "SupervisionMeeting"("createdByAccountId");

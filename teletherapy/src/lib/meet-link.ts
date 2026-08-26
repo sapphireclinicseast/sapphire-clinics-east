@@ -19,6 +19,17 @@ function signHost(room: string, name: string | undefined, expiresAtSec: number):
   return `${payloadB64}.${sig}`
 }
 
+// Build a fresh HOST meet link for a brand-new room (used by supervision /
+// mentorship meetings — everyone invited gets a host link so either side can
+// record; the meet app makes host transferable). Returns null if the secret
+// isn't configured.
+export function meetHostLink(room: string, name?: string | null, validDays = 60): string | null {
+  if (!process.env.MEET_LINK_SECRET) return null
+  const exp = Math.floor(Date.now() / 1000) + validDays * 24 * 3600
+  const t = signHost(room, name ?? undefined, exp)
+  return `${MEET_BASE_URL}/r/${encodeURIComponent(room)}?t=${t}`
+}
+
 // Turn a stored guest meet link into a host link for the same room. Passes
 // through unchanged when: no link, secret unset, not a meet.sapphire /r/ link
 // (e.g. legacy meet.jit.si), or the URL can't be parsed.
