@@ -648,3 +648,21 @@ model SupervisionMeeting {
   @@index([context])
   @@index([createdByAccountId])
 }
+
+// Calendly-style weekly availability a supervisor / mentor publishes so mentees
+// / interns know when they can book a 1-on-1. Each slot is a day range
+// (dayFrom..dayTo, 0=Sun..6=Sat) + a time window (24h "HH:MM"). A person can
+// have several slots.
+model AvailabilitySlot {
+  id        String   @id @default(cuid())
+  accountId String   // TherapistAccount.id (owner)
+  staffId   String   // Staff.id (for display / lookup)
+  dayFrom   Int      // 0=Sun .. 6=Sat
+  dayTo     Int
+  timeStart String   // "09:00" (24h)
+  timeEnd   String   // "17:00"
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@index([staffId])
+}

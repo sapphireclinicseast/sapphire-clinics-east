@@ -241,3 +241,17 @@ CREATE INDEX IF NOT EXISTS "SupervisionMeeting_createdByAccountId_idx" ON "Super
 -- Psychology / MD confidentiality: notes & reports are private unless "Show to Others"
 ALTER TABLE "SessionNote"     ADD COLUMN IF NOT EXISTS "sharedWithOthers" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "PatientDocument" ADD COLUMN IF NOT EXISTS "sharedWithOthers" BOOLEAN NOT NULL DEFAULT false;
+
+-- Weekly availability (Calendly-style) for booking 1-on-1 meetings
+CREATE TABLE IF NOT EXISTS "AvailabilitySlot" (
+  "id" TEXT PRIMARY KEY,
+  "accountId" TEXT NOT NULL,
+  "staffId" TEXT NOT NULL,
+  "dayFrom" INTEGER NOT NULL,
+  "dayTo" INTEGER NOT NULL,
+  "timeStart" TEXT NOT NULL,
+  "timeEnd" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "AvailabilitySlot_accountId_idx" ON "AvailabilitySlot"("accountId");
+CREATE INDEX IF NOT EXISTS "AvailabilitySlot_staffId_idx" ON "AvailabilitySlot"("staffId");

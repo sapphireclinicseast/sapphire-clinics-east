@@ -70,7 +70,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: '/wellness-check', label: 'Wellness Check', icon: HeartPulse },
     { href: '/payroll', label: 'Payroll', icon: Wallet },
     { href: '/loans-perks', label: 'Loans & Perks', icon: HandCoins },
-    { href: '/intern-supervision', label: 'Intern Supervision', icon: UserCog },
+    { href: '/intern-supervision', label: 'Internship', icon: UserCog },
     { href: '/mentorship', label: 'Mentorship', icon: Sparkles },
     { href: '/balik-tanaw', label: 'Balik-Tanaw', icon: NotebookPen },
     { href: '/learning-outcomes', label: 'Learning Outcomes & Preferences', icon: Target },
