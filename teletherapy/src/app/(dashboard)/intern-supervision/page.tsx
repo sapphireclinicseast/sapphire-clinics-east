@@ -6,6 +6,7 @@ import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, Fil
 import { cn } from '@/lib/utils'
 import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
 import InternProfileModal from '@/components/InternProfileModal'
+import MeetingsPanel from '@/components/MeetingsPanel'
 
 interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null; hasAccount?: boolean; accountActive?: boolean | null; rotationLapsed?: boolean }
 interface GradeInfo { grade: string; note: string | null; fileName: string | null; filePath: string | null; gradedByName: string | null; updatedAt: string }
@@ -28,6 +29,61 @@ function uploadWithProgress(file: File, folder: string, onProgress: (pct: number
     fd.append('folder', folder)
     xhr.send(fd)
   })
+}
+
+// ── 4-point clinical internship rubric (1.00–4.00, 0.25 increments) ──
+const SCALE_4PT: { score: string; interp: string }[] = [
+  { score: '4.00', interp: 'Consistently demonstrates all behaviors described under Level 4.' },
+  { score: '3.75', interp: 'Performance is predominantly Level 4 with only minor inconsistencies.' },
+  { score: '3.50', interp: 'Demonstrates approximately equal characteristics of Levels 3 and 4.' },
+  { score: '3.25', interp: 'Meets all Level 3 expectations while consistently demonstrating several Level 4 behaviors.' },
+  { score: '3.00', interp: 'Consistently demonstrates all behaviors described under Level 3.' },
+  { score: '2.75', interp: 'Meets most Level 3 expectations but occasionally performs at Level 2.' },
+  { score: '2.50', interp: 'Demonstrates approximately equal characteristics of Levels 2 and 3.' },
+  { score: '2.25', interp: 'Meets all Level 2 expectations while demonstrating several Level 3 behaviors.' },
+  { score: '2.00', interp: 'Consistently demonstrates all behaviors described under Level 2.' },
+  { score: '1.75', interp: 'Meets most Level 2 expectations but still frequently demonstrates Level 1 behaviors.' },
+  { score: '1.50', interp: 'Demonstrates approximately equal characteristics of Levels 1 and 2.' },
+  { score: '1.25', interp: 'Meets all Level 1 expectations while demonstrating isolated Level 2 behaviors.' },
+  { score: '1.00', interp: 'Demonstrates only the behaviors described under Level 1.' },
+]
+const SCALE_MAP: Record<string, string> = Object.fromEntries(SCALE_4PT.map((r) => [r.score, r.interp]))
+
+function FourPointRubric() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="card-static !p-0 overflow-hidden mb-3">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[var(--off-white)] transition-colors">
+        <span className="text-[13px] font-bold text-[var(--charcoal)]">The 4-Point Scale — grading rubric</span>
+        {open ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <p className="text-[12px] text-[var(--mid-gray)] mb-3 leading-relaxed">
+            Each criterion is scored 1–4. Assign intermediate scores in increments of 0.25 where performance falls between two adjacent levels.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px] border-collapse">
+              <thead>
+                <tr className="bg-[var(--narra)] text-white text-left">
+                  <th className="px-3 py-2 font-semibold">Score</th>
+                  <th className="px-3 py-2 font-semibold">Interpretation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {SCALE_4PT.map((r, idx) => (
+                  <tr key={r.score} className={idx % 2 ? 'bg-[var(--off-white)]' : 'bg-white'}>
+                    <td className="px-3 py-2 font-bold text-[var(--charcoal)] whitespace-nowrap align-top">{r.score}</td>
+                    <td className="px-3 py-2 text-[var(--charcoal)]">{r.interp}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function GradeCard({ intern, existing, onSaved, onToast }: { intern: Intern; existing?: GradeInfo; onSaved: () => void; onToast: (m: string) => void }) {
@@ -73,8 +129,12 @@ function GradeCard({ intern, existing, onSaved, onToast }: { intern: Intern; exi
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Grade</label>
-          <input value={grade} onChange={(e) => setGrade(e.target.value)} className="input" placeholder="e.g. 95% or Passed" />
+          <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Grade (4-point scale)</label>
+          <select value={grade} onChange={(e) => setGrade(e.target.value)} className="input">
+            <option value="">Select score…</option>
+            {SCALE_4PT.map((r) => <option key={r.score} value={r.score}>{r.score}</option>)}
+          </select>
+          {grade && SCALE_MAP[grade] && <p className="text-[11px] text-[var(--mid-gray)] mt-1 leading-snug">{SCALE_MAP[grade]}</p>}
         </div>
         <div>
           <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Computation file (optional)</label>
@@ -236,7 +296,7 @@ function DocumentsPanel({ docs, myAccountId, isAdmin, onChanged, onToast }: {
   )
 }
 
-type Tab = 'interns' | 'all-interns' | 'balik-tanaw' | 'grades' | 'documents' | 'learning'
+type Tab = 'interns' | 'all-interns' | 'balik-tanaw' | 'grades' | 'documents' | 'learning' | 'meeting'
 interface InternNote {
   scheduleId: string
   date: string
@@ -336,14 +396,17 @@ export default function InternSupervisionPage() {
   const [deepLinked, setDeepLinked] = useState(false)
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab')
-    const valid: Tab[] = ['interns', 'all-interns', 'balik-tanaw', 'grades', 'documents', 'learning']
+    const valid: Tab[] = ['interns', 'all-interns', 'balik-tanaw', 'grades', 'documents', 'learning', 'meeting']
     if (t && valid.includes(t as Tab)) { setTab(t as Tab); setDeepLinked(true) }
   }, [])
   // A tagged supervisor with zero decked interns would otherwise land on the
   // (button-less, empty) "interns" tab — default them straight to All Interns.
   useEffect(() => {
     if (deepLinked) return
-    if (!loading && interns.length === 0 && canSeeAllInterns) { setTab('all-interns'); loadAllInterns() }
+    if (!loading && interns.length === 0) {
+      if (canSeeAllInterns) { setTab('all-interns'); loadAllInterns() }
+      else setTab('meeting') // non-supervisors (e.g. interns) land on Meetings
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, canSeeAllInterns])
 
@@ -384,25 +447,15 @@ export default function InternSupervisionPage() {
         <p className="text-white/60 text-sm mt-1">Interns decked to you, their Balik-Tanaw, and grades</p>
       </div>
 
-      {!isActiveSupervisor && !canSeeAllInterns ? (
-        <div className="card-static text-center py-16">
-          <div className="w-14 h-14 rounded-full bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-4">
-            <UserCog size={24} className="text-[var(--teal)]" />
-          </div>
-          <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>No interns assigned</p>
-          <p className="text-[13px] text-[var(--mid-gray)] max-w-md mx-auto leading-relaxed">
-            Only clinicians with an active supervision will have content here. When interns are decked to you in the
-            Operations Hub, they'll appear here with their Balik-Tanaw reflections and grading.
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* Tabs */}
+      <>
+          {/* Tabs — supervisor tabs are gated; Meetings is available to
+              everyone (interns get invited to meetings too). */}
           <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] mb-6">
             {([
               ...(isActiveSupervisor ? [['interns', 'List of Interns']] as [Tab, string][] : []),
               ...(canSeeAllInterns ? [['all-interns', 'All Interns']] as [Tab, string][] : []),
-              ['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles'],
+              ...((isActiveSupervisor || canSeeAllInterns) ? [['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles']] as [Tab, string][] : []),
+              ['meeting', 'Meetings'],
             ] as [Tab, string][]).map(([t, label]) => (
               <button key={t} onClick={() => { setTab(t); if (t === 'all-interns') loadAllInterns() }}
                 className={cn('flex-1 min-w-[110px] px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
@@ -411,6 +464,21 @@ export default function InternSupervisionPage() {
               </button>
             ))}
           </div>
+
+          {tab === 'meeting' && <MeetingsPanel context="INTERNSHIP" title="Meetings" />}
+
+          {!isActiveSupervisor && !canSeeAllInterns && tab !== 'meeting' && (
+            <div className="card-static text-center py-16">
+              <div className="w-14 h-14 rounded-full bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-4">
+                <UserCog size={24} className="text-[var(--teal)]" />
+              </div>
+              <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>No interns assigned</p>
+              <p className="text-[13px] text-[var(--mid-gray)] max-w-md mx-auto leading-relaxed">
+                Only clinicians with an active supervision will have content here. When interns are decked to you in the
+                Operations Hub, they&apos;ll appear here with their Balik-Tanaw reflections and grading.
+              </p>
+            </div>
+          )}
 
           {tab === 'all-interns' && (
             <div className="space-y-3">
@@ -619,7 +687,8 @@ export default function InternSupervisionPage() {
 
           {tab === 'grades' && (
             <div className="space-y-3">
-              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Encode each intern's grade and attach a computation file (Excel, PDF, or Word).</p>
+              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Encode each intern's grade on the 4-point scale (1.00–4.00, 0.25 increments) and attach a computation file (Excel, PDF, or Word).</p>
+              <FourPointRubric />
               {interns.map((i) => (
                 <GradeCard key={i.id} intern={i} existing={grades[i.id]} onSaved={load} onToast={showToast} />
               ))}
@@ -658,7 +727,6 @@ export default function InternSupervisionPage() {
             </div>
           )}
         </>
-      )}
     </div>
   )
 }

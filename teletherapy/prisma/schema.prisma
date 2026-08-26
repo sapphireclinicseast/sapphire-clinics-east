@@ -608,3 +608,27 @@ model NotificationSeen {
   seenKeys  String[] @default([])
   updatedAt DateTime @updatedAt @default(now())
 }
+
+// ── Supervision / Mentorship meetings ────────────────────────────
+// A supervisor or intern schedules a video meeting and ticks who's invited
+// (interns + supervisors). Everyone invited gets the same HOST meet link — so
+// either side can record (host is transferable in the meet app) — plus a
+// notification. `context` lets the same model power both the Intern Supervision
+// "Meeting" tab and the Mentorship section.
+model SupervisionMeeting {
+  id                 String   @id @default(cuid())
+  context            String   // "INTERNSHIP" | "MENTORSHIP"
+  title              String?
+  date               DateTime // meeting day
+  timeLabel          String   // 12-hour, e.g. "2:00 PM"
+  room               String
+  meetLink           String
+  createdByAccountId String
+  createdByName      String
+  inviteeStaffIds    String[] @default([])
+  inviteeNames       String[] @default([])
+  createdAt          DateTime @default(now())
+
+  @@index([context])
+  @@index([createdByAccountId])
+}
