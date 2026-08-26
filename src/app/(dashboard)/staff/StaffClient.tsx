@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
   UserCog, X, Users, RefreshCw,
   ChevronUp, ChevronDown, ChevronsUpDown, CheckCircle2, AlertTriangle, GitMerge,
@@ -31,6 +31,12 @@ interface StaffMember {
   bankName: string | null
   bankAccountNo: string | null
   hrPlatformId: string | null
+  // Supervision and mentorship roles, synced from HR. Independent of each other
+  // and of employmentType — one person can be an intern, a mentee, and later
+  // both a supervisor and a mentor, so these are flags rather than one role.
+  isInternshipSupervisor?: boolean | null
+  isClinicalMentor?: boolean | null
+  menteeIds?: string[]
   extraBranches: string[]
   branchEmployment: Record<string, { employmentType?: string | null; employeeId?: string | null; department?: string | null; jobTitle?: string | null }> | null
   createdAt: string
@@ -174,6 +180,67 @@ function ExtraBranchToggle({
   )
 }
 
+// Who mentors whom, derived once from the staff list.
+//
+// HR models the relationship from the MENTOR's side (Staff.menteeIds), so
+// "is this person a mentee?" has no field of its own — it is answered by
+// scanning every mentor's list. Building the reverse index once per render
+// beats an O(n) scan per row, and keeps the mentor's NAME available for the
+// badge tooltip.
+export function buildMentorIndex(staff: { id: string; firstName: string; lastName: string; menteeIds?: string[] }[]) {
+  const mentorOf = new Map<string, string>()   // menteeId -> mentor display name
+  for (const s of staff) {
+    for (const menteeId of s.menteeIds ?? []) {
+      if (menteeId && menteeId !== s.id) mentorOf.set(menteeId, `${s.firstName} ${s.lastName}`)
+    }
+  }
+  return mentorOf
+}
+
+// Role badges. Deliberately additive: someone can be a Clinical Supervisor,
+// a Clinical Mentor AND a mentee at once, and the module has to show all of it
+// rather than pick one.
+//
+//   Clinical Supervisor — licensed clinician overseeing STUDENTS on placement
+//   Clinical Mentor     — senior clinician guiding junior/newly licensed staff
+//   Mentee              — the junior clinician on the receiving end
+//   Intern              — the student themself (employmentType)
+export function RoleBadges({ staff, mentorName, compact = false }: {
+  staff: { employmentType?: string | null; isInternshipSupervisor?: boolean | null; isClinicalMentor?: boolean | null }
+  mentorName?: string | null
+  compact?: boolean
+}) {
+  const badges: { label: string; title: string; bg: string; fg: string }[] = []
+
+  if (staff.employmentType === 'intern') {
+    badges.push({ label: 'Intern', title: 'Student on clinical placement', bg: '#E0E7FF', fg: '#3730A3' })
+  }
+  if (staff.isInternshipSupervisor) {
+    badges.push({ label: compact ? 'Supervisor' : 'Clinical Supervisor',
+      title: 'Supervises students on clinical placement', bg: '#DBEAFE', fg: '#1E40AF' })
+  }
+  if (staff.isClinicalMentor) {
+    badges.push({ label: compact ? 'Mentor' : 'Clinical Mentor',
+      title: 'Mentors junior or newly licensed clinicians', bg: '#FEF3C7', fg: '#92400E' })
+  }
+  if (mentorName) {
+    badges.push({ label: 'Mentee', title: `Mentored by ${mentorName}`, bg: '#FDE68A', fg: '#78350F' })
+  }
+  if (!badges.length) return null
+
+  return (
+    <span className="inline-flex flex-wrap gap-1 align-middle">
+      {badges.map(b => (
+        <span key={b.label} title={b.title}
+          style={{ background: b.bg, color: b.fg, fontSize: compact ? 9 : 10, fontWeight: 700,
+                   padding: '1px 5px', borderRadius: 9999, letterSpacing: '.02em', whiteSpace: 'nowrap' }}>
+          {b.label}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function DeptBadge({ dept }: { dept: string }) {
   return (
     <span className="px-2 py-0.5 rounded text-xs font-medium"
@@ -268,6 +335,10 @@ export default function StaffClient({ role }: { role: string }) {
   useEffect(() => { setPage(1) }, [filters, sortCol, sortDir])
 
   // ── Filtered + sorted view ────────────────────────────────────────────────
+  // Built from the FULL list, not the filtered one: filtering out a mentor must
+  // not blank the Mentee badge on someone still in view.
+  const mentorOf = useMemo(() => buildMentorIndex(staff), [staff])
+
   const displayed = staff
     .filter(s => {
       if (autoBranch && s.branch !== autoBranch) return false
@@ -590,6 +661,9 @@ export default function StaffClient({ role }: { role: string }) {
                           {s.lastName}, {s.firstName}
                         </span>
                       )}
+                      <span className="ml-1.5">
+                        <RoleBadges staff={s} mentorName={mentorOf.get(s.id)} />
+                      </span>
                     </td>
                     <td className="px-4 py-3"><DeptBadge dept={s.department} /></td>
                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--mid-gray)' }}>

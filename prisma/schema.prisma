@@ -623,6 +623,10 @@ model Schedule {
   // Which intern actually did the session, when sessionType is "IE Intern" /
   // "Session Intern" — the intern writes the note; staffId above stays the
   // supervisor. Null for every non-intern session.
+  // Set by the "With Mentor" tickbox on the session form: a mentor sat in on a
+  // mentee's session, which makes it billable as a mentorship service. Drives
+  // the cashiering highlight and the mentorship billing audit.
+  withMentor    Boolean        @default(false)
   internStaffId String?
   internStaff   Staff?         @relation("ScheduleIntern", fields: [internStaffId], references: [id], onDelete: SetNull)
   // Where the session actually happens ("SBEA" | "SBGH" | "VER"), captured

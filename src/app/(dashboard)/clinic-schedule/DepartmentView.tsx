@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { localTodayStr, localTomorrowStr } from '@/lib/utils'
@@ -52,6 +52,12 @@ interface StaffMember {
   extraBranches: string[]; phone: string | null
   employmentType: string | null; active: boolean
   dateHired: string | null; contractExpiry: string | null // interns: Start Month / End Month
+  // Supervision and mentorship roles from HR. Shown on the card because a
+  // decked slot means different things depending on them: a supervisor's
+  // session may be run by an intern, a mentee's may have a mentor sitting in.
+  isInternshipSupervisor?: boolean | null
+  isClinicalMentor?: boolean | null
+  menteeIds?: string[]
 }
 interface Patient { id: string; firstName: string; lastName: string; email: string | null; phone: string | null; branches?: string[] }
 
@@ -65,7 +71,7 @@ interface Schedule {
   id: string; staffId: string; patientId: string | null; patient: Patient | null
   date: string; startTime: string; endTime: string; duration: string
   sessionType: string; status: string; notes: string | null
-  isTeletherapy: boolean; meetLink: string | null
+  isTeletherapy: boolean; meetLink: string | null; withMentor?: boolean
   internStaffId: string | null; internStaff: InternStaff | null
 }
 
@@ -73,7 +79,7 @@ const EMPTY_FORM = {
   patientId: '', patientLabel: '', date: '',
   startTime: '08:00', duration: '1h', endTime: '09:00',
   sessionType: '', status: 'PENDING', notes: '',
-  isTeletherapy: false, internStaffId: '',
+  isTeletherapy: false, internStaffId: '', withMentor: false,
 }
 
 const INTERN_SESSION_TYPES = new Set(['IE Intern', 'Session Intern'])
@@ -354,6 +360,24 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
           </button>
         </div>
         <div className="col-span-2">
+          <label style={labelStyle}>Mentorship</label>
+          <button type="button" onClick={() => onChange({ ...values, withMentor: !values.withMentor })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold w-full justify-center"
+            style={{
+              background: values.withMentor ? '#FEF9C3' : '#F8FAFC',
+              color: values.withMentor ? '#854D0E' : '#9ca3af',
+              border: `1.5px solid ${values.withMentor ? '#FDE047' : '#E2E8F0'}`,
+              cursor: 'pointer',
+            }}>
+            <input type="checkbox" readOnly checked={!!values.withMentor} style={{ pointerEvents: 'none' }} />
+            {values.withMentor ? 'With Mentor — billed as a mentorship session' : 'With Mentor'}
+          </button>
+          <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+            Tick only if a mentor will sit in on this session alongside the mentee. Cashiering flags
+            mentorship sessions so the “Mentorship” service is added and the session is tagged for payroll.
+          </p>
+        </div>
+        <div className="col-span-2">
           <label style={labelStyle}>Notes (optional)</label>
           <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }}
             value={values.notes} onChange={e => onChange({ ...values, notes: e.target.value })} />
@@ -374,6 +398,12 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
 // ─── Staff card with schedules ─────────────────────────────────────────────────
 function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff: StaffMember; allStaff: StaffMember[]; selectedDate: string; schedulingBranch: string }) {
   const [open, setOpen] = useState(false)
+  // Mentee status has no field of its own: HR stores menteeIds on the MENTOR,
+  // so the only way to answer "is this person mentored?" is to scan the roster.
+  const mentorName = useMemo(() => {
+    const m = allStaff.find(x => (x.menteeIds ?? []).includes(staff.id))
+    return m ? `${m.firstName} ${m.lastName}` : null
+  }, [allStaff, staff.id])
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loadingSchedules, setLoadingSchedules] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -478,6 +508,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
       notes: '',
       isTeletherapy: s.isTeletherapy || false,
       internStaffId: s.internStaffId ?? '',
+      withMentor: s.withMentor ?? false,
     })
   }
 
@@ -506,6 +537,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
       sessionType: s.sessionType, status: s.status, notes: s.notes ?? '',
       isTeletherapy: s.isTeletherapy || false,
       internStaffId: s.internStaffId ?? '',
+      withMentor: s.withMentor ?? false,
     })
     setEditError('')
   }
@@ -692,6 +724,23 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
               : { background: '#FFF3CD', color: '#92400E' }}>
           {isMultiBranch ? 'Both Branches' : (branchLabel(staff.branch) ?? staff.branch)}
         </span>
+        <span className="inline-flex flex-wrap gap-1 items-center mr-2">
+          {staff.isInternshipSupervisor && (
+            <span title="Supervises students on clinical placement — sessions may be run by an intern"
+              className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+              style={{ background: '#DBEAFE', color: '#1E40AF' }}>Clinical Supervisor</span>
+          )}
+          {staff.isClinicalMentor && (
+            <span title="Mentors junior or newly licensed clinicians"
+              className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+              style={{ background: '#FEF3C7', color: '#92400E' }}>Mentor</span>
+          )}
+          {mentorName && (
+            <span title={`Mentored by ${mentorName} — tick "With Mentor" on sessions the mentor sits in on`}
+              className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+              style={{ background: '#FDE68A', color: '#78350F' }}>Mentee</span>
+          )}
+        </span>
         {open ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
       </button>
 
@@ -766,6 +815,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                           notes: '',
                           isTeletherapy: false,
                           internStaffId: '',
+                          withMentor: false,
                         })}
                         className="px-3 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"
                         style={{ background: '#ED6823', color: '#fff' }}
@@ -1040,6 +1090,31 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
 
   return (
     <div className="space-y-4">
+      {/* Two relationships get decked on this page and are easy to confuse,
+          because both put a second clinician in the room. Spelling them out
+          here is cheaper than explaining it per card. */}
+      <div className="rounded-lg px-4 py-3 text-xs"
+        style={{ background: 'var(--pale-teal, #E6F4F5)', border: '1px solid var(--light-gray)' }}>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <div className="flex items-start gap-2">
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap mt-px"
+              style={{ background: '#DBEAFE', color: '#1E40AF' }}>Clinical Supervisor</span>
+            <span style={{ color: 'var(--charcoal)' }}>
+              Licensed clinicians supervising <strong>students</strong>. Sessions are decked with the
+              supervisor; the intern who ran it is recorded on the session.
+            </span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap mt-px"
+              style={{ background: '#FDE68A', color: '#78350F' }}>Mentee</span>
+            <span style={{ color: 'var(--charcoal)' }}>
+              Junior or newly licensed clinicians mentored by a senior clinician. Sessions are decked
+              with the mentee; tick <strong>With Mentor</strong> when the mentor sits in.
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Controls row */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Branch toggle (only for ADMIN / MARKETING_ADMIN) */}
