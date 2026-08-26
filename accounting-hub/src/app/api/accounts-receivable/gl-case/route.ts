@@ -19,7 +19,7 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN',
   'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
-const DATE_FIELDS = ['glDocsSubmittedAt', 'glReleasedAt', 'soaSubmittedAt'] as const
+const DATE_FIELDS = ['glDocsSubmittedAt', 'glReleasedAt', 'soaSubmittedAt', 'soaResubmittedAt'] as const
 const MONEY_FIELDS = ['glRequestedAmount', 'soaAmount', 'soaCommissionRate'] as const
 const TEXT_FIELDS = ['guardianName', 'payoutBatch', 'qbEntry'] as const
 
@@ -52,6 +52,16 @@ function futureSoa(v: unknown): boolean {
 const FUTURE_SOA_ERROR =
   'The SOA submission date is in the future. Record it once the SOA has actually been submitted — '
   + 'until then leave it blank, and the letter counts as not yet submitted.'
+
+/** Same rule for a resubmission: a future date is a plan, not a filing. */
+const FUTURE_RESOA_ERROR =
+  'The SOA resubmission date is in the future. Record it once the corrected SOA has actually gone back — '
+  + 'until then leave it blank.'
+function futureSoaProblem(body: Record<string, unknown>): string | null {
+  if ('soaSubmittedAt' in body && futureSoa(body.soaSubmittedAt)) return FUTURE_SOA_ERROR
+  if ('soaResubmittedAt' in body && futureSoa(body.soaResubmittedAt)) return FUTURE_RESOA_ERROR
+  return null
+}
 
 /** Shared money parse: blank clears, anything non-numeric or negative is rejected. */
 function parseMoney(v: unknown): { ok: true; value: number | null } | { ok: false } {
@@ -97,9 +107,8 @@ export async function PATCH(req: Request) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
-    if ('soaSubmittedAt' in body && futureSoa(body.soaSubmittedAt)) {
-      return NextResponse.json({ error: FUTURE_SOA_ERROR }, { status: 400 })
-    }
+    const soaProblem = futureSoaProblem(body)
+    if (soaProblem) return NextResponse.json({ error: soaProblem }, { status: 400 })
     for (const f of DATE_FIELDS) {
       if (!(f in body)) continue
       const v = body[f]
@@ -129,7 +138,7 @@ export async function PATCH(req: Request) {
       data,
       select: {
         id: true, glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
-        soaAmount: true, soaSubmittedAt: true, guardianName: true,
+        soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
         soaCommissionRate: true, payoutBatch: true, qbEntry: true,
       },
     })
@@ -144,7 +153,7 @@ const CASE_SELECT = {
   id: true, walletId: true, patientName: true, branch: true,
   glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
   approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
-  guardianName: true, soaCommissionRate: true, payoutBatch: true,
+  soaResubmittedAt: true, guardianName: true, soaCommissionRate: true, payoutBatch: true,
   qbEntry: true, paidAt: true, notes: true, createdAt: true,
   processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
 } as const
@@ -182,9 +191,8 @@ export async function POST(req: Request) {
       walletId,
       createdById: session.user.id as string,
     }
-    if ('soaSubmittedAt' in body && futureSoa(body.soaSubmittedAt)) {
-      return NextResponse.json({ error: FUTURE_SOA_ERROR }, { status: 400 })
-    }
+    const soaProblem = futureSoaProblem(body)
+    if (soaProblem) return NextResponse.json({ error: soaProblem }, { status: 400 })
     for (const f of CASE_DATE_FIELDS) if (f in body) data[f] = asDate(body[f])
     for (const f of CASE_MONEY_FIELDS) {
       if (!(f in body)) continue
@@ -238,9 +246,8 @@ export async function PUT(req: Request) {
       }
       data.walletId = walletId
     }
-    if ('soaSubmittedAt' in body && futureSoa(body.soaSubmittedAt)) {
-      return NextResponse.json({ error: FUTURE_SOA_ERROR }, { status: 400 })
-    }
+    const soaProblem = futureSoaProblem(body)
+    if (soaProblem) return NextResponse.json({ error: soaProblem }, { status: 400 })
     for (const f of CASE_DATE_FIELDS) if (f in body) data[f] = asDate(body[f])
     for (const f of CASE_MONEY_FIELDS) {
       if (!(f in body)) continue

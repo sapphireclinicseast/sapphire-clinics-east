@@ -23,14 +23,14 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_AD
 
 const CASE_FIELDS = [
   'glRequestedAmount', 'glDocsSubmittedAt', 'glReleasedAt',
-  'soaAmount', 'soaSubmittedAt', 'guardianName',
+  'soaAmount', 'soaSubmittedAt', 'soaResubmittedAt', 'guardianName',
   'soaCommissionRate', 'payoutBatch', 'qbEntry',
 ] as const
 
 const LABELS: Record<string, string> = {
   glRequestedAmount: 'Requested GL', glDocsSubmittedAt: 'Date submission of documents',
   glReleasedAt: 'GL release date', soaAmount: 'Amount in SOA',
-  soaSubmittedAt: 'Date submission of SOA', guardianName: 'Guardian name',
+  soaSubmittedAt: 'Date submission of SOA', soaResubmittedAt: 'SOA Resubmission Date', guardianName: 'Guardian name',
   soaCommissionRate: 'GL processor fee rate', payoutBatch: 'Payout', qbEntry: 'QB entry',
 }
 

@@ -33,6 +33,7 @@ export interface GlCaseWallet {
   glReleasedAt?: string | null
   soaAmount?: number | string | null
   soaSubmittedAt?: string | null
+  soaResubmittedAt?: string | null
   guardianName?: string | null
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
@@ -59,6 +60,7 @@ export interface GlCaseRow {
   approvedAmount?: number | string | null
   soaAmount?: number | string | null
   soaSubmittedAt?: string | null
+  soaResubmittedAt?: string | null
   guardianName?: string | null
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
@@ -113,6 +115,7 @@ interface Row {
   approved: number
   soaAmount?: number | string | null
   soaSubmittedAt?: string | null
+  soaResubmittedAt?: string | null
   guardianName?: string | null
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
@@ -176,6 +179,7 @@ function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
     approved: w ? num(w.totalGlAmount) : num(c?.approvedAmount),
     soaAmount: pick(c?.soaAmount, w?.soaAmount),
     soaSubmittedAt: pick(c?.soaSubmittedAt, w?.soaSubmittedAt),
+    soaResubmittedAt: pick(c?.soaResubmittedAt, w?.soaResubmittedAt),
     guardianName: pick(c?.guardianName, w?.guardianName),
     soaCommissionRate: pick(c?.soaCommissionRate, w?.soaCommissionRate),
     payoutBatch: pick(c?.payoutBatch, w?.payoutBatch),
@@ -261,6 +265,29 @@ function soaSubmittedOn(r: Row): string | null {
   return new Date(r.soaSubmittedAt).getTime() <= Date.now() ? r.soaSubmittedAt : null
 }
 
+/** The SOA resubmission date, but only once it has arrived — same rule. */
+function soaResubmittedOn(r: Row): string | null {
+  if (!r.soaResubmittedAt) return null
+  return new Date(r.soaResubmittedAt).getTime() <= Date.now() ? r.soaResubmittedAt : null
+}
+
+/**
+ * The resubmission clock. Some SOAs come back for errors and go in again;
+ * this clock runs from that second filing, alongside — not instead of — the
+ * first-submission clock, so the sheet shows both how long the agency has had
+ * the letter overall and how long since the corrected SOA went back. Same
+ * stop rule: a landed payment stops it, a post-dated cheque does not. Blank
+ * until a resubmission date is recorded.
+ */
+function arRunningDaysResub(r: Row): number | null {
+  const now = Date.now()
+  const start = soaResubmittedOn(r)
+  if (!start) return null
+  const paidAt = r.lastPaymentDate ? new Date(r.lastPaymentDate).getTime() : null
+  const end = paidAt != null && paidAt <= now ? paidAt : now
+  return Math.floor((end - new Date(start).getTime()) / 86_400_000)
+}
+
 /**
  * Whether the SOA has been submitted at all. A letter cannot be paid without one
  * — the agency settles against the SOA — so a payment proves submission even
@@ -309,7 +336,7 @@ function commissionOf(r: Row): number {
 type ColKey =
   | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
-  | 'rendered' | 'soaSubmitted' | 'soaDate' | 'status' | 'paidDate' | 'arDays' | 'perMonths'
+  | 'rendered' | 'soaSubmitted' | 'soaDate' | 'soaResubDate' | 'status' | 'paidDate' | 'arDays' | 'arDaysResub' | 'perMonths'
   | 'guardian' | 'drive' | 'commission' | 'threePct' | 'payout' | 'qb' | 'linked'
 
 interface Col { key: ColKey; label: string; numeric?: boolean }
@@ -328,9 +355,11 @@ const COLS: Col[] = [
   { key: 'rendered', label: 'Rendered service?' },
   { key: 'soaSubmitted', label: 'SOA submitted' },
   { key: 'soaDate', label: 'Date submission of SOA' },
+  { key: 'soaResubDate', label: 'SOA Resubmission Date' },
   { key: 'status', label: 'Status' },
   { key: 'paidDate', label: 'Date of Payment (in check)' },
-  { key: 'arDays', label: 'AR running days', numeric: true },
+  { key: 'arDays', label: 'AR running days (1st SOA)', numeric: true },
+  { key: 'arDaysResub', label: 'AR running days (resubmission)', numeric: true },
   { key: 'perMonths', label: 'Per months', numeric: true },
   { key: 'guardian', label: 'Guardian Name' },
   { key: 'drive', label: 'Files' },
@@ -356,9 +385,11 @@ function cellText(r: Row, k: ColKey): string {
     // The recorded date still shows even when it is in the future — it is the
     // planned filing date, and hiding it would lose information the sheet holds.
     case 'soaDate': return fmtDate(r.soaSubmittedAt) || '—'
+    case 'soaResubDate': return fmtDate(r.soaResubmittedAt) || '—'
     case 'status': return r.paid ? 'PAID' : 'UNPAID'
     case 'paidDate': return fmtDate(r.lastPaymentDate) || 'unpaid'
     case 'arDays': { const d = arRunningDays(r); return d == null ? '—' : String(d) }
+    case 'arDaysResub': { const d = arRunningDaysResub(r); return d == null ? '—' : String(d) }
     case 'perMonths': return typeof r.monthsToPay === 'number' ? `${r.monthsToPay.toFixed(2)}` : '—'
     case 'guardian': return r.guardianName || '—'
     case 'drive': { const n = r.files.length; return n ? `${n} file${n === 1 ? '' : 's'}` : '—' }
@@ -390,9 +421,11 @@ function sortValue(r: Row, k: ColKey): string | number {
     case 'rendered': return r.rendered ? 'YES' : 'NO'
     case 'soaSubmitted': return soaSubmitted(r) ? 'YES' : 'NO'
     case 'soaDate': return dayKey(r.soaSubmittedAt) || '￿'
+    case 'soaResubDate': return dayKey(r.soaResubmittedAt) || '￿'
     case 'status': return r.paid ? 'PAID' : 'UNPAID'
     case 'paidDate': return dayKey(r.lastPaymentDate) || '￿'
     case 'arDays': return arRunningDays(r) ?? Number.MAX_SAFE_INTEGER
+    case 'arDaysResub': return arRunningDaysResub(r) ?? Number.MAX_SAFE_INTEGER
     case 'perMonths': return typeof r.monthsToPay === 'number' ? r.monthsToPay : Number.MAX_SAFE_INTEGER
     case 'guardian': return r.guardianName || ''
     case 'drive': return r.files.length
@@ -792,6 +825,7 @@ function GlEntryModal({
     approvedAmount: entry?.approvedAmount != null ? String(num(entry.approvedAmount)) : '',
     soaAmount: entry?.soaAmount != null ? String(num(entry.soaAmount)) : '',
     soaSubmittedAt: dayKey(entry?.soaSubmittedAt),
+    soaResubmittedAt: dayKey(entry?.soaResubmittedAt),
     soaCommissionRate: entry?.soaCommissionRate != null ? String(num(entry.soaCommissionRate)) : '25',
     guardianName: entry?.guardianName || '',
     payoutBatch: entry?.payoutBatch || '',
@@ -948,6 +982,7 @@ function GlEntryModal({
           {field('Approved GL (₱)', 'approvedAmount', 'number', 'Ignored once tagged — the wallet’s approved amount wins.')}
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
+          {field('SOA Resubmission Date', 'soaResubmittedAt', 'date', 'Only for SOAs returned for errors — starts the second AR-days clock')}
           {field('GL processor fee rate (%)', 'soaCommissionRate', 'number', '25% is the current rate and is pre-filled, but older letters were 20% and one is 12% — check the SOA before saving, because saving records this rate against the letter.')}
           {field('Guardian name', 'guardianName')}
           {field('Date of payment', 'paidAt', 'date', 'Ignored once tagged — payments come from the wallet.')}
@@ -990,6 +1025,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
     glReleasedAt: dayKey(wallet.glReleasedAt),
     soaAmount: wallet.soaAmount != null ? String(num(wallet.soaAmount)) : '',
     soaSubmittedAt: dayKey(wallet.soaSubmittedAt),
+    soaResubmittedAt: dayKey(wallet.soaResubmittedAt),
     guardianName: wallet.guardianName || '',
     // 25% is the current rate; older letters were 20%, so it stays typed
     // per letter and only pre-fills when nothing has been recorded yet.
@@ -1109,6 +1145,7 @@ function GlCaseModal({ wallet, cases, wallets, onClose, onSaved }: { wallet: GlC
           {field('GL release date', 'glReleasedAt', 'date')}
           {field('Amount in SOA (₱)', 'soaAmount', 'number')}
           {field('Date submission of SOA', 'soaSubmittedAt', 'date', 'AR running days and Per months count from here')}
+          {field('SOA Resubmission Date', 'soaResubmittedAt', 'date', 'Only for SOAs returned for errors — starts the second AR-days clock')}
           {field('GL processor fee rate (%)', 'soaCommissionRate', 'number', '25% is the current rate and is pre-filled, but older letters were 20% and one is 12% — check the SOA before saving, because saving records this rate against the letter.')}
           {field('Guardian name', 'guardianName')}
           {field('Payout', 'payoutBatch', 'text', 'e.g. 3/26-4/10')}

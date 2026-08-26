@@ -877,6 +877,7 @@ model DigitalWallet {
   glReleasedAt      DateTime? // Date the approved GL was released
   soaAmount         Decimal? // Amount billed on the SOA (differs from the approved GL)
   soaSubmittedAt    DateTime? // Date the SOA was submitted to the agency
+  soaResubmittedAt  DateTime? // Date the SOA was resubmitted after being returned for errors
   guardianName      String? // Parent/guardian who signed for the patient
   // Agency commission withheld from the SOA amount — the rate varies by case
   // (20% or 25%), so it is stored per letter rather than assumed.
@@ -933,6 +934,7 @@ model GlCase {
   approvedAmount    Decimal?
   soaAmount         Decimal?
   soaSubmittedAt    DateTime?
+  soaResubmittedAt  DateTime? // Date the SOA was resubmitted after being returned for errors
   guardianName      String?
   soaCommissionRate Decimal?
   payoutBatch       String?
