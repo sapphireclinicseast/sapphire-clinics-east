@@ -393,6 +393,7 @@ interface InventoryItem {
   accountSubType: string | null
   quantity: number
   branchStock?: Record<string, number> | null
+  sourceItemId?: string | null
   unitCost: number
   sellingPrice: number | null
   rewardPointsPrice: number | null
@@ -1185,42 +1186,47 @@ function InventoryInner() {
   //    branches, and item.branchStock ({ branch: qty }) records the consigned
   //    portion. `quantity` stays authoritative for FIFO/COGS/BS.
   // Either way we surface a per-branch breakdown + a combined total (display only).
+  // A branch consignment copy folds under its pool item. The explicit
+  // sourceItemId link is the identity (set by consignment receive since
+  // 2026-08-26, suffixes -EAST/-GH); legacy '-SAND' rows without the link
+  // still fold by SKU suffix.
+  const isBranchCopy = (it: InventoryItem) => !!it.sourceItemId || it.sku.endsWith('-SAND')
   const branchBreakdown = useMemo(() => {
     const m = new Map<string, { parts: { branch: string; quantity: number }[]; total: number }>()
-    const sibsBy = new Map<string, { branch: string; quantity: number }[]>()
+    const sibsById = new Map<string, { branch: string; quantity: number }[]>()
+    const sibsBySku = new Map<string, { branch: string; quantity: number }[]>()
     for (const it of items) {
-      if (it.sku.endsWith('-SAND')) {
-        const base = it.sku.slice(0, -5)
-        const arr = sibsBy.get(base) || []
+      if (it.sourceItemId) {
+        const arr = sibsById.get(it.sourceItemId) || []
         arr.push({ branch: it.branch, quantity: it.quantity })
-        sibsBy.set(base, arr)
+        sibsById.set(it.sourceItemId, arr)
+      } else if (it.sku.endsWith('-SAND')) {
+        const base = it.sku.slice(0, -5)
+        const arr = sibsBySku.get(base) || []
+        arr.push({ branch: it.branch, quantity: it.quantity })
+        sibsBySku.set(base, arr)
       }
     }
     for (const it of items) {
-      if (it.sku.endsWith('-SAND')) continue
+      if (isBranchCopy(it)) continue
       const bs = it.branchStock && typeof it.branchStock === 'object' ? it.branchStock : null
       const bsEntries = bs ? Object.entries(bs).map(([branch, quantity]) => ({ branch, quantity: Number(quantity) })).filter(e => e.quantity !== 0) : []
-      if (bsEntries.length > 0) {
-        const consignedSum = bsEntries.reduce((s, x) => s + x.quantity, 0)
-        m.set(it.sku, {
-          parts: [{ branch: it.branch, quantity: it.quantity - consignedSum }, ...bsEntries],
-          total: it.quantity,
-        })
-      } else {
-        const sibs = sibsBy.get(it.sku)
-        if (sibs && sibs.length > 0) {
-          m.set(it.sku, {
-            parts: [{ branch: it.branch, quantity: it.quantity }, ...sibs],
-            total: it.quantity + sibs.reduce((s, x) => s + x.quantity, 0),
-          })
-        }
-      }
+      const sibs = [...(sibsById.get(it.id) || []), ...(sibsBySku.get(it.sku) || [])]
+      if (bsEntries.length === 0 && sibs.length === 0) continue
+      // branchStock JSON is a display split of the pool's own counter; row
+      // copies hold their stock themselves and add on top.
+      const consignedSum = bsEntries.reduce((s, x) => s + x.quantity, 0)
+      const sibsSum = sibs.reduce((s, x) => s + x.quantity, 0)
+      m.set(it.sku, {
+        parts: [{ branch: it.branch, quantity: it.quantity - consignedSum }, ...bsEntries, ...sibs],
+        total: it.quantity + sibsSum,
+      })
     }
     return m
-  }, [items])
+  }, [items]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortedItems = useMemo(() => {
-    const visible = items.filter(i => !i.sku.endsWith('-SAND'))
+    const visible = items.filter(i => !isBranchCopy(i))
     if (!invSortField) return visible
     const sorted = [...visible].sort((a, b) => {
       let cmp = 0

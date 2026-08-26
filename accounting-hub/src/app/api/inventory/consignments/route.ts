@@ -178,7 +178,12 @@ export async function PUT(req: Request) {
 
     const allowed = validTransitions[transfer.status] || []
     if (!allowed.includes(action)) {
-      return NextResponse.json({ error: `Cannot ${action} a ${transfer.status} transfer` }, { status: 400 })
+      // Skip, don't abort: in a batch (one referenceNumber, several transfers)
+      // one already-received line was killing the whole request AFTER earlier
+      // lines had committed — the UI showed "Cannot receive a RECEIVED
+      // transfer" even though the receive had worked.
+      errors.push(`${transfer.item.name}: cannot ${action} a ${transfer.status} transfer`)
+      continue
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -328,6 +333,9 @@ export async function PUT(req: Request) {
     // Return single or batch result
     if (transferIds.length === 1 && results.length === 1) {
       return NextResponse.json(results[0])
+    }
+    if (results.length === 0 && errors.length > 0) {
+      return NextResponse.json({ error: errors.join('; ') }, { status: 400 })
     }
     return NextResponse.json({ updated: results.length, errors, transfers: results })
   } catch {
