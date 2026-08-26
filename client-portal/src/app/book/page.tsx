@@ -57,15 +57,15 @@ const BRANCH_CONTACTS: Record<'SBEA' | 'SBGH', { name: string; phone: string; em
   SBEA: {
     name: 'East Branch',
     phone: '0917 118 9289',
-    email: 'east.sandboxclinic@gmail.com',
-    facebook: 'https://www.facebook.com/sandboxcliniceast',
+    email: 'east@sapphireclinicseast.org',
+    facebook: 'https://www.facebook.com/aurahealthrehabeast',
     messenger: 'https://m.me/aurahealthrehabeast',
   },
   SBGH: {
     name: 'Greenhills Branch',
     phone: '0917 770 1686',
-    email: 'greenhills.sandboxclinic@gmail.com',
-    facebook: 'https://www.facebook.com/sandboxclinicgreenhills',
+    email: 'greenhills@sapphireclinicseast.org',
+    facebook: 'https://www.facebook.com/aurahealthrehabgh',
     messenger: 'https://m.me/aurahealthrehabgh',
   },
 }
@@ -266,7 +266,7 @@ function ContactPanel({ branch, serviceLabel }: { branch: 'SBEA' | 'SBGH'; servi
         <ContactRow
           icon={<IconFacebook />}
           label="Facebook"
-          value="facebook.com/sandboxclinic…"
+          value={c.facebook.replace(/^https?:\/\/(www\.)?/, '')}
           href={c.facebook}
           external
         />
