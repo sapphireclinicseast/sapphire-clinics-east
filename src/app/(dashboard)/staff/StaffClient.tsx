@@ -749,7 +749,7 @@ export default function StaffClient({ role }: { role: string }) {
                 })()}
                 <DetailRow label="Job Title"       value={selectedStaff.jobTitle ? selectedStaff.jobTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null} />
                 <DetailRow label="Department"      value={selectedStaff.department.replace(/_/g, ' ')} />
-                <DetailRow label="Primary Branch"  value={selectedStaff.branch} />
+                <DetailRow label="Primary Branch"  value={branchLabel(selectedStaff.branch) || selectedStaff.branch} />
                 {role === 'ADMIN'
                   ? <ExtraBranchToggle
                       staffId={selectedStaff.id}
