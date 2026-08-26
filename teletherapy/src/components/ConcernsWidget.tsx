@@ -109,6 +109,18 @@ export default function ConcernsWidget() {
 
   useEffect(() => { if (open && tab === 'mine' && mine === null) loadMine() }, [open, tab, mine])
 
+  // The notification bell opens this widget via a window event (e.g. when a
+  // staff member's ticket gets a reply → jump straight to "My tickets").
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      setOpen(true)
+      const d = (e as CustomEvent).detail
+      if (d === 'mine' || d === 'new') setTab(d)
+    }
+    window.addEventListener('scei:open-concerns', onOpen as EventListener)
+    return () => window.removeEventListener('scei:open-concerns', onOpen as EventListener)
+  }, [])
+
   const tabBtn = (key: 'new' | 'mine', label: string) => (
     <button
       onClick={() => { setError(null); setTab(key) }}

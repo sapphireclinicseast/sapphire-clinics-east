@@ -212,3 +212,10 @@ ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "internAccessOverride" B
 
 -- Fallback staff photo (URL or data URI) for interns without an HR photo
 ALTER TABLE "Staff" ADD COLUMN IF NOT EXISTS "photoPath" TEXT;
+
+-- Notification bell read cursor (see schema.prisma NotificationSeen)
+CREATE TABLE IF NOT EXISTS "NotificationSeen" (
+  "accountId" TEXT PRIMARY KEY,
+  "seenKeys"  TEXT[] NOT NULL DEFAULT '{}',
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
