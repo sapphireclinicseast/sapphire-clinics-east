@@ -4,7 +4,7 @@
 // remarks, and attach voice / video / photo (record directly or upload).
 // Multiple files per entry, uploaded one-by-one with a % progress indicator.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   listHomeProgress,
@@ -182,10 +182,10 @@ function AddEntryModal({ token, onClose, onSaved }: { token: string; onClose: ()
           <div>
             <span className="label">Attachments</span>
             <div className="grid grid-cols-2 gap-2.5">
-              <AttachBtn label="Record voice" emoji="🎙" onClick={() => setRecorder('AUDIO')} disabled={uploading} />
-              <AttachBtn label="Record video" emoji="🎬" onClick={() => setRecorder('VIDEO')} disabled={uploading} />
-              <AttachBtn label="Take photo" emoji="📷" onClick={() => setRecorder('PHOTO')} disabled={uploading} />
-              <AttachBtn label="Upload files" emoji="📎" onClick={() => uploadInput.current?.click()} disabled={uploading} />
+              <AttachBtn label="Record voice" icon={<IconMic />} onClick={() => setRecorder('AUDIO')} disabled={uploading} />
+              <AttachBtn label="Record video" icon={<IconVideo />} onClick={() => setRecorder('VIDEO')} disabled={uploading} />
+              <AttachBtn label="Take photo" icon={<IconCamera />} onClick={() => setRecorder('PHOTO')} disabled={uploading} />
+              <AttachBtn label="Upload files" icon={<IconPaperclip />} onClick={() => uploadInput.current?.click()} disabled={uploading} />
               <input ref={uploadInput} type="file" accept="audio/*,video/*,image/*" multiple className="hidden" onChange={onUpload} />
             </div>
             <p className="text-[11px] text-[color:var(--mid-gray)] mt-1.5" style={{ fontFamily: 'var(--font-display)' }}>Up to 18 MB per file.</p>
@@ -236,10 +236,16 @@ function AddEntryModal({ token, onClose, onSaved }: { token: string; onClose: ()
   )
 }
 
-function AttachBtn({ label, emoji, onClick, disabled }: { label: string; emoji: string; onClick: () => void; disabled?: boolean }) {
+const svgProps = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
+function IconMic() { return <svg {...svgProps}><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg> }
+function IconVideo() { return <svg {...svgProps}><path d="m16 10 4.55-2.28A1 1 0 0 1 22 8.62v6.76a1 1 0 0 1-1.45.9L16 14"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg> }
+function IconCamera() { return <svg {...svgProps}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></svg> }
+function IconPaperclip() { return <svg {...svgProps}><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> }
+
+function AttachBtn({ label, icon, onClick, disabled }: { label: string; icon: ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
     <button onClick={onClick} disabled={disabled} className="btn-secondary !py-2.5 text-sm inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
-      <span>{emoji}</span> {label}
+      {icon}<span>{label}</span>
     </button>
   )
 }
