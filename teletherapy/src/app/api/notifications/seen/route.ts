@@ -26,11 +26,16 @@ export async function POST(req: Request) {
   // Existing first, incoming last, dedup — then keep the newest MAX_KEYS.
   const merged = Array.from(new Set([...(existing?.seenKeys ?? []), ...incoming])).slice(-MAX_KEYS)
 
-  await prisma.notificationSeen.upsert({
-    where: { accountId },
-    create: { accountId, seenKeys: merged },
-    update: { seenKeys: merged },
-  })
+  try {
+    await prisma.notificationSeen.upsert({
+      where: { accountId },
+      create: { accountId, seenKeys: merged },
+      update: { seenKeys: merged },
+    })
+  } catch {
+    // Never let a read-cursor write break the bell (e.g. table not yet created).
+    return NextResponse.json({ ok: false }, { status: 200 })
+  }
 
   return NextResponse.json({ ok: true })
 }
