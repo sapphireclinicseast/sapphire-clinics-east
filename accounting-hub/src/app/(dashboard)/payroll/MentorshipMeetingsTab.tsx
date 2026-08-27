@@ -26,6 +26,8 @@ interface Meeting {
 }
 
 const peso = (n: number) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+const BRANCH_LABELS: Record<string, string> = { SBEA: 'East Branch', SBGH: 'Greenhills Branch', VERDANA: 'Verdana Store' }
+const branchLabel = (b: string) => BRANCH_LABELS[b] || b
 
 export default function MentorshipMeetingsTab({
   cutoffPeriod, branch, canWrite, onChanged,
@@ -97,8 +99,8 @@ export default function MentorshipMeetingsTab({
         <div>
           <h2 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Mentorship Meetings</h2>
           <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-            From the staff portal, cutoff {data ? `${data.range.from} → ${data.range.to}` : cutoffPeriod} · {effBranch}.
-            Ticking charges the mentee {data?.fee ? peso(data.fee) : 'the set fee'} and pays it to the mentor on this cutoff&apos;s payslips.
+            From the staff portal, cutoff {data ? `${data.range.from} → ${data.range.to}` : cutoffPeriod} · {branchLabel(effBranch)}.{' '}
+            Ticking charges the mentee {data?.fee ? peso(data.fee) : 'the set fee'}{' '}and pays it to the mentor on this cutoff&apos;s payslips.
             Meetings lock when the payroll run is finalized, and the portal marks them Paid.
           </p>
         </div>
@@ -181,7 +183,7 @@ export default function MentorshipMeetingsTab({
                           <Lock size={11} /> Locked · paid{m.paidAt ? '' : ' (portal pending)'}
                         </span>
                       ) : included && !inThisCutoff ? (
-                        <span style={{ color: 'var(--mid-gray)' }}>included in {m.charges[0].cutoffPeriod} · {m.charges[0].branch}</span>
+                        <span style={{ color: 'var(--mid-gray)' }}>included in {m.charges[0].cutoffPeriod} · {branchLabel(m.charges[0].branch)}</span>
                       ) : included ? (
                         <span className="inline-flex items-center gap-1" style={{ color: 'var(--deep-teal)' }}>
                           <CheckCircle2 size={11} /> in this cutoff · {peso(m.charges.reduce((s, c) => s + c.fee, 0))}

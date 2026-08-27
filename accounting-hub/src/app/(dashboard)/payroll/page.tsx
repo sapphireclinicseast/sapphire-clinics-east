@@ -4515,28 +4515,49 @@ export default function PayrollPage() {
                           ? 'Nobody has left since the directory started recording.'
                           : 'Nothing recorded yet — run a sync from the Consultant List.'}
                       </td></tr>
-                    ) : directory.map(d => {
+                    ) : (() => {
+                      // The same person arrives from BOTH feeds (Operations and the
+                      // HR Platform) under different external ids — one line per
+                      // human, sources combined, widest date span, and current as
+                      // long as either feed still lists them.
                       const day = (v: string | null) => v ? new Date(v).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
-                      const gone = !!d.resignedAt || !d.activeUpstream
-                      return (
-                        <tr key={d.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                          <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{d.name}</td>
-                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{d.branch}</td>
-                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{d.department || '—'}</td>
-                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{d.source === 'HR' ? 'HR Platform' : 'Operations'}</td>
-                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{day(d.firstSeenAt)}</td>
-                          <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{day(d.lastSeenAt)}</td>
-                          <td className="px-3 py-2.5">
-                            <span className="px-2 py-1 rounded-md text-[11px] font-medium"
-                              style={gone
-                                ? { background: '#fee2e2', color: '#b91c1c' }
-                                : { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                              {gone ? `Resigned ${d.resignedAt ? day(d.resignedAt) : ''}`.trim() : 'Current'}
-                            </span>
-                          </td>
-                        </tr>
-                      )
-                    })}
+                      const merged = new Map<string, typeof directory[0] & { sources: Set<string> }>()
+                      for (const d of directory) {
+                        const key = `${d.name.trim().toUpperCase()}|${d.branch}`
+                        const src = d.source === 'HR' ? 'HR Platform' : 'Operations'
+                        const prev = merged.get(key)
+                        if (!prev) { merged.set(key, { ...d, sources: new Set([src]) }); continue }
+                        prev.sources.add(src)
+                        if (d.firstSeenAt && (!prev.firstSeenAt || d.firstSeenAt < prev.firstSeenAt)) prev.firstSeenAt = d.firstSeenAt
+                        if (d.lastSeenAt && (!prev.lastSeenAt || d.lastSeenAt > prev.lastSeenAt)) prev.lastSeenAt = d.lastSeenAt
+                        const dGone = !!d.resignedAt || !d.activeUpstream
+                        const pGone = !!prev.resignedAt || !prev.activeUpstream
+                        // Current in either feed wins over resigned in the other.
+                        if (pGone && !dGone) { prev.resignedAt = null; prev.activeUpstream = true }
+                        if (!prev.department && d.department) prev.department = d.department
+                      }
+                      return Array.from(merged.values()).map(d => {
+                        const gone = !!d.resignedAt || !d.activeUpstream
+                        return (
+                          <tr key={`${d.name}|${d.branch}`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                            <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{d.name}</td>
+                            <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{branchLabel(d.branch)}</td>
+                            <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{d.department || '—'}</td>
+                            <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{Array.from(d.sources).sort().join(' + ')}</td>
+                            <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{day(d.firstSeenAt)}</td>
+                            <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{day(d.lastSeenAt)}</td>
+                            <td className="px-3 py-2.5">
+                              <span className="px-2 py-1 rounded-md text-[11px] font-medium"
+                                style={gone
+                                  ? { background: '#fee2e2', color: '#b91c1c' }
+                                  : { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                                {gone ? `Resigned ${d.resignedAt ? day(d.resignedAt) : ''}`.trim() : 'Current'}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    })()}
                   </tbody>
                 </table>
               </div>
