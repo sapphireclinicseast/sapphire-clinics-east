@@ -55,6 +55,19 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   // Which sections this account is allowed to see (by access preset).
   const allowed = allowedSections(session?.user?.role, session?.user?.accountType)
 
+  // The Internship and Mentorship sections are role-gated beyond the preset:
+  //   • Internship — only tagged internship supervisors (HR Staff Profiles)
+  //     and INTERN accounts (plus admins).
+  //   • Mentorship — only tagged Clinical Mentors and their mentees (plus
+  //     admins). Everyone else never sees these nav items.
+  const acct = session?.user?.accountType
+  const canInternship = isAdmin || !!session?.user?.isInternshipSupervisor || acct === 'INTERN'
+  const canMentorship = isAdmin || !!session?.user?.isClinicalMentor || !!session?.user?.isMentee
+  const sectionGate = (href: string) =>
+    href === '/intern-supervision' ? canInternship
+    : href === '/mentorship' ? canMentorship
+    : true
+
   const allNavItems = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/clinic-schedule', label: 'Clinic Schedule', icon: CalendarDays },
@@ -74,7 +87,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   ]
 
   const navItems = [
-    ...allNavItems.filter((item) => allowed.includes(item.href)),
+    ...allNavItems.filter((item) => allowed.includes(item.href) && sectionGate(item.href)),
     ...(isAdmin
       ? [
           { href: '/tickets', label: 'Tickets', icon: LifeBuoy },

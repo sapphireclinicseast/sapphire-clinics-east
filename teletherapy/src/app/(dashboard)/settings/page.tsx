@@ -7,6 +7,8 @@ import SignaturePad from '@/components/SignaturePad'
 
 export default function SettingsPage() {
   const { data: session } = useSession()
+  // Interns aren't licensed practitioners yet — no PRC License / PTR fields.
+  const isIntern = (session?.user as { accountType?: string } | undefined)?.accountType === 'INTERN'
 
   const [licenseNo, setLicenseNo] = useState('')
   const [ptrNo, setPtrNo] = useState('')
@@ -95,7 +97,8 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* PRC License & PTR */}
+      {/* PRC License & PTR — hidden for interns (not licensed practitioners) */}
+      {!isIntern && (
       <div className="card-static mb-6">
         <h2 className="text-[14px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
           <Award size={18} className="text-[var(--sand-dark)]" />
@@ -133,6 +136,7 @@ export default function SettingsPage() {
           These will auto-fill in OT Daily Notes and other session forms that require credentials.
         </p>
       </div>
+      )}
 
       {/* Signature */}
       <div className="card-static mb-6">

@@ -26,6 +26,7 @@ declare module 'next-auth' {
       employmentType?: string
       isInternshipSupervisor?: boolean
       isClinicalMentor?: boolean
+      isMentee?: boolean
       mentorTherapistAccountIds?: string[]
     }
   }
@@ -39,6 +40,7 @@ declare module 'next-auth' {
     employmentType?: string
     isInternshipSupervisor?: boolean
     isClinicalMentor?: boolean
+    isMentee?: boolean
     mentorTherapistAccountIds?: string[]
   }
 }
@@ -224,6 +226,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.mentorTherapistAccountIds = account.staff?.isClinicalMentor
           ? await resolveMentorTherapistAccountIds(account.staff.menteeIds ?? [])
           : []
+        // A mentee is any staff whose id is listed in some mentor's menteeIds.
+        // Drives whether the Mentorship section is visible to them at all.
+        token.isMentee = token.staffId
+          ? (await prisma.staff.count({ where: { menteeIds: { has: token.staffId as string } } })) > 0
+          : false
       }
 
       return token
@@ -245,6 +252,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.employmentType = (token.employmentType as string) ?? undefined
         session.user.isInternshipSupervisor = (token.isInternshipSupervisor as boolean) ?? false
         session.user.isClinicalMentor = (token.isClinicalMentor as boolean) ?? false
+        session.user.isMentee = (token.isMentee as boolean) ?? false
         session.user.mentorTherapistAccountIds = (token.mentorTherapistAccountIds as string[]) ?? []
       }
       return session

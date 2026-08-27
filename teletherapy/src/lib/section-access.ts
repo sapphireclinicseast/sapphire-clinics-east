@@ -45,14 +45,15 @@ const PRESETS: Record<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'INTERN', str
     '/seminars', '/templates', '/manuals', '/directory', '/wellness-check',
     '/payroll', '/loans-perks', '/intern-supervision', '/mentorship', '/settings',
   ],
-  // Interns get the clinical pages plus the Internship section, where their
-  // Learning Outcomes + Balik-Tanaw forms now live as tabs (they see the
-  // intern view of that page, not the supervisor tabs). The old standalone
-  // routes stay allowed for back-compat but are no longer in the nav.
+  // Interns get a deliberately trimmed portal: the everyday reference sections
+  // plus the Internship section (where their Learning Outcomes + Balik-Tanaw
+  // now live as tabs). They do NOT get Patients, the Patients/Peers "love"
+  // walls, Payroll, or Loans & Perks. The old standalone /balik-tanaw and
+  // /learning-outcomes routes stay allowed for back-compat but aren't in nav.
   INTERN: [
-    '/', '/clinic-schedule', '/patients', '/patients-love', '/peers-love',
-    '/seminars', '/templates', '/manuals', '/directory', '/wellness-check',
-    '/payroll', '/loans-perks', '/intern-supervision', '/balik-tanaw', '/learning-outcomes', '/settings',
+    '/', '/clinic-schedule', '/seminars', '/templates', '/manuals',
+    '/directory', '/wellness-check', '/intern-supervision', '/settings',
+    '/balik-tanaw', '/learning-outcomes',
   ],
   FRONT_DESK: [
     '/patients-love', '/peers-love', '/seminars', '/templates', '/manuals',
