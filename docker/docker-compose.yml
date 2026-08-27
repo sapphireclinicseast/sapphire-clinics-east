@@ -93,6 +93,10 @@ services:
       PAYMONGO_SECRET_KEY_SBGH: ${PAYMONGO_SECRET_KEY_SBGH}
       PAYMONGO_WEBHOOK_SECRET_SBEA: ${PAYMONGO_WEBHOOK_SECRET_SBEA}
       PAYMONGO_WEBHOOK_SECRET_SBGH: ${PAYMONGO_WEBHOOK_SECRET_SBGH}
+      # Homecare PT distance/geocoding (OpenRouteService). Reused from the
+      # Verdana store's key. Optional — the fare engine falls back to
+      # straight-line distance if unset.
+      OPENROUTESERVICE_API_KEY: ${OPENROUTESERVICE_API_KEY}
       PATIENT_PORTAL_SECRET: ${PATIENT_PORTAL_SECRET}
       CLIENT_PORTAL_URL: ${CLIENT_PORTAL_URL:-https://client.sapphireclinicseast.org}
       CLASS_PORTAL_JWT_SECRET: ${CLASS_PORTAL_JWT_SECRET}
