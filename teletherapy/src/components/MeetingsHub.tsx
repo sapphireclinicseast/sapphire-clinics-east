@@ -5,7 +5,7 @@
 // My Availability. Used by the Internship and Mentorship sections.
 
 import { useState } from 'react'
-import { Calendar, Video, Clock } from 'lucide-react'
+import { Calendar, Video, Clock, Info } from 'lucide-react'
 import MeetingsPanel from './MeetingsPanel'
 import SetMeeting from './SetMeeting'
 import AvailabilityEditor from './AvailabilityEditor'
@@ -30,6 +30,15 @@ export default function MeetingsHub({
 
   return (
     <div className="space-y-4">
+      {context === 'MENTORSHIP' && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-[var(--light-gray)] bg-[var(--pale-teal)] px-4 py-3">
+          <Info size={15} className="text-[var(--teal)] mt-0.5 shrink-0" />
+          <p className="text-[12.5px] text-[var(--deep-teal)] leading-relaxed">
+            Each mentorship meeting is compensated to the mentor at the prevailing mentorship fee, deducted from the mentee&apos;s payroll.
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] w-fit">
         {tabs.map((t) => (
           <button
