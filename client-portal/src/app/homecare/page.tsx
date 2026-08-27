@@ -14,7 +14,8 @@ const PROXY = '/api/booking-proxy/homecare'
 
 type Short = 'SBEA' | 'SBGH'
 interface City { id: string; name: string; province: string | null; branches: Short[]; nextDate: string | null }
-interface OpenDay { id: string; cityId: string; branch: Short; date: string; startTime: string; endTime: string; capacity: number; remaining: number }
+// An expanded upcoming occurrence of a weekly rule (openDayId) on a concrete date.
+interface OpenDay { openDayId: string; cityId: string; branch: Short; dayOfWeek: number; date: string; startTime: string; endTime: string; capacity: number; remaining: number }
 interface Fare {
   ok: boolean
   method: string
@@ -133,7 +134,7 @@ export default function HomecarePage() {
       const r = await fetch(`${PROXY}/quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch, address: f.address, openDayId: day!.id }),
+        body: JSON.stringify({ branch, address: f.address, openDayId: day!.openDayId, date: day!.date }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? 'Could not compute the fare.')
@@ -155,7 +156,7 @@ export default function HomecarePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cityId: city!.id, openDayId: day!.id, branch,
+          cityId: city!.id, openDayId: day!.openDayId, date: day!.date, branch,
           firstName: f.firstName, lastName: f.lastName, email: f.email, phone: f.phone,
           dob: f.dob, sex: f.sex, patientType: f.patientType,
           address: f.address, city: f.city || city!.name,
@@ -260,7 +261,7 @@ export default function HomecarePage() {
             {openDays && openDays.length === 0 && <p className="text-sm text-[color:var(--mid-gray)]">No open dates for this branch yet. Try the other branch or check back soon.</p>}
             <div className="grid gap-2 sm:grid-cols-2">
               {openDays?.map((d) => (
-                <button key={d.id} onClick={() => { setDay(d); setF((s) => ({ ...s, city: city?.name ?? s.city })); setStep('details') }}
+                <button key={`${d.openDayId}-${d.date}`} onClick={() => { setDay(d); setF((s) => ({ ...s, city: city?.name ?? s.city })); setStep('details') }}
                   className="rounded-2xl border-[1.5px] border-[color:var(--paper-3)] bg-white p-4 text-left transition-all hover:border-[color:var(--sage)]"
                   style={{ fontFamily: 'var(--font-display)' }}>
                   <div className="text-[15px] font-semibold text-[color:var(--narra)]">{new Date(d.date).toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}</div>

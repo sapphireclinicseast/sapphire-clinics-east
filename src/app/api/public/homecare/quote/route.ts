@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     branch?: string
     address?: string
     openDayId?: string
+    date?: string // chosen occurrence, "YYYY-MM-DD"
   }
 
   const branch = body.branch
@@ -47,14 +48,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let dateISO: string | null = null
+  const dateISO = body.date && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : null
   let startTime: string | null = null
   if (body.openDayId) {
-    const day = await prisma.homecareOpenDay.findUnique({ where: { id: body.openDayId } })
-    if (day) {
-      dateISO = day.date.toISOString().slice(0, 10)
-      startTime = day.startTime
-    }
+    const rule = await prisma.homecareOpenDay.findUnique({ where: { id: body.openDayId } })
+    if (rule) startTime = rule.startTime
   }
 
   const settings = await loadFareSettings()

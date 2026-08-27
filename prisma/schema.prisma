@@ -946,17 +946,17 @@ model HomecareOpenDay {
   cityId    String
   city      HomecareCity @relation(fields: [cityId], references: [id], onDelete: Cascade)
   branch    String       // "SBEA" | "SBGH" — which clinic the PT travels from
-  date      DateTime     // the specific open travel date (date-only, UTC midnight)
+  dayOfWeek Int          // 0=Sun … 6=Sat — recurring WEEKLY open day for this city
   startTime String       @default("09:00") // daily service window (front desk sequences exact times)
   endTime   String       @default("17:00")
-  capacity  Int          @default(6)        // max home visits that day
+  capacity  Int          @default(6)        // max home visits per weekly occurrence
   disabled  Boolean      @default(false)
   notes     String?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  @@unique([cityId, branch, date])
-  @@index([branch, date])
+  @@unique([cityId, branch, dayOfWeek])
+  @@index([branch, dayOfWeek])
 }
 
 // Per-branch clinic origin coordinates the PT travels from. Admin-editable so

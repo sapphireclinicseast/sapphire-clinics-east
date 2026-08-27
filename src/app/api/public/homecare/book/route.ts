@@ -29,7 +29,7 @@ import {
 } from '@/lib/patient-password'
 import { createPaymongoLink } from '@/lib/paymongo'
 import { computeHomecareFare } from '@/lib/homecare-fare'
-import { loadClinic, loadFareSettings, isShortBranch, SHORT_TO_OPS } from '@/lib/homecare'
+import { loadClinic, loadFareSettings, isShortBranch, SHORT_TO_OPS, ymdToDate, ymdWeekday, manilaTodayYmd, nextOccurrences, OCCURRENCE_COUNT } from '@/lib/homecare'
 
 export async function OPTIONS(req: NextRequest) {
   return preflight(req.headers.get('origin'))
@@ -110,12 +110,20 @@ export async function POST(req: NextRequest) {
   // ── Validate the chosen open day (exists, enabled, city/branch match) ────
   const cityId = String(body.cityId ?? '')
   const openDayId = String(body.openDayId ?? '')
+  const dateISO = String(body.date ?? '')
   if (!cityId || !openDayId) return bad('cityId and openDayId are required')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return bad('a valid travel date is required')
   const day = await prisma.homecareOpenDay.findUnique({ where: { id: openDayId } })
   if (!day || day.disabled || day.cityId !== cityId || day.branch !== branch) {
     return bad('That schedule is no longer available. Please pick another date.', 409)
   }
-  const dateISO = day.date.toISOString().slice(0, 10)
+  // The chosen date must fall on this weekly rule's weekday and be one of the
+  // upcoming offered occurrences (not past, not beyond the horizon).
+  if (ymdWeekday(dateISO) !== day.dayOfWeek || dateISO < manilaTodayYmd() ||
+      !nextOccurrences(day.dayOfWeek, OCCURRENCE_COUNT).includes(dateISO)) {
+    return bad('That travel date is not available. Please pick from the offered dates.', 409)
+  }
+  const bookedDate = ymdToDate(dateISO)
 
   const clinic = await loadClinic(branch)
   if (!clinic) return bad('This branch has no homecare origin location set yet. Please contact the clinic.', 409)
@@ -215,7 +223,7 @@ export async function POST(req: NextRequest) {
   try {
     booking = await prisma.$transaction(async (tx) => {
       const used = await tx.patientBooking.count({
-        where: { homecareOpenDayId: day.id, status: { notIn: ['CANCELLED', 'REJECTED'] } },
+        where: { homecareOpenDayId: day.id, date: bookedDate, status: { notIn: ['CANCELLED', 'REJECTED'] } },
       })
       if (used >= day.capacity) throw new Error('FULL')
       return tx.patientBooking.create({
@@ -223,7 +231,7 @@ export async function POST(req: NextRequest) {
           patientId,
           branch, // short code "SBEA"/"SBGH"
           department: 'PT',
-          date: day.date,
+          date: bookedDate,
           startTime: day.startTime,
           endTime: day.endTime,
           status: 'PENDING',

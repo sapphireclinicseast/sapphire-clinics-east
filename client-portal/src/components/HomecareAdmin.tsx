@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 const A = '/api/homecare-admin'
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DAYS_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 type Short = 'SBEA' | 'SBGH'
 // Display label for each internal branch code.
@@ -26,7 +27,7 @@ const h2Style = { fontFamily: 'var(--font-display)' as const }
 
 interface Clinic { id: Short; name: string; address: string | null; latitude: number; longitude: number; active: boolean }
 interface City { id: string; name: string; province: string | null; active: boolean; _count?: { openDays: number } }
-interface OpenDay { id: string; cityId: string; branch: Short; date: string; startTime: string; endTime: string; capacity: number; disabled: boolean; used: number; notes: string | null }
+interface OpenDay { id: string; cityId: string; branch: Short; dayOfWeek: number; startTime: string; endTime: string; capacity: number; disabled: boolean; used: number; notes: string | null }
 interface SurgeWin { label?: string; days: number[]; startHour: number; endHour: number; multiplier: number }
 interface Settings {
   sessionFee: number; baseFare: number; baseKm: number; shortRatePerKm: number; shortMaxKm: number
@@ -175,7 +176,7 @@ function CitiesSection() {
   return (
     <section className={sectionCls}>
       <h2 className={h2Cls} style={h2Style}>Cities &amp; open dates</h2>
-      <p className="mb-3 mt-1 text-sm text-[color:var(--mid-gray)]">Add a city, then open specific travel dates for the branch that serves it. All clients in a city are batched onto the same day.</p>
+      <p className="mb-3 mt-1 text-sm text-[color:var(--mid-gray)]">Add a city, then set the weekly day(s) the serving branch visits it (e.g. every Monday). All clients in a city are batched onto the same day.</p>
       <div className="mb-4 flex flex-wrap gap-2">
         <input className={`${input} !w-48`} placeholder="City name" value={name} onChange={(e) => setName(e.target.value)} />
         <input className={`${input} !w-40`} placeholder="Province (optional)" value={prov} onChange={(e) => setProv(e.target.value)} />
@@ -187,7 +188,7 @@ function CitiesSection() {
             <div className="flex items-center gap-2">
               <div className="font-semibold text-[color:var(--charcoal)]">{c.name}{c.province ? `, ${c.province}` : ''}</div>
               {!c.active && <span className="rounded bg-[color:var(--off-white)] px-2 py-0.5 text-[10px] uppercase text-[color:var(--mid-gray)]">hidden</span>}
-              <span className="text-xs text-[color:var(--mid-gray)]">{c._count?.openDays ?? 0} date(s)</span>
+              <span className="text-xs text-[color:var(--mid-gray)]">{c._count?.openDays ?? 0} weekly slot(s)</span>
               <div className="ml-auto flex gap-3 text-sm">
                 <button className="text-[color:var(--deep-teal)] hover:underline" onClick={() => setOpenFor(openFor === c.id ? null : c.id)}>{openFor === c.id ? 'Close' : 'Dates'}</button>
                 <button className="text-[color:var(--deep-teal)] hover:underline" onClick={() => toggle(c)}>{c.active ? 'Hide' : 'Show'}</button>
@@ -205,14 +206,13 @@ function CitiesSection() {
 
 function OpenDays({ cityId, onChange }: { cityId: string; onChange: () => void }) {
   const [days, setDays] = useState<OpenDay[]>([])
-  const [nd, setNd] = useState({ branch: 'SBEA' as Short, date: '', startTime: '09:00', endTime: '17:00', capacity: 6 })
+  const [nd, setNd] = useState({ branch: 'SBEA' as Short, dayOfWeek: 1, startTime: '09:00', endTime: '17:00', capacity: 6 })
   const load = useCallback(async () => { const d = await fetch(`${A}/open-days?cityId=${cityId}`).then((r) => r.json()); setDays(d.openDays ?? []) }, [cityId])
   useEffect(() => { load() }, [load])
 
   async function add() {
-    if (!nd.date) return
     const r = await fetch(`${A}/open-days`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cityId, ...nd }) })
-    if (r.ok) { setNd({ ...nd, date: '' }); load(); onChange() } else alert((await r.json()).error)
+    if (r.ok) { load(); onChange() } else alert((await r.json()).error)
   }
   async function toggle(d: OpenDay) { await fetch(`${A}/open-days`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: d.id, disabled: !d.disabled }) }); load() }
   async function del(d: OpenDay) { const r = await fetch(`${A}/open-days?id=${d.id}`, { method: 'DELETE' }); if (r.ok) { load(); onChange() } else alert((await r.json()).error) }
@@ -221,19 +221,21 @@ function OpenDays({ cityId, onChange }: { cityId: string; onChange: () => void }
     <div className="mt-3 border-t border-[color:var(--light-gray)] pt-3">
       <div className="mb-2 flex flex-wrap items-end gap-2 text-sm">
         <select className={`${input} !w-28`} value={nd.branch} onChange={(e) => setNd({ ...nd, branch: e.target.value as Short })}><option value="SBEA">AHEA</option><option value="SBGH">AHGH</option></select>
-        <input className={`${input} !w-40`} type="date" value={nd.date} onChange={(e) => setNd({ ...nd, date: e.target.value })} />
+        <select className={`${input} !w-36`} value={nd.dayOfWeek} onChange={(e) => setNd({ ...nd, dayOfWeek: Number(e.target.value) })} title="weekday">
+          {DAYS_FULL.map((d, i) => <option key={i} value={i}>Every {d}</option>)}
+        </select>
         <input className={`${input} !w-20`} value={nd.startTime} onChange={(e) => setNd({ ...nd, startTime: e.target.value })} title="start" />
         <input className={`${input} !w-20`} value={nd.endTime} onChange={(e) => setNd({ ...nd, endTime: e.target.value })} title="end" />
         <input className={`${input} !w-16`} value={nd.capacity} onChange={(e) => setNd({ ...nd, capacity: Number(e.target.value) })} title="capacity" />
-        <button className={btnAdd} onClick={add}>Add date</button>
+        <button className={btnAdd} onClick={add}>Add weekly slot</button>
       </div>
       <div className="space-y-1">
         {days.map((d) => (
           <div key={d.id} className={`flex items-center gap-2 text-sm ${d.disabled ? 'opacity-50' : ''}`}>
             <span className="w-16 font-semibold text-[color:var(--charcoal)]">{BR[d.branch]}</span>
-            <span className="w-44">{new Date(d.date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+            <span className="w-44">Every {DAYS_FULL[d.dayOfWeek]}</span>
             <span className="w-24 text-[color:var(--mid-gray)]">{d.startTime}–{d.endTime}</span>
-            <span className="text-[color:var(--mid-gray)]">{d.used}/{d.capacity} booked</span>
+            <span className="text-[color:var(--mid-gray)]">cap {d.capacity}/day</span>
             <div className="ml-auto flex gap-3">
               <button className="text-[color:var(--deep-teal)] hover:underline" onClick={() => toggle(d)}>{d.disabled ? 'Enable' : 'Disable'}</button>
               <button className="text-red-600 hover:underline" onClick={() => del(d)}>Delete</button>

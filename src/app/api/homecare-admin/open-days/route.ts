@@ -1,5 +1,6 @@
-// /api/homecare-admin/open-days — manage a city's open travel dates.
-// GET ?cityId= → its open days (+ used seats). POST create. PATCH update. DELETE ?id=.
+// /api/homecare-admin/open-days — manage a city's recurring WEEKLY open days.
+// GET ?cityId= → its weekly rules (+ all-time booked count). POST create.
+// PATCH update. DELETE ?id=.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -14,13 +15,11 @@ export async function GET(req: NextRequest) {
   const denied = guard(req)
   if (denied) return denied
   const cityId = req.nextUrl.searchParams.get('cityId') ?? undefined
-  const days = await prisma.homecareOpenDay.findMany({
+  const rules = await prisma.homecareOpenDay.findMany({
     where: cityId ? { cityId } : {},
-    orderBy: [{ date: 'asc' }],
+    orderBy: [{ branch: 'asc' }, { dayOfWeek: 'asc' }],
   })
-  const withUsed = await Promise.all(
-    days.map(async (d) => ({ ...d, date: d.date.toISOString().slice(0, 10), used: await usedCapacity(d.id) })),
-  )
+  const withUsed = await Promise.all(rules.map(async (d) => ({ ...d, used: await usedCapacity(d.id) })))
   return NextResponse.json({ openDays: withUsed })
 }
 
@@ -30,16 +29,16 @@ export async function POST(req: NextRequest) {
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>
   const cityId = String(b.cityId ?? '')
   const branch = b.branch
-  const date = String(b.date ?? '') // "YYYY-MM-DD"
-  if (!cityId || !isShortBranch(branch) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return NextResponse.json({ error: 'cityId, branch (SBEA|SBGH), and date (YYYY-MM-DD) are required' }, { status: 400 })
+  const dayOfWeek = Number(b.dayOfWeek)
+  if (!cityId || !isShortBranch(branch) || !Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+    return NextResponse.json({ error: 'cityId, branch (SBEA|SBGH), and dayOfWeek (0–6) are required' }, { status: 400 })
   }
   try {
     const day = await prisma.homecareOpenDay.create({
       data: {
         cityId,
         branch,
-        date: new Date(`${date}T00:00:00.000Z`),
+        dayOfWeek,
         startTime: String(b.startTime ?? '09:00'),
         endTime: String(b.endTime ?? '17:00'),
         capacity: Number(b.capacity ?? 6),
@@ -48,7 +47,7 @@ export async function POST(req: NextRequest) {
     })
     return NextResponse.json({ openDay: day })
   } catch {
-    return NextResponse.json({ error: 'That branch already has this date open for this city' }, { status: 409 })
+    return NextResponse.json({ error: 'That branch already has this weekday open for this city' }, { status: 409 })
   }
 }
 
@@ -73,9 +72,8 @@ export async function DELETE(req: NextRequest) {
   if (denied) return denied
   const id = req.nextUrl.searchParams.get('id') ?? ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
-  // Refuse to delete a date that already has bookings — disable it instead.
   if ((await usedCapacity(id)) > 0) {
-    return NextResponse.json({ error: 'This date already has bookings. Disable it instead of deleting.' }, { status: 409 })
+    return NextResponse.json({ error: 'This weekly slot already has bookings. Disable it instead of deleting.' }, { status: 409 })
   }
   await prisma.homecareOpenDay.delete({ where: { id } })
   return NextResponse.json({ ok: true })
