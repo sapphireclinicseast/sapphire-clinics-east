@@ -100,7 +100,7 @@ export default function MeetingsPanel({
                   <span className="inline-flex items-center gap-1"><Calendar size={12} />{fmtDate(m.date)}</span>
                   <span className="inline-flex items-center gap-1"><Clock size={12} />{m.timeLabel}</span>
                 </div>
-                <div className="text-[11px] text-[var(--mid-gray)] mt-1 truncate"><Users size={11} className="inline mr-1" />{m.inviteeNames.join(', ')} · by {m.createdByName}</div>
+                <div className="text-[11px] text-[var(--mid-gray)] mt-1 truncate"><Users size={11} className="inline mr-1" />{m.inviteeNames.length ? `${m.inviteeNames.join(', ')} · ` : ''}by {m.createdByName}</div>
               </div>
               <a href={m.meetLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-[var(--teal)] text-white text-[13px] font-semibold px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">
                 <Video size={15} /> Join
