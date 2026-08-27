@@ -64,7 +64,8 @@ export async function POST(req: Request) {
     .map((i) => ({ staffId: i.staffId as string, name: (i.name ?? '').toString() }))
 
   if (!dateStr || !timeLabel) return NextResponse.json({ error: 'Date and time are required.' }, { status: 400 })
-  if (invitees.length === 0) return NextResponse.json({ error: 'Pick at least one person to invite.' }, { status: 400 })
+  // Invitees are optional: "Just create a link" can mint a link with no one
+  // ticked (the creator gets the host link and can share it however they like).
   const date = new Date(`${dateStr}T00:00:00`)
   if (Number.isNaN(date.getTime())) return NextResponse.json({ error: 'Invalid date.' }, { status: 400 })
 

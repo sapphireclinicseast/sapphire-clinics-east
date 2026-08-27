@@ -95,7 +95,8 @@ export default function SetMeeting({
   const create = async (invitees: { staffId: string; name: string }[], withLabel: string) => {
     setError(null)
     if (!date) { setError('Pick a date.'); return }
-    if (invitees.length === 0) { setError('Tick at least one person to invite.'); return }
+    // Invitees optional in "just create a link" mode — a link with no one
+    // ticked is fine (the creator can share it manually).
     setSubmitting(true)
     try {
       const r = await fetch('/api/intern-supervision/meetings', {
@@ -127,7 +128,7 @@ export default function SetMeeting({
       <div className="card-static text-center py-10">
         <div className="w-12 h-12 rounded-full bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-3"><Check size={22} className="text-[var(--teal)]" /></div>
         <p className="font-semibold text-[var(--charcoal)]">Meeting set{doneWith ? ` with ${doneWith}` : ''}</p>
-        <p className="text-[13px] text-[var(--mid-gray)] mt-1">Everyone invited has been notified. Find it under <strong>Meeting Schedule</strong>.</p>
+        <p className="text-[13px] text-[var(--mid-gray)] mt-1">{doneWith ? 'Everyone invited has been notified. ' : 'The link is ready to share. '}Find it under <strong>Meeting Schedule</strong>.</p>
         <button onClick={() => { setDone(false); setSelected(null); setSlots(null); setPicked({}); resetWhen() }} className="mt-4 text-[13px] text-[var(--teal)] font-semibold hover:underline">Set another meeting</button>
       </div>
     )
@@ -231,9 +232,9 @@ export default function SetMeeting({
           />
 
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--mid-gray)] mb-2"><Users size={12} className="inline mr-1" />Invite</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--mid-gray)] mb-2"><Users size={12} className="inline mr-1" />Invite <span className="normal-case font-normal text-[var(--mid-gray)]">(optional)</span></label>
             {interns.length === 0 && supervisors.length === 0 && (
-              <p className="text-[12px] text-[var(--mid-gray)] italic">No interns or supervisors available to invite.</p>
+              <p className="text-[12px] text-[var(--mid-gray)] italic">No interns or supervisors to invite — you can still create the link.</p>
             )}
             {supervisors.length > 0 && <PeopleGroup label="Supervisors" people={supervisors} picked={picked} toggle={togglePick} />}
             {interns.length > 0 && <PeopleGroup label="Interns" people={interns} picked={picked} toggle={togglePick} />}
