@@ -15,6 +15,7 @@
 // to its own mailbox; keep that account out of campaign sends.
 
 import { prisma } from '@/lib/prisma'
+import { formatFromHeader } from '@/lib/email-headers'
 import { getGmailClient } from '@/lib/email'
 
 const DEFAULT_SENDER = 'main@sapphireclinicseast.org'
@@ -84,7 +85,7 @@ export async function sendTransactionalEmail(params: {
   const gmail = await getGmailClient(refreshToken)
 
   const headers = [
-    `From: ${displayName || FROM_NAME} <${from}>`,
+    `From: ${formatFromHeader(displayName || FROM_NAME, from)}`,
     `To: ${to}`,
     ...(cc && cc.length > 0 ? [`Cc: ${cc.join(', ')}`] : []),
     `Subject: ${encodeSubject(subject)}`,
