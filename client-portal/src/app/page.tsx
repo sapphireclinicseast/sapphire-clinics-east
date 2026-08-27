@@ -78,16 +78,25 @@ function HomeInner() {
         >
           {/* Left column — brand hero + feedback. items-start keeps this
               column anchored to the top so the alpaca and complaint card stay
-              put even when the New-patient form grows the right column. */}
-          <div className="space-y-6">
+              put even when the New-patient form grows the right column.
+              On mobile this whole column drops BELOW the right column (order-2)
+              so the flow reads Homecare → Get started → hero → complaint. */}
+          <div className="space-y-6 order-2 lg:order-1">
             <Hero3D />
             <ComplaintCard />
           </div>
           {/* Right column — the (larger) Get started / sign-in + register form,
-              with the Homecare PT promo filling the space beneath it. */}
-          <div className="space-y-6">
-            <AuthCard expired={expired} onAuthed={handleAuthed} />
-            <HomecareBanner />
+              with the Homecare PT promo filling the space beneath it. On mobile
+              this column comes first (order-1) and the Homecare promo is pulled
+              ABOVE the Get-started card. flex+order lets us flip that pair on
+              mobile while keeping Get-started-then-Homecare on desktop. */}
+          <div className="flex flex-col gap-6 order-1 lg:order-2">
+            <div className="order-2 lg:order-1">
+              <AuthCard expired={expired} onAuthed={handleAuthed} />
+            </div>
+            <div className="order-1 lg:order-2">
+              <HomecareBanner />
+            </div>
           </div>
         </section>
       )}
