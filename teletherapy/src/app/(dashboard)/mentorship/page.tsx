@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Loader2, ChevronDown, ChevronUp, FileText, Users } from 'lucide-react'
+import { Loader2, ChevronDown, ChevronUp, FileText, Users, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { branchLabel } from '@/lib/branch-label'
 import MeetingsHub from '@/components/MeetingsHub'
+import NoteBody from '@/components/NoteBody'
 
 interface Mentee { id: string; name: string; department: string; branch: string }
 interface MenteeNote {
@@ -23,10 +25,13 @@ interface MenteeNote {
 type Tab = 'mentees' | 'meeting'
 
 export default function MentorshipPage() {
-  const { data: sess } = useSession()
+  const { data: sess, status } = useSession()
   const isAdmin = (sess?.user as { role?: string } | undefined)?.role === 'ADMIN'
   const isClinicalMentor = !!(sess?.user as { isClinicalMentor?: boolean } | undefined)?.isClinicalMentor
+  const isMentee = !!(sess?.user as { isMentee?: boolean } | undefined)?.isMentee
   const canSeeMentees = isAdmin || isClinicalMentor
+  // Only Clinical Mentors, their mentees, and admins may see Mentorship at all.
+  const canParticipate = canSeeMentees || isMentee
 
   const [tab, setTab] = useState<Tab>(canSeeMentees ? 'mentees' : 'meeting')
 
@@ -59,6 +64,19 @@ export default function MentorshipPage() {
       setNotesByMentee((prev) => ({ ...prev, [id]: res.ok ? (data.notes ?? []) : [] }))
     } catch { setNotesByMentee((prev) => ({ ...prev, [id]: [] })) }
     setNotesLoading(null)
+  }
+
+  // Non-participants (not a mentor, mentee, or admin) never see this section.
+  if (status === 'authenticated' && !canParticipate) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="card-static text-center py-16">
+          <Lock size={28} className="text-[var(--mid-gray)] mx-auto mb-3" />
+          <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Mentorship isn&apos;t available for your account</p>
+          <p className="text-[13px] text-[var(--mid-gray)]">This section is only for Clinical Mentors and their mentees. If you should have access, ask HR to tag you in Staff Profiles.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -115,7 +133,7 @@ export default function MentorshipPage() {
                       </div>
                       <div>
                         <p className="font-semibold text-[var(--charcoal)] text-[14px]">{m.name}</p>
-                        <p className="text-[12px] text-[var(--mid-gray)]">{m.department} · {m.branch}</p>
+                        <p className="text-[12px] text-[var(--mid-gray)]">{m.department} · {branchLabel(m.branch)}</p>
                       </div>
                     </div>
                     <span className="flex items-center gap-2">
@@ -146,7 +164,7 @@ export default function MentorshipPage() {
                             </button>
                             {nOpen && (
                               <div className="px-3 pb-3 border-t border-[var(--light-gray)] pt-3 space-y-2">
-                                <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{n.notes || <span className="italic text-[var(--mid-gray)]">No note text.</span>}</p>
+                                {n.notes ? <NoteBody notes={n.notes} /> : <p className="text-[13px] italic text-[var(--mid-gray)]">No note text.</p>}
                                 {n.discontinuedRemarks && (
                                   <p className="text-[12px] text-[var(--mid-gray)]"><span className="font-semibold">Discontinued remarks:</span> {n.discontinuedRemarks}</p>
                                 )}

@@ -771,6 +771,25 @@ export default function SessionDetailPage() {
     setSendingEmail(false)
   }
 
+  const [deletingNote, setDeletingNote] = useState(false)
+  async function handleDeleteNote() {
+    if (!confirm('Delete this session note? This removes the note entirely and cannot be undone.')) return
+    setDeletingNote(true)
+    try {
+      const res = await fetch(`/api/sessions/${scheduleId}/delete-note`, { method: 'DELETE' })
+      if (res.ok) {
+        showToast('Note deleted')
+        // The note is gone — return to the patient's record.
+        const pid = session?.patient?.id
+        router.push(pid ? `/patients/${pid}` : '/')
+      } else {
+        const data = await res.json().catch(() => ({}))
+        showToast(data.error ?? 'Failed to delete note')
+        setDeletingNote(false)
+      }
+    } catch { showToast('Failed to delete note'); setDeletingNote(false) }
+  }
+
   // Check if existing notes are structured psych JSON
   function getPsychData(): PsychFormData | null {
     if (!session?.sessionNote?.notes) return null
@@ -1128,6 +1147,7 @@ export default function SessionDetailPage() {
               </h2>
             </div>
             {!readOnly && (
+              <div className="flex items-center gap-4">
               <button
                 onClick={startEdit}
                 className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-medium transition-colors"
@@ -1135,6 +1155,15 @@ export default function SessionDetailPage() {
                 <Pencil size={14} />
                 Edit
               </button>
+              <button
+                onClick={handleDeleteNote}
+                disabled={deletingNote}
+                className="flex items-center gap-1.5 text-[13px] text-red-500 hover:text-red-700 font-medium transition-colors disabled:opacity-50"
+              >
+                {deletingNote ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Delete note
+              </button>
+              </div>
             )}
           </div>
 
@@ -1255,6 +1284,12 @@ export default function SessionDetailPage() {
                 onClick={() => {
                   if (session.sessionNote!.emailSentAt) {
                     if (confirm('This email was already sent. Do you want to resend it to the patient?')) {
+                      handleSendEmail()
+                    }
+                  } else if (isConfidentialDept) {
+                    // Medical (MD) notes are confidential by default — an extra
+                    // are-you-sure before releasing them to the patient's email.
+                    if (confirm('These are confidential medical notes. Are you sure you want to send them to the patient’s email?')) {
                       handleSendEmail()
                     }
                   } else {

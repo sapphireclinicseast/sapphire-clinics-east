@@ -57,23 +57,26 @@ export default function SetMeeting({
   const [selected, setSelected] = useState<Person | null>(null)
   const [slots, setSlots] = useState<Slot[] | null>(null)
 
-  // Mode "link": tick-box invitees (interns + supervisors).
-  const [interns, setInterns] = useState<Person[]>([])
-  const [supervisors, setSupervisors] = useState<Person[]>([])
+  // Mode "link": tick-box invitees, grouped by role and scoped to the caller's
+  // department + context (Supervisors/Interns for INTERNSHIP, Mentors/Mentees
+  // for MENTORSHIP).
+  const [groups, setGroups] = useState<{ key: string; label: string; people: Person[] }[]>([])
   const [picked, setPicked] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    fetch('/api/bookable-staff', { cache: 'no-store' }).then((r) => r.json()).then((d) => setPeople(d.staff ?? [])).catch(() => setPeople([]))
-  }, [])
+    fetch(`/api/bookable-staff?context=${context}`, { cache: 'no-store' }).then((r) => r.json()).then((d) => setPeople(d.staff ?? [])).catch(() => setPeople([]))
+  }, [context])
 
   // Only load the invitee list when the user can actually use the link mode.
   useEffect(() => {
     if (!canCreateLink) return
-    fetch('/api/intern-supervision/meeting-people', { cache: 'no-store' })
+    fetch(`/api/intern-supervision/meeting-people?context=${context}`, { cache: 'no-store' })
       .then((r) => r.json())
-      .then((d) => { setInterns(d.interns ?? []); setSupervisors(d.supervisors ?? []) })
+      .then((d) => setGroups(Array.isArray(d.groups) ? d.groups : []))
       .catch(() => {})
-  }, [canCreateLink])
+  }, [canCreateLink, context])
+
+  const anyInvitees = groups.some((g) => g.people.length > 0)
 
   const resetWhen = () => { setDate(''); setTitle(''); setHour('2'); setMinute('00'); setAmpm('PM') }
 
@@ -232,12 +235,13 @@ export default function SetMeeting({
           />
 
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--mid-gray)] mb-2"><Users size={12} className="inline mr-1" />Invite <span className="normal-case font-normal text-[var(--mid-gray)]">(optional)</span></label>
-            {interns.length === 0 && supervisors.length === 0 && (
-              <p className="text-[12px] text-[var(--mid-gray)] italic">No interns or supervisors to invite — you can still create the link.</p>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--mid-gray)] mb-2"><Users size={12} className="inline mr-1" />Invite <span className="normal-case font-normal text-[var(--mid-gray)]">(optional, your department)</span></label>
+            {!anyInvitees && (
+              <p className="text-[12px] text-[var(--mid-gray)] italic">No one in your department to invite — you can still create the link.</p>
             )}
-            {supervisors.length > 0 && <PeopleGroup label="Supervisors" people={supervisors} picked={picked} toggle={togglePick} />}
-            {interns.length > 0 && <PeopleGroup label="Interns" people={interns} picked={picked} toggle={togglePick} />}
+            {groups.map((g) => g.people.length > 0 && (
+              <PeopleGroup key={g.key} label={g.label} people={g.people} picked={picked} toggle={togglePick} />
+            ))}
           </div>
 
           {error && <p className="text-[12px] text-red-600">{error}</p>}

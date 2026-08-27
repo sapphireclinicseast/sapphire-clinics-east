@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info, IdCard, Ban, Power } from 'lucide-react'
+import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info, IdCard, Ban, Power, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
 import InternProfileModal from '@/components/InternProfileModal'
 import MeetingsHub from '@/components/MeetingsHub'
+import NoteBody from '@/components/NoteBody'
 import LearningOutcomesForm from '@/components/LearningOutcomesForm'
 import BalikTanawForm from '@/components/BalikTanawForm'
 
@@ -341,11 +342,14 @@ export default function InternSupervisionPage() {
   const [notesLoading, setNotesLoading] = useState<string | null>(null)
   const [openNote, setOpenNote] = useState<string | null>(null)
 
-  const { data: sess } = useSession()
+  const { data: sess, status: authStatus } = useSession()
   const myAccountId = (sess?.user as { id?: string } | undefined)?.id
   const isAdmin = (sess?.user as { role?: string } | undefined)?.role === 'ADMIN'
   const isTaggedSupervisor = !!(sess?.user as { isInternshipSupervisor?: boolean } | undefined)?.isInternshipSupervisor
+  const isIntern = (sess?.user as { accountType?: string } | undefined)?.accountType === 'INTERN'
   const canSeeAllInterns = isAdmin || isTaggedSupervisor
+  // Only supervisors (tagged), INTERN accounts, and admins may see Internship.
+  const canParticipate = canSeeAllInterns || isIntern
 
   async function loadAllInterns() {
     if (allInterns !== null) return // already loaded this session
@@ -437,6 +441,20 @@ export default function InternSupervisionPage() {
     return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" /></div>
   }
 
+  // Non-participants (not a tagged supervisor, INTERN account, or admin) never
+  // see this section — even by direct URL.
+  if (authStatus === 'authenticated' && !canParticipate) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="card-static text-center py-16">
+          <Lock size={28} className="text-[var(--mid-gray)] mx-auto mb-3" />
+          <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Internship isn&apos;t available for your account</p>
+          <p className="text-[13px] text-[var(--mid-gray)]">This section is only for internship supervisors and interns. If you should have access, ask HR to tag you in Staff Profiles.</p>
+        </div>
+      </div>
+    )
+  }
+
   const isActiveSupervisor = interns.length > 0
 
   return (
@@ -457,7 +475,7 @@ export default function InternSupervisionPage() {
               ...(isActiveSupervisor ? [['interns', 'List of Interns']] as [Tab, string][] : []),
               ...(canSeeAllInterns ? [['all-interns', 'All Interns']] as [Tab, string][] : []),
               ...((isActiveSupervisor || canSeeAllInterns) ? [['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles']] as [Tab, string][] : []),
-              ...(!(isActiveSupervisor || canSeeAllInterns) ? [['my-learning', 'Learning Outcomes'], ['my-balik', 'Balik-Tanaw']] as [Tab, string][] : []),
+              ...((isIntern && !(isActiveSupervisor || canSeeAllInterns)) ? [['my-learning', 'Learning Outcomes'], ['my-balik', 'Balik-Tanaw']] as [Tab, string][] : []),
               ['meeting', 'Meetings'],
             ] as [Tab, string][]).map(([t, label]) => (
               <button key={t} onClick={() => { setTab(t); if (t === 'all-interns') loadAllInterns() }}
@@ -539,7 +557,7 @@ export default function InternSupervisionPage() {
                                 </button>
                                 {nOpen && (
                                   <div className="px-3 pb-3 border-t border-[var(--light-gray)] pt-3 space-y-2">
-                                    <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{n.notes || <span className="italic text-[var(--mid-gray)]">No note text.</span>}</p>
+                                    {n.notes ? <NoteBody notes={n.notes} /> : <p className="text-[13px] italic text-[var(--mid-gray)]">No note text.</p>}
                                     {n.discontinuedRemarks && (
                                       <p className="text-[12px] text-[var(--mid-gray)]"><span className="font-semibold">Discontinued remarks:</span> {n.discontinuedRemarks}</p>
                                     )}
