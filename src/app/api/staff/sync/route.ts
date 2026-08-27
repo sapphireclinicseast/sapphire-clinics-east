@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { StaffDepartment } from '@prisma/client'
+import { normalizeArrangement } from '@/lib/work-arrangement'
 
 // Try multiple Docker bridge addresses in case HR_PLATFORM_URL is not set.
 // Inside the sapphire_app container, 127.0.0.1 is the container itself;
@@ -27,6 +28,9 @@ interface HRBranchEmployment {
   employeeId: string | null
   department: string | null
   jobTitle: string | null
+  /** Per-branch Work Arrangement — authoritative over the staff-level value,
+   *  which disagrees with it for most of the roster. */
+  arrangement?: string | null
 }
 
 interface HRStaff {
@@ -56,6 +60,13 @@ interface HRStaff {
   bankAccountNo: string | null
   isInternshipSupervisor?: boolean
   isClinicalMentor?: boolean
+  /** Work Arrangement slug from HR: on-site | hybrid | wfh | teletherapy |
+   *  homecare | on-site-teletherapy | on-site-homecare. Absent/empty when the
+   *  consultant has not been tagged. */
+  arrangement?: string | null
+  /** HR has been seen to use either spelling; accept both rather than silently
+   *  syncing every consultant as untagged if the field is renamed. */
+  workArrangement?: string | null
   menteeIds?: string[] // HR's OWN staff ids — translated to local Staff.id below
 }
 
@@ -208,6 +219,10 @@ export async function POST() {
       hrPlatformId:     hr.hrId,
       isInternshipSupervisor: !!hr.isInternshipSupervisor,
       isClinicalMentor: !!hr.isClinicalMentor,
+      // Raw HR slug — the Decking board owns the grouping, so a label reword
+      // in HR must not regroup boards here. Empty string means untagged; store
+      // null so "untagged" is one value rather than two.
+      workArrangement: normalizeArrangement(hr.arrangement ?? hr.workArrangement),
     }
 
     try {

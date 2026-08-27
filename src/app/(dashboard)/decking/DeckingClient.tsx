@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-react'
 import PatientRequestsPanel from './PatientRequestsPanel'
+import { DECK_SECTIONS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
 import { branchLabel } from '@/lib/branch-label'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -17,7 +18,7 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null }
+interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }
 interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean }
@@ -735,6 +736,7 @@ export default function DeckingClient({ role }: { role: string }) {
   const [activeDept, setActiveDept] = useState(DEPARTMENTS[0])
   const [activeMainTab, setActiveMainTab] = useState<'decking' | 'settings'>('decking')
   const [nameFilter, setNameFilter] = useState('')
+  const [activeSection, setActiveSection] = useState<DeckSection>('onsite')
 
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [configs, setConfigs] = useState<TherapistConfig[]>([])
@@ -772,7 +774,13 @@ export default function DeckingClient({ role }: { role: string }) {
 
   // Filtered staff for display — interbranch staff (secondary branch in
   // extraBranches) must show up here too, not just under their primary branch.
-  const branchStaff = staff.filter(s => !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && s.department === activeDept)
+  const branchStaff = staff
+    .filter(s => !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && s.department === activeDept)
+    // "All" is the consolidated board and deliberately skips the arrangement
+    // filter: untagged, hybrid and WFH consultants match no service section, so
+    // All is the only place they appear. Filtering them everywhere would drop
+    // most of the roster off Decking entirely while HR tagging catches up.
+    .filter(s => activeSection === 'all' || inSection(arrangementFor(s, activeBranch), activeSection))
   const filteredStaff = nameFilter.trim()
     ? branchStaff.filter(s => `${s.firstName} ${s.lastName}`.toLowerCase().includes(nameFilter.toLowerCase()))
     : branchStaff
@@ -877,9 +885,26 @@ export default function DeckingClient({ role }: { role: string }) {
       {/* Decking Tab */}
       {activeMainTab === 'decking' && (
         <div>
-          {/* Patient appointment requests from client portal */}
-          {/* Admin sees all branches merged; branch admins see only their own */}
-          <PatientRequestsPanel branch={branches.length > 1 ? 'ALL' : activeBranch as 'SBEA' | 'SBGH'} />
+          {/* Service sections. A consultant tagged "On-site + Teletherapy"
+              appears under BOTH On-site and Teletherapy — the combined
+              arrangements are genuinely two roles, not a third category. */}
+          <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {DECK_SECTIONS.map(sec => {
+              const active = activeSection === sec.key
+              return (
+                <button key={sec.key} onClick={() => setActiveSection(sec.key)} title={sec.blurb}
+                  style={{
+                    padding: '0.45rem 1.1rem', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                    borderRadius: '0.5rem', border: `1.5px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
+                    background: active ? 'var(--teal)' : '#fff',
+                    color: active ? '#fff' : 'var(--mid-gray)',
+                  }}>
+                  {sec.label}
+                </button>
+              )
+            })}
+          </div>
+
           {/* Controls row */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
             {/* Branch toggle */}
@@ -913,34 +938,54 @@ export default function DeckingClient({ role }: { role: string }) {
               ))}
             </div>
           )}
-
-          {/* Staff list */}
-          {loadingStaff || loadingData ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--mid-gray)', fontSize: '0.85rem' }}>Loading…</div>
-          ) : filteredStaff.length === 0 ? (
-            <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center' }}>
-              <p style={{ color: 'var(--charcoal)', fontWeight: 600, fontSize: '0.875rem' }}>
-                {nameFilter ? `No ${activeDept} staff match "${nameFilter}" in ${activeBranch}` : `No ${activeDept} staff in ${activeBranch}`}
-              </p>
-              <p style={{ color: 'var(--mid-gray)', fontSize: '0.8rem', marginTop: '0.35rem' }}>Add staff in the Staff Module first.</p>
+          {/* On-site / Teletherapy / Homecare split the width 2:1 — board on the
+              left, the client-portal requests for that service on the right. "All"
+              is the consolidated roster and takes the full width: it is not tied to
+              one service's payments. The board itself renders once either way. */}
+          {/* Single column until lg, so the requests panel drops below the
+              board on laptops and tablets instead of squeezing it. */}
+          <div className={`grid gap-4 items-start ${
+            activeSection === 'all' ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'
+          }`}>
+            <div style={{ minWidth: 0 }}>
+            {/* Staff list */}
+            {loadingStaff || loadingData ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--mid-gray)', fontSize: '0.85rem' }}>Loading…</div>
+            ) : filteredStaff.length === 0 ? (
+              <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center' }}>
+                <p style={{ color: 'var(--charcoal)', fontWeight: 600, fontSize: '0.875rem' }}>
+                  {nameFilter ? `No ${activeDept} staff match "${nameFilter}" in ${activeBranch}` : `No ${activeDept} staff in ${activeBranch}`}
+                </p>
+                <p style={{ color: 'var(--mid-gray)', fontSize: '0.8rem', marginTop: '0.35rem' }}>Add staff in the Staff Module first.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                {filteredStaff.map(s => (
+                  <TherapistRow
+                    key={s.id}
+                    staff={s}
+                    activeBranch={activeBranch}
+                    config={configMap.get(s.id)}
+                    slots={slotsByStaff.get(s.id) ?? []}
+                    defaultHours={resolvedDefaultHours}
+                    onSaveConfig={handleSaveConfig}
+                    onSaveSlot={handleSaveSlot}
+                    onDeleteSlot={handleDeleteSlot}
+                  />
+                ))}
+              </div>
+            )}
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-              {filteredStaff.map(s => (
-                <TherapistRow
-                  key={s.id}
-                  staff={s}
-                  activeBranch={activeBranch}
-                  config={configMap.get(s.id)}
-                  slots={slotsByStaff.get(s.id) ?? []}
-                  defaultHours={resolvedDefaultHours}
-                  onSaveConfig={handleSaveConfig}
-                  onSaveSlot={handleSaveSlot}
-                  onDeleteSlot={handleDeleteSlot}
+            {activeSection !== 'all' && (
+              <div style={{ minWidth: 0 }}>
+                <PatientRequestsPanel
+                  branch={branches.length > 1 ? 'ALL' : activeBranch as 'SBEA' | 'SBGH'}
+                  service={activeSection}
+                  compact
                 />
-              ))}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
