@@ -1236,7 +1236,7 @@ function HomecareBanner() {
         </div>
         <div className="min-w-0">
           <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--gold)' }}>New service</div>
-          <h3 className="mt-1 text-[20px] font-bold leading-tight">Homecare Physical Therapy now available!</h3>
+          <h3 className="mt-1 text-[20px] font-bold leading-tight text-white">Homecare Physical Therapy now available!</h3>
           <p className="mt-1.5 text-[13px] leading-snug text-white/80">
             A licensed physical therapist comes to your home. Choose your city and a schedule that works for you.
           </p>
