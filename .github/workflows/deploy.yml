@@ -469,6 +469,9 @@ jobs:
               grep "^GOOGLE_SERVICE_ACCOUNT_KEY" "$MENV" >> .env 2>/dev/null || true
               # Shared secret to mint clinician HOST meet links (record button)
               grep "^MEET_LINK_SECRET" "$MENV" >> .env 2>/dev/null || true
+              # Shared external-API key: the Accounting Hub reads mentorship
+              # meetings (and marks them Paid) through /api/external/* with it.
+              grep "^EXTERNAL_API_KEY" "$MENV" >> .env 2>/dev/null || true
               grep "^MEET_BASE_URL" "$MENV" >> .env 2>/dev/null || true
               grep "^GMAIL_FROM_EMAIL" "$MENV" >> .env 2>/dev/null || true
               echo "UPLOAD_DIR=./uploads" >> .env
@@ -483,6 +486,7 @@ jobs:
               echo "AUTH_TRUST_HOST=true" >> .env
               echo "UPLOAD_DIR=./uploads" >> .env
               echo "TELETHERAPY_HR_API_KEY=${{ secrets.TELETHERAPY_HR_API_KEY }}" >> .env
+              grep "^EXTERNAL_API_KEY" "$MENV" >> .env 2>/dev/null || true
             fi
             echo "✅ .env created."
           fi

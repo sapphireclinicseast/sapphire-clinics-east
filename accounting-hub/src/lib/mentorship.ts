@@ -5,7 +5,9 @@
 
 import { prisma } from '@/lib/prisma'
 
-export const TELETHERAPY_URL = process.env.TELETHERAPY_URL || 'https://teletherapy.sapphireclinicseast.org'
+// staff.* is the canonical host — teletherapy.* 301s to it, and a redirect
+// strips the Authorization header, so the alias must not be used here.
+export const TELETHERAPY_URL = process.env.TELETHERAPY_URL || 'https://staff.sapphireclinicseast.org'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
 /** Cutoff "YYYY-MM-1" → [1st..15th]; "YYYY-MM-2" → [16th..end of month]. */
