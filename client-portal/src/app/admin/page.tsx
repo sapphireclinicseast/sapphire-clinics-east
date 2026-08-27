@@ -4,6 +4,7 @@
 // reads/writes go through /api/admin/* which proxies to the marketing DB.
 
 import { useEffect, useState } from 'react'
+import HomecareView from '@/components/HomecareAdmin'
 
 interface Faq {
   id: string
@@ -112,7 +113,7 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function Console({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<'sessions' | 'payments' | 'users' | 'tickets' | 'aurora'>('sessions')
+  const [tab, setTab] = useState<'sessions' | 'payments' | 'users' | 'tickets' | 'aurora' | 'homecare'>('sessions')
   const [faqs, setFaqs] = useState<Faq[]>([])
   const [settings, setSettings] = useState<Settings>({ intro_message: '', system_prompt: '', fallback_message: '' })
   const [loading, setLoading] = useState(true)
@@ -230,7 +231,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
       </div>
 
       <div className="flex gap-1 mb-6 p-1 bg-[color:var(--off-white)] rounded-xl w-fit">
-        {([['sessions', 'Sessions'], ['payments', 'Payment History'], ['users', 'Users'], ['tickets', 'Tickets'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
+        {([['sessions', 'Sessions'], ['payments', 'Payment History'], ['users', 'Users'], ['tickets', 'Tickets'], ['homecare', 'Homecare'], ['aurora', 'Aurora Assistant']] as const).map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -250,6 +251,8 @@ function Console({ onLogout }: { onLogout: () => void }) {
       {tab === 'users' && <UsersView onUnauthorized={onLogout} />}
 
       {tab === 'tickets' && <TicketsView onUnauthorized={onLogout} />}
+
+      {tab === 'homecare' && <HomecareView />}
 
       {tab === 'aurora' && (
         <>
