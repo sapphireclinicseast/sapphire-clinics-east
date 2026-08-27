@@ -21,9 +21,17 @@ import { prisma } from '@/lib/prisma'
  * The Verdana column is the pool row itself: onHand = pool quantity, sold =
  * pool-linked sales not attributed to a clinic cashier.
  */
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Drill mode: ?itemId=<pool item>&branch=<branch> returns the order lines
+  // behind that cell's Sold figure, attributed exactly like the aggregate
+  // below — copy-linked lines by the copy's branch, legacy pool-linked lines
+  // by the clinic cashier who rang them.
+  const { searchParams } = new URL(req.url)
+  const drillItemId = searchParams.get('itemId')
+  const drillBranch = searchParams.get('branch')
 
   const [transfers, soldLines, items] = await Promise.all([
     prisma.consignmentTransfer.findMany({
@@ -33,8 +41,11 @@ export async function GET() {
     prisma.orderItem.findMany({
       where: { inventoryItemId: { not: null }, order: { status: 'COMPLETED' } },
       select: {
-        inventoryItemId: true, quantity: true,
-        order: { select: { branch: true, createdBy: { select: { branch: true } } } },
+        inventoryItemId: true, quantity: true, isFreeSample: true, unitPrice: true, lineTotal: true,
+        order: { select: {
+          orderNumber: true, transactionDate: true, patientName: true, branch: true,
+          createdBy: { select: { name: true, branch: true } },
+        } },
       },
     }),
     prisma.inventoryItem.findMany({
@@ -59,6 +70,38 @@ export async function GET() {
       const base = bySku.get(it.sku.slice(0, dash))
       if (base && base.id !== it.id && base.branch !== it.branch) parentOf.set(it.id, base.id)
     }
+  }
+
+  if (drillItemId && drillBranch) {
+    const attrOf = (l: (typeof soldLines)[number]): { poolId: string; branch: string } => {
+      const poolId = parentOf.get(l.inventoryItemId!) || l.inventoryItemId!
+      if (parentOf.has(l.inventoryItemId!)) {
+        const copy = byId.get(l.inventoryItemId!)
+        return { poolId, branch: copy?.branch || l.order.branch }
+      }
+      const cashierBranch = l.order.createdBy?.branch as string | null
+      const branch = cashierBranch && (CLINICS as readonly string[]).includes(cashierBranch)
+        ? cashierBranch
+        : l.order.branch
+      return { poolId, branch }
+    }
+    const rows = soldLines
+      .filter(l => {
+        const a = attrOf(l)
+        return a.poolId === drillItemId && a.branch === drillBranch
+      })
+      .map(l => ({
+        orderNumber: l.order.orderNumber,
+        date: l.order.transactionDate,
+        patientName: l.order.patientName,
+        cashier: l.order.createdBy?.name || null,
+        quantity: l.quantity,
+        isFreeSample: l.isFreeSample,
+        unitPrice: Number(l.unitPrice),
+        lineTotal: Number(l.lineTotal),
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    return NextResponse.json({ rows })
   }
 
   const byItem = new Map<string, Record<string, Cell>>()

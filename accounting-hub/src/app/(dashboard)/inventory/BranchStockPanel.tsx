@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 
 const BRANCHES = [
   ['SANDBOX_EAST', 'AHEA'],
@@ -20,11 +20,28 @@ const BRANCHES = [
 
 interface Cell { received: number; inTransit: number; returned: number; sold: number; onHand: number | null }
 interface Row { itemId: string; name: string; sku: string; totalStock: number; branches: Record<string, Cell> }
+interface SoldLine {
+  orderNumber: number | null; date: string; patientName: string | null; cashier: string | null
+  quantity: number; isFreeSample: boolean; unitPrice: number; lineTotal: number
+}
 
 export default function BranchStockPanel() {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
+  // Sold drill-down: the order lines behind one item x branch cell.
+  const [drill, setDrill] = useState<{ item: Row; branch: string; label: string } | null>(null)
+  const [drillRows, setDrillRows] = useState<SoldLine[] | null>(null)
+
+  const openDrill = async (item: Row, branch: string, label: string) => {
+    setDrill({ item, branch, label })
+    setDrillRows(null)
+    try {
+      const r = await fetch(`/api/inventory/branch-stock?itemId=${item.itemId}&branch=${branch}`)
+      const d = await r.json()
+      setDrillRows(d.rows || [])
+    } catch { setDrillRows([]) }
+  }
 
   useEffect(() => {
     fetch('/api/inventory/branch-stock')
@@ -88,7 +105,14 @@ export default function BranchStockPanel() {
                           {c?.received || (c?.inTransit ? '' : '—')}{c?.inTransit ? <span style={{ color: 'var(--mid-gray)' }}> ({c.inTransit})</span> : ''}
                           {c?.returned ? <span style={{ color: 'var(--mid-gray)' }} title="returned"> −{c.returned}</span> : ''}
                         </td>
-                        <td key={`${r.itemId}-${b}-s`} className="px-2 py-1.5 text-right tabular-nums">{c?.sold || '—'}</td>
+                        <td key={`${r.itemId}-${b}-s`} className="px-2 py-1.5 text-right tabular-nums">
+                          {c?.sold ? (
+                            <button onClick={() => openDrill(r, b, (BRANCHES.find(x => x[0] === b)?.[1]) || b)}
+                              className="underline decoration-dotted cursor-pointer hover:opacity-70 font-medium"
+                              style={{ color: 'var(--teal)' }}
+                              title="Show the orders behind this figure">{c.sold}</button>
+                          ) : '—'}
+                        </td>
                         <td key={`${r.itemId}-${b}-l`} className="px-2 py-1.5 text-right tabular-nums font-semibold"
                           style={{ color: rem < 0 ? '#b91c1c' : rem > 0 ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
                           {c ? rem : '—'}
@@ -113,6 +137,67 @@ export default function BranchStockPanel() {
               </tr>
             </tfoot>
           </table>
+        </div>
+      )}
+
+      {drill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setDrill(null)}>
+          <div className="rounded-2xl bg-white w-full max-w-2xl max-h-[80vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-1">
+              <div>
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+                  Sold from {drill.label} — {drill.item.name}
+                </h3>
+                <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{drill.item.sku} · every POS order line that deducted this branch&apos;s stock (free samples included)</p>
+              </div>
+              <button onClick={() => setDrill(null)} className="p-1 rounded hover:bg-gray-100"><X size={16} /></button>
+            </div>
+            {drillRows === null ? (
+              <div className="py-8 text-center"><Loader2 className="animate-spin inline" size={18} /></div>
+            ) : drillRows.length === 0 ? (
+              <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}>No order lines found.</p>
+            ) : (
+              <table className="w-full text-xs mt-2">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+                    <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
+                    <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Order</th>
+                    <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Patient</th>
+                    <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
+                    <th className="px-2 py-1.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Qty</th>
+                    <th className="px-2 py-1.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                    <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Cashier</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drillRows.map((l, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td className="px-2 py-1.5 whitespace-nowrap">{new Date(l.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}</td>
+                      <td className="px-2 py-1.5">#{l.orderNumber ?? '—'}</td>
+                      <td className="px-2 py-1.5" style={{ maxWidth: 160 }}>{l.patientName || '—'}</td>
+                      <td className="px-2 py-1.5">
+                        {l.isFreeSample
+                          ? <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#fefce8', color: '#a16207' }}>Free sample</span>
+                          : <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#fef2f2', color: '#b91c1c' }}>Sale</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{l.quantity}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{l.isFreeSample ? '—' : `₱${l.lineTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}</td>
+                      <td className="px-2 py-1.5">{l.cashier || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid var(--light-gray)', fontWeight: 600 }}>
+                    <td className="px-2 py-1.5" colSpan={4}>Total units</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{drillRows.reduce((s, l) => s + l.quantity, 0)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">₱{drillRows.filter(l => !l.isFreeSample).reduce((s, l) => s + l.lineTotal, 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
         </div>
       )}
     </div>
