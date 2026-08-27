@@ -42,8 +42,8 @@ export default function MeetingsHub({
         ))}
       </div>
 
-      {sub === 'schedule' && <MeetingsPanel key={refreshKey} context={context} canAddMeeting={canSetAvailability} title="Meeting Schedule" />}
-      {sub === 'book' && <SetMeeting context={context} onBooked={() => { setRefreshKey((k) => k + 1); setSub('schedule') }} />}
+      {sub === 'schedule' && <MeetingsPanel key={refreshKey} context={context} title="Meeting Schedule" />}
+      {sub === 'book' && <SetMeeting context={context} canCreateLink={canSetAvailability} onBooked={() => { setRefreshKey((k) => k + 1); setSub('schedule') }} />}
       {sub === 'availability' && canSetAvailability && <AvailabilityEditor />}
     </div>
   )
