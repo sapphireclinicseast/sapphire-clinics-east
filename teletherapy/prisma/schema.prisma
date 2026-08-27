@@ -644,6 +644,11 @@ model SupervisionMeeting {
   inviteeStaffIds    String[] @default([])
   inviteeNames       String[] @default([])
   createdAt          DateTime @default(now())
+  // Set by the Accounting Hub when this MENTORSHIP meeting's fee went through
+  // a locked payroll run — shown as a "Paid" badge; a paid meeting can no
+  // longer be deleted (payroll references it).
+  paidAt             DateTime?
+  paidCutoffLabel    String?
 
   @@index([context])
   @@index([createdByAccountId])

@@ -206,6 +206,45 @@ export async function GET(req: Request) {
       where: { cutoffPeriod, ...(branch ? { branch } : {}) },
     })
     const existingMap = new Map(existingEntries.map(e => [e.consultantId, e.status]))
+
+    // ── Mentorship meeting charges for this cutoff ─────────────────────────
+    // Ticked meetings (Consultants → Mentorship Meetings) become adjustment
+    // lines: the mentor is paid the fee, the mentee is charged it. Lines carry
+    // an `mm-` id prefix and are re-derived here on every preview, replacing
+    // any stale mm- lines in the stored adjustments — tick/untick therefore
+    // flows into netPay, the saved entry, and the payslip PDF automatically.
+    const mmCharges = await prisma.mentorshipMeetingCharge.findMany({
+      where: { cutoffPeriod, ...(branch ? { branch } : {}) },
+    })
+    const mmByConsultant = new Map<string, { id: string; name: string; amount: number; isAddition: boolean; isTaxed: boolean; remarks: string }[]>()
+    for (const ch of mmCharges) {
+      const day = ch.meetingDate.toISOString().slice(0, 10)
+      if (ch.mentorConsultantId) {
+        const arr = mmByConsultant.get(ch.mentorConsultantId) || []
+        arr.push({
+          id: `mm-${ch.id}-mentor`,
+          name: `Mentorship meeting ${day} — mentee: ${ch.menteeName}`,
+          amount: Number(ch.fee), isAddition: true, isTaxed: false,
+          remarks: 'Mentorship meeting fee (staff portal)',
+        })
+        mmByConsultant.set(ch.mentorConsultantId, arr)
+      }
+      if (ch.menteeConsultantId) {
+        const arr = mmByConsultant.get(ch.menteeConsultantId) || []
+        arr.push({
+          id: `mm-${ch.id}-mentee`,
+          name: `Mentorship meeting ${day} — mentor: ${ch.mentorName}`,
+          amount: Number(ch.fee), isAddition: false, isTaxed: false,
+          remarks: 'Mentorship meeting fee (staff portal)',
+        })
+        mmByConsultant.set(ch.menteeConsultantId, arr)
+      }
+    }
+    // Stale mm- lines out, current charge lines in. Manual lines untouched.
+    const mergeMentorship = (stored: unknown[], consultantId: string): unknown[] => {
+      const manual = (stored as { id?: string }[]).filter(l => !String(l?.id || '').startsWith('mm-'))
+      return [...manual, ...(mmByConsultant.get(consultantId) || [])]
+    }
     const existingDataMap = new Map(existingEntries.map(e => [e.consultantId, e]))
 
     // One payslip per person, however many Consultant rows they have. Sessions are matched to a
@@ -509,7 +548,7 @@ export async function GET(req: Request) {
         netPay,
         orderCount: consultantOrders.length,
         existingStatus: existingMap.get(c.id) || null,
-        storedAdjustments: (existingEntry?.adjustments as unknown[]) || [],
+        storedAdjustments: mergeMentorship((existingEntry?.adjustments as unknown[]) || [], c.id),
         storedExtraItems: (existingEntry?.extraItems as unknown[]) || [],
       }
     })

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { lockAndNotifyMentorshipCharges } from '@/lib/mentorship'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -163,6 +164,7 @@ export async function POST(req: Request) {
           include: { lines: { include: { account: { select: { id: true, accountNumber: true, accountTitle: true } } } } },
         })
         const payable = await prisma.payrollPayableStatus.findUnique({ where: { id: existingPayable.id } })
+        if (payrollType === 'CONSULTANT') await lockAndNotifyMentorshipCharges(cutoffPeriod, branch)
         return NextResponse.json({ journalEntry, payable, lockedCount: result.lockedCount, supplemented: true }, { status: 201 })
       }
 
@@ -242,6 +244,7 @@ export async function POST(req: Request) {
         include: { lines: { include: { account: { select: { id: true, accountNumber: true, accountTitle: true } } } } },
       })
       const payable = await prisma.payrollPayableStatus.findUnique({ where: { id: existingPayable.id } })
+      if (payrollType === 'CONSULTANT') await lockAndNotifyMentorshipCharges(cutoffPeriod, branch)
       return NextResponse.json({ journalEntry, payable, lockedCount: suppResult.lockedCount, supplemented: true }, { status: 201 })
     }
 
@@ -473,6 +476,10 @@ export async function POST(req: Request) {
       }
     })
 
+    // Mentorship meeting charges in this cutoff are now paid: lock them and
+    // badge the meetings "Paid" in the staff portal (retried on re-finalize
+    // if the portal is unreachable).
+    if (payrollType === 'CONSULTANT') await lockAndNotifyMentorshipCharges(cutoffPeriod, branch)
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('Payroll finalize error:', err)

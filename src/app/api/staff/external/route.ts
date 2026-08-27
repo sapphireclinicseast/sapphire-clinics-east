@@ -76,6 +76,11 @@ export async function GET(req: NextRequest) {
         employmentByBranch: true,
         extraBranches: true,
         hrPlatformId: true,
+        // Mentorship / supervision roles for payroll: Clinical Supervisor,
+        // Clinical Mentor, and (via menteeIds, below) who is a mentee.
+        isInternshipSupervisor: true,
+        isClinicalMentor: true,
+        menteeIds: true,
         sss: true,
         philhealth: true,
         pagibig: true,
@@ -95,6 +100,20 @@ export async function GET(req: NextRequest) {
     // tab and which branch they belong to.
     type StaffRow = (typeof staff)[0] & { id: string; branch: string }
     const extraRows: StaffRow[] = []
+
+    // A mentee is anyone listed in some mentor's menteeIds. Query ALL mentors
+    // (not just the filtered result) so a branch- or search-filtered request
+    // still classifies its rows correctly.
+    const allMentors = await prisma.staff.findMany({
+      where: { isClinicalMentor: true },
+      select: { menteeIds: true },
+    })
+    const menteeIdSet = new Set(allMentors.flatMap(m => m.menteeIds))
+    for (const s0 of staff as (StaffRow & { isMentee?: boolean; isClinicalSupervisor?: boolean })[]) {
+      s0.isMentee = menteeIdSet.has(s0.id)
+      // Emit under the name payroll uses; the raw flag rides along too.
+      s0.isClinicalSupervisor = (s0 as { isInternshipSupervisor?: boolean }).isInternshipSupervisor ?? false
+    }
 
     // If includeHR is requested, fetch gov IDs from HR platform
     // Try multiple URLs to handle Docker networking on Linux

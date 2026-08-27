@@ -118,6 +118,11 @@ export async function GET(req: Request) {
             if (consultantBranches.length > 1) syncData.extraBranches = consultantBranches.slice(1)
           }
 
+          // Mentorship / supervision roles (HR checkboxes via the staff feed).
+          syncData.isClinicalSupervisor = !!s.isClinicalSupervisor
+          syncData.isClinicalMentor = !!s.isClinicalMentor
+          syncData.isMentee = !!s.isMentee
+
           // Sync contact info
           if (s.email) syncData.email = s.email
           if (s.phone) syncData.phone = s.phone

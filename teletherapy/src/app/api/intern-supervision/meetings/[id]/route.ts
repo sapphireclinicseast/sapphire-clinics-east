@@ -11,10 +11,13 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const u = session.user as unknown as { id: string; role?: string }
   const { id } = await params
 
-  const m = await prisma.supervisionMeeting.findUnique({ where: { id }, select: { createdByAccountId: true } })
+  const m = await prisma.supervisionMeeting.findUnique({ where: { id }, select: { createdByAccountId: true, paidAt: true } })
   if (!m) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (m.createdByAccountId !== u.id && u.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Only the organizer can cancel this meeting.' }, { status: 403 })
+  }
+  if (m.paidAt) {
+    return NextResponse.json({ error: 'This meeting has already been paid through payroll and can no longer be cancelled.' }, { status: 400 })
   }
 
   await prisma.supervisionMeeting.delete({ where: { id } })

@@ -1500,6 +1500,10 @@ model Consultant {
   department       String // OT, PT, SLP, SPED, MD, PSYCHOLOGY, etc.
   branch           String // SBEA, SBGH — primary branch
   extraBranches    String[] @default([]) // additional scheduling branches (never overwritten by sync)
+  // Mentorship / supervision roles, synced from the staff feed (HR checkboxes).
+  isClinicalSupervisor Boolean @default(false)
+  isClinicalMentor     Boolean @default(false)
+  isMentee             Boolean @default(false)
   email            String?
   phone            String?
   tinNumber        String?
@@ -1528,6 +1532,8 @@ model Consultant {
   @@index([department])
   @@index([branch])
   @@index([isActive])
+  mentorMeetingCharges MentorshipMeetingCharge[] @relation("MentorMeetingCharges")
+  menteeMeetingCharges MentorshipMeetingCharge[] @relation("MenteeMeetingCharges")
 }
 
 model UnitPay {
@@ -2099,6 +2105,46 @@ model StaffLoanDeduction {
 
   @@unique([loanId, cutoffPeriod, source])
   @@index([cutoffPeriod])
+}
+
+// ── Mentorship meetings (staff portal) charged through payroll ──────────────
+//
+// A MENTORSHIP meeting from the staff portal (teletherapy app) can be included
+// in a consultant payroll cutoff: the mentee is charged the meeting fee and the
+// mentor receives it. One row per (meeting, mentee) — ticking creates it,
+// unticking deletes it, and the unique key stops the same meeting from being
+// included twice across runs. lockedAt is set when the cutoff's payroll is
+// finalized; paidNotifiedAt when the portal has been told to badge it "Paid".
+model MentorshipMeetingCharge {
+  id                 String      @id @default(cuid())
+  externalMeetingId  String // SupervisionMeeting.id in the staff portal
+  meetingDate        DateTime
+  title              String?
+  mentorConsultantId String?
+  mentorConsultant   Consultant? @relation("MentorMeetingCharges", fields: [mentorConsultantId], references: [id], onDelete: SetNull)
+  mentorName         String
+  menteeConsultantId String?
+  menteeConsultant   Consultant? @relation("MenteeMeetingCharges", fields: [menteeConsultantId], references: [id], onDelete: SetNull)
+  menteeName         String
+  fee                Decimal // snapshot of the fee setting at tick time
+  cutoffPeriod       String // e.g. "2026-08-2"
+  branch             String
+  lockedAt           DateTime?
+  paidNotifiedAt     DateTime?
+  createdAt          DateTime    @default(now())
+
+  @@unique([externalMeetingId, menteeName])
+  @@index([cutoffPeriod, branch])
+  @@index([mentorConsultantId])
+  @@index([menteeConsultantId])
+}
+
+// Single-row settings for the mentorship meeting fee (Payroll → Consultants →
+// Mentorship Meetings → Settings).
+model MentorshipFeeSetting {
+  id         Int      @id @default(1)
+  meetingFee Decimal  @default(0)
+  updatedAt  DateTime @updatedAt
 }
 
 model ConsultantCutoffAdjustment {

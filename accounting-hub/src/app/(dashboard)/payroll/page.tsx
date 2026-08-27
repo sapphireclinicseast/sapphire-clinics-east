@@ -15,6 +15,7 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
 import EmployeePayroll from './EmployeePayroll'
+import MentorshipMeetingsTab from './MentorshipMeetingsTab'
 
 const toNum = (v: unknown) => Number(v) || 0
 
@@ -785,7 +786,7 @@ export default function PayrollPage() {
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
   const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings'>('consultants')
-  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits' | 'directory'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits' | 'mentorship' | 'directory'>('list')
   // Consultant Benefits Setting (mirror Employees)
   const [conBenefitSelIds, setConBenefitSelIds] = useState<Set<string>>(new Set())
   const [showConBenefitForm, setShowConBenefitForm] = useState(false)
@@ -3059,6 +3060,7 @@ export default function PayrollPage() {
               { key: 'initial-eval' as const, label: 'Initial Evaluation', icon: ClipboardList },
               { key: 'progress-report' as const, label: 'Progress Report', icon: FileText },
               { key: 'payslips' as const, label: 'Payslip Generation', icon: FileText },
+              { key: 'mentorship' as const, label: 'Mentorship Meetings', icon: Users },
               { key: 'directory' as const, label: 'Staff Directory', icon: UserX },
             ].map(t => (
               <button key={t.key} onClick={() => { setSubTab(t.key); setIeprSearch(''); setIeprExpanded(new Set()) }}
@@ -3072,6 +3074,11 @@ export default function PayrollPage() {
           {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{error}</p>}
 
           {/* ══ TAB 1: Consultant List ══ */}
+          {subTab === 'mentorship' && (
+            <MentorshipMeetingsTab cutoffPeriod={cutoffPeriod} branch={branch}
+              canWrite={true} onChanged={() => { /* previews re-derive mm- lines on next load */ }} />
+          )}
+
           {subTab === 'list' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">

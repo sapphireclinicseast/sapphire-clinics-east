@@ -18,6 +18,8 @@ interface Meeting {
   createdByAccountId: string
   createdByName: string
   inviteeNames: string[]
+  paidAt?: string | null
+  paidCutoffLabel?: string | null
 }
 
 export default function MeetingsPanel({
@@ -95,7 +97,15 @@ export default function MeetingsPanel({
               {shown.map((m) => (
             <div key={m.id} className="card-static !p-4 flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-semibold text-[var(--charcoal)]">{m.title || 'Supervision meeting'}</div>
+                <div className="text-[14px] font-semibold text-[var(--charcoal)] flex items-center gap-2">
+                  {m.title || 'Supervision meeting'}
+                  {m.paidAt && (
+                    <span title={`Mentorship fee processed in payroll${m.paidCutoffLabel ? ` · ${m.paidCutoffLabel}` : ''}`}
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                      Paid
+                    </span>
+                  )}
+                </div>
                 <div className="text-[12px] text-[var(--mid-gray)] flex items-center gap-3 mt-0.5 flex-wrap">
                   <span className="inline-flex items-center gap-1"><Calendar size={12} />{fmtDate(m.date)}</span>
                   <span className="inline-flex items-center gap-1"><Clock size={12} />{m.timeLabel}</span>
