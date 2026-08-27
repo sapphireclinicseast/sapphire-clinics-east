@@ -229,6 +229,9 @@ function DrillPanel({ target, year, branch, onClose }: {
   )
 }
 
+/** Four years back through one year ahead — see the note by the selector. */
+const REPORT_YEARS = (cy: number) => Array.from({ length: 6 }, (_, i) => cy + 1 - i)
+
 export default function ReportsV2Page() {
   const currentYear = new Date().getFullYear()
   const [year,    setYear]    = useState(currentYear)
@@ -311,7 +314,12 @@ export default function ReportsV2Page() {
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white">
             <Calendar size={14} className="text-gray-500" />
             <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="text-sm bg-transparent outline-none">
-              {Array.from({ length: 5 }, (_, i) => currentYear - i).map(y => <option key={y} value={y}>{y}</option>)}
+              {/* Next year is offered because period fees reach into it: an
+                  annual tuition taken this year recognises its remaining share
+                  in next year's months, and with no option for that year the
+                  revenue exists but cannot be looked at. A payment spreads over
+                  at most twelve months, so one year ahead is all it can reach. */}
+              {REPORT_YEARS(currentYear).map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white">

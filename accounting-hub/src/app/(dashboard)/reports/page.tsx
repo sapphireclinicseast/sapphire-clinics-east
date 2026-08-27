@@ -1709,7 +1709,11 @@ export default function ReportsPage() {
   const effIsBranch = isTickboxes ? isBranchSel : effBranch
 
   const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  // Includes next year: a period fee (annual/biannual tuition) recognises part
+  // of itself in next year's months, and without the option that revenue is
+  // computed but unreachable. Nothing spreads beyond twelve months, so one
+  // year ahead is the furthest anything can land.
+  const years = Array.from({ length: 6 }, (_, i) => currentYear + 1 - i)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
