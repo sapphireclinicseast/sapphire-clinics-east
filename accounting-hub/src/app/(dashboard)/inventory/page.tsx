@@ -1192,18 +1192,18 @@ function InventoryInner() {
   // still fold by SKU suffix.
   const isBranchCopy = (it: InventoryItem) => !!it.sourceItemId || it.sku.endsWith('-SAND')
   const branchBreakdown = useMemo(() => {
-    const m = new Map<string, { parts: { branch: string; quantity: number }[]; total: number }>()
-    const sibsById = new Map<string, { branch: string; quantity: number }[]>()
-    const sibsBySku = new Map<string, { branch: string; quantity: number }[]>()
+    const m = new Map<string, { parts: { branch: string; quantity: number; itemId?: string }[]; total: number }>()
+    const sibsById = new Map<string, { branch: string; quantity: number; itemId: string }[]>()
+    const sibsBySku = new Map<string, { branch: string; quantity: number; itemId: string }[]>()
     for (const it of items) {
       if (it.sourceItemId) {
         const arr = sibsById.get(it.sourceItemId) || []
-        arr.push({ branch: it.branch, quantity: it.quantity })
+        arr.push({ branch: it.branch, quantity: it.quantity, itemId: it.id })
         sibsById.set(it.sourceItemId, arr)
       } else if (it.sku.endsWith('-SAND')) {
         const base = it.sku.slice(0, -5)
         const arr = sibsBySku.get(base) || []
-        arr.push({ branch: it.branch, quantity: it.quantity })
+        arr.push({ branch: it.branch, quantity: it.quantity, itemId: it.id })
         sibsBySku.set(base, arr)
       }
     }
@@ -1218,7 +1218,7 @@ function InventoryInner() {
       const consignedSum = bsEntries.reduce((s, x) => s + x.quantity, 0)
       const sibsSum = sibs.reduce((s, x) => s + x.quantity, 0)
       m.set(it.sku, {
-        parts: [{ branch: it.branch, quantity: it.quantity - consignedSum }, ...bsEntries, ...sibs],
+        parts: [{ branch: it.branch, quantity: it.quantity - consignedSum, itemId: it.id }, ...bsEntries, ...sibs],
         total: it.quantity + sibsSum,
       })
     }
@@ -2700,7 +2700,23 @@ setTimeout(()=>window.print(),500);
                               {bd.parts.map((p, i) => (
                                 <span key={i} className="whitespace-nowrap">
                                   <span style={{ color: 'var(--charcoal)' }}>{BRANCH_LABELS[p.branch] || p.branch}</span>
-                                  <span className="ml-1 font-semibold" style={{ color: 'var(--deep-teal)' }}>{p.quantity}</span>
+                                  {p.itemId ? (
+                                    <button
+                                      onClick={async () => {
+                                        setShowMovements(p.itemId!)
+                                        setMovementData(null)
+                                        try {
+                                          const res = await fetch(`/api/inventory/${p.itemId}/movements`)
+                                          if (res.ok) setMovementData(await res.json())
+                                        } catch { /* ignore */ }
+                                      }}
+                                      className="ml-1 font-semibold underline decoration-dotted cursor-pointer hover:opacity-70"
+                                      style={{ color: 'var(--deep-teal)' }}
+                                      title={`Movement history of the ${BRANCH_LABELS[p.branch] || p.branch} stock`}
+                                    >{p.quantity}</button>
+                                  ) : (
+                                    <span className="ml-1 font-semibold" style={{ color: 'var(--deep-teal)' }}>{p.quantity}</span>
+                                  )}
                                 </span>
                               ))}
                             </span>
