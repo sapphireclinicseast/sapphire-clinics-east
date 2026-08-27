@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { encodeHeaderWord, formatFromHeader } from '@/lib/email-headers'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient } from '@/lib/email'
@@ -129,10 +130,10 @@ function makeRawEmail(opts: {
 }): string {
   const boundary = 'sa_boundary_' + Date.now()
   const message = [
-    `From: ${opts.fromName} <${opts.from}>`,
+    `From: ${formatFromHeader(opts.fromName, opts.from)}`,
     `To: ${opts.to}`,
     ...(opts.cc ? [`Cc: ${opts.cc}`] : []),
-    `Subject: ${opts.subject}`,
+    `Subject: ${encodeHeaderWord(opts.subject)}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',

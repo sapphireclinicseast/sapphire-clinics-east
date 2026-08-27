@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import { formatFromHeader } from '@/lib/email-headers'
 import { prisma } from './prisma'
 import fs from 'fs'
 import path from 'path'
@@ -66,7 +67,7 @@ export function makeEmailBody(to: string, subject: string, body: string, from: s
   const bodyLines = bodyBase64.replace(/(.{76})/g, '$1\r\n')
 
   const message = [
-    `From: Sapphire Clinics East <${from}>`,
+    `From: ${formatFromHeader('Sapphire Clinics East', from)}`,
     `To: ${to}`,
     `Subject: ${subjectEncoded}`,
     'MIME-Version: 1.0',

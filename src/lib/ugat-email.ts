@@ -13,6 +13,7 @@
 // The message shows "From: UGAT Fellowship <that address>".
 
 import { getGmailClient } from './email'
+import { formatFromHeader } from '@/lib/email-headers'
 import { prisma } from './prisma'
 
 // What recipients see. Now the mailbox's own address rather than the
@@ -59,7 +60,7 @@ function buildRaw(to: string[], subject: string, html: string): string {
   const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`
   const bodyBase64 = Buffer.from(html, 'utf-8').toString('base64').replace(/(.{76})/g, '$1\r\n')
   const message = [
-    `From: ${FROM_NAME} <${FROM_ADDRESS}>`,
+    `From: ${formatFromHeader(FROM_NAME, FROM_ADDRESS)}`,
     `To: ${to.join(', ')}`,
     `Reply-To: ${FROM_ADDRESS}`,
     `Subject: ${subjectEncoded}`,
@@ -89,7 +90,7 @@ function buildRawWithPdf(to: string[], subject: string, html: string, filename: 
   const htmlB64 = Buffer.from(html, 'utf-8').toString('base64').replace(/(.{76})/g, '$1\r\n')
   const pdfB64 = pdf.toString('base64').replace(/(.{76})/g, '$1\r\n')
   const message = [
-    `From: ${FROM_NAME} <${FROM_ADDRESS}>`,
+    `From: ${formatFromHeader(FROM_NAME, FROM_ADDRESS)}`,
     `To: ${to.join(', ')}`,
     `Reply-To: ${FROM_ADDRESS}`,
     `Subject: ${subjectEncoded}`,
@@ -127,7 +128,7 @@ function buildRawBcc(bcc: string[], subject: string, html: string): string {
   const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`
   const bodyBase64 = Buffer.from(html, 'utf-8').toString('base64').replace(/(.{76})/g, '$1\r\n')
   const message = [
-    `From: ${FROM_NAME} <${FROM_ADDRESS}>`,
+    `From: ${formatFromHeader(FROM_NAME, FROM_ADDRESS)}`,
     `To: ${FROM_NAME} <${FROM_ADDRESS}>`,
     `Bcc: ${bcc.join(', ')}`,
     `Reply-To: ${FROM_ADDRESS}`,
