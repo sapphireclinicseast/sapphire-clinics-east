@@ -1,5 +1,15 @@
 @import 'tailwindcss';
 
+/* Bacony Script — decorative accent face (e.g. the "you" in the hero). */
+@font-face {
+  font-family: 'Bacony Script';
+  src: url('/fonts/BaconyScript.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+.font-script { font-family: 'Bacony Script', 'Segoe Script', cursive; }
+
 /* ── Nickel theme — cool gray + steel blue ──────────────────────────────── */
 :root {
   --ink: #22303f; /* headings / darkest */

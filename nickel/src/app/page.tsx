@@ -14,11 +14,16 @@ export default function NickelHome() {
       >
         <span className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-white opacity-10" />
         <span className="pointer-events-none absolute -bottom-16 right-16 h-32 w-32 rounded-full bg-white opacity-5" />
-        <div className="relative max-w-xl">
+        <div className="relative">
           <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-white/70">Homecare therapy</div>
-          <h1 className="mt-2 text-[34px] font-bold leading-[1.05] text-white sm:text-[44px]">Therapy that comes to you.</h1>
-          <p className="mt-3 text-[15px] leading-snug text-white/85 sm:text-[16px]">
+          <h1 className="mt-2 text-[34px] font-bold leading-[1.05] text-white sm:whitespace-nowrap sm:text-[44px]">
+            Therapy that comes to <span className="font-script font-normal text-white" style={{ fontSize: '1.35em', lineHeight: 0 }}>you</span>.
+          </h1>
+          <p className="mt-3 max-w-xl text-[15px] leading-snug text-white/85 sm:text-[16px]">
             Nickel connects you with licensed home therapists near you. Pick a therapist by their schedule, book a time, and they&apos;ll come to your home.
+          </p>
+          <p className="mt-4 text-[13px] text-white/70">
+            Made by a physical therapist, for physical therapists. <span className="font-medium text-white/90">Free to use · Filipino-made 🇵🇭</span>
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <a href="/book" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-[15px] font-semibold" style={{ color: 'var(--steel-deep)' }}>
