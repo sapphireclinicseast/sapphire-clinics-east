@@ -131,8 +131,11 @@ body {
   background: #fff;
   border-radius: 18px;
   border: 1px solid var(--paper-3);
-  padding: 28px;
+  padding: 20px; /* tighter on phones */
   box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
+}
+@media (min-width: 640px) {
+  .card-static { padding: 28px; }
 }
 
 /* ─── Buttons ────────────────────────────────────────────────── */

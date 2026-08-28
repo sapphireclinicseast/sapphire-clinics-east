@@ -196,17 +196,18 @@ export default function HomecarePage() {
 
   return (
     <div className="animate-fade-up mx-auto max-w-2xl">
-      {/* step header */}
-      <div className="mb-6 flex items-center gap-3" style={{ fontFamily: 'var(--font-display)' }}>
+      {/* step header — compact on mobile: dots + only the active label, so the
+          4 steps never overflow a phone width. Full labels show from sm up. */}
+      <div className="mb-6 flex items-center gap-1.5 sm:gap-3" style={{ fontFamily: 'var(--font-display)' }}>
         {STEPS.map((s, i) => (
-          <div key={s.key} className="flex items-center gap-3">
+          <div key={s.key} className="flex items-center gap-1.5 sm:gap-3">
             <div className="flex items-center gap-2">
               <span className={`step-dot ${i === activeIdx ? 'step-dot-active' : i < activeIdx ? 'step-dot-done' : ''}`} />
-              <span className={`text-[11.5px] uppercase tracking-[0.12em] ${i === activeIdx ? 'font-semibold text-[color:var(--clay)]' : i < activeIdx ? 'text-[color:var(--moss)]' : 'text-[color:var(--mid-gray)]'}`}>
+              <span className={`text-[10px] sm:text-[11.5px] uppercase tracking-[0.1em] sm:tracking-[0.12em] ${i === activeIdx ? 'font-semibold text-[color:var(--clay)]' : i < activeIdx ? 'text-[color:var(--moss)]' : 'text-[color:var(--mid-gray)]'} ${i === activeIdx ? '' : 'hidden sm:inline'}`}>
                 {i + 1}. {s.label}
               </span>
             </div>
-            {i < STEPS.length - 1 && <span className="h-px w-6 bg-[color:var(--paper-3)]" />}
+            {i < STEPS.length - 1 && <span className="h-px w-3 sm:w-6 bg-[color:var(--paper-3)]" />}
           </div>
         ))}
       </div>
