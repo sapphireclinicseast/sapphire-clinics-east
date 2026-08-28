@@ -4,20 +4,24 @@
  */
 
 import { prisma } from '@/lib/prisma'
+import { cutoffRange } from '@/lib/payroll-cutoff'
 
 // staff.* is the canonical host — teletherapy.* 301s to it, and a redirect
 // strips the Authorization header, so the alias must not be used here.
 export const TELETHERAPY_URL = process.env.TELETHERAPY_URL || 'https://staff.sapphireclinicseast.org'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
-/** Cutoff "YYYY-MM-1" → [1st..15th]; "YYYY-MM-2" → [16th..end of month]. */
+/**
+ * Calendar bounds for a cutoff period. Delegates to the shared payroll cutoff
+ * so meetings are collected over exactly the fortnight the payroll run pays.
+ *
+ * This used to compute 1st-15th / 16th-end of month, which is not what a cutoff
+ * is: the run labelled "2026-08-2" pays Aug 11-25, so meetings on Aug 11-15 were
+ * never offered on the run that pays them, and Aug 26-31 meetings were offered
+ * on a run that had already closed.
+ */
 export function cutoffDates(cutoffPeriod: string): { from: string; to: string } | null {
-  const m = /^(\d{4})-(\d{2})-([12])$/.exec(cutoffPeriod)
-  if (!m) return null
-  const [, y, mo, half] = m
-  if (half === '1') return { from: `${y}-${mo}-01`, to: `${y}-${mo}-15` }
-  const last = new Date(Date.UTC(Number(y), Number(mo), 0)).getUTCDate()
-  return { from: `${y}-${mo}-16`, to: `${y}-${mo}-${String(last).padStart(2, '0')}` }
+  return cutoffRange(cutoffPeriod)
 }
 
 export interface PortalPerson { staffId: string; name: string; isClinicalMentor: boolean; branch: string | null }
@@ -27,19 +31,44 @@ export interface PortalMeeting {
   mentors: PortalPerson[]; mentees: PortalPerson[]
 }
 
-export async function fetchPortalMeetings(from: string, to: string): Promise<PortalMeeting[] | null> {
+/**
+ * Why a portal read failed. The distinction is not cosmetic: a rejected key is
+ * a missing EXTERNAL_API_KEY on THIS server and needs an env fix, while a
+ * genuine network failure is the portal's problem and clears on its own. Both
+ * used to surface as "could not reach the staff portal", which sent us looking
+ * at the wrong machine.
+ */
+export type PortalFetch =
+  | { ok: true; items: PortalMeeting[] }
+  | { ok: false; kind: 'auth' | 'http' | 'network'; status?: number; message: string }
+
+export async function fetchPortalMeetings(from: string, to: string): Promise<PortalFetch> {
   try {
     const res = await fetch(`${TELETHERAPY_URL}/api/external/mentorship-meetings?from=${from}&to=${to}`, {
       headers: { Authorization: `Bearer ${EXTERNAL_API_KEY}` },
       cache: 'no-store',
       signal: AbortSignal.timeout(10000),
     })
-    if (!res.ok) return null
+    if (res.status === 401 || res.status === 403) {
+      // Name the variable and the file, because the person reading this message
+      // is standing in front of a payroll screen, not a deploy log.
+      console.error(`[mentorship] portal rejected our key (${res.status})`)
+      return {
+        ok: false, kind: 'auth', status: res.status,
+        message: EXTERNAL_API_KEY
+          ? 'The staff portal rejected our API key. EXTERNAL_API_KEY in /opt/accounting/docker/.env does not match the portal\'s.'
+          : 'EXTERNAL_API_KEY is not set on this server, so the staff portal rejected the request. Add it to /opt/accounting/docker/.env.',
+      }
+    }
+    if (!res.ok) {
+      console.error(`[mentorship] portal returned ${res.status}`)
+      return { ok: false, kind: 'http', status: res.status, message: `The staff portal returned an error (${res.status}).` }
+    }
     const data = await res.json()
-    return data.items || []
+    return { ok: true, items: data.items || [] }
   } catch (e) {
     console.error('[mentorship] portal fetch failed:', e)
-    return null
+    return { ok: false, kind: 'network', message: 'Could not reach the staff portal — try again shortly.' }
   }
 }
 
