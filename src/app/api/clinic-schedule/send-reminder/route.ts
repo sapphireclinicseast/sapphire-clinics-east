@@ -43,6 +43,7 @@ function buildEmailHtml(opts: {
   endTime: string
   sessionType: string
   branch: string
+  meetLink?: string | null
 }): string {
   const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
   const ccEmail = cfg.ccEmail
@@ -73,6 +74,7 @@ function buildEmailHtml(opts: {
               <tr style="background:#f9f9f9;"><td style="padding:6px 12px 6px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">Time:</td><td style="padding:6px 0;">${formatTime(opts.startTime)} – ${formatTime(opts.endTime)}</td></tr>
               <tr><td style="padding:6px 12px 6px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">Location:</td><td style="padding:6px 0;">${cfg.location}</td></tr>
               <tr style="background:#f9f9f9;"><td style="padding:6px 12px 6px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">Type of Appointment:</td><td style="padding:6px 0;">${opts.sessionType}</td></tr>
+${opts.meetLink ? `              <tr style="background:#EFF6FF;"><td style="padding:6px 12px 6px 0;font-weight:bold;white-space:nowrap;vertical-align:top;">Teletherapy Link:</td><td style="padding:6px 0;"><a href="${opts.meetLink}" style="color:#1D4ED8;font-weight:bold;">Join Meeting</a></td></tr>` : ''}
             </table>
             <p style="margin:0 0 8px;font-weight:bold;">Important Information:</p>
             <ol style="margin:0 0 24px;padding-left:20px;line-height:1.7;">
@@ -115,6 +117,7 @@ function buildEmailPlainText(opts: {
   endTime: string
   sessionType: string
   branch: string
+  meetLink?: string | null
 }): string {
   const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
   const ccEmail = cfg.ccEmail
@@ -131,6 +134,7 @@ function buildEmailPlainText(opts: {
     `Time: ${formatTime(opts.startTime)} – ${formatTime(opts.endTime)}`,
     `Location: ${cfg.location}`,
     `Type of Appointment: ${opts.sessionType}`,
+    ...(opts.meetLink ? [`Teletherapy Link: ${opts.meetLink}`] : []),
     '',
     'Important Information:',
     '1. Arrival: Please arrive at least 10 minutes before your scheduled appointment to allow time for check-in and any necessary paperwork.',
@@ -247,6 +251,7 @@ export async function POST(req: NextRequest) {
       endTime: schedule.endTime,
       sessionType: schedule.sessionType,
       branch,
+      meetLink: (schedule as Record<string, unknown>).meetLink as string | null,
     }
 
     await sendEmail({
@@ -291,6 +296,7 @@ export async function POST(req: NextRequest) {
         endTime: schedule.endTime,
         sessionType: schedule.sessionType,
         branch,
+        meetLink: (schedule as Record<string, unknown>).meetLink as string | null,
       }
 
       try {

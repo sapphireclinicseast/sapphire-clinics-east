@@ -291,7 +291,7 @@ export default function EmailPage() {
               onChange={(e) => setAiPrompt(e.target.value)}
               placeholder="e.g. 'monthly wellness tips' or 'holiday greeting'"
               className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-              style={{ border: '1px solid rgba(26,123,138,0.3)', background: '#fff' }}
+              style={{ border: '1px solid rgba(46,94,90,0.3)', background: '#fff' }}
               onKeyDown={(e) => e.key === 'Enter' && generateEmail()}
             />
             <button

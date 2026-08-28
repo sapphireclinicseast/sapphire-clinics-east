@@ -7,8 +7,8 @@ import dynamic from 'next/dynamic'
 const CanvaDesignPicker = dynamic(() => import('@/components/canva/CanvaDesignPicker'), { ssr: false })
 
 const BRANCHES = [
-  { id: 'east', label: 'East Branch', color: '#1A7B8A' },
-  { id: 'greenhills', label: 'Greenhills Branch', color: '#1A7B8A' },
+  { id: 'east', label: 'East Branch', color: '#2E5E5A' },
+  { id: 'greenhills', label: 'Greenhills Branch', color: '#2E5E5A' },
   { id: 'verdana', label: 'Verdana Store', color: '#2D6A4F' },
 ]
 
@@ -167,7 +167,7 @@ export default function HolidayTemplatePage() {
               key={holiday.id}
               className="rounded-xl p-5 space-y-4"
               style={{
-                background: isDone ? 'rgba(26,123,138,0.04)' : '#fff',
+                background: isDone ? 'rgba(46,94,90,0.04)' : '#fff',
                 border: `1px solid ${isDone ? 'var(--teal)' : 'var(--light-gray)'}`,
               }}
             >
@@ -296,7 +296,7 @@ export default function HolidayTemplatePage() {
                       {/* Source badge */}
                       <div
                         className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-white"
-                        style={{ background: holiday.imageUrl ? '#7B2FBE' : '#1A7B8A' }}
+                        style={{ background: holiday.imageUrl ? '#7B2FBE' : '#2E5E5A' }}
                       >
                         {holiday.imageUrl ? (
                           <><span>C</span> Canva</>
@@ -389,7 +389,7 @@ export default function HolidayTemplatePage() {
                             className="w-full px-3 py-2.5 text-sm outline-none resize-none"
                             style={{
                               color: 'var(--charcoal)',
-                              background: isSelected ? 'rgba(26,123,138,0.02)' : '#fff',
+                              background: isSelected ? 'rgba(46,94,90,0.02)' : '#fff',
                             }}
                           />
                         </div>

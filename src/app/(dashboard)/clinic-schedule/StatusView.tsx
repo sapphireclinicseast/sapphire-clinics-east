@@ -187,7 +187,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
               value={selectedDate}
               onChange={e => onDateChange(e.target.value)}
               className="rounded-lg px-3 py-1.5 text-sm"
-              style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+              style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
             />
           </div>
 
@@ -252,7 +252,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
           {/* Summary bar */}
           <div className="px-4 py-2.5 flex items-center justify-between"
-            style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(26,123,138,0.15)' }}>
+            style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(46,94,90,0.15)' }}>
             <p className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
               {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-PH', {
                 weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -351,7 +351,7 @@ export default function StatusView({ role, selectedDate, onDateChange }: { role:
                           }}
                           onBlur={() => setEditingStatusId(null)}
                           className="text-xs rounded-lg px-2 py-1 cursor-pointer"
-                          style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}>
+                          style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}>
                           {ALL_STATUSES.map(st => (
                             <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
                           ))}

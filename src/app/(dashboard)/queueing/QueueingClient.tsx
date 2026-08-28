@@ -91,7 +91,7 @@ interface Ad { id: string; fileName: string; mimeType: string; order: number; br
 
 // ─── Input style helper ───────────────────────────────────────────────────────
 const inp = {
-  border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff',
+  border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff',
   color: 'var(--charcoal)', borderRadius: '0.5rem',
   padding: '0.45rem 0.7rem', fontSize: '0.85rem', width: '100%',
 }
@@ -506,7 +506,7 @@ function AdsManager({ role }: { role: string }) {
     <div className="space-y-4">
       {/* Upload area */}
       <div className="rounded-xl p-5 flex flex-col items-center gap-3 text-center"
-        style={{ border: '2px dashed rgba(26,123,138,0.3)', background: 'var(--pale-teal)' }}>
+        style={{ border: '2px dashed rgba(46,94,90,0.3)', background: 'var(--pale-teal)' }}>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center"
           style={{ background: 'var(--teal)' }}>
           <Upload size={18} style={{ color: '#fff' }} />
@@ -584,7 +584,7 @@ function AdsManager({ role }: { role: string }) {
                       disabled={allowedBranches.length === 1}
                       className="text-xs rounded-lg px-2 py-1 font-semibold"
                       style={{
-                        border: '1.5px solid rgba(26,123,138,0.25)',
+                        border: '1.5px solid rgba(46,94,90,0.25)',
                         background: '#fff', color: 'var(--charcoal)',
                         cursor: allowedBranches.length === 1 ? 'default' : 'pointer',
                         opacity: allowedBranches.length === 1 ? 0.7 : 1,
@@ -918,7 +918,7 @@ export default function QueueingClient({ role }: { role: string }) {
               <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Date</label>
               <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
                 className="rounded-lg px-3 py-1.5 text-sm"
-                style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }} />
+                style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }} />
             </div>
             <button onClick={loadQueue} className="p-2 rounded-lg hover:bg-gray-100" title="Refresh">
               <RefreshCw size={14} style={{ color: 'var(--teal)' }} />

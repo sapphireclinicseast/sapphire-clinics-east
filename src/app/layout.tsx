@@ -1,17 +1,24 @@
 import type { Metadata } from 'next'
-import { Montserrat, Open_Sans } from 'next/font/google'
+import { Comfortaa, Cormorant_Garamond, DM_Sans } from 'next/font/google'
 import './globals.css'
 
-const montserrat = Montserrat({
+const comfortaa = Comfortaa({
   subsets: ['latin'],
-  variable: '--font-montserrat',
-  weight: ['300', '400', '600', '700', '800', '900'],
+  variable: '--font-comfortaa',
+  weight: ['300', '400', '500', '600', '700'],
 })
 
-const openSans = Open_Sans({
+const cormorant = Cormorant_Garamond({
   subsets: ['latin'],
-  variable: '--font-open-sans',
-  weight: ['300', '400', '600'],
+  variable: '--font-cormorant',
+  weight: ['300', '400', '500', '600', '700'],
+  style: ['normal', 'italic'],
+})
+
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-dm-sans',
+  weight: ['300', '400', '500', '600', '700'],
   style: ['normal', 'italic'],
 })
 
@@ -19,9 +26,9 @@ export const metadata: Metadata = {
   title: 'SAPPHIRE Marketing Hub — Sapphire Clinics East',
   description: 'SCEI Internal Marketing Hub — Sapphire Clinics East, Inc.',
   icons: {
-    icon: '/brand/logo-reversed-teal-bg.png',
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
     apple: '/brand/logo-reversed-teal-bg.png',
-    shortcut: '/brand/logo-reversed-teal-bg.png',
+    shortcut: '/favicon.svg',
   },
   openGraph: {
     title: 'SAPPHIRE Marketing Hub',
@@ -42,7 +49,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${montserrat.variable} ${openSans.variable}`}>
+    <html lang="en" className={`${comfortaa.variable} ${cormorant.variable} ${dmSans.variable}`}>
       <body className="antialiased">{children}</body>
     </html>
   )

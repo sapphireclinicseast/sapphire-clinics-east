@@ -164,7 +164,7 @@ export default function UsersPage() {
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="e.g. Maria Santos"
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+                  style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
                 />
               </div>
               <div>
@@ -173,7 +173,7 @@ export default function UsersPage() {
                   value={form.role}
                   onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+                  style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
                 >
                   <option value="ADMIN">Admin — all branches, all modules</option>
                   <option value="MARKETING_ADMIN">Marketing Admin — all modules except Clinic Schedule</option>
@@ -192,7 +192,7 @@ export default function UsersPage() {
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                   placeholder="email@example.com"
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+                  style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
                 />
               </div>
               <div>
@@ -203,7 +203,7 @@ export default function UsersPage() {
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                   placeholder="Set a temporary password"
                   className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+                  style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
                 />
               </div>
             </div>
@@ -263,7 +263,7 @@ export default function UsersPage() {
                   <span
                     className="text-xs px-2.5 py-0.5 rounded-full font-semibold flex-shrink-0"
                     style={{
-                      background: user.role === 'ADMIN' ? 'rgba(26,123,138,0.12)' : 'var(--light-gray)',
+                      background: user.role === 'ADMIN' ? 'rgba(46,94,90,0.12)' : 'var(--light-gray)',
                       color: user.role === 'ADMIN' ? 'var(--teal)' : 'var(--mid-gray)',
                     }}
                   >
@@ -307,7 +307,7 @@ export default function UsersPage() {
                           onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
                           placeholder="Full name"
                           className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                          style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+                          style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
                         />
                       </div>
                       <div>
@@ -318,7 +318,7 @@ export default function UsersPage() {
                           value={editForm.role}
                           onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}
                           className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                          style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+                          style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
                         >
                           <option value="ADMIN">Admin — all branches, all modules</option>
                           <option value="MARKETING_ADMIN">Marketing Admin — all modules except Clinic Schedule</option>
@@ -338,7 +338,7 @@ export default function UsersPage() {
                           value={editForm.email}
                           onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
                           className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                          style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+                          style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
                         />
                       </div>
                       <div>
@@ -351,7 +351,7 @@ export default function UsersPage() {
                           onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
                           placeholder="Enter new password to change"
                           className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                          style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+                          style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
                         />
                       </div>
                     </div>

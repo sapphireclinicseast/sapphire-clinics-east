@@ -316,7 +316,7 @@ export default function AccountsPage() {
 
       {/* Legacy auto-import panel (hidden by default) */}
       {showAutoImport && (
-        <div className="rounded-xl p-5 space-y-4" style={{ background: 'var(--pale-teal)', border: '1px solid rgba(26,123,138,0.2)' }}>
+        <div className="rounded-xl p-5 space-y-4" style={{ background: 'var(--pale-teal)', border: '1px solid rgba(46,94,90,0.2)' }}>
           <div className="flex gap-2">
             <input
               type="text"
@@ -324,7 +324,7 @@ export default function AccountsPage() {
               onChange={(e) => setUserToken(e.target.value)}
               placeholder="EAAxxxxxxxx... (User Access Token)"
               className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none font-mono"
-              style={{ border: '1px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+              style={{ border: '1px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
             />
             <button
               onClick={handleAutoImport}

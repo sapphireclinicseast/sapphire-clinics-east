@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBrand } from '@/contexts/BrandContext'
+import { Button } from '@/components/ui/button'
 
 // ─── Role helpers ────────────────────────────────────────────────────────────
 const FRONT_DESK_ROLES = ['SBEA_FRONT_DESK', 'SBGH_FRONT_DESK']
@@ -29,7 +30,6 @@ const CLINIC_TOOLS_ALL = [
   { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
 ]
 
-// Marketing Admin: no Clinic Schedule, no Decking, no Patient Relationship
 const CLINIC_TOOLS_NO_SCHEDULE = [
   { href: '/staff', icon: UserCog, label: 'Staff Module' },
   { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
@@ -38,7 +38,6 @@ const CLINIC_TOOLS_NO_SCHEDULE = [
   { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
 ]
 
-// Full access nav — built dynamically per role
 function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
   return [
     {
@@ -70,14 +69,12 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
     },
     {
       label: 'Clinic Tools',
-      // Marketing Admin cannot access Clinic Schedule
       items: isMarketingAdmin ? CLINIC_TOOLS_NO_SCHEDULE : CLINIC_TOOLS_ALL,
     },
     {
       label: 'Settings',
       items: [
         { href: '/settings/accounts', icon: Link2, label: 'Connected Accounts' },
-        // Team management is ADMIN only
         ...(isAdmin ? [{ href: '/settings/users', icon: Users, label: 'Team' }] : []),
         { href: '/brand', icon: BookOpen, label: 'Brand Guide' },
       ],
@@ -85,7 +82,6 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
   ]
 }
 
-// Front desk nav — home + 5 clinic modules
 const FRONT_DESK_NAV = [
   {
     label: 'Home',
@@ -124,46 +120,46 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
   return (
     <aside
       className="w-60 flex-shrink-0 flex flex-col h-full"
-      style={{ background: 'var(--near-black)', borderRight: '1px solid rgba(26,123,138,0.15)' }}
+      style={{ background: 'var(--near-black)', borderRight: '1px solid rgba(46,94,90,0.15)' }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(26,123,138,0.15)' }}>
+      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <Image src="/brand/mark-white-transparent.png" alt="SCEI" width={36} height={36} style={{ objectFit: 'contain' }} className="flex-shrink-0" />
         <div className="flex-1">
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.85rem', color: '#fff', letterSpacing: '0.05em' }}>
             SAPPHIRE
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.55rem', color: 'var(--teal)', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.55rem', color: 'var(--gold)', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
             Marketing Hub
           </div>
         </div>
         {onClose && (
-          <button onClick={onClose} className="md:hidden p-1 rounded-lg" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <Button variant="ghost" size="icon" onClick={onClose} className="md:hidden text-white/40 hover:text-white hover:bg-white/10 h-8 w-8">
             <X size={18} />
-          </button>
+          </Button>
         )}
       </div>
 
       {/* Brand Switcher — hidden for front desk */}
       {!isFrontDesk && (
-        <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(26,123,138,0.1)' }}>
-          <p className="px-2 mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>
+        <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <p className="px-2 mb-1 text-xs font-semibold uppercase tracking-widest text-white/25">
             Active Brand
           </p>
           <button
             onClick={() => setBrandOpen(!brandOpen)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all hover:bg-white/[0.08]"
             style={{ background: 'rgba(255,255,255,0.06)', color: '#fff' }}
           >
             <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: brand.color }} />
             <span className="flex-1 text-left truncate" style={{ fontFamily: 'var(--font-body)', fontSize: '0.8rem' }}>
               {brand.name}
             </span>
-            <ChevronDown size={12} className={cn('transition-transform flex-shrink-0', brandOpen && 'rotate-180')} style={{ color: 'rgba(255,255,255,0.4)' }} />
+            <ChevronDown size={12} className={cn('transition-transform flex-shrink-0 text-white/40', brandOpen && 'rotate-180')} />
           </button>
 
           {brandOpen && (
-            <div className="mt-1 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="mt-1 rounded-lg overflow-hidden border border-white/[0.08]">
               {brands.map((b) => (
                 <button
                   key={b.id}
@@ -191,7 +187,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
         {nav.map((group) => (
           <div key={group.label}>
-            <p className="px-2 mb-1.5 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>
+            <p className="px-2 mb-1.5 text-xs font-semibold uppercase tracking-widest text-white/25">
               {group.label}
             </p>
             <ul className="space-y-0.5">
@@ -201,12 +197,23 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
                   <li key={href}>
                     <Link
                       href={href}
-                      className={cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all', active ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-white/5')}
-                      style={active ? { background: 'rgba(26,123,138,0.2)', color: 'var(--bright-teal)' } : undefined}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                        active
+                          ? 'text-white'
+                          : 'text-white/50 hover:text-white hover:bg-white/[0.05]'
+                      )}
+                      style={active ? { background: 'rgba(237,104,35,0.15)', color: '#fff' } : undefined}
                     >
-                      <Icon size={16} className="flex-shrink-0" />
+                      <Icon
+                        size={16}
+                        className="flex-shrink-0"
+                        style={active ? { color: 'var(--gold)' } : undefined}
+                      />
                       <span style={{ fontFamily: 'var(--font-body)' }}>{label}</span>
-                      {active && <ChevronRight size={12} className="ml-auto" style={{ color: 'var(--teal)' }} />}
+                      {active && (
+                        <ChevronRight size={12} className="ml-auto" style={{ color: 'var(--gold)' }} />
+                      )}
                     </Link>
                   </li>
                 )
@@ -217,7 +224,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
       </nav>
 
       {/* Bottom */}
-      <div className="px-4 py-3 text-xs" style={{ borderTop: '1px solid rgba(26,123,138,0.15)', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-body)' }}>
+      <div className="px-4 py-3 text-xs" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-body)' }}>
         <span style={{ color: brand.color, fontWeight: 600 }}>{brand.shortName}</span>
         {' · '}Marketing Hub
         <br />

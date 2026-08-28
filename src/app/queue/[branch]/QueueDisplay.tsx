@@ -87,7 +87,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const [showComplaintQR, setShowComplaintQR] = useState(false)
 
   const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
-  const complaintQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(COMPLAINT_FORM_URL)}&color=1A7B8A&bgcolor=FFFFFF&margin=8`
+  const complaintQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(COMPLAINT_FORM_URL)}&color=2E5E5A&bgcolor=FFFFFF&margin=8`
 
   // ── Live clock (updates every second) ──────────────────────────────────────
   useEffect(() => {

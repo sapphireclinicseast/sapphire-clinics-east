@@ -47,7 +47,7 @@ export default function ReferralUploadPage() {
     else setStage('success')
   }
 
-  const teal = '#1A7B8A'
+  const teal = '#2E5E5A'
   const orange = '#F47427'
   const charcoal = '#1C2B30'
 

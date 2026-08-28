@@ -250,7 +250,7 @@ export default function ComposePage() {
                   onChange={(e) => setAiPrompt(e.target.value)}
                   placeholder="Describe what to write (e.g. 'Monday motivation for rehab patients')"
                   className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                  style={{ border: '1px solid rgba(26,123,138,0.3)', background: '#fff' }}
+                  style={{ border: '1px solid rgba(46,94,90,0.3)', background: '#fff' }}
                   onKeyDown={(e) => e.key === 'Enter' && generateCaption()}
                 />
                 <button

@@ -147,7 +147,7 @@ function CustomSlotModal({ staff, workDays, onClose, onSave }: {
     onClose()
   }
 
-  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.6rem', fontSize: '0.85rem', width: '100%', color: 'var(--charcoal)', outline: 'none' }
+  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(46,94,90,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.6rem', fontSize: '0.85rem', width: '100%', color: 'var(--charcoal)', outline: 'none' }
   const labelStyle: React.CSSProperties = { display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--mid-gray)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }
 
   return (
@@ -287,7 +287,7 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
     await onDeleteSlot(slot.id)
   }
 
-  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)' }
+  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(46,94,90,0.3)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)' }
 
   // Custom slots (non-hourly — those not matching hourly start times)
   const hourlyStartSet = new Set(timeSlots)
@@ -587,7 +587,7 @@ function SettingsTab({ initialData, onSave }: {
     setTimeout(() => setSaved(null), 2000)
   }
 
-  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)' }
+  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(46,94,90,0.3)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)' }
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
@@ -799,7 +799,7 @@ export default function DeckingClient({ role }: { role: string }) {
             )}
             {/* Name search */}
             <input
-              style={{ border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)', minWidth: '180px' }}
+              style={{ border: '1.5px solid rgba(46,94,90,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)', minWidth: '180px' }}
               placeholder="Filter by name…"
               value={nameFilter}
               onChange={e => setNameFilter(e.target.value)}

@@ -11,6 +11,7 @@ import {
   Activity,
 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import FrontDeskWelcome from './FrontDeskWelcome'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
@@ -65,6 +66,82 @@ async function getBirthdayPatients(branch: string): Promise<BirthdayPatient[]> {
     .sort((a, b) => new Date(a.birthday).getTime() - new Date(b.birthday).getTime())
 }
 
+// Department-specific follow-up intervals (mirrored from patient-relationship route)
+const DEPT_FOLLOWUP: Record<string, number> = { PSYCHOLOGY: 90, PT: 60, OT: 180, SLP: 180, SPED: 180 }
+
+async function getFollowUpNearingPatients(branchEnum: string) {
+  try {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const results: { id: string; firstName: string; lastName: string; department: string; dueIn: number }[] = []
+
+    for (const [dept, intervalDays] of Object.entries(DEPT_FOLLOWUP)) {
+      const schedules = await prisma.schedule.findMany({
+        where: {
+          staff: { department: dept },
+          patient: { OR: [{ branch: { equals: branchEnum as any } }, { branches: { has: branchEnum as any } }] },
+          patientId: { not: null },
+        },
+        include: { patient: true },
+        orderBy: { date: 'asc' },
+      })
+
+      const seen = new Set<string>()
+      for (const s of schedules) {
+        if (!s.patientId || !s.patient || seen.has(s.patientId)) continue
+        seen.add(s.patientId)
+        const refDate = (s.patient as any).doctorConsultDate ? new Date((s.patient as any).doctorConsultDate) : new Date(s.date)
+        const daysSince = Math.floor((today.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24))
+        const dueIn = intervalDays - daysSince
+        if (dueIn >= 0 && dueIn <= 30) {
+          results.push({ id: s.patient.id, firstName: s.patient.firstName, lastName: s.patient.lastName, department: dept, dueIn })
+        }
+      }
+    }
+    return results.sort((a, b) => a.dueIn - b.dueIn)
+  } catch { return [] }
+}
+
+async function getCancellationAlertPatients(branchEnum: string) {
+  try {
+    const patients = await prisma.$queryRawUnsafe<{ id: string; firstName: string; lastName: string; count: bigint }[]>(
+      `SELECT p.id, p."firstName", p."lastName",
+              (SELECT COUNT(*) FROM "CancellationLog" cl WHERE cl."patientId" = p.id AND cl."deletedAt" IS NULL AND cl."madeUp" = false) as count
+       FROM "Patient" p
+       WHERE (p.branch::text = $1 OR $1 = ANY(p."branches"::text[]))
+         AND (SELECT COUNT(*) FROM "CancellationLog" cl WHERE cl."patientId" = p.id AND cl."deletedAt" IS NULL AND cl."madeUp" = false) >= 10`,
+      branchEnum,
+    )
+    return patients.map(p => ({
+      id: p.id,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      count: Number(p.count),
+      status: Number(p.count) >= 12 ? 'due' as const : 'nearing' as const,
+    }))
+  } catch { return [] }
+}
+
+async function getNoShowAlertPatients(branchEnum: string) {
+  try {
+    const patients = await prisma.$queryRawUnsafe<{ id: string; firstName: string; lastName: string; count: bigint }[]>(
+      `SELECT p.id, p."firstName", p."lastName",
+              (SELECT COUNT(*) FROM "NoShowLog" ns WHERE ns."patientId" = p.id AND ns."deletedAt" IS NULL) as count
+       FROM "Patient" p
+       WHERE (p.branch::text = $1 OR $1 = ANY(p."branches"::text[]))
+         AND (SELECT COUNT(*) FROM "NoShowLog" ns WHERE ns."patientId" = p.id AND ns."deletedAt" IS NULL) >= 2`,
+      branchEnum,
+    )
+    return patients.map(p => ({
+      id: p.id,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      count: Number(p.count),
+      status: Number(p.count) >= 3 ? 'due' as const : 'nearing' as const,
+    }))
+  } catch { return [] }
+}
+
 async function getDashboardData() {
   const now = new Date()
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -114,9 +191,21 @@ export default async function DashboardPage() {
   const role = session?.user?.role
   if (role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK') {
     const branch = role === 'SBEA_FRONT_DESK' ? 'SBEA' : 'SBGH'
+    const branchEnum = BRANCH_ENUM[branch] ?? branch
     const firstName = session?.user?.name?.split(' ')[0]
-    const birthdayPatients = await getBirthdayPatients(branch)
-    return <FrontDeskWelcome name={firstName} branch={branch} birthdayPatients={birthdayPatients} />
+    const [birthdayPatients, followUpAlerts, cancellationAlerts, noShowAlerts] = await Promise.all([
+      getBirthdayPatients(branch),
+      getFollowUpNearingPatients(branchEnum),
+      getCancellationAlertPatients(branchEnum),
+      getNoShowAlertPatients(branchEnum),
+    ])
+    return <FrontDeskWelcome
+      name={firstName} branch={branch}
+      birthdayPatients={birthdayPatients}
+      followUpAlerts={followUpAlerts}
+      cancellationAlerts={cancellationAlerts}
+      noShowAlerts={noShowAlerts}
+    />
   }
 
   const data = await getDashboardData()
@@ -154,7 +243,7 @@ export default async function DashboardPage() {
       <div>
         <p
           className="text-xs font-semibold uppercase tracking-widest mb-1"
-          style={{ color: 'var(--teal)' }}
+          style={{ color: 'var(--gold)' }}
         >
           Overview
         </p>
@@ -172,11 +261,7 @@ export default async function DashboardPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map(({ label, value, icon: Icon, color }) => (
-          <div
-            key={label}
-            className="rounded-xl p-5"
-            style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
-          >
+          <Card key={label} className="p-5">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
                 {label}
@@ -194,7 +279,7 @@ export default async function DashboardPage() {
             >
               {value}
             </p>
-          </div>
+          </Card>
         ))}
       </div>
 
@@ -205,11 +290,7 @@ export default async function DashboardPage() {
           { label: 'Published', count: data.publishedCount, icon: Send, color: 'var(--gold)' },
           { label: 'Drafts', count: data.draftCount, icon: Cake, color: 'var(--mid-gray)' },
         ].map(({ label, count, icon: Icon, color }) => (
-          <div
-            key={label}
-            className="rounded-xl p-4 flex items-center gap-4"
-            style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
-          >
+          <Card key={label} className="p-4 flex items-center gap-4">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: `${color}18` }}
@@ -222,27 +303,19 @@ export default async function DashboardPage() {
               </p>
               <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{label}</p>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
 
       {/* Upcoming Posts */}
       <div className="grid lg:grid-cols-2 gap-4">
-        <div
-          className="rounded-xl p-5"
-          style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
-        >
+        <Card className="p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2
-              className="font-bold text-sm"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-            >
-              Upcoming Scheduled Posts
-            </h2>
+            <CardTitle>Upcoming Scheduled Posts</CardTitle>
             <a
               href="/social/scheduled"
-              className="text-xs font-semibold"
-              style={{ color: 'var(--teal)' }}
+              className="text-xs font-semibold transition-colors hover:opacity-80"
+              style={{ color: 'var(--gold)' }}
             >
               View all
             </a>
@@ -289,24 +362,16 @@ export default async function DashboardPage() {
               ))}
             </ul>
           )}
-        </div>
+        </Card>
 
         {/* Recently Published */}
-        <div
-          className="rounded-xl p-5"
-          style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
-        >
+        <Card className="p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2
-              className="font-bold text-sm"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-            >
-              Recently Published
-            </h2>
+            <CardTitle>Recently Published</CardTitle>
             <a
               href="/social/published"
-              className="text-xs font-semibold"
-              style={{ color: 'var(--teal)' }}
+              className="text-xs font-semibold transition-colors hover:opacity-80"
+              style={{ color: 'var(--gold)' }}
             >
               View all
             </a>
@@ -339,7 +404,7 @@ export default async function DashboardPage() {
               ))}
             </ul>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   )

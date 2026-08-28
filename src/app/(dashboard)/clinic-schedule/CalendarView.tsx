@@ -142,7 +142,7 @@ export default function CalendarView({ role }: { role: string }) {
   const todayDay = todayStr.startsWith(currentMonthPrefix) ? today.getDate() : null
 
   const selectStyle = {
-    border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff',
+    border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff',
     color: 'var(--charcoal)', borderRadius: '0.5rem',
     padding: '0.4rem 0.7rem', fontSize: '0.85rem',
   }
@@ -248,7 +248,7 @@ export default function CalendarView({ role }: { role: string }) {
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
           {/* Month header bar */}
           <div className="px-4 py-2.5 flex items-center justify-between"
-            style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(26,123,138,0.15)' }}>
+            style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(46,94,90,0.15)' }}>
             <p className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
               {MONTH_NAMES[month]} {year}
             </p>
@@ -286,7 +286,7 @@ export default function CalendarView({ role }: { role: string }) {
                     padding: '6px',
                     borderRight: (i + 1) % 7 !== 0 ? '1px solid var(--light-gray)' : 'none',
                     borderBottom: i < cells.length - 7 ? '1px solid var(--light-gray)' : 'none',
-                    background: isSelected ? 'rgba(26,123,138,0.05)' : undefined,
+                    background: isSelected ? 'rgba(46,94,90,0.05)' : undefined,
                   }}>
                   {day && (
                     <>
@@ -295,7 +295,7 @@ export default function CalendarView({ role }: { role: string }) {
                           style={isToday
                             ? { background: 'var(--teal)', color: '#fff' }
                             : isSelected
-                            ? { background: 'rgba(26,123,138,0.15)', color: 'var(--teal)' }
+                            ? { background: 'rgba(46,94,90,0.15)', color: 'var(--teal)' }
                             : { color: 'var(--charcoal)' }}>
                           {day}
                         </span>
@@ -331,7 +331,7 @@ export default function CalendarView({ role }: { role: string }) {
           {selectedDay && (
             <div style={{ borderTop: '2px solid var(--teal)' }}>
               <div className="px-4 py-2.5 flex items-center justify-between"
-                style={{ background: 'rgba(26,123,138,0.05)', borderBottom: '1px solid var(--light-gray)' }}>
+                style={{ background: 'rgba(46,94,90,0.05)', borderBottom: '1px solid var(--light-gray)' }}>
                 <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
                   {MONTH_NAMES[month]} {selectedDay}, {year}
                   <span className="ml-2 text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>

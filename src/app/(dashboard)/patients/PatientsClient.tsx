@@ -647,7 +647,7 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
           {!isFrontDesk && (
             <select value={importBranch} onChange={(e) => setImportBranch(e.target.value)}
               className="px-2 py-2 rounded-lg text-sm outline-none"
-              style={{ background: 'var(--pale-teal)', border: '1px solid rgba(26,123,138,0.3)', color: 'var(--teal)' }}>
+              style={{ background: 'var(--pale-teal)', border: '1px solid rgba(46,94,90,0.3)', color: 'var(--teal)' }}>
               {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
             </select>
           )}

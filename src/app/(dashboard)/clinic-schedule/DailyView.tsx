@@ -161,14 +161,14 @@ export default function DailyView({ role, selectedDate, onDateChange }: { role: 
   filtered = applySortFn(filtered, sortCol, sortDir)
 
   const selectStyle = {
-    border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff',
+    border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff',
     color: 'var(--charcoal)', borderRadius: '0.5rem',
     padding: '0.4rem 0.7rem', fontSize: '0.85rem',
   }
 
   const filterInputStyle: CSSProperties = {
     width: '100%', fontSize: '0.75rem', padding: '0.25rem 0.5rem',
-    border: '1px solid rgba(26,123,138,0.25)', borderRadius: '0.375rem',
+    border: '1px solid rgba(46,94,90,0.25)', borderRadius: '0.375rem',
     background: '#fff', color: 'var(--charcoal)', outline: 'none',
   }
 
@@ -187,7 +187,7 @@ export default function DailyView({ role, selectedDate, onDateChange }: { role: 
               value={selectedDate}
               onChange={e => onDateChange(e.target.value)}
               className="rounded-lg px-3 py-1.5 text-sm"
-              style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
+              style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}
             />
           </div>
 
@@ -275,7 +275,7 @@ export default function DailyView({ role, selectedDate, onDateChange }: { role: 
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
           {/* Summary bar */}
           <div className="px-4 py-2.5 flex items-center justify-between"
-            style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(26,123,138,0.15)' }}>
+            style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(46,94,90,0.15)' }}>
             <p className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
               {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
@@ -288,7 +288,7 @@ export default function DailyView({ role, selectedDate, onDateChange }: { role: 
           <table className="w-full text-sm">
             <thead>
               {/* Sortable header row */}
-              <tr style={{ background: 'var(--off-white)', borderBottom: '1px solid rgba(26,123,138,0.1)' }}>
+              <tr style={{ background: 'var(--off-white)', borderBottom: '1px solid rgba(46,94,90,0.1)' }}>
                 {COLUMNS.map(col => (
                   <th key={col.key}
                     className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer select-none"
@@ -372,7 +372,7 @@ export default function DailyView({ role, selectedDate, onDateChange }: { role: 
                           }}
                           onBlur={() => setEditingStatusId(null)}
                           className="text-xs rounded-lg px-2 py-1 cursor-pointer"
-                          style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}>
+                          style={{ border: '1.5px solid rgba(46,94,90,0.3)', background: '#fff', color: 'var(--charcoal)' }}>
                           {ALL_STATUSES.map(st => (
                             <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
                           ))}

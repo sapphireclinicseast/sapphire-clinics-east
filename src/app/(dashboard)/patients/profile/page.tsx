@@ -365,7 +365,7 @@ export default function PatientProfilePage() {
                     <span
                       key={c.id}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
-                      style={{ background: 'rgba(26,123,138,0.08)', color: 'var(--teal)', border: '1px solid rgba(26,123,138,0.2)' }}
+                      style={{ background: 'rgba(46,94,90,0.08)', color: 'var(--teal)', border: '1px solid rgba(46,94,90,0.2)' }}
                     >
                       {titleCase(c.name)}
                       <span className="text-gray-400">({deptLabel(c.department)})</span>

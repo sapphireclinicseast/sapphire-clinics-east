@@ -1,20 +1,50 @@
 @import "tailwindcss";
 
 :root {
-  --teal: #1A7B8A;
-  --deep-teal: #0D5B68;
-  --bright-teal: #2AAABB;
-  --pale-teal: #E4F3F5;
-  --gold: #C9A227;
-  --gold-light: #F0D582;
-  --charcoal: #1C2B30;
-  --near-black: #0A1012;
-  --off-white: #F7FAFB;
-  --light-gray: #E8EDEF;
-  --mid-gray: #9AABB0;
+  /* ── Primary palette ── */
+  --teal: #2E5E5A;
+  --deep-teal: #1E3E3A;
+  --bright-teal: #6B9E8F;
+  --pale-teal: #E8F0EE;
+  --mid-teal: #829995;
 
-  --font-display: var(--font-montserrat), 'Futura', 'Century Gothic', sans-serif;
-  --font-body: var(--font-open-sans), 'Gill Sans', sans-serif;
+  /* ── Secondary / accent ── */
+  --gold: #ED6823;
+  --gold-light: #FFA235;
+
+  /* ── Neutrals ── */
+  --charcoal: #1C2B30;
+  --near-black: #0F1A1D;
+  --off-white: #F7FAF9;
+  --light-gray: #E5EBE9;
+  --mid-gray: #829995;
+
+  /* ── Typography ── */
+  --font-display: var(--font-comfortaa), 'Century Gothic', sans-serif;
+  --font-serif: var(--font-cormorant), 'Georgia', serif;
+  --font-body: var(--font-dm-sans), 'Gill Sans', sans-serif;
+
+  /* ── shadcn/ui theme (mapped to brand colors) ── */
+  --radius: 0.625rem;
+  --background: #F7FAF9;
+  --foreground: #1C2B30;
+  --card: #ffffff;
+  --card-foreground: #1C2B30;
+  --popover: #ffffff;
+  --popover-foreground: #1C2B30;
+  --primary: #ED6823;
+  --primary-foreground: #ffffff;
+  --secondary: #2E5E5A;
+  --secondary-foreground: #ffffff;
+  --muted: #E8F0EE;
+  --muted-foreground: #829995;
+  --accent: #FFA235;
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #E5EBE9;
+  --input: #E5EBE9;
+  --ring: #ED6823;
 }
 
 * {

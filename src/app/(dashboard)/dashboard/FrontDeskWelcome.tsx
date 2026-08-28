@@ -387,14 +387,24 @@ function AlpacaSVG() {
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
+type FollowUpAlert = { id: string; firstName: string; lastName: string; department: string; dueIn: number }
+type CancellationAlert = { id: string; firstName: string; lastName: string; count: number; status: 'due' | 'nearing' }
+type NoShowAlert = { id: string; firstName: string; lastName: string; count: number; status: 'due' | 'nearing' }
+
 export default function FrontDeskWelcome({
   name,
   branch,
   birthdayPatients = [],
+  followUpAlerts = [],
+  cancellationAlerts = [],
+  noShowAlerts = [],
 }: {
   name?: string
   branch?: string
   birthdayPatients?: BirthdayPatient[]
+  followUpAlerts?: FollowUpAlert[]
+  cancellationAlerts?: CancellationAlert[]
+  noShowAlerts?: NoShowAlert[]
 }) {
   const [quote, setQuote] = useState<{ text: string; author: string } | null>(null)
   const [smsState, setSmsState] = useState<Record<string, SmsState>>({})
@@ -420,7 +430,7 @@ export default function FrontDeskWelcome({
         width: '100%',
         minHeight: 'calc(100vh - 60px)',
         overflowX: 'hidden',
-        background: 'linear-gradient(155deg, #FFFAF4 0%, #FFF5E8 55%, #FFFCF6 100%)',
+        background: 'linear-gradient(155deg, #F7FAF9 0%, #E8F0EE 55%, #F5F9F8 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -443,7 +453,7 @@ export default function FrontDeskWelcome({
       <div style={{ textAlign: 'center', maxWidth: '560px', padding: '0 2rem' }}>
         <p style={{
           fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.18em',
-          textTransform: 'uppercase', color: '#ED6823', marginBottom: '0.4rem',
+          textTransform: 'uppercase', color: '#2E5E5A', marginBottom: '0.4rem',
         }}>
           Welcome back
         </p>
@@ -453,25 +463,25 @@ export default function FrontDeskWelcome({
           fontFamily: 'var(--font-display, system-ui)',
         }}>
           Good {getGreeting()},{' '}
-          <span style={{ color: '#ED6823' }}>{name ?? 'there'}</span>! 👋
+          <span style={{ color: '#2E5E5A' }}>{name ?? 'there'}</span>! 👋
         </h1>
 
         {/* Daily quote — renders only after JS sets day-of-year */}
         {quote && (
           <div style={{
-            background: 'rgba(237,104,35,0.07)',
-            border: '1px solid rgba(237,104,35,0.18)',
+            background: 'rgba(46,94,90,0.06)',
+            border: '1px solid rgba(46,94,90,0.15)',
             borderRadius: '0.875rem',
             padding: '1rem 1.4rem',
           }}>
             <p style={{
               fontSize: '1rem', fontWeight: 500, lineHeight: 1.7,
-              color: '#4A3018', fontStyle: 'italic', margin: 0,
+              color: '#2E3D3B', fontStyle: 'italic', margin: 0,
             }}>
               &ldquo;{quote.text}&rdquo;
             </p>
             <p style={{
-              fontSize: '0.78rem', fontWeight: 600, color: '#ED6823',
+              fontSize: '0.78rem', fontWeight: 600, color: '#2E5E5A',
               marginTop: '0.5rem', marginBottom: 0,
             }}>
               — {quote.author}
@@ -484,13 +494,13 @@ export default function FrontDeskWelcome({
       {branchLabel && (
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
-          background: '#ED6823', color: '#fff',
+          background: '#2E5E5A', color: '#fff',
           fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em',
           padding: '0.3rem 1rem', borderRadius: '99px',
         }}>
           <span style={{
             width: 6, height: 6, borderRadius: '50%',
-            background: '#FFDE59', display: 'inline-block', flexShrink: 0,
+            background: '#6B9E8F', display: 'inline-block', flexShrink: 0,
           }} />
           {branchLabel}
         </div>
@@ -500,7 +510,7 @@ export default function FrontDeskWelcome({
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', padding: '0 1.5rem' }}>
         {HINTS.map(c => (
           <div key={c.label} style={{
-            background: '#fff', border: '1px solid #EDE5D8',
+            background: '#fff', border: '1px solid #D9E5E2',
             borderRadius: '0.875rem', padding: '0.9rem 1.25rem',
             textAlign: 'center', minWidth: '130px',
             boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
@@ -512,18 +522,21 @@ export default function FrontDeskWelcome({
         ))}
       </div>
 
-      {/* ── Birthday Reminder ── */}
-      <div style={{ width: '100%', maxWidth: '560px', padding: '0 1.5rem' }}>
+      {/* ── Two-column layout: Birthday (left) + Notification Widgets (right) ── */}
+      <div style={{ width: '100%', maxWidth: '1100px', padding: '0 1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'center' }}>
+
+      {/* ── Birthday Reminder (left column) ── */}
+      <div style={{ flex: '1 1 480px', maxWidth: '560px', minWidth: '320px' }}>
         <div style={{
           background: '#fff',
-          border: '1px solid #EDE5D8',
+          border: '1px solid #D9E5E2',
           borderRadius: '0.875rem',
           overflow: 'hidden',
           boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
         }}>
           {/* Header */}
           <div style={{
-            background: 'linear-gradient(135deg, #ED6823, #F5A030)',
+            background: 'linear-gradient(135deg, #2E5E5A, #6B9E8F)',
             padding: '0.7rem 1.1rem',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
@@ -633,8 +646,8 @@ export default function FrontDeskWelcome({
                 return (
                   <div key={p.id} style={{
                     display: 'flex', alignItems: 'center', gap: '0.65rem',
-                    background: isToday ? '#FFF7F0' : '#FAFAFA',
-                    border: `1px solid ${isToday ? '#F5B48A' : '#EDE5D8'}`,
+                    background: isToday ? '#EFF7F5' : '#FAFAFA',
+                    border: `1px solid ${isToday ? '#A7D5C8' : '#D9E5E2'}`,
                     borderRadius: '0.6rem',
                     padding: '0.55rem 0.8rem',
                   }}>
@@ -642,7 +655,7 @@ export default function FrontDeskWelcome({
                       <p style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1A1A1A', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {p.firstName} {p.lastName}
                       </p>
-                      <p style={{ fontSize: '0.67rem', color: isToday ? '#ED6823' : '#999', margin: 0, fontWeight: isToday ? 600 : 400 }}>
+                      <p style={{ fontSize: '0.67rem', color: isToday ? '#2E5E5A' : '#999', margin: 0, fontWeight: isToday ? 600 : 400 }}>
                         {dayLabel}
                       </p>
                     </div>
@@ -657,8 +670,8 @@ export default function FrontDeskWelcome({
                       }
                       style={{
                         background: (alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#fff',
-                        color: (alreadySent || email === 'sent') ? '#fff' : email === 'error' ? '#fff' : '#ED6823',
-                        border: `1px solid ${(alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#ED6823'}`,
+                        color: (alreadySent || email === 'sent') ? '#fff' : email === 'error' ? '#fff' : '#2E5E5A',
+                        border: `1px solid ${(alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#2E5E5A'}`,
                         borderRadius: '0.4rem',
                         padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
                         cursor: email === 'sending' ? 'wait' : 'pointer',
@@ -682,7 +695,7 @@ export default function FrontDeskWelcome({
                           background:
                             (alreadySentSms || sms === 'sent') ? '#22C55E'
                             : sms === 'error' ? '#EF4444'
-                            : '#ED6823',
+                            : '#2E5E5A',
                           color: '#fff', border: 'none', borderRadius: '0.4rem',
                           padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
                           cursor: (sms === 'sending' || sms === 'sent' || alreadySentSms) ? 'default' : 'pointer',
@@ -706,7 +719,7 @@ export default function FrontDeskWelcome({
           {/* Text prompt hint */}
           {birthdayPatients.length > 0 && (
             <div style={{
-              borderTop: '1px solid #F0E8DC',
+              borderTop: '1px solid #D9E5E2',
               padding: '0.5rem 0.875rem',
               fontSize: '0.65rem', color: '#AAA', fontStyle: 'italic',
             }}>
@@ -715,6 +728,133 @@ export default function FrontDeskWelcome({
           )}
         </div>
       </div>
+
+      {/* ── Notification Widgets (right column) ── */}
+      <div style={{ flex: '1 1 320px', maxWidth: '460px', minWidth: '280px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+        {/* Follow-Up Nearing */}
+        {followUpAlerts.length > 0 && (
+          <a href="/patient-relationship" style={{ textDecoration: 'none' }}>
+            <div style={{ background: '#fff', border: '1px solid #BFDBFE', borderRadius: '0.875rem', overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
+              <div style={{ background: 'linear-gradient(135deg, #3B82F6, #60A5FA)', padding: '0.55rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.85rem' }}>&#128197;</span>
+                <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.72rem', margin: 0, letterSpacing: '0.04em' }}>Follow-Up Nearing</p>
+                <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.25)', color: '#fff', borderRadius: 99, padding: '0.1rem 0.5rem', fontSize: '0.65rem', fontWeight: 700 }}>
+                  {followUpAlerts.length}
+                </span>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {followUpAlerts.slice(0, 5).map(p => (
+                  <div key={p.id + p.department} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0.35rem', borderRadius: 8, background: p.dueIn <= 7 ? '#EFF6FF' : undefined }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF' }}>{p.lastName}, {p.firstName}</span>
+                    <span style={{ fontSize: '0.65rem', color: '#6B7280' }}>{p.department} &middot; {p.dueIn} day{p.dueIn !== 1 ? 's' : ''} left</span>
+                  </div>
+                ))}
+                {followUpAlerts.length > 5 && (
+                  <p style={{ fontSize: '0.63rem', color: '#9ca3af', textAlign: 'center', margin: 0, paddingTop: '0.15rem' }}>+{followUpAlerts.length - 5} more</p>
+                )}
+              </div>
+            </div>
+          </a>
+        )}
+
+        {/* Cancellation Slot Removal */}
+        {cancellationAlerts.length > 0 && (() => {
+          const due = cancellationAlerts.filter(p => p.status === 'due')
+          const nearing = cancellationAlerts.filter(p => p.status === 'nearing')
+          return (
+          <a href="/patient-relationship" style={{ textDecoration: 'none' }}>
+            <div style={{ background: '#fff', border: '1px solid #FDE68A', borderRadius: '0.875rem', overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
+              <div style={{ background: 'linear-gradient(135deg, #F59E0B, #F97316)', padding: '0.55rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.85rem' }}>&#9888;&#65039;</span>
+                <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.72rem', margin: 0, letterSpacing: '0.04em' }}>Cancellations — Slot Removal</p>
+                <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.25)', color: '#fff', borderRadius: 99, padding: '0.1rem 0.5rem', fontSize: '0.65rem', fontWeight: 700 }}>
+                  {cancellationAlerts.length}
+                </span>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {/* Due for removal (12+) */}
+                {due.length > 0 && (
+                  <p style={{ fontSize: '0.6rem', fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0.15rem 0 0.05rem 0.35rem' }}>For Removal</p>
+                )}
+                {due.slice(0, 5).map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0.35rem', borderRadius: 8, background: '#FEF2F2' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#92400E' }}>{p.lastName}, {p.firstName}</span>
+                    <span style={{ fontSize: '0.62rem', color: '#fff', fontWeight: 700, background: '#DC2626', borderRadius: 99, padding: '0.1rem 0.45rem' }}>{p.count}/12</span>
+                  </div>
+                ))}
+                {due.length > 5 && (
+                  <p style={{ fontSize: '0.63rem', color: '#9ca3af', textAlign: 'center', margin: 0 }}>+{due.length - 5} more</p>
+                )}
+                {/* Nearing removal (10-11) */}
+                {nearing.length > 0 && (
+                  <p style={{ fontSize: '0.6rem', fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0.25rem 0 0.05rem 0.35rem' }}>Nearing Removal</p>
+                )}
+                {nearing.slice(0, 5).map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0.35rem', borderRadius: 8, background: '#FFFBEB' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#92400E' }}>{p.lastName}, {p.firstName}</span>
+                    <span style={{ fontSize: '0.62rem', color: '#fff', fontWeight: 700, background: '#D97706', borderRadius: 99, padding: '0.1rem 0.45rem' }}>{p.count}/12</span>
+                  </div>
+                ))}
+                {nearing.length > 5 && (
+                  <p style={{ fontSize: '0.63rem', color: '#9ca3af', textAlign: 'center', margin: 0 }}>+{nearing.length - 5} more</p>
+                )}
+              </div>
+            </div>
+          </a>
+          )
+        })()}
+
+        {/* No Show Slot Removal */}
+        {noShowAlerts.length > 0 && (() => {
+          const due = noShowAlerts.filter(p => p.status === 'due')
+          const nearing = noShowAlerts.filter(p => p.status === 'nearing')
+          return (
+          <a href="/patient-relationship" style={{ textDecoration: 'none' }}>
+            <div style={{ background: '#fff', border: '1px solid #FECACA', borderRadius: '0.875rem', overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.05)' }}>
+              <div style={{ background: 'linear-gradient(135deg, #DC2626, #EF4444)', padding: '0.55rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.85rem' }}>&#128683;</span>
+                <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.72rem', margin: 0, letterSpacing: '0.04em' }}>No Show — Slot Removal</p>
+                <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.25)', color: '#fff', borderRadius: 99, padding: '0.1rem 0.5rem', fontSize: '0.65rem', fontWeight: 700 }}>
+                  {noShowAlerts.length}
+                </span>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {/* Due for removal (3+) */}
+                {due.length > 0 && (
+                  <p style={{ fontSize: '0.6rem', fontWeight: 700, color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0.15rem 0 0.05rem 0.35rem' }}>For Removal</p>
+                )}
+                {due.slice(0, 5).map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0.35rem', borderRadius: 8, background: '#FEF2F2' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#991B1B' }}>{p.lastName}, {p.firstName}</span>
+                    <span style={{ fontSize: '0.62rem', color: '#fff', fontWeight: 700, background: '#DC2626', borderRadius: 99, padding: '0.1rem 0.45rem' }}>{p.count}/3</span>
+                  </div>
+                ))}
+                {due.length > 5 && (
+                  <p style={{ fontSize: '0.63rem', color: '#9ca3af', textAlign: 'center', margin: 0 }}>+{due.length - 5} more</p>
+                )}
+                {/* Nearing removal (2/3) */}
+                {nearing.length > 0 && (
+                  <p style={{ fontSize: '0.6rem', fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0.25rem 0 0.05rem 0.35rem' }}>Nearing Removal</p>
+                )}
+                {nearing.slice(0, 5).map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.25rem 0.35rem', borderRadius: 8, background: '#FFFBEB' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#991B1B' }}>{p.lastName}, {p.firstName}</span>
+                    <span style={{ fontSize: '0.62rem', color: '#fff', fontWeight: 700, background: '#D97706', borderRadius: 99, padding: '0.1rem 0.45rem' }}>{p.count}/3</span>
+                  </div>
+                ))}
+                {nearing.length > 5 && (
+                  <p style={{ fontSize: '0.63rem', color: '#9ca3af', textAlign: 'center', margin: 0 }}>+{nearing.length - 5} more</p>
+                )}
+              </div>
+            </div>
+          </a>
+          )
+        })()}
+
+      </div>
+
+      </div>{/* end two-column layout */}
 
       {/* Spacer — ensures content sits above the alpaca row */}
       <div style={{ height: '330px', flexShrink: 0 }} />
@@ -728,7 +868,7 @@ export default function FrontDeskWelcome({
           left: '50%',
           transform: 'translateX(-50%)',
           background: '#fff',
-          border: '2px solid #ED6823',
+          border: '2px solid #2E5E5A',
           borderRadius: '0.875rem',
           padding: '0.55rem 1.1rem',
           fontSize: '0.72rem',
@@ -752,7 +892,7 @@ export default function FrontDeskWelcome({
           width: 0, height: 0,
           borderLeft: '10px solid transparent',
           borderRight: '10px solid transparent',
-          borderTop: '14px solid #ED6823',
+          borderTop: '14px solid #2E5E5A',
         }} />
         {/* bubble tail inner */}
         <span style={{
@@ -785,7 +925,7 @@ export default function FrontDeskWelcome({
         {/* Ground line */}
         <div style={{
           position: 'absolute', bottom: '6px', left: 0, right: 0, height: '2px',
-          background: 'linear-gradient(90deg, transparent, rgba(237,104,35,0.15) 20%, rgba(237,104,35,0.15) 80%, transparent)',
+          background: 'linear-gradient(90deg, transparent, rgba(46,94,90,0.15) 20%, rgba(46,94,90,0.15) 80%, transparent)',
         }} />
 
         {/* X movement → flip direction → behavior (bob / jump / hide) */}

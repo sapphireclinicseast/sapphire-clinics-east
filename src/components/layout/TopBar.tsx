@@ -2,6 +2,9 @@
 
 import { signOut } from 'next-auth/react'
 import { LogOut, Bell, User, Menu } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Separator } from '@/components/ui/separator'
 import type { Session } from 'next-auth'
 
 interface TopBarProps {
@@ -12,41 +15,40 @@ interface TopBarProps {
 export default function TopBar({ user, onMenuClick }: TopBarProps) {
   return (
     <header
-      className="flex items-center justify-between px-4 md:px-6 py-3 flex-shrink-0"
-      style={{
-        background: '#fff',
-        borderBottom: '1px solid var(--light-gray)',
-        height: '60px',
-      }}
+      className="flex items-center justify-between px-4 md:px-6 py-3 flex-shrink-0 bg-white"
+      style={{ borderBottom: '1px solid var(--border)', height: '60px' }}
     >
       {/* Hamburger — mobile only */}
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={onMenuClick}
-        className="md:hidden p-2 rounded-lg transition-colors hover:bg-gray-100"
-        style={{ color: 'var(--mid-gray)' }}
+        className="md:hidden text-[var(--muted-foreground)]"
       >
         <Menu size={20} />
-      </button>
+      </Button>
       <div className="hidden md:block" />
 
-      <div className="flex items-center gap-3">
-        {/* Notification bell placeholder */}
-        <button
-          className="p-2 rounded-lg transition-colors hover:bg-gray-100"
-          style={{ color: 'var(--mid-gray)' }}
+      <div className="flex items-center gap-2">
+        {/* Notification bell */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
           title="Notifications"
         >
           <Bell size={18} />
-        </button>
+        </Button>
+
+        <Separator orientation="vertical" className="h-6 mx-1" />
 
         {/* User menu */}
         <div className="flex items-center gap-2.5">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
-            style={{ background: 'var(--teal)' }}
-          >
-            {user?.name?.[0]?.toUpperCase() ?? <User size={14} />}
-          </div>
+          <Avatar>
+            <AvatarFallback>
+              {user?.name?.[0]?.toUpperCase() ?? <User size={14} />}
+            </AvatarFallback>
+          </Avatar>
           <div className="hidden sm:block">
             <p
               className="text-sm font-semibold leading-tight"
@@ -54,21 +56,22 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
             >
               {user?.name}
             </p>
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            <p className="text-xs text-[var(--muted-foreground)]">
               {(user as { role?: string })?.role ?? 'Staff'}
             </p>
           </div>
         </div>
 
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => signOut({ callbackUrl: '/login' })}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:bg-red-50"
-          style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-body)' }}
+          className="text-[var(--muted-foreground)] hover:text-red-600 hover:bg-red-50 gap-1.5"
           title="Sign out"
         >
           <LogOut size={14} />
           <span className="hidden sm:inline">Sign out</span>
-        </button>
+        </Button>
       </div>
     </header>
   )

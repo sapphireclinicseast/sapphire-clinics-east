@@ -35,8 +35,8 @@ const BRANCH_LABELS: Record<string, string> = {
 }
 
 const BRANCH_COLORS: Record<string, string> = {
-  SANDBOX_EAST:       '#1A7B8A',
-  SANDBOX_GREENHILLS: '#2AAABB',
+  SANDBOX_EAST:       '#2E5E5A',
+  SANDBOX_GREENHILLS: '#6B9E8F',
   VERDANA_STORE:      '#52B788',
   UNASSIGNED:         '#9CA3AF',
 }
@@ -446,7 +446,7 @@ export default function PatientDashboardPage() {
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Bar dataKey="female" name="Female" fill="#E91E8C" stackId="a" radius={[0, 3, 3, 0]} />
-              <Bar dataKey="male"   name="Male"   fill="#1A7B8A" stackId="a" radius={[0, 3, 3, 0]} />
+              <Bar dataKey="male"   name="Male"   fill="#2E5E5A" stackId="a" radius={[0, 3, 3, 0]} />
               <Bar dataKey="other"  name="Other"  fill="#9CA3AF" stackId="a" radius={[0, 3, 3, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -481,7 +481,7 @@ export default function PatientDashboardPage() {
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="female" name="Female" fill="#E91E8C" stackId="a" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="male"   name="Male"   fill="#1A7B8A" stackId="a" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="male"   name="Male"   fill="#2E5E5A" stackId="a" radius={[0, 0, 0, 0]} />
                 <Bar dataKey="other"  name="Other"  fill="#9CA3AF" stackId="a" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>

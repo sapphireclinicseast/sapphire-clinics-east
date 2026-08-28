@@ -14,7 +14,7 @@ const PLATFORM_COLORS: Record<string, string> = {
 }
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  SCHEDULED: { bg: '#E4F3F5', text: '#1A7B8A', label: 'Scheduled' },
+  SCHEDULED: { bg: '#E8F0EE', text: '#2E5E5A', label: 'Scheduled' },
   PUBLISHED: { bg: '#D1FAE5', text: '#065F46', label: 'Published' },
   DRAFT: { bg: '#F3F4F6', text: '#6B7280', label: 'Draft' },
   FAILED: { bg: '#FEE2E2', text: '#DC2626', label: 'Failed' },

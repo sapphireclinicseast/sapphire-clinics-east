@@ -122,8 +122,8 @@ export default function PatientMap({ cities, locations }: PatientMapProps) {
             : `<b>${loc.city}</b>`
 
           L.circle(coords, {
-            color: isBarangay ? '#1A7B8A' : '#2AAABB',
-            fillColor: isBarangay ? '#2AAABB' : '#4FC3D4',
+            color: isBarangay ? '#2E5E5A' : '#6B9E8F',
+            fillColor: isBarangay ? '#6B9E8F' : '#4FC3D4',
             fillOpacity: isBarangay ? 0.55 : 0.30,
             weight: isBarangay ? 1.5 : 1,
             radius,
@@ -138,8 +138,8 @@ export default function PatientMap({ cities, locations }: PatientMapProps) {
           if (!coords) continue
           const radius = 400 + (city.count / maxCount) * 2600
           L.circle(coords, {
-            color: '#1A7B8A',
-            fillColor: '#2AAABB',
+            color: '#2E5E5A',
+            fillColor: '#6B9E8F',
             fillOpacity: 0.45,
             weight: 1.5,
             radius,
@@ -151,7 +151,7 @@ export default function PatientMap({ cities, locations }: PatientMapProps) {
 
       const clinicIcon = L.divIcon({
         className: '',
-        html: `<div style="width:18px;height:18px;border-radius:50%;background:#C9A227;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);"></div>`,
+        html: `<div style="width:18px;height:18px;border-radius:50%;background:#ED6823;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);"></div>`,
         iconSize: [18, 18],
         iconAnchor: [9, 9],
       })

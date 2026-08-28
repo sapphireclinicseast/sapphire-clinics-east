@@ -187,8 +187,8 @@ export default function BirthdayTemplatePage() {
             </label>
             <div className="flex gap-2 flex-wrap">
               {[
-                { id: 'east', label: 'East Branch', color: '#1A7B8A' },
-                { id: 'greenhills', label: 'Greenhills Branch', color: '#1A7B8A' },
+                { id: 'east', label: 'East Branch', color: '#2E5E5A' },
+                { id: 'greenhills', label: 'Greenhills Branch', color: '#2E5E5A' },
                 { id: 'verdana', label: 'Verdana Store', color: '#2D6A4F' },
               ].map((b) => (
                 <button
@@ -421,7 +421,7 @@ export default function BirthdayTemplatePage() {
           </div>
           {noCard && caption ? (
             <div className="p-6">
-              <div className="rounded-xl p-5" style={{ background: 'var(--pale-teal)', border: '1px solid rgba(26,123,138,0.2)' }}>
+              <div className="rounded-xl p-5" style={{ background: 'var(--pale-teal)', border: '1px solid rgba(46,94,90,0.2)' }}>
                 <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--teal)' }}>
                   Text-Only Post Preview
                 </p>

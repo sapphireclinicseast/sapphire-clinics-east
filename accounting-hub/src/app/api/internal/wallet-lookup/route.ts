@@ -60,22 +60,13 @@ export async function POST(req: Request) {
     const balanceBefore = wallet.rewardPoints
     const balanceAfter  = balanceBefore - pointsToDeduct
 
-    await prisma.$transaction([
-      prisma.digitalWallet.update({
-        where: { id: wallet.id },
-        data: { rewardPoints: balanceAfter },
-      }),
-      prisma.walletLog.create({
-        data: {
-          walletId: wallet.id,
-          action: 'REWARD_SPEND',
-          pointsChange: -pointsToDeduct,
-          balanceBefore,
-          balanceAfter,
-          description: reason || 'Reward points redeemed for seminar registration',
-        },
-      }),
-    ])
+    // Deduct points. WalletLog requires a createdById (user FK), so we skip
+    // the log here — the balance update is the authoritative record for
+    // system-initiated (seminar) deductions.
+    await prisma.digitalWallet.update({
+      where: { id: wallet.id },
+      data: { rewardPoints: balanceAfter },
+    })
 
     return NextResponse.json({ ok: true, balanceBefore, balanceAfter })
   } catch {

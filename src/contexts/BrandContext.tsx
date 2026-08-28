@@ -8,8 +8,8 @@ export const BRANDS = [
     name: 'Sapphire Clinics East',
     shortName: 'SAPPHIRE',
     tagline: 'Your Health, Our Priority.',
-    color: '#1A7B8A',
-    lightBg: '#E4F3F5',
+    color: '#2E5E5A',
+    lightBg: '#E8F0EE',
   },
   {
     id: 'sandbox-clinic',

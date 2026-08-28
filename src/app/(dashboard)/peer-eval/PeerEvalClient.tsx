@@ -593,7 +593,7 @@ function FrontDeskPendingView({ role }: { role: string }) {
               </div>
               <div style={{ padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(staffUrl)}&color=1A7B8A`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(staffUrl)}&color=2E5E5A`}
                   alt={`QR code for ${fullName(qrStaff)}`}
                   width={220} height={220}
                   style={{ borderRadius: 10, border: '1px solid #e5e7eb', display: 'block' }}

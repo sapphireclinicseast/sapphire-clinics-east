@@ -19,6 +19,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search')?.trim()
   const branch = searchParams.get('branch')?.toUpperCase()
+  // includeHR=true signals a full-sync request (no result cap) rather than a search-autocomplete call
+  const isFullSync = searchParams.get('includeHR') === 'true'
 
   try {
     const staff = await prisma.staff.findMany({
@@ -40,9 +42,14 @@ export async function GET(req: NextRequest) {
         department: true,
         branch: true,
         jobTitle: true,
+        employmentType: true,
+        email: true,
+        phone: true,
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-      take: search ? 20 : 100,
+      // Full-sync calls (includeHR=true) get all records with no cap.
+      // Autocomplete searches are capped at 20.
+      ...(isFullSync ? {} : { take: search ? 20 : 100 }),
     })
 
     return NextResponse.json({ staff })

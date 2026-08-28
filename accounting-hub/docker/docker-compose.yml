@@ -1,4 +1,4 @@
-name: accounting
+name: accounting-mirror
 
 services:
   postgres:
