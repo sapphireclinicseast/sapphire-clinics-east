@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         dayOfWeek,
         startTime: String(b.startTime ?? '09:00'),
         endTime: String(b.endTime ?? '17:00'),
-        capacity: Number(b.capacity ?? 6),
+        slotMinutes: Number(b.slotMinutes ?? 120),
         notes: (String(b.notes ?? '').trim()) || null,
       },
     })
@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest) {
   const data: Record<string, unknown> = {}
   if (typeof b.startTime === 'string') data.startTime = b.startTime
   if (typeof b.endTime === 'string') data.endTime = b.endTime
-  if (b.capacity != null) data.capacity = Number(b.capacity)
+  if (b.slotMinutes != null) data.slotMinutes = Number(b.slotMinutes)
   if (typeof b.disabled === 'boolean') data.disabled = b.disabled
   if ('notes' in b) data.notes = (String(b.notes ?? '').trim()) || null
   const day = await prisma.homecareOpenDay.update({ where: { id }, data })

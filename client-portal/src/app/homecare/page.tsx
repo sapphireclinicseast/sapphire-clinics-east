@@ -15,7 +15,15 @@ const PROXY = '/api/booking-proxy/homecare'
 type Short = 'SBEA' | 'SBGH'
 interface City { id: string; name: string; province: string | null; branches: Short[]; nextDate: string | null }
 // An expanded upcoming occurrence of a weekly rule (openDayId) on a concrete date.
-interface OpenDay { openDayId: string; cityId: string; branch: Short; dayOfWeek: number; date: string; startTime: string; endTime: string; capacity: number; remaining: number }
+interface OpenDay { openDayId: string; cityId: string; branch: Short; dayOfWeek: number; date: string; startTime: string; endTime: string; slotMinutes: number; times: string[] }
+
+// "13:00" → "1:00 PM"
+function fmtTime(t: string): string {
+  const [h, m] = t.split(':').map(Number)
+  const ap = h < 12 ? 'AM' : 'PM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${ap}`
+}
 interface Fare {
   ok: boolean
   method: string
@@ -60,6 +68,7 @@ export default function HomecarePage() {
   const [branch, setBranch] = useState<Short | null>(null)
   const [openDays, setOpenDays] = useState<OpenDay[] | null>(null)
   const [day, setDay] = useState<OpenDay | null>(null)
+  const [time, setTime] = useState<string | null>(null)
 
   // patient + account form
   const [f, setF] = useState({
@@ -92,6 +101,7 @@ export default function HomecarePage() {
   async function chooseBranch(b: Short, cityId: string) {
     setBranch(b)
     setDay(null)
+    setTime(null)
     setOpenDays(null)
     setStep('date')
     try {
@@ -108,6 +118,7 @@ export default function HomecarePage() {
     setCity(c)
     setBranch(null)
     setDay(null)
+    setTime(null)
     if (c.branches.length === 1) {
       // Only one serving branch — skip the branch step.
       chooseBranch(c.branches[0], c.id)
@@ -128,6 +139,7 @@ export default function HomecarePage() {
     if (f.password.length < 8) { setErr('Password must be at least 8 characters.'); return }
     if (f.password !== f.confirm) { setErr('Passwords do not match.'); return }
     if (!referralFile) { setErr("A Doctor's Referral upload is required for homecare."); return }
+    if (!day || !time) { setErr('Please pick a day and time.'); return }
 
     setBusy(true)
     try {
@@ -156,7 +168,7 @@ export default function HomecarePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cityId: city!.id, openDayId: day!.openDayId, date: day!.date, branch,
+          cityId: city!.id, openDayId: day!.openDayId, date: day!.date, time, branch,
           firstName: f.firstName, lastName: f.lastName, email: f.email, phone: f.phone,
           dob: f.dob, sex: f.sex, patientType: f.patientType,
           address: f.address, city: f.city || city!.name,
@@ -251,24 +263,47 @@ export default function HomecarePage() {
           </div>
         )}
 
-        {/* ── STEP: date ───────────────────────────────────────────────── */}
+        {/* ── STEP: date → time ────────────────────────────────────────── */}
         {step === 'date' && (
           <div>
-            <button onClick={() => setStep(city && city.branches.length > 1 ? 'branch' : 'city')} className="mb-3 text-[12px] text-[color:var(--moss)] hover:underline">← Back</button>
-            <div className="label">Pick a travel date {branch ? `(${branchLabel(branch)})` : ''}</div>
-            <p className="mb-3 text-[12px] text-[color:var(--mid-gray)]">We batch all visits in a city onto the same day, so choose from the open dates below.</p>
-            {!openDays && <p className="text-sm text-[color:var(--mid-gray)]">Loading dates…</p>}
-            {openDays && openDays.length === 0 && <p className="text-sm text-[color:var(--mid-gray)]">No open dates for this branch yet. Try the other branch or check back soon.</p>}
-            <div className="grid gap-2 sm:grid-cols-2">
-              {openDays?.map((d) => (
-                <button key={`${d.openDayId}-${d.date}`} onClick={() => { setDay(d); setF((s) => ({ ...s, city: city?.name ?? s.city })); setStep('details') }}
-                  className="rounded-2xl border-[1.5px] border-[color:var(--paper-3)] bg-white p-4 text-left transition-all hover:border-[color:var(--sage)]"
-                  style={{ fontFamily: 'var(--font-display)' }}>
-                  <div className="text-[15px] font-semibold text-[color:var(--narra)]">{new Date(d.date).toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
-                  <div className="text-[11px] text-[color:var(--mid-gray)]">{d.startTime}–{d.endTime} · {d.remaining} slot{d.remaining === 1 ? '' : 's'} left</div>
-                </button>
-              ))}
-            </div>
+            <button
+              onClick={() => { if (day) { setDay(null); setTime(null) } else setStep(city && city.branches.length > 1 ? 'branch' : 'city') }}
+              className="mb-3 text-[12px] text-[color:var(--moss)] hover:underline"
+            >← Back</button>
+
+            {!day ? (
+              <>
+                <div className="label">Pick a day {branch ? `(${branchLabel(branch)})` : ''}</div>
+                <p className="mb-3 text-[12px] text-[color:var(--mid-gray)]">We visit each city on a set weekday. Choose an upcoming date.</p>
+                {!openDays && <p className="text-sm text-[color:var(--mid-gray)]">Loading dates…</p>}
+                {openDays && openDays.length === 0 && <p className="text-sm text-[color:var(--mid-gray)]">No open dates for this branch yet. Try the other branch or check back soon.</p>}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {openDays?.map((d) => (
+                    <button key={`${d.openDayId}-${d.date}`} onClick={() => setDay(d)}
+                      className="rounded-2xl border-[1.5px] border-[color:var(--paper-3)] bg-white p-4 text-left transition-all hover:border-[color:var(--sage)]"
+                      style={{ fontFamily: 'var(--font-display)' }}>
+                      <div className="text-[15px] font-semibold text-[color:var(--narra)]">{new Date(d.date).toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
+                      <div className="text-[11px] text-[color:var(--mid-gray)]">{d.times.length} time{d.times.length === 1 ? '' : 's'} available</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="label">Choose a time — {new Date(day.date).toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
+                <p className="mb-3 text-[12px] text-[color:var(--mid-gray)]">Pick your preferred visit time (each home visit is about an hour).</p>
+                <div className="flex flex-wrap gap-2">
+                  {day.times.map((t) => (
+                    <button key={t}
+                      onClick={() => { setTime(t); setF((s) => ({ ...s, city: city?.name ?? s.city })); setStep('details') }}
+                      className="rounded-xl border-[1.5px] border-[color:var(--paper-3)] bg-white px-4 py-2.5 text-[14px] font-semibold text-[color:var(--narra)] transition-all hover:border-[color:var(--sage)] hover:shadow-[0_4px_12px_rgba(27,63,56,0.08)]"
+                      style={{ fontFamily: 'var(--font-display)' }}>
+                      {fmtTime(t)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -360,7 +395,7 @@ export default function HomecarePage() {
             <button onClick={() => setStep('details')} className="mb-3 text-[12px] text-[color:var(--moss)] hover:underline">← Edit details</button>
             <div className="rounded-2xl border border-[color:var(--paper-3)] bg-gradient-to-br from-[color:var(--paper-2)] to-white p-5">
               <div className="mb-3 text-[13px] text-[color:var(--mid-gray)]">
-                {city?.name} · {branch ? branchLabel(branch) : ''} · {new Date(day.date).toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}
+                {city?.name} · {branch ? branchLabel(branch) : ''} · {new Date(day.date).toLocaleDateString('en-PH', { weekday: 'long', month: 'short', day: 'numeric' })}{time ? ` · ${fmtTime(time)}` : ''}
               </div>
               <div className="space-y-1.5 text-[14px]">
                 <Row label="Session fee" value={peso(fare.sessionFee)} />
