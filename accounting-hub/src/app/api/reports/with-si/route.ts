@@ -64,21 +64,46 @@ export async function GET(req: Request) {
       }
     })
 
-    const rows = [...orderRows, ...arRows]
+    const allRows = [...orderRows, ...arRows]
       .filter(r => r.siInt !== null)
       .sort((a, b) => (a.siInt! - b.siInt!))
 
-    // Duplicates: same SI number on >1 order.
+    // The SI booklet is one continuous series, but stray values land in the SI
+    // field from other numbering systems — e.g. a bank reference like UB181910
+    // typed into an AR payment. Scanning min→max across such an outlier used to
+    // fabricate ~180,000 "missing SI" rows: the request hung and the payload
+    // crashed the tab. Detect the dominant band instead (grow outward from the
+    // median while neighbours are within BAND_BREAK) and report everything
+    // outside it as an outlier to fix, not as part of the sequence.
+    const BAND_BREAK = 1000
+    let bandStart = 0, bandEnd = allRows.length - 1
+    if (allRows.length > 1) {
+      const mid = Math.floor(allRows.length / 2)
+      bandStart = mid; bandEnd = mid
+      while (bandStart > 0 && allRows[bandStart].siInt! - allRows[bandStart - 1].siInt! <= BAND_BREAK) bandStart--
+      while (bandEnd < allRows.length - 1 && allRows[bandEnd + 1].siInt! - allRows[bandEnd].siInt! <= BAND_BREAK) bandEnd++
+    }
+    const rows = allRows.slice(bandStart, bandEnd + 1)
+    const outliers = [...allRows.slice(0, bandStart), ...allRows.slice(bandEnd + 1)]
+
+    // Duplicates: same SI number on >1 order (within the sequence).
     const countByInt = new Map<number, number>()
     for (const r of rows) countByInt.set(r.siInt!, (countByInt.get(r.siInt!) || 0) + 1)
     const duplicates = [...countByInt.entries()].filter(([, c]) => c > 1).map(([n, c]) => ({ siNumber: pad4(n), count: c }))
 
-    // Gaps: missing integers between min and max of the sequence.
+    // Gaps: missing integers between min and max of the dominant sequence,
+    // capped so a still-large span can never take the page down.
+    const GAP_CAP = 2000
     const gaps: { siNumber: string }[] = []
+    let gapsTruncated = 0
     if (rows.length > 1) {
       const present = new Set(rows.map(r => r.siInt!))
       const min = rows[0].siInt!, max = rows[rows.length - 1].siInt!
-      for (let i = min + 1; i < max; i++) if (!present.has(i)) gaps.push({ siNumber: pad4(i) })
+      for (let i = min + 1; i < max; i++) {
+        if (present.has(i)) continue
+        if (gaps.length < GAP_CAP) gaps.push({ siNumber: pad4(i) })
+        else gapsTruncated++
+      }
     }
 
     // All flag resolutions for the branch (Cancelled / Remarks / Tagged-to-order).
@@ -89,6 +114,8 @@ export async function GET(req: Request) {
       rows,
       totals: { vat: rows.reduce((s, r) => s + r.vat, 0), nonVat: rows.reduce((s, r) => s + r.nonVat, 0), count: rows.length },
       gaps: gaps.map(g => ({ ...g, flag: flagBy.get(g.siNumber) || null })),
+      gapsTruncated,
+      outliers,
       duplicates: duplicates.map(d => ({ ...d, flag: flagBy.get(d.siNumber) || null })),
       flags: allFlags.map(f => ({ siNumber: f.siNumber, status: f.status, remarks: f.remarks, orderId: f.orderId })),
     })

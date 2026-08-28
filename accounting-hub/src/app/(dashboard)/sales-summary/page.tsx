@@ -625,7 +625,7 @@ const leftFilterVal = (it: LeftItem, k: string): string => {
 function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scopeEnum: string | null }) {
   const [branch, setBranch] = useState(initialBranch)
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
-  const [data, setData] = useState<{ rows: SiRow[]; totals: { vat: number; nonVat: number; count: number }; gaps: Flag[]; duplicates: Flag[]; flags: FlagInfo[] } | null>(null)
+  const [data, setData] = useState<{ rows: SiRow[]; totals: { vat: number; nonVat: number; count: number }; gaps: Flag[]; gapsTruncated?: number; outliers?: SiRow[]; duplicates: Flag[]; flags: FlagInfo[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const [sortKey, setSortKey] = useState('si')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -696,6 +696,21 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
           <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Non-VAT (Services)</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(data.totals.nonVat)}</p></div>
           <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}><p className="text-[11px]" style={{ color: 'var(--deep-teal)' }}>{data.totals.count} SI order(s)</p><p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(data.totals.vat + data.totals.nonVat)}</p></div>
         </div>
+
+        {(data.outliers?.length || 0) > 0 && (
+          <div className="rounded-xl border px-4 py-3 text-xs" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
+            <strong>{data.outliers!.length} entr{data.outliers!.length === 1 ? 'y' : 'ies'} outside the SI sequence</strong> — the number in the SI field
+            looks like a different series (e.g. a bank reference), so it is excluded from the VAT totals and the missing-number scan.
+            Fix the record so it joins the sequence:{' '}
+            {data.outliers!.map(o => `${o.siNumber} (${o.orderNumber} · ${o.patientName} · ₱${peso(o.amount)})`).join('; ')}
+          </div>
+        )}
+        {(data.gapsTruncated || 0) > 0 && (
+          <div className="rounded-xl border px-4 py-3 text-xs" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
+            The missing-number list was cut off at 2,000 — {data.gapsTruncated!.toLocaleString()} more numbers are absent from the sequence.
+            That span is too wide to be booklet gaps; check the SI numbers at the edges of the range.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
           {/* LEFT — Sales Invoices */}
