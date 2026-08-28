@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
 import { rateLimit } from './rate-limit'
+import { reconcileAccountEmail } from './sync-account-emails'
 
 interface BranchInfo {
   staffId: string
@@ -106,10 +107,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const { success } = rateLimit(`login:${email}`, { maxAttempts: 10, windowMs: 15 * 60 * 1000 })
         if (!success) return null
 
-        const account = await prisma.therapistAccount.findUnique({
-          where: { email },
-          include: { staff: true },
-        })
+        // Match the typed address against the current login email, an old login
+        // alias, or the staff (HR/Ops) email — so a person can always sign in
+        // with their current email even if the stored login hasn't been
+        // reconciled to it yet.
+        let account = await prisma.therapistAccount.findUnique({ where: { email }, include: { staff: true } })
+        if (!account) account = await prisma.therapistAccount.findFirst({ where: { emailAliases: { has: email } }, include: { staff: true } })
+        if (!account) account = await prisma.therapistAccount.findFirst({ where: { staff: { email } }, include: { staff: true } })
 
         if (!account || !account.isActive) return null
 
@@ -124,6 +128,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { id: account.id },
           data: { lastLoginAt: new Date() },
         })
+
+        // Adopt the current staff email as the login email (old one kept as an
+        // alias) so the account never drifts from HR/Ops going forward.
+        account.email = await reconcileAccountEmail(account)
 
         // Build the branch list that drives the top-bar switcher. Two
         // interbranch models coexist and BOTH must yield >1 entry:

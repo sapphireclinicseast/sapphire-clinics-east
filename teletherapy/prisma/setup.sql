@@ -255,3 +255,7 @@ CREATE TABLE IF NOT EXISTS "AvailabilitySlot" (
 );
 CREATE INDEX IF NOT EXISTS "AvailabilitySlot_accountId_idx" ON "AvailabilitySlot"("accountId");
 CREATE INDEX IF NOT EXISTS "AvailabilitySlot_staffId_idx" ON "AvailabilitySlot"("staffId");
+
+-- Login email aliases: previously-used addresses that still work for sign-in
+-- after an email migration (kept in sync from Staff.email).
+ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "emailAliases" TEXT[] NOT NULL DEFAULT '{}';

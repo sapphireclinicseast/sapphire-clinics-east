@@ -2,12 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
+import { reconcileAllAccountEmails } from '@/lib/sync-account-emails'
 
 export async function GET() {
   const session = await auth()
   if (!session?.user || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
+
+  // Bring every login email in step with the current staff (HR/Ops) email
+  // before listing, so the panel never shows a stale address. Old emails are
+  // kept as aliases so no one is locked out. Never blocks the list on error.
+  await reconcileAllAccountEmails().catch(() => {})
 
   const accounts = await prisma.therapistAccount.findMany({
     select: {
