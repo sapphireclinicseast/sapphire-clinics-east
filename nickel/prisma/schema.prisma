@@ -1,0 +1,146 @@
+// Nickel — its OWN database (separate from the shared sapphire_marketing DB).
+// Homecare therapy marketplace: patients book licensed home therapists who set
+// their own rate + schedule. Everything here is Nickel-owned (not synced from
+// Operations/HR).
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BookingStatus {
+  PENDING
+  PAID
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum TicketStatus {
+  OPEN
+  RESOLVED
+}
+
+// ── Therapist (provider) ─────────────────────────────────────────────────────
+model Provider {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String   @unique
+  passwordHash String
+  phone        String?
+  photo        String?  // URL or data URI
+  profession   String   @default("PT") // PT | OT | SLP | SPED | PSYCHOLOGY | ...
+
+  // Homecare service config
+  citiesCovered String[] @default([]) // cities this therapist serves
+  rate          Decimal? // therapist-set homecare session rate (PHP)
+  transpoIncluded Boolean @default(false) // is transport included in the rate?
+
+  // Settings — credentials & payout
+  prcNumber    String?
+  ptrNumber    String?
+  signature    String?  // URL or data URI of their e-signature
+  bankName     String?
+  bankAccountNo String?
+  bankAccountName String?
+  gcashNumber  String?
+  gcashName    String?
+
+  // Consent
+  termsVersion    String?
+  termsAcceptedAt DateTime?
+
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  slots        ProviderSlot[]
+  bookings     Booking[]
+  tickets      Ticket[]
+
+  @@index([active])
+}
+
+// Weekly recurring availability window for a provider.
+model ProviderSlot {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int      // 0=Sun … 6=Sat
+  startTime  String   // "09:00"
+  endTime    String   // "17:00"
+  createdAt  DateTime @default(now())
+
+  @@index([providerId])
+  @@unique([providerId, dayOfWeek, startTime])
+}
+
+// ── Patient ──────────────────────────────────────────────────────────────────
+model Patient {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String   @unique
+  passwordHash String
+  phone        String?
+  address      String?
+  city         String?
+  dob          DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bookings     Booking[]
+
+  @@index([city])
+}
+
+// ── Booking ──────────────────────────────────────────────────────────────────
+model Booking {
+  id         String        @id @default(cuid())
+  patientId  String
+  patient    Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   Provider      @relation(fields: [providerId], references: [id])
+  city       String
+  date       DateTime      // visit date (date-only, UTC midnight)
+  startTime  String        // "10:00"
+  endTime    String        // "11:00"
+  status     BookingStatus @default(PENDING)
+  amount     Decimal       // total charged (therapist rate; +transport if not included, handled in app)
+  transpoIncluded Boolean  @default(false)
+  notes      String?
+
+  // Payment (Verdana PayMongo account)
+  paymongoLinkId String?
+  checkoutUrl    String?
+  paidAt         DateTime?
+
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([providerId, date])
+  @@index([patientId])
+  @@index([status])
+}
+
+// ── Tickets (concerns raised by providers or patients) ───────────────────────
+model Ticket {
+  id          String       @id @default(cuid())
+  providerId  String?
+  provider    Provider?    @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  patientId   String?
+  subject     String
+  message     String
+  status      TicketStatus @default(OPEN)
+  response    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([providerId])
+  @@index([status])
+}
