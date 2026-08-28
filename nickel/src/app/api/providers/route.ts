@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   if (!city) return NextResponse.json({ providers: [] })
 
   const providers = await prisma.provider.findMany({
-    where: { active: true, rate: { not: null }, citiesCovered: { has: city }, slots: { some: {} } },
+    where: { active: true, verificationStatus: 'VERIFIED', rate: { not: null }, citiesCovered: { has: city }, slots: { some: {} } },
     include: { slots: true },
   })
 

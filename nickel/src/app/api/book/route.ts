@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (date < manilaTodayYmd()) return NextResponse.json({ error: 'That date has passed. Please pick another.' }, { status: 409 })
 
   const provider = await prisma.provider.findUnique({ where: { id: providerId }, include: { slots: true } })
-  if (!provider || !provider.active || provider.rate == null) return NextResponse.json({ error: 'Therapist is not available.' }, { status: 409 })
+  if (!provider || !provider.active || provider.verificationStatus !== 'VERIFIED' || provider.rate == null) return NextResponse.json({ error: 'Therapist is not available.' }, { status: 409 })
   if (!provider.citiesCovered.includes(city)) return NextResponse.json({ error: 'This therapist does not cover that city.' }, { status: 409 })
 
   const bookedRows = await prisma.booking.findMany({

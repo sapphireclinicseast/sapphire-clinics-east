@@ -58,9 +58,15 @@ _Last reviewed: 2026-08-28_
 - ❌ **Incident reporting** in-platform (Terms §8.4).
 
 ### Credentialing (Terms §3)
-- ⚠️ App collects PRC/PTR as **text only**. ❌ No document uploads (PRC card, PTR, gov-ID, CV,
-  **NBI clearance**), ❌ no verification workflow, ❌ no annual re-verification, ❌ no continuing
-  duty-to-notify capture (§3.3–3.5).
+- ⚠️ **Verification flow SHIPPED** (2026-08-28): `/provider/verify` collects face scan, PRC-holding
+  photo, PRC number, school + year graduated, diploma + TOR scans, and bank payout details; sets
+  `verificationStatus=PENDING`; portal is gated (`(portal)/layout.tsx` redirects non-VERIFIED to
+  /provider/verify); patients only see VERIFIED providers (`/api/providers`, `/api/cities`, `/api/book`).
+- ❌ **No admin review UI** — approval PENDING→VERIFIED is a manual DB update today
+  (`UPDATE "Provider" SET "verificationStatus"='VERIFIED', "verifiedAt"=now() WHERE ...`). Build a
+  Nickel admin review queue next.
+- ❌ Still not collected vs Terms §3.3: **NBI clearance**, PTR *document*, government-ID, CV;
+  ❌ no annual re-verification, ❌ no continuing duty-to-notify capture (§3.4–3.5).
 - ⚠️ **Insurance** now *encouraged not required* (§16.1) — no field to record cover if held.
 
 ### Profile / privacy display (Annex C5, C2)

@@ -5,6 +5,8 @@ import ProviderNav from './ProviderNav'
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const provider = await getSessionProvider()
   if (!provider) redirect('/provider/login')
+  // Account is unusable until SCEI verifies the therapist's identity & credentials.
+  if (provider.verificationStatus !== 'VERIFIED') redirect('/provider/verify')
 
   return (
     <div className="animate-fade-up mx-auto max-w-3xl">

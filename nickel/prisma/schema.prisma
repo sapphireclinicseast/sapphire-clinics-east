@@ -12,6 +12,13 @@ datasource db {
   provider = "postgresql"
 }
 
+enum VerificationStatus {
+  UNVERIFIED // account created, not yet submitted for verification
+  PENDING    // documents submitted, awaiting SCEI review (24–48h)
+  VERIFIED   // approved — can take bookings and appear to clients
+  REJECTED   // review failed; provider may resubmit
+}
+
 enum BookingStatus {
   PENDING
   PAID
@@ -50,6 +57,18 @@ model Provider {
   bankAccountName String?
   gcashNumber  String?
   gcashName    String?
+
+  // Identity & credential verification (reviewed by SCEI before the account goes live)
+  verificationStatus    VerificationStatus @default(UNVERIFIED)
+  facePhoto             String?  // selfie / face scan (data URI)
+  prcHoldingPhoto       String?  // photo of the provider holding their PRC ID (data URI)
+  school                String?  // school graduated from
+  yearGraduated         String?  // year graduated (free text to preserve exact value)
+  diplomaScan           String?  // diploma scan (data URI)
+  torScan               String?  // transcript of records scan (data URI)
+  verificationSubmittedAt DateTime?
+  verifiedAt            DateTime?
+  rejectionReason       String?
 
   // Consent
   termsVersion    String?

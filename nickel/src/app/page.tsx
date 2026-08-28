@@ -1,6 +1,6 @@
 const STEPS = [
   { n: '1', t: 'Tell us your city', d: 'We show therapists who serve your area.' },
-  { n: '2', t: 'Pick your therapist', d: 'Choose by their open schedule and the cities they cover.' },
+  { n: '2', t: 'Pick your therapist', d: 'Every therapist is PRC-licensed and identity-verified. Choose by their open schedule and the cities they cover.' },
   { n: '3', t: 'Book & pay securely', d: 'Confirm a time and pay online — the therapist comes to you.' },
 ]
 
@@ -20,8 +20,11 @@ export default function NickelHome() {
             Therapy that comes to <span className="font-script font-normal text-white" style={{ fontSize: '1.35em', lineHeight: 0 }}>you</span>.
           </h1>
           <p className="mt-3 max-w-xl text-[15px] leading-snug text-white/85 sm:text-[16px]">
-            Nickel connects you with licensed home therapists near you. Pick a therapist by their schedule, book a time, and they&apos;ll come to your home.
+            Nickel connects you with <strong className="font-semibold text-white">PRC-licensed therapists</strong> near you. Pick a therapist by their schedule, book a time, and they&apos;ll come to your home.
           </p>
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-[12.5px] font-medium text-white">
+            <span aria-hidden>✓</span> Every therapist is PRC-licensed and identity-verified
+          </div>
           <p className="mt-4 text-[13px] text-white/70">
             Made by a physical therapist, for physical therapists. <span className="font-medium text-white/90">Free to use · Filipino-made 🇵🇭</span>
           </p>

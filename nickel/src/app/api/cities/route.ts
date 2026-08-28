@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 // (active, with a rate set and at least one availability window).
 export async function GET() {
   const providers = await prisma.provider.findMany({
-    where: { active: true, rate: { not: null }, slots: { some: {} } },
+    where: { active: true, verificationStatus: 'VERIFIED', rate: { not: null }, slots: { some: {} } },
     select: { citiesCovered: true },
   })
   const set = new Set<string>()

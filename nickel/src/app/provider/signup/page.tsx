@@ -30,7 +30,7 @@ export default function ProviderSignup() {
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? 'Could not create your account.')
-      window.location.href = '/provider'
+      window.location.href = '/provider/verify'
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not create your account.')
       setBusy(false)
