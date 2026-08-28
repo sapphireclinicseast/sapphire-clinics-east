@@ -10,7 +10,12 @@ type BirthdayPatient = { id: string; firstName: string; lastName: string; birthd
 type SmsState = 'idle' | 'sending' | 'sent' | 'error'
 type EmailState = 'idle' | 'sending' | 'sent' | 'error'
 
-// localStorage key for tracking sent birthday emails/SMS (resets each day)
+// localStorage is now only an IN-FLIGHT guard: it stops a double-send if the
+// operator refreshes while a request is still on the wire. The durable record
+// lives server-side (BirthdayGreeting) and is loaded from /api/birthday/greetings,
+// so the green "sent" state is shared by every staff member and survives
+// sign-out — a per-browser flag that also reset daily is what let patients get
+// greeted twice.
 function storageKey(type: 'email' | 'sms'): string {
   const d = new Date()
   return `birthday-${type}-sent-${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
@@ -385,6 +390,8 @@ export default function FrontDeskWelcome({
   const [emailState, setEmailState] = useState<Record<string, EmailState>>({})
   const [sentEmailIds, setSentEmailIds] = useState<Set<string>>(new Set())
   const [sentSmsIds, setSentSmsIds] = useState<Set<string>>(new Set())
+  // "email:<patientId>" / "sms:<patientId>" → who greeted them and when
+  const [greetedBy, setGreetedBy] = useState<Record<string, { by: string | null; at: string }>>({})
   const [slotAlerts, setSlotAlerts] = useState<{ nearingNoShow: any[]; subjectNoShow: any[]; nearingCancel: any[]; subjectCancel: any[] }>({ nearingNoShow: [], subjectNoShow: [], nearingCancel: [], subjectCancel: [] })
   const [activeReminder, setActiveReminder] = useState<Reminder | null>(null)
 
@@ -410,6 +417,17 @@ export default function FrontDeskWelcome({
     setQuote(getDailyQuote())
     setSentEmailIds(loadSentEmails())
     setSentSmsIds(loadSent('sms'))
+    // Server record wins: union it with the local in-flight marks so a send
+    // made by anyone, on any machine, shows as already greeted here.
+    fetch('/api/birthday/greetings')
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { email?: string[]; sms?: string[]; detail?: Record<string, { by: string | null; at: string }> } | null) => {
+        if (!d) return
+        setSentEmailIds(prev => new Set([...prev, ...(d.email ?? [])]))
+        setSentSmsIds(prev => new Set([...prev, ...(d.sms ?? [])]))
+        setGreetedBy(d.detail ?? {})
+      })
+      .catch(() => {})
 
     // Fetch slot removal alerts
     const branchParam = branch === 'SBEA' ? 'SANDBOX_EAST' : branch === 'SBGH' ? 'SANDBOX_GREENHILLS' : ''
@@ -604,6 +622,14 @@ export default function FrontDeskWelcome({
                 const email = emailState[p.id] ?? 'idle'
                 const alreadySent = sentEmailIds.has(p.id)
                 const alreadySentSms = sentSmsIds.has(p.id)
+                // Name the sender on the button, so "already greeted" is a fact
+                // someone can act on rather than a green box of unknown origin.
+                const greetedNote = (ch: 'email' | 'sms') => {
+                  const g = greetedBy[`${ch}:${p.id}`]
+                  if (!g) return undefined
+                  const when = new Date(g.at).toLocaleString()
+                  return g.by ? `Already sent by ${g.by} — ${when}` : `Already sent — ${when}`
+                }
 
                 async function sendSms() {
                   // Mark in localStorage immediately — prevents duplicate sends if
@@ -687,7 +713,7 @@ export default function FrontDeskWelcome({
                       disabled={email === 'sending'}
                       title={
                         alreadySent || email === 'sent'
-                          ? 'Email already sent today — click to resend'
+                          ? (greetedNote('email') ?? 'Email already sent — click to resend')
                           : 'Send birthday greeting email'
                       }
                       style={{
@@ -712,7 +738,7 @@ export default function FrontDeskWelcome({
                       <button
                         onClick={sendSms}
                         disabled={sms === 'sending' || sms === 'sent' || alreadySentSms}
-                        title={sms === 'error' ? 'Failed — tap to retry' : alreadySentSms ? 'SMS already sent today' : 'Send SMS birthday greeting'}
+                        title={sms === 'error' ? 'Failed — tap to retry' : alreadySentSms ? (greetedNote('sms') ?? 'SMS already sent') : 'Send SMS birthday greeting'}
                         style={{
                           background:
                             (alreadySentSms || sms === 'sent') ? '#22C55E'
@@ -966,6 +992,12 @@ interface PRDoc {
   patient: { id: string; firstName: string; lastName: string; email: string | null }
 }
 
+// Days since an ISO timestamp, or null when it is missing.
+function daysSince(iso: string | null): number | null {
+  if (!iso) return null
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+}
+
 function PendingProgressReports() {
   const [docs, setDocs] = useState<PRDoc[]>([])
   const [loading, setLoading] = useState(true)
@@ -1039,6 +1071,32 @@ function PendingProgressReports() {
                     </a>
                     {' · '}{d.department}
                     {' · '}<span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
+                    {/* Paid but still unsent — the money is in and the report is
+                        the outstanding half, so it stays on the panel rather than
+                        ageing off it. Past a week the badge turns red so a
+                        forgotten report stands out instead of blending in. */}
+                    {d.paid && !d.emailedToPatientAt && (() => {
+                      const waiting = daysSince(d.paidForAt)
+                      const stale = waiting !== null && waiting >= 7
+                      return (
+                        <>
+                          {' · '}
+                          <span
+                            title={waiting === null
+                              ? 'Paid, but the report has not been emailed yet'
+                              : `Paid ${waiting} day${waiting === 1 ? '' : 's'} ago — not emailed yet`}
+                            style={{
+                              background: stale ? '#FEE2E2' : '#FEF3C7',
+                              color:      stale ? '#991B1B' : '#92400E',
+                              border: `1px solid ${stale ? '#FCA5A5' : '#FDE68A'}`,
+                              padding: '1px 6px', borderRadius: 99, fontWeight: 700,
+                              fontSize: '0.62rem', textTransform: 'uppercase',
+                            }}>
+                            Not emailed{waiting !== null && waiting > 0 ? ` · ${waiting}d` : ''}
+                          </span>
+                        </>
+                      )
+                    })()}
                   </div>
                 </div>
                 {/* Row 2 — controls */}
