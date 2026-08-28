@@ -27,7 +27,14 @@ const h2Style = { fontFamily: 'var(--font-display)' as const }
 
 interface Clinic { id: Short; name: string; address: string | null; latitude: number; longitude: number; active: boolean }
 interface City { id: string; name: string; province: string | null; active: boolean; _count?: { openDays: number } }
-interface OpenDay { id: string; cityId: string; branch: Short; dayOfWeek: number; startTime: string; endTime: string; capacity: number; disabled: boolean; used: number; notes: string | null }
+interface OpenDay { id: string; cityId: string; branch: Short; dayOfWeek: number; startTime: string; endTime: string; slotMinutes: number; disabled: boolean; used: number; notes: string | null }
+
+// How many visit start times a window + per-visit interval yields.
+function visitCount(start: string, end: string, stepMin: number): number {
+  const m = (t: string) => { const [h, mm] = t.split(':').map(Number); return h * 60 + (mm || 0) }
+  const step = Math.max(15, stepMin || 120)
+  return Math.max(0, Math.floor((m(end) - m(start)) / step) + 1)
+}
 interface SurgeWin { label?: string; days: number[]; startHour: number; endHour: number; multiplier: number }
 interface Settings {
   sessionFee: number; baseFare: number; baseKm: number; shortRatePerKm: number; shortMaxKm: number
@@ -206,7 +213,7 @@ function CitiesSection() {
 
 function OpenDays({ cityId, onChange }: { cityId: string; onChange: () => void }) {
   const [days, setDays] = useState<OpenDay[]>([])
-  const [nd, setNd] = useState({ branch: 'SBEA' as Short, dayOfWeek: 1, startTime: '09:00', endTime: '17:00', capacity: 6 })
+  const [nd, setNd] = useState({ branch: 'SBEA' as Short, dayOfWeek: 1, startTime: '09:00', endTime: '17:00', slotMinutes: 120 })
   const load = useCallback(async () => { const d = await fetch(`${A}/open-days?cityId=${cityId}`).then((r) => r.json()); setDays(d.openDays ?? []) }, [cityId])
   useEffect(() => { load() }, [load])
 
@@ -224,9 +231,12 @@ function OpenDays({ cityId, onChange }: { cityId: string; onChange: () => void }
         <select className={`${input} !w-36`} value={nd.dayOfWeek} onChange={(e) => setNd({ ...nd, dayOfWeek: Number(e.target.value) })} title="weekday">
           {DAYS_FULL.map((d, i) => <option key={i} value={i}>Every {d}</option>)}
         </select>
-        <input className={`${input} !w-20`} value={nd.startTime} onChange={(e) => setNd({ ...nd, startTime: e.target.value })} title="start" />
-        <input className={`${input} !w-20`} value={nd.endTime} onChange={(e) => setNd({ ...nd, endTime: e.target.value })} title="end" />
-        <input className={`${input} !w-16`} value={nd.capacity} onChange={(e) => setNd({ ...nd, capacity: Number(e.target.value) })} title="capacity" />
+        <input className={`${input} !w-20`} value={nd.startTime} onChange={(e) => setNd({ ...nd, startTime: e.target.value })} title="first visit start" />
+        <span className="text-[color:var(--mid-gray)]">to</span>
+        <input className={`${input} !w-20`} value={nd.endTime} onChange={(e) => setNd({ ...nd, endTime: e.target.value })} title="last visit start" />
+        <input className={`${input} !w-16`} value={nd.slotMinutes} onChange={(e) => setNd({ ...nd, slotMinutes: Number(e.target.value) })} title="minutes per visit incl. travel" />
+        <span className="text-[color:var(--mid-gray)]">min/visit</span>
+        <span className="rounded bg-[color:var(--pale-teal)] px-2 py-0.5 text-[color:var(--deep-teal)]">≈ {visitCount(nd.startTime, nd.endTime, nd.slotMinutes)} visits</span>
         <button className={btnAdd} onClick={add}>Add weekly slot</button>
       </div>
       <div className="space-y-1">
@@ -235,7 +245,7 @@ function OpenDays({ cityId, onChange }: { cityId: string; onChange: () => void }
             <span className="w-16 font-semibold text-[color:var(--charcoal)]">{BR[d.branch]}</span>
             <span className="w-44">Every {DAYS_FULL[d.dayOfWeek]}</span>
             <span className="w-24 text-[color:var(--mid-gray)]">{d.startTime}–{d.endTime}</span>
-            <span className="text-[color:var(--mid-gray)]">cap {d.capacity}/day</span>
+            <span className="text-[color:var(--mid-gray)]">{visitCount(d.startTime, d.endTime, d.slotMinutes)} visits · {d.slotMinutes}min</span>
             <div className="ml-auto flex gap-3">
               <button className="text-[color:var(--deep-teal)] hover:underline" onClick={() => toggle(d)}>{d.disabled ? 'Enable' : 'Disable'}</button>
               <button className="text-red-600 hover:underline" onClick={() => del(d)}>Delete</button>

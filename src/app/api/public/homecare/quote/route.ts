@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
     address?: string
     openDayId?: string
     date?: string // chosen occurrence, "YYYY-MM-DD"
+    time?: string // chosen visit start, "HH:MM"
   }
 
   const branch = body.branch
@@ -49,8 +50,9 @@ export async function POST(req: NextRequest) {
   }
 
   const dateISO = body.date && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : null
-  let startTime: string | null = null
-  if (body.openDayId) {
+  // Surge is keyed to the actual visit time the patient chose, when provided.
+  let startTime: string | null = /^\d{2}:\d{2}$/.test(body.time ?? '') ? (body.time as string) : null
+  if (!startTime && body.openDayId) {
     const rule = await prisma.homecareOpenDay.findUnique({ where: { id: body.openDayId } })
     if (rule) startTime = rule.startTime
   }

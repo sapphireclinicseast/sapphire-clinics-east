@@ -947,9 +947,12 @@ model HomecareOpenDay {
   city      HomecareCity @relation(fields: [cityId], references: [id], onDelete: Cascade)
   branch    String       // "SBEA" | "SBGH" — which clinic the PT travels from
   dayOfWeek Int          // 0=Sun … 6=Sat — recurring WEEKLY open day for this city
-  startTime String       @default("09:00") // daily service window (front desk sequences exact times)
-  endTime   String       @default("17:00")
-  capacity  Int          @default(6)        // max home visits per weekly occurrence
+  startTime String       @default("09:00") // earliest visit start time
+  endTime   String       @default("17:00") // latest visit start time
+  // Minutes reserved per visit INCLUDING travel to the next home. Bookable start
+  // times are generated from startTime→endTime stepping by this; with an 8h
+  // window and 120 min this yields ~5 visits/day (patients pick a specific time).
+  slotMinutes Int        @default(120)
   disabled  Boolean      @default(false)
   notes     String?
   createdAt DateTime     @default(now())

@@ -29,7 +29,7 @@ import {
 } from '@/lib/patient-password'
 import { createPaymongoLink } from '@/lib/paymongo'
 import { computeHomecareFare } from '@/lib/homecare-fare'
-import { loadClinic, loadFareSettings, isShortBranch, SHORT_TO_OPS, ymdToDate, ymdWeekday, manilaTodayYmd, nextOccurrences, OCCURRENCE_COUNT } from '@/lib/homecare'
+import { loadClinic, loadFareSettings, isShortBranch, SHORT_TO_OPS, ymdToDate, ymdWeekday, manilaTodayYmd, nextOccurrences, OCCURRENCE_COUNT, generateTimes, addMinutes } from '@/lib/homecare'
 
 export async function OPTIONS(req: NextRequest) {
   return preflight(req.headers.get('origin'))
@@ -125,12 +125,18 @@ export async function POST(req: NextRequest) {
   }
   const bookedDate = ymdToDate(dateISO)
 
+  // The chosen visit start time must be one of the rule's generated slots.
+  const chosenTime = String(body.time ?? '')
+  if (!/^\d{2}:\d{2}$/.test(chosenTime) || !generateTimes(day.startTime, day.endTime, day.slotMinutes).includes(chosenTime)) {
+    return bad('Please pick an available visit time.', 409)
+  }
+
   const clinic = await loadClinic(branch)
   if (!clinic) return bad('This branch has no homecare origin location set yet. Please contact the clinic.', 409)
 
-  // ── Compute the authoritative fare ──────────────────────────────────────
+  // ── Compute the authoritative fare (surge keyed to the chosen visit time) ─
   const settings = await loadFareSettings()
-  const when = new Date(`${dateISO}T${day.startTime}:00+08:00`)
+  const when = new Date(`${dateISO}T${chosenTime}:00+08:00`)
   const fare = await computeHomecareFare({
     originLat: clinic.latitude,
     originLng: clinic.longitude,
@@ -223,17 +229,17 @@ export async function POST(req: NextRequest) {
   try {
     booking = await prisma.$transaction(async (tx) => {
       const used = await tx.patientBooking.count({
-        where: { homecareOpenDayId: day.id, date: bookedDate, status: { notIn: ['CANCELLED', 'REJECTED'] } },
+        where: { homecareOpenDayId: day.id, date: bookedDate, startTime: chosenTime, status: { notIn: ['CANCELLED', 'REJECTED'] } },
       })
-      if (used >= day.capacity) throw new Error('FULL')
+      if (used >= 1) throw new Error('FULL')
       return tx.patientBooking.create({
         data: {
           patientId,
           branch, // short code "SBEA"/"SBGH"
           department: 'PT',
           date: bookedDate,
-          startTime: day.startTime,
-          endTime: day.endTime,
+          startTime: chosenTime,
+          endTime: addMinutes(chosenTime, 60),
           status: 'PENDING',
           source: 'HOMECARE',
           downpayment: fare.total,
@@ -252,7 +258,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (e) {
     if (e instanceof Error && e.message === 'FULL') {
-      return bad('That travel date just filled up. Please pick another date.', 409)
+      return bad('That visit time was just booked. Please pick another time.', 409)
     }
     throw e
   }

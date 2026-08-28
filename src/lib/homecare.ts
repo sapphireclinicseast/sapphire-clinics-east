@@ -69,14 +69,30 @@ export async function loadClinic(branch: ShortBranch) {
   return prisma.homecareClinic.findUnique({ where: { id: branch } })
 }
 
-// ── Capacity ────────────────────────────────────────────────────────────────
-// Seats taken on ONE concrete occurrence (rule + calendar date).
-export async function usedCapacityOn(openDayId: string, date: Date): Promise<number> {
-  return prisma.patientBooking.count({
-    where: { homecareOpenDayId: openDayId, date, status: { notIn: ['CANCELLED', 'REJECTED'] } },
-  })
+// ── Time slots ──────────────────────────────────────────────────────────────
+const toMin = (t: string): number => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0) }
+const fromMin = (x: number): string => `${String(Math.floor(x / 60) % 24).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`
+
+// Bookable visit start times "HH:MM" from start→end (end inclusive as the last
+// start), stepping by stepMin (minutes reserved per visit incl. travel).
+export function generateTimes(start: string, end: string, stepMin: number): string[] {
+  const s = toMin(start), e = toMin(end), step = Math.max(15, stepMin || 120)
+  const out: string[] = []
+  for (let m = s; m <= e; m += step) out.push(fromMin(m))
+  return out
 }
-// All-time seats taken on a weekly rule (any date) — for the admin indicator.
+
+// Start times already taken on one concrete occurrence (rule + calendar date).
+export async function bookedTimesOn(openDayId: string, date: Date): Promise<Set<string>> {
+  const rows = await prisma.patientBooking.findMany({
+    where: { homecareOpenDayId: openDayId, date, status: { notIn: ['CANCELLED', 'REJECTED'] } },
+    select: { startTime: true },
+  })
+  return new Set(rows.map((r) => r.startTime))
+}
+
+// All-time bookings on a weekly rule (any date) — for the admin indicator and
+// the delete guard.
 export async function usedCapacity(openDayId: string): Promise<number> {
   return prisma.patientBooking.count({
     where: { homecareOpenDayId: openDayId, status: { notIn: ['CANCELLED', 'REJECTED'] } },
@@ -91,20 +107,22 @@ export interface Occurrence {
   date: string // ymd
   startTime: string
   endTime: string
-  capacity: number
-  remaining: number
+  slotMinutes: number
+  times: string[] // still-available visit start times ("HH:MM")
 }
 
-// Expand a city's weekly rules into upcoming concrete dated occurrences (with
-// remaining seats), sorted by date. Optionally filter to one branch.
+// Expand a city's weekly rules into upcoming concrete dated occurrences, each
+// carrying its still-available visit times. Sorted by date, then time window.
 export async function upcomingOccurrences(cityId: string, branch?: ShortBranch): Promise<Occurrence[]> {
   const rules = await prisma.homecareOpenDay.findMany({
     where: { cityId, disabled: false, ...(branch ? { branch } : {}) },
   })
   const out: Occurrence[] = []
   for (const rule of rules) {
+    const allTimes = generateTimes(rule.startTime, rule.endTime, rule.slotMinutes)
     for (const ymd of nextOccurrences(rule.dayOfWeek, OCCURRENCE_COUNT)) {
-      const remaining = Math.max(0, rule.capacity - (await usedCapacityOn(rule.id, ymdToDate(ymd))))
+      const booked = await bookedTimesOn(rule.id, ymdToDate(ymd))
+      const times = allTimes.filter((t) => !booked.has(t))
       out.push({
         openDayId: rule.id,
         cityId: rule.cityId,
@@ -113,11 +131,16 @@ export async function upcomingOccurrences(cityId: string, branch?: ShortBranch):
         date: ymd,
         startTime: rule.startTime,
         endTime: rule.endTime,
-        capacity: rule.capacity,
-        remaining,
+        slotMinutes: rule.slotMinutes,
+        times,
       })
     }
   }
-  out.sort((a, b) => a.date.localeCompare(b.date))
+  out.sort((a, b) => (a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date)))
   return out
+}
+
+// Minutes helper reused by the booking route to derive a visit's end time.
+export function addMinutes(hhmm: string, mins: number): string {
+  return fromMin(toMin(hhmm) + mins)
 }

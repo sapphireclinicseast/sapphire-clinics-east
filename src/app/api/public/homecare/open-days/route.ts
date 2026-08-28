@@ -18,6 +18,6 @@ export async function GET(req: NextRequest) {
     return withCors(NextResponse.json({ error: 'cityId is required' }, { status: 400 }), origin)
   }
   const branch = isShortBranch(branchParam) ? branchParam : undefined
-  const openDays = (await upcomingOccurrences(cityId, branch)).filter((d) => d.remaining > 0)
+  const openDays = (await upcomingOccurrences(cityId, branch)).filter((d) => d.times.length > 0)
   return withCors(NextResponse.json({ openDays }), origin)
 }

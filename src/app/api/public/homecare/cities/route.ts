@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   const result = await Promise.all(
     cities.map(async (c) => {
-      const avail = (await upcomingOccurrences(c.id)).filter((o) => o.remaining > 0)
+      const avail = (await upcomingOccurrences(c.id)).filter((o) => o.times.length > 0)
       const branches = Array.from(new Set(avail.map((o) => o.branch))) as ShortBranch[]
       return {
         id: c.id,
