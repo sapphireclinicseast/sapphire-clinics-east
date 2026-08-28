@@ -24,8 +24,8 @@ export default function NickelHome() {
             <a href="/book" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-[15px] font-semibold" style={{ color: 'var(--steel-deep)' }}>
               Find a therapist →
             </a>
-            <a href="/signin" className="inline-flex items-center gap-2 rounded-xl border border-white/40 px-6 py-3 text-[15px] font-semibold text-white hover:bg-white/10">
-              Sign in
+            <a href="/provider/login" className="inline-flex items-center gap-2 rounded-xl border border-white/40 px-6 py-3 text-[15px] font-semibold text-white hover:bg-white/10">
+              Provider sign in
             </a>
           </div>
         </div>

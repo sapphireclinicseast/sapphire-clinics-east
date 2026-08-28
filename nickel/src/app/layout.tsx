@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             <a href="/" className="text-[26px] leading-none text-[color:var(--slate)]" style={{ fontFamily: 'var(--font-wordmark)' }}>Nickel</a>
             <nav className="flex items-center gap-1 text-sm" style={{ fontFamily: 'var(--font-body)' }}>
-              <a href="/signin" className="rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)]">Sign in</a>
+              <a href="/provider/login" className="rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)]">Provider sign in</a>
               <a href="/book" className="btn-primary !px-4 !py-2 !text-[14px]">Book now</a>
             </nav>
           </div>
