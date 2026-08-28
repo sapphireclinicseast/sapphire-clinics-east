@@ -4163,3 +4163,26 @@ export async function cancelMeeting(id: string): Promise<boolean> {
     return false
   }
 }
+
+/** Hard-delete a meeting — wipes the ClassPortalMeeting row and
+ *  cascade-drops its ClassPortalMeetingParticipant children. Same
+ *  authorization as cancel (creator OR admin/branch-admin). Note the
+ *  signed compact link, if already shared, still verifies on
+ *  meet.sapphireclinicseast.org until endsAt — LiveKit doesn't have
+ *  a token-recall mechanism. Use this for typo rows or meetings the
+ *  teacher wants gone from history entirely. */
+export async function deleteMeeting(id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/meetings/${encodeURIComponent(id)}?hard=1`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch (e) {
+    console.warn('[deleteMeeting]', e)
+    return false
+  }
+}

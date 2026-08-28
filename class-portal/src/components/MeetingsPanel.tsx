@@ -16,7 +16,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  listMeetings, createMeeting, cancelMeeting,
+  listMeetings, createMeeting, cancelMeeting, deleteMeeting,
   getUsers, hydrateUsers, teacherAssignedPairs,
   type MeetingRecord, type StoredUser, type AuthSession, type Branch, type EnrollmentLevel,
 } from '@/lib/session'
@@ -100,10 +100,19 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
   const [showCreate, setShowCreate] = useState(false)
 
   async function handleCancel(m: MeetingRecord) {
-    if (!confirm(`Cancel "${m.title}"? The meeting will disappear from the list. Existing invitation links still verify until ${new Date(m.endsAt).toLocaleString()} — LiveKit can't recall signed tokens.`)) return
+    if (!confirm(`Cancel "${m.title}"? The meeting will show as CANCELLED and the join buttons disappear. Existing invitation links still verify until ${new Date(m.endsAt).toLocaleString()} — LiveKit can't recall signed tokens.`)) return
     const ok = await cancelMeeting(m.id)
     if (!ok) { setErr('Could not cancel the meeting. Please retry.'); return }
     setInfo(`"${m.title}" cancelled.`)
+    void refresh()
+  }
+
+  async function handleDelete(m: MeetingRecord) {
+    const warn = `PERMANENTLY DELETE "${m.title}"?\n\nThis wipes the meeting record and its ${m.participants.length} tagged student${m.participants.length === 1 ? '' : 's'} from the class portal — it will not appear in any history again. Cannot be undone.\n\nNote: if the join link was already shared, it still verifies on the meet app until ${new Date(m.endsAt).toLocaleString()} — LiveKit can't recall signed tokens.`
+    if (!confirm(warn)) return
+    const ok = await deleteMeeting(m.id)
+    if (!ok) { setErr('Could not delete the meeting. Please retry.'); return }
+    setInfo(`"${m.title}" deleted.`)
     void refresh()
   }
 
@@ -190,7 +199,24 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
                       ) : <span className="text-[color:var(--mid-gray)]">—</span>}
                     </td>
                     <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                      {canCancel && <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={() => void handleCancel(m)}>Cancel</button>}
+                      {canCancel && (
+                        <button
+                          className="text-xs px-2 py-1 rounded-md text-[color:var(--mid-gray)] hover:bg-[color:var(--paper-2)]"
+                          title="Mark as cancelled — keeps the row in history but hides join buttons."
+                          onClick={() => void handleCancel(m)}
+                        >Cancel</button>
+                      )}
+                      {/* Delete is available on active AND cancelled rows,
+                          so a teacher who cancelled by mistake or wants to
+                          scrub a row entirely can. Same role gate as
+                          cancel (creator + admin) — enforced server-side. */}
+                      {(isMine || viewer.role === 'ADMIN' || viewer.role === 'BRANCH_ADMIN') && (
+                        <button
+                          className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] ml-1"
+                          title="Permanently delete this meeting from the class portal."
+                          onClick={() => void handleDelete(m)}
+                        >Delete</button>
+                      )}
                     </td>
                   </tr>
                 )
