@@ -136,7 +136,11 @@ export default function AuthSidebar() {
     { href: '/calendar',       label: 'Calendar',     icon: 'calendar' },
     { href: '/pay',            label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
     { href: '/admin/handbook',               label: 'Class Portal Handbook', icon: 'handbook', mainAdminOnly: true },
-    { href: '/admin/staff-portal-handbook',  label: 'Staff Portal Handbook', icon: 'handbook', mainAdminOnly: true },
+    // Staff Portal Handbook (docs for staff.sapphireclinicseast.org) was
+    // shown here but belongs on the staff portal itself, not the class
+    // portal. Link removed 2026-08-22; the /admin/staff-portal-handbook
+    // route still resolves so the 668-line source isn't lost while it
+    // gets ported into the teletherapy app.
   ]
 
   // 'ADMIN' is the single main-admin auth role — branch admins are
