@@ -977,6 +977,9 @@ function OrderFormModal({
   const [packageSearch, setPackageSearch] = useState('')
   const [packageWallets, setPackageWallets] = useState<DigitalWallet[]>([])
   const [selectedPackageWallet, setSelectedPackageWallet] = useState<DigitalWallet | null>(null)
+  // The specific package being consumed, not just the wallet it sits in — a wallet
+  // can hold several packages, and the session count has to be the chosen one's.
+  const [selectedPackage, setSelectedPackage] = useState<WalletPackage | null>(null)
   const [showHmoPay, setShowHmoPay] = useState(false)
   const [hmoSearch, setHmoSearch] = useState('')
   const [hmoWallets, setHmoWallets] = useState<DigitalWallet[]>([])
@@ -1345,6 +1348,7 @@ function OrderFormModal({
       if (!activePkg && allPkgs.length > 0) activePkg = allPkgs[0]
 
       if (activePkg) {
+        setSelectedPackage(activePkg)
         // Per-session rate = amountPaid at purchase time / total sessions
         // This locks in the original purchase price regardless of current service price
         const perSession = toNum(activePkg.amountPaid) / activePkg.totalSessions
@@ -1377,6 +1381,7 @@ function OrderFormModal({
           }))
         }
       } else {
+        setSelectedPackage(null)
         setError('No active packages with remaining sessions found')
       }
     } catch { setError('Failed to load package details') }
@@ -2291,6 +2296,7 @@ function OrderFormModal({
                           return (
                             <button key={p.id} onClick={() => {
                               setSelectedPackageWallet(w)
+                              setSelectedPackage(p)
                               setPayments(prev => {
                                 const existing = prev.findIndex(pm => pm.method === 'PACKAGE')
                                 const payment = { method: 'PACKAGE' as const, amount: perSession, walletId: w.id, reference: `PKG:${p.id}` }
@@ -2326,11 +2332,73 @@ function OrderFormModal({
                     )}
                   </div>
                 )}
-                {selectedPackageWallet && (
-                  <div className="rounded-lg p-2 text-xs" style={{ background: '#dbeafe', color: '#1e40af' }}>
-                    Using: <strong>{selectedPackageWallet.patientName}{(() => { const d = selectedPackageWallet.packages?.find(p => p.isActive)?.department || selectedPackageWallet.packages?.[0]?.department; return d ? ` (${d})` : '' })()}</strong>&apos;s package
-                  </div>
-                )}
+                {selectedPackageWallet && (() => {
+                  // Sessions left, shown at the moment the package is chosen for
+                  // checkout. The picker above lists the count, but it disappears the
+                  // instant a package is selected — so cashiers were completing sales
+                  // without noticing a package had run out, and the patient was never
+                  // told to renew.
+                  const d = selectedPackageWallet.packages?.find(p => p.isActive)?.department
+                    || selectedPackageWallet.packages?.[0]?.department
+                  const who = <><strong>{selectedPackageWallet.patientName}{d ? ` (${d})` : ''}</strong>&apos;s package</>
+
+                  // Resolve against the payment line so removing the package payment
+                  // takes this box with it, rather than leaving a stale count behind.
+                  const pkgPayment = payments.find(p => p.method === 'PACKAGE' && p.reference?.startsWith('PKG:'))
+                  const pkgId = pkgPayment?.reference?.replace('PKG:', '') || ''
+                  const pkg = selectedPackage?.id === pkgId
+                    ? selectedPackage
+                    : (selectedPackageWallet.packages || []).find((p: WalletPackage) => p.id === pkgId) || null
+
+                  if (!pkg) return (
+                    <div className="rounded-lg p-2 text-xs" style={{ background: '#dbeafe', color: '#1e40af' }}>
+                      Using: {who}
+                    </div>
+                  )
+
+                  const remaining = pkg.totalSessions - pkg.usedSessions
+                  // Mirrors the deduction rule exactly: ₱0 add-ons ride along free and
+                  // must not be counted as consuming a slot.
+                  const using = items.filter(it => toNum(it.unitPrice) > 0).reduce((s, it) => s + it.quantity, 0)
+                  const after = remaining - using
+                  const overdrawn = using > 0 && after < 0
+                  const exhausts = using > 0 && after <= 0
+                  const alert = overdrawn || exhausts
+
+                  return (
+                    <div className="rounded-lg p-2 text-xs space-y-1"
+                      style={{
+                        background: alert ? '#fee2e2' : '#dbeafe',
+                        color: alert ? '#b91c1c' : '#1e40af',
+                        border: alert ? '1px solid #fca5a5' : undefined,
+                      }}>
+                      <div>Using: {who}</div>
+                      <div style={{ fontWeight: 600 }}>
+                        {/* Plural follows the total, not the remainder: the pool is
+                            what's being counted, so "1 of 10 sessions left". */}
+                        {remaining} of {pkg.totalSessions} session{pkg.totalSessions === 1 ? '' : 's'} left
+                        {using > 0 && !overdrawn && <> &middot; {after} left after this sale</>}
+                      </div>
+                      {overdrawn ? (
+                        <div style={{ fontWeight: 700 }}>
+                          {/* Explicit {' '} — the compiler drops a plain space between an
+                              expression and the text that follows it here, rendering "8are". */}
+                          Only {remaining} session{remaining === 1 ? '' : 's'} left but {using}{' '}
+                          are being charged &mdash; this package cannot cover the whole sale.
+                        </div>
+                      ) : exhausts ? (
+                        <div style={{ fontWeight: 700 }}>
+                          {/* "Last session" is only true when one is being charged; a
+                              multi-session sale finishes the package without any single
+                              one of them being "the last". */}
+                          {using === 1
+                            ? <>Last session &mdash; this sale uses up the package. Let the patient know before they leave.</>
+                            : <>This sale uses the package&apos;s last {remaining} session{remaining === 1 ? '' : 's'}. Let the patient know before they leave.</>}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })()}
               </div>
             )}
 
