@@ -1,13 +1,17 @@
-// Nickel provider auth — a small, self-contained signed-cookie session (no
-// NextAuth needed). Cookie = base64url(payload).hmac, payload = { pid, exp }.
+// Nickel auth — self-contained signed-cookie sessions for BOTH providers and
+// patients. Cookie = base64url(payload).hmac, payload = { id, typ, exp }. The
+// `typ` marker + separate cookie names keep the two session kinds from ever
+// being used interchangeably.
 
 import crypto from 'crypto'
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
 
-export const SESSION_COOKIE = 'nickel_session'
+export const SESSION_COOKIE = 'nickel_session' // provider
+export const PATIENT_COOKIE = 'nickel_patient'
 const TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+type Typ = 'provider' | 'patient'
 
 function secret(): string {
   return process.env.NEXTAUTH_SECRET || 'dev-insecure-secret-change-me'
@@ -18,36 +22,41 @@ function fromB64url(s: string) { return Buffer.from(s.replace(/-/g, '+').replace
 export async function hashPassword(pw: string): Promise<string> { return bcrypt.hash(pw, 12) }
 export async function verifyPassword(pw: string, hash: string): Promise<boolean> { return bcrypt.compare(pw, hash) }
 
-export function signSession(providerId: string): string {
-  const body = b64url(Buffer.from(JSON.stringify({ pid: providerId, exp: Date.now() + TTL_MS })))
+function sign(id: string, typ: Typ): string {
+  const body = b64url(Buffer.from(JSON.stringify({ id, typ, exp: Date.now() + TTL_MS })))
   const sig = b64url(crypto.createHmac('sha256', secret()).update(body).digest())
   return `${body}.${sig}`
 }
-
-export function verifySession(token: string | undefined): string | null {
+function verify(token: string | undefined, typ: Typ): string | null {
   if (!token) return null
   const [body, sig] = token.split('.')
   if (!body || !sig) return null
   const expected = b64url(crypto.createHmac('sha256', secret()).update(body).digest())
   try { if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null } catch { return null }
   try {
-    const p = JSON.parse(fromB64url(body).toString('utf8')) as { pid: string; exp: number }
-    if (!p.pid || typeof p.exp !== 'number' || p.exp < Date.now()) return null
-    return p.pid
+    const p = JSON.parse(fromB64url(body).toString('utf8')) as { id: string; typ: Typ; exp: number }
+    if (!p.id || p.typ !== typ || typeof p.exp !== 'number' || p.exp < Date.now()) return null
+    return p.id
   } catch { return null }
 }
 
-// Server-component/route helper: the signed-in provider id (or null).
-export async function getSessionProviderId(): Promise<string | null> {
-  const jar = await cookies()
-  return verifySession(jar.get(SESSION_COOKIE)?.value)
-}
+// Provider session (kept the name signSession for existing routes).
+export function signSession(providerId: string): string { return sign(providerId, 'provider') }
+export function signPatientSession(patientId: string): string { return sign(patientId, 'patient') }
 
-// Load the full provider row for the current session.
+export async function getSessionProviderId(): Promise<string | null> {
+  return verify((await cookies()).get(SESSION_COOKIE)?.value, 'provider')
+}
+export async function getSessionPatientId(): Promise<string | null> {
+  return verify((await cookies()).get(PATIENT_COOKIE)?.value, 'patient')
+}
 export async function getSessionProvider() {
-  const pid = await getSessionProviderId()
-  if (!pid) return null
-  return prisma.provider.findUnique({ where: { id: pid } })
+  const id = await getSessionProviderId()
+  return id ? prisma.provider.findUnique({ where: { id } }) : null
+}
+export async function getSessionPatient() {
+  const id = await getSessionPatientId()
+  return id ? prisma.patient.findUnique({ where: { id } }) : null
 }
 
 export const cookieOptions = {
