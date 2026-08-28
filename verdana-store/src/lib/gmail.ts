@@ -36,9 +36,12 @@ function getGmail(): gmail_v1.Gmail {
   return _gmail
 }
 
-/** The authenticated mailbox's own address, which is the only valid From. */
+/** The authenticated mailbox's own address, which is the only valid From.
+ *  GMAIL_SENDER skips the profile lookup — a gmail.send-only token (the scope
+ *  our shared refresh token carries) is not allowed to call getProfile. */
 async function fromAddress(): Promise<string> {
   if (_address) return _address
+  if (process.env.GMAIL_SENDER) { _address = process.env.GMAIL_SENDER; return _address }
   const profile = await getGmail().users.getProfile({ userId: 'me' })
   _address = profile.data.emailAddress || 'verdanatrading@gmail.com'
   return _address
