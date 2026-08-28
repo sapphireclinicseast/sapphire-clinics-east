@@ -1244,10 +1244,10 @@ function HomecareBanner() {
           </svg>
         </div>
         <div className="min-w-0">
-          <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--gold)' }}>New service</div>
-          <h3 className="mt-1 text-[20px] font-bold leading-tight text-white">Homecare Physical Therapy now available!</h3>
+          <div className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: 'var(--gold)' }}>New · Aura at Home</div>
+          <h3 className="mt-1 text-[20px] font-bold leading-tight text-white">Physiotherapy at your doorstep</h3>
           <p className="mt-1.5 text-[13px] leading-snug text-white/80">
-            A licensed physical therapist comes to your home. Choose your city and a schedule that works for you.
+            A licensed physical therapist comes to your home. Pick your city, choose a time — we&apos;ll be there.
           </p>
           <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[14px] font-semibold transition-transform duration-200 group-hover:gap-3" style={{ color: 'var(--deep-teal)' }}>
             Schedule Now
