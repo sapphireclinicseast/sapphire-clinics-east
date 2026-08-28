@@ -1255,6 +1255,74 @@ model ClassPortalDocumentBlob {
 /// QR-from-phone upload handoff. Desktop /documents creates a row + shows
 /// a QR code that encodes /upload/<token>. The parent scans it on their
 /// phone, picks/takes a photo, the phone POSTs the file body here. The
+/// Meeting sessions minted by teachers via the class-portal Meetings
+/// tab. Each row corresponds to one video meeting on
+/// meet.sapphireclinicseast.org — the room string is stamped into the
+/// URL and bound into the HMAC signature by the ops-hub meet-link
+/// signer (signCompact + MEET_LINK_SECRET). Tagged students are stored
+/// in ClassPortalMeetingParticipant so we can email invitations and
+/// show them in each student's own portal too.
+model ClassPortalMeeting {
+  id              String   @id @default(cuid())
+  /// ClassPortalUser.id of the teacher who created the meeting. Not
+  /// a foreign key — same reason as ClassPortalTeacherAssignment
+  /// (which also stores raw ids) — so the row survives if the teacher
+  /// account is soft-disabled.
+  teacherId       String
+  /// Denormalised copies so admins can see the meeting even when the
+  /// teacher's row hasn't hydrated on that device. Same trick the
+  /// FrontDeskPayment table uses.
+  teacherEmail    String
+  teacherName     String
+  /// Room identifier baked into meet.sapphireclinicseast.org/r/<room>?t=…
+  /// Random UUID — no PII in the URL path.
+  room            String   @unique
+  title           String
+  /// Optional descriptor shown in the meeting list. Kept short for
+  /// the table view; free text.
+  notes           String?
+  scheduledAt     DateTime
+  /// Signed-link expiry. signCompact needs an absolute epoch second,
+  /// so the app computes endsAt + 2-day buffer at mint time. Stored
+  /// so re-mints are deterministic and re-invitations don't drift.
+  endsAt          DateTime
+  /// Soft-cancel — hides the meeting from the teacher list + refuses
+  /// re-mint; original link still verifies until endsAt (LiveKit
+  /// can't recall a signed token, only refuse to issue new ones).
+  cancelledAt     DateTime?
+  cancelledBy     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  participants    ClassPortalMeetingParticipant[]
+
+  @@index([teacherId])
+  @@index([scheduledAt])
+}
+
+/// A student tagged into a ClassPortalMeeting. Populated when the
+/// teacher picks students from their assigned branch+level roster in
+/// the Create Meeting modal. Powers per-student meeting visibility
+/// on their own class-portal dashboard.
+model ClassPortalMeetingParticipant {
+  id            String   @id @default(cuid())
+  meetingId     String
+  meeting       ClassPortalMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  studentId     String
+  /// Snapshot at invitation time so we don't need to look up the
+  /// user row every render. Cleared / refreshed on next re-mint.
+  studentEmail  String
+  studentName   String
+  /// Populated when the teacher hits the "Email invitations" button.
+  /// Null = never emailed. Reset if the teacher re-invites.
+  invitedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([meetingId])
+  @@index([studentId])
+  @@unique([meetingId, studentId])
+}
+
 /// desktop polls this row's `uploadedAt`; once non-null, it pulls the
 /// file blob, stores it in IndexedDB at the right doc slot, and deletes
 /// this row. Tokens expire after 30 min.
