@@ -98,20 +98,47 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
   }, [students, viewer.role, viewer.userId, viewerBranch])
 
   const [showCreate, setShowCreate] = useState(false)
+  const [search, setSearch] = useState('')
+  // Cancelled meetings pile up over time; hide them from the default
+  // view. Toggle stays checked for the session — useful while
+  // reviewing what a colleague cancelled.
+  const [showCancelled, setShowCancelled] = useState(false)
 
   async function handleCancel(m: MeetingRecord) {
     if (!confirm(`Cancel "${m.title}"? The meeting will show as CANCELLED and the join buttons disappear. Existing invitation links still verify until ${new Date(m.endsAt).toLocaleString()} — LiveKit can't recall signed tokens.`)) return
+    // Optimistic: flip the row's cancelledAt locally so the badge +
+    // hidden-by-default filter reflect it before the server round-trip.
+    // If the server fails we roll back below.
+    const snapshot = meetings
+    const now = new Date().toISOString()
+    setMeetings(prev => prev.map(x => x.id === m.id ? { ...x, cancelledAt: now, hostLink: null, guestLink: null } : x))
     const ok = await cancelMeeting(m.id)
-    if (!ok) { setErr('Could not cancel the meeting. Please retry.'); return }
+    if (!ok) {
+      setMeetings(snapshot)
+      setErr('Could not cancel the meeting. Please retry.')
+      return
+    }
     setInfo(`"${m.title}" cancelled.`)
+    // Re-fetch in the background so any concurrent changes land too.
     void refresh()
   }
 
   async function handleDelete(m: MeetingRecord) {
     const warn = `PERMANENTLY DELETE "${m.title}"?\n\nThis wipes the meeting record and its ${m.participants.length} tagged student${m.participants.length === 1 ? '' : 's'} from the class portal — it will not appear in any history again. Cannot be undone.\n\nNote: if the join link was already shared, it still verifies on the meet app until ${new Date(m.endsAt).toLocaleString()} — LiveKit can't recall signed tokens.`
     if (!confirm(warn)) return
+    // Optimistic remove: drop the row from local state before the
+    // server round trip. Without this the deleted row lingered until
+    // the async refresh() came back (and sometimes appeared to hang
+    // because the parent state didn't update visibly). Roll back on
+    // failure so nothing gets silently lost.
+    const snapshot = meetings
+    setMeetings(prev => prev.filter(x => x.id !== m.id))
     const ok = await deleteMeeting(m.id)
-    if (!ok) { setErr('Could not delete the meeting. Please retry.'); return }
+    if (!ok) {
+      setMeetings(snapshot)
+      setErr('Could not delete the meeting. Please retry.')
+      return
+    }
     setInfo(`"${m.title}" deleted.`)
     void refresh()
   }
@@ -123,6 +150,30 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
       setTimeout(() => setInfo(null), 2500)
     } catch { setErr('Could not copy — highlight and copy manually.') }
   }
+
+  // Filter: search matches title / notes / teacher / any tagged
+  // student name/email, plus the scheduled-date short label so a
+  // teacher can type "aug 30" or the year and get their meeting. Hides
+  // cancelled rows unless the "Show cancelled" toggle is ticked.
+  const filteredMeetings = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return meetings.filter(m => {
+      if (!showCancelled && m.cancelledAt) return false
+      if (!q) return true
+      if (m.title.toLowerCase().includes(q)) return true
+      if ((m.notes ?? '').toLowerCase().includes(q)) return true
+      if (m.teacherName.toLowerCase().includes(q)) return true
+      if (m.teacherEmail.toLowerCase().includes(q)) return true
+      if (m.participants.some(p =>
+        p.studentName.toLowerCase().includes(q) || p.studentEmail.toLowerCase().includes(q))) return true
+      const d = new Date(m.scheduledAt)
+      const dateLabel = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).toLowerCase()
+      if (dateLabel.includes(q)) return true
+      return false
+    })
+  }, [meetings, search, showCancelled])
+
+  const cancelledCount = meetings.filter(m => m.cancelledAt).length
 
   return (
     <div className="space-y-6">
@@ -144,7 +195,25 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
         {err && <div className="mt-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
         {info && <div className="mt-4 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800 break-words">{info}</div>}
 
-        <div className="overflow-auto mt-5 rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+        <div className="flex flex-wrap items-end gap-3 mt-5">
+          <label className="block flex-1 min-w-[240px]">
+            <span className="label">Search</span>
+            <input
+              className="input"
+              placeholder="Title, teacher, tagged student, or date"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </label>
+          {cancelledCount > 0 && (
+            <label className="inline-flex items-center gap-2 text-sm text-[color:var(--ink)] pb-2">
+              <input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} />
+              Show cancelled ({cancelledCount})
+            </label>
+          )}
+        </div>
+
+        <div className="overflow-auto mt-3 rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
               <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
@@ -163,7 +232,12 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
                   {canCreate ? 'No meetings yet. Click + New meeting to create one.' : "You haven't been tagged into any meetings yet."}
                 </td></tr>
               )}
-              {meetings.map(m => {
+              {!loading && meetings.length > 0 && filteredMeetings.length === 0 && (
+                <tr><td colSpan={6} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
+                  No meetings match this search{!showCancelled && cancelledCount > 0 ? ' — try Show cancelled if you\'re looking for a cancelled one' : ''}.
+                </td></tr>
+              )}
+              {filteredMeetings.map(m => {
                 const scheduled = new Date(m.scheduledAt)
                 const isCancelled = !!m.cancelledAt
                 const isMine = viewer.role !== 'STUDENT' && m.teacherId === viewer.userId
