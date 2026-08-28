@@ -89,7 +89,12 @@ const WAITLIST_FORMS = [
 // as a plain, unclickable header — sorting by a button is meaningless.
 
 type SortDir = 'asc' | 'desc'
-type SortCol = { key: string; label: string; get?: (row: any) => string | number | null | undefined }
+type SortCol = {
+  key: string; label: string
+  get?: (row: any) => string | number | null | undefined
+  // Opt this column into the filter row — see useFilters below.
+  filter?: FilterKind
+}
 
 function useSort(cols: SortCol[], rows: any[]) {
   const [sortKey, setSortKey] = useState<string | null>(null)
@@ -158,6 +163,139 @@ function SortHeaders({ cols, sortKey, sortDir, onToggle }: {
   )
 }
 
+// ── Column filters ───────────────────────────────────────────────────────────
+// Declared on the same COLS array that drives sorting, so a tab opts a column in
+// by adding one field instead of wiring up a control by hand. Kinds:
+//   'text'   substring match  (names, free text)
+//   'select' exact match from a dropdown of the values actually present
+//   'number' min/max range    (counts, day gaps)
+//
+// A column with no accessor can't be filtered for the same reason it can't be
+// sorted — there is no value behind it.
+
+type FilterKind = 'text' | 'select' | 'number'
+type FilterVal = { text?: string; min?: string; max?: string }
+
+function useFilters(cols: SortCol[], rows: any[], onChange?: () => void) {
+  const [filters, setFilters] = useState<Record<string, FilterVal>>({})
+
+  function setFilter(key: string, patch: FilterVal) {
+    setFilters(f => {
+      const next = { ...f, [key]: { ...f[key], ...patch } }
+      // Drop emptied entries so the active count stays honest and Clear resets
+      // to a genuinely empty state rather than a map of blank strings.
+      const v = next[key]
+      if (!v.text && !v.min && !v.max) delete next[key]
+      return next
+    })
+    onChange?.()
+  }
+  function clearAll() { setFilters({}); onChange?.() }
+  const activeCount = Object.keys(filters).length
+
+  const filtered = useMemo(() => {
+    if (activeCount === 0) return rows
+    return rows.filter(row => cols.every(c => {
+      const f = filters[c.key]
+      if (!f || !c.get) return true
+      const raw = c.get(row)
+      if (c.filter === 'number') {
+        const n = raw === null || raw === undefined || raw === '' ? NaN : Number(raw)
+        // A row with no number can't satisfy a range, so it drops out — same
+        // reasoning as blanks sorting last rather than counting as zero.
+        if (Number.isNaN(n)) return false
+        if (f.min) { const lo = Number(f.min); if (!Number.isNaN(lo) && n < lo) return false }
+        if (f.max) { const hi = Number(f.max); if (!Number.isNaN(hi) && n > hi) return false }
+        return true
+      }
+      const q = (f.text ?? '').trim().toLowerCase()
+      if (!q) return true
+      const s = String(raw ?? '').toLowerCase()
+      return c.filter === 'select' ? s === q : s.includes(q)
+    }))
+  }, [cols, rows, filters, activeCount])
+
+  return { filtered, filters, setFilter, clearAll, activeCount }
+}
+
+const filterInputStyle: React.CSSProperties = {
+  width: '100%', minWidth: 0, padding: '3px 6px', fontSize: '0.72rem',
+  border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff',
+  color: 'var(--charcoal)', fontFamily: 'inherit',
+}
+
+function FilterRow({ cols, rows, filters, setFilter }: {
+  cols: SortCol[]; rows: any[]
+  filters: Record<string, FilterVal>; setFilter: (k: string, p: FilterVal) => void
+}) {
+  return (
+    <tr style={{ background: '#FCFDFE', borderBottom: '1px solid #E2E8F0' }}>
+      {cols.map(c => {
+        if (!c.get || !c.filter) return <th key={c.key} className="px-4 py-2" />
+        const f = filters[c.key] ?? {}
+        return (
+          <th key={c.key} className="px-4 py-2" style={{ fontWeight: 400 }}>
+            {c.filter === 'number' ? (
+              <div className="flex items-center gap-1">
+                <input type="number" placeholder="min" value={f.min ?? ''} aria-label={`${c.label} minimum`}
+                  onChange={e => setFilter(c.key, { min: e.target.value })} style={filterInputStyle} />
+                <span style={{ color: '#CBD5E1', fontSize: '0.7rem' }}>&ndash;</span>
+                <input type="number" placeholder="max" value={f.max ?? ''} aria-label={`${c.label} maximum`}
+                  onChange={e => setFilter(c.key, { max: e.target.value })} style={filterInputStyle} />
+              </div>
+            ) : c.filter === 'select' ? (
+              <select value={f.text ?? ''} aria-label={`Filter by ${c.label}`}
+                onChange={e => setFilter(c.key, { text: e.target.value })} style={filterInputStyle}>
+                {/* Options come from the rows the tab passes in — post-search but
+                    pre-column-filter — so picking one value doesn't make every
+                    other option vanish from the list. */}
+                <option value="">All</option>
+                {Array.from(new Set(rows.map(r => String(c.get!(r) ?? '')).filter(Boolean)))
+                  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+                  .map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input type="text" placeholder="Filter&hellip;" value={f.text ?? ''} aria-label={`Filter by ${c.label}`}
+                onChange={e => setFilter(c.key, { text: e.target.value })} style={filterInputStyle} />
+            )}
+          </th>
+        )
+      })}
+    </tr>
+  )
+}
+
+// Toggle + active count + reset, sat next to each tab's search box.
+function FilterToggle({ open, onToggle, activeCount, onClear }: {
+  open: boolean; onToggle: () => void; activeCount: number; onClear: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <button onClick={onToggle} className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5"
+        title={open ? 'Hide column filters' : 'Filter by column'}
+        style={{
+          background: activeCount ? 'var(--teal)' : '#fff',
+          color: activeCount ? '#fff' : '#6B7280',
+          border: `1px solid ${activeCount ? 'var(--teal)' : '#d1d5db'}`, cursor: 'pointer',
+        }}>
+        <Filter size={12} />
+        Filters
+        {activeCount > 0 && (
+          <span className="px-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.25)', fontSize: '0.68rem' }}>
+            {activeCount}
+          </span>
+        )}
+      </button>
+      {activeCount > 0 && (
+        <button onClick={onClear} className="text-xs font-semibold"
+          style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', textDecoration: 'underline' }}>
+          Clear
+        </button>
+      )}
+    </div>
+  )
+}
+
 function WaitlistTab({ branch }: { branch: string }) {
   const [formKey, setFormKey] = useState('registration')
   const [responses, setResponses] = useState<any[]>([])
@@ -165,6 +303,9 @@ function WaitlistTab({ branch }: { branch: string }) {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  // Filter row starts hidden: most visits to this tab are a quick look, and a
+  // row of empty inputs above every table would be permanent clutter.
+  const [showFilters, setShowFilters] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [converting, setConverting] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -245,12 +386,13 @@ function WaitlistTab({ branch }: { branch: string }) {
 
   const COLS: SortCol[] = [
     { key: 'expand', label: '' },                                   // chevron
-    { key: 'name',   label: 'Name', get: r => getName(r) },
-    { key: 'form',   label: 'Form', get: r => r._formTitle ?? '' },
+    { key: 'name',   label: 'Name', get: r => getName(r), filter: 'text' },
+    { key: 'form',   label: 'Form', get: r => r._formTitle ?? '', filter: 'select' },
     // Raw ISO timestamp, not the formatted cell — "Mar" vs "Apr" would sort alphabetically.
-    { key: 'date',   label: 'Date', get: r => r.submitted_at ?? '' },
+    { key: 'date',   label: 'Date', get: r => r.submitted_at ?? '', filter: 'text' },
   ]
-  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, filtered)
+  const { filtered: colFiltered, filters, setFilter, clearAll, activeCount } = useFilters(COLS, filtered, () => setPage(1))
+  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, colFiltered)
   const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
   async function convertToPatient(item: any) {
@@ -348,16 +490,20 @@ function WaitlistTab({ branch }: { branch: string }) {
         ))}
       </div>
 
-      <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
+        <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+      </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
         <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
           <thead>
             <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
+            {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
           </thead>
           <tbody>
             {paginated.length === 0 ? (
-              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>No responses found.</td></tr>
+              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No responses match these filters.' : 'No responses found.'}</td></tr>
             ) : paginated.map((item: any) => {
               const converted = isConverted(item)
               return (
@@ -424,7 +570,7 @@ function WaitlistTab({ branch }: { branch: string }) {
             })}
           </tbody>
         </table>
-        <Pagination total={filtered.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+        <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
       </div>
     </div>
   )
@@ -467,6 +613,9 @@ function FollowUpTab({ branch }: { branch: string }) {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  // Filter row starts hidden: most visits to this tab are a quick look, and a
+  // row of empty inputs above every table would be permanent clutter.
+  const [showFilters, setShowFilters] = useState(false)
 
   useEffect(() => {
     setLoading(true); setPage(1)
@@ -483,19 +632,20 @@ function FollowUpTab({ branch }: { branch: string }) {
     : patients
 
   const COLS: SortCol[] = [
-    { key: 'patient',   label: 'Patient',       get: p => `${p.lastName} ${p.firstName}` },
-    { key: 'clinician', label: 'Clinician',     get: p => p.clinicianName ?? '' },
+    { key: 'patient',   label: 'Patient',       get: p => `${p.lastName} ${p.firstName}`, filter: 'text' },
+    { key: 'clinician', label: 'Clinician',     get: p => p.clinicianName ?? '', filter: 'select' },
     // Sort the raw date, not the "Mar 3, 2026" the cell prints — the formatted
     // string would sort alphabetically by month name.
-    { key: 'first',     label: 'First Session', get: p => p.firstSessionDate ?? '' },
-    { key: 'reference', label: 'Reference',     get: p => p.referenceSource ?? '' },
+    { key: 'first',     label: 'First Session', get: p => p.firstSessionDate ?? '', filter: 'text' },
+    { key: 'reference', label: 'Reference',     get: p => p.referenceSource ?? '', filter: 'select' },
     // Numeric so 9 sorts before 10 rather than after it.
-    { key: 'days',      label: 'Days',          get: p => (p.daysSince ?? null) === null ? null : Number(p.daysSince) },
+    { key: 'days',      label: 'Days',          get: p => (p.daysSince ?? null) === null ? null : Number(p.daysSince), filter: 'number' },
     // Sort by the label shown in the pill, so the order matches what is on screen.
-    { key: 'status',    label: 'Status',        get: p => (statusConfig[p.status] || statusConfig.ok).label },
+    { key: 'status',    label: 'Status',        get: p => (statusConfig[p.status] || statusConfig.ok).label, filter: 'select' },
     { key: 'contact',   label: 'Contact' },                          // buttons
   ]
-  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, filtered)
+  const { filtered: colFiltered, filters, setFilter, clearAll, activeCount } = useFilters(COLS, filtered, () => setPage(1))
+  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, colFiltered)
   const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
   return (
@@ -535,7 +685,10 @@ function FollowUpTab({ branch }: { branch: string }) {
         </div>
       )}
 
-      <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
+        <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+      </div>
 
       {loading ? <Loading /> : (
         <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
@@ -543,10 +696,11 @@ function FollowUpTab({ branch }: { branch: string }) {
             <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
               <thead>
                 <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
+                {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
               </thead>
               <tbody>
                 {paginated.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-10" style={{ color: '#9ca3af' }}>No patients in this department.</td></tr>
+                  <tr><td colSpan={7} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No patients match these filters.' : 'No patients in this department.'}</td></tr>
                 ) : paginated.map((p: any) => {
                   const sc = statusConfig[p.status] || statusConfig.ok
                   const Icon = sc.icon
@@ -573,7 +727,7 @@ function FollowUpTab({ branch }: { branch: string }) {
               </tbody>
             </table>
           </div>
-          <Pagination total={filtered.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+          <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
         </div>
       )}
     </div>
@@ -592,6 +746,9 @@ function NoShowTab({ branch }: { branch: string }) {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  // Filter row starts hidden: most visits to this tab are a quick look, and a
+  // row of empty inputs above every table would be permanent clutter.
+  const [showFilters, setShowFilters] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [logForm, setLogForm] = useState<{ patientId: string; remarks: string } | null>(null)
   const [logSaving, setLogSaving] = useState(false)
@@ -615,12 +772,13 @@ function NoShowTab({ branch }: { branch: string }) {
 
   const COLS: SortCol[] = [
     { key: 'expand',  label: '' },                                  // chevron
-    { key: 'patient', label: 'Patient',   get: p => `${p.lastName} ${p.firstName}` },
-    { key: 'branch',  label: 'Branch',    get: p => branchLabel(p.branch) ?? '' },
+    { key: 'patient', label: 'Patient',   get: p => `${p.lastName} ${p.firstName}`, filter: 'text' },
+    { key: 'branch',  label: 'Branch',    get: p => branchLabel(p.branch) ?? '', filter: 'select' },
     // The whole reason to sort this tab: who is closest to the no-show limit.
-    { key: 'count',   label: 'No-Shows',  get: p => Number(p.noShowCount ?? 0) },
+    { key: 'count',   label: 'No-Shows',  get: p => Number(p.noShowCount ?? 0), filter: 'number' },
   ]
-  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, filtered)
+  const { filtered: colFiltered, filters, setFilter, clearAll, activeCount } = useFilters(COLS, filtered, () => setPage(1))
+  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, colFiltered)
   const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
   async function saveLog() {
@@ -654,16 +812,20 @@ function NoShowTab({ branch }: { branch: string }) {
         Patients are allowed a maximum of <strong>{MAX_NOSHOWS} no-shows</strong>. Upon reaching {MAX_NOSHOWS}/{MAX_NOSHOWS}, the patient is <strong>subject to slot removal</strong>.
       </div>
 
-      <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
+        <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+      </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
         <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
           <thead>
             <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
+            {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
           </thead>
           <tbody>
             {paginated.length === 0 ? (
-              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>No patients found.</td></tr>
+              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No patients match these filters.' : 'No patients found.'}</td></tr>
             ) : paginated.map((p: any) => {
               const isExpanded = expandedId === p.id
               const atLimit = p.noShowCount >= MAX_NOSHOWS
@@ -757,7 +919,7 @@ function NoShowTab({ branch }: { branch: string }) {
             })}
           </tbody>
         </table>
-        <Pagination total={filtered.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+        <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
       </div>
 
       {/* Delete confirmation modal */}
@@ -801,6 +963,9 @@ function CancellationTab({ branch }: { branch: string }) {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  // Filter row starts hidden: most visits to this tab are a quick look, and a
+  // row of empty inputs above every table would be permanent clutter.
+  const [showFilters, setShowFilters] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [logForm, setLogForm] = useState<{ patientId: string; type: string; remarks: string } | null>(null)
   const [logSaving, setLogSaving] = useState(false)
@@ -827,15 +992,17 @@ function CancellationTab({ branch }: { branch: string }) {
 
   const COLS: SortCol[] = [
     { key: 'expand',  label: '' },                                  // chevron
-    { key: 'patient', label: 'Patient',        get: p => `${p.lastName} ${p.firstName}` },
-    { key: 'branch',  label: 'Branch',         get: p => branchLabel(p.branch) ?? '' },
+    { key: 'patient', label: 'Patient',        get: p => `${p.lastName} ${p.firstName}`, filter: 'text' },
+    { key: 'branch',  label: 'Branch',         get: p => branchLabel(p.branch) ?? '', filter: 'select' },
     // Named for the window it actually measures — the trailing 6 months — so the
-    // 0/2 can't be misread as a lifetime figure.
-    { key: 'free',    label: 'Free Allowance (last 6 mo)', get: p => Number(p.windowUsed ?? 0) },
-    // Sorting by this surfaces who is at the 12-cancellation slot-removal line.
-    { key: 'slot',    label: 'Slot Removal',   get: p => Number(p.cancellationsUsed ?? 0) },
+    // 0/2 can't be misread as a lifetime figure. Filtering min=2 lists exactly
+    // the patients a cancellation fee now applies to.
+    { key: 'free',    label: 'Free Allowance (last 6 mo)', get: p => Number(p.windowUsed ?? 0), filter: 'number' },
+    // Sorting/filtering by this surfaces who is at the 12-cancellation line.
+    { key: 'slot',    label: 'Slot Removal',   get: p => Number(p.cancellationsUsed ?? 0), filter: 'number' },
   ]
-  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, filtered)
+  const { filtered: colFiltered, filters, setFilter, clearAll, activeCount } = useFilters(COLS, filtered, () => setPage(1))
+  const { sorted, sortKey, sortDir, toggle } = useSort(COLS, colFiltered)
   const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
   async function saveLog() {
@@ -909,16 +1076,22 @@ function CancellationTab({ branch }: { branch: string }) {
         <strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.
       </div>
 
-      <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
+        <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+      </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
         <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
           <thead>
             <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
+            {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
           </thead>
           <tbody>
             {paginated.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-10" style={{ color: '#9ca3af' }}>No patients found.</td></tr>
+              <tr><td colSpan={5} className="text-center py-10" style={{ color: '#9ca3af' }}>
+                {activeCount > 0 ? 'No patients match these filters.' : 'No patients found.'}
+              </td></tr>
             ) : paginated.map((p: any) => {
               const isExpanded = expandedId === p.id
               const atSlotLimit = p.cancellationsUsed >= 12
@@ -1081,7 +1254,7 @@ function CancellationTab({ branch }: { branch: string }) {
             })}
           </tbody>
         </table>
-        <Pagination total={filtered.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+        <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
       </div>
 
       {/* QR code modal */}
