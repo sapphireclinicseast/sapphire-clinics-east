@@ -798,6 +798,25 @@ jobs:
           curl -s -o /dev/null -w "%{http_code}" http://localhost:3005/ 2>&1 || echo "curl failed"
           echo ""
           echo "✅ Client-portal deployed."
+
+          # ── Rebuild + restart Nickel (standalone homecare app, own DB) ──
+          echo "→ Deploying Nickel..."
+          cd /opt/sapphire
+          git checkout origin/main -- nickel docker 2>/dev/null || true
+          # Sync Nickel's schema to its OWN database (idempotent) before restart.
+          NICKEL_DB_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sapphire_db 2>/dev/null || echo "")
+          NICKEL_PG_PASS=$(grep "^POSTGRES_PASSWORD" "$ENV_FILE" | cut -d= -f2-)
+          if [ -n "$NICKEL_DB_IP" ] && [ -d /opt/sapphire/nickel ]; then
+            docker exec sapphire_db psql -U sapphire -d sapphire_marketing -tc "SELECT 1 FROM pg_database WHERE datname='sapphire_nickel'" | grep -q 1 || docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "CREATE DATABASE sapphire_nickel"
+            (cd /opt/sapphire/nickel && npm install --no-audit --no-fund >/dev/null 2>&1 && DATABASE_URL="postgresql://sapphire:${NICKEL_PG_PASS}@${NICKEL_DB_IP}:5432/sapphire_nickel" ./node_modules/.bin/prisma db push 2>&1 | tail -3) || echo "⚠ nickel db push skipped"
+          fi
+          docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build nickel 2>&1 | tail -15
+          docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --no-deps nickel 2>&1 | tail -5
+          sleep 6
+          echo "→ Checking port 3007:"
+          curl -s -o /dev/null -w "%{http_code}" http://localhost:3007/ 2>&1 || echo "curl failed"
+          echo ""
+          echo "✅ Nickel deployed."
           REMOTE_SCRIPT
 
       # ── 7b. Emergency accounting-hub container recovery ─────────────
