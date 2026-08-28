@@ -166,6 +166,28 @@ services:
     ports:
       - "127.0.0.1:3006:3000"
 
+  # Nickel — standalone homecare marketplace (nickel.sapphireclinicseast.org).
+  # Its OWN database (sapphire_nickel). Patient payments settle into the
+  # Verdana PayMongo account.
+  nickel:
+    build:
+      context: ../nickel
+      dockerfile: Dockerfile
+    container_name: sapphire_nickel_app
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sapphire:${POSTGRES_PASSWORD}@postgres:5432/sapphire_nickel
+      NEXTAUTH_URL: https://nickel.sapphireclinicseast.org
+      NEXTAUTH_SECRET: ${NICKEL_NEXTAUTH_SECRET}
+      AUTH_TRUST_HOST: "true"
+      PAYMONGO_SECRET_KEY: ${PAYMONGO_VERDANA_SECRET_KEY:-${PAYMONGO_SECRET_KEY}}
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3007:3000"
+
 volumes:
   postgres_data:
   redis_data:
