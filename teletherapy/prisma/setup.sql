@@ -259,3 +259,11 @@ CREATE INDEX IF NOT EXISTS "AvailabilitySlot_staffId_idx" ON "AvailabilitySlot"(
 -- Login email aliases: previously-used addresses that still work for sign-in
 -- after an email migration (kept in sync from Staff.email).
 ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "emailAliases" TEXT[] NOT NULL DEFAULT '{}';
+
+-- Self-service provider sign-up (via the patient app /signin). source marks how
+-- a Staff row was created; the consent columns record the accepted Terms.
+ALTER TABLE "Staff"            ADD COLUMN IF NOT EXISTS "source" TEXT DEFAULT 'HR';
+ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "selfRegistered" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "termsVersion" TEXT;
+ALTER TABLE "TherapistAccount" ADD COLUMN IF NOT EXISTS "termsAcceptedAt" TIMESTAMP(3);
+CREATE INDEX IF NOT EXISTS "Staff_source_idx" ON "Staff"("source");

@@ -474,6 +474,8 @@ jobs:
               grep "^EXTERNAL_API_KEY" "$MENV" >> .env 2>/dev/null || true
               grep "^MEET_BASE_URL" "$MENV" >> .env 2>/dev/null || true
               grep "^GMAIL_FROM_EMAIL" "$MENV" >> .env 2>/dev/null || true
+              # Shared secret for the provider sign-in/up handoff from the patient app.
+              grep "^PROVIDER_HANDOFF_SECRET" "$MENV" >> .env 2>/dev/null || true
               echo "UPLOAD_DIR=./uploads" >> .env
               echo "TELETHERAPY_HR_API_KEY=${{ secrets.TELETHERAPY_HR_API_KEY }}" >> .env
               # Manual chatbot (Phase 2) — key lives in the marketing .env.production

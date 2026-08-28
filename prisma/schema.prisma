@@ -540,6 +540,10 @@ model Staff {
   bankName        String?         // Bank Name from HR Platform
   bankAccountNo   String?         // Bank Account Number from HR Platform
   hrPlatformId    String?         // ID from HR Platform for sync matching
+  // Row origin: "HR" (synced from HR Platform, default) or "SELF_SIGNUP" (a
+  // provider who self-registered via the patient app). Self-registered rows are
+  // NOT created by the HR sync and MUST be excluded from its prune.
+  source          String?         @default("HR")
   active          Boolean         @default(true) // false = inactive in HR; hidden from Staff Module, Top 5, etc.
   isInternshipSupervisor Boolean  @default(false) // Clinical Internship Supervisor (HR Staff Profile
                                    // checkbox, synced one-way). Staff Portal reads this off the shared

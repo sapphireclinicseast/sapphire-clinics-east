@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
 import { rateLimit } from './rate-limit'
 import { reconcileAccountEmail } from './sync-account-emails'
+import { verifyHandoffToken, consumeJti } from './provider-handoff'
 
 interface BranchInfo {
   staffId: string
@@ -97,32 +98,48 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        // One-time token minted after the patient app authenticated/created the
+        // provider (server-to-server). Lets us log them in without re-entering
+        // the password, while NextAuth still sets the session cookie itself.
+        handoffToken: { label: 'Handoff', type: 'text' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
+        const handoffToken = typeof credentials?.handoffToken === 'string' ? credentials.handoffToken : ''
+        let account
 
-        const email = (credentials.email as string).toLowerCase().trim()
+        if (handoffToken) {
+          // Path A — one-time handoff token (verified + single-use).
+          const payload = verifyHandoffToken(handoffToken)
+          if (!payload || !consumeJti(payload.jti)) return null
+          account = await prisma.therapistAccount.findUnique({ where: { id: payload.accountId }, include: { staff: true } })
+          if (!account || !account.isActive) return null
+        } else {
+          // Path B — email + password.
+          if (!credentials?.email || !credentials?.password) return null
 
-        // Rate limit: 10 attempts per 15 minutes per email
-        const { success } = rateLimit(`login:${email}`, { maxAttempts: 10, windowMs: 15 * 60 * 1000 })
-        if (!success) return null
+          const email = (credentials.email as string).toLowerCase().trim()
 
-        // Match the typed address against the current login email, an old login
-        // alias, or the staff (HR/Ops) email — so a person can always sign in
-        // with their current email even if the stored login hasn't been
-        // reconciled to it yet.
-        let account = await prisma.therapistAccount.findUnique({ where: { email }, include: { staff: true } })
-        if (!account) account = await prisma.therapistAccount.findFirst({ where: { emailAliases: { has: email } }, include: { staff: true } })
-        if (!account) account = await prisma.therapistAccount.findFirst({ where: { staff: { email } }, include: { staff: true } })
+          // Rate limit: 10 attempts per 15 minutes per email
+          const { success } = rateLimit(`login:${email}`, { maxAttempts: 10, windowMs: 15 * 60 * 1000 })
+          if (!success) return null
 
-        if (!account || !account.isActive) return null
+          // Match the typed address against the current login email, an old login
+          // alias, or the staff (HR/Ops) email — so a person can always sign in
+          // with their current email even if the stored login hasn't been
+          // reconciled to it yet.
+          account = await prisma.therapistAccount.findUnique({ where: { email }, include: { staff: true } })
+          if (!account) account = await prisma.therapistAccount.findFirst({ where: { emailAliases: { has: email } }, include: { staff: true } })
+          if (!account) account = await prisma.therapistAccount.findFirst({ where: { staff: { email } }, include: { staff: true } })
 
-        const valid = await bcrypt.compare(
-          credentials.password as string,
-          account.passwordHash
-        )
+          if (!account || !account.isActive) return null
 
-        if (!valid) return null
+          const valid = await bcrypt.compare(
+            credentials.password as string,
+            account.passwordHash
+          )
+
+          if (!valid) return null
+        }
 
         await prisma.therapistAccount.update({
           where: { id: account.id },

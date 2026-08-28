@@ -11,8 +11,6 @@ export const metadata: Metadata = {
   description: 'Sign in to Aura Health as a patient or a provider.',
 }
 
-const STAFF_LOGIN = 'https://staff.sapphireclinicseast.org/login'
-
 function IconPatient() {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
@@ -47,11 +45,11 @@ export default function SignInChooser() {
         </a>
 
         {/* Provider */}
-        <a href={STAFF_LOGIN} className="card-static flex items-center gap-4 transition-all hover:border-[color:var(--sage)] hover:shadow-[0_6px_18px_rgba(27,63,56,0.10)]">
+        <a href="/signin/provider" className="card-static flex items-center gap-4 transition-all hover:border-[color:var(--sage)] hover:shadow-[0_6px_18px_rgba(27,63,56,0.10)]">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[color:var(--paper-2)] text-[color:var(--deep-teal)]"><IconProvider /></div>
           <div className="min-w-0 flex-1">
             <div className="text-[16px] font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>I&apos;m a provider</div>
-            <div className="text-[13px] text-[color:var(--mid-gray)]">Aura Health therapists &amp; staff — go to the staff portal.</div>
+            <div className="text-[13px] text-[color:var(--mid-gray)]">Aura Health therapists &amp; staff — sign in or create an account.</div>
           </div>
           <span className="text-[color:var(--moss)]"><Arrow /></span>
         </a>

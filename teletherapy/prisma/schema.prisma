@@ -48,6 +48,11 @@ model Staff {
   jobTitle        String?
   employmentType  String?
   hrPlatformId    String?
+  // Origin of the row: "HR" (synced from HR Platform, the default) or
+  // "SELF_SIGNUP" (a provider who self-registered via the patient app). Used
+  // to group self-registered providers separately and to protect them from the
+  // HR full-sync prune.
+  source          String?         @default("HR")
   // Clinical Internship Supervisor (HR Staff Profile checkbox, synced one-way
   // into the shared DB by Operations Hub — see its schema.prisma for the
   // column/migration owner). Grants the "All Interns" view: every intern's
@@ -424,6 +429,11 @@ model TherapistAccount {
   // after the rotation lapsed, this is set so the daily auto-disable sweep
   // won't turn the account off again (e.g. a re-rotation).
   internAccessOverride Boolean   @default(false)
+  // Self-service provider sign-up (via the patient app). selfRegistered marks
+  // accounts created through /signin, with the accepted Terms version + time.
+  selfRegistered   Boolean       @default(false)
+  termsVersion     String?
+  termsAcceptedAt  DateTime?
   lastLoginAt      DateTime?
   resetToken       String?
   resetTokenExpiry DateTime?

@@ -243,7 +243,9 @@ export async function POST() {
     }
   }
 
-  const toDelete = existing.filter(s => !matchedIds.has(s.id))
+  // Self-registered providers (from the patient app) are NOT in the HR feed,
+  // so they'd always look "unmatched" — never prune them.
+  const toDelete = existing.filter(s => !matchedIds.has(s.id) && s.source !== 'SELF_SIGNUP')
   let deleted = 0
   for (const s of toDelete) {
     try {
