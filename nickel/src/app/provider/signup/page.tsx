@@ -63,7 +63,10 @@ export default function ProviderSignup() {
           <div className="mt-2">
             <div className="flex items-center justify-between">
               <div className="label">Provider Terms of Service &amp; Data Privacy Consent</div>
-              <a href="/provider/terms" target="_blank" rel="noopener noreferrer" className="text-[11.5px] font-medium text-[color:var(--steel)] hover:underline">Open in new tab ↗</a>
+              <div className="flex gap-3">
+                <a href="/provider/terms/annexes" target="_blank" rel="noopener noreferrer" className="text-[11.5px] font-medium text-[color:var(--steel)] hover:underline">Annexes A–D ↗</a>
+                <a href="/provider/terms" target="_blank" rel="noopener noreferrer" className="text-[11.5px] font-medium text-[color:var(--steel)] hover:underline">Open in new tab ↗</a>
+              </div>
             </div>
             <div className="max-h-72 overflow-y-auto rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-3.5">
               <ProviderTermsBody />

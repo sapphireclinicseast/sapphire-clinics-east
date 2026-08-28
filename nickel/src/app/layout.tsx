@@ -5,7 +5,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
 
 export const metadata: Metadata = {
-  title: 'Nickel — Homecare therapy',
+  title: { default: 'Nickel', template: '%s · Nickel' },
   description: 'Book a home therapy session with a licensed therapist near you. By Sapphire Clinics East, developed by Jara Universal OPC.',
   applicationName: 'Nickel',
 }
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
         <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
         <footer className="mx-auto max-w-5xl px-4 py-8 text-center text-[12px] text-[color:var(--muted)]">
-          Nickel · Sapphire Clinics East Inc. · developed by Jara Universal OPC
+          Nickel 2026
         </footer>
       </body>
     </html>
