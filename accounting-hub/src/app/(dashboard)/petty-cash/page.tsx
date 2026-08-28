@@ -38,9 +38,9 @@ function DeptTagCell({ value, disabled, onSave }: { value: string[]; disabled?: 
   const label = value.length ? value.map(d => d === 'PSYCHOLOGY' ? 'PSYCH' : d === 'ORTHOSIS' ? 'ORTHO' : d).join(', ') : 'All'
   return (
     <div className="relative">
-      <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+      <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)} title={label}
         className="px-2 py-1.5 w-full text-left text-sm whitespace-nowrap rounded"
-        style={{ minWidth: 120, color: value.length ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+        style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', color: value.length ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
         {label} ▾
       </button>
       {open && (
@@ -505,7 +505,10 @@ function PettyCashInner() {
   }
   // Race-safe append (ScanUpload may deliver several photos in quick succession).
   const gridTableRef = useRef<HTMLTableElement>(null)
-  const gridRz = useResizableColumns(`petty-cash-entries-grid-${branch}`, gridTableRef)
+  // v2: widths stored under the old key were seeded before the Department cell
+  // grew (dept tags) and could leave the trailing actions column with no room —
+  // a fresh key re-measures every column once against the current layout.
+  const gridRz = useResizableColumns(`petty-cash-entries-grid-v2-${branch}`, gridTableRef)
   const entriesRef = useRef(entries)
   useEffect(() => { entriesRef.current = entries }, [entries])
   const appendProof = (id: string, url: string) => {
@@ -939,7 +942,10 @@ function PettyCashInner() {
                         <ColResizeHandle rz={gridRz} index={ci + 1} />
                       </th>
                     ))}
-                    <th className="border-r border-b px-2 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />
+                    {/* Actions column: sticky right (same pattern as the Expenses grid) so the
+                        finalize/edit/delete controls and the finalized ✓ stay visible without
+                        scrolling the wide grid. */}
+                    <th className="border-b px-2 py-2 text-center text-[11px] font-semibold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', position: 'sticky', right: 0, zIndex: 12, minWidth: 84, color: 'var(--mid-gray)' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1185,8 +1191,8 @@ function PettyCashInner() {
                             <option value="Yes">Yes</option>
                           </select>
                         </td>
-                        <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          {canWrite && !e.reimbursementId && (
+                        <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)', position: 'sticky', right: 0, zIndex: 4, background: 'inherit', boxShadow: '-5px 0 6px -4px rgba(0,0,0,0.18)', minWidth: 84 }}>
+                          {canWrite && !e.reimbursementId ? (
                             <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
                               <button onClick={() => finalizeEntry(e)} disabled={!!e.finalized}
                                 title={e.finalized ? 'Finalized' : 'Mark as finalized'} className="p-1 rounded hover:bg-green-50">
@@ -1200,7 +1206,12 @@ function PettyCashInner() {
                                 <Trash2 size={13} style={{ color: '#dc2626' }} />
                               </button>
                             </div>
-                          )}
+                          ) : e.finalized ? (
+                            // Locked (in an RFP): keep the finalized ✓ visible as a read-only state.
+                            <span title="Finalized · locked (in an RFP)" className="inline-flex p-1">
+                              <CheckCircle2 size={14} style={{ color: '#16a34a' }} />
+                            </span>
+                          ) : null}
                         </td>
                       </tr>
                     )
