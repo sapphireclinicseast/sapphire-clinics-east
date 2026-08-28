@@ -17,6 +17,19 @@ const BRANCHES = [
   { value: 'SANDBOX_GREENHILLS', label: sharedBranchLabel('SANDBOX_GREENHILLS') },
 ]
 
+// Age of a log in words. Months once past ~8 weeks, because "247 days ago" makes
+// the reader do the division to answer the only question that matters here:
+// how far outside the 6-month window this is.
+function formatAge(days: number): string {
+  if (days <= 0) return 'today'
+  if (days === 1) return '1 day'
+  if (days < 14) return `${days} days`
+  if (days < 60) return `${Math.floor(days / 7)} weeks`
+  const months = Math.floor(days / 30)
+  if (months < 24) return `${months} month${months === 1 ? '' : 's'}`
+  return `${Math.floor(months / 12)} years`
+}
+
 function branchLabel(b?: string | null) {
   return BRANCHES.find(x => x.value === b)?.label ?? b ?? '\u2014'
 }
@@ -816,7 +829,9 @@ function CancellationTab({ branch }: { branch: string }) {
     { key: 'expand',  label: '' },                                  // chevron
     { key: 'patient', label: 'Patient',        get: p => `${p.lastName} ${p.firstName}` },
     { key: 'branch',  label: 'Branch',         get: p => branchLabel(p.branch) ?? '' },
-    { key: 'free',    label: 'Free Allowance', get: p => Number(p.windowUsed ?? 0) },
+    // Named for the window it actually measures — the trailing 6 months — so the
+    // 0/2 can't be misread as a lifetime figure.
+    { key: 'free',    label: 'Free Allowance (last 6 mo)', get: p => Number(p.windowUsed ?? 0) },
     // Sorting by this surfaces who is at the 12-cancellation slot-removal line.
     { key: 'slot',    label: 'Slot Removal',   get: p => Number(p.cancellationsUsed ?? 0) },
   ]
@@ -890,7 +905,7 @@ function CancellationTab({ branch }: { branch: string }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg p-3 text-xs" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-        <strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> per 6-month window (from first session). After that, a cancellation fee applies.<br />
+        <strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> in any <strong>rolling 6-month period</strong> &mdash; counted over the last 180 days, so older logs age out. Reschedules count too. After that, a cancellation fee applies.<br />
         <strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.
       </div>
 
@@ -948,6 +963,24 @@ function CancellationTab({ branch }: { branch: string }) {
                             </button>
                           </div>
 
+                          {/* The allowance counts only the trailing 6 months, so a patient
+                              with a long history can sit at 0/2. Say why, or the zero next
+                              to a lifetime total reads as a missing or wiped log. */}
+                          {p.windowLapsed && (
+                            <div className="rounded-lg px-3 py-2 flex items-start gap-2"
+                              style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                              <Clock size={13} style={{ color: '#64748B', marginTop: 1, flexShrink: 0 }} />
+                              <p className="text-xs" style={{ color: '#475569', lineHeight: 1.5 }}>
+                                <span style={{ fontWeight: 700 }}>6-month window lapsed.</span>{' '}
+                                No cancellations or reschedules in the last 6 months
+                                {typeof p.daysSinceLastLog === 'number' && (
+                                  <> — the most recent was <span style={{ fontWeight: 600 }}>{formatAge(p.daysSinceLastLog)} ago</span></>
+                                )}.
+                                {' '}The {p.cancellationsUsed} log{p.cancellationsUsed === 1 ? '' : 's'} below still count toward slot removal, but no longer toward the free allowance.
+                              </p>
+                            </div>
+                          )}
+
                           {/* New log form */}
                           {logForm?.patientId === p.id && (
                             <div className="rounded-lg p-3 space-y-2" style={{ background: '#fff', border: '1px solid #E2E8F0' }}>
@@ -986,6 +1019,14 @@ function CancellationTab({ branch }: { branch: string }) {
                                     <span className="ml-2" style={{ color: '#6B7280' }}>
                                       {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                     </span>
+                                    {/* Only tagged when some other log DOES count — on a fully
+                                        lapsed patient the banner above already says it, and
+                                        tagging every row would just be noise. */}
+                                    {!log.deletedAt && !log.inWindow && p.windowUsed > 0 && (
+                                      <span className="ml-2 px-1.5 py-0.5 rounded" style={{ background: '#F1F5F9', color: '#64748B', fontWeight: 600 }}>
+                                        outside 6-mo window
+                                      </span>
+                                    )}
                                     {log.remarks && <span className="ml-2" style={{ color: '#9ca3af' }}>- {log.remarks}</span>}
                                     {log.deletedAt && (
                                       <span className="ml-2 text-xs" style={{ color: '#DC2626' }}>

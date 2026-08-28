@@ -269,28 +269,40 @@ export async function GET(req: NextRequest) {
     })
 
     const today = new Date()
+    // The free-cancellation allowance runs over the ROLLING last 6 months.
+    //
+    // It used to be anchored to firstDayOfConsult, which meant it only ever
+    // measured a patient's FIRST 180 days. For anyone longer-standing than that
+    // — most of the roster — every recent cancellation fell outside the window,
+    // so the allowance read 0/2 no matter how many times they had cancelled last
+    // month. The repeat cancellations the allowance exists to catch were exactly
+    // the ones it stopped counting.
+    const windowStart = new Date(today.getTime() - CANCELLATION_WINDOW_DAYS * 24 * 60 * 60 * 1000)
 
     const results = patients.map(p => {
       const firstSession = p.schedules[0]
       const activeLogs = p.cancellationLogs.filter(l => !l.deletedAt)
 
-      // Total cancellations (for slot removal: 0/12)
+      // Every cancellation/reschedule ever (for slot removal: 0/12). Deliberately
+      // NOT windowed — slot removal is a lifetime count.
       const totalUsed = activeLogs.length
 
-      // 6-month window cancellations (for fee allowance: 0/2)
-      // Use firstDayOfConsult if set, otherwise fall back to first recorded session
-      const windowStart = (p as any).firstDayOfConsult
-        ? new Date((p as any).firstDayOfConsult)
-        : firstSession ? new Date(firstSession.date) : null
-      const windowLogs = windowStart
-        ? activeLogs.filter(l => {
-            const logDate = new Date(l.createdAt)
-            const daysSince = (logDate.getTime() - windowStart.getTime()) / (1000 * 60 * 60 * 24)
-            return daysSince >= 0 && daysSince <= CANCELLATION_WINDOW_DAYS
-          })
-        : activeLogs
+      // Inside the rolling window (for fee allowance: 0/2). Reschedules are logged
+      // through the same path and with the same types as cancellations, so they
+      // count here too: the fee policy keys off the notice given, not off which
+      // of the two the patient called it.
+      const windowLogs = activeLogs.filter(l => new Date(l.createdAt) >= windowStart)
       const windowUsed = windowLogs.length
       const freeRemaining = Math.max(0, FREE_CANCELLATIONS - windowUsed)
+
+      // A patient can have a long history and still have nothing inside the
+      // window. Left unsaid, a 0/2 sitting next to a lifetime total of 7 reads
+      // like the log was wiped, so the UI gets what it needs to say "lapsed".
+      const lastLogAt = activeLogs[0]?.createdAt ?? null   // logs come back desc
+      const windowLapsed = totalUsed > 0 && windowUsed === 0
+      const daysSinceLastLog = lastLogAt
+        ? Math.floor((today.getTime() - new Date(lastLogAt).getTime()) / (1000 * 60 * 60 * 24))
+        : null
 
       return {
         id: p.id,
@@ -304,9 +316,15 @@ export async function GET(req: NextRequest) {
         cancellationsRemaining: Math.max(0, MAX_CANCELLATIONS - totalUsed),
         windowUsed,
         freeRemaining,
+        windowStart,
+        windowLapsed,
+        lastLogAt,
+        daysSinceLastLog,
         logs: p.cancellationLogs.map(l => ({
           id: l.id,
           type: l.type,
+          // Lets the log list show which entries still count toward the 0/2.
+          inWindow: !l.deletedAt && new Date(l.createdAt) >= windowStart,
           isValid: l.isValid,
           proofUrl: l.proofUrl,
           remarks: l.remarks,
