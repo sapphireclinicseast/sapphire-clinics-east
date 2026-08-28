@@ -10,12 +10,12 @@
 import type { ReactNode } from 'react'
 
 export const TERMS_VERSION = '1.0'
-export const TERMS_EFFECTIVE = 'Draft — pending legal review'
+export const TERMS_EFFECTIVE = 'Effective 28 August 2026'
 
 interface Section { n: string; title: string; body: string[] }
 
 const INTRO: string[] = [
-  'These Provider Terms of Service (the "Terms") form a binding agreement between you, the licensed healthcare professional creating a provider account (the "Provider", "you" or "your"), and Sapphire Clinics East Incorporated ("SCEI", "we", "us" or "our"), a corporation duly organised and existing under the laws of the Republic of the Philippines, with SEC Registration No. [●] and principal office at [●].',
+  'These Provider Terms of Service (the "Terms") form a binding agreement between you, the licensed healthcare professional creating a provider account (the "Provider", "you" or "your"), and Sapphire Clinics East Incorporated ("SCEI", "we", "us" or "our"), a corporation duly organised and existing under the laws of the Republic of the Philippines, with SEC Registration No. 2024040147438-01 and principal office at Units L4205, L4203, L4201, L4199, L4168, L4166 and L4164, 4th Floor, Robinsons Metro East, Marcos Highway, Barangay Dela Paz, 1600 City of Pasig, NCR Second District, Philippines.',
   'SCEI operates Nickel, a digital platform through which clients book homecare rehabilitation and allied health sessions with independent, PRC-licensed professionals. Application development for Nickel is undertaken in coordination with Jara Universal OPC. SCEI also operates the clinic brand Aura Health Rehab, with branches at Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig, and Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City.',
   'By ticking the acceptance box, creating a provider account, or accepting any booking through Nickel, you confirm that you have read, understood and agree to be bound by these Terms and by the documents listed in Clause 1.3. If you do not agree, please do not create an account and do not use the Platform.',
   'These Terms are entered into in accordance with the Civil Code of the Philippines, Republic Act No. 10173 (the Data Privacy Act of 2012) and its Implementing Rules and Regulations, DOH Administrative Order No. 2020-0030, the Health Privacy Code (Joint DOH–DOST–PhilHealth Administrative Order No. 2016-0002), Republic Act No. 11967 (the Internet Transactions Act of 2023) and its Implementing Rules, Republic Act No. 8792 (the Electronic Commerce Act of 2000), Republic Act No. 7394 (the Consumer Act of the Philippines), and the professional regulatory laws and issuances of the Professional Regulation Commission applicable to your profession.',
@@ -57,7 +57,7 @@ const SECTIONS: Section[] = [
   { n: '3', title: 'Eligibility, Credentialing and Verification', body: [
     '3.1  Minimum eligibility. To hold a provider account you must, at all times: be at least eighteen (18) years of age and a natural person; hold a current and valid Professional Regulation Commission licence in a profession accepted by SCEI on Nickel; hold a current Professional Tax Receipt where required by the local government unit in which you practise; be legally permitted to practise your profession in the Philippines; and have the legal capacity to enter into these Terms.',
     '3.2  Accepted professions. SCEI currently accepts Physical Therapists and Occupational Therapists (Republic Act No. 5680), Speech-Language Pathologists (Republic Act No. 11249), Psychologists and Psychometricians (Republic Act No. 10029), and Special Education practitioners with the qualifications SCEI specifies, and may add or remove professions on notice.',
-    '3.3  Documents you must submit. On registration and on request thereafter: your PRC identification card and licence; your current PTR; a valid government-issued identification document; an NBI clearance issued within the preceding [six (6)] months; your curriculum vitae; proof of the insurance required under Section 16; your specimen electronic signature; and your payout details.',
+    '3.3  Documents you must submit. On registration and on request thereafter: your PRC identification card and licence; your current PTR; a valid government-issued identification document; an NBI clearance issued within the preceding [six (6)] months; your curriculum vitae; any professional indemnity insurance you hold under Section 16; your specimen electronic signature; and your payout details.',
     '3.4  Verification. You authorise SCEI to verify the documents and information you submit with the PRC, the NBI, your stated employers, references and other lawful sources, and to re-verify at any time and at least once every twelve (12) months. SCEI may refuse, suspend or deactivate an account where verification is incomplete, inconclusive or unsatisfactory.',
     '3.5  Your continuing duty to notify. You will notify SCEI in writing within [three (3)] business days of any of the following: the expiry, lapse, suspension, revocation or cancellation of your PRC licence or PTR; any administrative, civil or criminal complaint, investigation or case relating to your professional practice or to the safety of a person in your care; any restriction placed on your scope of practice; any change to the information or documents you submitted; and any circumstance that materially affects your fitness to render homecare services safely.',
     '3.6  Scope of practice. You will render only those services that fall within your PRC-licensed scope of practice, within your demonstrated competence, and within the service categories enabled on your Nickel profile. Where a service requires a physician’s referral, prescription or clearance, you will render it only on the basis of a valid and current referral, and will record that referral in the Client’s file.',
@@ -118,8 +118,8 @@ const SECTIONS: Section[] = [
   { n: '10', title: 'Fees, Collection, Payouts and Taxes', body: [
     '10.1  Collection by SCEI. Client payments for Bookings are collected online by SCEI through its Verdana payment account. SCEI collects the Session Fee as your limited collection agent for this purpose only, and payment by the Client to SCEI discharges the Client’s obligation to pay you for that Homecare Session.',
     '10.2  No direct collection. You will not collect cash, accept a direct transfer, or request or accept payment of any kind from a Client outside the Platform for a Booking or for any service arising from a Booking.',
-    '10.3  Platform Fee. SCEI retains a Platform Fee of [●] per cent of the Session Fee, together with the payment processing charges set out in Annex A. The Fee Schedule states in full what is deducted and how each deduction is computed.',
-    '10.4  Payouts. SCEI will remit your net earnings to the bank account and/or GCash details recorded in your account [weekly, every ●], subject to a minimum payout threshold of PHP [●]. You are responsible for the accuracy and currency of your payout details, and SCEI is not liable for funds remitted to details you supplied incorrectly.',
+    '10.3  Platform Fee. SCEI retains a Platform Fee of ten (10) per cent of the Session Fee, together with the payment processing charges set out in Annex A. The Fee Schedule states in full what is deducted and how each deduction is computed.',
+    '10.4  Payouts. SCEI will remit your net earnings to the bank account and/or GCash details recorded in your account weekly, subject to a minimum payout threshold of PHP 500. You are responsible for the accuracy and currency of your payout details, and SCEI is not liable for funds remitted to details you supplied incorrectly.',
     '10.5  Taxes. SCEI will withhold creditable withholding tax on professional fees at the rate required by the National Internal Revenue Code and applicable BIR regulations, and will issue you BIR Form 2307. You are responsible for registering with the BIR, issuing invoices or official receipts where required, filing your own returns, and paying your own income tax and percentage tax or value-added tax as applicable. You will provide SCEI with your Taxpayer Identification Number and any sworn declaration required to apply the correct withholding rate.',
     '10.6  Set-off. SCEI may set off against amounts payable to you: refunds and chargebacks attributable to your act or omission; amounts payable by you under Annex A; overpayments; and any other amount you owe SCEI under these Terms. SCEI will itemise any set-off in your payout statement.',
     '10.7  Payout queries. You will raise any query on a payout within [thirty (30)] days of the payout date, after which the payout is treated as accepted, save in the case of manifest error or fraud.',
@@ -165,7 +165,7 @@ const SECTIONS: Section[] = [
     '15.5  Good faith reporting. SCEI will not penalise a Provider for the prompt, good-faith report of an incident the Provider caused; failing to report, or delaying a report, is treated far more seriously than the incident itself.',
   ] },
   { n: '16', title: 'Insurance', body: [
-    '16.1  Professional indemnity. You will obtain and maintain, throughout your engagement, professional indemnity insurance covering your practice of your profession in the Philippines, including homecare, with a limit of not less than PHP [●] for any one claim, and will provide evidence of cover on request and on each annual re-verification.',
+    '16.1  Professional indemnity. SCEI strongly encourages, but does not require, you to obtain and maintain professional indemnity insurance covering your practice of your profession in the Philippines, including homecare. Where you hold such cover, you will provide evidence of it on request. SCEI may make professional indemnity cover a mandatory condition of participation on reasonable prior notice.',
     '16.2  No cover by SCEI. SCEI’s own insurance does not cover you, your acts or omissions, or your property. You are responsible for insuring your own equipment and your own travel.',
   ] },
   { n: '17', title: 'Intellectual Property', body: [
@@ -208,7 +208,7 @@ const SECTIONS: Section[] = [
     '23.2  By SCEI for convenience. SCEI may deactivate your account on [thirty (30)] days’ notice, and will honour Bookings already confirmed unless it is unsafe to do so.',
     '23.3  Immediate suspension or termination for cause. SCEI may suspend or deactivate your account immediately where: your PRC licence lapses, is suspended or is revoked; there is a credible allegation of harm, abuse, exploitation or a serious privacy breach; you have misrepresented a credential; you have breached these Terms and have not remedied the breach within [seven (7)] days of notice, or the breach cannot be remedied; your conduct places a Client or another person at risk; or a regulator or court directs it.',
     '23.4  Fair process. Except where immediate action is needed to protect a person, SCEI will tell you the ground for suspension, give you a reasonable opportunity to respond, consider your response, and inform you of the outcome and its reasons. A suspension pending investigation is not a finding against you.',
-    '23.5  Review. You may ask SCEI to review a deactivation decision by writing to [●] within [fifteen (15)] days of notice of the decision. SCEI will respond within [fifteen (15)] days of receiving your request.',
+    '23.5  Review. You may ask SCEI to review a deactivation decision by writing to main@sapphireclinicseast.org within [fifteen (15)] days of notice of the decision. SCEI will respond within [fifteen (15)] days of receiving your request.',
     '23.6  Effect of deactivation. Your access to the Platform ends; confirmed Bookings are cancelled or reassigned; payouts for completed Homecare Sessions are released on the next payout cycle, less any set-off under Clause 10.6; and you will return or securely dispose of any Client Information in your possession.',
     '23.7  Continuity of Client care. You will not abandon a Client in the middle of an episode of care. You will complete outstanding documentation and cooperate in an orderly handover, and SCEI may use your handover notes for that purpose.',
     '23.8  Survival. Sections 9, 12, 13, 14, 15, 17, 21, 22, 26, 27 and this Clause survive the termination of these Terms.',
@@ -219,8 +219,8 @@ const SECTIONS: Section[] = [
     '24.3  Version control and evidence of acceptance. Every version of these Terms is numbered, dated and archived. SCEI records the version you accepted, the date and time of acceptance, the account used and the associated device or network identifiers, and this record is admissible as evidence of your acceptance under Republic Act No. 8792.',
   ] },
   { n: '25', title: 'Notices', body: [
-    '25.1  To SCEI. Notices to SCEI are given by email to main@sapphireclinicseast.org and, where a formal notice is required, by personal delivery or registered mail to Sapphire Clinics East Incorporated, [●].',
-    '25.2  On privacy matters. Notices, data subject requests and breach reports on privacy matters are given to the Data Protection Officer, Sapphire Clinics East Incorporated, at [●]@sapphireclinicseast.org, copied to main@sapphireclinicseast.org.',
+    '25.1  To SCEI. Notices to SCEI are given by email to main@sapphireclinicseast.org and, where a formal notice is required, by personal delivery or registered mail to Sapphire Clinics East Incorporated, Units L4205, L4203, L4201, L4199, L4168, L4166 and L4164, 4th Floor, Robinsons Metro East, Marcos Highway, Barangay Dela Paz, 1600 City of Pasig, NCR Second District, Philippines.',
+    '25.2  On privacy matters. Notices, data subject requests and breach reports on privacy matters are given to the Data Protection Officer, Jan De Asis, Sapphire Clinics East Incorporated, at jpdeasis.scei@gmail.com, copied to main@sapphireclinicseast.org.',
     '25.3  To you. Notices to you are given through the Platform and by email or SMS to the address and mobile number on your account. You are responsible for keeping them current, and a notice sent to the details on your account is treated as received.',
     '25.4  Branch offices. SCEI’s branches are Aura Health Rehab – East, Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig, telephone (02) 5310-4991; and Aura Health Rehab – Greenhills, Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City, telephone (02) 8529-1590.',
   ] },
@@ -228,7 +228,7 @@ const SECTIONS: Section[] = [
     '26.1  Governing law. These Terms are governed by and construed in accordance with the laws of the Republic of the Philippines.',
     '26.2  Discussion first. The parties will first attempt in good faith to resolve any dispute through discussion, within [thirty (30)] days of written notice of the dispute.',
     '26.3  Mediation. If discussion does not resolve the dispute, the parties will refer it to mediation under Republic Act No. 9285 (the Alternative Dispute Resolution Act of 2004) before commencing court proceedings, save where urgent relief is required.',
-    '26.4  Venue. Any action arising out of these Terms will be brought exclusively in the proper courts of [●] City, to the exclusion of all other venues.',
+    '26.4  Venue. Any action arising out of these Terms will be brought exclusively in the proper courts of Pasig City, to the exclusion of all other venues.',
     '26.5  Preserved forums. Nothing in this Section prevents a party from seeking injunctive or other urgent relief, or from bringing a matter before the National Privacy Commission, the Professional Regulation Commission, the Department of Trade and Industry, the Department of Labor and Employment, or any other body on which the law confers jurisdiction.',
   ] },
   { n: '27', title: 'General Provisions', body: [
@@ -253,14 +253,17 @@ export const ACKNOWLEDGMENTS: string[] = [
   'The information and documents I have submitted are true, complete and current.',
 ]
 
-// Renders a [●]-style blank as a subtly highlighted marker so unfilled
-// business/legal blanks are honestly visible rather than hidden.
-function withBlanks(text: string, keyBase: string) {
+// Renders any remaining [●] blank as a subtly highlighted marker so unfilled
+// business/legal blanks stay honestly visible; the square brackets around
+// agreed default values (e.g. "[fifteen (15)] days") are stripped so they read
+// as final text rather than placeholders.
+function stripBrackets(s: string): string { return s.replace(/[[\]]/g, '') }
+function withBlanks(text: string, keyBase: string): ReactNode {
   const parts = text.split('[●]')
-  if (parts.length === 1) return text
-  const out: React.ReactNode[] = []
+  if (parts.length === 1) return stripBrackets(text)
+  const out: ReactNode[] = []
   parts.forEach((p, i) => {
-    out.push(p)
+    out.push(stripBrackets(p))
     if (i < parts.length - 1) out.push(<span key={`${keyBase}-b${i}`} className="rounded bg-amber-100 px-1 text-amber-800">[ — ]</span>)
   })
   return out
