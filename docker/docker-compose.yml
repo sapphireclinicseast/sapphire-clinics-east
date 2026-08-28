@@ -184,7 +184,11 @@ services:
       NEXTAUTH_SECRET: ${NICKEL_NEXTAUTH_SECRET}
       AUTH_TRUST_HOST: "true"
       PAYMONGO_SECRET_KEY: ${PAYMONGO_VERDANA_SECRET_KEY:-${PAYMONGO_SECRET_KEY}}
-      PAYMONGO_WEBHOOK_SECRET: ${PAYMONGO_VERDANA_WEBHOOK_SECRET:-${PAYMONGO_WEBHOOK_SECRET:-}}
+      # Verdana-only: never fall back to the East/main webhook secret, or real
+      # Verdana-signed webhooks would 401 and bookings would never flip to PAID.
+      # Unset until the Nickel webhook is registered on the Verdana account; the
+      # route then accepts unverified (logs a warning) so bookings still settle.
+      PAYMONGO_WEBHOOK_SECRET: ${PAYMONGO_VERDANA_WEBHOOK_SECRET:-}
       NODE_ENV: production
     ports:
       - "127.0.0.1:3007:3000"
