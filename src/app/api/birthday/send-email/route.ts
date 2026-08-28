@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { recordBirthdayGreeting } from '@/lib/birthday-greeting'
 import { getGmailClient, getLegacyRefreshToken } from '@/lib/email'
 import { getBranchNotifyConfig, getBranchSender } from '@/lib/branch-notify-config'
 
@@ -152,6 +153,13 @@ export async function POST(req: NextRequest) {
   const raw = Buffer.from(rawLines.join('\r\n')).toString('base64url')
 
   await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+
+  await recordBirthdayGreeting({
+    patientId,
+    channel: 'email',
+    sentByName: session.user?.name ?? null,
+    branch: branch ?? null,
+  })
 
   return NextResponse.json({ success: true })
 }

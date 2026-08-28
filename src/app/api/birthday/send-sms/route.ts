@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { recordBirthdayGreeting } from '@/lib/birthday-greeting'
 
 const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string }> = {
   SBEA: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289' },
@@ -71,5 +72,12 @@ export async function POST(req: NextRequest) {
   }
 
   console.log(`[birthday-sms] Sent to ${patient.firstName} (${branch})`)
+  await recordBirthdayGreeting({
+    patientId,
+    channel: 'sms',
+    sentByName: session.user?.name ?? null,
+    branch,
+  })
+
   return NextResponse.json({ ok: true })
 }

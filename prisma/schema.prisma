@@ -295,6 +295,7 @@ model Patient {
   pwdIdTokens         PwdIdUploadToken[]
   cancellationLogs    CancellationLog[]
   noShowLogs          NoShowLog[]
+  birthdayGreetings   BirthdayGreeting[]
   patientBookings     PatientBooking[]
   followUpReminders   FollowUpReminder[]
   documents           PatientDocument[]
@@ -479,6 +480,32 @@ model SessionNote {
   id               String  @id
   scheduleId       String  @unique
   sharedWithOthers Boolean @default(false)
+}
+
+/// One birthday greeting actually sent to a patient, per channel per year.
+///
+/// Replaces a per-browser localStorage flag that reset every day: staff on a
+/// different machine — or the same person the next morning, while "Birthdays
+/// This Week" still showed the patient — saw the button as unsent and greeted
+/// twice. Recorded server-side when the send succeeds, so the sent state is
+/// shared by everyone and survives sign-out.
+///
+/// `year` scopes it to one birthday occurrence, so next year's greeting is a
+/// new row rather than being suppressed forever. The unique constraint is what
+/// actually prevents a double greeting.
+model BirthdayGreeting {
+  id         String   @id @default(cuid())
+  patientId  String
+  channel    String   // "email" | "sms"
+  year       Int      // calendar year of the greeting
+  sentAt     DateTime @default(now())
+  sentByName String?  // staff member who sent it, for "who greeted them?"
+  branch     String?
+
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, channel, year])
+  @@index([year, channel])
 }
 
 model Staff {
