@@ -29,11 +29,47 @@ export async function POST(req: Request) {
 
     const entries = await prisma.payrollEntry.findMany({
       where: { id: { in: payrollEntryIds }, taxRemitted: false },
-      select: { id: true, taxAmount: true, cutoffPeriod: true, consultant: { select: { name: true, branch: true } } },
+      select: { id: true, taxAmount: true, cutoffPeriod: true, branch: true, consultant: { select: { name: true, branch: true } } },
     })
 
     if (!entries.length) {
       return NextResponse.json({ error: 'No valid unremitted entries found' }, { status: 400 })
+    }
+
+    // Dr 4070 / Cr 7220 only reclassifies a liability that exists. The 4070 credit
+    // comes from the payroll finalize accrual — an entry whose cutoff was never
+    // finalized (QB-era / RFP-imported payments, where the withheld 5% was already
+    // credited to income at payment) has nothing in 4070, and posting would
+    // double-count the income (the Asistio ₱125 case, fixed 2026-08-28).
+    const cutoffs = [...new Set(entries.map(e => `${e.cutoffPeriod}|${e.branch}`))]
+    const accruals = await prisma.payrollPayableStatus.findMany({
+      where: {
+        OR: cutoffs.map(c => ({ cutoffPeriod: c.split('|')[0], branch: c.split('|')[1] })),
+        payrollType: 'CONSULTANT',
+        journalEntryId: { not: null },
+      },
+      select: { cutoffPeriod: true, branch: true },
+    })
+    const accrued = new Set(accruals.map(a => `${a.cutoffPeriod}|${a.branch}`))
+    const unaccrued = entries.filter(e => !accrued.has(`${e.cutoffPeriod}|${e.branch}`))
+    if (unaccrued.length) {
+      return NextResponse.json({
+        error: `No payroll accrual exists for: ${unaccrued.map(e => `${e.consultant?.name} (${e.cutoffPeriod})`).join(', ')} — the withheld tax was never credited to 4070 (QB-era or RFP-imported payment, where the 5% was already recognized as income at payment). Recording it again would double-count the income.`,
+      }, { status: 409 })
+    }
+
+    // Refuse entries that already have a standing TAX_OTHER_INCOME journal entry —
+    // the tax-payment "delete" flow un-remits entries but used to leave the JE
+    // behind, so a re-click would post the income twice.
+    const priorJEs = await prisma.journalEntry.findMany({
+      where: { referenceType: 'TAX_OTHER_INCOME', OR: entries.map(e => ({ referenceId: { contains: e.id } })) },
+      select: { id: true, referenceId: true },
+    })
+    if (priorJEs.length) {
+      const dupIds = new Set(entries.filter(e => priorJEs.some(j => j.referenceId?.includes(e.id))).map(e => e.id))
+      return NextResponse.json({
+        error: `A Tax-as-Other-Income journal entry already exists for: ${entries.filter(e => dupIds.has(e.id)).map(e => `${e.consultant?.name} (${e.cutoffPeriod})`).join(', ')} (JE ${priorJEs.map(j => j.id).join(', ')}). Delete that entry first instead of recording it twice.`,
+      }, { status: 409 })
     }
 
     const totalAmount = entries.reduce((s, e) => s + Number(e.taxAmount), 0)

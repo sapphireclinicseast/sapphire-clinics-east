@@ -62,6 +62,22 @@ export async function DELETE(req: Request) {
         })
       }
 
+      // A "record as other income" payment also posted a Dr 4070 / Cr 7220 journal
+      // entry. Un-remitting without removing it leaves the income standing while the
+      // entries become recordable again — the orphaned-JE double-count fixed
+      // 2026-08-28. Remove the JE(s) tied to these payroll entries too.
+      if (entryIds.length) {
+        const orphanJEs = await tx.journalEntry.findMany({
+          where: { referenceType: 'TAX_OTHER_INCOME', OR: entryIds.map(eid => ({ referenceId: { contains: eid } })) },
+          select: { id: true },
+        })
+        if (orphanJEs.length) {
+          const jeIds = orphanJEs.map(j => j.id)
+          await tx.journalEntryLine.deleteMany({ where: { journalEntryId: { in: jeIds } } })
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } })
+        }
+      }
+
       // Delete TaxPayment (cascades TaxPaymentEntry)
       await tx.taxPayment.delete({ where: { id } })
     })
