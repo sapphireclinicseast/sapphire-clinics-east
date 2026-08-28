@@ -55,7 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </a>
             <nav className="flex gap-0.5 sm:gap-1 text-sm items-center" style={{ fontFamily: 'var(--font-display)' }}>
               <a href="/" className="hidden sm:inline-block px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Home</a>
-              <a href="/#get-started" className="px-2.5 sm:px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Sign In</a>
+              <a href="/signin" className="px-2.5 sm:px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Sign In</a>
               <ContactMenu />
               <a href="https://sapphireclinicseast.org/reward-points/" target="_top" className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] transition-colors font-semibold">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
