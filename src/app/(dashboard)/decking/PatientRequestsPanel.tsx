@@ -54,6 +54,12 @@ interface DeckModal {
 
 interface Props {
   branch: 'SBEA' | 'SBGH' | 'ALL'
+  /** Which service board this panel sits beside. Filters the requests to the
+   *  ones that board can act on; omitted means show everything (legacy). */
+  service?: 'onsite' | 'teletherapy' | 'homecare'
+  /** Rendered in the narrow 1/3 column — tightens padding and drops the
+   *  wide-only chrome. */
+  compact?: boolean
 }
 
 const BRANCH_LABEL: Record<string, string> = { SBEA: 'East Branch', SBGH: 'Greenhills Branch' }
@@ -88,7 +94,7 @@ function niceDate(iso: string) {
   return d.toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
 }
 
-export default function PatientRequestsPanel({ branch }: Props) {
+export default function PatientRequestsPanel({ branch, service, compact }: Props) {
   const [bookings, setBookings] = useState<BookingRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -126,19 +132,34 @@ export default function PatientRequestsPanel({ branch }: Props) {
 
   useEffect(() => { load() }, [load])
 
+  // Client-portal requests belong to the board that can act on them:
+  //   on-site      → in-clinic bookings, which pay a downpayment
+  //   teletherapy  → remote bookings; both full payments and downpayments show,
+  //                  since a tele request can arrive either way
+  //   homecare     → no booking model exists yet (the homecare flow only has
+  //                  city/open-day config), so this is empty by construction
+  //                  rather than by filtering. Called out in the UI instead of
+  //                  showing a silently blank panel.
+  const scoped = useMemo(() => {
+    if (!service) return bookings
+    if (service === 'teletherapy') return bookings.filter(b => b.isTeletherapy)
+    if (service === 'onsite')      return bookings.filter(b => !b.isTeletherapy)
+    return []
+  }, [bookings, service])
+
   const active = useMemo(
-    () => bookings.filter((b) =>
+    () => scoped.filter((b) =>
       (b.status === 'PENDING' || b.status === 'PAID' || b.status === 'COMPLETED') &&
       !(b.addedToDeck && b.accountingRecorded)   // hide once both actions are done
     ),
-    [bookings],
+    [scoped],
   )
   const done = useMemo(
-    () => bookings.filter((b) =>
+    () => scoped.filter((b) =>
       (b.status === 'PAID' || b.status === 'COMPLETED') &&
       b.addedToDeck && b.accountingRecorded
     ),
-    [bookings],
+    [scoped],
   )
   const pendingCount = useMemo(() => active.filter((b) => b.status === 'PENDING').length, [active])
   const paidCount    = useMemo(() => active.filter((b) => b.status === 'PAID').length, [active])
@@ -293,7 +314,10 @@ export default function PatientRequestsPanel({ branch }: Props) {
               )}
             </div>
             <div className="text-xs text-gray-600 mt-0.5 flex flex-wrap gap-x-3">
-              <span className="font-mono">
+              {/* Plain sans, matching the email/phone spans beside it. This line
+                  was monospace, which made the dates and times read as a
+                  different typeface from the rest of the card. */}
+              <span>
                 {b.date ? niceDate(b.date) : 'Date TBD'} · {b.startTime || 'TBD'}–{b.endTime || 'TBD'} · with {staffName}
               </span>
               {b.patient.email && <span>✉ {b.patient.email}</span>}
@@ -495,7 +519,7 @@ export default function PatientRequestsPanel({ branch }: Props) {
       )}
 
       {/* ── Panel ───────────────────────────────────────────────────────────── */}
-      <div className="bg-slate-50 border rounded-xl p-4 mb-4">
+      <div className={`bg-slate-50 border rounded-xl ${compact ? 'p-3' : 'p-4 mb-4'}`}>
         <button
           onClick={() => setExpanded((e) => !e)}
           className="w-full flex items-center justify-between text-left"
@@ -503,7 +527,10 @@ export default function PatientRequestsPanel({ branch }: Props) {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                Patient Appointment Requests
+                {service === 'onsite'      ? 'On-site Downpayments'
+                 : service === 'teletherapy' ? 'Teletherapy Payments'
+                 : service === 'homecare'    ? 'Homecare Payments'
+                 : 'Patient Appointment Requests'}
               </h2>
               <span
                 className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
@@ -533,7 +560,13 @@ export default function PatientRequestsPanel({ branch }: Props) {
                   <div className="space-y-2">
                     {active.length === 0 && (
                       <div className="text-sm text-gray-500 italic px-2 py-1">
-                        {done.length > 0 ? 'All bookings processed.' : 'No patient bookings yet.'}
+                        {/* Homecare has no booking model yet — only city and open-day
+                            config — so this panel cannot fill up no matter how many
+                            requests come in. Say that, rather than leaving a blank
+                            box that reads as "nothing today". */}
+                        {service === 'homecare'
+                          ? 'Homecare bookings are not wired into this panel yet — the homecare flow currently stores city and open-day settings only.'
+                          : done.length > 0 ? 'All bookings processed.' : 'No patient bookings yet.'}
                       </div>
                     )}
                     {active.map((b) => renderRow(b))}

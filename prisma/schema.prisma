@@ -518,6 +518,12 @@ model Staff {
                                    // checkbox, synced one-way). Staff Portal reads this off the shared
                                    // DB to grant an "All Interns" view — every intern's notes, not just
                                    // this person's own decked interns.
+  // Work Arrangement from HR (raw slug: on-site, hybrid, wfh, teletherapy,
+  // homecare, on-site-teletherapy, on-site-homecare). Decides which Decking
+  // sections a consultant appears in — the combined values put them in two.
+  // Null means untagged, which is most of the roster today and is treated as
+  // its own case rather than as on-site.
+  workArrangement  String?
   isClinicalMentor Boolean        @default(false) // Clinical Mentor (HR Staff Profile checkbox,
                                    // synced one-way, same pattern as isInternshipSupervisor above).
                                    // Narrower than the supervisor flag: grants visibility into only
