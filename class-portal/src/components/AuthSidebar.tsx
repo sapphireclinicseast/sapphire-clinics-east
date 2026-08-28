@@ -12,7 +12,7 @@ import { getAuth, clearAuth, type AuthSession } from '@/lib/session'
 type NavItem = {
   href: string
   label: string
-  icon: 'home' | 'classes' | 'calendar' | 'pay' | 'handbook'
+  icon: 'home' | 'classes' | 'calendar' | 'pay' | 'handbook' | 'meetings'
   roles?: Array<'ADMIN' | 'BRANCH_ADMIN' | 'FRONTDESK' | 'TEACHER' | 'STUDENT'>
   mainAdminOnly?: boolean
 }
@@ -66,6 +66,14 @@ function NavIcon({ name }: { name: NavItem['icon'] }) {
         <svg {...common}>
           <path d="M2 5h6a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2z" />
           <path d="M22 5h-6a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h7z" />
+        </svg>
+      )
+    case 'meetings':
+      // Video camera — Feather's "video" glyph.
+      return (
+        <svg {...common}>
+          <polygon points="23 7 16 12 23 17 23 7" />
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
         </svg>
       )
   }
@@ -134,6 +142,7 @@ export default function AuthSidebar() {
       icon: 'home' },
     { href: '/classes',        label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
     { href: '/calendar',       label: 'Calendar',     icon: 'calendar' },
+    { href: '/meetings',       label: 'Meetings',     icon: 'meetings',  roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
     { href: '/pay',            label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
     { href: '/admin/handbook',               label: 'Class Portal Handbook', icon: 'handbook', mainAdminOnly: true },
     // Staff Portal Handbook (docs for staff.sapphireclinicseast.org) was

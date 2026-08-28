@@ -4082,3 +4082,84 @@ export function signOut() {
   clearToken()
   clearAuth()
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   Meetings — teachers mint meet.sapphireclinicseast.org links,
+   optionally tag students. Server signs the compact-token URL with
+   MEET_LINK_SECRET; no signature secret lives on the client.
+   ───────────────────────────────────────────────────────────── */
+
+export interface MeetingParticipant {
+  id: string
+  studentId: string
+  studentEmail: string
+  studentName: string
+  invitedAt: string | null
+}
+
+export interface MeetingRecord {
+  id: string
+  teacherId: string
+  teacherEmail: string
+  teacherName: string
+  room: string
+  title: string
+  notes: string | null
+  scheduledAt: string
+  endsAt: string
+  cancelledAt: string | null
+  hostLink: string | null    // null once cancelled
+  guestLink: string | null
+  participants: MeetingParticipant[]
+  createdAt: string
+  updatedAt: string
+}
+
+export async function listMeetings(): Promise<MeetingRecord[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  try {
+    const { meetings } = await backendJson<{ meetings: MeetingRecord[] }>('/api/public/class-portal/meetings')
+    return meetings
+  } catch (e) {
+    console.warn('[listMeetings]', e)
+    return []
+  }
+}
+
+export async function createMeeting(args: {
+  title: string
+  scheduledAt: string
+  endsAt?: string
+  notes?: string
+  participantIds?: string[]
+}): Promise<MeetingRecord | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const { meeting } = await backendJson<{ meeting: MeetingRecord }>('/api/public/class-portal/meetings', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    })
+    return meeting
+  } catch (e) {
+    console.warn('[createMeeting]', e)
+    return null
+  }
+}
+
+export async function cancelMeeting(id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/meetings/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch (e) {
+    console.warn('[cancelMeeting]', e)
+    return false
+  }
+}
