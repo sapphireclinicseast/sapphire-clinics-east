@@ -408,6 +408,10 @@ model TherapistAccount {
   staffId      String        @unique
   staff        Staff         @relation(fields: [staffId], references: [id])
   email        String        @unique
+  // Previously-used login emails (e.g. an old sandboxclinic address after the
+  // staff email was migrated to scei). Sign-in accepts any of these too, so an
+  // email change never locks anyone out. Kept in sync from Staff.email.
+  emailAliases String[]      @default([])
   passwordHash      String
   lastPlainPassword String?
   role         TherapistRole @default(THERAPIST)
