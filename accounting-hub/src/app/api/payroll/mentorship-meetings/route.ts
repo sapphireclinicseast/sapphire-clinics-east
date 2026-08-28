@@ -37,13 +37,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'cutoffPeriod (YYYY-MM-1|2) and branch are required' }, { status: 400 })
   }
 
-  const [meetings, feeRow] = await Promise.all([
+  const [portal, feeRow] = await Promise.all([
     fetchPortalMeetings(range.from, range.to),
     prisma.mentorshipFeeSetting.findUnique({ where: { id: 1 } }),
   ])
-  if (meetings === null) {
-    return NextResponse.json({ error: 'Could not reach the staff portal — try again shortly.' }, { status: 502 })
+  // A rejected key is a configuration fault on this server, not an outage, and
+  // says so; only a real network failure is worth retrying.
+  if (!portal.ok) {
+    return NextResponse.json({ error: portal.message }, { status: portal.kind === 'auth' ? 500 : 502 })
   }
+  const meetings = portal.items
 
   const meetingIds = meetings.map(m => m.id)
   const charges = meetingIds.length
@@ -115,9 +118,11 @@ export async function POST(req: Request) {
   if (body.action !== 'tick') return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 
   // Re-fetch the meeting from the portal so what we charge is what it says now.
-  const meetings = await fetchPortalMeetings(range.from, range.to)
-  if (meetings === null) return NextResponse.json({ error: 'Could not reach the staff portal.' }, { status: 502 })
-  const meeting = meetings.find(m => m.id === meetingId)
+  const portal = await fetchPortalMeetings(range.from, range.to)
+  if (!portal.ok) {
+    return NextResponse.json({ error: portal.message }, { status: portal.kind === 'auth' ? 500 : 502 })
+  }
+  const meeting = portal.items.find(m => m.id === meetingId)
   if (!meeting) return NextResponse.json({ error: 'That meeting is not inside this cutoff.' }, { status: 400 })
   if (meeting.mentors.length === 0) {
     return NextResponse.json({ error: 'No participant in this meeting is flagged as a Clinical Mentor — sync the clinician database first, or fix the HR profile.' }, { status: 400 })
