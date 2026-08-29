@@ -48,7 +48,13 @@ _Last reviewed: 2026-08-28_
 - ⚠️ **Offer/accept vs direct-book** (Terms §5.1–5.2): Terms describe SCEI *offering* a Booking that
   the provider accepts/declines; app currently lets the patient **directly** book a provider's slot.
   Decide which model is canonical, then align docs or code.
-- ❌ **Cancellation / reschedule / no-show** flow with time-band refunds (Annex A4–A6).
+- ✅ **Reschedule (propose-new-time) SHIPPED** (2026-08-28): provider proposes an open slot →
+  patient accepts (moves + confirms) or keeps original (`/api/provider/propose-time`,
+  `/api/patient/respond-proposal`). Confirm/decline also shipped.
+- ✅ **In-app chat SHIPPED**: patient↔therapist messaging scoped to a booking, with photo/PDF
+  attachments (`Message` model, `/api/messages`, `Chat` component, patient `/bookings`).
+- ❌ **Cancellation time-band refunds + no-show** compensation logic (Annex A4–A6) — decline just
+  cancels; automated refund tiers not built.
 - ❌ **Reliability record**: 90-day rolling late-cancel/no-show counters + ranking effect (Annex A5).
 - ❌ **Automated matching / ranking** by area, credentials, ratings, reliability (Annex C9).
 
