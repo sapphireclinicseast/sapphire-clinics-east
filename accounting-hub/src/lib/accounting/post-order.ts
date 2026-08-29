@@ -7,6 +7,7 @@
  *   DR Deductions (MDR/CWT, per account)       deduction amounts
  *   DR AR (per HMO/GL wallet account)          HMO/GL portions
  *   DR Discount (contra-revenue)               discount amount
+ *   DR Sales Returns 7160 (contra-revenue)     item refund amounts
  *     CR Revenue (per item revenue account)    gross item subtotal
  *
  * Plus, for inventory items consumed:
@@ -100,7 +101,7 @@ export async function postOrderJournal(
   }
 
   // Cache lookups we may need
-  const [paymentModes, discountSettings, defaultARAccount, defaultUnearnedAccount, defaultInventoryAccount, defaultUnclassifiedRevenue] = await Promise.all([
+  const [paymentModes, discountSettings, defaultARAccount, defaultUnearnedAccount, defaultInventoryAccount, defaultUnclassifiedRevenue, salesReturnsAccount] = await Promise.all([
     prisma.paymentMode.findMany({
       where: { isActive: true },
       include: {
@@ -130,6 +131,7 @@ export async function postOrderJournal(
       },
     }),
     prisma.account.findFirst({ where: { accountNumber: '7000' } }),  // generic Gross Revenue fallback
+    prisma.account.findFirst({ where: { accountNumber: '7160' } }),  // Sales Returns (contra-revenue)
   ])
 
   const pmById = new Map(paymentModes.map(p => [p.id, p]))
@@ -244,6 +246,23 @@ export async function postOrderJournal(
     addLine(discAcctId, 'debit', discountAmount, `Discount — ${order.discountLabel || order.discountType}`)
   }
 
+  /* ── 2b. Sales returns (DR contra-revenue 7160) ───────────────────
+     Item lines keep their full gross in Revenue (step 1) and carry the
+     returned portion as refundAmount; payments are recorded net of refunds
+     (order handler enforces paid = gross − discount − refunds). Without this
+     contra line the entry is short by the refund on the debit side — an order
+     whose refunds consume the whole collected amount has NO payment rows at
+     all, so the guard refused it and the sale never posted (orders #42589,
+     #42590). UNEARNED orders net refunds out of the deposit liability in
+     step 5 instead, mirroring the discount treatment. ── */
+  const totalRefund = order.items.reduce((s, i) => s + Number(i.refundAmount || 0), 0)
+  if (totalRefund > 0 && order.revenueType !== 'UNEARNED') {
+    if (!salesReturnsAccount) {
+      return { posted: false, reason: `refunds of ${totalRefund} have no 7160 Sales Returns account` }
+    }
+    addLine(salesReturnsAccount.id, 'debit', totalRefund, 'Sales returns — refunded item(s)')
+  }
+
   /* ── 3. Cash + AR + Deductions (DR) per payment ───────────────── */
   for (const p of order.payments) {
     const gross = Number(p.amount)
@@ -344,6 +363,9 @@ export async function postOrderJournal(
     // earned per-session orders; deferring gross would overstate 4050 by an
     // amount the draw-downs (which total the net) would never clear.
     unearnedShare -= discountAmount
+    // Refunds net out of the liability the same way: the deposit owed is only
+    // what was actually kept (step 2b books no 7160 line for UNEARNED orders).
+    unearnedShare -= totalRefund
     if (unearnedShare > 0) addLine(defaultUnearnedAccount.id, 'credit', unearnedShare, `Unearned deposit — order ${order.id}`)
   }
 
