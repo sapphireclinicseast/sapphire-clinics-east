@@ -65,11 +65,21 @@ model Provider {
   prcHoldingPhoto       String?  // photo of the provider holding their PRC ID (data URI)
   school                String?  // school graduated from
   yearGraduated         String?  // year graduated (free text to preserve exact value)
+  yearsExperience       String?  // years of professional experience (free text)
+  postgraduate          String?  // postgraduate degree(s)
+  postNominals          String?  // e.g. "PTRP, DPT" — shown after the name on the patient list
   diplomaScan           String?  // diploma scan (data URI)
   torScan               String?  // transcript of records scan (data URI)
+  certifications        Json?    // [{name, file}] certification uploads (support specialized-rate requests)
   verificationSubmittedAt DateTime?
   verifiedAt            DateTime?
   rejectionReason       String?
+  reviewerNote          String?  // internal note from the admin reviewer
+
+  // Specialized rate — gated on an admin verifying a certification/specialization
+  specialization        String?  // e.g. "Pediatric Neuro-developmental Treatment (NDT)"
+  specializedRate       Decimal? // therapist-set rate for the specialized service
+  specializedRateApproved Boolean @default(false)
 
   // Consent
   termsVersion    String?

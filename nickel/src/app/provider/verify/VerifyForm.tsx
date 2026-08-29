@@ -127,15 +127,34 @@ export default function VerifyForm({ rejected, rejectionReason, init }: { reject
   const [bankName, setBankName] = useState(init.bankName)
   const [bankAccountNo, setBankAccountNo] = useState(init.bankAccountNo)
   const [bankAccountName, setBankAccountName] = useState(init.bankAccountName)
+  const [yearsExp, setYearsExp] = useState('')
+  const [postgrad, setPostgrad] = useState('')
+  const [postNominals, setPostNominals] = useState('')
+  const [specialization, setSpecialization] = useState('')
+  const [specializedRate, setSpecializedRate] = useState('')
+  const [certs, setCerts] = useState<{ name: string; file: string }[]>([])
+  const [certName, setCertName] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  async function addCert(file: File | undefined) {
+    if (!file) return
+    if (!certName.trim()) { setErr('Name the certification before uploading its file.'); return }
+    if (file.size > 8 * 1024 * 1024) { setErr('Certification file must be under 8 MB.'); return }
+    setErr(null)
+    const dataUrl = file.type === 'application/pdf' ? await fileToDataUrl(file) : await resizeImage(file, 1600)
+    setCerts((c) => [...c, { name: certName.trim(), file: dataUrl }]); setCertName('')
+  }
 
   async function submit() {
     setErr(null); setBusy(true)
     try {
       const res = await fetch('/api/provider/verify', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ facePhoto: face, prcHoldingPhoto: prcPhoto, prcNumber, school, yearGraduated: year, diplomaScan: diploma, torScan: tor, bankName, bankAccountNo, bankAccountName }),
+        body: JSON.stringify({ facePhoto: face, prcHoldingPhoto: prcPhoto, prcNumber, school, yearGraduated: year,
+          yearsExperience: yearsExp, postgraduate: postgrad, postNominals,
+          diplomaScan: diploma, torScan: tor, bankName, bankAccountNo, bankAccountName,
+          specialization, specializedRate, certifications: certs }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Submission failed')
@@ -165,11 +184,37 @@ export default function VerifyForm({ rejected, rejectionReason, init }: { reject
         <div><div className="label">PRC licence number *</div><input className="input" value={prcNumber} onChange={(e) => setPrcNumber(e.target.value)} /></div>
         <div><div className="label">School graduated from *</div><input className="input" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="e.g. University of Santo Tomas" /></div>
         <div><div className="label">Year graduated *</div><input className="input" inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} placeholder="e.g. 2019" /></div>
+        <div><div className="label">Years of experience *</div><input className="input" inputMode="numeric" value={yearsExp} onChange={(e) => setYearsExp(e.target.value)} placeholder="e.g. 8" /></div>
+        <div><div className="label">Postgraduate degree(s)</div><input className="input" value={postgrad} onChange={(e) => setPostgrad(e.target.value)} placeholder="e.g. MS Physical Therapy" /></div>
+        <div><div className="label">Post-nominals <span className="text-[color:var(--muted)]">(shown after your name)</span></div><input className="input" value={postNominals} onChange={(e) => setPostNominals(e.target.value)} placeholder="e.g. PTRP, DPT" /></div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">
         <DocField label="Diploma scan" hint="A photo or PDF of your diploma." value={diploma} onChange={setDiploma} />
         <DocField label="Transcript of Records (TOR) scan" hint="A photo or PDF of your TOR." value={tor} onChange={setTor} />
+      </section>
+
+      <section className="rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-4">
+        <h2 className="text-[15px] font-semibold text-[color:var(--ink)]">Specialization <span className="text-[12px] font-normal text-[color:var(--slate)]">— optional</span></h2>
+        <p className="mb-3 mt-0.5 text-[12px] text-[color:var(--slate)]">Have a certification or specialization? Add it and upload the certificate. Once SCEI verifies it, you can charge a <b>specialized rate</b> for that service.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div><div className="label">Specialization</div><input className="input" value={specialization} onChange={(e) => setSpecialization(e.target.value)} placeholder="e.g. Pediatric NDT" /></div>
+          <div><div className="label">Specialized rate (₱)</div><input className="input" inputMode="numeric" value={specializedRate} onChange={(e) => setSpecializedRate(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 2400" /></div>
+        </div>
+        {certs.length > 0 && (
+          <ul className="mt-3 space-y-1.5">
+            {certs.map((c, i) => (
+              <li key={i} className="flex items-center justify-between rounded-lg border border-[color:var(--line-2)] bg-white px-3 py-2 text-[13px]">
+                <span>🏅 {c.name}</span>
+                <button type="button" onClick={() => setCerts((cc) => cc.filter((_, j) => j !== i))} className="text-[color:var(--muted)] hover:text-[color:var(--ink)]">Remove</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-[160px]"><div className="label">Certification name</div><input className="input" value={certName} onChange={(e) => setCertName(e.target.value)} placeholder="e.g. NDT Certification" /></div>
+          <label className="btn-outline cursor-pointer !py-2">Upload certificate<input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => addCert(e.target.files?.[0])} /></label>
+        </div>
       </section>
 
       <section>

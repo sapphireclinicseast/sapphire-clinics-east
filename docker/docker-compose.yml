@@ -182,6 +182,8 @@ services:
       DATABASE_URL: postgresql://sapphire:${POSTGRES_PASSWORD}@postgres:5432/sapphire_nickel
       NEXTAUTH_URL: https://nickel.sapphireclinicseast.org
       NEXTAUTH_SECRET: ${NICKEL_NEXTAUTH_SECRET}
+      NICKEL_ADMIN_EMAIL: ${NICKEL_ADMIN_EMAIL:-main@sapphireclinicseast.org}
+      NICKEL_ADMIN_PASSWORD: ${NICKEL_ADMIN_PASSWORD:-}
       AUTH_TRUST_HOST: "true"
       PAYMONGO_SECRET_KEY: ${PAYMONGO_VERDANA_SECRET_KEY:-${PAYMONGO_SECRET_KEY}}
       # Verdana-only: never fall back to the East/main webhook secret, or real

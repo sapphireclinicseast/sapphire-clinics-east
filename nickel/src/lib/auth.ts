@@ -10,8 +10,9 @@ import { prisma } from './prisma'
 
 export const SESSION_COOKIE = 'nickel_session' // provider
 export const PATIENT_COOKIE = 'nickel_patient'
+export const ADMIN_COOKIE = 'nickel_admin'
 const TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
-type Typ = 'provider' | 'patient'
+type Typ = 'provider' | 'patient' | 'admin'
 
 function secret(): string {
   return process.env.NEXTAUTH_SECRET || 'dev-insecure-secret-change-me'
@@ -57,6 +58,14 @@ export async function getSessionProvider() {
 export async function getSessionPatient() {
   const id = await getSessionPatientId()
   return id ? prisma.patient.findUnique({ where: { id } }) : null
+}
+
+// ── Admin (SCEI operations) — single shared credential from env ──
+export function adminPassword(): string { return process.env.NICKEL_ADMIN_PASSWORD || '' }
+export function adminEmail(): string { return (process.env.NICKEL_ADMIN_EMAIL || 'main@sapphireclinicseast.org').toLowerCase() }
+export function signAdminSession(): string { return sign('admin', 'admin') }
+export async function isAdmin(): Promise<boolean> {
+  return verify((await cookies()).get(ADMIN_COOKIE)?.value, 'admin') === 'admin'
 }
 
 export const cookieOptions = {

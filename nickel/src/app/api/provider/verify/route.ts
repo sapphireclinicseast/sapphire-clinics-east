@@ -16,6 +16,9 @@ export async function POST(req: NextRequest) {
   const prcNumber = s('prcNumber')
   const school = s('school')
   const yearGraduated = s('yearGraduated')
+  const yearsExperience = s('yearsExperience')
+  const postgraduate = s('postgraduate')
+  const postNominals = s('postNominals')
   const diplomaScan = s('diplomaScan')
   const torScan = s('torScan')
   const bankName = s('bankName')
@@ -24,12 +27,24 @@ export async function POST(req: NextRequest) {
   const bankAccountNo = s('bankAccountNo')
   const bankAccountName = s('bankAccountName')
 
+  // Optional specialization request (unlocks a specialized rate once admin verifies the cert).
+  const specialization = s('specialization') || null
+  const specializedRateRaw = s('specializedRate')
+  const specializedRate = specializedRateRaw ? Number(specializedRateRaw.replace(/[^0-9.]/g, '')) : null
+  const certifications = Array.isArray(b.certifications)
+    ? (b.certifications as unknown[])
+        .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+        .map((c) => ({ name: String(c.name ?? 'Certification').trim(), file: String(c.file ?? '') }))
+        .filter((c) => c.name && c.file.startsWith('data:'))
+    : []
+
   const missing: string[] = []
   if (!facePhoto.startsWith('data:image/')) missing.push('a face-scan selfie')
   if (!prcHoldingPhoto.startsWith('data:image/')) missing.push('a photo holding your PRC ID')
   if (!prcNumber) missing.push('your PRC number')
   if (!school) missing.push('the school you graduated from')
   if (!yearGraduated) missing.push('your year graduated')
+  if (!yearsExperience) missing.push('your years of experience')
   if (!diplomaScan.startsWith('data:')) missing.push('a diploma scan')
   if (!torScan.startsWith('data:')) missing.push('a transcript of records scan')
   if (!bankName) missing.push('your bank')
@@ -40,8 +55,12 @@ export async function POST(req: NextRequest) {
   await prisma.provider.update({
     where: { id: pid },
     data: {
-      facePhoto, prcHoldingPhoto, prcNumber, school, yearGraduated, diplomaScan, torScan,
+      facePhoto, prcHoldingPhoto, prcNumber, school, yearGraduated,
+      yearsExperience, postgraduate: postgraduate || null, postNominals: postNominals || null,
+      diplomaScan, torScan,
       bankName, bankAccountNo, bankAccountName,
+      specialization, specializedRate: specializedRate && specializedRate > 0 ? specializedRate : null,
+      certifications, specializedRateApproved: false,
       verificationStatus: 'PENDING', verificationSubmittedAt: new Date(), rejectionReason: null,
     },
   })
