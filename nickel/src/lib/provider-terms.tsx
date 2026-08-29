@@ -249,7 +249,7 @@ export const ACKNOWLEDGMENTS: string[] = [
   'I have read and understood these Provider Terms of Service and the Annexes, and I agree to be bound by them.',
   'I understand that I am engaged as an independent contractor and not as an employee of Sapphire Clinics East Incorporated.',
   'I understand that client health information is sensitive personal information and privileged communication, that I may access only the records of clients booked with me, and that unauthorised access, use or disclosure may result in termination of my account and in civil, criminal and administrative liability.',
-  'I consent to Sapphire Clinics East Incorporated collecting and processing my personal information, and verifying my credentials, as described in Section 13 and Annex C.',
+  'I consent to the Company collecting and processing my personal information, and verifying my credentials, as described in Section 13 and Annex C.',
   'The information and documents I have submitted are true, complete and current.',
 ]
 

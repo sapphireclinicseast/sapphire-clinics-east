@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ProviderTermsBody, ACKNOWLEDGMENTS, TERMS_VERSION } from '@/lib/provider-terms'
+import { ACKNOWLEDGMENTS, TERMS_VERSION } from '@/lib/provider-terms'
 
 const PROFESSIONS: [string, string][] = [
   ['PT', 'Physical Therapy'], ['OT', 'Occupational Therapy'], ['SLP', 'Speech-Language Pathology'],
@@ -61,17 +61,13 @@ export default function ProviderSignup() {
           </div>
 
           <div className="mt-2">
-            <div className="flex items-center justify-between">
-              <div className="label">Provider Terms of Service &amp; Data Privacy Consent</div>
-              <div className="flex gap-3">
-                <a href="/provider/terms/annexes" target="_blank" rel="noopener noreferrer" className="text-[11.5px] font-medium text-[color:var(--steel)] hover:underline">Annexes A–D ↗</a>
-                <a href="/provider/terms" target="_blank" rel="noopener noreferrer" className="text-[11.5px] font-medium text-[color:var(--steel)] hover:underline">Open in new tab ↗</a>
-              </div>
+            <div className="label">Provider Terms of Service &amp; Data Privacy Consent</div>
+            <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-3.5">
+              <p className="text-[12.5px] text-[color:var(--slate)]">
+                Please read the full <a href="/provider/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-[color:var(--steel)] hover:underline">Provider Terms of Service ↗</a> and <a href="/provider/terms/annexes" target="_blank" rel="noopener noreferrer" className="font-semibold text-[color:var(--steel)] hover:underline">Annexes A–D ↗</a> before you continue.
+              </p>
             </div>
-            <div className="max-h-72 overflow-y-auto rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-3.5">
-              <ProviderTermsBody />
-            </div>
-            <p className="mt-2 text-[12px] font-medium text-[color:var(--ink)]">Please tick all five acknowledgments to continue:</p>
+            <p className="mt-3 text-[12px] font-medium text-[color:var(--ink)]">Please tick all five acknowledgments to continue:</p>
             <div className="mt-1 space-y-2">
               {ACKNOWLEDGMENTS.map((a, i) => (
                 <label key={i} className="flex items-start gap-2.5 text-[12.5px]">
