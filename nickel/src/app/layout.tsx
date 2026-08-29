@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
+import { getSessionPatientId } from '@/lib/auth'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
@@ -12,7 +13,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: '#34618c' }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const isPatient = !!(await getSessionPatientId())
   return (
     <html lang="en" className={inter.variable}>
       <body style={{ fontFamily: 'var(--font-body)' }}>
@@ -21,7 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <a href="/" className="flex items-center"><img src="/nickel-logo.png" alt="Nickel" className="h-7 w-auto" /></a>
             <nav className="flex items-center gap-1 text-sm" style={{ fontFamily: 'var(--font-body)' }}>
-              <a href="/provider/login" className="rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)]">Provider sign in</a>
+              {isPatient
+                ? <a href="/bookings" className="rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)]">My bookings</a>
+                : <a href="/provider/login" className="rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)]">Provider sign in</a>}
               <a href="/book" className="btn-primary !px-4 !py-2 !text-[14px]">Book now</a>
             </nav>
           </div>

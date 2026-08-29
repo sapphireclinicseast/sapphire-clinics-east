@@ -178,6 +178,12 @@ model Booking {
   payoutId       String?
   payout         Payout?       @relation(fields: [payoutId], references: [id])
 
+  // Reschedule proposal — provider proposes a new time, patient accepts/declines
+  proposedDate      DateTime?
+  proposedStartTime String?
+  proposedAt        DateTime?
+
+  messages   Message[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
@@ -185,6 +191,25 @@ model Booking {
   @@index([patientId])
   @@index([status])
   @@index([providerId, payoutStatus])
+}
+
+enum SenderRole {
+  PATIENT
+  PROVIDER
+}
+
+model Message {
+  id             String     @id @default(cuid())
+  bookingId      String
+  booking        Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  senderRole     SenderRole
+  text           String?
+  attachment     String?    // data URI (image or file)
+  attachmentName String?
+  attachmentType String?
+  createdAt      DateTime   @default(now())
+
+  @@index([bookingId, createdAt])
 }
 
 // ── Tickets (concerns raised by providers or patients) ───────────────────────

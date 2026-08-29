@@ -2,13 +2,18 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Chat from '@/components/Chat'
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 interface Slot { id: string; dayOfWeek: number; startTime: string; endTime: string }
-interface Booking { id: string; date: string; startTime: string; endTime: string; city: string; status: string; patientName: string }
+interface AvailSlot { date: string; startTime: string; endTime: string }
+interface Booking { id: string; date: string; startTime: string; endTime: string; city: string; status: string; patientName: string; proposedDate?: string | null; proposedStartTime?: string | null }
 
-export default function ScheduleManager({ slots, bookings, past }: { slots: Slot[]; bookings: Booking[]; past: Booking[] }) {
+export default function ScheduleManager({ slots, bookings, past, availableSlots }: { slots: Slot[]; bookings: Booking[]; past: Booking[]; availableSlots: AvailSlot[] }) {
   const router = useRouter()
+  const [chatFor, setChatFor] = useState<string | null>(null)
+  const [proposeFor, setProposeFor] = useState<string | null>(null)
+  const [proposeSlot, setProposeSlot] = useState('')
   const [nd, setNd] = useState({ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -38,6 +43,44 @@ export default function ScheduleManager({ slots, bookings, past }: { slots: Slot
   const fmtTime = (t: string) => { const [h, m] = t.split(':').map(Number); const ap = h < 12 ? 'AM' : 'PM'; return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${ap}` }
   const toConfirm = bookings.filter((b) => b.status === 'PAID')
   const confirmed = bookings.filter((b) => b.status === 'CONFIRMED')
+
+  async function propose(id: string) {
+    if (!proposeSlot) return
+    const [date, startTime] = proposeSlot.split('|')
+    setActing(id)
+    try {
+      const r = await fetch('/api/provider/propose-time', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: id, date, startTime }) })
+      if (!r.ok) throw new Error((await r.json()).error ?? 'Could not propose')
+      setProposeFor(null); setProposeSlot(''); router.refresh()
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not propose') } finally { setActing(null) }
+  }
+
+  // Message + Propose-new-time controls shared by to-confirm and confirmed rows.
+  function actions(b: Booking) {
+    return (
+      <div className="mt-2 w-full">
+        {b.proposedStartTime
+          ? <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11.5px] font-semibold text-amber-800">Reschedule proposed — waiting for patient</span>
+          : (
+            <div className="flex flex-wrap gap-3 text-[12.5px]">
+              <button className="font-semibold text-[color:var(--steel)] hover:underline" onClick={() => { setChatFor(chatFor === b.id ? null : b.id); setProposeFor(null) }}>{chatFor === b.id ? 'Hide messages' : 'Message'}</button>
+              <button className="font-semibold text-[color:var(--steel)] hover:underline" onClick={() => { setProposeFor(proposeFor === b.id ? null : b.id); setChatFor(null) }}>{proposeFor === b.id ? 'Cancel' : 'Propose new time'}</button>
+            </div>
+          )}
+        {proposeFor === b.id && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--line)] bg-[color:var(--mist)] p-2.5">
+            <select className="select !w-auto !py-1.5 !text-[13px]" value={proposeSlot} onChange={(e) => setProposeSlot(e.target.value)}>
+              <option value="">Pick an open slot…</option>
+              {availableSlots.map((s) => <option key={`${s.date}|${s.startTime}`} value={`${s.date}|${s.startTime}`}>{fmtDate(s.date)} · {fmtTime(s.startTime)}</option>)}
+            </select>
+            <button className="btn-primary !px-3 !py-1.5 !text-[12.5px]" disabled={!proposeSlot || acting === b.id} onClick={() => propose(b.id)}>Send proposal</button>
+            {availableSlots.length === 0 && <span className="text-[11.5px] text-[color:var(--muted)]">Add availability first.</span>}
+          </div>
+        )}
+        {chatFor === b.id && <div className="mt-2"><Chat bookingId={b.id} meRole="PROVIDER" otherName={b.patientName} /></div>}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -85,6 +128,7 @@ export default function ScheduleManager({ slots, bookings, past }: { slots: Slot
                   <button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[12.5px] font-medium hover:bg-[color:var(--mist)]" disabled={acting === b.id} onClick={() => act(b.id, 'decline')}>Decline</button>
                   <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-emerald-700" disabled={acting === b.id} onClick={() => act(b.id, 'confirm')}>{acting === b.id ? '…' : 'Confirm visit'}</button>
                 </div>
+                {actions(b)}
               </div>
             ))}
           </div>
@@ -103,6 +147,7 @@ export default function ScheduleManager({ slots, bookings, past }: { slots: Slot
                 <span className="text-[color:var(--ink)]">{b.patientName}</span>
                 <span className="text-[color:var(--slate)]">· {b.city}</span>
                 <span className="ml-auto rounded-full bg-[color:var(--steel-soft,#eaf1fa)] px-2.5 py-0.5 text-[11px] font-semibold text-[color:var(--steel)]">Confirmed</span>
+                {actions(b)}
               </div>
             ))}
           </div>
