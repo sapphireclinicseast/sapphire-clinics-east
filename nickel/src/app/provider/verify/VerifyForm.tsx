@@ -1,6 +1,38 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { searchSchools } from '@/lib/ph-schools'
+
+// Typeahead for the school field — suggests PH physical-therapy schools while
+// typing, but any school can still be typed in full (free text).
+function SchoolField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [hi, setHi] = useState(0)
+  const results = searchSchools(value)
+  const showList = open && value.trim().length >= 1 && results.length > 0 && !(results.length === 1 && results[0] === value)
+  return (
+    <div className="relative">
+      <input className="input" value={value} placeholder="Start typing — e.g. University of Santo Tomas"
+        onChange={(e) => { onChange(e.target.value); setOpen(true); setHi(0) }}
+        onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (!showList) return
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(h + 1, results.length - 1)) }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)) }
+          else if (e.key === 'Enter') { e.preventDefault(); onChange(results[hi]); setOpen(false) }
+          else if (e.key === 'Escape') setOpen(false)
+        }} />
+      {showList && (
+        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-[color:var(--line)] bg-white shadow-lg">
+          {results.map((s, i) => (
+            <button key={s} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(s); setOpen(false) }} onMouseEnter={() => setHi(i)}
+              className={`block w-full px-3 py-2 text-left text-[13px] text-[color:var(--ink)] ${i === hi ? 'bg-[color:var(--mist)]' : ''}`}>{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const BANKS = [
   'BDO Unibank', 'Bank of the Philippine Islands (BPI)', 'Metrobank', 'Land Bank of the Philippines',
@@ -118,20 +150,31 @@ function PhotoCapture({ label, hint, value, onChange, facing, guide }: {
 
 function DocField({ label, hint, value, onChange }: { label: string; hint: string; value: string; onChange: (v: string) => void }) {
   const [name, setName] = useState('')
+  const done = !!value
   return (
     <div>
       <div className="label">{label} *</div>
       <p className="mb-1.5 text-[11.5px] text-[color:var(--muted)]">{hint}</p>
-      <input
-        type="file" accept="image/*,application/pdf" className="block text-[13px]"
-        onChange={async (e) => {
-          const f = e.target.files?.[0]; if (!f) return
-          if (f.size > 8 * 1024 * 1024) return alert('File must be under 8 MB.')
-          setName(f.name)
-          onChange(f.type === 'application/pdf' ? await fileToDataUrl(f) : await resizeImage(f, 1600))
-        }}
-      />
-      {value && <p className="mt-1 text-[12px] text-[color:var(--slate)]">✓ {name || 'file attached'}</p>}
+      <label className={`flex cursor-pointer items-center gap-3 rounded-xl border border-dashed px-4 py-3 transition-colors ${done ? 'border-emerald-300 bg-emerald-50' : 'border-[color:var(--line-2)] bg-[color:var(--mist)] hover:border-[color:var(--sky)]'}`}>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${done ? 'bg-emerald-100' : 'bg-white'}`}>
+          {done
+            ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 6.5"/></svg>
+            : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--steel)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/></svg>}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block text-[13.5px] font-semibold ${done ? 'text-emerald-700' : 'text-[color:var(--steel)]'}`}>{done ? 'Uploaded — tap to replace' : 'Upload a photo or PDF'}</span>
+          <span className="block truncate text-[11.5px] text-[color:var(--muted)]">{done ? (name || 'file attached') : 'JPG, PNG or PDF · up to 8 MB'}</span>
+        </span>
+        <input
+          type="file" accept="image/*,application/pdf" className="hidden"
+          onChange={async (e) => {
+            const f = e.target.files?.[0]; if (!f) return
+            if (f.size > 8 * 1024 * 1024) return alert('File must be under 8 MB.')
+            setName(f.name)
+            onChange(f.type === 'application/pdf' ? await fileToDataUrl(f) : await resizeImage(f, 1600))
+          }}
+        />
+      </label>
     </div>
   )
 }
@@ -202,7 +245,7 @@ export default function VerifyForm({ rejected, rejectionReason, init }: { reject
 
       <section className="grid gap-3 sm:grid-cols-2">
         <div><div className="label">PRC licence number *</div><input className="input" value={prcNumber} onChange={(e) => setPrcNumber(e.target.value)} /></div>
-        <div><div className="label">School graduated from *</div><input className="input" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="e.g. University of Santo Tomas" /></div>
+        <div><div className="label">School graduated from *</div><SchoolField value={school} onChange={setSchool} /></div>
         <div><div className="label">Year graduated *</div><input className="input" inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} placeholder="e.g. 2019" /></div>
         <div><div className="label">Years of experience *</div><input className="input" inputMode="numeric" value={yearsExp} onChange={(e) => setYearsExp(e.target.value)} placeholder="e.g. 8" /></div>
         <div><div className="label">Postgraduate degree(s)</div><input className="input" value={postgrad} onChange={(e) => setPostgrad(e.target.value)} placeholder="e.g. MS Physical Therapy" /></div>
