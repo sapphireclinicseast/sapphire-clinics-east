@@ -22,11 +22,21 @@ export async function GET(req: NextRequest) {
       })
       const booked = new Set(bookings.map((b) => `${b.date.toISOString().slice(0, 10)}|${b.startTime}`))
       const slots = upcomingSlots(p.slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), booked)
+      const certs = Array.isArray(p.certifications)
+        ? (p.certifications as unknown[]).filter((c): c is Record<string, unknown> => !!c && typeof c === 'object').map((c) => String(c.name ?? '')).filter(Boolean)
+        : []
       return {
         id: p.id,
         name: `${p.firstName} ${p.lastName}`,
+        postNominals: p.postNominals ?? null,
         profession: p.profession,
         photo: p.photo,
+        yearsExperience: p.yearsExperience ?? null,
+        school: p.school ?? null,
+        postgraduate: p.postgraduate ?? null,
+        certifications: certs,
+        specialization: p.specialization ?? null,
+        specializedRate: p.specializedRateApproved && p.specializedRate != null ? Number(p.specializedRate) : null,
         rate: p.rate != null ? Number(p.rate) : null,
         transpoIncluded: p.transpoIncluded,
         slots,

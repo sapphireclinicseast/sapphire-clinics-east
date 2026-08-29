@@ -9,6 +9,9 @@ export default async function SettingsPage() {
       init={{
         rate: p.rate != null ? String(Number(p.rate)) : '',
         transpoIncluded: p.transpoIncluded,
+        specialization: p.specialization ?? '',
+        specializedRate: p.specializedRate != null ? String(Number(p.specializedRate)) : '',
+        specializedRateApproved: p.specializedRateApproved,
         prcNumber: p.prcNumber ?? '',
         ptrNumber: p.ptrNumber ?? '',
         signature: p.signature ?? '',

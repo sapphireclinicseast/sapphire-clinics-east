@@ -7,7 +7,12 @@ const STEPS: [Step, string][] = [['city', 'City'], ['auth', 'Account'], ['provid
 const PROF: Record<string, string> = { PT: 'Physical Therapist', OT: 'Occupational Therapist', SLP: 'Speech-Language Pathologist', SPED: 'Special Education', PSYCHOLOGY: 'Psychologist', MD: 'Medical Doctor', ORTHOSIS: 'Orthosis / Prosthesis' }
 
 interface Slot { date: string; startTime: string; endTime: string }
-interface Provider { id: string; name: string; profession: string; photo: string | null; rate: number | null; transpoIncluded: boolean; slots: Slot[] }
+interface Provider {
+  id: string; name: string; postNominals: string | null; profession: string; photo: string | null
+  yearsExperience: string | null; school: string | null; postgraduate: string | null
+  certifications: string[]; specialization: string | null; specializedRate: number | null
+  rate: number | null; transpoIncluded: boolean; slots: Slot[]
+}
 interface Me { id: string; firstName: string; city: string | null }
 
 const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`
@@ -158,19 +163,38 @@ export default function BookPage() {
             {providers && providers.length === 0 && <p className="text-[13px] text-[color:var(--slate)]">No therapists with open schedules in {city} yet. Please check back soon.</p>}
             <div className="space-y-2">
               {providers?.map((p) => (
-                <button key={p.id} onClick={() => { setProvider(p); setStep('time') }} className="flex w-full items-center gap-3 rounded-xl border border-[color:var(--line-2)] bg-white p-3 text-left hover:border-[color:var(--sky)]">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color:var(--mist-2)] text-[13px] font-semibold text-[color:var(--slate)]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    {p.photo ? <img src={p.photo} alt="" className="h-full w-full object-cover" /> : p.name.split(' ').map((x) => x[0]).slice(0, 2).join('')}
+                <button key={p.id} onClick={() => { setProvider(p); setStep('time') }} className="w-full rounded-xl border border-[color:var(--line-2)] bg-white p-3.5 text-left hover:border-[color:var(--sky)]">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[color:var(--mist-2)] text-[15px] font-semibold text-[color:var(--slate)]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      {p.photo ? <img src={p.photo} alt="" className="h-full w-full object-cover" /> : p.name.split(' ').map((x) => x[0]).slice(0, 2).join('')}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[15px] font-semibold text-[color:var(--ink)]">{p.name}{p.postNominals ? `, ${p.postNominals}` : ''}</span>
+                        <span className="rounded-full bg-emerald-50 px-1.5 text-[10px] font-bold text-emerald-700" title="Identity-verified">✓</span>
+                      </div>
+                      <div className="text-[12px] text-[color:var(--slate)]">{PROF[p.profession] ?? p.profession}</div>
+                      {(p.yearsExperience || p.school) && (
+                        <div className="mt-0.5 text-[11.5px] text-[color:var(--muted)]">
+                          {p.yearsExperience ? `${p.yearsExperience} yr${p.yearsExperience === '1' ? '' : 's'} experience` : ''}{p.yearsExperience && p.school ? ' · ' : ''}{p.school ?? ''}
+                        </div>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-[15px] font-bold text-[color:var(--steel-deep)]">{p.rate != null ? peso(p.rate) : ''}</div>
+                      <div className="text-[10px] text-[color:var(--muted)]">{p.transpoIncluded ? 'transpo incl.' : '+ transpo'}</div>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[15px] font-semibold text-[color:var(--ink)]">{p.name}</div>
-                    <div className="text-[12px] text-[color:var(--slate)]">{PROF[p.profession] ?? p.profession} · {p.slots.length} open slot{p.slots.length === 1 ? '' : 's'}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[15px] font-bold text-[color:var(--steel-deep)]">{p.rate != null ? peso(p.rate) : ''}</div>
-                    <div className="text-[10px] text-[color:var(--muted)]">{p.transpoIncluded ? 'transpo incl.' : '+ transpo'}</div>
-                  </div>
+                  {(p.certifications.length > 0 || p.postgraduate || p.specialization) && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 border-t border-[color:var(--line)] pt-2">
+                      {p.postgraduate && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11px] text-[color:var(--slate)]">🎓 {p.postgraduate}</span>}
+                      {[...new Set([p.specialization, ...p.certifications].filter(Boolean))].map((c) => (
+                        <span key={c} className="rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11px] text-[color:var(--slate)]">🏅 {c}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 text-[11px] font-medium text-[color:var(--steel)]">{p.slots.length} open slot{p.slots.length === 1 ? '' : 's'} · tap to pick a time →</div>
                 </button>
               ))}
             </div>

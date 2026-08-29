@@ -12,7 +12,7 @@ export default async function SettlementsPage() {
 
   const [paid, pendingAgg] = await Promise.all([
     prisma.booking.findMany({
-      where: { providerId: provider.id, status: 'PAID', paidAt: { not: null } },
+      where: { providerId: provider.id, status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] }, paidAt: { not: null } },
       orderBy: { paidAt: 'desc' },
     }),
     prisma.booking.aggregate({ where: { providerId: provider.id, status: 'PENDING' }, _sum: { amount: true } }),

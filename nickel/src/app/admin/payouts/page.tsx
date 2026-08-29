@@ -13,7 +13,7 @@ export default async function AdminPayouts() {
   if (!(await isAdmin())) redirect('/admin/login')
 
   const due = await prisma.booking.findMany({
-    where: { status: 'PAID', payoutStatus: 'PENDING' },
+    where: { status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] }, payoutStatus: 'PENDING' },
     select: { providerId: true, amount: true, providerNet: true, provider: { select: { firstName: true, lastName: true, bankName: true, bankAccountNo: true, gcashNumber: true } } },
   })
 

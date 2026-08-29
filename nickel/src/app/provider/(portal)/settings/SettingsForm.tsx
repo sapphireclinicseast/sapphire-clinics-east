@@ -3,7 +3,9 @@
 import { useState } from 'react'
 
 interface Init {
-  rate: string; transpoIncluded: boolean; prcNumber: string; ptrNumber: string; signature: string
+  rate: string; transpoIncluded: boolean
+  specialization: string; specializedRate: string; specializedRateApproved: boolean
+  prcNumber: string; ptrNumber: string; signature: string
   bankName: string; bankAccountNo: string; bankAccountName: string; gcashNumber: string; gcashName: string
 }
 
@@ -26,7 +28,7 @@ export default function SettingsForm({ init }: { init: Init }) {
     try {
       const res = await fetch('/api/provider/update', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...f, rate: f.rate === '' ? null : Number(f.rate) }),
+        body: JSON.stringify({ ...f, rate: f.rate === '' ? null : Number(f.rate), specializedRate: f.specializedRate === '' ? null : Number(f.specializedRate) }),
       })
       const d = await res.json()
       setMsg(res.ok ? 'Saved.' : (d.error ?? 'Save failed'))
@@ -49,6 +51,29 @@ export default function SettingsForm({ init }: { init: Init }) {
             <span>Transportation included in this rate</span>
           </label>
         </div>
+      </section>
+
+      {/* Specialized rate — only editable once SCEI verifies the certification */}
+      <section className="card">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[16px] font-semibold">Specialized rate</h2>
+          {f.specializedRateApproved
+            ? <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[12px] font-semibold text-emerald-700">Approved{f.specialization ? ` · ${f.specialization}` : ''}</span>
+            : <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[12px] font-semibold text-amber-800">Pending verification</span>}
+        </div>
+        {f.specializedRateApproved ? (
+          <>
+            <p className="mb-3 mt-1 text-[12px] text-[color:var(--slate)]">Charged for bookings under your verified specialization{f.specialization ? ` (${f.specialization})` : ''}.</p>
+            <div className="max-w-[220px]"><div className="label">Specialized session rate (₱)</div>
+              <input className="input" inputMode="numeric" value={f.specializedRate} onChange={(e) => set('specializedRate', e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 2400" /></div>
+          </>
+        ) : (
+          <p className="mt-1 text-[12.5px] text-[color:var(--slate)]">
+            {f.specialization
+              ? <>Your specialization <b>{f.specialization}</b> is awaiting SCEI review. Once your certification is verified, you can set a specialized rate here.</>
+              : <>Add a specialization and upload its certification in <b>Verification</b>. After SCEI verifies it, a specialized rate unlocks here.</>}
+          </p>
+        )}
       </section>
 
       {/* Credentials */}

@@ -34,8 +34,8 @@ function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = reject; r.readAsDataURL(file) })
 }
 
-function PhotoCapture({ label, hint, value, onChange, facing }: {
-  label: string; hint: string; value: string; onChange: (v: string) => void; facing: 'user' | 'environment'
+function PhotoCapture({ label, hint, value, onChange, facing, guide }: {
+  label: string; hint: string; value: string; onChange: (v: string) => void; facing: 'user' | 'environment'; guide?: 'face'
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -76,7 +76,15 @@ function PhotoCapture({ label, hint, value, onChange, facing }: {
         </div>
       ) : live ? (
         <div className="space-y-2">
-          <video ref={videoRef} playsInline muted className="w-full max-w-[280px] rounded-lg border border-[color:var(--line)] bg-black" />
+          <div className="relative w-full max-w-[280px]">
+            <video ref={videoRef} playsInline muted className="w-full rounded-lg border border-[color:var(--line)] bg-black" style={guide === 'face' ? { transform: 'scaleX(-1)' } : undefined} />
+            {guide === 'face' && (
+              <>
+                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: '58%', height: '82%', border: '2px dashed rgba(255,255,255,0.9)', borderRadius: '50% / 50%' }} />
+                <div className="pointer-events-none absolute bottom-2 left-0 right-0 text-center text-[11px] font-medium text-white/90" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>Align your face within the oval</div>
+              </>
+            )}
+          </div>
           <div className="flex gap-2">
             <button type="button" onClick={capture} className="btn-primary !py-2">Capture</button>
             <button type="button" onClick={stop} className="btn-outline !py-2">Cancel</button>
@@ -176,7 +184,7 @@ export default function VerifyForm({ rejected, rejectionReason, init }: { reject
       {err && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
       <section className="space-y-4">
-        <PhotoCapture label="Face scan" hint="Take a clear selfie in good lighting, looking straight at the camera." value={face} onChange={setFace} facing="user" />
+        <PhotoCapture label="Face scan" hint="Open the camera and line your face up inside the oval, then capture." value={face} onChange={setFace} facing="user" guide="face" />
         <PhotoCapture label="Photo holding your PRC ID" hint="Hold your PRC ID beside your face so both are clearly visible." value={prcPhoto} onChange={setPrcPhoto} facing="environment" />
       </section>
 

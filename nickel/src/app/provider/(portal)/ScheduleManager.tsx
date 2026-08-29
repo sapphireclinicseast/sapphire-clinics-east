@@ -7,7 +7,7 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 interface Slot { id: string; dayOfWeek: number; startTime: string; endTime: string }
 interface Booking { id: string; date: string; startTime: string; endTime: string; city: string; status: string; patientName: string }
 
-export default function ScheduleManager({ slots, bookings }: { slots: Slot[]; bookings: Booking[] }) {
+export default function ScheduleManager({ slots, bookings, past }: { slots: Slot[]; bookings: Booking[]; past: Booking[] }) {
   const router = useRouter()
   const [nd, setNd] = useState({ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' })
   const [busy, setBusy] = useState(false)
@@ -24,6 +24,20 @@ export default function ScheduleManager({ slots, bookings }: { slots: Slot[]; bo
   async function remove(id: string) {
     await fetch(`/api/provider/slots?id=${id}`, { method: 'DELETE' }); router.refresh()
   }
+  const [acting, setActing] = useState<string | null>(null)
+  async function act(id: string, action: 'confirm' | 'decline') {
+    if (action === 'decline' && !confirm('Decline this visit? The patient will be refunded.')) return
+    setActing(id)
+    try {
+      const r = await fetch('/api/provider/booking-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: id, action }) })
+      if (!r.ok) throw new Error((await r.json()).error ?? 'Action failed')
+      router.refresh()
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Action failed') } finally { setActing(null) }
+  }
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
+  const fmtTime = (t: string) => { const [h, m] = t.split(':').map(Number); const ap = h < 12 ? 'AM' : 'PM'; return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${ap}` }
+  const toConfirm = bookings.filter((b) => b.status === 'PAID')
+  const confirmed = bookings.filter((b) => b.status === 'CONFIRMED')
 
   return (
     <div className="space-y-4">
@@ -52,24 +66,64 @@ export default function ScheduleManager({ slots, bookings }: { slots: Slot[]; bo
         </div>
       </section>
 
-      <section className="card">
-        <h2 className="text-[16px] font-semibold">Upcoming visits</h2>
-        {bookings.length === 0 ? (
-          <p className="mt-2 text-[13px] text-[color:var(--slate)]">No upcoming visits yet.</p>
-        ) : (
+      {toConfirm.length > 0 && (
+        <section className="card">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[16px] font-semibold">Requests to confirm</h2>
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[12px] font-semibold text-amber-800">{toConfirm.length} waiting</span>
+          </div>
+          <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">
+            <span>⏱️</span><span><b>Check your travel time before you accept.</b> Make sure you can reach each address from your previous visit in time.</span>
+          </div>
           <div className="mt-3 space-y-2">
-            {bookings.map((b) => (
-              <div key={b.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--line)] px-3 py-2 text-[13px]">
-                <span className="font-medium text-[color:var(--ink)]">{new Date(b.date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                <span className="text-[color:var(--slate)]">{b.startTime}</span>
+            {toConfirm.map((b) => (
+              <div key={b.id} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border border-[color:var(--line)] px-3 py-2.5 text-[13px]">
+                <span className="font-semibold text-[color:var(--ink)]">{fmtDate(b.date)} · {fmtTime(b.startTime)}</span>
                 <span className="text-[color:var(--ink)]">{b.patientName}</span>
                 <span className="text-[color:var(--slate)]">· {b.city}</span>
-                <span className="ml-auto rounded px-2 py-0.5 text-[11px] font-semibold" style={{ background: 'var(--mist-2)', color: 'var(--steel-deep)' }}>{b.status}</span>
+                <div className="ml-auto flex gap-2">
+                  <button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[12.5px] font-medium hover:bg-[color:var(--mist)]" disabled={acting === b.id} onClick={() => act(b.id, 'decline')}>Decline</button>
+                  <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-emerald-700" disabled={acting === b.id} onClick={() => act(b.id, 'confirm')}>{acting === b.id ? '…' : 'Confirm visit'}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="card">
+        <h2 className="text-[16px] font-semibold">Confirmed visits</h2>
+        {confirmed.length === 0 ? (
+          <p className="mt-2 text-[13px] text-[color:var(--slate)]">No confirmed visits yet.</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {confirmed.map((b) => (
+              <div key={b.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--line)] px-3 py-2 text-[13px]">
+                <span className="font-semibold text-[color:var(--ink)]">{fmtDate(b.date)} · {fmtTime(b.startTime)}</span>
+                <span className="text-[color:var(--ink)]">{b.patientName}</span>
+                <span className="text-[color:var(--slate)]">· {b.city}</span>
+                <span className="ml-auto rounded-full bg-[color:var(--steel-soft,#eaf1fa)] px-2.5 py-0.5 text-[11px] font-semibold text-[color:var(--steel)]">Confirmed</span>
               </div>
             ))}
           </div>
         )}
       </section>
+
+      {past.length > 0 && (
+        <section className="card">
+          <h2 className="text-[16px] font-semibold">Session history</h2>
+          <div className="mt-3 space-y-1.5">
+            {past.map((b) => (
+              <div key={b.id} className="flex flex-wrap items-center gap-2 border-b border-[color:var(--line)] pb-1.5 text-[13px] last:border-0">
+                <span className="tabular-nums text-[color:var(--slate)]">{fmtDate(b.date)}</span>
+                <span className="text-[color:var(--ink)]">{b.patientName}</span>
+                <span className="text-[color:var(--slate)]">· {b.city}</span>
+                <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${b.status === 'CANCELLED' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{b.status === 'CANCELLED' ? 'Cancelled' : 'Completed'}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

@@ -27,6 +27,11 @@ export async function PATCH(req: NextRequest) {
   }
   if ('rate' in b) data.rate = b.rate === '' || b.rate == null ? null : Number(b.rate)
   if (typeof b.transpoIncluded === 'boolean') data.transpoIncluded = b.transpoIncluded
+  // Specialized rate is only settable once SCEI has approved the specialization.
+  if ('specializedRate' in b) {
+    const prov = await prisma.provider.findUnique({ where: { id: pid }, select: { specializedRateApproved: true } })
+    if (prov?.specializedRateApproved) data.specializedRate = b.specializedRate === '' || b.specializedRate == null ? null : Number(b.specializedRate)
+  }
   // Names are stored uppercase to match the rest of the platform.
   if (typeof data.firstName === 'string') data.firstName = (data.firstName as string).toUpperCase()
   if (typeof data.lastName === 'string') data.lastName = (data.lastName as string).toUpperCase()

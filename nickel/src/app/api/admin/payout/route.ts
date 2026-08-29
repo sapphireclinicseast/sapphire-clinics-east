@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   if (!provider) return NextResponse.json({ error: 'Provider not found' }, { status: 404 })
 
   const due = await prisma.booking.findMany({
-    where: { providerId, status: 'PAID', payoutStatus: 'PENDING' },
+    where: { providerId, status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] }, payoutStatus: 'PENDING' },
     select: { id: true, amount: true, providerNet: true },
   })
   if (due.length === 0) return NextResponse.json({ error: 'Nothing to pay out.' }, { status: 409 })
