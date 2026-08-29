@@ -4,5 +4,5 @@ import { redirect } from 'next/navigation'
 // (nickel.sapphireclinicseast.org), a standalone app. Anything landing here is
 // sent straight there.
 export default function HomecareRedirect() {
-  redirect('https://nickel.sapphireclinicseast.org')
+  redirect('https://nickelcare.com')
 }

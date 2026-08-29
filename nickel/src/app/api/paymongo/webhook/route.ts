@@ -1,6 +1,6 @@
 // PayMongo webhook receiver (Verdana account).
 // Configure in the PayMongo dashboard:
-//   URL: https://nickel.sapphireclinicseast.org/api/paymongo/webhook
+//   URL: https://nickelcare.com/api/paymongo/webhook
 //   Events: link.payment.paid
 // Set PAYMONGO_WEBHOOK_SECRET in the Nickel container env.
 

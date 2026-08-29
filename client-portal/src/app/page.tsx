@@ -1227,7 +1227,7 @@ const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint
 function HomecareBanner() {
   return (
     <a
-      href="https://nickel.sapphireclinicseast.org"
+      href="https://nickelcare.com"
       aria-label="Schedule Homecare Physical Therapy on Nickel"
       className="group relative block overflow-hidden rounded-[18px] p-6 text-white shadow-[0_10px_30px_rgba(27,63,56,0.25)] transition-transform duration-200 hover:-translate-y-0.5"
       style={{ background: 'linear-gradient(135deg, var(--deep-teal), var(--teal))' }}
