@@ -45,23 +45,32 @@ function PhotoCapture({ label, hint, value, onChange, facing, guide }: {
   const stop = () => { streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null; setLive(false) }
   useEffect(() => () => stop(), [])
 
+  // Attach the stream once the <video> is actually in the DOM (setting srcObject
+  // before mount was leaving the preview black).
+  useEffect(() => {
+    if (!live) return
+    const v = videoRef.current, s = streamRef.current
+    if (v && s) { v.srcObject = s; v.play().catch(() => {}) }
+  }, [live])
+
   async function open() {
     setErr(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing }, audio: false })
-      streamRef.current = stream; setLive(true)
-      // wait a tick for the <video> to mount
-      setTimeout(() => { if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(() => {}) } }, 0)
-    } catch { setErr('Could not open the camera. You can upload a photo instead.') }
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing }, audio: false })
+      setLive(true)
+    } catch { setErr('Could not open the camera — check camera permission, or upload a photo instead.') }
   }
 
   function capture() {
-    const v = videoRef.current; if (!v) return
+    const v = videoRef.current
+    if (!v || !v.videoWidth || !v.videoHeight) { setErr('The camera is still starting — wait a second, then tap Capture.'); return }
     const max = 1280, scale = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight))
     const c = document.createElement('canvas'); c.width = Math.round(v.videoWidth * scale); c.height = Math.round(v.videoHeight * scale)
     const ctx = c.getContext('2d'); if (!ctx) return
     ctx.drawImage(v, 0, 0, c.width, c.height)
-    onChange(c.toDataURL('image/jpeg', 0.85)); stop()
+    const url = c.toDataURL('image/jpeg', 0.85)
+    if (url.length < 100) { setErr('Could not capture — try again.'); return }
+    onChange(url); stop()
   }
 
   return (
@@ -77,7 +86,7 @@ function PhotoCapture({ label, hint, value, onChange, facing, guide }: {
       ) : live ? (
         <div className="space-y-2">
           <div className="relative w-full max-w-[280px]">
-            <video ref={videoRef} playsInline muted className="w-full rounded-lg border border-[color:var(--line)] bg-black" style={guide === 'face' ? { transform: 'scaleX(-1)' } : undefined} />
+            <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-lg border border-[color:var(--line)] bg-black" style={{ minHeight: 200, objectFit: 'cover', ...(guide === 'face' ? { transform: 'scaleX(-1)' } : {}) }} />
             {guide === 'face' && (
               <>
                 <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: '58%', height: '82%', border: '2px dashed rgba(255,255,255,0.9)', borderRadius: '50% / 50%' }} />
@@ -92,7 +101,10 @@ function PhotoCapture({ label, hint, value, onChange, facing, guide }: {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={open} className="btn-outline !py-2">📷 Open camera</button>
+          <button type="button" onClick={open} className="btn-outline !py-2 inline-flex items-center gap-2">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--steel)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 20 20H4a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 4 8Z"/><circle cx="12" cy="13" r="3.2"/></svg>
+            Open camera
+          </button>
           <label className="btn-outline !py-2 cursor-pointer">
             Upload
             <input type="file" accept="image/*" capture={facing} className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) onChange(await resizeImage(f)) }} />
