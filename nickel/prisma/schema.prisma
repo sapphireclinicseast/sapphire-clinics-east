@@ -12,6 +12,25 @@ datasource db {
   provider = "postgresql"
 }
 
+enum PayoutStatus {
+  PENDING // net earned, not yet paid out to the provider
+  PAID    // included in a settled payout batch
+}
+
+model Payout {
+  id         String   @id @default(cuid())
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  amount     Decimal  // total net paid in this run (PHP)
+  method     String?  // snapshot of where it was sent (bank / GCash)
+  reference  String?  // manual transfer reference
+  note       String?
+  createdAt  DateTime @default(now())
+  bookings   Booking[]
+
+  @@index([providerId])
+}
+
 enum VerificationStatus {
   UNVERIFIED // account created, not yet submitted for verification
   PENDING    // documents submitted, awaiting SCEI review (24–48h)
@@ -92,6 +111,7 @@ model Provider {
   slots        ProviderSlot[]
   bookings     Booking[]
   tickets      Ticket[]
+  payouts      Payout[]
 
   @@index([active])
 }
@@ -150,12 +170,21 @@ model Booking {
   checkoutUrl    String?
   paidAt         DateTime?
 
+  // Earnings split — computed when the booking is paid (see src/lib/earnings.ts)
+  platformFee    Decimal?      // SCEI's 15% of the provider rate
+  withholdingTax Decimal?      // creditable withholding tax (5%)
+  providerNet    Decimal?      // what the provider is owed for this session
+  payoutStatus   PayoutStatus  @default(PENDING)
+  payoutId       String?
+  payout         Payout?       @relation(fields: [payoutId], references: [id])
+
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
   @@index([providerId, date])
   @@index([patientId])
   @@index([status])
+  @@index([providerId, payoutStatus])
 }
 
 // ── Tickets (concerns raised by providers or patients) ───────────────────────

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPaymongoSignature, hasWebhookSecret } from '@/lib/paymongo'
+import { computeSplit } from '@/lib/earnings'
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
@@ -37,12 +38,17 @@ export async function POST(req: NextRequest) {
 
   const booking = await prisma.booking.findFirst({
     where: { paymongoLinkId: linkId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, amount: true },
   })
   if (!booking) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
 
   if (booking.status === 'PENDING') {
-    await prisma.booking.update({ where: { id: booking.id }, data: { status: 'PAID', paidAt: new Date() } })
+    // Credit the provider's wallet: record the 15% fee / 5% CWT / net split.
+    const { fee, cwt, net } = computeSplit(Number(booking.amount))
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { status: 'PAID', paidAt: new Date(), platformFee: fee, withholdingTax: cwt, providerNet: net },
+    })
   }
   return NextResponse.json({ ok: true })
 }
