@@ -66,19 +66,37 @@ export async function GET(req: Request) {
     const [loans, paid, shareholders] = await Promise.all([prisma.loan.findMany({ orderBy: { dateAcquired: 'asc' } }), prisma.loanPayout.findMany(), prisma.shareholder.findMany({ select: { id: true, email: true } })])
     const paidBy = new Map(paid.map(p => [`${p.loanId}|${new Date(p.dueDate).toISOString().slice(0, 10)}`, p]))
     const emailById = new Map(shareholders.map(s => [s.id, s.email]))
-    const rows = loans.flatMap(l => occurrences(l).map(o => {
-      const rec = paidBy.get(`${l.id}|${o.dueDate.slice(0, 10)}`)
-      return { kind: 'loan', parentId: l.id, name: l.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, shareholderId: l.shareholderId, email: l.shareholderId ? (emailById.get(l.shareholderId) || null) : null, bankAccountId: l.bankAccountId, paymentBankAccountId: l.paymentBankAccountId, creditAccountId: l.creditAccountId, interestExpenseAccountId: l.interestExpenseAccountId }
-    }))
+    const rows = loans.flatMap(l => {
+      const occs = occurrences(l)
+      const occDates = new Set(occs.map(o => o.dueDate.slice(0, 10)))
+      const base = occs.map(o => {
+        const rec = paidBy.get(`${l.id}|${o.dueDate.slice(0, 10)}`)
+        return { kind: 'loan', parentId: l.id, name: l.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, shareholderId: l.shareholderId, email: l.shareholderId ? (emailById.get(l.shareholderId) || null) : null, bankAccountId: l.bankAccountId, paymentBankAccountId: l.paymentBankAccountId, creditAccountId: l.creditAccountId, interestExpenseAccountId: l.interestExpenseAccountId }
+      })
+      // Recorded payments whose due date is no longer on the schedule (it was
+      // restructured after they were paid) must still show — the record and its
+      // JE exist regardless of what the current schedule derives.
+      const extras = paid.filter(p => p.loanId === l.id && !occDates.has(new Date(p.dueDate).toISOString().slice(0, 10)))
+        .map(p => ({ kind: 'loan', parentId: l.id, name: l.name, seq: 0, dueDate: new Date(p.dueDate).toISOString(), principalPortion: num(p.principalPortion), interestPortion: num(p.interestPortion), amount: num(p.amount), status: p.status, paidDate: p.paidDate, payoutId: p.id, emailedAt: p.emailedAt, shareholderId: l.shareholderId, email: l.shareholderId ? (emailById.get(l.shareholderId) || null) : null, bankAccountId: l.bankAccountId, paymentBankAccountId: l.paymentBankAccountId, creditAccountId: l.creditAccountId, interestExpenseAccountId: l.interestExpenseAccountId }))
+      return [...base, ...extras]
+    })
     return NextResponse.json({ rows })
   }
   const [advances, paid, shareholders] = await Promise.all([prisma.advance.findMany({ orderBy: { dateAcquired: 'asc' } }), prisma.advancePayout.findMany(), prisma.shareholder.findMany({ select: { id: true, email: true } })])
   const paidBy = new Map(paid.map(p => [`${p.advanceId}|${new Date(p.dueDate).toISOString().slice(0, 10)}`, p]))
   const emailById = new Map(shareholders.map(s => [s.id, s.email]))
-  const rows = advances.flatMap(a => occurrences(a).map(o => {
-    const rec = paidBy.get(`${a.id}|${o.dueDate.slice(0, 10)}`)
-    return { kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, email: a.shareholderId ? (emailById.get(a.shareholderId) || null) : null, bankAccountId: a.bankAccountId, paymentBankAccountId: a.paymentBankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }
-  }))
+  const rows = advances.flatMap(a => {
+    const occs = occurrences(a)
+    const occDates = new Set(occs.map(o => o.dueDate.slice(0, 10)))
+    const base = occs.map(o => {
+      const rec = paidBy.get(`${a.id}|${o.dueDate.slice(0, 10)}`)
+      return { kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, email: a.shareholderId ? (emailById.get(a.shareholderId) || null) : null, bankAccountId: a.bankAccountId, paymentBankAccountId: a.paymentBankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }
+    })
+    // Same as loans above: keep recorded payments visible after a restructure.
+    const extras = paid.filter(p => p.advanceId === a.id && !occDates.has(new Date(p.dueDate).toISOString().slice(0, 10)))
+      .map(p => ({ kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, seq: 0, dueDate: new Date(p.dueDate).toISOString(), principalPortion: num(p.principalPortion), interestPortion: num(p.interestPortion), amount: num(p.amount), status: p.status, paidDate: p.paidDate, payoutId: p.id, emailedAt: p.emailedAt, email: a.shareholderId ? (emailById.get(a.shareholderId) || null) : null, bankAccountId: a.bankAccountId, paymentBankAccountId: a.paymentBankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }))
+    return [...base, ...extras]
+  })
   return NextResponse.json({ rows })
 }
 
