@@ -23,13 +23,18 @@ _Last reviewed: 2026-08-28_
 
 ## ❌ / ⚠️ Not (fully) implemented — flag when building nearby
 
-### Money — the biggest gap
-- ❌ **Platform Fee 15%** computation (Terms §10.3, Annex A1) — app charges the client the full
-  Provider Rate; nothing computes/retains the 15%.
-- ❌ **Payout engine** (Annex A2–A3): weekly runs, net computation, minimum-balance rollover,
-  payout **statements**, set-off (Terms §10.6), 50% set-off cap (A8.4). Payouts are entirely manual.
-- ❌ **Creditable withholding tax** 5%/10% + **BIR Form 2307** issuance (Annex A2.4, Terms §10.5).
+### Money
+- ✅ **15% fee / 5% CWT / net split SHIPPED** (2026-08-28): recorded per booking when paid
+  (`src/lib/earnings.ts`, PayMongo webhook), shown on the provider **Settlements** tab (weekly grouping)
+  and the admin **Payouts** run. `Payout` model batches a provider's unpaid sessions; admin "Mark paid"
+  closes the ledger. Disbursement is **manual** (finance transfers, then marks paid) — PayMongo can't
+  auto-pay providers; auto-disbursement (Xendit/GCash) is a later add.
+- ⚠️ CWT is a **flat 5%** — the 10% branch (no sworn declaration / >₱3M) isn't modelled yet; no
+  per-provider tax status tracked.
+- ❌ **BIR Form 2307** generation (Annex A2.4, Terms §10.5) — statement says it's issued; not built.
 - ❌ **BIR/tax capture**: TIN, BIR Certificate of Registration, annual sworn declaration (Annex A2.4, C2).
+- ❌ **Weekly auto-run + minimum-balance rollover + set-off / 50% cap** (Annex A3/A8.4) — payouts are
+  triggered manually per provider, not a scheduled batch; no set-off logic.
 - ❌ **Refunds / chargebacks** flow and allocation (Annex A8, Terms §11).
 
 ### Transportation (Annex D)
