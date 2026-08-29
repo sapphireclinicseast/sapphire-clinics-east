@@ -427,6 +427,13 @@ function toNum(v: string | number | undefined | null): number {
   return Number(v) || 0
 }
 
+// Session counts in 0.5 steps: show "6", not "6.0", and "0.5", not "0.5000001".
+// Number only — callers add the word so they can get the plural right.
+function fmtSessions(v: string | number | undefined | null): string {
+  // Rounding kills float drift from summing halves before String() sees it.
+  return String(Math.round(toNum(v) * 100) / 100)
+}
+
 function today(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 }
@@ -2356,10 +2363,15 @@ function OrderFormModal({
                     </div>
                   )
 
-                  const remaining = pkg.totalSessions - pkg.usedSessions
+                  // toNum on BOTH sides: usedSessions arrives as a Prisma-Decimal
+                  // string. `-` would coerce it, but a bare string reaches the
+                  // comparisons below and renders NaN rather than throwing.
+                  const remaining = toNum(pkg.totalSessions) - toNum(pkg.usedSessions)
                   // Mirrors the deduction rule exactly: ₱0 add-ons ride along free and
-                  // must not be counted as consuming a slot.
-                  const using = items.filter(it => toNum(it.unitPrice) > 0).reduce((s, it) => s + it.quantity, 0)
+                  // must not consume a slot, and each line costs its service's
+                  // sessionCost per unit (0.5 steps, default 1).
+                  const using = items.filter(it => toNum(it.unitPrice) > 0)
+                    .reduce((s, it) => s + (toNum(it.sessionCost) || 1) * it.quantity, 0)
                   const after = remaining - using
                   const overdrawn = using > 0 && after < 0
                   const exhausts = using > 0 && after <= 0
@@ -2376,24 +2388,24 @@ function OrderFormModal({
                       <div style={{ fontWeight: 600 }}>
                         {/* Plural follows the total, not the remainder: the pool is
                             what's being counted, so "1 of 10 sessions left". */}
-                        {remaining} of {pkg.totalSessions} session{pkg.totalSessions === 1 ? '' : 's'} left
-                        {using > 0 && !overdrawn && <> &middot; {after} left after this sale</>}
+                        {fmtSessions(remaining)} of {fmtSessions(pkg.totalSessions)} session{toNum(pkg.totalSessions) === 1 ? '' : 's'} left
+                        {using > 0 && !overdrawn && <> &middot; {fmtSessions(after)} left after this sale</>}
                       </div>
                       {overdrawn ? (
                         <div style={{ fontWeight: 700 }}>
                           {/* Explicit {' '} — the compiler drops a plain space between an
                               expression and the text that follows it here, rendering "8are". */}
-                          Only {remaining} session{remaining === 1 ? '' : 's'} left but {using}{' '}
+                          Only {fmtSessions(remaining)} left but {fmtSessions(using)}{' '}
                           are being charged &mdash; this package cannot cover the whole sale.
                         </div>
                       ) : exhausts ? (
                         <div style={{ fontWeight: 700 }}>
-                          {/* "Last session" is only true when one is being charged; a
-                              multi-session sale finishes the package without any single
-                              one of them being "the last". */}
+                          {/* "Last session" is only true when exactly one is being charged.
+                              With half-session services a sale can finish the package
+                              without any single one of them being "the last". */}
                           {using === 1
                             ? <>Last session &mdash; this sale uses up the package. Let the patient know before they leave.</>
-                            : <>This sale uses the package&apos;s last {remaining} session{remaining === 1 ? '' : 's'}. Let the patient know before they leave.</>}
+                            : <>This sale uses up the package&apos;s remaining {fmtSessions(remaining)} session{remaining === 1 ? '' : 's'}. Let the patient know before they leave.</>}
                         </div>
                       ) : null}
                     </div>
