@@ -21,7 +21,7 @@ import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 /* ── data plumbing ─────────────────────────────────────────────── */
 
 interface EngineIS {
-  incomeStatement: { sections: { key: string; rows: { monthly?: number[] }[] }[] }
+  incomeStatement: { sections: { key: string; rows: { number?: string; monthly?: number[] }[] }[] }
 }
 
 const METRICS = [
@@ -30,10 +30,11 @@ const METRICS = [
   { key: 'grossProfit', label: 'Gross Profit' },
   { key: 'ebitda', label: 'EBITDA' },
   { key: 'netIncome', label: 'Net Income' },
+  { key: 'marketing', label: 'Marketing & Ads (8120)' },
 ] as const
 type MetricKey = typeof METRICS[number]['key']
 
-/* Validated categorical palette (dataviz reference, slots 1–5, light mode).
+/* Validated categorical palette (dataviz reference, slots 1–6, light mode).
    Fixed slot per metric — filters/toggles never repaint survivors. */
 const SERIES_COLOR: Record<MetricKey, string> = {
   grossSales: '#2a78d6',   // blue
@@ -41,6 +42,7 @@ const SERIES_COLOR: Record<MetricKey, string> = {
   grossProfit: '#1baf7a',  // aqua
   ebitda: '#eda100',       // yellow
   netIncome: '#e87ba4',    // magenta
+  marketing: '#008300',    // green
 }
 
 const GRAPH_BRANCHES = [
@@ -62,7 +64,12 @@ function deriveMetrics(data: EngineIS): Record<MetricKey, number[]> {
   const grossProfit = netSales.map((n, i) => n - cogs[i])
   const ebitda = grossProfit.map((g, i) => g - opex[i])
   const netIncome = ebitda.map((e, i) => (e - dep[i] - int[i] - nonop[i]) * (1 - INCOME_TAX_RATE))
-  return { grossSales: rev, netSales, grossProfit, ebitda, netIncome }
+  // Single-account overlay: 8120 Marketing and Advertising Expense (inside OPEX),
+  // charted alongside the sales lines to show how ad spend tracks sales.
+  const marketing = Array.from({ length: 12 }, (_, i) =>
+    data.incomeStatement.sections.reduce((sum, s) =>
+      sum + s.rows.filter(r => r.number === '8120').reduce((a, r) => a + (r.monthly?.[i] || 0), 0), 0))
+  return { grossSales: rev, netSales, grossProfit, ebitda, netIncome, marketing }
 }
 
 const fmtPeso = (v: number) => {
