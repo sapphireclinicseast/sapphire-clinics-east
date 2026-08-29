@@ -20,7 +20,7 @@ const PAYMENT_LABELS: Record<string, string> = {
 // misleadingly-empty card. Dated by cancelledTime, which is null for the handful of
 // failed-delivery rows TikTok hasn't formally cancelled yet — those fall outside any
 // date filter, same as an order with no completion date would.
-async function tiktokCancellationSummary(branch: string, dateFrom: string, dateTo: string) {
+async function tiktokCancellationSummary(branch: string, dateFrom: string, dateTo: string, completedTiktokOrders: number) {
   if (branch && branch !== 'VERDANA_STORE') return null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { branch: 'VERDANA_STORE' }
@@ -32,14 +32,36 @@ async function tiktokCancellationSummary(branch: string, dateFrom: string, dateT
   const rows = await prisma.tiktokCancellation.findMany({ where, select: { cancelReason: true, status: true, orderAmount: true } })
   if (rows.length === 0) return null
   const byReason = new Map<string, { reason: string; count: number; orderAmount: number }>()
+  // Split the two underlying problems: a delivery that failed (whether or not
+  // TikTok has formally auto-cancelled it yet) vs. a genuine cancellation
+  // (buyer/seller/system before shipment).
+  const isFailedDelivery = (r: { cancelReason: string | null; status: string }) =>
+    r.cancelReason ? /delivery\s+failed|failed\s+delivery/i.test(r.cancelReason) : r.status !== 'Canceled'
+  let cancelledOrders = 0, cancelledAmount = 0, failedDeliveryOrders = 0, failedDeliveryAmount = 0
   for (const r of rows) {
     const key = r.cancelReason || (r.status !== 'Canceled' ? 'Failed delivery — not yet formally cancelled' : 'Unknown')
     const cur = byReason.get(key) || { reason: key, count: 0, orderAmount: 0 }
     cur.count++
     cur.orderAmount += Number(r.orderAmount || 0)
     byReason.set(key, cur)
+    if (isFailedDelivery(r)) { failedDeliveryOrders++; failedDeliveryAmount += Number(r.orderAmount || 0) }
+    else { cancelledOrders++; cancelledAmount += Number(r.orderAmount || 0) }
   }
-  return { total: rows.length, topReasons: [...byReason.values()].sort((a, b) => b.count - a.count) }
+  // Rates are against ALL TikTok orders placed: completed sales in range + these
+  // never-became-sales rows (they exist only here — the POS has no order for them).
+  const allOrders = completedTiktokOrders + rows.length
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  return {
+    total: rows.length,
+    topReasons: [...byReason.values()].sort((a, b) => b.count - a.count),
+    cancelledOrders,
+    cancelledAmount: r2(cancelledAmount),
+    failedDeliveryOrders,
+    failedDeliveryAmount: r2(failedDeliveryAmount),
+    completedOrders: completedTiktokOrders,
+    cancelledPct: allOrders > 0 ? r2((cancelledOrders / allOrders) * 100) : 0,
+    failedDeliveryPct: allOrders > 0 ? r2((failedDeliveryOrders / allOrders) * 100) : 0,
+  }
 }
 
 export async function GET(req: Request) {
@@ -272,7 +294,8 @@ export async function GET(req: Request) {
       paymentModes: [...payModes.entries()]
         .map(([method, v]) => ({ method, label: PAYMENT_LABELS[method] || method, amount: round2(v.amount), count: v.count }))
         .sort((a, b) => b.amount - a.amount),
-      cancellations: await tiktokCancellationSummary(branch, dateFrom, dateTo),
+      cancellations: await tiktokCancellationSummary(branch, dateFrom, dateTo,
+        orders.filter(o => (o.platform || '').trim().toLowerCase() === 'tiktok').length),
     })
   } catch (err) {
     console.error('Products analysis error:', err)

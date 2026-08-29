@@ -49,6 +49,13 @@ interface AnalysisData {
   cancellations: {
     total: number
     topReasons: { reason: string; count: number; orderAmount: number }[]
+    cancelledOrders: number
+    cancelledAmount: number
+    failedDeliveryOrders: number
+    failedDeliveryAmount: number
+    completedOrders: number
+    cancelledPct: number
+    failedDeliveryPct: number
   } | null
 }
 
@@ -297,6 +304,22 @@ export default function ProductsAnalysisPage() {
                 <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Top Cancellation Reasons (TikTok)</h3>
                 <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{data.cancellations.total} order{data.cancellations.total !== 1 ? 's' : ''} that never became a sale</span>
               </div>
+              {/* Cancelled vs failed-delivery rates, against ALL TikTok orders placed
+                  (completed sales in the range + these never-became-sales orders). */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+                <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <div className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>CANCELLED</div>
+                  <div className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                    {data.cancellations.cancelledPct.toFixed(1)}% <span className="font-normal text-xs" style={{ color: 'var(--mid-gray)' }}>of TikTok orders · {data.cancellations.cancelledOrders} order{data.cancellations.cancelledOrders !== 1 ? 's' : ''} · {formatCurrency(data.cancellations.cancelledAmount)} lost</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <div className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>FAILED DELIVERY</div>
+                  <div className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                    {data.cancellations.failedDeliveryPct.toFixed(1)}% <span className="font-normal text-xs" style={{ color: 'var(--mid-gray)' }}>of TikTok orders · {data.cancellations.failedDeliveryOrders} order{data.cancellations.failedDeliveryOrders !== 1 ? 's' : ''} · {formatCurrency(data.cancellations.failedDeliveryAmount)} lost</span>
+                  </div>
+                </div>
+              </div>
               <div className="overflow-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
@@ -318,7 +341,7 @@ export default function ProductsAnalysisPage() {
                 </table>
               </div>
               <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>
-                From TikTok&apos;s own Cancelled / Failed Delivery exports — informational, not part of gross/net sales above. &quot;Package delivery failed&quot; and &quot;Failed delivery — not yet formally cancelled&quot; are the same underlying problem at different stages (TikTok auto-cancels most failed deliveries within a few days).
+                From TikTok&apos;s own Cancelled / Failed Delivery exports — informational, not part of gross/net sales above. &quot;Package delivery failed&quot; and &quot;Failed delivery — not yet formally cancelled&quot; are the same underlying problem at different stages (TikTok auto-cancels most failed deliveries within a few days); both count under the Failed Delivery rate above. The percentages are of all TikTok orders placed: {data.cancellations.completedOrders} completed sale{data.cancellations.completedOrders !== 1 ? 's' : ''} in this range + the {data.cancellations.total} that never became sales.
               </p>
             </div>
           )}
