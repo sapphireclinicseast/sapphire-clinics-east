@@ -834,6 +834,19 @@ model CancellationLog {
   branch          String    // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
   type            String    // e.g. "Cancellation >24 hrs (VALID)"
   isValid         Boolean   @default(false)
+  // What the session status actually was: "CANCELLED" or "RESCHEDULED". Both are
+  // logged here and both use the same `type` vocabulary, so without this there is
+  // no way to tell them apart — and reschedules must NOT count toward the
+  // cancellation allowance or the slot-removal limit. Nullable: rows written
+  // before this field existed are backfilled from the linked schedule where one
+  // exists, and an untagged manual entry is treated as a cancellation.
+  sourceStatus    String?
+  // Front desk can waive a specific cancellation at the moment they log it —
+  // clinic closure, staff-side reschedule, an emergency they don't want held
+  // against the patient. The reason is required when waiving so the decision is
+  // auditable rather than silently shrinking someone's count.
+  countsToward    Boolean   @default(true)
+  excludeReason   String?
   proofUrl        String?
   remarks         String?
   feeDeducted     Boolean   @default(false)

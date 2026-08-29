@@ -32,10 +32,11 @@ export interface OutcomeTarget {
  * patient at the counter, and a modal that must be completed would either block
  * them or get filled with junk to make it go away.
  *
- * Reschedules are offered the same types as cancellations because the clinic's
- * fee policy keys off notice given, not off which of the two the patient called
- * it — a same-day "can we move it?" is a late cancellation as far as the slot is
- * concerned.
+ * Reschedules are offered the same types as cancellations, because the fee
+ * policy keys off notice given — a same-day "can we move it?" costs the slot
+ * either way. But a reschedule is NOT a cancellation and must not eat the
+ * patient's allowance or push them toward slot removal, so the log records which
+ * one it was (`sourceStatus`) and the counts leave reschedules out.
  */
 export default function SessionOutcomePrompt({ target, onClose }: {
   target: OutcomeTarget
@@ -44,6 +45,8 @@ export default function SessionOutcomePrompt({ target, onClose }: {
   const isNoShow = target.status === 'NO_SHOW'
   const [type, setType]       = useState(CANCELLATION_TYPES[0])
   const [remarks, setRemarks] = useState('')
+  const [waive, setWaive]           = useState(false)
+  const [waiveReason, setWaiveReason] = useState('')
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState<string | null>(null)
 
@@ -53,6 +56,13 @@ export default function SessionOutcomePrompt({ target, onClose }: {
 
   async function save() {
     if (!canLog) return
+    // Without this the checkbox would be ignored server-side (a waiver needs a
+    // reason) and the cancellation would count anyway — the opposite of what the
+    // user just asked for, with no feedback saying so.
+    if (waive && !waiveReason.trim()) {
+      setError('Give a reason for not counting this cancellation.')
+      return
+    }
     setSaving(true); setError(null)
     try {
       const res = await fetch('/api/patient-relationship', {
@@ -63,7 +73,12 @@ export default function SessionOutcomePrompt({ target, onClose }: {
             ? { tab: 'noshow', patientId: target.patientId, branch: target.branch,
                 remarks: remarks || null, scheduleId: target.scheduleId }
             : { patientId: target.patientId, branch: target.branch, type,
-                remarks: remarks || null, scheduleId: target.scheduleId }
+                remarks: remarks || null, scheduleId: target.scheduleId,
+                // What this actually was. Reschedules are logged but never counted,
+                // and without this they are indistinguishable from cancellations.
+                sourceStatus: target.status,
+                countsToward: waive ? false : true,
+                excludeReason: waive ? waiveReason.trim() : null }
         ),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to save log')
@@ -87,7 +102,9 @@ export default function SessionOutcomePrompt({ target, onClose }: {
           <h3 className="font-bold" style={{ color: 'var(--charcoal)' }}>{heading}</h3>
           <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
             {target.patientName} — the status is already saved. This adds it to Patient Relationship
-            so the fee policy can be applied.
+            {target.status === 'RESCHEDULED'
+              ? ' as a reschedule. Reschedules are kept for history but are not counted against the patient.'
+              : ' so the fee policy can be applied.'}
           </p>
         </div>
 
@@ -125,6 +142,38 @@ export default function SessionOutcomePrompt({ target, onClose }: {
                   className="w-full rounded-lg px-3 py-2 text-sm"
                   style={{ border: '1.5px solid var(--light-gray)' }} />
               </div>
+
+              {/* Not every cancellation is the patient's fault — a clinic closure or a
+                  staff-side move should not eat their allowance. Offered here, at the
+                  moment of logging, because that is when whoever knows the reason is
+                  looking at it. Reschedules are excluded automatically and don't need
+                  this, so it is only shown for actual cancellations. */}
+              {!isNoShow && target.status !== 'RESCHEDULED' && (
+                <div className="rounded-lg p-3" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" checked={waive} className="mt-0.5"
+                      onChange={e => { setWaive(e.target.checked); if (!e.target.checked) setWaiveReason('') }} />
+                    <span className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                      <span style={{ fontWeight: 600 }}>Don&apos;t count this against the patient</span>
+                      <span className="block mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                        Still recorded, but left out of the free allowance and the slot-removal
+                        count. For clinic closures, staff-side changes, and similar.
+                      </span>
+                    </span>
+                  </label>
+                  {waive && (
+                    <div className="mt-2">
+                      <input type="text" value={waiveReason} onChange={e => setWaiveReason(e.target.value)}
+                        placeholder="Why is it not being counted? (required)"
+                        className="w-full rounded-lg px-3 py-2 text-sm"
+                        style={{ border: '1.5px solid #FCA5A5' }} />
+                      <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                        Shown on the patient&apos;s log so the decision can be traced later.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
               {error && <p className="text-xs" style={{ color: '#B91C1C' }}>{error}</p>}
             </>
           )}

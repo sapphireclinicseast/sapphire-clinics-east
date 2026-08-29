@@ -1072,7 +1072,8 @@ function CancellationTab({ branch }: { branch: string }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg p-3 text-xs" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-        <strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> in any <strong>rolling 6-month period</strong> &mdash; counted over the last 180 days, so older logs age out. Reschedules count too. After that, a cancellation fee applies.<br />
+        <strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> in any <strong>rolling 6-month period</strong> &mdash; counted over the last 180 days, so older logs age out. After that, a cancellation fee applies.<br />
+        <strong>Not counted:</strong> reschedules, and any cancellation front desk waived when logging it (the reason is shown on the log).<br />
         <strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.
       </div>
 
@@ -1192,10 +1193,26 @@ function CancellationTab({ branch }: { branch: string }) {
                                     <span className="ml-2" style={{ color: '#6B7280' }}>
                                       {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                     </span>
+                                    {/* Why a row isn't in the 0/2. Reschedules and waived
+                                        cancellations never count at all, so they're labelled
+                                        regardless of the window — otherwise the list looks
+                                        like it disagrees with the number above it. */}
+                                    {!log.deletedAt && log.sourceStatus === 'RESCHEDULED' && (
+                                      <span className="ml-2 px-1.5 py-0.5 rounded" style={{ background: '#EFF6FF', color: '#1D4ED8', fontWeight: 600 }}>
+                                        reschedule &middot; not counted
+                                      </span>
+                                    )}
+                                    {!log.deletedAt && log.countsToward === false && (
+                                      <span className="ml-2 px-1.5 py-0.5 rounded" title={log.excludeReason || undefined}
+                                        style={{ background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>
+                                        not counted{log.excludeReason ? ` — ${log.excludeReason}` : ''}
+                                      </span>
+                                    )}
                                     {/* Only tagged when some other log DOES count — on a fully
                                         lapsed patient the banner above already says it, and
                                         tagging every row would just be noise. */}
-                                    {!log.deletedAt && !log.inWindow && p.windowUsed > 0 && (
+                                    {!log.deletedAt && log.sourceStatus !== 'RESCHEDULED' && log.countsToward !== false
+                                      && !log.inWindow && p.windowUsed > 0 && (
                                       <span className="ml-2 px-1.5 py-0.5 rounded" style={{ background: '#F1F5F9', color: '#64748B', fontWeight: 600 }}>
                                         outside 6-mo window
                                       </span>

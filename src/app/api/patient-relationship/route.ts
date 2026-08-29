@@ -283,22 +283,29 @@ export async function GET(req: NextRequest) {
       const firstSession = p.schedules[0]
       const activeLogs = p.cancellationLogs.filter(l => !l.deletedAt)
 
-      // Every cancellation/reschedule ever (for slot removal: 0/12). Deliberately
-      // NOT windowed — slot removal is a lifetime count.
-      const totalUsed = activeLogs.length
+      // What actually counts against the patient. Two things are excluded:
+      //   - reschedules, which are logged here but are not cancellations
+      //   - individual cancellations front desk waived when logging them
+      // Everything else counts, including logs predating sourceStatus (NULL) —
+      // treating those as cancellations keeps existing counts unchanged rather
+      // than silently shrinking them.
+      const countedLogs = activeLogs.filter(l =>
+        l.sourceStatus !== 'RESCHEDULED' && l.countsToward !== false)
 
-      // Inside the rolling window (for fee allowance: 0/2). Reschedules are logged
-      // through the same path and with the same types as cancellations, so they
-      // count here too: the fee policy keys off the notice given, not off which
-      // of the two the patient called it.
-      const windowLogs = activeLogs.filter(l => new Date(l.createdAt) >= windowStart)
+      // Lifetime count for slot removal (0/12) — deliberately NOT windowed.
+      const totalUsed = countedLogs.length
+
+      // Inside the rolling window, for the fee allowance (0/2).
+      const windowLogs = countedLogs.filter(l => new Date(l.createdAt) >= windowStart)
       const windowUsed = windowLogs.length
       const freeRemaining = Math.max(0, FREE_CANCELLATIONS - windowUsed)
 
       // A patient can have a long history and still have nothing inside the
       // window. Left unsaid, a 0/2 sitting next to a lifetime total of 7 reads
       // like the log was wiped, so the UI gets what it needs to say "lapsed".
-      const lastLogAt = activeLogs[0]?.createdAt ?? null   // logs come back desc
+      // The most recent log that COUNTS — quoting a reschedule or a waived entry
+      // here would explain the 0/2 with a row that was never part of it.
+      const lastLogAt = countedLogs[0]?.createdAt ?? null   // logs come back desc
       const windowLapsed = totalUsed > 0 && windowUsed === 0
       const daysSinceLastLog = lastLogAt
         ? Math.floor((today.getTime() - new Date(lastLogAt).getTime()) / (1000 * 60 * 60 * 24))
@@ -325,6 +332,9 @@ export async function GET(req: NextRequest) {
           type: l.type,
           // Lets the log list show which entries still count toward the 0/2.
           inWindow: !l.deletedAt && new Date(l.createdAt) >= windowStart,
+          sourceStatus: l.sourceStatus,
+          countsToward: l.countsToward,
+          excludeReason: l.excludeReason,
           isValid: l.isValid,
           proofUrl: l.proofUrl,
           remarks: l.remarks,
@@ -425,8 +435,22 @@ export async function POST(req: NextRequest) {
     if (existing) return NextResponse.json({ ok: true, log: existing, deduped: true })
   }
 
+  // A waiver must carry its reason, or the count quietly shrinks with nothing on
+  // record saying who decided that or why. No reason given → it counts.
+  const excludeReason = typeof body.excludeReason === 'string' ? body.excludeReason.trim() : ''
+  const countsToward = body.countsToward === false && excludeReason ? false : true
+
   const log = await prisma.cancellationLog.create({
-    data: { patientId, type, branch, isValid, remarks, scheduleId: scheduleId || null },
+    data: {
+      patientId, type, branch, isValid, remarks,
+      scheduleId: scheduleId || null,
+      // "CANCELLED" | "RESCHEDULED" — what the session status actually was.
+      // Reschedules are recorded but never counted; see the cancellation tab.
+      sourceStatus: body.sourceStatus === 'RESCHEDULED' ? 'RESCHEDULED'
+        : body.sourceStatus === 'CANCELLED' ? 'CANCELLED' : null,
+      countsToward,
+      excludeReason: countsToward ? null : excludeReason,
+    },
   })
 
   return NextResponse.json({ ok: true, log })
