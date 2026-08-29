@@ -15,6 +15,16 @@ export async function PATCH(req: NextRequest) {
 
   if (typeof b.profession === 'string') data.profession = b.profession.toUpperCase()
   if (Array.isArray(b.citiesCovered)) data.citiesCovered = b.citiesCovered.map((c) => String(c).trim()).filter(Boolean)
+  // Richer coverage from the dashboard: store the detail and keep citiesCovered
+  // (the names, which drive patient matching) in sync from it.
+  if (Array.isArray(b.coverageAreas)) {
+    const areas = (b.coverageAreas as unknown[])
+      .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+      .map((a) => ({ city: String(a.city ?? '').trim(), province: String(a.province ?? '').trim(), region: String(a.region ?? '').trim(), zip: String(a.zip ?? '').trim() }))
+      .filter((a) => a.city)
+    data.coverageAreas = areas
+    data.citiesCovered = Array.from(new Set(areas.map((a) => a.city)))
+  }
   if ('rate' in b) data.rate = b.rate === '' || b.rate == null ? null : Number(b.rate)
   if (typeof b.transpoIncluded === 'boolean') data.transpoIncluded = b.transpoIncluded
   // Names are stored uppercase to match the rest of the platform.
