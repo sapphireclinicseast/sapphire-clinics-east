@@ -412,6 +412,18 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Package per-service session cost (0.5 steps): a package's eligible service can
+-- consume 0.5 / 1 / 1.5 / 2 ... sessions per unit.
+ALTER TABLE "ServiceEligibility" ADD COLUMN IF NOT EXISTS "sessionCost" DECIMAL(65,30) NOT NULL DEFAULT 1;
+DO $$ BEGIN
+  IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'WalletPackage' AND column_name = 'usedSessions') = 'integer' THEN
+    ALTER TABLE "WalletPackage" ALTER COLUMN "usedSessions" TYPE DECIMAL(65,30);
+  END IF;
+  IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'WalletLog' AND column_name = 'sessions') = 'integer' THEN
+    ALTER TABLE "WalletLog" ALTER COLUMN "sessions" TYPE DECIMAL(65,30);
+  END IF;
+END $$;
+
 -- QR phone-upload sessions
 CREATE TABLE IF NOT EXISTS "UploadSession" (
   "id" TEXT NOT NULL,

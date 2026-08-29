@@ -16,7 +16,8 @@ export async function POST(
   try {
     const { id } = await params
     const { serviceName, serviceId, department, totalSessions, amountPaid, expiresAt, usedSessions: usedSessionsRaw } = await req.json()
-    const usedSessions = parseInt(usedSessionsRaw) || 0
+    // 0.5-session steps allowed (migrated packages may be half-used)
+    const usedSessions = Math.max(0, Math.round((parseFloat(usedSessionsRaw) || 0) * 2) / 2)
 
     if (!serviceName?.trim()) {
       return NextResponse.json({ error: 'Service name is required' }, { status: 400 })

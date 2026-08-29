@@ -141,8 +141,13 @@ export async function POST(
       return NextResponse.json({ error: 'Package does not belong to this wallet' }, { status: 400 })
     }
 
-    const sessionsToDeduct = parseInt(sessions) || 1
-    const remainingSessions = walletPackage.totalSessions - walletPackage.usedSessions
+    // Fractional sessions allowed in 0.5 steps (a service can cost 0.5 / 1 / 1.5 ... sessions)
+    const sessionsToDeduct = parseFloat(sessions) || 1
+    if (sessionsToDeduct <= 0 || Math.round(sessionsToDeduct * 2) !== sessionsToDeduct * 2) {
+      return NextResponse.json({ error: 'Sessions must be a positive multiple of 0.5' }, { status: 400 })
+    }
+    const usedSoFar = Number(walletPackage.usedSessions)
+    const remainingSessions = walletPackage.totalSessions - usedSoFar
     if (sessionsToDeduct > remainingSessions) {
       return NextResponse.json(
         { error: `Only ${remainingSessions} session(s) remaining` },
@@ -176,7 +181,7 @@ export async function POST(
         packageId,
         action: 'DEDUCTION',
         sessions: sessionsToDeduct,
-        description: `Deducted ${sessionsToDeduct} session(s) from ${walletPackage.serviceName} — ₱${deductionAmount.toFixed(2)} (₱${perSessionRate.toFixed(2)}/session)`,
+        description: `Deducted ${sessionsToDeduct} session(s) from ${walletPackage.serviceName} — ₱${deductionAmount.toFixed(2)} (₱${perSessionRate.toFixed(2)}/session)${body.orderId ? ` [order:${body.orderId}]` : ''}`,
         createdById: session.user.id,
       },
     })
@@ -202,7 +207,7 @@ export async function POST(
 
     return NextResponse.json({
       package: updatedPackage,
-      remaining: updatedPackage.totalSessions - updatedPackage.usedSessions,
+      remaining: updatedPackage.totalSessions - Number(updatedPackage.usedSessions),
       perSessionRate,
       amountDeducted: deductionAmount,
       newBalance: Number(updatedWallet.balance),

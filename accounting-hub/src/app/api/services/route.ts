@@ -188,10 +188,12 @@ export async function POST(req: Request) {
     // Create eligible service links (for PACKAGE / VIP)
     if (eligibleServices?.length && revenueType === 'UNEARNED') {
       await prisma.serviceEligibility.createMany({
-        data: eligibleServices.map((es: { serviceId: string; discountPercent?: number }) => ({
+        data: eligibleServices.map((es: { serviceId: string; discountPercent?: number; sessionCost?: number }) => ({
           parentServiceId: service.id,
           eligibleServiceId: es.serviceId,
           discountPercent: es.discountPercent != null ? Number(es.discountPercent) : null,
+          // Sessions deducted per unit (0.5 steps); default 1
+          sessionCost: es.sessionCost != null && Number(es.sessionCost) > 0 ? Math.round(Number(es.sessionCost) * 2) / 2 : 1,
         })),
         skipDuplicates: true,
       })
@@ -320,10 +322,12 @@ export async function PUT(req: Request) {
       await prisma.serviceEligibility.deleteMany({ where: { parentServiceId: id } })
       if (eligibleServices?.length) {
         await prisma.serviceEligibility.createMany({
-          data: eligibleServices.map((es: { serviceId: string; discountPercent?: number }) => ({
+          data: eligibleServices.map((es: { serviceId: string; discountPercent?: number; sessionCost?: number }) => ({
             parentServiceId: id,
             eligibleServiceId: es.serviceId,
             discountPercent: es.discountPercent != null ? Number(es.discountPercent) : null,
+            // Sessions deducted per unit (0.5 steps); default 1
+            sessionCost: es.sessionCost != null && Number(es.sessionCost) > 0 ? Math.round(Number(es.sessionCost) * 2) / 2 : 1,
           })),
           skipDuplicates: true,
         })

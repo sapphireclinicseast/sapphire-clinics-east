@@ -339,6 +339,7 @@ model ServiceEligibility {
   eligibleServiceId String // The earned service that qualifies
   eligibleService   Service  @relation("EligibleService", fields: [eligibleServiceId], references: [id], onDelete: Cascade)
   discountPercent   Decimal? // For VIP: the discount % on this service
+  sessionCost       Decimal  @default(1) // For PACKAGE: sessions deducted per unit of this service (0.5 steps)
   createdAt         DateTime @default(now())
 
   @@unique([parentServiceId, eligibleServiceId])
@@ -972,7 +973,7 @@ model WalletPackage {
   serviceId     String?
   department    String?
   totalSessions Int
-  usedSessions  Int           @default(0)
+  usedSessions  Decimal       @default(0) // Decimal: services may cost 0.5/1.5/... sessions
   amountPaid    Decimal
   purchaseDate  DateTime      @default(now())
   expiresAt     DateTime?
@@ -993,7 +994,7 @@ model WalletLog {
   package       WalletPackage? @relation(fields: [packageId], references: [id])
   action        WalletAction
   description   String
-  sessions      Int?
+  sessions      Decimal? // fractional sessions allowed (0.5 steps)
   pointsChange  Int?
   balanceBefore Int?
   balanceAfter  Int?

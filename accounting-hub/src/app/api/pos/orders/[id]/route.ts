@@ -177,18 +177,31 @@ export async function PUT(
             }
             if (pkgId) {
               const pkg = await prisma.walletPackage.findUnique({ where: { id: pkgId } })
-              if (pkg && pkg.usedSessions > 0) {
+              const used = pkg ? Number(pkg.usedSessions) : 0
+              if (pkg && used > 0) {
+                // Services can cost fractional/multiple sessions — restore what the
+                // order actually deducted (recorded on its DEDUCTION wallet log),
+                // falling back to 1 for legacy orders without a tagged log.
+                const dedLog = await prisma.walletLog.findFirst({
+                  where: {
+                    packageId: pkgId,
+                    action: 'DEDUCTION',
+                    description: { contains: `[order:${p.orderId}]` },
+                  },
+                  orderBy: { createdAt: 'desc' },
+                })
+                const toRestore = Math.min(used, dedLog?.sessions ? Number(dedLog.sessions) : 1)
                 await prisma.walletPackage.update({
                   where: { id: pkgId },
-                  data: { usedSessions: { decrement: 1 } },
+                  data: { usedSessions: { decrement: toRestore } },
                 })
                 await prisma.walletLog.create({
                   data: {
                     walletId: p.walletId,
                     packageId: pkgId,
                     action: 'VOID_REVERSAL',
-                    sessions: -1,
-                    description: `Reversed 1 session (order voided)`,
+                    sessions: -toRestore,
+                    description: `Reversed ${toRestore} session(s) (order voided)`,
                     createdById: session.user.id,
                   },
                 })

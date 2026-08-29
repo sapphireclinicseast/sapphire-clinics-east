@@ -45,7 +45,7 @@ interface Service {
   thresholdQty?: number
   isActive: boolean
   createdAt: string
-  eligibleFor?: { eligibleService: { id: string; name: string; department: string; price: string | number }; discountPercent?: number | string | null }[]
+  eligibleFor?: { eligibleService: { id: string; name: string; department: string; price: string | number }; discountPercent?: number | string | null; sessionCost?: number | string | null }[]
 }
 
 interface RevenueAccount {
@@ -165,7 +165,7 @@ export default function ServicesPage() {
   const [fThresholdCounted, setFThresholdCounted] = useState(false)
   const [fThresholdQty, setFThresholdQty] = useState('1')
   const [unitPays, setUnitPays] = useState<{ id: string; name: string }[]>([])
-  const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number; name?: string; department?: string }[]>([])
+  const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number; sessionCost: number; name?: string; department?: string }[]>([])
   const [eligibleSearch, setEligibleSearch] = useState('')
   const [eligibleResults, setEligibleResults] = useState<Service[]>([])
   const [eligibleLoading, setEligibleLoading] = useState(false)
@@ -293,11 +293,12 @@ export default function ServicesPage() {
     setFThresholdCounted(!!s.thresholdCounted)
     setFThresholdQty(String(s.thresholdQty ?? 1))
     setFEligibleServices(
-      (s.eligibleFor || []).map((e: { eligibleService: { id: string; name: string; department: string }; discountPercent?: number | string | null }) => ({
+      (s.eligibleFor || []).map((e: { eligibleService: { id: string; name: string; department: string }; discountPercent?: number | string | null; sessionCost?: number | string | null }) => ({
         serviceId: e.eligibleService.id,
         name: e.eligibleService.name,
         department: e.eligibleService.department,
         discountPercent: Number(e.discountPercent) || 0,
+        sessionCost: Number(e.sessionCost) || 1,
       }))
     )
     setEligibleSearch('')
@@ -890,7 +891,7 @@ export default function ServicesPage() {
                                 <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching earned services found</p>
                               ) : eligibleResults.map(s => (
                                   <button key={s.id} type="button" onClick={() => {
-                                    setFEligibleServices(prev => [...prev, { serviceId: s.id, name: s.name, department: s.department, discountPercent: 0 }])
+                                    setFEligibleServices(prev => [...prev, { serviceId: s.id, name: s.name, department: s.department, discountPercent: 0, sessionCost: 1 }])
                                     setEligibleSearch('')
                                     setEligibleResults([])
                                   }}
@@ -924,6 +925,15 @@ export default function ServicesPage() {
                                         onChange={(e) => setFEligibleServices(prev => prev.map((x, i) => i === idx ? { ...x, discountPercent: parseFloat(e.target.value) || 0 } : x))}
                                         placeholder="%" className="w-16 px-2 py-1 rounded border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                                       <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>%</span>
+                                    </div>
+                                  )}
+                                  {fWalletType === 'PACKAGE' && (
+                                    <div className="flex items-center gap-1" title="Sessions deducted from the package each time this service is availed (0.5 steps)">
+                                      <input type="number" min={0.5} step="0.5" value={es.sessionCost || ''}
+                                        onChange={(e) => setFEligibleServices(prev => prev.map((x, i) => i === idx ? { ...x, sessionCost: parseFloat(e.target.value) || 0 } : x))}
+                                        onBlur={() => setFEligibleServices(prev => prev.map((x, i) => i === idx ? { ...x, sessionCost: Math.max(0.5, Math.round((x.sessionCost || 1) * 2) / 2) } : x))}
+                                        className="w-16 px-2 py-1 rounded border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                      <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>session{(es.sessionCost || 1) !== 1 ? 's' : ''}</span>
                                     </div>
                                   )}
                                   <button type="button" onClick={() => setFEligibleServices(prev => prev.filter((_, i) => i !== idx))}

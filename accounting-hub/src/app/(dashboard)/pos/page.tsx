@@ -67,6 +67,9 @@ interface OrderLineItem {
   doctorFee?: number
   clinicFee?: number
   isFreeSample?: boolean
+  // Sessions this line deducts per unit when paid from a package wallet
+  // (from ServiceEligibility.sessionCost; 0.5 steps, default 1)
+  sessionCost?: number
   variantId?: string
   variantLabel?: string
 }
@@ -160,6 +163,8 @@ interface WalletPackage {
   serviceId?: string | null
   department?: string | null
   totalSessions: number
+  // NOTE: arrives as a Prisma-Decimal JSON string at runtime (e.g. "1.5") —
+  // `-` coerces it, but use toNum() before any other arithmetic or comparison.
   usedSessions: number
   amountPaid: string | number
   expiresAt?: string | null
@@ -171,7 +176,7 @@ interface WalletLog {
   id: string
   action: string
   description: string
-  sessions?: number | null
+  sessions?: number | string | null
   pointsChange?: number | null
   createdAt: string
   [key: string]: unknown
@@ -1355,12 +1360,20 @@ function OrderFormModal({
         // consume a session slot. If no serviceId or no eligibility rules, fall back to all items.
         if (items.length > 0) {
           const pkgService = services.find((s: ServiceItem) => s.id === activePkg.serviceId)
-          const eligibleIds: string[] = pkgService?.eligibleFor
-            ? (pkgService.eligibleFor as { eligibleServiceId: string }[]).map(e => e.eligibleServiceId)
+          const eligibility = pkgService?.eligibleFor
+            ? (pkgService.eligibleFor as { eligibleServiceId: string; sessionCost?: number | string | null }[])
             : []
+          const eligibleIds: string[] = eligibility.map(e => e.eligibleServiceId)
+          // Sessions deducted per unit of each eligible service (0.5 steps, default 1)
+          const costOf = (serviceId?: string) => {
+            const row = serviceId ? eligibility.find(e => e.eligibleServiceId === serviceId) : undefined
+            return toNum(row?.sessionCost) || 1
+          }
           setItems(prev => prev.map(it => {
             const isEligible = eligibleIds.length === 0 || !it.serviceId || eligibleIds.includes(it.serviceId)
-            return isEligible ? { ...it, unitPrice: perSession, lineTotal: perSession * it.quantity } : it
+            if (!isEligible) return it
+            const sc = costOf(it.serviceId)
+            return { ...it, sessionCost: sc, unitPrice: perSession * sc, lineTotal: perSession * sc * it.quantity }
           }))
         }
       } else {
@@ -1644,7 +1657,9 @@ function OrderFormModal({
       const packagePayment = payments.find(p => p.method === 'PACKAGE' && p.walletId && p.reference?.startsWith('PKG:'))
       if (packagePayment) {
         const pkgId = packagePayment.reference?.replace('PKG:', '') || ''
-        const totalSessions = items.filter(it => toNum(it.unitPrice) > 0).reduce((s, it) => s + it.quantity, 0)
+        // Each line consumes its service's sessionCost per unit (0.5 steps, default 1).
+        const totalSessions = items.filter(it => toNum(it.unitPrice) > 0)
+          .reduce((s, it) => s + (it.sessionCost ?? 1) * it.quantity, 0)
         if (pkgId && totalSessions > 0) {
           try {
             await fetch(`/api/pos/wallets/${packagePayment.walletId}/deduct`, {
@@ -1653,6 +1668,7 @@ function OrderFormModal({
               body: JSON.stringify({
                 packageId: pkgId,
                 sessions: totalSessions,
+                orderId: data.id,
               }),
             })
           } catch (e) {
@@ -2282,12 +2298,15 @@ function OrderFormModal({
                                 return [...prev, payment]
                               })
                               const pkgSvc = services.find((s: ServiceItem) => s.id === p.serviceId)
-                              const eligIds: string[] = pkgSvc?.eligibleFor
-                                ? (pkgSvc.eligibleFor as { eligibleServiceId: string }[]).map((e: { eligibleServiceId: string }) => e.eligibleServiceId)
+                              const elig = pkgSvc?.eligibleFor
+                                ? (pkgSvc.eligibleFor as { eligibleServiceId: string; sessionCost?: number | string | null }[])
                                 : []
+                              const eligIds: string[] = elig.map(e => e.eligibleServiceId)
                               setItems(prev => prev.map(it => {
                                 const isElig = eligIds.length === 0 || !it.serviceId || eligIds.includes(it.serviceId)
-                                return isElig ? { ...it, unitPrice: perSession, lineTotal: perSession * it.quantity } : it
+                                if (!isElig) return it
+                                const sc = toNum(elig.find(e => e.eligibleServiceId === it.serviceId)?.sessionCost) || 1
+                                return { ...it, sessionCost: sc, unitPrice: perSession * sc, lineTotal: perSession * sc * it.quantity }
                               }))
                               setPackageSearch(w.patientName)
                               setPackageWallets([])
@@ -5466,9 +5485,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
                         Sessions Already Used <span className="font-normal">(optional — for migrating existing packages)</span>
                       </label>
-                      <input type="number" min={0} max={createPkgSelected.totalSessions - 1} step="1"
+                      <input type="number" min={0} max={createPkgSelected.totalSessions - 0.5} step="0.5"
                         value={createPkgSelected.usedSessions || ''}
-                        onChange={e => setCreatePkgSelected({ ...createPkgSelected, usedSessions: parseInt(e.target.value) || 0 })}
+                        onChange={e => setCreatePkgSelected({ ...createPkgSelected, usedSessions: parseFloat(e.target.value) || 0 })}
                         placeholder="0"
                         className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       {createPkgSelected.usedSessions > 0 && createPkgSelected.totalSessions > 0 && createPkgSelected.amountPaid > 0 && (
