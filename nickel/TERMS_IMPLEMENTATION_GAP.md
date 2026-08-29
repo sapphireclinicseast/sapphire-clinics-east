@@ -62,9 +62,10 @@ _Last reviewed: 2026-08-28_
   photo, PRC number, school + year graduated, diploma + TOR scans, and bank payout details; sets
   `verificationStatus=PENDING`; portal is gated (`(portal)/layout.tsx` redirects non-VERIFIED to
   /provider/verify); patients only see VERIFIED providers (`/api/providers`, `/api/cities`, `/api/book`).
-- ❌ **No admin review UI** — approval PENDING→VERIFIED is a manual DB update today
-  (`UPDATE "Provider" SET "verificationStatus"='VERIFIED', "verifiedAt"=now() WHERE ...`). Build a
-  Nickel admin review queue next.
+- ✅ **Admin review console SHIPPED** (2026-08-28): `/admin/login` (email+password, env creds),
+  `/admin` approval queue, `/admin/[id]` document-review screen with approve / reject (reason) /
+  **"Allow specialized rate"** toggle. Verify flow now also collects years-of-experience, postgraduate,
+  post-nominals, certifications, and a specialization + specialized-rate request.
 - ❌ Still not collected vs Terms §3.3: **NBI clearance**, PTR *document*, government-ID, CV;
   ❌ no annual re-verification, ❌ no continuing duty-to-notify capture (§3.4–3.5).
 - ⚠️ **Insurance** now *encouraged not required* (§16.1) — no field to record cover if held.
