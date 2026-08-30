@@ -27,6 +27,7 @@ export async function PATCH(req: NextRequest) {
   }
   if ('rate' in b) data.rate = b.rate === '' || b.rate == null ? null : Number(b.rate)
   if (typeof b.transpoIncluded === 'boolean') data.transpoIncluded = b.transpoIncluded
+  if (typeof b.travelBuffer === 'boolean') data.travelBuffer = b.travelBuffer
   // Specialized rate is only settable once SCEI has approved the specialization.
   if ('specializedRate' in b) {
     const prov = await prisma.provider.findUnique({ where: { id: pid }, select: { specializedRateApproved: true } })

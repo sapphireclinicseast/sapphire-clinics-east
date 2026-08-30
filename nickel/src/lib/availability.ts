@@ -11,7 +11,10 @@ export interface Weekly { dayOfWeek: number; startTime: string; endTime: string 
 export interface Slot { date: string; startTime: string; endTime: string }
 
 // booked = Set of "YYYY-MM-DD|HH:MM" the provider already has.
-export function upcomingSlots(weekly: Weekly[], booked: Set<string>, horizonDays = 14): Slot[] {
+// stepMin = cadence between bookable visits: 60 (back-to-back) or 120 when the
+// provider leaves a 1-hour travel gap between visits.
+export function upcomingSlots(weekly: Weekly[], booked: Set<string>, horizonDays = 14, stepMin = 60): Slot[] {
+  const step = stepMin >= 120 ? 120 : 60
   const out: Slot[] = []
   const start = ymdToDate(manilaTodayYmd()).getTime()
   for (let d = 0; d < horizonDays; d++) {
@@ -21,7 +24,7 @@ export function upcomingSlots(weekly: Weekly[], booked: Set<string>, horizonDays
     for (const w of weekly) {
       if (w.dayOfWeek !== dow) continue
       const s = toMin(w.startTime), e = toMin(w.endTime)
-      for (let m = s; m + 60 <= e; m += 60) {
+      for (let m = s; m + 60 <= e; m += step) {
         const st = toHHMM(m)
         if (booked.has(`${ymd}|${st}`)) continue
         out.push({ date: ymd, startTime: st, endTime: toHHMM(m + 60) })
@@ -33,6 +36,6 @@ export function upcomingSlots(weekly: Weekly[], booked: Set<string>, horizonDays
 }
 
 // Is a concrete (date, time) a valid, currently-open slot for these weekly rules?
-export function isValidSlot(weekly: Weekly[], booked: Set<string>, date: string, time: string): boolean {
-  return upcomingSlots(weekly, booked).some((s) => s.date === date && s.startTime === time)
+export function isValidSlot(weekly: Weekly[], booked: Set<string>, date: string, time: string, stepMin = 60): boolean {
+  return upcomingSlots(weekly, booked, 14, stepMin).some((s) => s.date === date && s.startTime === time)
 }

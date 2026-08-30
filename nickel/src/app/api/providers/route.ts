@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
         select: { date: true, startTime: true },
       })
       const booked = new Set(bookings.map((b) => `${b.date.toISOString().slice(0, 10)}|${b.startTime}`))
-      const slots = upcomingSlots(p.slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), booked)
+      const slots = upcomingSlots(p.slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), booked, 14, p.travelBuffer ? 120 : 60)
       const certs = Array.isArray(p.certifications)
         ? (p.certifications as unknown[]).filter((c): c is Record<string, unknown> => !!c && typeof c === 'object').map((c) => String(c.name ?? '')).filter(Boolean)
         : []

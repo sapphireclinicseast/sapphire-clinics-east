@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import SignatureField from '@/components/SignatureField'
 
 interface Init {
   rate: string; transpoIncluded: boolean
@@ -15,13 +16,6 @@ export default function SettingsForm({ init }: { init: Init }) {
   const [msg, setMsg] = useState<string | null>(null)
   const set = <K extends keyof Init>(k: K, v: Init[K]) => setF((s) => ({ ...s, [k]: v }))
 
-  async function onSig(file: File | undefined) {
-    if (!file) return
-    if (file.size > 3 * 1024 * 1024) { setMsg('Signature image must be under 3 MB.'); return }
-    const r = new FileReader()
-    r.onload = () => set('signature', String(r.result))
-    r.readAsDataURL(file)
-  }
 
   async function save() {
     setBusy(true); setMsg(null)
@@ -85,11 +79,7 @@ export default function SettingsForm({ init }: { init: Init }) {
         </div>
         <div className="mt-3">
           <div className="label">E-signature</div>
-          {f.signature ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <div className="mb-2 inline-block rounded-lg border border-[color:var(--line)] bg-white p-2"><img src={f.signature} alt="signature" className="h-16 w-auto" /></div>
-          ) : null}
-          <input type="file" accept="image/*" onChange={(e) => onSig(e.target.files?.[0])} className="block text-[13px]" />
+          <SignatureField value={f.signature} onChange={(v) => set('signature', v)} />
         </div>
       </section>
 
