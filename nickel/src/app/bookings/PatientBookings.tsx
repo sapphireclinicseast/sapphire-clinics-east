@@ -4,6 +4,10 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Chat from '@/components/Chat'
 import Stars from '@/components/Stars'
+import ViewDocButton from '@/components/ViewDocButton'
+
+interface Doc { id: string; type: string; bookingId: string | null; date: string; providerName: string }
+const DOC_LABEL: Record<string, string> = { INITIAL_EVAL: 'Initial Evaluation', RE_EVAL: 'Re-evaluation', TREATMENT: 'Session Notes', PROGRESS_REPORT: 'Progress Report', HEP: 'Home Exercise Program' }
 
 interface B {
   id: string; date: string; startTime: string; city: string; status: string; amount: number
@@ -23,7 +27,7 @@ const STATUS: Record<string, [string, string]> = {
   CONFIRMED: ['Confirmed', 'bg-emerald-50 text-emerald-700'], COMPLETED: ['Completed', 'bg-emerald-50 text-emerald-700'], CANCELLED: ['Cancelled', 'bg-red-50 text-red-700'],
 }
 
-export default function PatientBookings({ bookings, wallet, consults = [] }: { bookings: B[]; wallet: Wallet; consults?: Consult[] }) {
+export default function PatientBookings({ bookings, wallet, consults = [], documents = [] }: { bookings: B[]; wallet: Wallet; consults?: Consult[]; documents?: Doc[] }) {
   const router = useRouter()
   const [openChat, setOpenChat] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -99,6 +103,20 @@ export default function PatientBookings({ bookings, wallet, consults = [] }: { b
           )}
         </div>
       )}
+      {documents.length > 0 && (
+        <div className="card mb-4 p-0">
+          <div className="border-b border-[color:var(--line)] px-5 py-3.5"><b className="text-[color:var(--ink)]">My documents</b></div>
+          <div className="divide-y divide-[color:var(--line)]">
+            {documents.map((d) => (
+              <div key={d.id} className="flex items-center justify-between px-5 py-3 text-[13px]">
+                <div><b className="text-[color:var(--ink)]">{DOC_LABEL[d.type] ?? d.type}</b><div className="text-[12px] text-[color:var(--slate)]">{d.providerName} · {fmtDate(d.date)}</div></div>
+                <ViewDocButton docId={d.id} className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[12.5px] font-medium text-[color:var(--ink)] hover:bg-[color:var(--mist)]">View</ViewDocButton>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {consults.length > 0 && (
         <div className="mb-4">
           <h2 className="mb-2 text-[15px] font-semibold text-[color:var(--ink)]">Doctor consults</h2>

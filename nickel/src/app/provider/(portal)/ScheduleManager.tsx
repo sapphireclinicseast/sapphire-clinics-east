@@ -76,6 +76,7 @@ export default function ScheduleManager({ slots, bookings, past, availableSlots,
             <div className="flex flex-wrap gap-3 text-[12.5px]">
               <button className="font-semibold text-[color:var(--steel)] hover:underline" onClick={() => { setChatFor(chatFor === b.id ? null : b.id); setProposeFor(null) }}>{chatFor === b.id ? 'Hide messages' : 'Message'}</button>
               <button className="font-semibold text-[color:var(--steel)] hover:underline" onClick={() => { setProposeFor(proposeFor === b.id ? null : b.id); setChatFor(null) }}>{proposeFor === b.id ? 'Cancel' : 'Propose new time'}</button>
+              <a className="font-semibold text-[color:var(--steel)] hover:underline" href={`/provider/notes/${b.id}`}>Notes / documents</a>
             </div>
           )}
         {proposeFor === b.id && (
@@ -180,6 +181,7 @@ export default function ScheduleManager({ slots, bookings, past, availableSlots,
                 <span className="text-[color:var(--ink)]">{b.patientName}</span>
                 <span className="text-[color:var(--slate)]">· {b.city}</span>
                 <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${b.status === 'CANCELLED' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{b.status === 'CANCELLED' ? 'Cancelled' : 'Completed'}</span>
+                {b.status !== 'CANCELLED' && <a href={`/provider/notes/${b.id}`} className="text-[12px] font-semibold text-[color:var(--steel)] hover:underline">Notes / documents</a>}
               </div>
             ))}
           </div>

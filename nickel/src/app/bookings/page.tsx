@@ -23,6 +23,11 @@ export default async function BookingsPage() {
       include: { doctor: { select: { firstName: true, lastName: true, postNominals: true, clinicName: true, clinicAddress: true } } },
     }),
   ])
+  const documents = await prisma.sessionDocument.findMany({
+    where: { patientId: patient.id, status: 'COMPLETED' },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, type: true, bookingId: true, createdAt: true, provider: { select: { firstName: true, lastName: true } } },
+  })
 
   const bookings = rows.map((b) => ({
     id: b.id,
@@ -52,5 +57,7 @@ export default async function BookingsPage() {
     referralIssued: c.referralIssued,
   }))
 
-  return <PatientBookings bookings={bookings} wallet={wallet} consults={consults} />
+  const docs = documents.map((d) => ({ id: d.id, type: d.type, bookingId: d.bookingId, date: d.createdAt.toISOString().slice(0, 10), providerName: `${d.provider.firstName} ${d.provider.lastName}` }))
+
+  return <PatientBookings bookings={bookings} wallet={wallet} consults={consults} documents={docs} />
 }
