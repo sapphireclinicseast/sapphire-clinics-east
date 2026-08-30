@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 export default function DoctorAuthPage() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('mode') === 'signup') setMode('signup') }, [])
   const [f, setF] = useState({ firstName: '', lastName: '', email: '', phone: '', prcNumber: '', password: '', confirm: '' })
   const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }))
   const [busy, setBusy] = useState(false)

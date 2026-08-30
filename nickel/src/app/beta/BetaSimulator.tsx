@@ -6,14 +6,24 @@ import { useRef, useState } from 'react'
 // same-origin iframe, so every in-app link works — it is the real beta, not a mockup.
 const ROUTES: { label: string; path: string }[] = [
   { label: 'Home', path: '/' },
+  { label: 'Provider network (therapists)', path: '/book?city=Pasig' },
   { label: 'Book a therapist', path: '/book' },
   { label: 'Rehab doctor consult', path: '/consult' },
+  { label: 'Rehab doctor sign up', path: '/doctor/login?mode=signup' },
   { label: 'Provider sign in', path: '/provider/login' },
   { label: 'Doctor sign in', path: '/doctor/login' },
   { label: 'Clinic sign in', path: '/clinic/login' },
   { label: 'My bookings', path: '/bookings' },
   { label: 'Admin', path: '/admin/login' },
 ]
+
+// One-click auto sign-in as a demo account, then land on that dashboard.
+const PREVIEWS: { label: string; api: string; email: string; dest: string }[] = [
+  { label: 'Therapist dashboard', api: '/api/provider/login', email: 'demo.pt@nickelcare.com', dest: '/provider' },
+  { label: 'Rehab doctor dashboard', api: '/api/doctor/login', email: 'demo.doctor@nickelcare.com', dest: '/doctor' },
+  { label: 'Patient · My bookings', api: '/api/patient/login', email: 'demo.patient@nickelcare.com', dest: '/bookings' },
+]
+const DEMO_PW = 'NickelDemo2026'
 
 const DEVICES: Record<string, { label: string; w: number; h: number; radius: number; notch: boolean }> = {
   iphone: { label: 'iPhone', w: 390, h: 844, radius: 52, notch: true },
@@ -29,9 +39,21 @@ export default function BetaSimulator() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const d = DEVICES[device]
 
+  const [signingIn, setSigningIn] = useState<string | null>(null)
+
   // Scale the frame down on small screens so the whole phone is visible.
   const go = (p: string) => { setPath(p); setNonce((n) => n + 1) }
   const reload = () => setNonce((n) => n + 1)
+
+  // Auto sign-in as a demo account (same origin → the cookie applies to the
+  // iframe too), then load that dashboard inside the phone frame.
+  async function preview(p: { label: string; api: string; email: string; dest: string }) {
+    setSigningIn(p.label)
+    try {
+      await fetch(p.api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: p.email, password: DEMO_PW }) })
+      go(p.dest)
+    } finally { setSigningIn(null) }
+  }
 
   return (
     <div className="-mx-4 -my-6 min-h-screen bg-[color:var(--ink)] text-white">
@@ -71,11 +93,26 @@ export default function BetaSimulator() {
               </div>
             </div>
 
+            <div>
+              <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-white/50">Preview a dashboard (auto sign-in)</div>
+              <div className="flex flex-col gap-1.5">
+                {PREVIEWS.map((p) => (
+                  <button key={p.dest} onClick={() => preview(p)} disabled={!!signingIn}
+                    className="flex items-center justify-between rounded-lg bg-white/8 px-3 py-2 text-left text-[13px] font-medium text-white/85 hover:bg-white/15 disabled:opacity-50">
+                    {p.label}
+                    <span className="text-[11px] text-white/40">{signingIn === p.label ? 'signing in…' : 'open ↗'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="rounded-xl bg-white/5 p-3 text-[12px] leading-relaxed text-white/60">
               <div className="mb-1 font-semibold text-white/80">Demo logins</div>
+              All demo accounts use password <b className="text-white/80">NickelDemo2026</b>:<br />
               Patient: demo.patient@nickelcare.com<br />
-              Doctor: demo.doctor@nickelcare.com · NickelDemo2026<br />
-              <span className="text-white/40">Use these on the sign-in screens to explore the portals.</span>
+              Therapist: demo.pt@nickelcare.com<br />
+              Doctor: demo.doctor@nickelcare.com<br />
+              <span className="text-white/40">Or use the auto sign-in buttons above.</span>
             </div>
 
             <button onClick={reload} className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-[12.5px] font-medium text-white/80 hover:bg-white/20">

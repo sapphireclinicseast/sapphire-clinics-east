@@ -46,7 +46,14 @@ export default function BookPage() {
   const setA = (k: keyof typeof af, v: string) => setAf((s) => ({ ...s, [k]: v }))
 
   useEffect(() => {
-    fetch('/api/cities').then((r) => r.json()).then((d) => setCities(d.cities ?? [])).catch(() => setErr('Could not load cities.'))
+    fetch('/api/cities').then((r) => r.json()).then((d) => {
+      const list: string[] = d.cities ?? []
+      setCities(list)
+      // Deep link: /book?city=Pasig jumps straight to that city's provider network.
+      const wanted = new URLSearchParams(window.location.search).get('city')
+      const match = wanted && list.find((c) => c.toLowerCase() === wanted.toLowerCase())
+      if (match) chooseCity(match)
+    }).catch(() => setErr('Could not load cities.'))
     fetch('/api/patient/me').then((r) => r.json()).then((d) => setMe(d.patient)).catch(() => {})
   }, [])
 

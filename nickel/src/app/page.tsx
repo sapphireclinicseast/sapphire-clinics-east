@@ -175,6 +175,15 @@ export default function NickelHome() {
 
       {/* Provider CTA + How it works flowchart */}
       <HowItWorks />
+
+      {/* Rehab doctor join CTA */}
+      <section className="card flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-[200px] flex-1">
+          <div className="text-[16px] font-semibold text-[color:var(--ink)]">Are you a rehab doctor?</div>
+          <p className="text-[13px] text-[color:var(--slate)]">Join Nickel to run rehab consults by video or in person, issue referrals for home PT, and write prescriptions and certificates in-app. Set your own consult fee.</p>
+        </div>
+        <a href="/doctor/login?mode=signup" className="btn-primary shrink-0">Join as a rehab doctor</a>
+      </section>
     </div>
   )
 }
