@@ -48,6 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <a href="/provider/login" className="hover:text-[color:var(--steel)] hover:underline">Provider sign in</a>
             <a href="/doctor/login" className="hover:text-[color:var(--steel)] hover:underline">Rehab doctor sign in</a>
             <a href="/consult" className="hover:text-[color:var(--steel)] hover:underline">Get a referral</a>
+            <a href="/privacy" className="hover:text-[color:var(--steel)] hover:underline">Privacy</a>
           </div>
           Nickel 2026
         </footer>
