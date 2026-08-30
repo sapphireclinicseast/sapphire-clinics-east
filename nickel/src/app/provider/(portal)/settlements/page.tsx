@@ -32,7 +32,7 @@ export default async function SettlementsPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-[22px] font-semibold text-[color:var(--ink)]">Your Nickel wallet</h1>
-        <p className="mt-0.5 text-[13px] text-[color:var(--slate)]">Nickel keeps 15%, and 5% creditable withholding tax is withheld (BIR 2307 issued). Your net is <b>released to your wallet once you mark a visit completed</b>, then paid out to <b>{bank}</b>.</p>
+        <p className="mt-0.5 text-[13px] text-[color:var(--slate)]">Nickel keeps a flat <b>₱20</b> per session; you receive the rest, <b>net of PayMongo payment fees</b> (these vary by how the patient paid — see the calculator in Settings). Your net is <b>released to your wallet once you mark a visit completed</b>, then paid out to <b>{bank}</b>.</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

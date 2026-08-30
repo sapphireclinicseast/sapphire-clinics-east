@@ -179,9 +179,10 @@ model Booking {
   paidAt         DateTime?
 
   // Earnings split — computed when the booking is paid (see src/lib/earnings.ts)
-  platformFee    Decimal?      // SCEI's 15% of the provider rate
-  withholdingTax Decimal?      // creditable withholding tax (5%)
-  providerNet    Decimal?      // what the provider is owed for this session
+  appFee         Decimal?      // Nickel's flat platform fee (PHP 20)
+  processingFee  Decimal?      // PayMongo processing fee actually incurred (varies by method)
+  paymentMethod  String?       // normalized method the patient paid with (card, gcash, wallet, …)
+  providerNet    Decimal?      // what the provider is owed for this session (rate − appFee − processingFee)
   payoutStatus   PayoutStatus  @default(PENDING)
   payoutId       String?
   payout         Payout?       @relation(fields: [payoutId], references: [id])

@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
           patientId, providerId, city, date: bookedDate, startTime, endTime: addHour(startTime),
           amount, transpoIncluded: provider.transpoIncluded, walletApplied: applied,
           status: fullyCovered ? 'PAID' : 'PENDING',
-          ...(fullyCovered ? (() => { const s = computeSplit(amount); return { paidAt: new Date(), platformFee: s.fee, withholdingTax: s.cwt, providerNet: s.net } })() : {}),
+          ...(fullyCovered ? (() => { const s = computeSplit(amount, { method: 'wallet' }); return { paidAt: new Date(), appFee: s.appFee, processingFee: s.processingFee, providerNet: s.net, paymentMethod: 'wallet' } })() : {}),
         },
         select: { id: true },
       })

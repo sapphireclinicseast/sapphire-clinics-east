@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import SignatureField from '@/components/SignatureField'
+import NetCalculator from '@/components/NetCalculator'
 
 interface Init {
   rate: string; transpoIncluded: boolean
@@ -45,7 +46,14 @@ export default function SettingsForm({ init }: { init: Init }) {
             <span>Transportation included in this rate</span>
           </label>
         </div>
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2.5 text-[12px] text-[color:var(--slate)]">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+          <span>You&apos;ll receive this rate <b className="text-[color:var(--ink)]">net of a flat ₱20 app fee and PayMongo&apos;s payment fees</b> (our payment channel partner). The exact fee depends on how the patient pays — see the breakdown below.</span>
+        </div>
       </section>
+
+      {/* Flat-₱20 disclaimer + net-by-method calculator */}
+      <NetCalculator defaultAmount={f.rate} />
 
       {/* Specialized rate — only editable once SCEI verifies the certification */}
       <section className="card">

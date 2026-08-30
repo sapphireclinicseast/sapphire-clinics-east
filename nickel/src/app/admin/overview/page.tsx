@@ -15,7 +15,7 @@ export default async function AdminOverview() {
     prisma.provider.groupBy({ by: ['verificationStatus'], _count: true }),
     prisma.patient.count(),
     prisma.booking.groupBy({ by: ['status'], _count: true }),
-    prisma.booking.findMany({ where: { status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] } }, select: { amount: true, platformFee: true, providerNet: true } }),
+    prisma.booking.findMany({ where: { status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] } }, select: { amount: true, appFee: true, providerNet: true } }),
     prisma.payout.aggregate({ _sum: { amount: true } }),
     prisma.provider.aggregate({ _sum: { walletBalance: true } }),
     prisma.patient.aggregate({ _sum: { walletBalance: true } }),
@@ -24,7 +24,7 @@ export default async function AdminOverview() {
   const bc = (s: string) => bkCounts.find((c) => c.status === s)?._count ?? 0
 
   let gmv = 0, fees = 0
-  for (const b of earnedRows) { gmv += Number(b.amount); fees += b.platformFee != null ? Number(b.platformFee) : computeSplit(Number(b.amount)).fee }
+  for (const b of earnedRows) { gmv += Number(b.amount); fees += b.appFee != null ? Number(b.appFee) : computeSplit(Number(b.amount)).appFee }
   const paidOut = Number(payoutAgg._sum.amount ?? 0)
   const pendingPayout = Number(providerWalletAgg._sum.walletBalance ?? 0) // earned, ready to pay out
   const patientCredit = Number(patientWalletAgg._sum.walletBalance ?? 0)
@@ -44,7 +44,7 @@ export default async function AdminOverview() {
       <div className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">Money</div>
       <div className="mb-5 grid gap-3 sm:grid-cols-5">
         <Tile k="Gross bookings (GMV)" v={peso(gmv)} accent="var(--steel)" />
-        <Tile k="Platform fees (15%)" v={peso(fees)} d="SCEI + Jara share" />
+        <Tile k="App fees (₱20/session)" v={peso(fees)} d="SCEI + Jara share" />
         <Tile k="Paid out to providers" v={peso(paidOut)} />
         <Tile k="Provider wallets" v={peso(pendingPayout)} d="earned, to pay out" accent="var(--warn,#c9871a)" />
         <Tile k="Patient credit" v={peso(patientCredit)} d="refundable store credit" />

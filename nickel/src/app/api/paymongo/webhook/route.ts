@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPaymongoSignature, hasWebhookSecret } from '@/lib/paymongo'
-import { computeSplit } from '@/lib/earnings'
+import { computeSplit, normalizeMethod } from '@/lib/earnings'
 import { notify } from '@/lib/notify'
 
 export async function POST(req: NextRequest) {
@@ -23,8 +23,9 @@ export async function POST(req: NextRequest) {
     console.warn('[nickel webhook] no PAYMONGO_WEBHOOK_SECRET set — accepting unverified')
   }
 
+  interface PmPayment { attributes?: { status?: string; fee?: number; payment_method_used?: string; source?: { type?: string } } }
   let payload: {
-    data?: { attributes?: { type?: string; data?: { id?: string; attributes?: { status?: string } } } }
+    data?: { attributes?: { type?: string; data?: { id?: string; attributes?: { status?: string; payments?: PmPayment[] } } } }
   }
   try { payload = JSON.parse(rawBody) } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
@@ -34,21 +35,35 @@ export async function POST(req: NextRequest) {
   const linkStatus = resource?.attributes?.status
   if (!linkId) return NextResponse.json({ ok: true, skipped: 'no link id' })
 
+  // The paid payment carries the actual processor fee and the method used.
+  const payments = resource?.attributes?.payments ?? []
+  const pay = payments.find((p) => p?.attributes?.status === 'paid') ?? payments[0]
+  const feeCentavos = pay?.attributes?.fee
+  const rawMethod = pay?.attributes?.payment_method_used ?? pay?.attributes?.source?.type ?? null
+
   const isPaidEvent = eventType === 'link.payment.paid' || eventType === 'link.paid' || linkStatus === 'paid'
   if (!isPaidEvent) return NextResponse.json({ ok: true, skipped: 'not a paid event' })
 
   const booking = await prisma.booking.findFirst({
     where: { paymongoLinkId: linkId },
-    select: { id: true, status: true, amount: true, providerId: true, date: true, startTime: true, patient: { select: { firstName: true, lastName: true } } },
+    select: { id: true, status: true, amount: true, walletApplied: true, providerId: true, date: true, startTime: true, patient: { select: { firstName: true, lastName: true } } },
   })
   if (!booking) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
 
   if (booking.status === 'PENDING') {
-    // Credit the provider's wallet: record the 15% fee / 5% CWT / net split.
-    const { fee, cwt, net } = computeSplit(Number(booking.amount))
+    // Record the flat ₱20 app fee + the actual PayMongo processing fee, and the
+    // therapist's net. The fee applies only to the card-charged portion (store
+    // credit already applied incurs none). Prefer PayMongo's reported fee.
+    const charged = Number(booking.amount) - Number(booking.walletApplied)
+    const method = normalizeMethod(rawMethod)
+    const { appFee, processingFee, net } = computeSplit(Number(booking.amount), {
+      chargedPhp: charged,
+      method,
+      processingFee: typeof feeCentavos === 'number' ? feeCentavos / 100 : undefined,
+    })
     await prisma.booking.update({
       where: { id: booking.id },
-      data: { status: 'PAID', paidAt: new Date(), platformFee: fee, withholdingTax: cwt, providerNet: net },
+      data: { status: 'PAID', paidAt: new Date(), appFee, processingFee, providerNet: net, paymentMethod: method },
     })
     const when = `${booking.date.toISOString().slice(0, 10)} at ${booking.startTime}`
     await notify({
