@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { isAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { computeSplit } from '@/lib/earnings'
 import PayoutButton from './PayoutButton'
 import AdminNav from '../AdminNav'
 
@@ -13,20 +12,20 @@ const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`
 export default async function AdminPayouts() {
   if (!(await isAdmin())) redirect('/admin/login')
 
-  const due = await prisma.booking.findMany({
-    where: { status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] }, payoutStatus: 'PENDING' },
-    select: { providerId: true, amount: true, providerNet: true, provider: { select: { firstName: true, lastName: true, bankName: true, bankAccountNo: true, gcashNumber: true } } },
+  // Providers with earned, un-settled wallet balance (net released on completion).
+  const providers = await prisma.provider.findMany({
+    where: { walletBalance: { gt: 0 } },
+    select: { id: true, firstName: true, lastName: true, walletBalance: true, bankName: true, bankAccountNo: true, gcashNumber: true, _count: { select: { bookings: { where: { status: 'COMPLETED', payoutStatus: 'PENDING' } } } } },
   })
 
-  const byProvider = new Map<string, { name: string; method: string; sessions: number; net: number }>()
-  for (const b of due) {
-    const net = b.providerNet != null ? Number(b.providerNet) : computeSplit(Number(b.amount)).net
-    const method = b.provider.bankName ? `${b.provider.bankName} •••• ${String(b.provider.bankAccountNo ?? '').slice(-4)}` : b.provider.gcashNumber ? `GCash •••• ${String(b.provider.gcashNumber).slice(-4)}` : '— no payout details —'
-    const cur = byProvider.get(b.providerId) ?? { name: `${b.provider.firstName} ${b.provider.lastName}`, method, sessions: 0, net: 0 }
-    cur.sessions++; cur.net += net
-    byProvider.set(b.providerId, cur)
-  }
-  const rows = [...byProvider.entries()].sort((a, b) => b[1].net - a[1].net)
+  const rows = providers
+    .map((p) => [p.id, {
+      name: `${p.firstName} ${p.lastName}`,
+      method: p.bankName ? `${p.bankName} •••• ${String(p.bankAccountNo ?? '').slice(-4)}` : p.gcashNumber ? `GCash •••• ${String(p.gcashNumber).slice(-4)}` : '— no payout details —',
+      sessions: p._count.bookings,
+      net: Number(p.walletBalance),
+    }] as const)
+    .sort((a, b) => b[1].net - a[1].net)
   const total = rows.reduce((s, [, r]) => s + r.net, 0)
 
   const recent = await prisma.payout.findMany({ orderBy: { createdAt: 'desc' }, take: 8, include: { provider: { select: { firstName: true, lastName: true } } } })

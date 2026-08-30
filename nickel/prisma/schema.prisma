@@ -105,6 +105,9 @@ model Provider {
   termsVersion    String?
   termsAcceptedAt DateTime?
 
+  // Nickel wallet — net earnings released here on session completion; payouts draw it down.
+  walletBalance Decimal @default(0)
+
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -113,6 +116,7 @@ model Provider {
   bookings     Booking[]
   tickets      Ticket[]
   payouts      Payout[]
+  walletTxns   WalletTransaction[]
 
   @@index([active])
 }
@@ -142,10 +146,13 @@ model Patient {
   address      String?
   city         String?
   dob          DateTime?
+  // Nickel wallet — refundable store credit; can be applied at checkout.
+  walletBalance Decimal @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   bookings     Booking[]
+  walletTxns   WalletTransaction[]
 
   @@index([city])
 }
@@ -178,6 +185,11 @@ model Booking {
   payoutStatus   PayoutStatus  @default(PENDING)
   payoutId       String?
   payout         Payout?       @relation(fields: [payoutId], references: [id])
+
+  // Wallet flows
+  walletApplied  Decimal   @default(0) // patient store credit used to pay for this booking
+  earnedAt       DateTime? // when providerNet was released into the provider's wallet (on completion)
+  refundedAt     DateTime? // when the patient was refunded to their wallet (on cancellation)
 
   // Reschedule proposal — provider proposes a new time, patient accepts/declines
   proposedDate      DateTime?
@@ -230,6 +242,28 @@ model Notification {
 
   @@index([recipientPatientId, createdAt])
   @@index([recipientProviderId, createdAt])
+}
+
+// One entry in a patient's or provider's Nickel wallet ledger. `amount` is
+// signed: positive credits the balance, negative debits it. Exactly one of
+// patientId / providerId is set.
+model WalletTransaction {
+  id         String    @id @default(cuid())
+  patientId  String?
+  patient    Patient?  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId String?
+  provider   Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  amount     Decimal   // signed (PHP)
+  balance    Decimal?  // running balance after this entry (for display)
+  // Patient: REFUND (+), REDEEM (−), ADJUSTMENT. Provider: EARNING (+), PAYOUT (−), ADJUSTMENT.
+  type       String
+  bookingId  String?
+  payoutId   String?
+  note       String?
+  createdAt  DateTime  @default(now())
+
+  @@index([patientId, createdAt])
+  @@index([providerId, createdAt])
 }
 
 // ── Tickets (concerns raised by providers or patients) ───────────────────────

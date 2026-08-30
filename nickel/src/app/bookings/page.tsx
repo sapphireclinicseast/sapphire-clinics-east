@@ -10,11 +10,14 @@ export default async function BookingsPage() {
   const patient = await getSessionPatient()
   if (!patient) redirect('/book')
 
-  const rows = await prisma.booking.findMany({
-    where: { patientId: patient.id },
-    orderBy: [{ date: 'desc' }, { startTime: 'desc' }],
-    include: { provider: { select: { firstName: true, lastName: true, postNominals: true, profession: true } } },
-  })
+  const [rows, walletTxns] = await Promise.all([
+    prisma.booking.findMany({
+      where: { patientId: patient.id },
+      orderBy: [{ date: 'desc' }, { startTime: 'desc' }],
+      include: { provider: { select: { firstName: true, lastName: true, postNominals: true, profession: true } } },
+    }),
+    prisma.walletTransaction.findMany({ where: { patientId: patient.id }, orderBy: { createdAt: 'desc' }, take: 12 }),
+  ])
 
   const bookings = rows.map((b) => ({
     id: b.id,
@@ -29,5 +32,10 @@ export default async function BookingsPage() {
     proposedStartTime: b.proposedStartTime,
   }))
 
-  return <PatientBookings bookings={bookings} />
+  const wallet = {
+    balance: Number(patient.walletBalance ?? 0),
+    txns: walletTxns.map((t) => ({ id: t.id, amount: Number(t.amount), type: t.type, note: t.note, createdAt: t.createdAt.toISOString() })),
+  }
+
+  return <PatientBookings bookings={bookings} wallet={wallet} />
 }

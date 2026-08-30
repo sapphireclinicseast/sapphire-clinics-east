@@ -13,7 +13,7 @@ interface Provider {
   certifications: string[]; specialization: string | null; specializedRate: number | null
   rate: number | null; transpoIncluded: boolean; slots: Slot[]
 }
-interface Me { id: string; firstName: string; city: string | null }
+interface Me { id: string; firstName: string; city: string | null; walletBalance?: number }
 
 const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`
 const fmtDate = (ymd: string) => new Date(ymd).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
@@ -29,6 +29,7 @@ export default function BookPage() {
   const [slot, setSlot] = useState<Slot | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [useWallet, setUseWallet] = useState(true)
 
   // auth form
   const [mode, setMode] = useState<'signup' | 'login'>('signup')
@@ -78,10 +79,13 @@ export default function BookPage() {
     try {
       const r = await fetch('/api/book', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerId: provider.id, date: slot.date, startTime: slot.startTime, city }),
+        body: JSON.stringify({ providerId: provider.id, date: slot.date, startTime: slot.startTime, city, useWallet }),
       })
       const d = await r.json()
-      if (!r.ok || !d.checkoutUrl) throw new Error(d.error ?? 'Could not start payment.')
+      if (!r.ok) throw new Error(d.error ?? 'Could not start payment.')
+      // Fully covered by wallet credit → no PayMongo step.
+      if (d.paid) { window.location.href = d.redirect ?? '/bookings'; return }
+      if (!d.checkoutUrl) throw new Error('Could not start payment.')
       window.location.href = d.checkoutUrl
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not start payment.'); setBusy(false) }
   }
@@ -232,14 +236,47 @@ export default function BookPage() {
               <div className="my-3 h-px bg-[color:var(--line)]" />
               <div className="flex items-center justify-between text-[14px]">
                 <span className="text-[color:var(--slate)]">Session fee</span>
-                <span className="text-[18px] font-bold text-[color:var(--steel-deep)]">{provider.rate != null ? peso(provider.rate) : ''}</span>
+                <span className="text-[15px] font-semibold text-[color:var(--ink)]">{provider.rate != null ? peso(provider.rate) : ''}</span>
               </div>
+              {(() => {
+                const fee = Number(provider.rate ?? 0)
+                const bal = Number(me?.walletBalance ?? 0)
+                const applied = useWallet ? Math.min(bal, fee) : 0
+                const due = Math.max(0, fee - applied)
+                return (
+                  <>
+                    {bal > 0 && (
+                      <label className="mt-2 flex cursor-pointer items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-[13px]">
+                        <span className="flex items-center gap-2 text-[color:var(--slate)]">
+                          <input type="checkbox" checked={useWallet} onChange={(e) => setUseWallet(e.target.checked)} className="h-4 w-4 accent-[color:var(--steel)]" />
+                          Use Nickel wallet credit <span className="font-semibold text-[color:var(--ink)]">({peso(bal)} available)</span>
+                        </span>
+                        {applied > 0 && <span className="font-semibold text-emerald-700">−{peso(applied)}</span>}
+                      </label>
+                    )}
+                    <div className="my-2 h-px bg-[color:var(--line)]" />
+                    <div className="flex items-center justify-between text-[14px]">
+                      <span className="font-semibold text-[color:var(--slate)]">{due === 0 ? 'Paid from wallet' : 'To pay now'}</span>
+                      <span className="text-[18px] font-bold text-[color:var(--steel-deep)]">{peso(due)}</span>
+                    </div>
+                  </>
+                )
+              })()}
               <p className="mt-2 text-[12px] text-[color:var(--muted)]">{provider.transpoIncluded ? 'Transportation is included in this rate.' : 'Transportation is not included — arrange it directly with your therapist.'}</p>
             </div>
-            <p className="mt-3 text-[12px] text-[color:var(--slate)]">You&apos;ll be redirected to pay securely. Your booking is confirmed once payment is received.</p>
-            <div className="mt-4 flex justify-end">
-              <button className="btn-primary" disabled={busy} onClick={pay}>{busy ? 'Starting payment…' : `Pay ${provider.rate != null ? peso(provider.rate) : ''} →`}</button>
-            </div>
+            {(() => {
+              const fee = Number(provider.rate ?? 0)
+              const applied = useWallet ? Math.min(Number(me?.walletBalance ?? 0), fee) : 0
+              const due = Math.max(0, fee - applied)
+              return (
+                <>
+                  <p className="mt-3 text-[12px] text-[color:var(--slate)]">{due === 0 ? 'This visit is fully covered by your wallet credit — no card needed.' : 'You’ll be redirected to pay securely. Your booking is confirmed once payment is received.'}</p>
+                  <div className="mt-4 flex justify-end">
+                    <button className="btn-primary" disabled={busy} onClick={pay}>{busy ? 'Please wait…' : due === 0 ? 'Confirm booking →' : `Pay ${peso(due)} →`}</button>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         )}
       </div>

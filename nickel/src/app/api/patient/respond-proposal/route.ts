@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionPatientId } from '@/lib/auth'
 import { notify } from '@/lib/notify'
+import { refundBookingToWallet } from '@/lib/wallet'
 
 function addHour(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number)
@@ -33,8 +34,13 @@ export async function POST(req: NextRequest) {
     await notify({ to: 'PROVIDER', providerId: booking.providerId, bookingId: booking.id, type: 'PROPOSAL_ACCEPTED', title: 'New time accepted', body: `${patientName} accepted the new time — the visit is set for ${when}.` })
     return NextResponse.json({ ok: true, accepted: true })
   }
-  // Declined — clear the proposal, keep the original time (provider can confirm or decline).
-  await prisma.booking.update({ where: { id: bookingId }, data: { proposedDate: null, proposedStartTime: null, proposedAt: null } })
-  await notify({ to: 'PROVIDER', providerId: booking.providerId, bookingId: booking.id, type: 'PROPOSAL_DECLINED', title: 'Proposed time declined', body: `${patientName} kept the original time. You can confirm or propose another slot.` })
-  return NextResponse.json({ ok: true, accepted: false })
+  // Declined the new time → cancel the visit and refund the patient to their
+  // Nickel wallet (the therapist is not paid).
+  let refunded = 0
+  await prisma.$transaction(async (tx) => {
+    await tx.booking.update({ where: { id: bookingId }, data: { status: 'CANCELLED', proposedDate: null, proposedStartTime: null, proposedAt: null } })
+    refunded = await refundBookingToWallet(tx, booking, 'Declined rescheduled time')
+  })
+  await notify({ to: 'PROVIDER', providerId: booking.providerId, bookingId: booking.id, type: 'PROPOSAL_DECLINED', title: 'Reschedule declined — cancelled', body: `${patientName} declined the new time, so the visit was cancelled and refunded.` })
+  return NextResponse.json({ ok: true, accepted: false, cancelled: true, refunded })
 }

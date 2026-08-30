@@ -40,8 +40,9 @@ export default function ScheduleManager({ slots, bookings, past, availableSlots,
     await fetch(`/api/provider/slots?id=${id}`, { method: 'DELETE' }); router.refresh()
   }
   const [acting, setActing] = useState<string | null>(null)
-  async function act(id: string, action: 'confirm' | 'decline') {
-    if (action === 'decline' && !confirm('Decline this visit? The patient will be refunded.')) return
+  async function act(id: string, action: 'confirm' | 'decline' | 'complete') {
+    if (action === 'decline' && !confirm('Decline this visit? The patient will be refunded to their Nickel wallet.')) return
+    if (action === 'complete' && !confirm('Mark this visit completed? Your net earnings will be released to your Nickel wallet.')) return
     setActing(id)
     try {
       const r = await fetch('/api/provider/booking-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: id, action }) })
@@ -161,6 +162,7 @@ export default function ScheduleManager({ slots, bookings, past, availableSlots,
                 <span className="text-[color:var(--ink)]">{b.patientName}</span>
                 <span className="text-[color:var(--slate)]">· {b.city}</span>
                 <span className="ml-auto rounded-full bg-[color:var(--steel-soft,#eaf1fa)] px-2.5 py-0.5 text-[11px] font-semibold text-[color:var(--steel)]">Confirmed</span>
+                <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50" disabled={acting === b.id} onClick={() => act(b.id, 'complete')}>{acting === b.id ? '…' : 'Mark completed'}</button>
                 {actions(b)}
               </div>
             ))}

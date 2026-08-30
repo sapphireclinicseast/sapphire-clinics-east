@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionProviderId } from '@/lib/auth'
 import { notify } from '@/lib/notify'
+import { refundBookingToWallet, releaseEarning } from '@/lib/wallet'
 
 // Provider acts on one of their bookings.
 // action: 'confirm' (PAID→CONFIRMED) | 'decline' (→CANCELLED) | 'complete' (CONFIRMED→COMPLETED)
@@ -14,7 +15,11 @@ export async function POST(req: NextRequest) {
 
   const booking = await prisma.booking.findFirst({
     where: { id: bookingId, providerId: pid },
-    select: { id: true, status: true, patientId: true, date: true, startTime: true, provider: { select: { firstName: true, lastName: true } } },
+    select: {
+      id: true, status: true, patientId: true, providerId: true, date: true, startTime: true,
+      amount: true, walletApplied: true, providerNet: true, earnedAt: true, refundedAt: true,
+      provider: { select: { firstName: true, lastName: true } },
+    },
   })
   if (!booking) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
 
@@ -24,16 +29,24 @@ export async function POST(req: NextRequest) {
   else if (b.action === 'complete' && booking.status === 'CONFIRMED') next = 'COMPLETED'
   if (!next) return NextResponse.json({ error: `Can't ${b.action} a ${booking.status.toLowerCase()} booking.` }, { status: 409 })
 
-  await prisma.booking.update({ where: { id: bookingId }, data: { status: next as never } })
-  // A declined/cancelled paid booking drops out of settlements automatically
-  // (the wallet query only sums status='PAID'); refunds follow Annex A manually.
+  let refunded = 0
+  await prisma.$transaction(async (tx) => {
+    await tx.booking.update({ where: { id: bookingId }, data: { status: next as never } })
+    if (next === 'COMPLETED') {
+      // Release the provider's net into their wallet (money was held until now).
+      await releaseEarning(tx, booking)
+    } else if (next === 'CANCELLED') {
+      // Refund what the patient paid into their Nickel wallet.
+      refunded = await refundBookingToWallet(tx, booking, 'Therapist cancelled the visit')
+    }
+  })
 
   const therapist = `${booking.provider.firstName} ${booking.provider.lastName}`
   const when = `${booking.date.toISOString().slice(0, 10)} at ${booking.startTime}`
   if (next === 'CONFIRMED') {
     await notify({ to: 'PATIENT', patientId: booking.patientId, bookingId: booking.id, type: 'BOOKING_CONFIRMED', title: 'Your visit is confirmed', body: `${therapist} confirmed your home visit on ${when}.` })
   } else if (next === 'CANCELLED') {
-    await notify({ to: 'PATIENT', patientId: booking.patientId, bookingId: booking.id, type: 'BOOKING_CANCELLED', title: 'Booking cancelled', body: `${therapist} could not take your visit on ${when}. Any payment will be refunded.` })
+    await notify({ to: 'PATIENT', patientId: booking.patientId, bookingId: booking.id, type: 'BOOKING_CANCELLED', title: 'Booking cancelled', body: `${therapist} could not take your visit on ${when}.${refunded > 0 ? ` ₱${Math.round(refunded).toLocaleString('en-PH')} was refunded to your Nickel wallet.` : ''}` })
   }
-  return NextResponse.json({ ok: true, status: next })
+  return NextResponse.json({ ok: true, status: next, refunded })
 }
