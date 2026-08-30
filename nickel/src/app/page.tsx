@@ -16,7 +16,7 @@ const WHY_PATIENT = [
 
 // Why therapists choose Nickel (monochrome line icons).
 const WHY = [
-  { t: 'No awkward money talk', d: 'Clients pay through the app at your set rate — no haggling or chasing payment in person.', icon: <><path d="M12 2v20" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></> },
+  { t: 'No awkward money talk', d: 'Clients pay through the app at your set rate — no haggling or chasing payment in person.', icon: <><path d="M7 4h6a4 4 0 0 1 0 8H7V3.5" /><path d="M7 8v13" /><path d="M4 8.5h11" /><path d="M4 12h11" /></> },
   { t: 'No self-advertising', d: 'You don’t have to market yourself on social media. Nickel puts you in front of clients looking for therapy.', icon: <><path d="M3 11l18-5v12L3 14v-3Z" /><path d="M11.6 16.8a3 3 0 0 1-5.8-1.6" /></> },
   { t: 'Clients come to you', d: 'Get found in the Nickel provider network, or reply to clients who post a request. Two easy ways to fill your schedule.', icon: <><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9" /></> },
   { t: 'You control your time', d: 'Set your own rate and open only the days and hours you want. Accept or decline any booking.', icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></> },
@@ -84,19 +84,45 @@ export default function NickelHome() {
         </div>
       </section>
 
-      {/* How it works */}
+      {/* Two ways to get care */}
       <section className="card">
-        <div className="mb-4 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">How it works</div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {STEPS.map((s) => (
-            <div key={s.n} className="flex gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[15px] font-bold text-white" style={{ background: 'var(--steel)' }}>{s.n}</div>
-              <div>
-                <div className="text-[15px] font-semibold text-[color:var(--ink)]">{s.t}</div>
-                <p className="mt-0.5 text-[13px] leading-snug text-[color:var(--slate)]">{s.d}</p>
-              </div>
+        <div className="mb-4 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">Two ways to get care</div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <a href="/book" className="group rounded-2xl border border-[color:var(--line)] p-4 hover:border-[color:var(--sky)]">
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl text-white" style={{ background: 'var(--steel)' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+              </span>
+              <div className="text-[15px] font-semibold text-[color:var(--ink)]">Find a therapist</div>
             </div>
-          ))}
+            <p className="mt-2 text-[13px] leading-snug text-[color:var(--slate)]">Browse verified therapists in your city, compare by rating and rate, pick one and book a time. Best if you want to choose a specific therapist.</p>
+            <span className="mt-2 inline-block text-[13px] font-semibold text-[color:var(--steel)]">Browse therapists →</span>
+          </a>
+          <a href="/requests" className="group rounded-2xl border border-[color:var(--line)] p-4 hover:border-[color:var(--sky)]">
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl text-white" style={{ background: 'var(--steel)' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2Z" /></svg>
+              </span>
+              <div className="text-[15px] font-semibold text-[color:var(--ink)]">Post a request</div>
+            </div>
+            <p className="mt-2 text-[13px] leading-snug text-[color:var(--slate)]">Post your preferred day and time and let verified therapists near you reach out with an offer. You pick who — no need to search yourself.</p>
+            <span className="mt-2 inline-block text-[13px] font-semibold text-[color:var(--steel)]">Post a request →</span>
+          </a>
+        </div>
+
+        <div className="mt-5 border-t border-[color:var(--line)] pt-4">
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">How booking works</div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {STEPS.map((s) => (
+              <div key={s.n} className="flex gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[15px] font-bold text-white" style={{ background: 'var(--steel)' }}>{s.n}</div>
+                <div>
+                  <div className="text-[15px] font-semibold text-[color:var(--ink)]">{s.t}</div>
+                  <p className="mt-0.5 text-[13px] leading-snug text-[color:var(--slate)]">{s.d}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
