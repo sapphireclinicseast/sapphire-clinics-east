@@ -29,9 +29,12 @@ export default function AdminNav() {
           )
         })}
       </div>
-      <form action="/api/admin/logout" method="post">
-        <button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[13px] text-[color:var(--slate)] hover:bg-white">Log out</button>
-      </form>
+      <div className="flex items-center gap-2">
+        <a href="/beta" target="_blank" rel="noopener" className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[13px] font-medium text-[color:var(--steel)] hover:bg-white">Beta preview ↗</a>
+        <form action="/api/admin/logout" method="post">
+          <button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[13px] text-[color:var(--slate)] hover:bg-white">Log out</button>
+        </form>
+      </div>
     </div>
   )
 }

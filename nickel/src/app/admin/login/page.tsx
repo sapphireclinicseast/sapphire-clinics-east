@@ -31,6 +31,17 @@ export default function AdminLogin() {
           <button className="btn-primary w-full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
         </form>
       </div>
+
+      <a href="/beta" className="mt-3 flex items-center justify-between rounded-2xl border border-[color:var(--line)] bg-white px-4 py-3 text-left transition-colors hover:border-[color:var(--steel)]">
+        <span>
+          <span className="flex items-center gap-2 text-[13.5px] font-semibold text-[color:var(--ink)]">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></svg>
+            Open the beta app preview
+          </span>
+          <span className="mt-0.5 block text-[12px] text-[color:var(--slate)]">See the live app in a phone frame — no sign-in needed.</span>
+        </span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[color:var(--steel)]"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+      </a>
     </div>
   )
 }
