@@ -37,14 +37,14 @@ export default async function AdminOverview() {
 
   return (
     <div className="animate-fade-up mx-auto max-w-4xl">
-      <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">SCEI Operations · Superadmin</div>
+      <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">JUO Operations · Superadmin</div>
       <h1 className="mb-4 text-[22px] font-semibold text-[color:var(--ink)]">Platform overview</h1>
       <AdminNav />
 
       <div className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">Money</div>
       <div className="mb-5 grid gap-3 sm:grid-cols-5">
         <Tile k="Gross bookings (GMV)" v={peso(gmv)} accent="var(--steel)" />
-        <Tile k="App fees (₱20/session)" v={peso(fees)} d="SCEI + Jara share" />
+        <Tile k="App fees (₱20/session)" v={peso(fees)} d="JUO + SCEI partnership" />
         <Tile k="Paid out to providers" v={peso(paidOut)} />
         <Tile k="Provider wallets" v={peso(pendingPayout)} d="earned, to pay out" accent="var(--warn,#c9871a)" />
         <Tile k="Patient credit" v={peso(patientCredit)} d="refundable store credit" />

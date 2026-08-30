@@ -21,7 +21,7 @@ export default function AdminLogin() {
   return (
     <div className="animate-fade-up mx-auto max-w-sm">
       <div className="card">
-        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">SCEI Operations</div>
+        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">JUO Operations</div>
         <h1 className="mt-1 text-[22px] font-semibold">Admin console</h1>
         <p className="mb-5 mt-1 text-[13px] text-[color:var(--slate)]">Sign in to review and approve professional sign-ups.</p>
         {err && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}

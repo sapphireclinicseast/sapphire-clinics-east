@@ -46,7 +46,7 @@ export default async function AdminPayouts() {
 
   return (
     <div className="animate-fade-up mx-auto max-w-4xl">
-      <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">SCEI Operations · Superadmin</div>
+      <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">JUO Operations · Superadmin</div>
       <h1 className="mb-4 text-[22px] font-semibold text-[color:var(--ink)]">Payout run</h1>
       <AdminNav />
 

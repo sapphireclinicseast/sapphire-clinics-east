@@ -10,7 +10,7 @@ const display = Baloo_2({ subsets: ['latin'], weight: ['500', '600', '700', '800
 
 export const metadata: Metadata = {
   title: { default: 'Nickel', template: '%s · Nickel' },
-  description: 'Book a home therapy session with a licensed therapist near you. By Sapphire Clinics East, developed by Jara Universal OPC.',
+  description: 'Book a home therapy session with a licensed therapist near you. Operated by Jara Universal OPC, in partnership with Sapphire Clinics East, Inc.',
   applicationName: 'Nickel',
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Nickel' },
