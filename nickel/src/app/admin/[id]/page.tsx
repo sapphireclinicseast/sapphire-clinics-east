@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { isAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import ReviewActions from './ReviewActions'
+import OpenAttachment from '@/components/OpenAttachment'
 
 export const metadata = { title: 'Review professional' }
 export const dynamic = 'force-dynamic'
@@ -22,7 +23,7 @@ function Doc({ label, src }: { label: string; src: string | null }) {
       <div className="flex items-center justify-between px-3 py-2 text-[12px]">
         <span className="font-medium text-[color:var(--ink)]">{label}</span>
         {src
-          ? <a href={src} target="_blank" rel="noopener noreferrer" className="font-semibold text-[color:var(--steel)] hover:underline">View</a>
+          ? <OpenAttachment src={src} className="font-semibold text-[color:var(--steel)] hover:underline">View</OpenAttachment>
           : <span className="text-[color:var(--muted)]">—</span>}
       </div>
     </div>

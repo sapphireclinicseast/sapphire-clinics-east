@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import OpenAttachment from '@/components/OpenAttachment'
 
 interface Msg { id: string; senderRole: 'PATIENT' | 'PROVIDER'; text: string | null; attachment: string | null; attachmentName: string | null; attachmentType: string | null; createdAt: string }
 
@@ -76,7 +77,7 @@ export default function Chat({ bookingId, meRole, otherName }: { bookingId: stri
               <div className={`rounded-2xl px-3 py-2 text-[13.5px] ${mine ? 'bg-[color:var(--steel)] text-white' : 'border border-[color:var(--line)] bg-white text-[color:var(--ink)]'}`} style={mine ? { borderRadius: '14px 14px 4px 14px' } : { borderRadius: '14px 14px 14px 4px' }}>
                 {m.attachment && (m.attachmentType?.startsWith('image/')
                   // eslint-disable-next-line @next/next/no-img-element
-                  ? <a href={m.attachment} target="_blank" rel="noopener noreferrer"><img src={m.attachment} alt={m.attachmentName ?? 'photo'} className="mb-1 max-h-56 rounded-lg" /></a>
+                  ? <OpenAttachment src={m.attachment} className="block"><img src={m.attachment} alt={m.attachmentName ?? 'photo'} className="mb-1 max-h-56 rounded-lg" /></OpenAttachment>
                   : <a href={m.attachment} target="_blank" rel="noopener noreferrer" download={m.attachmentName ?? 'file'} className={`mb-1 flex items-center gap-1.5 rounded-lg px-2 py-1.5 ${mine ? 'bg-white/15' : 'bg-[color:var(--mist)]'}`}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 9.5 12 18.5a4.5 4.5 0 0 1-6.4-6.4l8.5-8.5a3 3 0 0 1 4.3 4.3l-8.5 8.5a1.5 1.5 0 0 1-2.1-2.1l7.8-7.8"/></svg>{m.attachmentName ?? 'file'}</a>)}
                 {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
               </div>
