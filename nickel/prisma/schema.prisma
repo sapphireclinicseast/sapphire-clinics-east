@@ -18,17 +18,24 @@ enum PayoutStatus {
 }
 
 model Payout {
-  id         String   @id @default(cuid())
-  providerId String
-  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  amount     Decimal  // total net paid in this run (PHP)
-  method     String?  // snapshot of where it was sent (bank / GCash)
-  reference  String?  // manual transfer reference
+  id         String    @id @default(cuid())
+  providerId String?
+  provider   Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  doctorId   String?
+  doctor     Doctor?   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  amount     Decimal   // total net paid in this run (PHP)
+  method     String?   // snapshot of where it was sent: "bank" / "gcash"
+  account    String?   // snapshot of the destination account no. / GCash no.
+  accountName String?  // snapshot of the account holder name
+  reference  String?   // disbursement reference (PayMongo) or manual transfer ref
+  status     String    @default("PENDING") // PENDING (awaiting manual/failed) | PAID
   note       String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
   bookings   Booking[]
 
   @@index([providerId])
+  @@index([doctorId])
+  @@index([status])
 }
 
 enum VerificationStatus {
@@ -385,6 +392,9 @@ model WalletTransaction {
   type       String
   bookingId  String?
   payoutId   String?
+  // For EARNING credits: when this money becomes payable (PayMongo settlement +
+  // a Nickel hold). The rolling-payout cron only pays matured, unpaid earnings.
+  payoutEligibleAt DateTime?
   note       String?
   createdAt  DateTime  @default(now())
 
@@ -392,6 +402,7 @@ model WalletTransaction {
   @@index([providerId, createdAt])
   @@index([doctorId, createdAt])
   @@index([clinicId, createdAt])
+  @@index([type, payoutId, payoutEligibleAt])
 }
 
 // A clinical document tied to a patient (and usually a booking): a session note,
@@ -540,6 +551,7 @@ model Doctor {
   consults      Consult[]
   walletTxns    WalletTransaction[]
   documents     SessionDocument[]
+  payouts       Payout[]
 
   @@index([active])
 }

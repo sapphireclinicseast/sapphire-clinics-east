@@ -3,6 +3,7 @@ import { isAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import PayoutButton from './PayoutButton'
 import DoctorPayoutButton from './DoctorPayoutButton'
+import PayoutBatch from './PayoutBatch'
 import AdminNav from '../AdminNav'
 
 export const metadata = { title: 'Payouts' }
@@ -29,7 +30,7 @@ export default async function AdminPayouts() {
     .sort((a, b) => b[1].net - a[1].net)
   const total = rows.reduce((s, [, r]) => s + r.net, 0)
 
-  const recent = await prisma.payout.findMany({ orderBy: { createdAt: 'desc' }, take: 8, include: { provider: { select: { firstName: true, lastName: true } } } })
+  const recent = await prisma.payout.findMany({ orderBy: { createdAt: 'desc' }, take: 10, include: { provider: { select: { firstName: true, lastName: true } }, doctor: { select: { firstName: true, lastName: true } } } })
 
   // Rehab doctors with earned, un-settled wallet balance.
   const doctors = await prisma.doctor.findMany({
@@ -49,6 +50,8 @@ export default async function AdminPayouts() {
       <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">JUO Operations · Superadmin</div>
       <h1 className="mb-4 text-[22px] font-semibold text-[color:var(--ink)]">Payout run</h1>
       <AdminNav />
+
+      <PayoutBatch />
 
       <div className="card mb-4 flex items-center justify-between">
         <div><div className="text-[12px] font-semibold text-[color:var(--muted)]">Total pending payout</div><div className="mt-1 text-[26px] font-bold text-[color:var(--steel)]">{peso(total)}</div></div>
@@ -106,8 +109,9 @@ export default async function AdminPayouts() {
             <tbody>
               {recent.map((p) => (
                 <tr key={p.id} className="border-t border-[color:var(--line)] first:border-t-0">
-                  <td className="px-5 py-2.5"><b className="text-[color:var(--ink)]">{p.provider.firstName} {p.provider.lastName}</b></td>
+                  <td className="px-5 py-2.5"><b className="text-[color:var(--ink)]">{p.provider ? `${p.provider.firstName} ${p.provider.lastName}` : p.doctor ? `Dr. ${p.doctor.firstName} ${p.doctor.lastName}` : '—'}</b></td>
                   <td className="px-3 py-2.5 text-[color:var(--slate)]">{p.method ?? ''}{p.reference ? ` · ${p.reference}` : ''}</td>
+                  <td className="px-3 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${p.status === 'PAID' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{p.status === 'PAID' ? 'Paid' : 'Pending'}</span></td>
                   <td className="px-5 py-2.5 text-right font-semibold tabular-nums">{peso(Number(p.amount))}</td>
                 </tr>
               ))}

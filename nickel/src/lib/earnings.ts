@@ -7,6 +7,12 @@
 
 export const APP_FEE_PHP = 20
 
+// Rolling payout hold. A completed session's earnings become payable only after
+// this many days — covering PayMongo's settlement clearing (up to ~3 days by
+// method) plus a 7-day Nickel buffer. Payouts run weekly and pay only matured,
+// unpaid earnings.
+export const PAYOUT_HOLD_DAYS = 10
+
 const r2 = (n: number) => Math.round(n * 100) / 100
 
 // PayMongo MDR by payment method. `pct` is a fraction of the amount; `fixed` is a

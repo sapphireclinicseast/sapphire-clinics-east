@@ -1,6 +1,12 @@
 import { prisma } from '@/lib/prisma'
-import { computeSplit } from '@/lib/earnings'
+import { computeSplit, PAYOUT_HOLD_DAYS } from '@/lib/earnings'
 import type { Prisma } from '@prisma/client'
+
+// EARNING credits mature after the payout hold; everything else is immediately
+// settled (null eligibility). The payout cron only pays matured EARNING credits.
+function eligibleAt(type: string): Date | null {
+  return type === 'EARNING' ? new Date(Date.now() + PAYOUT_HOLD_DAYS * 86400_000) : null
+}
 
 // A Prisma client OR an interactive-transaction client — wallet moves should run
 // inside the same transaction as the state change that triggers them.
@@ -28,7 +34,7 @@ export async function patientWalletMove(db: Client, patientId: string, m: Move):
 export async function providerWalletMove(db: Client, providerId: string, m: Move): Promise<number> {
   const p = await db.provider.update({ where: { id: providerId }, data: { walletBalance: { increment: r2(m.amount) } }, select: { walletBalance: true } })
   const balance = Number(p.walletBalance)
-  await db.walletTransaction.create({ data: { providerId, amount: r2(m.amount), balance, type: m.type, bookingId: m.bookingId ?? null, payoutId: m.payoutId ?? null, note: m.note ?? null } })
+  await db.walletTransaction.create({ data: { providerId, amount: r2(m.amount), balance, type: m.type, bookingId: m.bookingId ?? null, payoutId: m.payoutId ?? null, payoutEligibleAt: eligibleAt(m.type), note: m.note ?? null } })
   return balance
 }
 
@@ -68,7 +74,7 @@ export async function clinicWalletMove(db: Client, clinicId: string, m: Move): P
 export async function doctorWalletMove(db: Client, doctorId: string, m: Move): Promise<number> {
   const d = await db.doctor.update({ where: { id: doctorId }, data: { walletBalance: { increment: r2(m.amount) } }, select: { walletBalance: true } })
   const balance = Number(d.walletBalance)
-  await db.walletTransaction.create({ data: { doctorId, amount: r2(m.amount), balance, type: m.type, bookingId: m.bookingId ?? null, payoutId: m.payoutId ?? null, note: m.note ?? null } })
+  await db.walletTransaction.create({ data: { doctorId, amount: r2(m.amount), balance, type: m.type, bookingId: m.bookingId ?? null, payoutId: m.payoutId ?? null, payoutEligibleAt: eligibleAt(m.type), note: m.note ?? null } })
   return balance
 }
 
