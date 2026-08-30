@@ -42,7 +42,7 @@ export default function BookPage() {
 
   // auth form
   const [mode, setMode] = useState<'signup' | 'login'>('signup')
-  const [af, setAf] = useState({ firstName: '', lastName: '', email: '', phone: '', address: '', dob: '', password: '', confirm: '' })
+  const [af, setAf] = useState({ firstName: '', lastName: '', email: '', phone: '', address: '', dob: '', sex: '', password: '', confirm: '' })
   const setA = (k: keyof typeof af, v: string) => setAf((s) => ({ ...s, [k]: v }))
 
   useEffect(() => {
@@ -85,7 +85,7 @@ export default function BookPage() {
     try {
       const url = mode === 'signup' ? '/api/patient/signup' : '/api/patient/login'
       const body = mode === 'signup'
-        ? { firstName: af.firstName, lastName: af.lastName, email: af.email, phone: af.phone, address: af.address, dob: af.dob, city, password: af.password }
+        ? { firstName: af.firstName, lastName: af.lastName, email: af.email, phone: af.phone, address: af.address, dob: af.dob, sex: af.sex, city, password: af.password }
         : { email: af.email, password: af.password }
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
@@ -310,7 +310,10 @@ export default function BookPage() {
                       </div>
                       <input className="input" placeholder="Cellphone no." value={af.phone} onChange={(e) => setA('phone', e.target.value)} />
                       <input className="input" placeholder="Home address (for the visit)" value={af.address} onChange={(e) => setA('address', e.target.value)} />
-                      <label className="block"><span className="mb-1 block text-[12px] text-[color:var(--slate)]">Patient date of birth</span><input className="input" type="date" required value={af.dob} onChange={(e) => setA('dob', e.target.value)} /></label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block"><span className="mb-1 block text-[12px] text-[color:var(--slate)]">Date of birth</span><input className="input" type="date" required value={af.dob} onChange={(e) => setA('dob', e.target.value)} /></label>
+                        <label className="block"><span className="mb-1 block text-[12px] text-[color:var(--slate)]">Sex</span><select className="select" required value={af.sex} onChange={(e) => setA('sex', e.target.value)}><option value="">Select…</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
+                      </div>
                     </>
                   )}
                   <input className="input" type="email" placeholder="Email" required value={af.email} onChange={(e) => setA('email', e.target.value)} />

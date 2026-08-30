@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 
 const TABS: [string, string][] = [
   ['/admin/overview', 'Overview'],
+  ['/admin/create', 'Create account'],
   ['/admin', 'Verification'],
   ['/admin/providers', 'Providers'],
   ['/admin/doctors', 'Doctors'],

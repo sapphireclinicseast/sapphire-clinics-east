@@ -224,6 +224,7 @@ model Patient {
   address      String?
   city         String?
   dob          DateTime?
+  sex          String?  // Male | Female — collected at signup, auto-fills PT forms
   // Nickel wallet — refundable store credit; can be applied at checkout.
   walletBalance Decimal @default(0)
   // If this patient was onboarded by a partner clinic/hospital

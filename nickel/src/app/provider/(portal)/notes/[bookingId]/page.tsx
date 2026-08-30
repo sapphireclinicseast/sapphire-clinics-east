@@ -11,7 +11,7 @@ export default async function NotesPage({ params }: { params: Promise<{ bookingI
   if (!provider) return null
   const booking = await prisma.booking.findFirst({
     where: { id: bookingId, providerId: provider.id },
-    include: { patient: { select: { firstName: true, lastName: true, dob: true } } },
+    include: { patient: { select: { firstName: true, lastName: true, dob: true, sex: true } } },
   })
   if (!booking) return <div className="card text-[13px] text-[color:var(--slate)]">Booking not found.</div>
 
@@ -27,6 +27,7 @@ export default async function NotesPage({ params }: { params: Promise<{ bookingI
     bookingId={bookingId}
     patientName={`${booking.patient.firstName} ${booking.patient.lastName}`}
     patientAge={age}
+    patientSex={booking.patient.sex ?? null}
     variant={variant}
     date={booking.date.toISOString().slice(0, 10)}
     openRequests={openRequests.map((r) => r.type)}

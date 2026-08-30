@@ -12,11 +12,12 @@ function readFile(file: File): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(file) })
 }
 
-export default function DocWorkspace({ bookingId, patientName, patientAge, variant, date, docs, openRequests = [] }: { bookingId: string; patientName: string; patientAge: number | null; variant: DocVariant; date: string; docs: Doc[]; openRequests?: string[] }) {
+export default function DocWorkspace({ bookingId, patientName, patientAge, patientSex = null, variant, date, docs, openRequests = [] }: { bookingId: string; patientName: string; patientAge: number | null; patientSex?: string | null; variant: DocVariant; date: string; docs: Doc[]; openRequests?: string[] }) {
   const router = useRouter()
   const [type, setType] = useState<DocType | null>(null)
   const [docId, setDocId] = useState<string | null>(null)
   const [data, setData] = useState<Record<string, unknown>>({})
+  const [extraRows, setExtraRows] = useState<Record<string, number>>({})
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
@@ -28,9 +29,10 @@ export default function DocWorkspace({ bookingId, patientName, patientAge, varia
     grid[r][c] = v
     return { ...s, [key]: grid }
   })
+  const addRow = (key: string) => setExtraRows((s) => ({ ...s, [key]: (s[key] ?? 0) + 1 }))
 
-  function startNew(t: DocType) { setType(t); setDocId(null); setData({ date }); setMsg(null) }
-  function editExisting(d: Doc) { if (d.source !== 'FORM') return; setType(d.type as DocType); setDocId(d.id); setData(d.data || {}); setMsg(null) }
+  function startNew(t: DocType) { setType(t); setDocId(null); setData({ date, ...(patientSex ? { sex: patientSex } : {}) }); setExtraRows({}); setMsg(null) }
+  function editExisting(d: Doc) { if (d.source !== 'FORM') return; setType(d.type as DocType); setDocId(d.id); setData({ ...(patientSex ? { sex: patientSex } : {}), ...(d.data || {}) }); setExtraRows({}); setMsg(null) }
 
   async function save(finalize: boolean) {
     if (!type) return
@@ -102,8 +104,10 @@ export default function DocWorkspace({ bookingId, patientName, patientAge, varia
                 <div className="grid gap-3 sm:grid-cols-2">
                   {(s.fields ?? []).map((f) => (
                     <div key={f.key} className={f.full || f.type === 'textarea' ? 'sm:col-span-2' : ''}>
-                      <div className="label">{f.label}</div>
-                      {f.type === 'textarea'
+                      <div className="label">{f.label}{f.key === 'sex' && patientSex ? <span className="ml-1 text-[10.5px] font-normal text-[color:var(--muted)]">· from patient profile</span> : null}</div>
+                      {f.key === 'sex' && patientSex
+                        ? <input className="input bg-[color:var(--mist)] text-[color:var(--slate)]" value={String(data[f.key] ?? patientSex)} readOnly />
+                        : f.type === 'textarea'
                         ? <textarea className="input min-h-[64px]" value={String(data[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
                         : f.type === 'select'
                           ? <select className="select" value={String(data[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)}><option value="">—</option>{f.options?.map((o) => <option key={o} value={o}>{o}</option>)}</select>
@@ -111,23 +115,32 @@ export default function DocWorkspace({ bookingId, patientName, patientAge, varia
                     </div>
                   ))}
                 </div>
-                {s.table && (
-                  <div className="mt-1 overflow-x-auto rounded-lg border border-[color:var(--line)]">
-                    <table className="w-full text-[12.5px]">
-                      <thead><tr className="bg-[color:var(--mist)] text-left text-[11px] uppercase tracking-wide text-[color:var(--muted)]">{s.table.columns.map((c) => <th key={c} className="px-2 py-1.5 font-semibold">{c}</th>)}</tr></thead>
-                      <tbody>
-                        {Array.from({ length: s.table.rows ?? 3 }).map((_, r) => (
-                          <tr key={r} className="border-t border-[color:var(--line)]">
-                            {s.table!.columns.map((_, c) => {
-                              const grid = (data[s.table!.key] as string[][]) || []
-                              return <td key={c} className="px-1 py-1"><input className="w-full rounded border-0 bg-transparent px-1 py-1 text-[12.5px] focus:bg-[color:var(--mist)] focus:outline-none" value={grid[r]?.[c] ?? ''} onChange={(e) => setCell(s.table!.key, r, c, e.target.value)} /></td>
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                {s.table && (() => {
+                  const tkey = s.table.key
+                  const grid = (data[tkey] as string[][]) || []
+                  const rowCount = Math.max(s.table.rows ?? 3, grid.length, (s.table.rows ?? 3) + (extraRows[tkey] ?? 0))
+                  return (
+                  <div className="mt-1">
+                    <div className="overflow-x-auto rounded-lg border border-[color:var(--line)]">
+                      <table className="w-full text-[12.5px]">
+                        <thead><tr className="bg-[color:var(--mist)] text-left text-[11px] uppercase tracking-wide text-[color:var(--muted)]">{s.table.columns.map((c) => <th key={c} className="px-2 py-1.5 font-semibold">{c}</th>)}</tr></thead>
+                        <tbody>
+                          {Array.from({ length: rowCount }).map((_, r) => (
+                            <tr key={r} className="border-t border-[color:var(--line)]">
+                              {s.table!.columns.map((_, c) => (
+                                <td key={c} className="px-1 py-1"><input className="w-full rounded border-0 bg-transparent px-1 py-1 text-[12.5px] focus:bg-[color:var(--mist)] focus:outline-none" value={grid[r]?.[c] ?? ''} onChange={(e) => setCell(tkey, r, c, e.target.value)} /></td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button type="button" onClick={() => addRow(tkey)} className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-[color:var(--line-2)] px-2.5 py-1 text-[12px] font-medium text-[color:var(--steel)] hover:bg-[color:var(--mist)]">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add row
+                    </button>
                   </div>
-                )}
+                  )
+                })()}
               </div>
             ))}
           </div>

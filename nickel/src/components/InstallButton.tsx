@@ -46,7 +46,7 @@ export default function InstallButton({ className = '' }: { className?: string }
         Install app
       </button>
       {showHelp && (
-        <span className="absolute left-0 top-full z-50 mt-2 block w-[260px] rounded-xl border border-[color:var(--line)] bg-white p-3 text-left text-[12.5px] leading-snug text-[color:var(--slate)] shadow-[0_16px_44px_rgba(20,36,58,.22)]">
+        <span className="absolute right-0 top-full z-50 mt-2 block w-[260px] max-w-[calc(100vw-2rem)] rounded-xl border border-[color:var(--line)] bg-white p-3 text-left text-[12.5px] leading-snug text-[color:var(--slate)] shadow-[0_16px_44px_rgba(20,36,58,.22)]">
           {isIOS
             ? <>On iPhone/iPad: tap the <b className="text-[color:var(--ink)]">Share</b> button in Safari, then choose <b className="text-[color:var(--ink)]">“Add to Home Screen.”</b></>
             : <>In your browser menu (⋮), choose <b className="text-[color:var(--ink)]">“Install app”</b> or <b className="text-[color:var(--ink)]">“Add to Home screen.”</b></>}

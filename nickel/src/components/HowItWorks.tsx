@@ -6,7 +6,7 @@ import { useState } from 'react'
 const I = {
   signup: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM19 8v6M22 11h-6" />,
   verify: <path d="M12 3 4 6v6c0 4.5 3.4 7.9 8 9 4.6-1.1 8-4.5 8-9V6l-8-3ZM9 12l2 2 4-4" />,
-  rate: <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />,
+  rate: <path d="M8 4v16M8 4h5.5a4 4 0 0 1 0 8H8M5 9h11M5 13h11" />,
   connect: <path d="M8.5 14a4.5 4.5 0 0 1 0-9h2M15.5 10a4.5 4.5 0 0 1 0 9h-2M8 12h8" />,
   visit: <path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9ZM9 21v-7h6v7" />,
   wallet: <path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v1M3 7v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3M21 12v-2a1 1 0 0 0-1-1h-4a2 2 0 0 0 0 4h4a1 1 0 0 0 1-1Z" />,
@@ -48,7 +48,7 @@ export default function HowItWorks() {
           <div className="mb-4 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">How Nickel works for therapists</div>
 
           {/* Horizontal flow — scrolls on small screens */}
-          <div className="-mx-1 overflow-x-auto pb-2">
+          <div className="-mx-1 overflow-x-auto px-1 pb-2 pt-3">
             <ol className="flex min-w-max items-stretch gap-0">
               {STEPS.map((s, i) => (
                 <li key={s.t} className="flex items-stretch">

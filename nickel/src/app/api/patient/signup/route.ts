@@ -13,6 +13,8 @@ export async function POST(req: NextRequest) {
   const city = String(b.city ?? '').trim() || null
   const dobStr = String(b.dob ?? '').trim()
   const dob = /^\d{4}-\d{2}-\d{2}$/.test(dobStr) ? new Date(`${dobStr}T00:00:00.000Z`) : null
+  const sexRaw = String(b.sex ?? '').trim().toLowerCase()
+  const sex = sexRaw === 'male' ? 'Male' : sexRaw === 'female' ? 'Female' : null
 
   if (!firstName || !lastName || !email) return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
   if (!email.includes('@')) return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
@@ -23,7 +25,7 @@ export async function POST(req: NextRequest) {
   if (existing) return NextResponse.json({ error: 'An account already exists for this email. Please sign in.' }, { status: 409 })
 
   const patient = await prisma.patient.create({
-    data: { firstName: firstName.toUpperCase(), lastName: lastName.toUpperCase(), email, phone, address, city, dob, passwordHash: await hashPassword(password) },
+    data: { firstName: firstName.toUpperCase(), lastName: lastName.toUpperCase(), email, phone, address, city, dob, sex, passwordHash: await hashPassword(password) },
     select: { id: true },
   })
 
