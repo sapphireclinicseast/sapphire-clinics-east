@@ -184,6 +184,10 @@ model Booking {
   proposedStartTime String?
   proposedAt        DateTime?
 
+  // Chat read-tracking (for unread badges)
+  patientReadAt  DateTime?
+  providerReadAt DateTime?
+
   messages   Message[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans, Baloo_2 } from 'next/font/google'
 import { getSessionPatientId } from '@/lib/auth'
+import MessagesWidget from '@/components/MessagesWidget'
 import './globals.css'
 
 const body = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
@@ -35,6 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <footer className="mx-auto max-w-5xl px-4 py-8 text-center text-[12px] text-[color:var(--muted)]">
           Nickel 2026
         </footer>
+        <MessagesWidget />
       </body>
     </html>
   )

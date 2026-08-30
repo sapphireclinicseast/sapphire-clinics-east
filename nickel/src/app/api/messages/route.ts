@@ -8,6 +8,8 @@ export async function GET(req: NextRequest) {
   const p = await bookingParticipant(bookingId)
   if (!p) return NextResponse.json({ error: 'Not authorized' }, { status: 401 })
   const messages = await prisma.message.findMany({ where: { bookingId }, orderBy: { createdAt: 'asc' }, take: 200 })
+  // Opening the thread marks it read for this participant (clears the unread badge).
+  await prisma.booking.update({ where: { id: bookingId }, data: p.role === 'PATIENT' ? { patientReadAt: new Date() } : { providerReadAt: new Date() } })
   return NextResponse.json({ role: p.role, messages })
 }
 
