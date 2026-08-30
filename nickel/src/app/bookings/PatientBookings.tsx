@@ -33,6 +33,19 @@ export default function PatientBookings({ bookings, wallet, consults = [] }: { b
   const [hover, setHover] = useState(0)
   const [reviewText, setReviewText] = useState('')
 
+  async function cancelBooking(id: string) {
+    if (!confirm('Cancel this booking? Any amount paid is refunded to your Nickel wallet.')) return
+    setBusy(id)
+    try { const r = await fetch('/api/patient/cancel-booking', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: id }) }); if (!r.ok) throw new Error((await r.json()).error ?? 'Failed'); router.refresh() }
+    catch { /* noop */ } finally { setBusy(null) }
+  }
+  async function cancelConsult(id: string) {
+    if (!confirm('Cancel this consult? Any amount paid is refunded to your Nickel wallet.')) return
+    setBusy(id)
+    try { const r = await fetch('/api/patient/cancel-consult', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consultId: id }) }); if (!r.ok) throw new Error((await r.json()).error ?? 'Failed'); router.refresh() }
+    catch { /* noop */ } finally { setBusy(null) }
+  }
+
   async function submitRating(id: string) {
     setBusy(id)
     try {
@@ -106,6 +119,7 @@ export default function PatientBookings({ bookings, wallet, consults = [] }: { b
                     <a href={`/consult/${c.id}/room`} className="rounded-lg bg-[color:var(--steel)] px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-[color:var(--steel-deep)]">Join teleconsult</a>
                   )}
                   {c.referralIssued && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[12px] font-semibold text-emerald-700"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Referral issued — use it when booking PT</span>}
+                  {['PAID', 'CONFIRMED'].includes(c.status) && <button onClick={() => cancelConsult(c.id)} disabled={busy === c.id} className="text-[12.5px] font-medium text-[color:var(--slate)] hover:text-red-600">Cancel</button>}
                 </div>
               </div>
             ))}
@@ -144,13 +158,16 @@ export default function PatientBookings({ bookings, wallet, consults = [] }: { b
               )}
 
               {b.status !== 'CANCELLED' && (
-                <div className="mt-3">
+                <div className="mt-3 flex items-center gap-4">
                   <button onClick={() => setOpenChat(openChat === b.id ? null : b.id)} className="text-[13px] font-semibold text-[color:var(--steel)] hover:underline">
                     {openChat === b.id ? 'Hide messages' : 'Message therapist'}
                   </button>
-                  {openChat === b.id && <div className="mt-2"><Chat bookingId={b.id} meRole="PATIENT" otherName={b.providerName} /></div>}
+                  {['PENDING', 'PAID', 'CONFIRMED'].includes(b.status) && (
+                    <button onClick={() => cancelBooking(b.id)} disabled={busy === b.id} className="text-[13px] font-medium text-[color:var(--slate)] hover:text-red-600">Cancel booking</button>
+                  )}
                 </div>
               )}
+              {openChat === b.id && <div className="mt-2"><Chat bookingId={b.id} meRole="PATIENT" otherName={b.providerName} /></div>}
 
               {/* Rate your therapist — after a completed visit */}
               {b.status === 'COMPLETED' && (

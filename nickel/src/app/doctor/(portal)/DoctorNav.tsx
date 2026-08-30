@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 const TABS: [string, string][] = [
   ['/doctor', 'Consults'],
   ['/doctor/settings', 'Settings'],
+  ['/doctor/verify', 'Verification'],
 ]
 
 export default function DoctorNav() {

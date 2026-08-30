@@ -333,6 +333,9 @@ model Doctor {
 
   // Verification (SCEI approves before the doctor is bookable)
   verificationStatus VerificationStatus @default(UNVERIFIED)
+  prcLicenseFile   String?  // photo/scan of PRC licence (data URI)
+  governmentIdFile String?  // photo of a government ID (data URI)
+  verificationSubmittedAt DateTime?
   verifiedAt    DateTime?
   rejectionReason String?
 
@@ -400,6 +403,22 @@ model Consult {
   @@index([doctorId, date])
   @@index([patientId])
   @@index([status])
+}
+
+// Web-push subscription for a signed-in user (any role). One row per browser.
+model PushSubscription {
+  id         String   @id @default(cuid())
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  patientId  String?
+  providerId String?
+  doctorId   String?
+  createdAt  DateTime @default(now())
+
+  @@index([patientId])
+  @@index([providerId])
+  @@index([doctorId])
 }
 
 // ── Patient-broadcast matching ───────────────────────────────────────────────
