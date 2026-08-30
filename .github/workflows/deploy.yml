@@ -548,7 +548,28 @@ jobs:
             echo "❌ FATAL: Prisma client query compiler still missing — leaving the previous (working) container up instead of serving a broken client."
             exit 1
           fi
-          echo "   ✓ Prisma client verified (query compiler present)"
+
+          # Run 33260138940 (2026-08-29): the middle rung's targeted
+          # `npm install @prisma/client prisma @prisma/adapter-pg` left
+          # @prisma/client itself half-installed (its package.json missing).
+          # The QC file check above still passed, but `next build` then failed
+          # typecheck with "Module '@prisma/client' has no exported member
+          # 'PrismaClient'". So also verify the package is actually loadable —
+          # not just that the generated compiler file exists — and fall through
+          # to the same last-resort full clean reinstall if it isn't.
+          PKG_OK='require.resolve("@prisma/client/package.json"); require("@prisma/client")'
+          if ! node -e "$PKG_OK" > /dev/null 2>&1; then
+            echo "⚠ @prisma/client package broken (half-installed) — full clean reinstall (rm -rf node_modules) + regenerate, last resort."
+            npm cache clean --force > /dev/null 2>&1 || true
+            rm -rf node_modules
+            npm install --no-audit --no-fund > /tmp/tt-reinstall.log 2>&1 || tail -20 /tmp/tt-reinstall.log
+            npx prisma generate 2>&1 | tail -2
+          fi
+          if [ ! -f "$QC" ] || ! node -e "$PKG_OK" > /dev/null 2>&1; then
+            echo "❌ FATAL: @prisma/client still broken after clean reinstall — leaving the previous (working) container up instead of serving a broken client."
+            exit 1
+          fi
+          echo "   ✓ Prisma client verified (query compiler present, @prisma/client loadable)"
 
           echo "→ Creating teletherapy tables..."
           cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 || true
