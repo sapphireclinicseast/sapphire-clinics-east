@@ -59,7 +59,11 @@ export default function ProfileForm({ email, init }: { email: string; init: Init
       {/* Photo — patient-facing */}
       <section className="card">
         <h2 className="text-[16px] font-semibold">Profile photo</h2>
-        <p className="mb-3 mt-1 text-[12px] text-[color:var(--slate)]">This is what clients see when they choose a therapist. Use a clear, professional-looking headshot — good lighting, plain background, and a friendly, approachable look.</p>
+        <p className="mb-2 mt-1 text-[12px] text-[color:var(--slate)]">This is what clients see when they choose a therapist. Use a clear, professional-looking headshot — good lighting, plain background, and a friendly, approachable look.</p>
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <span>We recommend a <b>professionally taken photo with proper lighting</b>. Please <b>do not use AI-edited or AI-generated photos</b> — they often look artificial to patients and can make a real, licensed therapist come across as a scam.</span>
+        </div>
         <div className="flex items-center gap-4">
           <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color:var(--mist-2)] text-[color:var(--slate)]">
             {f.photo

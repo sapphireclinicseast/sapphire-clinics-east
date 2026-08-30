@@ -21,6 +21,7 @@ const ROUTES: { label: string; path: string }[] = [
 const PREVIEWS: { label: string; api: string; email: string; dest: string }[] = [
   { label: 'Therapist dashboard', api: '/api/provider/login', email: 'demo.pt@nickelcare.com', dest: '/provider' },
   { label: 'Rehab doctor dashboard', api: '/api/doctor/login', email: 'demo.doctor@nickelcare.com', dest: '/doctor' },
+  { label: 'Teleconsult room (video)', api: '/api/doctor/login', email: 'demo.doctor@nickelcare.com', dest: '/consult/consult_demo1/room' },
   { label: 'Patient · My bookings', api: '/api/patient/login', email: 'demo.patient@nickelcare.com', dest: '/bookings' },
 ]
 const DEMO_PW = 'NickelDemo2026'
@@ -132,6 +133,7 @@ export default function BetaSimulator() {
                   ref={iframeRef}
                   src={path}
                   title="Nickel app preview"
+                  allow="camera; microphone; clipboard-write; fullscreen"
                   className="block bg-white"
                   style={{ width: d.w, height: d.h, borderRadius: d.radius, border: 'none' }}
                 />

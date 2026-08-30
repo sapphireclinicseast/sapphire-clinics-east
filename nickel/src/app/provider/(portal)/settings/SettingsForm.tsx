@@ -8,8 +8,36 @@ interface Init {
   rate: string; transpoIncluded: boolean; dob: string
   priceInitialEval: string; priceTreatmentSpecialized: string; priceProgressReport: string; priceHEP: string
   specialization: string; specializedRate: string; specializedRateApproved: boolean
+  treatsAdults: boolean; treatsPedia: boolean; caseCategories: string[]; commonCases: string[]
+  awards: string[]; pptaNumber: string; pptaMember: boolean
   prcNumber: string; ptrNumber: string; signature: string
   bankName: string; bankAccountNo: string; bankAccountName: string; gcashNumber: string; gcashName: string
+}
+
+const CASE_CATEGORIES = ['Musculoskeletal', 'Neurological', 'Cardiopulmonary', 'Pediatric / Developmental', 'Geriatric', 'Sports', 'Women’s Health', 'Post-surgical / Ortho', 'Pain management']
+
+// Type-to-add tag input: type a case/award, press Enter (or comma) to add a chip.
+function TagInput({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder: string }) {
+  const [text, setText] = useState('')
+  const add = () => { const t = text.trim(); if (t && !value.some((v) => v.toLowerCase() === t.toLowerCase())) onChange([...value, t]); setText('') }
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5">
+        {value.map((v) => (
+          <span key={v} className="inline-flex items-center gap-1 rounded-full bg-[color:var(--mist-2)] px-2.5 py-1 text-[12.5px] font-medium text-[color:var(--steel)]">
+            {v}
+            <button type="button" onClick={() => onChange(value.filter((x) => x !== v))} className="text-[color:var(--slate)] hover:text-red-600">×</button>
+          </span>
+        ))}
+      </div>
+      <input
+        className="input mt-2" value={text} placeholder={placeholder}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add() } }}
+        onBlur={add}
+      />
+    </div>
+  )
 }
 
 export default function SettingsForm({ init }: { init: Init }) {
@@ -88,6 +116,58 @@ export default function SettingsForm({ init }: { init: Init }) {
               : <>Add a specialization and upload its certification in <b>Verification</b>. After SCEI verifies it, a specialized rate unlocks here.</>}
           </p>
         )}
+      </section>
+
+      {/* Practice profile — shown to patients on your provider-network card */}
+      <section className="card space-y-4">
+        <div>
+          <h2 className="text-[16px] font-semibold">Practice profile</h2>
+          <p className="mt-1 text-[12px] text-[color:var(--slate)]">Helps patients find the right fit. Shown on your card in the provider network.</p>
+        </div>
+
+        <div>
+          <div className="label">Who do you treat?</div>
+          <div className="flex flex-wrap gap-4 text-[13px]">
+            <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--steel)' }} checked={f.treatsAdults} onChange={(e) => set('treatsAdults', e.target.checked)} /> Adults</label>
+            <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--steel)' }} checked={f.treatsPedia} onChange={(e) => set('treatsPedia', e.target.checked)} /> Pediatric</label>
+          </div>
+        </div>
+
+        <div>
+          <div className="label">Case categories you handle</div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+            {CASE_CATEGORIES.map((c) => (
+              <label key={c} className="flex items-center gap-2 text-[13px] text-[color:var(--slate)]">
+                <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--steel)' }}
+                  checked={f.caseCategories.includes(c)}
+                  onChange={(e) => set('caseCategories', e.target.checked ? [...f.caseCategories, c] : f.caseCategories.filter((x) => x !== c))} />
+                {c}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="label">Common cases you treat</div>
+          <p className="mb-1.5 text-[12px] text-[color:var(--muted)]">Type a case and press Enter to add it (e.g. “Stroke rehab”, “ACL reconstruction”, “Cerebral palsy”).</p>
+          <TagInput value={f.commonCases} onChange={(v) => set('commonCases', v)} placeholder="Add a case…" />
+        </div>
+
+        <div>
+          <div className="label">Professional awards & recognitions</div>
+          <TagInput value={f.awards} onChange={(v) => set('awards', v)} placeholder="Add an award…" />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <div className="label">PPTA membership number</div>
+            <input className="input" value={f.pptaNumber} onChange={(e) => set('pptaNumber', e.target.value)} placeholder="e.g. 12345" />
+          </div>
+          <label className="flex items-end gap-2.5 pb-2.5 text-[13px]">
+            <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--steel)' }} checked={f.pptaMember} onChange={(e) => set('pptaMember', e.target.checked)} />
+            <span>I’m an active PPTA member (shows a verified badge on your card)</span>
+          </label>
+        </div>
       </section>
 
       {/* Credentials */}

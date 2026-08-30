@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import Stars from '@/components/Stars'
 
-type Step = 'city' | 'provider' | 'time' | 'confirm'
+type Step = 'city' | 'provider' | 'profile' | 'time' | 'confirm'
 const STEPS: [Step, string][] = [['city', 'City'], ['provider', 'Therapist'], ['time', 'Time'], ['confirm', 'Book']]
 const PROF: Record<string, string> = { PT: 'Physical Therapist', OT: 'Occupational Therapist', SLP: 'Speech-Language Pathologist', SPED: 'Special Education', PSYCHOLOGY: 'Psychologist', MD: 'Medical Doctor', ORTHOSIS: 'Orthosis / Prosthesis' }
 
@@ -15,6 +15,8 @@ interface Provider {
   rate: number | null; transpoIncluded: boolean; slots: Slot[]
   ratingAvg: number | null; ratingCount: number
   priceInitialEval: number | null; priceProgressReport: number | null; priceHEP: number | null
+  treatsAdults: boolean; treatsPedia: boolean; caseCategories: string[]; commonCases: string[]
+  awards: string[]; pptaNumber: string | null; pptaMember: boolean
 }
 interface Me { id: string; firstName: string; city: string | null; walletBalance?: number }
 
@@ -121,7 +123,7 @@ export default function BookPage() {
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not start payment.'); setBusy(false) }
   }
 
-  const activeIdx = STEPS.findIndex(([s]) => s === step)
+  const activeIdx = STEPS.findIndex(([s]) => s === (step === 'profile' ? 'provider' : step))
 
   // group a provider's slots by date for the time step
   const byDate: [string, Slot[]][] = provider
@@ -187,16 +189,17 @@ export default function BookPage() {
                 <p className="text-[13px] text-[color:var(--slate)]">No therapist named “{providerQuery}” in {city}.</p>
               )}
               {providers?.filter((p) => p.name.toLowerCase().includes(providerQuery.trim().toLowerCase())).map((p) => (
-                <button key={p.id} onClick={() => { setProvider(p); setStep('time') }} className="w-full rounded-xl border border-[color:var(--line-2)] bg-white p-3.5 text-left hover:border-[color:var(--sky)]">
+                <button key={p.id} onClick={() => { setProvider(p); setStep('profile') }} className="w-full rounded-xl border border-[color:var(--line-2)] bg-white p-3.5 text-left hover:border-[color:var(--sky)]">
                   <div className="flex items-start gap-3">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[color:var(--mist-2)] text-[15px] font-semibold text-[color:var(--slate)]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       {p.photo ? <img src={p.photo} alt="" className="h-full w-full object-cover" /> : p.name.split(' ').map((x) => x[0]).slice(0, 2).join('')}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[15px] font-semibold text-[color:var(--ink)]">{p.name}{p.postNominals ? `, ${p.postNominals}` : ''}</span>
                         <span className="rounded-full bg-emerald-50 px-1.5 text-[10px] font-bold text-emerald-700" title="Identity-verified">✓</span>
+                        {p.pptaMember && <span className="inline-flex items-center gap-0.5 rounded-full bg-[color:var(--mist-2)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--steel)]" title="Active PPTA member"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>PPTA</span>}
                       </div>
                       <div className="text-[12px] text-[color:var(--slate)]">{PROF[p.profession] ?? p.profession}</div>
                       {p.ratingCount > 0 && p.ratingAvg != null && (
@@ -206,9 +209,10 @@ export default function BookPage() {
                           <span className="text-[color:var(--muted)]">({p.ratingCount})</span>
                         </div>
                       )}
-                      {(p.yearsExperience || p.school) && (
-                        <div className="mt-0.5 text-[11.5px] text-[color:var(--muted)]">
-                          {p.yearsExperience ? `${p.yearsExperience} yr${p.yearsExperience === '1' ? '' : 's'} experience` : ''}{p.yearsExperience && p.school ? ' · ' : ''}{p.school ?? ''}
+                      {(p.treatsAdults || p.treatsPedia) && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {p.treatsAdults && <span className="rounded-md bg-[color:var(--mist)] px-1.5 py-0.5 text-[10.5px] font-medium text-[color:var(--slate)]">Adults</span>}
+                          {p.treatsPedia && <span className="rounded-md bg-[color:var(--mist)] px-1.5 py-0.5 text-[10.5px] font-medium text-[color:var(--slate)]">Pediatric</span>}
                         </div>
                       )}
                     </div>
@@ -217,32 +221,102 @@ export default function BookPage() {
                       <div className="text-[10px] text-[color:var(--muted)]">{p.transpoIncluded ? 'transpo incl.' : '+ transpo'}</div>
                     </div>
                   </div>
-                  {(p.certifications.length > 0 || p.postgraduate || p.specialization) && (
-                    <div className="mt-2 flex flex-wrap gap-1.5 border-t border-[color:var(--line)] pt-2">
-                      {p.postgraduate && <span className="inline-flex items-center gap-1 rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11px] text-[color:var(--slate)]"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="m22 9-10-4.2L2 9l10 4.2L22 9Z"/><path d="M6 11v4.5c0 1.2 2.7 3 6 3s6-1.8 6-3V11"/></svg>{p.postgraduate}</span>}
-                      {[...new Set([p.specialization, ...p.certifications].filter(Boolean))].map((c) => (
-                        <span key={c} className="inline-flex items-center gap-1 rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11px] text-[color:var(--slate)]"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8.5" r="5"/><path d="m9 12.8-1.5 8.2L12 18.5l4.5 2.5L15 12.8"/></svg>{c}</span>
-                      ))}
-                    </div>
-                  )}
-                  {(p.priceInitialEval != null || p.priceProgressReport != null || p.priceHEP != null) && (
-                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-[color:var(--slate)]">
-                      {p.priceInitialEval != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Initial eval {peso(p.priceInitialEval)}</span>}
-                      {p.priceProgressReport != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Progress report {peso(p.priceProgressReport)}</span>}
-                      {p.priceHEP != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Home exercise program {peso(p.priceHEP)}</span>}
-                    </div>
-                  )}
-                  <div className="mt-2 text-[11px] font-medium text-[color:var(--steel)]">{p.slots.length} open slot{p.slots.length === 1 ? '' : 's'} · tap to pick a time →</div>
+                  <div className="mt-2 text-[11px] font-medium text-[color:var(--steel)]">{p.slots.length} open slot{p.slots.length === 1 ? '' : 's'} · tap to view profile →</div>
                 </button>
               ))}
             </div>
           </div>
         )}
 
+        {/* PROFILE — full detail for the tapped therapist */}
+        {step === 'profile' && provider && (
+          <div>
+            <button onClick={() => setStep('provider')} className="mb-3 text-[12px] text-[color:var(--steel)] hover:underline">← Back to therapists</button>
+            <div className="rounded-2xl border border-[color:var(--line)] bg-white p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[color:var(--mist-2)] text-[17px] font-semibold text-[color:var(--slate)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {provider.photo ? <img src={provider.photo} alt="" className="h-full w-full object-cover" /> : provider.name.split(' ').map((x) => x[0]).slice(0, 2).join('')}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[17px] font-semibold text-[color:var(--ink)]">{provider.name}{provider.postNominals ? `, ${provider.postNominals}` : ''}</span>
+                    <span className="rounded-full bg-emerald-50 px-1.5 text-[10px] font-bold text-emerald-700" title="Identity-verified">✓</span>
+                  </div>
+                  <div className="text-[13px] text-[color:var(--slate)]">{PROF[provider.profession] ?? provider.profession}</div>
+                  {provider.ratingCount > 0 && provider.ratingAvg != null && (
+                    <div className="mt-0.5 flex items-center gap-1 text-[12px] text-[color:var(--slate)]">
+                      <Stars value={provider.ratingAvg} size={14} />
+                      <span className="font-semibold text-[color:var(--ink)]">{provider.ratingAvg.toFixed(1)}</span>
+                      <span className="text-[color:var(--muted)]">({provider.ratingCount})</span>
+                    </div>
+                  )}
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-[17px] font-bold text-[color:var(--steel-deep)]">{provider.rate != null ? peso(provider.rate) : ''}</div>
+                  <div className="text-[10px] text-[color:var(--muted)]">{provider.transpoIncluded ? 'transpo incl.' : '+ transpo'}</div>
+                </div>
+              </div>
+
+              {/* PPTA member + population */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {provider.pptaMember && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[12px] font-semibold text-emerald-700">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    Active PPTA member{provider.pptaNumber ? ` · #${provider.pptaNumber}` : ''}
+                  </span>
+                )}
+                {provider.treatsAdults && <span className="rounded-full bg-[color:var(--mist-2)] px-2.5 py-1 text-[12px] font-medium text-[color:var(--steel)]">Adults</span>}
+                {provider.treatsPedia && <span className="rounded-full bg-[color:var(--mist-2)] px-2.5 py-1 text-[12px] font-medium text-[color:var(--steel)]">Pediatric</span>}
+              </div>
+
+              {(provider.yearsExperience || provider.school || provider.postgraduate) && (
+                <div className="mt-3 space-y-0.5 border-t border-[color:var(--line)] pt-3 text-[12.5px] text-[color:var(--slate)]">
+                  {provider.yearsExperience && <div><span className="text-[color:var(--muted)]">Experience:</span> {provider.yearsExperience} yr{provider.yearsExperience === '1' ? '' : 's'}</div>}
+                  {provider.school && <div><span className="text-[color:var(--muted)]">School:</span> {provider.school}</div>}
+                  {provider.postgraduate && <div><span className="text-[color:var(--muted)]">Postgraduate:</span> {provider.postgraduate}</div>}
+                </div>
+              )}
+
+              {(provider.caseCategories.length > 0 || provider.commonCases.length > 0 || provider.specialization || provider.certifications.length > 0) && (
+                <div className="mt-3 border-t border-[color:var(--line)] pt-3">
+                  <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[color:var(--muted)]">Cases treated</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[...new Set([provider.specialization, ...provider.certifications, ...provider.caseCategories, ...provider.commonCases].filter(Boolean))].map((c) => (
+                      <span key={c as string} className="rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11.5px] text-[color:var(--slate)]">{c}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {provider.awards.length > 0 && (
+                <div className="mt-3 border-t border-[color:var(--line)] pt-3">
+                  <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[color:var(--muted)]">Awards & recognitions</div>
+                  <ul className="space-y-1 text-[12.5px] text-[color:var(--slate)]">
+                    {provider.awards.map((a) => <li key={a} className="flex gap-2"><span className="text-[color:var(--steel)]">🏆</span>{a}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {(provider.priceInitialEval != null || provider.priceProgressReport != null || provider.priceHEP != null) && (
+                <div className="mt-3 border-t border-[color:var(--line)] pt-3">
+                  <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[color:var(--muted)]">Other service rates</div>
+                  <div className="flex flex-wrap gap-1.5 text-[11.5px] text-[color:var(--slate)]">
+                    {provider.priceInitialEval != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Initial eval {peso(provider.priceInitialEval)}</span>}
+                    {provider.priceProgressReport != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Progress report {peso(provider.priceProgressReport)}</span>}
+                    {provider.priceHEP != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Home exercise program {peso(provider.priceHEP)}</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button onClick={() => setStep('time')} className="btn-primary mt-3 w-full">See available times · {provider.slots.length} open →</button>
+          </div>
+        )}
+
         {/* TIME */}
         {step === 'time' && provider && (
           <div>
-            <button onClick={() => setStep('provider')} className="mb-3 text-[12px] text-[color:var(--steel)] hover:underline">← {provider.name}</button>
+            <button onClick={() => setStep('profile')} className="mb-3 text-[12px] text-[color:var(--steel)] hover:underline">← {provider.name}</button>
             <div className="label">Pick a time with {provider.name}</div>
             <div className="space-y-3">
               {byDate.map(([date, slots]) => (

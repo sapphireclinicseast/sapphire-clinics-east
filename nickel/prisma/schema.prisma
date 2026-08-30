@@ -145,6 +145,15 @@ model Provider {
   priceHEP                Decimal? // Home Exercise Program (patient-requested, paid)
   transpoIncluded Boolean @default(false) // is transport included in the rate?
 
+  // Practice profile (shown on the provider-network card)
+  treatsAdults   Boolean  @default(true)  // treats adult patients
+  treatsPedia    Boolean  @default(false) // treats pediatric patients
+  caseCategories String[] @default([])    // general categories: Neurological, Musculoskeletal, Cardiopulmonary, ...
+  commonCases    String[] @default([])    // free-text tags of cases commonly treated
+  awards         String[] @default([])    // professional awards / recognitions
+  pptaNumber     String?                  // PPTA (professional org) membership number
+  pptaMember     Boolean  @default(false) // active member of the professional organization
+
   // Settings — credentials & payout
   prcNumber    String?
   ptrNumber    String?

@@ -11,7 +11,14 @@ export async function PATCH(req: NextRequest) {
   const data: Record<string, unknown> = {}
 
   const str = (k: string) => { if (k in b) data[k] = (String(b[k] ?? '').trim()) || null }
-  ;['firstName', 'lastName', 'phone', 'photo', 'prcNumber', 'ptrNumber', 'signature', 'bankName', 'bankAccountNo', 'bankAccountName', 'gcashNumber', 'gcashName'].forEach(str)
+  ;['firstName', 'lastName', 'phone', 'photo', 'prcNumber', 'ptrNumber', 'pptaNumber', 'signature', 'bankName', 'bankAccountNo', 'bankAccountName', 'gcashNumber', 'gcashName'].forEach(str)
+
+  // Practice profile
+  const strArr = (k: string) => { if (Array.isArray(b[k])) data[k] = (b[k] as unknown[]).map((x) => String(x).trim()).filter(Boolean).slice(0, 40) }
+  ;['caseCategories', 'commonCases', 'awards'].forEach(strArr)
+  if (typeof b.treatsAdults === 'boolean') data.treatsAdults = b.treatsAdults
+  if (typeof b.treatsPedia === 'boolean') data.treatsPedia = b.treatsPedia
+  if (typeof b.pptaMember === 'boolean') data.pptaMember = b.pptaMember
 
   if (typeof b.profession === 'string') data.profession = b.profession.toUpperCase()
   if (Array.isArray(b.citiesCovered)) data.citiesCovered = b.citiesCovered.map((c) => String(c).trim()).filter(Boolean)
