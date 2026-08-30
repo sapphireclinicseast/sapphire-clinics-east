@@ -195,6 +195,10 @@ services:
       NICKEL_LIVEKIT_URL: ${NICKEL_LIVEKIT_URL:-}
       NICKEL_LIVEKIT_API_KEY: ${NICKEL_LIVEKIT_API_KEY:-}
       NICKEL_LIVEKIT_API_SECRET: ${NICKEL_LIVEKIT_API_SECRET:-}
+      # Web push (VAPID). Values live in .env.production.
+      NICKEL_VAPID_PUBLIC: ${NICKEL_VAPID_PUBLIC:-}
+      NICKEL_VAPID_PRIVATE: ${NICKEL_VAPID_PRIVATE:-}
+      NICKEL_VAPID_SUBJECT: ${NICKEL_VAPID_SUBJECT:-mailto:main@sapphireclinicseast.org}
       NODE_ENV: production
     ports:
       - "127.0.0.1:3007:3000"
