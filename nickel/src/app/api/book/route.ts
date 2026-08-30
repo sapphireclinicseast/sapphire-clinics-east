@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     select: { date: true, startTime: true },
   })
   const booked = new Set(bookedRows.map((r) => `${r.date.toISOString().slice(0, 10)}|${r.startTime}`))
-  if (!isValidSlot(provider.slots, booked, date, startTime)) {
+  if (!isValidSlot(provider.slots, booked, date, startTime, provider.travelBuffer ? 120 : 60)) {
     return NextResponse.json({ error: 'That time is no longer available. Please pick another.' }, { status: 409 })
   }
 

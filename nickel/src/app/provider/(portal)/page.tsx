@@ -41,7 +41,7 @@ export default async function SchedulePage() {
     select: { date: true, startTime: true },
   })
   const booked = new Set(bookedRows.map((r) => `${r.date.toISOString().slice(0, 10)}|${r.startTime}`))
-  const availableSlots = upcomingSlots(slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), booked)
+  const availableSlots = upcomingSlots(slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), booked, 14, p.travelBuffer ? 120 : 60)
 
-  return <ScheduleManager slots={slots} bookings={bookings.map(map)} past={pastRows.map(map)} availableSlots={availableSlots} />
+  return <ScheduleManager slots={slots} bookings={bookings.map(map)} past={pastRows.map(map)} availableSlots={availableSlots} travelBuffer={p.travelBuffer} />
 }

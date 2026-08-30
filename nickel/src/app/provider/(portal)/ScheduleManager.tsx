@@ -9,11 +9,21 @@ interface Slot { id: string; dayOfWeek: number; startTime: string; endTime: stri
 interface AvailSlot { date: string; startTime: string; endTime: string }
 interface Booking { id: string; date: string; startTime: string; endTime: string; city: string; status: string; patientName: string; proposedDate?: string | null; proposedStartTime?: string | null }
 
-export default function ScheduleManager({ slots, bookings, past, availableSlots }: { slots: Slot[]; bookings: Booking[]; past: Booking[]; availableSlots: AvailSlot[] }) {
+export default function ScheduleManager({ slots, bookings, past, availableSlots, travelBuffer }: { slots: Slot[]; bookings: Booking[]; past: Booking[]; availableSlots: AvailSlot[]; travelBuffer: boolean }) {
   const router = useRouter()
   const [chatFor, setChatFor] = useState<string | null>(null)
   const [proposeFor, setProposeFor] = useState<string | null>(null)
   const [proposeSlot, setProposeSlot] = useState('')
+  const [buffer, setBuffer] = useState(travelBuffer)
+  const [bufBusy, setBufBusy] = useState(false)
+  async function toggleBuffer(v: boolean) {
+    setBuffer(v); setBufBusy(true)
+    try {
+      const r = await fetch('/api/provider/update', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ travelBuffer: v }) })
+      if (!r.ok) throw new Error()
+      router.refresh()
+    } catch { setBuffer(!v) } finally { setBufBusy(false) }
+  }
   const [nd, setNd] = useState({ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -87,6 +97,10 @@ export default function ScheduleManager({ slots, bookings, past, availableSlots 
       <section className="card">
         <h2 className="text-[16px] font-semibold">Weekly availability</h2>
         <p className="mb-3 mt-1 text-[12px] text-[color:var(--slate)]">Set the days and times you&apos;re open for home visits. Clients book within these windows.</p>
+        <label className="mb-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2.5 text-[13px]">
+          <input type="checkbox" checked={buffer} disabled={bufBusy} onChange={(e) => toggleBuffer(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: 'var(--steel)' }} />
+          <span><b className="text-[color:var(--ink)]">Leave 1 hour between visits</b> <span className="text-[color:var(--slate)]">— bookable slots are spaced 2 hours apart so you have travel time between homes.</span></span>
+        </label>
         {err && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">{err}</div>}
         <div className="mb-3 flex flex-wrap items-end gap-2 text-[13px]">
           <select className="select !w-36" value={nd.dayOfWeek} onChange={(e) => setNd({ ...nd, dayOfWeek: Number(e.target.value) })}>
