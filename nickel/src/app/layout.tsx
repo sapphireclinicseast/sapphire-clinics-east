@@ -27,6 +27,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={`${body.variable} ${display.variable}`}>
       <body style={{ fontFamily: 'var(--font-body)' }}>
+        {/* Capture the install prompt as early as possible so the Install button
+            can offer it even if the event fired before React hydrated. */}
+        <script dangerouslySetInnerHTML={{ __html: "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__nickelInstallPrompt=e;});" }} />
         <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-white/85 backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}

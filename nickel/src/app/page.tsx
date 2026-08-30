@@ -1,4 +1,5 @@
 import HowItWorks from '@/components/HowItWorks'
+import InstallButton from '@/components/InstallButton'
 
 const STEPS = [
   { n: '1', t: 'Tell us your city', d: 'We show therapists who serve your area.' },
@@ -55,6 +56,7 @@ export default function NickelHome() {
             <a href="/provider/login" className="inline-flex items-center gap-2 rounded-xl border border-white/40 px-6 py-3 text-[15px] font-semibold text-white hover:bg-white/10">
               Provider sign in
             </a>
+            <InstallButton />
           </div>
           <p className="mt-4 text-[13px] text-white/80">
             Prefer therapists to come to you? <a href="/requests" className="font-semibold text-white underline underline-offset-2">Post a request</a> with your preferred day and time, and licensed therapists near you will reach out.
