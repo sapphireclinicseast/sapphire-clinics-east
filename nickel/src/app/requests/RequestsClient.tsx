@@ -11,9 +11,10 @@ const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`
 const fmtDate = (ymd: string) => new Date(ymd).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
 const fmtTime = (t: string) => { const [h, m] = t.split(':').map(Number); const ap = h < 12 ? 'AM' : 'PM'; return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${ap}` }
 
-export default function RequestsClient({ walletBalance, defaultCity }: { walletBalance: number; defaultCity: string }) {
+export default function RequestsClient({ loggedIn, walletBalance, defaultCity }: { loggedIn: boolean; walletBalance: number; defaultCity: string }) {
   const [cities, setCities] = useState<string[]>([])
   const [reqs, setReqs] = useState<Req[]>([])
+  const [me, setMe] = useState(loggedIn)
   const [busy, setBusy] = useState(false)
   const [acting, setActing] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -21,23 +22,50 @@ export default function RequestsClient({ walletBalance, defaultCity }: { walletB
   const [f, setF] = useState({ city: defaultCity, profession: '', preferredDate: '', preferredTime: '', flexibility: '', note: '' })
   const set = <K extends keyof typeof f>(k: K, v: string) => setF((s) => ({ ...s, [k]: v }))
 
+  // Inline auth (only reached when a signed-out patient tries to post).
+  const [showAuth, setShowAuth] = useState(false)
+  const [amode, setAmode] = useState<'signup' | 'login'>('signup')
+  const [af, setAf] = useState({ firstName: '', lastName: '', email: '', phone: '', address: '', password: '', confirm: '' })
+  const setA = (k: keyof typeof af, v: string) => setAf((s) => ({ ...s, [k]: v }))
+
   async function load() {
+    if (!me) return
     const d = await fetch('/api/patient/requests').then((r) => r.json()).catch(() => ({ requests: [] }))
     setReqs(d.requests ?? [])
   }
   useEffect(() => {
     fetch('/api/cities').then((r) => r.json()).then((d) => setCities(d.cities ?? [])).catch(() => {})
     load()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function postRequest() {
+    const r = await fetch('/api/patient/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d.error ?? 'Could not post request')
+    setF({ city: f.city, profession: '', preferredDate: '', preferredTime: '', flexibility: '', note: '' })
+    setShowAuth(false)
+    load()
+  }
 
   async function create(e: React.FormEvent) {
-    e.preventDefault(); setErr(null); setBusy(true)
+    e.preventDefault(); setErr(null)
+    if (!f.city) { setErr('Please choose a city.'); return }
+    if (!me) { setShowAuth(true); return } // ask for an account, then post
+    setBusy(true)
+    try { await postRequest() } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
+  }
+
+  async function doAuth(e: React.FormEvent) {
+    e.preventDefault(); setErr(null)
+    if (amode === 'signup') { if (af.password.length < 8) return setErr('Password must be at least 8 characters.'); if (af.password !== af.confirm) return setErr('Passwords do not match.') }
+    setBusy(true)
     try {
-      const r = await fetch('/api/patient/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? 'Could not post request')
-      setF({ city: f.city, profession: '', preferredDate: '', preferredTime: '', flexibility: '', note: '' })
-      load()
+      const url = amode === 'signup' ? '/api/patient/signup' : '/api/patient/login'
+      const body = amode === 'signup' ? { firstName: af.firstName, lastName: af.lastName, email: af.email, phone: af.phone, address: af.address, city: f.city || undefined, password: af.password } : { email: af.email, password: af.password }
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const d = await r.json(); if (!r.ok) throw new Error(d.error ?? 'Failed')
+      setMe(true)
+      await postRequest() // submit the request they were posting
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
 
@@ -105,7 +133,30 @@ export default function RequestsClient({ walletBalance, defaultCity }: { walletB
           <div className="label">What do you need help with? (optional)</div>
           <textarea className="input min-h-[70px]" value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="e.g. post-stroke rehab for my father, twice a week" />
         </div>
-        <div className="flex justify-end"><button className="btn-primary" disabled={busy}>{busy ? 'Posting…' : 'Post request'}</button></div>
+        {!me && showAuth && (
+          <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-4">
+            <div className="text-[13.5px] font-semibold text-[color:var(--ink)]">{amode === 'signup' ? 'Create your account to post' : 'Sign in to post'}</div>
+            <p className="mb-3 mt-0.5 text-[12px] text-[color:var(--slate)]">Your request is posted right after you {amode === 'signup' ? 'sign up' : 'sign in'} — therapists near you will then reach out.</p>
+            <div className="mb-3 flex rounded-xl border border-[color:var(--line)] bg-white p-1 text-[13px]">
+              <button type="button" onClick={() => setAmode('signup')} className={`flex-1 rounded-lg py-2 font-medium ${amode === 'signup' ? 'bg-[color:var(--steel)] text-white' : 'text-[color:var(--slate)]'}`}>New patient</button>
+              <button type="button" onClick={() => setAmode('login')} className={`flex-1 rounded-lg py-2 font-medium ${amode === 'login' ? 'bg-[color:var(--steel)] text-white' : 'text-[color:var(--slate)]'}`}>Sign in</button>
+            </div>
+            <div className="space-y-3">
+              {amode === 'signup' && (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2"><input className="input" placeholder="First name" required value={af.firstName} onChange={(e) => setA('firstName', e.target.value)} /><input className="input" placeholder="Last name" required value={af.lastName} onChange={(e) => setA('lastName', e.target.value)} /></div>
+                  <input className="input" placeholder="Cellphone no." value={af.phone} onChange={(e) => setA('phone', e.target.value)} />
+                  <input className="input" placeholder="Home address (for the visit)" value={af.address} onChange={(e) => setA('address', e.target.value)} />
+                </>
+              )}
+              <input className="input" type="email" placeholder="Email" required value={af.email} onChange={(e) => setA('email', e.target.value)} />
+              <input className="input" type="password" placeholder="Password" required value={af.password} onChange={(e) => setA('password', e.target.value)} />
+              {amode === 'signup' && <input className="input" type="password" placeholder="Confirm password" required value={af.confirm} onChange={(e) => setA('confirm', e.target.value)} />}
+              <button type="button" className="btn-primary w-full" disabled={busy} onClick={doAuth}>{busy ? 'Please wait…' : amode === 'signup' ? 'Create account & post request' : 'Sign in & post request'}</button>
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end"><button className="btn-primary" disabled={busy}>{busy ? 'Posting…' : me ? 'Post request' : 'Continue'}</button></div>
       </form>
 
       {walletBalance > 0 && (

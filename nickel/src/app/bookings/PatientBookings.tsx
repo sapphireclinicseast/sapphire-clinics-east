@@ -12,6 +12,7 @@ interface B {
 }
 interface WalletTxn { id: string; amount: number; type: string; note: string | null; createdAt: string }
 interface Wallet { balance: number; txns: WalletTxn[] }
+interface Consult { id: string; date: string; startTime: string; status: string; mode: string; doctorName: string; clinic: string | null; referralIssued: boolean }
 const LEDGER_LABEL: Record<string, string> = { REFUND: 'Refund', REDEEM: 'Applied to booking', ADJUSTMENT: 'Adjustment' }
 const PROF: Record<string, string> = { PT: 'Physical Therapist', OT: 'Occupational Therapist', SLP: 'Speech-Language Pathologist', SPED: 'Special Education', PSYCHOLOGY: 'Psychologist', MD: 'Medical Doctor', ORTHOSIS: 'Orthosis / Prosthesis' }
 const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`
@@ -22,7 +23,7 @@ const STATUS: Record<string, [string, string]> = {
   CONFIRMED: ['Confirmed', 'bg-emerald-50 text-emerald-700'], COMPLETED: ['Completed', 'bg-emerald-50 text-emerald-700'], CANCELLED: ['Cancelled', 'bg-red-50 text-red-700'],
 }
 
-export default function PatientBookings({ bookings, wallet }: { bookings: B[]; wallet: Wallet }) {
+export default function PatientBookings({ bookings, wallet, consults = [] }: { bookings: B[]; wallet: Wallet; consults?: Consult[] }) {
   const router = useRouter()
   const [openChat, setOpenChat] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -85,9 +86,36 @@ export default function PatientBookings({ bookings, wallet }: { bookings: B[]; w
           )}
         </div>
       )}
-      {bookings.length === 0 ? (
+      {consults.length > 0 && (
+        <div className="mb-4">
+          <h2 className="mb-2 text-[15px] font-semibold text-[color:var(--ink)]">Doctor consults</h2>
+          <div className="space-y-2">
+            {consults.map((c) => (
+              <div key={c.id} className="card">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="text-[14px] font-semibold text-[color:var(--ink)]">{c.doctorName}</div>
+                    <div className="text-[12px] text-[color:var(--slate)]">{c.mode === 'TELECONSULT' ? 'Teleconsult (video)' : 'In-person consult'}</div>
+                    <div className="mt-1 text-[13.5px] text-[color:var(--ink)]">{fmtDate(c.date)} · {fmtTime(c.startTime)}</div>
+                    {c.mode === 'IN_PERSON' && c.clinic && <div className="text-[12px] text-[color:var(--slate)]">{c.clinic}</div>}
+                  </div>
+                  <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${(STATUS[c.status] ?? ['', ''])[1]}`}>{(STATUS[c.status] ?? [c.status])[0]}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {c.mode === 'TELECONSULT' && (c.status === 'CONFIRMED' || c.status === 'PAID') && (
+                    <a href={`/consult/${c.id}/room`} className="rounded-lg bg-[color:var(--steel)] px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-[color:var(--steel-deep)]">Join teleconsult</a>
+                  )}
+                  {c.referralIssued && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[12px] font-semibold text-emerald-700"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Referral issued — use it when booking PT</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {bookings.length === 0 && consults.length === 0 ? (
         <div className="card text-center"><p className="text-[13px] text-[color:var(--slate)]">You have no bookings yet.</p><a href="/book" className="btn-primary mt-3 inline-block">Book a visit</a></div>
-      ) : (
+      ) : bookings.length === 0 ? null : (
         <div className="space-y-3">
           {bookings.map((b) => (
             <div key={b.id} className="card">

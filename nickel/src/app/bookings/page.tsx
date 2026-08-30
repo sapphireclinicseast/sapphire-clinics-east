@@ -10,13 +10,18 @@ export default async function BookingsPage() {
   const patient = await getSessionPatient()
   if (!patient) redirect('/book')
 
-  const [rows, walletTxns] = await Promise.all([
+  const [rows, walletTxns, consultRows] = await Promise.all([
     prisma.booking.findMany({
       where: { patientId: patient.id },
       orderBy: [{ date: 'desc' }, { startTime: 'desc' }],
       include: { provider: { select: { firstName: true, lastName: true, postNominals: true, profession: true } } },
     }),
     prisma.walletTransaction.findMany({ where: { patientId: patient.id }, orderBy: { createdAt: 'desc' }, take: 12 }),
+    prisma.consult.findMany({
+      where: { patientId: patient.id, status: { notIn: ['PENDING'] } },
+      orderBy: [{ date: 'desc' }],
+      include: { doctor: { select: { firstName: true, lastName: true, postNominals: true, clinicName: true, clinicAddress: true } } },
+    }),
   ])
 
   const bookings = rows.map((b) => ({
@@ -39,5 +44,13 @@ export default async function BookingsPage() {
     txns: walletTxns.map((t) => ({ id: t.id, amount: Number(t.amount), type: t.type, note: t.note, createdAt: t.createdAt.toISOString() })),
   }
 
-  return <PatientBookings bookings={bookings} wallet={wallet} />
+  const consults = consultRows.map((c) => ({
+    id: c.id,
+    date: c.date.toISOString().slice(0, 10), startTime: c.startTime, status: c.status, mode: c.mode,
+    doctorName: `Dr. ${c.doctor.firstName} ${c.doctor.lastName}${c.doctor.postNominals ? `, ${c.doctor.postNominals}` : ''}`,
+    clinic: c.doctor.clinicName ? `${c.doctor.clinicName}${c.doctor.clinicAddress ? ` · ${c.doctor.clinicAddress}` : ''}` : null,
+    referralIssued: c.referralIssued,
+  }))
+
+  return <PatientBookings bookings={bookings} wallet={wallet} consults={consults} />
 }
