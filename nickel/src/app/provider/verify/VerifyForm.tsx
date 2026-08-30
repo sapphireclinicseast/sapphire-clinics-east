@@ -121,7 +121,7 @@ function PhotoCapture({ label, hint, value, onChange, facing, guide }: {
             <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-lg border border-[color:var(--line)] bg-black" style={{ minHeight: 200, objectFit: 'cover', ...(guide === 'face' ? { transform: 'scaleX(-1)' } : {}) }} />
             {guide === 'face' && (
               <>
-                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: '58%', height: '82%', border: '2px dashed rgba(255,255,255,0.9)', borderRadius: '50% / 50%' }} />
+                <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ height: '84%', aspectRatio: '5 / 7', border: '2px dashed rgba(255,255,255,0.9)', borderRadius: '50%' }} />
                 <div className="pointer-events-none absolute bottom-2 left-0 right-0 text-center text-[11px] font-medium text-white/90" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>Align your face within the oval</div>
               </>
             )}
