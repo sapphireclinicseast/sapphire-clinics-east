@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionProviderId } from '@/lib/auth'
+import { notify } from '@/lib/notify'
 
 // Provider acts on one of their bookings.
 // action: 'confirm' (PAID→CONFIRMED) | 'decline' (→CANCELLED) | 'complete' (CONFIRMED→COMPLETED)
@@ -11,7 +12,10 @@ export async function POST(req: NextRequest) {
   const bookingId = String(b.bookingId ?? '')
   if (!bookingId) return NextResponse.json({ error: 'Missing bookingId' }, { status: 400 })
 
-  const booking = await prisma.booking.findFirst({ where: { id: bookingId, providerId: pid }, select: { id: true, status: true } })
+  const booking = await prisma.booking.findFirst({
+    where: { id: bookingId, providerId: pid },
+    select: { id: true, status: true, patientId: true, date: true, startTime: true, provider: { select: { firstName: true, lastName: true } } },
+  })
   if (!booking) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
 
   let next: string | null = null
@@ -23,5 +27,13 @@ export async function POST(req: NextRequest) {
   await prisma.booking.update({ where: { id: bookingId }, data: { status: next as never } })
   // A declined/cancelled paid booking drops out of settlements automatically
   // (the wallet query only sums status='PAID'); refunds follow Annex A manually.
+
+  const therapist = `${booking.provider.firstName} ${booking.provider.lastName}`
+  const when = `${booking.date.toISOString().slice(0, 10)} at ${booking.startTime}`
+  if (next === 'CONFIRMED') {
+    await notify({ to: 'PATIENT', patientId: booking.patientId, bookingId: booking.id, type: 'BOOKING_CONFIRMED', title: 'Your visit is confirmed', body: `${therapist} confirmed your home visit on ${when}.` })
+  } else if (next === 'CANCELLED') {
+    await notify({ to: 'PATIENT', patientId: booking.patientId, bookingId: booking.id, type: 'BOOKING_CANCELLED', title: 'Booking cancelled', body: `${therapist} could not take your visit on ${when}. Any payment will be refunded.` })
+  }
   return NextResponse.json({ ok: true, status: next })
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionPatientId } from '@/lib/auth'
+import { notify } from '@/lib/notify'
 
 function addHour(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number)
@@ -14,12 +15,14 @@ export async function POST(req: NextRequest) {
   const b = (await req.json().catch(() => ({}))) as { bookingId?: string; accept?: boolean }
   const bookingId = String(b.bookingId ?? '')
 
-  const booking = await prisma.booking.findFirst({ where: { id: bookingId, patientId } })
+  const booking = await prisma.booking.findFirst({ where: { id: bookingId, patientId }, include: { patient: { select: { firstName: true, lastName: true } } } })
   if (!booking) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
   if (!booking.proposedDate || !booking.proposedStartTime) return NextResponse.json({ error: 'No proposed time to respond to.' }, { status: 409 })
 
+  const patientName = `${booking.patient.firstName} ${booking.patient.lastName}`
   if (b.accept) {
     // Move the visit to the proposed time and confirm it.
+    const when = `${booking.proposedDate.toISOString().slice(0, 10)} at ${booking.proposedStartTime}`
     await prisma.booking.update({
       where: { id: bookingId },
       data: {
@@ -27,9 +30,11 @@ export async function POST(req: NextRequest) {
         status: 'CONFIRMED', proposedDate: null, proposedStartTime: null, proposedAt: null,
       },
     })
+    await notify({ to: 'PROVIDER', providerId: booking.providerId, bookingId: booking.id, type: 'PROPOSAL_ACCEPTED', title: 'New time accepted', body: `${patientName} accepted the new time — the visit is set for ${when}.` })
     return NextResponse.json({ ok: true, accepted: true })
   }
   // Declined — clear the proposal, keep the original time (provider can confirm or decline).
   await prisma.booking.update({ where: { id: bookingId }, data: { proposedDate: null, proposedStartTime: null, proposedAt: null } })
+  await notify({ to: 'PROVIDER', providerId: booking.providerId, bookingId: booking.id, type: 'PROPOSAL_DECLINED', title: 'Proposed time declined', body: `${patientName} kept the original time. You can confirm or propose another slot.` })
   return NextResponse.json({ ok: true, accepted: false })
 }

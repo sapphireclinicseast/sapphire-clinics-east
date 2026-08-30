@@ -217,6 +217,21 @@ model Message {
   @@index([bookingId, createdAt])
 }
 
+model Notification {
+  id                  String   @id @default(cuid())
+  recipientPatientId  String?
+  recipientProviderId String?
+  bookingId           String?
+  type                String   // BOOKING_PAID | BOOKING_CONFIRMED | RESCHEDULE_PROPOSED | PROPOSAL_ACCEPTED | PROPOSAL_DECLINED | BOOKING_CANCELLED
+  title               String
+  body                String?
+  readAt              DateTime?
+  createdAt           DateTime @default(now())
+
+  @@index([recipientPatientId, createdAt])
+  @@index([recipientProviderId, createdAt])
+}
+
 // ── Tickets (concerns raised by providers or patients) ───────────────────────
 model Ticket {
   id          String       @id @default(cuid())

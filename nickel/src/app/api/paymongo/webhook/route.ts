@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPaymongoSignature, hasWebhookSecret } from '@/lib/paymongo'
 import { computeSplit } from '@/lib/earnings'
+import { notify } from '@/lib/notify'
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const booking = await prisma.booking.findFirst({
     where: { paymongoLinkId: linkId },
-    select: { id: true, status: true, amount: true },
+    select: { id: true, status: true, amount: true, providerId: true, date: true, startTime: true, patient: { select: { firstName: true, lastName: true } } },
   })
   if (!booking) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
 
@@ -48,6 +49,12 @@ export async function POST(req: NextRequest) {
     await prisma.booking.update({
       where: { id: booking.id },
       data: { status: 'PAID', paidAt: new Date(), platformFee: fee, withholdingTax: cwt, providerNet: net },
+    })
+    const when = `${booking.date.toISOString().slice(0, 10)} at ${booking.startTime}`
+    await notify({
+      to: 'PROVIDER', providerId: booking.providerId, bookingId: booking.id, type: 'BOOKING_PAID',
+      title: 'New booking to confirm',
+      body: `${booking.patient.firstName} ${booking.patient.lastName} booked and paid for a visit on ${when}.`,
     })
   }
   return NextResponse.json({ ok: true })
