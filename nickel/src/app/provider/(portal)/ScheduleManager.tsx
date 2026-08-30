@@ -9,7 +9,7 @@ interface Slot { id: string; dayOfWeek: number; startTime: string; endTime: stri
 interface AvailSlot { date: string; startTime: string; endTime: string }
 interface Booking { id: string; date: string; startTime: string; endTime: string; city: string; status: string; patientName: string; proposedDate?: string | null; proposedStartTime?: string | null }
 
-export default function ScheduleManager({ slots, bookings, past, availableSlots, travelBuffer }: { slots: Slot[]; bookings: Booking[]; past: Booking[]; availableSlots: AvailSlot[]; travelBuffer: boolean }) {
+export default function ScheduleManager({ slots, bookings, availableSlots, travelBuffer }: { slots: Slot[]; bookings: Booking[]; availableSlots: AvailSlot[]; travelBuffer: boolean }) {
   const router = useRouter()
   const [chatFor, setChatFor] = useState<string | null>(null)
   const [proposeFor, setProposeFor] = useState<string | null>(null)
@@ -53,7 +53,6 @@ export default function ScheduleManager({ slots, bookings, past, availableSlots,
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
   const fmtTime = (t: string) => { const [h, m] = t.split(':').map(Number); const ap = h < 12 ? 'AM' : 'PM'; return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${ap}` }
   const toConfirm = bookings.filter((b) => b.status === 'PAID')
-  const confirmed = bookings.filter((b) => b.status === 'CONFIRMED')
 
   async function propose(id: string) {
     if (!proposeSlot) return
@@ -151,42 +150,13 @@ export default function ScheduleManager({ slots, bookings, past, availableSlots,
         </section>
       )}
 
-      <section className="card">
-        <h2 className="text-[16px] font-semibold">Confirmed visits</h2>
-        {confirmed.length === 0 ? (
-          <p className="mt-2 text-[13px] text-[color:var(--slate)]">No confirmed visits yet.</p>
-        ) : (
-          <div className="mt-3 space-y-2">
-            {confirmed.map((b) => (
-              <div key={b.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--line)] px-3 py-2 text-[13px]">
-                <span className="font-semibold text-[color:var(--ink)]">{fmtDate(b.date)} · {fmtTime(b.startTime)}</span>
-                <span className="text-[color:var(--ink)]">{b.patientName}</span>
-                <span className="text-[color:var(--slate)]">· {b.city}</span>
-                <span className="ml-auto rounded-full bg-[color:var(--steel-soft,#eaf1fa)] px-2.5 py-0.5 text-[11px] font-semibold text-[color:var(--steel)]">Confirmed</span>
-                <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50" disabled={acting === b.id} onClick={() => act(b.id, 'complete')}>{acting === b.id ? '…' : 'Mark completed'}</button>
-                {actions(b)}
-              </div>
-            ))}
-          </div>
-        )}
+      <section className="card flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-[15px] font-semibold text-[color:var(--ink)]">Your confirmed visits & history moved to Sessions</h2>
+          <p className="text-[12.5px] text-[color:var(--slate)]">Track confirmed visits, mark them complete, and filter by date there.</p>
+        </div>
+        <a href="/provider/sessions" className="btn-outline shrink-0">Go to Sessions →</a>
       </section>
-
-      {past.length > 0 && (
-        <section className="card">
-          <h2 className="text-[16px] font-semibold">Session history</h2>
-          <div className="mt-3 space-y-1.5">
-            {past.map((b) => (
-              <div key={b.id} className="flex flex-wrap items-center gap-2 border-b border-[color:var(--line)] pb-1.5 text-[13px] last:border-0">
-                <span className="tabular-nums text-[color:var(--slate)]">{fmtDate(b.date)}</span>
-                <span className="text-[color:var(--ink)]">{b.patientName}</span>
-                <span className="text-[color:var(--slate)]">· {b.city}</span>
-                <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${b.status === 'CANCELLED' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{b.status === 'CANCELLED' ? 'Cancelled' : 'Completed'}</span>
-                {b.status !== 'CANCELLED' && <a href={`/provider/notes/${b.id}`} className="text-[12px] font-semibold text-[color:var(--steel)] hover:underline">Notes / documents</a>}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   )
 }

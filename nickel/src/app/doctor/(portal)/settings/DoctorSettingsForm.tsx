@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { computeSplit } from '@/lib/earnings'
+import { PH_BANKS } from '@/lib/banks'
 
 interface Init {
   consultFee: string; teleconsultEnabled: boolean; inPersonEnabled: boolean
@@ -9,6 +10,7 @@ interface Init {
   postNominals: string; specialization: string; prcNumber: string; ptrNumber: string; phone: string
   signature: string
   bankName: string; bankAccountNo: string; bankAccountName: string; gcashNumber: string
+  payoutMethod: string
 }
 function readFile(file: File): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(file) })
@@ -81,8 +83,20 @@ export default function DoctorSettingsForm({ init }: { init: Init }) {
 
       <section className="card space-y-3">
         <h2 className="text-[16px] font-semibold">Payout details</h2>
+        <div>
+          <div className="label">Where do you want your earnings settled?</div>
+          <div className="flex flex-wrap gap-3 text-[13px]">
+            <label className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 ${f.payoutMethod === 'bank' ? 'border-[color:var(--steel)] bg-[color:var(--mist)]' : 'border-[color:var(--line-2)]'}`}>
+              <input type="radio" name="docPayoutMethod" checked={f.payoutMethod === 'bank'} onChange={() => set('payoutMethod', 'bank')} style={{ accentColor: 'var(--steel)' }} /> Bank account
+            </label>
+            <label className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 ${f.payoutMethod === 'gcash' ? 'border-[color:var(--steel)] bg-[color:var(--mist)]' : 'border-[color:var(--line-2)]'}`}>
+              <input type="radio" name="docPayoutMethod" checked={f.payoutMethod === 'gcash'} onChange={() => set('payoutMethod', 'gcash')} style={{ accentColor: 'var(--steel)' }} /> GCash
+            </label>
+          </div>
+        </div>
+        <datalist id="ph-banks-doc">{PH_BANKS.map((b) => <option key={b} value={b} />)}</datalist>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div><div className="label">Bank name</div><input className="input" value={f.bankName} onChange={(e) => set('bankName', e.target.value)} /></div>
+          <div><div className="label">Bank name</div><input className="input" list="ph-banks-doc" value={f.bankName} onChange={(e) => set('bankName', e.target.value)} placeholder="Start typing to search…" /></div>
           <div><div className="label">Bank account no.</div><input className="input" value={f.bankAccountNo} onChange={(e) => set('bankAccountNo', e.target.value)} /></div>
           <div><div className="label">Account name</div><input className="input" value={f.bankAccountName} onChange={(e) => set('bankAccountName', e.target.value)} /></div>
           <div><div className="label">GCash number</div><input className="input" value={f.gcashNumber} onChange={(e) => set('gcashNumber', e.target.value)} /></div>

@@ -163,6 +163,7 @@ model Provider {
   bankAccountName String?
   gcashNumber  String?
   gcashName    String?
+  payoutMethod String?  @default("bank") // preferred settlement: "bank" or "gcash"
 
   // Identity & credential verification (reviewed by SCEI before the account goes live)
   verificationStatus    VerificationStatus @default(UNVERIFIED)
@@ -516,6 +517,7 @@ model Doctor {
   bankAccountNo String?
   bankAccountName String?
   gcashNumber   String?
+  payoutMethod  String?  @default("bank") // preferred settlement: "bank" or "gcash"
 
   // Verification (SCEI approves before the doctor is bookable)
   verificationStatus VerificationStatus @default(UNVERIFIED)

@@ -13,5 +13,6 @@ export default async function DoctorSettingsPage() {
     postNominals: d.postNominals ?? '', specialization: d.specialization ?? '', prcNumber: d.prcNumber ?? '', ptrNumber: d.ptrNumber ?? '', phone: d.phone ?? '',
     signature: d.signature ?? '',
     bankName: d.bankName ?? '', bankAccountNo: d.bankAccountNo ?? '', bankAccountName: d.bankAccountName ?? '', gcashNumber: d.gcashNumber ?? '',
+    payoutMethod: d.payoutMethod ?? 'bank',
   }} />
 }

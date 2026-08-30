@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import SignatureField from '@/components/SignatureField'
 import NetCalculator from '@/components/NetCalculator'
+import { PH_BANKS } from '@/lib/banks'
 
 interface Init {
   rate: string; transpoIncluded: boolean; dob: string
@@ -12,6 +13,7 @@ interface Init {
   awards: string[]; pptaNumber: string; pptaMember: boolean
   prcNumber: string; ptrNumber: string; signature: string
   bankName: string; bankAccountNo: string; bankAccountName: string; gcashNumber: string; gcashName: string
+  payoutMethod: string
 }
 
 const CASE_CATEGORIES = ['Musculoskeletal', 'Neurological', 'Cardiopulmonary', 'Pediatric / Developmental', 'Geriatric', 'Sports', 'Women’s Health', 'Post-surgical / Ortho', 'Pain management']
@@ -189,8 +191,22 @@ export default function SettingsForm({ init }: { init: Init }) {
       <section className="card">
         <h2 className="text-[16px] font-semibold">Payout details</h2>
         <p className="mb-3 mt-1 text-[12px] text-[color:var(--slate)]">Where SCEI sends your earnings after clients pay.</p>
+
+        <div className="mb-3">
+          <div className="label">Where do you want your earnings settled?</div>
+          <div className="flex flex-wrap gap-3 text-[13px]">
+            <label className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 ${f.payoutMethod === 'bank' ? 'border-[color:var(--steel)] bg-[color:var(--mist)]' : 'border-[color:var(--line-2)]'}`}>
+              <input type="radio" name="payoutMethod" checked={f.payoutMethod === 'bank'} onChange={() => set('payoutMethod', 'bank')} style={{ accentColor: 'var(--steel)' }} /> Bank account
+            </label>
+            <label className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 ${f.payoutMethod === 'gcash' ? 'border-[color:var(--steel)] bg-[color:var(--mist)]' : 'border-[color:var(--line-2)]'}`}>
+              <input type="radio" name="payoutMethod" checked={f.payoutMethod === 'gcash'} onChange={() => set('payoutMethod', 'gcash')} style={{ accentColor: 'var(--steel)' }} /> GCash
+            </label>
+          </div>
+        </div>
+
+        <datalist id="ph-banks">{PH_BANKS.map((b) => <option key={b} value={b} />)}</datalist>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div><div className="label">Bank name</div><input className="input" value={f.bankName} onChange={(e) => set('bankName', e.target.value)} /></div>
+          <div><div className="label">Bank name</div><input className="input" list="ph-banks" value={f.bankName} onChange={(e) => set('bankName', e.target.value)} placeholder="Start typing to search…" /></div>
           <div><div className="label">Bank account no.</div><input className="input" value={f.bankAccountNo} onChange={(e) => set('bankAccountNo', e.target.value)} /></div>
           <div><div className="label">Account name</div><input className="input" value={f.bankAccountName} onChange={(e) => set('bankAccountName', e.target.value)} /></div>
           <div className="hidden sm:block" />

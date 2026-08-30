@@ -12,6 +12,7 @@ export async function PATCH(req: NextRequest) {
   const str = (k: string) => { if (b[k] !== undefined) data[k] = b[k] === null || b[k] === '' ? null : String(b[k]).slice(0, 200) }
   ;['phone', 'prcNumber', 'ptrNumber', 'postNominals', 'specialization', 'clinicName', 'clinicAddress', 'clinicCity', 'bankName', 'bankAccountNo', 'bankAccountName', 'gcashNumber'].forEach(str)
   if (b.consultFee !== undefined) data.consultFee = b.consultFee === null || b.consultFee === '' ? null : Number(b.consultFee)
+  if (b.payoutMethod === 'bank' || b.payoutMethod === 'gcash') data.payoutMethod = b.payoutMethod
   if (typeof b.teleconsultEnabled === 'boolean') data.teleconsultEnabled = b.teleconsultEnabled
   if (typeof b.inPersonEnabled === 'boolean') data.inPersonEnabled = b.inPersonEnabled
   if (typeof b.photo === 'string' && b.photo.startsWith('data:')) data.photo = b.photo

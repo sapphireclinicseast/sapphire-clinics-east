@@ -12,6 +12,7 @@ export async function PATCH(req: NextRequest) {
 
   const str = (k: string) => { if (k in b) data[k] = (String(b[k] ?? '').trim()) || null }
   ;['firstName', 'lastName', 'phone', 'photo', 'prcNumber', 'ptrNumber', 'pptaNumber', 'signature', 'bankName', 'bankAccountNo', 'bankAccountName', 'gcashNumber', 'gcashName'].forEach(str)
+  if (b.payoutMethod === 'bank' || b.payoutMethod === 'gcash') data.payoutMethod = b.payoutMethod
 
   // Practice profile
   const strArr = (k: string) => { if (Array.isArray(b[k])) data[k] = (b[k] as unknown[]).map((x) => String(x).trim()).filter(Boolean).slice(0, 40) }

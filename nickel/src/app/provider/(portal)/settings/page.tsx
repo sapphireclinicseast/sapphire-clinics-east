@@ -32,6 +32,7 @@ export default async function SettingsPage() {
         bankAccountName: p.bankAccountName ?? '',
         gcashNumber: p.gcashNumber ?? '',
         gcashName: p.gcashName ?? '',
+        payoutMethod: p.payoutMethod ?? 'bank',
       }}
     />
   )
