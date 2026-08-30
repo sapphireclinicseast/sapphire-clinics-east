@@ -221,17 +221,6 @@
 
   <!-- Content -->
   <div class="hero-content">
-    <div class="reveal">
-      <div class="hero-seal-block">
-        <img class="hero-seal" src="npc-seal.png?v=26"
-             alt="National Privacy Commission — DPO/DPS Registered (Data Privacy Seal)">
-        <p class="hero-seal-text">Sapphire Clinics East, Inc. is a registered company compliant with the <strong>Data Privacy Act of 2012</strong>, under the <strong>National Privacy Commission</strong>.</p>
-      </div>
-    </div>
-
-    <!-- Brands operated under the corporation (populated by JS) -->
-    <div class="hero-brands reveal delay-1" id="heroBrands"></div>
-
     <h1 class="hero-title reveal delay-2">
       Rehab for Every Age,<br>Every Stage.
     </h1>
@@ -244,6 +233,12 @@
       <button class="btn btn-white btn-lg" onclick="scrollToSection('about')">
         Learn More
       </button>
+    </div>
+
+    <!-- Press / featured -->
+    <div class="hero-press reveal delay-4">
+      <span>As featured in</span>
+      <span class="hero-press-chip"><img src="press/rappler.png" alt="Rappler"><b>Rappler</b></span>
     </div>
 
     <!-- Stats bar (populated by JS) -->
@@ -1091,6 +1086,51 @@
 ================================================================ -->
 <button class="scroll-top" id="scrollTop" aria-label="Scroll to top">↑</button>
 
+
+<!-- Cookie Consent Banner -->
+<style>
+  .hero-press{display:inline-flex;align-items:center;gap:13px;margin-top:26px;flex-wrap:wrap}
+  .hero-press>span{color:#fff;opacity:.82;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+  .hero-press-chip{display:inline-flex;align-items:center;gap:9px;background:#fff;border-radius:100px;padding:7px 17px 7px 13px;box-shadow:0 8px 22px -8px rgba(0,0,0,.45)}
+  .hero-press-chip img{height:22px;width:auto;display:block}
+  .hero-press-chip b{font-family:'DM Sans','Inter',sans-serif;font-size:16px;font-weight:800;color:#ea5a1b;letter-spacing:-.01em}
+  .cookie-consent{position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;background:#fff;border:1px solid #dde6d4;border-radius:16px;box-shadow:0 16px 40px -12px rgba(0,0,0,.28);padding:18px 22px;max-width:940px;margin:0 auto;animation:ccUp .35s ease}
+  @keyframes ccUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  .cc-inner{display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:space-between}
+  .cc-text{margin:0;font-size:14px;color:#3a4b46;line-height:1.55;flex:1 1 340px}
+  .cc-text b{color:#244952}
+  .cc-text a{color:#4a8073;font-weight:600;text-decoration:underline}
+  .cc-actions{display:flex;gap:10px;flex:0 0 auto}
+  .cc-btn{font-family:inherit;font-weight:700;font-size:14px;padding:11px 26px;border-radius:100px;cursor:pointer;border:1px solid transparent;transition:.2s;white-space:nowrap}
+  .cc-accept{background:#4a8073;color:#fff}
+  .cc-accept:hover{background:#244952}
+  .cc-decline{background:#fff;color:#244952;border:1px solid #cfdac4}
+  .cc-decline:hover{background:#f0f4e9}
+  @media(max-width:560px){.cc-actions{flex:1 1 100%}.cc-btn{flex:1}}
+</style>
+<div id="cookieConsent" class="cookie-consent" role="dialog" aria-live="polite" aria-label="Cookie consent" hidden>
+  <div class="cc-inner">
+    <p class="cc-text">We use cookies to keep our site working and to improve your experience. By clicking <b>Accept</b>, you agree to our use of cookies. Read our <a href="/privacy-policy/">Privacy Policy</a>.</p>
+    <div class="cc-actions">
+      <button type="button" class="cc-btn cc-decline" onclick="setCookieConsent('declined')">Decline</button>
+      <button type="button" class="cc-btn cc-accept" onclick="setCookieConsent('accepted')">Accept</button>
+    </div>
+  </div>
+</div>
+<script>
+  (function(){
+    var KEY='scei_cookie_consent';
+    var el=document.getElementById('cookieConsent');
+    if(!el)return;
+    var saved=null;
+    try{saved=localStorage.getItem(KEY);}catch(e){}
+    if(!saved){el.hidden=false;}
+    window.setCookieConsent=function(v){
+      try{localStorage.setItem(KEY,v);}catch(e){}
+      el.hidden=true;
+    };
+  })();
+</script>
 
 <!-- JavaScript -->
 <script src="js/main.js?v=33"></script>
