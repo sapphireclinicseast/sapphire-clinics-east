@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadCancellationFees, pairFeesToLogs } from '@/lib/cancellation-fees'
 
 const HR_URLS = [
   process.env.HR_PLATFORM_URL,
@@ -279,6 +280,15 @@ export async function GET(req: NextRequest) {
     // the ones it stopped counting.
     const windowStart = new Date(today.getTime() - CANCELLATION_WINDOW_DAYS * 24 * 60 * 60 * 1000)
 
+    // Whether each fee-bearing cancellation has been settled, from POS orders in
+    // the Accounting Hub. One call for the whole page rather than per patient.
+    // Null means we could not ask — rendered as "unknown", never as "unpaid".
+    const feeIndex = await loadCancellationFees(
+      patients.map(p => ({ id: p.id, firstName: p.firstName, lastName: p.lastName })),
+      windowStart.toISOString(),
+      branch ? [branch] : null,
+    )
+
     const results = patients.map(p => {
       const firstSession = p.schedules[0]
       const activeLogs = p.cancellationLogs.filter(l => !l.deletedAt)
@@ -299,6 +309,21 @@ export async function GET(req: NextRequest) {
       const windowLogs = countedLogs.filter(l => new Date(l.createdAt) >= windowStart)
       const windowUsed = windowLogs.length
       const freeRemaining = Math.max(0, FREE_CANCELLATIONS - windowUsed)
+
+      // Which specific logs a fee is actually owed on: the 3rd onward inside the
+      // window. Assigned OLDEST FIRST — the first two chronologically are the
+      // free ones, so as the window rolls forward and an old log ages out, the
+      // next one becomes free rather than the newest arbitrarily being charged.
+      // Ordering by id or by insertion would make "which two were free" drift.
+      const feeBearingLogs = [...windowLogs]
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .slice(FREE_CANCELLATIONS)
+      const feeBearingIds = new Set(feeBearingLogs.map(l => l.id))
+
+      // Settled fees, oldest cancellation paired with oldest payment.
+      const paidFees = feeIndex
+        ? pairFeesToLogs(feeBearingLogs, feeIndex.byPatient.get(p.id) ?? [])
+        : new Map()
 
       // A patient can have a long history and still have nothing inside the
       // window. Left unsaid, a 0/2 sitting next to a lifetime total of 7 reads
@@ -335,6 +360,18 @@ export async function GET(req: NextRequest) {
           sourceStatus: l.sourceStatus,
           countsToward: l.countsToward,
           excludeReason: l.excludeReason,
+          // True when a cancellation fee is owed on THIS log (3rd onward in the
+          // rolling window). Free ones and non-counting rows are never fee-bearing.
+          feeBearing: feeBearingIds.has(l.id),
+          // The POS order that settled it, when one was found.
+          feePaid: paidFees.get(l.id)
+            ? {
+                orderNumber: paidFees.get(l.id)!.orderNumber,
+                paidAt: paidFees.get(l.id)!.paidAt,
+                amount: paidFees.get(l.id)!.amount,
+                lineName: paidFees.get(l.id)!.lineName,
+              }
+            : null,
           isValid: l.isValid,
           proofUrl: l.proofUrl,
           remarks: l.remarks,
@@ -346,7 +383,16 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ patients: results, total: results.length })
+    return NextResponse.json({
+      patients: results,
+      total: results.length,
+      // ok:false = the Accounting Hub could not be reached. The UI must show
+      // "not checked", never "unpaid" — a failed fetch must not send front desk
+      // to collect money a patient has already handed over.
+      feeLookup: feeIndex
+        ? { ok: true, patterns: feeIndex.patterns, matched: feeIndex.total }
+        : { ok: false },
+    })
   }
 
   return NextResponse.json({ error: 'Unknown tab' }, { status: 400 })

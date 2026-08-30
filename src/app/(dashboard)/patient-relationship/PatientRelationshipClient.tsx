@@ -973,6 +973,9 @@ function CancellationTab({ branch }: { branch: string }) {
   const [deleting, setDeleting] = useState<{ logId: string; reason: string } | null>(null)
   const [qrModal, setQrModal] = useState<{ logId: string; url: string } | null>(null)
   const [qrUploaded, setQrUploaded] = useState(false)
+  // Whether the POS fee check ran, and what it matched on. Drives the difference
+  // between "fee unpaid" and "we couldn't check".
+  const [feeLookup, setFeeLookup] = useState<{ ok: boolean; patterns?: string[]; matched?: number } | null>(null)
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -980,7 +983,7 @@ function CancellationTab({ branch }: { branch: string }) {
     if (branch) params.set('branch', branch)
     fetch(`/api/patient-relationship?${params}`)
       .then(r => r.json())
-      .then(d => { setPatients(d.patients || []); setLoading(false) })
+      .then(d => { setPatients(d.patients || []); setFeeLookup(d.feeLookup ?? null); setLoading(false) })
       .catch(() => setLoading(false))
   }, [branch])
 
@@ -1074,8 +1077,28 @@ function CancellationTab({ branch }: { branch: string }) {
       <div className="rounded-lg p-3 text-xs" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
         <strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> in any <strong>rolling 6-month period</strong> &mdash; counted over the last 180 days, so older logs age out. After that, a cancellation fee applies.<br />
         <strong>Not counted:</strong> reschedules, and any cancellation front desk waived when logging it (the reason is shown on the log).<br />
+        <strong>Fees:</strong> owed from the <strong>3rd cancellation onward</strong> in the window; paid/unpaid is read from POS orders in the Accounting Hub.<br />
         <strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.
       </div>
+
+      {/* If the lookup ran but matched NOTHING, every fee-bearing row would read
+          "unpaid" — which looks like a fact and isn't. Far more likely the POS
+          line is named something this doesn't recognise. Say so loudly rather
+          than letting front desk chase patients who already paid. */}
+      {feeLookup?.ok && feeLookup.matched === 0 && (
+        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+          <strong>No cancellation-fee lines found in POS.</strong> Fee status below may be wrong &mdash;
+          treat &quot;unpaid&quot; as unverified until this is sorted. Looked for order lines named{' '}
+          {(feeLookup.patterns ?? []).map(x => `"${x}"`).join(', ') || '(none configured)'}. If your POS calls it
+          something else, set <code>FEE_NAME_PATTERN</code> on the Accounting Hub to match.
+        </div>
+      )}
+      {feeLookup?.ok === false && (
+        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569' }}>
+          Could not reach the Accounting Hub, so fee payments were not checked. Rows show
+          &quot;not checked&quot; rather than unpaid.
+        </div>
+      )}
 
       <div className="flex items-center gap-3 flex-wrap">
         <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
@@ -1216,6 +1239,31 @@ function CancellationTab({ branch }: { branch: string }) {
                                       <span className="ml-2 px-1.5 py-0.5 rounded" style={{ background: '#F1F5F9', color: '#64748B', fontWeight: 600 }}>
                                         outside 6-mo window
                                       </span>
+                                    )}
+                                    {/* Fee status, only on rows a fee is actually owed on (3rd
+                                        onward in the window). "Not checked" is a distinct state
+                                        from "unpaid": if the Accounting Hub can't be reached,
+                                        showing unpaid would send front desk to collect money the
+                                        patient may already have handed over. */}
+                                    {!log.deletedAt && log.feeBearing && (
+                                      log.feePaid ? (
+                                        <span className="ml-2 px-1.5 py-0.5 rounded"
+                                          title={`${log.feePaid.lineName} — ₱${Number(log.feePaid.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
+                                          style={{ background: '#F0FDF4', color: '#15803D', fontWeight: 700 }}>
+                                          fee paid &middot; POS #{log.feePaid.orderNumber} &middot;{' '}
+                                          {new Date(log.feePaid.paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </span>
+                                      ) : feeLookup?.ok === false ? (
+                                        <span className="ml-2 px-1.5 py-0.5 rounded" title="Could not reach the Accounting Hub to check."
+                                          style={{ background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>
+                                          fee owed &middot; not checked
+                                        </span>
+                                      ) : (
+                                        <span className="ml-2 px-1.5 py-0.5 rounded"
+                                          style={{ background: '#FEF2F2', color: '#DC2626', fontWeight: 700 }}>
+                                          fee unpaid
+                                        </span>
+                                      )
                                     )}
                                     {log.remarks && <span className="ml-2" style={{ color: '#9ca3af' }}>- {log.remarks}</span>}
                                     {log.deletedAt && (
