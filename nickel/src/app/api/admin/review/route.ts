@@ -36,5 +36,10 @@ export async function POST(req: NextRequest) {
     await prisma.provider.update({ where: { id: providerId }, data: { specializedRateApproved: !!b.allowSpecialized } })
     return NextResponse.json({ ok: true, specializedRateApproved: !!b.allowSpecialized })
   }
+  if (b.action === 'setActive') {
+    // Suspend/reactivate a provider (deactivated providers drop off the marketplace).
+    await prisma.provider.update({ where: { id: providerId }, data: { active: !!(b as { active?: boolean }).active } })
+    return NextResponse.json({ ok: true, active: !!(b as { active?: boolean }).active })
+  }
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 }

@@ -15,9 +15,12 @@ export default async function VerifyPage() {
         <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">Provider verification</div>
         <div className="text-[18px] font-semibold text-[color:var(--ink)]">{p.firstName} {p.lastName}</div>
       </div>
-      <form action="/api/provider/logout" method="post">
-        <button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[13px] text-[color:var(--slate)] hover:bg-white">Log out</button>
-      </form>
+      <div className="flex items-center gap-3">
+        <a href="/provider" className="text-[13px] font-semibold text-[color:var(--steel)] hover:underline">Go to dashboard →</a>
+        <form action="/api/provider/logout" method="post">
+          <button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[13px] text-[color:var(--slate)] hover:bg-white">Log out</button>
+        </form>
+      </div>
     </div>
   )
 

@@ -14,7 +14,7 @@ export default function AdminLogin() {
       const r = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? 'Login failed')
-      window.location.href = '/admin'
+      window.location.href = '/admin/overview'
     } catch (e) { setErr(e instanceof Error ? e.message : 'Login failed'); setBusy(false) }
   }
 

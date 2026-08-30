@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { isAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import AdminNav from './AdminNav'
 
 export const metadata = { title: 'Verification queue' }
 export const dynamic = 'force-dynamic'
@@ -28,16 +29,9 @@ export default async function AdminQueue() {
 
   return (
     <div className="animate-fade-up mx-auto max-w-4xl">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">SCEI Operations · Admin</div>
-          <h1 className="text-[22px] font-semibold text-[color:var(--ink)]">Professionals awaiting approval</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <a href="/admin/payouts" className="text-[13px] font-semibold text-[color:var(--steel)] hover:underline">Payouts →</a>
-          <form action="/api/admin/logout" method="post"><button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[13px] text-[color:var(--slate)] hover:bg-white">Log out</button></form>
-        </div>
-      </div>
+      <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">SCEI Operations · Superadmin</div>
+      <h1 className="mb-4 text-[22px] font-semibold text-[color:var(--ink)]">Professionals awaiting approval</h1>
+      <AdminNav />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         {[['Pending', count('PENDING'), 'var(--warn,#c9871a)'], ['Verified', count('VERIFIED'), 'var(--steel)'], ['Rejected', count('REJECTED'), 'var(--slate)']].map(([k, v, c]) => (
