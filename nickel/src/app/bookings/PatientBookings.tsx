@@ -13,6 +13,7 @@ interface B {
   id: string; date: string; startTime: string; city: string; status: string; amount: number
   providerName: string; profession: string; proposedDate: string | null; proposedStartTime: string | null
   rating: number | null; rated: boolean
+  priceProgressReport: number | null; priceHEP: number | null
 }
 interface WalletTxn { id: string; amount: number; type: string; note: string | null; createdAt: string }
 interface Wallet { balance: number; txns: WalletTxn[] }
@@ -48,6 +49,15 @@ export default function PatientBookings({ bookings, wallet, consults = [], docum
     setBusy(id)
     try { const r = await fetch('/api/patient/cancel-consult', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consultId: id }) }); if (!r.ok) throw new Error((await r.json()).error ?? 'Failed'); router.refresh() }
     catch { /* noop */ } finally { setBusy(null) }
+  }
+
+  async function requestDoc(bookingId: string, type: 'PROGRESS_REPORT' | 'HEP') {
+    setBusy(bookingId)
+    try {
+      const r = await fetch('/api/patient/doc-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId, type }) })
+      const d = await r.json(); if (!r.ok || !d.checkoutUrl) throw new Error(d.error ?? 'Failed')
+      window.location.href = d.checkoutUrl
+    } catch { setBusy(null) }
   }
 
   async function submitRating(id: string) {
@@ -186,6 +196,17 @@ export default function PatientBookings({ bookings, wallet, consults = [], docum
                 </div>
               )}
               {openChat === b.id && <div className="mt-2"><Chat bookingId={b.id} meRole="PATIENT" otherName={b.providerName} /></div>}
+
+              {b.status !== 'CANCELLED' && (b.priceProgressReport != null || b.priceHEP != null) && (
+                <div className="mt-3 rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-3">
+                  <div className="text-[12.5px] font-semibold text-[color:var(--ink)]">Request a document from your therapist</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {b.priceProgressReport != null && <button onClick={() => requestDoc(b.id, 'PROGRESS_REPORT')} disabled={busy === b.id} className="rounded-lg border border-[color:var(--line-2)] bg-white px-3 py-1.5 text-[12.5px] font-medium hover:border-[color:var(--sky)]">Progress Report · {peso(b.priceProgressReport)}</button>}
+                    {b.priceHEP != null && <button onClick={() => requestDoc(b.id, 'HEP')} disabled={busy === b.id} className="rounded-lg border border-[color:var(--line-2)] bg-white px-3 py-1.5 text-[12.5px] font-medium hover:border-[color:var(--sky)]">Home Exercise Program · {peso(b.priceHEP)}</button>}
+                  </div>
+                  <p className="mt-1.5 text-[11.5px] text-[color:var(--muted)]">You pay online; your therapist is alerted to prepare it, and it appears in “My documents” when ready.</p>
+                </div>
+              )}
 
               {/* Rate your therapist — after a completed visit */}
               {b.status === 'COMPLETED' && (

@@ -14,7 +14,7 @@ export default async function BookingsPage() {
     prisma.booking.findMany({
       where: { patientId: patient.id },
       orderBy: [{ date: 'desc' }, { startTime: 'desc' }],
-      include: { provider: { select: { firstName: true, lastName: true, postNominals: true, profession: true } } },
+      include: { provider: { select: { firstName: true, lastName: true, postNominals: true, profession: true, priceProgressReport: true, priceHEP: true } } },
     }),
     prisma.walletTransaction.findMany({ where: { patientId: patient.id }, orderBy: { createdAt: 'desc' }, take: 12 }),
     prisma.consult.findMany({
@@ -42,6 +42,8 @@ export default async function BookingsPage() {
     proposedStartTime: b.proposedStartTime,
     rating: b.rating,
     rated: !!b.ratedAt,
+    priceProgressReport: b.provider.priceProgressReport != null ? Number(b.provider.priceProgressReport) : null,
+    priceHEP: b.provider.priceHEP != null ? Number(b.provider.priceHEP) : null,
   }))
 
   const wallet = {

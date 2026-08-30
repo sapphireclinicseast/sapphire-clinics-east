@@ -68,6 +68,10 @@ export async function POST(req: NextRequest) {
   else doc = await prisma.sessionDocument.create({ data: payload })
 
   if (status === 'COMPLETED') {
+    // Fulfil an open paid request for this document type, if any.
+    if (type === 'PROGRESS_REPORT' || type === 'HEP') {
+      await prisma.docRequest.updateMany({ where: { patientId, providerId: provider.id, type, status: 'REQUESTED', paidAt: { not: null } }, data: { status: 'READY', documentId: doc.id } })
+    }
     await notify({ to: 'PATIENT', patientId, bookingId: b.bookingId ?? null, type: 'DOC_READY', title: `${DOC_TYPE_LABEL[type]} ready`, body: `Your therapist shared your ${DOC_TYPE_LABEL[type].toLowerCase()}. Open My bookings to view it.` })
   }
   return NextResponse.json({ ok: true, id: doc.id, status: doc.status, hasFile: !!doc.file })

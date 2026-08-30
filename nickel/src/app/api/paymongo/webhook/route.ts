@@ -54,7 +54,17 @@ export async function POST(req: NextRequest) {
       where: { paymongoLinkId: linkId },
       select: { id: true, status: true, amount: true, doctorId: true, date: true, startTime: true, mode: true, patient: { select: { firstName: true, lastName: true } } },
     })
-    if (!consult) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
+    if (!consult) {
+      // Not a consult either — maybe a patient document request (Progress Report / HEP).
+      const dr = await prisma.docRequest.findFirst({ where: { paymongoLinkId: linkId }, select: { id: true, paidAt: true, providerId: true, type: true, patient: { select: { firstName: true, lastName: true } } } })
+      if (!dr) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
+      if (!dr.paidAt) {
+        await prisma.docRequest.update({ where: { id: dr.id }, data: { paidAt: new Date(), status: 'REQUESTED' } })
+        const label = dr.type === 'PROGRESS_REPORT' ? 'Progress Report' : 'Home Exercise Program'
+        await notify({ to: 'PROVIDER', providerId: dr.providerId, type: 'DOC_REQUEST', title: `${label} requested`, body: `${dr.patient.firstName} ${dr.patient.lastName} paid for a ${label}. Prepare it from their visit’s Notes / documents.` })
+      }
+      return NextResponse.json({ ok: true })
+    }
     if (consult.status === 'PENDING') {
       const method = normalizeMethod(rawMethod)
       const { appFee, processingFee, net } = computeSplit(Number(consult.amount), { method, processingFee: typeof feeCentavos === 'number' ? feeCentavos / 100 : undefined })

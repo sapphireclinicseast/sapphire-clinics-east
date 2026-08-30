@@ -413,11 +413,13 @@ model DocRequest {
   providerId String
   provider   Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
   type       DocType          // PROGRESS_REPORT or HEP
+  bookingId  String?          // the visit this relates to
   amount     Decimal
   status     DocRequestStatus @default(REQUESTED)
   paymongoLinkId String?
   checkoutUrl    String?
   paidAt         DateTime?
+  documentId     String?      // the SessionDocument that fulfilled it
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 

@@ -12,7 +12,7 @@ function readFile(file: File): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(file) })
 }
 
-export default function DocWorkspace({ bookingId, patientName, patientAge, variant, date, docs }: { bookingId: string; patientName: string; patientAge: number | null; variant: DocVariant; date: string; docs: Doc[] }) {
+export default function DocWorkspace({ bookingId, patientName, patientAge, variant, date, docs, openRequests = [] }: { bookingId: string; patientName: string; patientAge: number | null; variant: DocVariant; date: string; docs: Doc[]; openRequests?: string[] }) {
   const router = useRouter()
   const [type, setType] = useState<DocType | null>(null)
   const [docId, setDocId] = useState<string | null>(null)
@@ -62,6 +62,11 @@ export default function DocWorkspace({ bookingId, patientName, patientAge, varia
         <h1 className="text-[18px] font-semibold text-[color:var(--ink)]">Documentation</h1>
         <p className="mt-0.5 text-[13px] text-[color:var(--slate)]">{patientName}{patientAge != null ? ` · ${patientAge} yrs` : ''} · visit {date} · <b className="text-[color:var(--ink)]">{variant === 'PEDIA' ? 'Pediatric' : 'Adult'}</b> forms</p>
         {msg && <div className="mt-2 rounded-lg bg-[color:var(--mist)] px-3 py-2 text-[13px] text-[color:var(--slate)]">{msg}</div>}
+        {openRequests.length > 0 && (
+          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
+            This patient <b>paid for</b>: {openRequests.map((t) => DOC_TYPE_LABEL[t as DocType]).join(', ')}. Prepare {openRequests.length === 1 ? 'it' : 'them'} below — it’s automatically marked ready and shared when you generate the PDF (or upload one).
+          </div>
+        )}
       </div>
 
       {!schema && (
