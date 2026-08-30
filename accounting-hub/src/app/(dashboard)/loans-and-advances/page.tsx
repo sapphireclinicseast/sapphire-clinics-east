@@ -23,6 +23,7 @@ interface AdvanceRow {
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null; principalPerPeriod: number | null; paymentBankAccountId: string | null
   pdcUrls: string[] | null; remarks: string | null
   branchAllocations: BranchAlloc[] | null
+  paidPrincipal?: number
 }
 
 export default function LoansAndAdvancesPage() {
@@ -87,7 +88,7 @@ export default function LoansAndAdvancesPage() {
                   return (
                     <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2 font-mono">{sh?.shNumber || '—'}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{(r.paidPrincipal || 0) >= r.principalAmount - 0.005 && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>Fully paid ✓</span>}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                       <td className="px-3 py-2">{r.advanceType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
                       <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
@@ -167,6 +168,13 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
   const [pdcUrls, setPdcUrls] = useState<string[]>(row?.pdcUrls || [])
   const [busy, setBusy] = useState(false)
+  // "Fully Paid" — settle whatever principal is still outstanding in one payment
+  // (DR advances liability / CR bank) recorded as a PAID payout with its proof.
+  const paidPrincipal = row?.paidPrincipal || 0
+  const remaining = row ? Math.max(0, Math.round((row.principalAmount - paidPrincipal) * 100) / 100) : 0
+  const settled = !!row && remaining <= 0.005
+  const [fp, setFp] = useState({ on: false, paidDate: new Date().toISOString().slice(0, 10), bankAccountId: row?.paymentBankAccountId || row?.bankAccountId || '', memo: '' })
+  const [fpProofs, setFpProofs] = useState<string[]>([])
   // Branch allocation: ticked branches → entered amount (a single tick takes the whole principal)
   const [allocs, setAllocs] = useState<Record<string, string>>(() => Object.fromEntries((row?.branchAllocations || []).map(a => [a.branch, String(a.amount)])))
   const toggleAlloc = (code: string) => setAllocs(p => { const q = { ...p }; if (code in q) delete q[code]; else q[code] = ''; return q })
@@ -183,6 +191,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
   const save = async () => {
     if (!f.name.trim() || !(n(f.principalAmount) > 0)) { alert('Enter name and principal amount.'); return }
     if (allocBranches.length > 1 && !allocBalanced) { alert('The branch allocation amounts must add up to the principal.'); return }
+    if (fp.on && row && !settled && !fp.bankAccountId) { alert('Pick the bank account the settlement was paid from.'); return }
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, principalAmount: n(f.principalAmount),
@@ -192,6 +201,10 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
         branchAllocations: allocBranches.map(b2 => ({ branch: b2, amount: allocBranches.length === 1 ? n(f.principalAmount) : n(allocs[b2]) })) }
       const r = await fetch('/api/loans/advances', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      if (fp.on && row && !settled) {
+        const rs = await fetch('/api/loans/advances/settle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, paidDate: fp.paidDate, bankAccountId: fp.bankAccountId, proofUrls: fpProofs, memo: fp.memo }) })
+        if (!rs.ok) { alert((await rs.json()).error || 'The advance saved, but the settlement failed.'); return }
+      }
       onSaved()
     } finally { setBusy(false) }
   }
@@ -277,6 +290,32 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
             <div className="flex flex-wrap items-center gap-2">{pdcUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="advance" prefix={`${prefix}-PDC`} existingCount={pdcUrls.length} label="Add" onUploaded={u => setPdcUrls(p => [...p, u])} /></div>
           </div>
         </div>
+
+        {/* Fully Paid — settles the remaining principal in one payment and clears the advances liability */}
+        {row && (
+          <div className="mt-3 rounded-xl border p-3" style={settled ? { borderColor: '#bbf7d0', background: '#f0fdf4' } : { borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            {settled ? (
+              <p className="text-sm font-semibold" style={{ color: '#166534' }}>✓ Fully paid — the recorded payments cover the whole principal ({peso(row.principalAmount)}).</p>
+            ) : (
+              <>
+                <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700"><input type="checkbox" checked={fp.on} onChange={e => setFp(p => ({ ...p, on: e.target.checked }))} /> Fully Paid <span className="font-normal text-gray-400">— settle the remaining {peso(remaining)} and clear it from the advances liability</span></label>
+                {fp.on && (
+                  <div className="mt-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Date paid</label><input type="date" value={fp.paidDate} onChange={e => setFp(p => ({ ...p, paidDate: e.target.value }))} className={inp} style={bc} /></div>
+                      <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Paid from bank <span className="font-normal text-gray-400">(credited — matches bank history)</span></label><select value={fp.bankAccountId} onChange={e => setFp(p => ({ ...p, bankAccountId: e.target.value }))} className={inp} style={bc}><option value="">— Select —</option>{banks.map(b2 => <option key={b2.id} value={b2.id}>{b2.accountNumber} — {b2.accountTitle}</option>)}</select></div>
+                      <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of payment</label>
+                        <div className="flex flex-wrap items-center gap-2">{fpProofs.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="advance" prefix={`${prefix}-FULLYPAID`} existingCount={fpProofs.length} label="Add" onUploaded={u => setFpProofs(p => [...p, u])} /></div>
+                      </div>
+                      <div className="col-span-2 sm:col-span-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Memo <span className="font-normal text-gray-400">(optional — reads in the books)</span></label><input value={fp.memo} onChange={e => setFp(p => ({ ...p, memo: e.target.value }))} className={inp} style={bc} /></div>
+                    </div>
+                    {f.creditAccountId && fp.bankAccountId && <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>On save: DR {accts.find(a2 => a2.id === f.creditAccountId)?.accountTitle} {peso(remaining)} / CR {banks.find(b2 => b2.id === fp.bankAccountId)?.accountTitle} {peso(remaining)}</p>}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
         {/* Branch allocation — where the interest expense is booked */}
         <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
           <p className="text-sm font-semibold text-gray-700">For which branch? <span className="font-normal text-gray-400">(the interest expense follows this on the branch income statements)</span></p>

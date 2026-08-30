@@ -104,10 +104,13 @@ export async function GET(req: Request) {
   const rows = advances.flatMap(a => {
     const occs = occurrences(a)
     const occDates = new Set(occs.map(o => o.dueDate.slice(0, 10)))
+    // Fully settled (e.g. via the "Fully Paid" tickbox): stop offering the untouched
+    // future instalments — the recorded payments, settlement included, are the history.
+    const settled = paid.filter(p => p.advanceId === a.id).reduce((s, p) => s + num(p.principalPortion), 0) >= num(a.principalAmount) - 0.005
     const base = occs.map(o => {
       const rec = paidBy.get(`${a.id}|${o.dueDate.slice(0, 10)}`)
       return { kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, ...o, status: rec?.status || 'PENDING', paidDate: rec?.paidDate || null, payoutId: rec?.id || null, emailedAt: rec?.emailedAt || null, email: a.shareholderId ? (emailById.get(a.shareholderId) || null) : null, bankAccountId: a.bankAccountId, paymentBankAccountId: a.paymentBankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }
-    })
+    }).filter(o => !settled || o.status === 'PAID')
     // Same as loans above: keep recorded payments visible after a restructure.
     const extras = paid.filter(p => p.advanceId === a.id && !occDates.has(new Date(p.dueDate).toISOString().slice(0, 10)))
       .map(p => ({ kind: 'advance', parentId: a.id, shareholderId: a.shareholderId, name: a.name, seq: 0, dueDate: new Date(p.dueDate).toISOString(), principalPortion: num(p.principalPortion), interestPortion: num(p.interestPortion), amount: num(p.amount), status: p.status, paidDate: p.paidDate, payoutId: p.id, emailedAt: p.emailedAt, email: a.shareholderId ? (emailById.get(a.shareholderId) || null) : null, bankAccountId: a.bankAccountId, paymentBankAccountId: a.paymentBankAccountId, creditAccountId: a.creditAccountId, interestExpenseAccountId: a.interestExpenseAccountId }))

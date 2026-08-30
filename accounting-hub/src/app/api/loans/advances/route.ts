@@ -62,14 +62,17 @@ async function releaseJE(tx: unknown, a: { id: string; name: string; principalAm
 export async function GET() {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  const [rows, shareholders] = await Promise.all([
+  const [rows, shareholders, paidSums] = await Promise.all([
     prisma.advance.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, email: true } }),
+    prisma.advancePayout.groupBy({ by: ['advanceId'], _sum: { principalPortion: true } }),
   ])
+  // Principal already repaid per advance — drives the "Fully Paid" state in the UI.
+  const paidBy = new Map(paidSums.map(p => [p.advanceId, num(p._sum.principalPortion)]))
   return NextResponse.json({
     rows: rows.map(a => ({ ...a, principalAmount: num(a.principalAmount), annualPct: a.annualPct != null ? num(a.annualPct) : null,
       monthlyAmortization: a.monthlyAmortization != null ? num(a.monthlyAmortization) : null, computedAnnualPct: a.computedAnnualPct != null ? num(a.computedAnnualPct) : null,
-      totalInterest: a.totalInterest != null ? num(a.totalInterest) : null })),
+      totalInterest: a.totalInterest != null ? num(a.totalInterest) : null, paidPrincipal: paidBy.get(a.id) || 0 })),
     shareholders,
   })
 }
