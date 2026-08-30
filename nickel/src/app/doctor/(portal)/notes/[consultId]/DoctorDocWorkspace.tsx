@@ -2,91 +2,82 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { schemaFor, DOC_TYPE_LABEL, type DocType, type DocVariant, type Section } from '@/lib/forms/schemas'
+import { doctorSchemaFor, DOCTOR_DOC_LABEL, type DoctorDocType } from '@/lib/forms/doctor-schemas'
+import type { Section } from '@/lib/forms/schemas'
 import ViewDocButton from '@/components/ViewDocButton'
 import CameraCapture from '@/components/CameraCapture'
 
 interface Doc { id: string; type: string; status: string; source: string; data: Record<string, unknown>; createdAt: string }
-const TYPES: DocType[] = ['INITIAL_EVAL', 'RE_EVAL', 'TREATMENT', 'PROGRESS_REPORT', 'HEP']
+const TYPES: DoctorDocType[] = ['MD_INITIAL', 'MD_FOLLOWUP', 'MED_CERT', 'PRESCRIPTION']
 
 function readFile(file: File): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(file) })
 }
 
-export default function DocWorkspace({ bookingId, patientName, patientAge, patientSex = null, variant, date, docs, openRequests = [] }: { bookingId: string; patientName: string; patientAge: number | null; patientSex?: string | null; variant: DocVariant; date: string; docs: Doc[]; openRequests?: string[] }) {
+export default function DoctorDocWorkspace({ consultId, patientName, patientAge, patientSex = null, hasSignature, date, docs }: { consultId: string; patientName: string; patientAge: number | null; patientSex?: string | null; hasSignature: boolean; date: string; docs: Doc[] }) {
   const router = useRouter()
-  const [type, setType] = useState<DocType | null>(null)
+  const [type, setType] = useState<DoctorDocType | null>(null)
   const [docId, setDocId] = useState<string | null>(null)
   const [data, setData] = useState<Record<string, unknown>>({})
-  const [extraRows, setExtraRows] = useState<Record<string, number>>({})
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
-  const [cameraFor, setCameraFor] = useState<DocType | null>(null)
+  const [cameraFor, setCameraFor] = useState<DoctorDocType | null>(null)
 
-  const schema = type ? schemaFor(type, variant) : null
+  const schema = type ? doctorSchemaFor(type) : null
   const set = (k: string, v: unknown) => setData((s) => ({ ...s, [k]: v }))
-  const setCell = (key: string, r: number, c: number, v: string) => setData((s) => {
-    const grid = Array.isArray(s[key]) ? (s[key] as string[][]).map((row) => [...row]) : []
-    while (grid.length <= r) grid.push([])
-    grid[r][c] = v
-    return { ...s, [key]: grid }
+  const toggle = (k: string, opt: string) => setData((s) => {
+    const cur = Array.isArray(s[k]) ? (s[k] as string[]) : []
+    return { ...s, [k]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt] }
   })
-  const addRow = (key: string) => setExtraRows((s) => ({ ...s, [key]: (s[key] ?? 0) + 1 }))
 
-  function startNew(t: DocType) { setType(t); setDocId(null); setData({ date, ...(patientSex ? { sex: patientSex } : {}) }); setExtraRows({}); setMsg(null) }
-  function editExisting(d: Doc) { if (d.source !== 'FORM') return; setType(d.type as DocType); setDocId(d.id); setData({ ...(patientSex ? { sex: patientSex } : {}), ...(d.data || {}) }); setExtraRows({}); setMsg(null) }
+  const sexAge = [patientSex, patientAge != null ? `${patientAge}` : null].filter(Boolean).join(' / ')
+  function startNew(t: DoctorDocType) {
+    setType(t); setDocId(null); setMsg(null)
+    setData({ date, ...(patientSex ? { sex: patientSex } : {}), ...(t === 'PRESCRIPTION' && sexAge ? { sexAge } : {}) })
+  }
+  function editExisting(d: Doc) { if (d.source !== 'FORM') return; setType(d.type as DoctorDocType); setDocId(d.id); setData(d.data || {}); setMsg(null) }
 
   async function save(finalize: boolean) {
     if (!type) return
     setBusy(true); setMsg(null)
     try {
-      const r = await fetch('/api/provider/document', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: docId, bookingId, type, data, finalize }) })
+      const r = await fetch('/api/doctor/document', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: docId, consultId, type, data, finalize }) })
       const d = await r.json(); if (!r.ok) throw new Error(d.error ?? 'Failed')
       setDocId(d.id); setMsg(finalize ? 'PDF generated & shared with the patient.' : 'Draft saved.')
       if (finalize) { setType(null); setDocId(null); setData({}) }
       router.refresh()
     } catch (e) { setMsg(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
-
-  async function uploadDataUri(t: DocType, source: 'UPLOAD' | 'PHOTO', dataUri: string) {
+  async function uploadDataUri(t: DoctorDocType, source: 'UPLOAD' | 'PHOTO', dataUri: string) {
     if (dataUri.length > 12_000_000) { setMsg('File too large (max ~9 MB).'); return }
     setBusy(true); setMsg(null)
     try {
-      const r = await fetch('/api/provider/document', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId, type: t, file: dataUri, source }) })
+      const r = await fetch('/api/doctor/document', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consultId, type: t, file: dataUri, source }) })
       const d = await r.json(); if (!r.ok) throw new Error(d.error ?? 'Failed')
       setMsg(source === 'PHOTO' ? 'Photo saved & shared.' : 'File uploaded & shared.'); router.refresh()
     } catch (e) { setMsg(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
-  async function uploadFile(t: DocType, source: 'UPLOAD' | 'PHOTO', file: File) {
-    if (file.size > 12_000_000) { setMsg('File too large (max ~9 MB).'); return }
-    uploadDataUri(t, source, await readFile(file))
-  }
 
   return (
     <div className="space-y-4">
-      <a href="/provider" className="text-[12px] text-[color:var(--steel)] hover:underline">← Back to schedule</a>
+      <a href="/doctor" className="text-[12px] text-[color:var(--steel)] hover:underline">← Back to dashboard</a>
       <div className="card">
         <h1 className="text-[18px] font-semibold text-[color:var(--ink)]">Documentation</h1>
-        <p className="mt-0.5 text-[13px] text-[color:var(--slate)]">{patientName}{patientAge != null ? ` · ${patientAge} yrs` : ''} · visit {date} · <b className="text-[color:var(--ink)]">{variant === 'PEDIA' ? 'Pediatric' : 'Adult'}</b> forms</p>
+        <p className="mt-0.5 text-[13px] text-[color:var(--slate)]">{patientName}{patientAge != null ? ` · ${patientAge} yrs` : ''} · consult {date}</p>
         {msg && <div className="mt-2 rounded-lg bg-[color:var(--mist)] px-3 py-2 text-[13px] text-[color:var(--slate)]">{msg}</div>}
-        {openRequests.length > 0 && (
-          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
-            This patient <b>paid for</b>: {openRequests.map((t) => DOC_TYPE_LABEL[t as DocType]).join(', ')}. Prepare {openRequests.length === 1 ? 'it' : 'them'} below — it’s automatically marked ready and shared when you generate the PDF (or upload one).
-          </div>
-        )}
+        {!hasSignature && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">Add your e-signature, PRC and PTR numbers in <a href="/doctor/settings" className="font-semibold underline">Settings</a> so they auto-fill your documents and prescription pad.</div>}
       </div>
 
       {!schema && (
         <div className="card">
           <div className="mb-2 text-[13px] font-semibold text-[color:var(--ink)]">Start a document</div>
-          <p className="mb-3 text-[12px] text-[color:var(--slate)]">The right form (adult or pediatric) is chosen automatically from the patient’s age.</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {TYPES.map((t) => (
               <div key={t} className="rounded-xl border border-[color:var(--line)] p-3">
-                <div className="text-[13.5px] font-semibold text-[color:var(--ink)]">{DOC_TYPE_LABEL[t]}</div>
+                <div className="text-[13.5px] font-semibold text-[color:var(--ink)]">{DOCTOR_DOC_LABEL[t]}</div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[12.5px]">
                   <button onClick={() => startNew(t)} className="btn-primary !px-3 !py-1.5 !text-[12.5px]">Fill form</button>
-                  <label className="cursor-pointer rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 font-medium hover:bg-[color:var(--mist)]">Upload PDF<input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(t, 'UPLOAD', f) }} /></label>
+                  <label className="cursor-pointer rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 font-medium hover:bg-[color:var(--mist)]">Upload PDF<input type="file" accept="application/pdf,image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) uploadDataUri(t, 'UPLOAD', await readFile(f)) }} /></label>
                   <button type="button" onClick={() => setCameraFor(t)} className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 font-medium hover:bg-[color:var(--mist)]">Take photo</button>
                 </div>
               </div>
@@ -108,9 +99,16 @@ export default function DocWorkspace({ bookingId, patientName, patientAge, patie
                 {s.note && <p className="mb-2 text-[11.5px] italic text-[color:var(--muted)]">{s.note}</p>}
                 <div className="grid gap-3 sm:grid-cols-2">
                   {(s.fields ?? []).map((f) => (
-                    <div key={f.key} className={f.full || f.type === 'textarea' ? 'sm:col-span-2' : ''}>
+                    <div key={f.key} className={f.full || f.type === 'textarea' || f.type === 'checkgroup' ? 'sm:col-span-2' : ''}>
                       <div className="label">{f.label}{f.key === 'sex' && patientSex ? <span className="ml-1 text-[10.5px] font-normal text-[color:var(--muted)]">· from patient profile</span> : null}</div>
-                      {f.key === 'sex' && patientSex
+                      {f.type === 'checkgroup'
+                        ? <div className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-[color:var(--line)] p-2 sm:grid-cols-3">
+                            {f.options?.map((o) => {
+                              const on = Array.isArray(data[f.key]) && (data[f.key] as string[]).includes(o)
+                              return <label key={o} className="flex items-center gap-1.5 text-[12px] text-[color:var(--slate)]"><input type="checkbox" checked={on} onChange={() => toggle(f.key, o)} className="accent-[color:var(--steel)]" />{o}</label>
+                            })}
+                          </div>
+                        : f.key === 'sex' && patientSex
                         ? <input className="input bg-[color:var(--mist)] text-[color:var(--slate)]" value={String(data[f.key] ?? patientSex)} readOnly />
                         : f.type === 'textarea'
                         ? <textarea className="input min-h-[64px]" value={String(data[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} />
@@ -120,32 +118,6 @@ export default function DocWorkspace({ bookingId, patientName, patientAge, patie
                     </div>
                   ))}
                 </div>
-                {s.table && (() => {
-                  const tkey = s.table.key
-                  const grid = (data[tkey] as string[][]) || []
-                  const rowCount = Math.max(s.table.rows ?? 3, grid.length, (s.table.rows ?? 3) + (extraRows[tkey] ?? 0))
-                  return (
-                  <div className="mt-1">
-                    <div className="overflow-x-auto rounded-lg border border-[color:var(--line)]">
-                      <table className="w-full text-[12.5px]">
-                        <thead><tr className="bg-[color:var(--mist)] text-left text-[11px] uppercase tracking-wide text-[color:var(--muted)]">{s.table.columns.map((c) => <th key={c} className="px-2 py-1.5 font-semibold">{c}</th>)}</tr></thead>
-                        <tbody>
-                          {Array.from({ length: rowCount }).map((_, r) => (
-                            <tr key={r} className="border-t border-[color:var(--line)]">
-                              {s.table!.columns.map((_, c) => (
-                                <td key={c} className="px-1 py-1"><input className="w-full rounded border-0 bg-transparent px-1 py-1 text-[12.5px] focus:bg-[color:var(--mist)] focus:outline-none" value={grid[r]?.[c] ?? ''} onChange={(e) => setCell(tkey, r, c, e.target.value)} /></td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <button type="button" onClick={() => addRow(tkey)} className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-[color:var(--line-2)] px-2.5 py-1 text-[12px] font-medium text-[color:var(--steel)] hover:bg-[color:var(--mist)]">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg> Add row
-                    </button>
-                  </div>
-                  )
-                })()}
               </div>
             ))}
           </div>
@@ -160,12 +132,12 @@ export default function DocWorkspace({ bookingId, patientName, patientAge, patie
 
       {docs.length > 0 && (
         <div className="card p-0">
-          <div className="border-b border-[color:var(--line)] px-5 py-3.5"><b className="text-[color:var(--ink)]">Documents for this visit</b></div>
+          <div className="border-b border-[color:var(--line)] px-5 py-3.5"><b className="text-[color:var(--ink)]">Documents for this consult</b></div>
           <div className="divide-y divide-[color:var(--line)]">
             {docs.map((d) => (
               <div key={d.id} className="flex items-center justify-between px-5 py-3 text-[13px]">
                 <div>
-                  <b className="text-[color:var(--ink)]">{DOC_TYPE_LABEL[d.type as DocType]}</b>
+                  <b className="text-[color:var(--ink)]">{DOCTOR_DOC_LABEL[d.type as DoctorDocType] ?? d.type}</b>
                   <div className="text-[12px] text-[color:var(--slate)]">{d.status === 'COMPLETED' ? (d.source === 'FORM' ? 'Generated PDF' : d.source === 'PHOTO' ? 'Photo' : 'Uploaded PDF') : 'Draft'} · {d.createdAt.slice(0, 10)}</div>
                 </div>
                 <div className="flex gap-2">

@@ -118,6 +118,7 @@ export default function DoctorDashboard({ slots, consults, past, walletBalance, 
                   {!c.referralIssued && <button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[12.5px] font-medium hover:bg-[color:var(--mist)]" disabled={acting === c.id} onClick={() => issueReferral(c.id)}>Issue referral</button>}
                   <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-emerald-700" disabled={acting === c.id} onClick={() => completeWithReferral(c.id, false)}>Mark completed</button>
                   <button className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[12.5px] font-medium hover:bg-[color:var(--mist)]" disabled={acting === c.id} onClick={() => completeWithReferral(c.id, true)}>Complete + attach referral</button>
+                  <a href={`/doctor/notes/${c.id}`} className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[12.5px] font-medium hover:bg-[color:var(--mist)]">Notes / documents</a>
                 </div>
                 {c.reason && <p className="mt-1.5 text-[12px] text-[color:var(--slate)]">“{c.reason}”</p>}
               </div>
@@ -136,6 +137,7 @@ export default function DoctorDashboard({ slots, consults, past, walletBalance, 
                 <span className="text-[color:var(--ink)]">{c.patientName}</span>
                 <span className="text-[color:var(--slate)]">· {c.mode === 'TELECONSULT' ? 'Teleconsult' : 'In-person'}</span>
                 <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${c.status === 'CANCELLED' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{c.status === 'CANCELLED' ? 'Cancelled' : 'Completed'}</span>
+                {c.status !== 'CANCELLED' && <a href={`/doctor/notes/${c.id}`} className="text-[12px] font-medium text-[color:var(--steel)] hover:underline">Notes / documents</a>}
               </div>
             ))}
           </div>

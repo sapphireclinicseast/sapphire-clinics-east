@@ -77,6 +77,11 @@ enum DocType {
   TREATMENT
   PROGRESS_REPORT
   HEP
+  // Rehab-doctor documents
+  MD_INITIAL
+  MD_FOLLOWUP
+  MED_CERT
+  PRESCRIPTION
 }
 enum DocVariant {
   ADULT
@@ -385,9 +390,12 @@ model SessionDocument {
   id         String     @id @default(cuid())
   patientId  String
   patient    Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  providerId String
-  provider   Provider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  providerId String?    // therapist author (PT documents)
+  provider   Provider?  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  doctorId   String?    // rehab-doctor author (MD documents)
+  doctor     Doctor?    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   bookingId  String?    // the session this documents (null for standalone reports)
+  consultId  String?    // the consult this documents (doctor documents)
 
   type       DocType
   variant    DocVariant?  // ADULT / PEDIA (auto from patient age; null for report/HEP)
@@ -403,6 +411,7 @@ model SessionDocument {
 
   @@index([patientId])
   @@index([providerId])
+  @@index([doctorId])
   @@index([bookingId])
 }
 
@@ -480,6 +489,8 @@ model Doctor {
   phone        String?
   photo        String?
   prcNumber    String?
+  ptrNumber    String?  // PTR number — auto-fills the prescription pad
+  signature    String?  // e-signature data URI — auto-fills documents
   postNominals String?  // e.g. "MD, FPARM"
   specialization String? @default("Rehabilitation Medicine (Physiatry)")
 
@@ -513,6 +524,7 @@ model Doctor {
   slots         DoctorSlot[]
   consults      Consult[]
   walletTxns    WalletTransaction[]
+  documents     SessionDocument[]
 
   @@index([active])
 }

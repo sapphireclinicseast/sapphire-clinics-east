@@ -7,7 +7,7 @@ import Stars from '@/components/Stars'
 import ViewDocButton from '@/components/ViewDocButton'
 
 interface Doc { id: string; type: string; bookingId: string | null; date: string; providerName: string }
-const DOC_LABEL: Record<string, string> = { INITIAL_EVAL: 'Initial Evaluation', RE_EVAL: 'Re-evaluation', TREATMENT: 'Session Notes', PROGRESS_REPORT: 'Progress Report', HEP: 'Home Exercise Program' }
+const DOC_LABEL: Record<string, string> = { INITIAL_EVAL: 'Initial Evaluation', RE_EVAL: 'Re-evaluation', TREATMENT: 'Session Notes', PROGRESS_REPORT: 'Progress Report', HEP: 'Home Exercise Program', MD_INITIAL: 'Initial Evaluation (Doctor)', MD_FOLLOWUP: 'Follow-up (Doctor)', MED_CERT: 'Medical Certificate', PRESCRIPTION: 'Prescription' }
 
 interface B {
   id: string; date: string; startTime: string; city: string; status: string; amount: number

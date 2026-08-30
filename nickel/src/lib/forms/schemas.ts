@@ -2,7 +2,7 @@
 // in-app form UI and the generated PDF. Logo and form numbers are intentionally
 // omitted (per product requirement). Fields are faithful to the source templates.
 
-export type FieldType = 'text' | 'textarea' | 'date' | 'number' | 'select' | 'checkbox'
+export type FieldType = 'text' | 'textarea' | 'date' | 'number' | 'select' | 'checkbox' | 'checkgroup'
 export interface Field { key: string; label: string; type?: FieldType; options?: string[]; full?: boolean }
 export interface TableSpec { key: string; columns: string[]; rows?: number }
 export interface Section { title?: string; note?: string; fields?: Field[]; table?: TableSpec }
