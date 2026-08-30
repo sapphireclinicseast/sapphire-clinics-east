@@ -519,6 +519,10 @@ model Doctor {
   gcashNumber   String?
   payoutMethod  String?  @default("bank") // preferred settlement: "bank" or "gcash"
 
+  // Consent
+  termsVersion    String?
+  termsAcceptedAt DateTime?
+
   // Verification (SCEI approves before the doctor is bookable)
   verificationStatus VerificationStatus @default(UNVERIFIED)
   prcLicenseFile   String?  // photo/scan of PRC licence (data URI)

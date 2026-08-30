@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
+import { TERMS_VERSION } from '@/lib/provider-terms'
 
 export default function DoctorAuthPage() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   useEffect(() => { if (new URLSearchParams(window.location.search).get('mode') === 'signup') setMode('signup') }, [])
   const [f, setF] = useState({ firstName: '', lastName: '', email: '', phone: '', prcNumber: '', password: '', confirm: '' })
   const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }))
+  const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -15,11 +17,12 @@ export default function DoctorAuthPage() {
     if (mode === 'signup') {
       if (f.password.length < 8) return setErr('Password must be at least 8 characters.')
       if (f.password !== f.confirm) return setErr('Passwords do not match.')
+      if (!agreed) return setErr('Please read and accept the Provider Terms of Agreement to continue.')
     }
     setBusy(true)
     try {
       const url = mode === 'signup' ? '/api/doctor/signup' : '/api/doctor/login'
-      const body = mode === 'signup' ? { firstName: f.firstName, lastName: f.lastName, email: f.email, phone: f.phone, prcNumber: f.prcNumber, password: f.password } : { email: f.email, password: f.password }
+      const body = mode === 'signup' ? { firstName: f.firstName, lastName: f.lastName, email: f.email, phone: f.phone, prcNumber: f.prcNumber, password: f.password, termsVersion: TERMS_VERSION } : { email: f.email, password: f.password }
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? 'Failed')
@@ -52,7 +55,18 @@ export default function DoctorAuthPage() {
           <input className="input" type="email" placeholder="Email" required value={f.email} onChange={(e) => set('email', e.target.value)} />
           <input className="input" type="password" placeholder="Password" required value={f.password} onChange={(e) => set('password', e.target.value)} />
           {mode === 'signup' && <input className="input" type="password" placeholder="Confirm password" required value={f.confirm} onChange={(e) => set('confirm', e.target.value)} />}
-          <button className="btn-primary w-full" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}</button>
+          {mode === 'signup' && (
+            <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-3">
+              <div className="text-[12.5px] text-[color:var(--slate)]">
+                Please read the full <a href="/provider/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-[color:var(--steel)] hover:underline">Provider Terms of Agreement ↗</a> and <a href="/provider/terms/annexes" target="_blank" rel="noopener noreferrer" className="font-semibold text-[color:var(--steel)] hover:underline">Annexes A–D ↗</a> before you continue.
+              </div>
+              <label className="mt-2 flex cursor-pointer items-start gap-2 text-[12.5px] text-[color:var(--ink)]">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: 'var(--steel)' }} checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+                <span>I have read and agree to the Provider Terms of Agreement, its Annexes, and the Data Privacy Consent.</span>
+              </label>
+            </div>
+          )}
+          <button className="btn-primary w-full" disabled={busy || (mode === 'signup' && !agreed)}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}</button>
         </form>
       </div>
     </div>

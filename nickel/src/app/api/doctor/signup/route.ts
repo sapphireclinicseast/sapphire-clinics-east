@@ -10,10 +10,12 @@ export async function POST(req: NextRequest) {
   const password = String(b.password ?? '')
   const phone = String(b.phone ?? '').trim() || null
   const prcNumber = String(b.prcNumber ?? '').trim() || null
+  const termsVersion = String(b.termsVersion ?? '').trim()
 
   if (!firstName || !lastName || !email) return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
   if (!email.includes('@')) return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
   if (password.length < 8) return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
+  if (!termsVersion) return NextResponse.json({ error: 'You must accept the Provider Terms of Agreement' }, { status: 400 })
 
   const existing = await prisma.doctor.findUnique({ where: { email }, select: { id: true } })
   if (existing) return NextResponse.json({ error: 'An account already exists for this email. Please sign in.' }, { status: 409 })
@@ -22,6 +24,7 @@ export async function POST(req: NextRequest) {
     data: {
       firstName: firstName.toUpperCase(), lastName: lastName.toUpperCase(), email, phone, prcNumber,
       passwordHash: await hashPassword(password),
+      termsVersion, termsAcceptedAt: new Date(),
       verificationStatus: 'PENDING',
     },
     select: { id: true },
