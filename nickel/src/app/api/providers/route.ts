@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
       })
       const booked = new Set(bookings.map((b) => `${b.date.toISOString().slice(0, 10)}|${b.startTime}`))
       const slots = upcomingSlots(p.slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), booked, 14, p.travelBuffer ? 120 : 60)
+      const ratingAgg = await prisma.booking.aggregate({ where: { providerId: p.id, rating: { not: null } }, _avg: { rating: true }, _count: { rating: true } })
       const certs = Array.isArray(p.certifications)
         ? (p.certifications as unknown[]).filter((c): c is Record<string, unknown> => !!c && typeof c === 'object').map((c) => String(c.name ?? '')).filter(Boolean)
         : []
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
         specializedRate: p.specializedRateApproved && p.specializedRate != null ? Number(p.specializedRate) : null,
         rate: p.rate != null ? Number(p.rate) : null,
         transpoIncluded: p.transpoIncluded,
+        ratingAvg: ratingAgg._avg.rating != null ? Number(ratingAgg._avg.rating) : null,
+        ratingCount: ratingAgg._count.rating,
         slots,
       }
     }),

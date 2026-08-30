@@ -30,6 +30,8 @@ export default async function BookingsPage() {
     profession: b.provider.profession,
     proposedDate: b.proposedDate ? b.proposedDate.toISOString().slice(0, 10) : null,
     proposedStartTime: b.proposedStartTime,
+    rating: b.rating,
+    rated: !!b.ratedAt,
   }))
 
   const wallet = {

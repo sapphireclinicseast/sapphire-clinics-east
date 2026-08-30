@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
+import Stars from '@/components/Stars'
 
 type Step = 'city' | 'auth' | 'provider' | 'time' | 'confirm'
 const STEPS: [Step, string][] = [['city', 'City'], ['auth', 'Account'], ['provider', 'Therapist'], ['time', 'Time'], ['confirm', 'Pay']]
@@ -12,6 +13,7 @@ interface Provider {
   yearsExperience: string | null; school: string | null; postgraduate: string | null
   certifications: string[]; specialization: string | null; specializedRate: number | null
   rate: number | null; transpoIncluded: boolean; slots: Slot[]
+  ratingAvg: number | null; ratingCount: number
 }
 interface Me { id: string; firstName: string; city: string | null; walletBalance?: number }
 
@@ -186,6 +188,13 @@ export default function BookPage() {
                         <span className="rounded-full bg-emerald-50 px-1.5 text-[10px] font-bold text-emerald-700" title="Identity-verified">✓</span>
                       </div>
                       <div className="text-[12px] text-[color:var(--slate)]">{PROF[p.profession] ?? p.profession}</div>
+                      {p.ratingCount > 0 && p.ratingAvg != null && (
+                        <div className="mt-0.5 flex items-center gap-1 text-[11.5px] text-[color:var(--slate)]">
+                          <Stars value={p.ratingAvg} size={13} />
+                          <span className="font-semibold text-[color:var(--ink)]">{p.ratingAvg.toFixed(1)}</span>
+                          <span className="text-[color:var(--muted)]">({p.ratingCount})</span>
+                        </div>
+                      )}
                       {(p.yearsExperience || p.school) && (
                         <div className="mt-0.5 text-[11.5px] text-[color:var(--muted)]">
                           {p.yearsExperience ? `${p.yearsExperience} yr${p.yearsExperience === '1' ? '' : 's'} experience` : ''}{p.yearsExperience && p.school ? ' · ' : ''}{p.school ?? ''}

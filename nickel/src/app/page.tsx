@@ -6,6 +6,14 @@ const STEPS = [
   { n: '3', t: 'Book & pay securely', d: 'Confirm a time and pay online — the therapist comes to you.' },
 ]
 
+// Why patients choose Nickel (monochrome line icons).
+const WHY_PATIENT = [
+  { t: 'Care at home, on your schedule', d: 'A licensed therapist comes to you — no clinic queues, no travel. Book a time that fits your day.', icon: <><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" /><path d="M9 21v-7h6v7" /></> },
+  { t: 'Verified, licensed professionals', d: 'Every therapist is PRC-licensed and identity-verified by us before they can appear — you know exactly who’s coming.', icon: <><path d="M12 3 4 6v6c0 4.5 3.4 7.9 8 9 4.6-1.1 8-4.5 8-9V6l-8-3Z" /><path d="M9 12l2 2 4-4" /></> },
+  { t: 'Easy, cashless payment', d: 'Pay securely online — card, GCash, Maya and more. No awkward cash handovers at your door.', icon: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></> },
+  { t: 'You choose your professional', d: 'Compare therapists by rating, experience and rate, and pick the one that’s right for you.', icon: <><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /><path d="m16 11 2 2 4-4" /></> },
+]
+
 // Why therapists choose Nickel (monochrome line icons).
 const WHY = [
   { t: 'No awkward money talk', d: 'Clients pay through the app at your set rate — no haggling or chasing payment in person.', icon: <><path d="M12 2v20" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></> },
@@ -70,9 +78,27 @@ export default function NickelHome() {
         </div>
       </section>
 
-      {/* Why choose Nickel? (for therapists) */}
+      {/* Why choose Nickel? (for patients) */}
       <section className="card">
         <div className="mb-4 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">Why choose Nickel?</div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {WHY_PATIENT.map((w) => (
+            <div key={w.t} className="flex gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--mist-2)] text-[color:var(--steel)]">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{w.icon}</svg>
+              </span>
+              <div>
+                <div className="text-[14px] font-semibold text-[color:var(--ink)]">{w.t}</div>
+                <p className="mt-0.5 text-[12.5px] leading-snug text-[color:var(--slate)]">{w.d}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Why choose Nickel? (for therapists) */}
+      <section className="card">
+        <div className="mb-4 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">Why therapists choose Nickel</div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {WHY.map((w) => (
             <div key={w.t} className="flex gap-3">

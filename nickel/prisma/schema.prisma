@@ -216,6 +216,11 @@ model Booking {
   patientReadAt  DateTime?
   providerReadAt DateTime?
 
+  // Patient's rating of the therapist after a completed session (0–5)
+  rating         Int?
+  review         String?
+  ratedAt        DateTime?
+
   messages   Message[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt

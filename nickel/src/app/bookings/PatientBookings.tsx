@@ -3,10 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Chat from '@/components/Chat'
+import Stars from '@/components/Stars'
 
 interface B {
   id: string; date: string; startTime: string; city: string; status: string; amount: number
   providerName: string; profession: string; proposedDate: string | null; proposedStartTime: string | null
+  rating: number | null; rated: boolean
 }
 interface WalletTxn { id: string; amount: number; type: string; note: string | null; createdAt: string }
 interface Wallet { balance: number; txns: WalletTxn[] }
@@ -25,6 +27,19 @@ export default function PatientBookings({ bookings, wallet }: { bookings: B[]; w
   const [openChat, setOpenChat] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [showLedger, setShowLedger] = useState(false)
+  const [rateFor, setRateFor] = useState<string | null>(null)
+  const [stars, setStars] = useState(0)
+  const [hover, setHover] = useState(0)
+  const [reviewText, setReviewText] = useState('')
+
+  async function submitRating(id: string) {
+    setBusy(id)
+    try {
+      const r = await fetch('/api/patient/rate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: id, rating: stars, review: reviewText }) })
+      if (!r.ok) throw new Error((await r.json()).error ?? 'Failed')
+      setRateFor(null); setStars(0); setHover(0); setReviewText(''); router.refresh()
+    } catch { /* noop */ } finally { setBusy(null) }
+  }
 
   async function respond(id: string, accept: boolean) {
     setBusy(id)
@@ -106,6 +121,43 @@ export default function PatientBookings({ bookings, wallet }: { bookings: B[]; w
                     {openChat === b.id ? 'Hide messages' : 'Message therapist'}
                   </button>
                   {openChat === b.id && <div className="mt-2"><Chat bookingId={b.id} meRole="PATIENT" otherName={b.providerName} /></div>}
+                </div>
+              )}
+
+              {/* Rate your therapist — after a completed visit */}
+              {b.status === 'COMPLETED' && (
+                <div className="mt-3 rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-3">
+                  {b.rated ? (
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <span className="font-semibold text-[color:var(--ink)]">Your rating</span>
+                      <Stars value={b.rating ?? 0} />
+                      <span className="text-[color:var(--slate)]">{b.rating}/5</span>
+                    </div>
+                  ) : rateFor === b.id ? (
+                    <div>
+                      <div className="text-[13px] font-semibold text-[color:var(--ink)]">Rate your therapist</div>
+                      <div className="mt-1.5 flex items-center gap-1" onMouseLeave={() => setHover(0)}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <button key={n} type="button" aria-label={`${n} star${n === 1 ? '' : 's'}`}
+                            onMouseEnter={() => setHover(n)} onClick={() => setStars(stars === n ? 0 : n)}
+                            className="p-0.5">
+                            <svg width="26" height="26" viewBox="0 0 24 24" fill={(hover || stars) >= n ? '#F5A623' : 'none'} stroke={(hover || stars) >= n ? '#F5A623' : 'var(--line-2)'} strokeWidth="1.5" strokeLinejoin="round"><path d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.4l-5.81 3.06 1.11-6.47L2.6 9.35l6.5-.95L12 2.5Z" /></svg>
+                          </button>
+                        ))}
+                        <span className="ml-2 text-[13px] font-semibold text-[color:var(--slate)]">{stars}/5</span>
+                      </div>
+                      <textarea className="input mt-2 min-h-[56px] !text-[13px]" value={reviewText} onChange={(e) => setReviewText(e.target.value)} placeholder="Add a comment (optional)" />
+                      <div className="mt-2 flex gap-2">
+                        <button className="btn-primary !px-3 !py-1.5 !text-[12.5px]" disabled={busy === b.id} onClick={() => submitRating(b.id)}>{busy === b.id ? 'Saving…' : 'Submit rating'}</button>
+                        <button className="text-[12.5px] font-medium text-[color:var(--slate)] hover:underline" onClick={() => { setRateFor(null); setStars(0); setReviewText('') }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setRateFor(b.id); setStars(0); setHover(0); setReviewText('') }} className="flex items-center gap-2 text-[13px] font-semibold text-[color:var(--steel)] hover:underline">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"><path d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.4l-5.81 3.06 1.11-6.47L2.6 9.35l6.5-.95L12 2.5Z" /></svg>
+                      Rate your therapist
+                    </button>
+                  )}
                 </div>
               )}
             </div>
