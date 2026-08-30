@@ -227,9 +227,22 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Principal Amount</label><input value={f.principalAmount} onChange={e => set('principalAmount', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
         </div>
 
-        {/* Interest */}
+        {/* Interest — an explicit pair: exactly one of the two is always ticked.
+            "No interest" still takes a term so the principal divides into equal
+            payments and reaches the Payment History table. */}
         <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-          <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700"><input type="checkbox" checked={f.hasInterest} onChange={e => set('hasInterest', e.target.checked)} /> Has interest?</label>
+          <div className="flex items-center gap-5 flex-wrap">
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700"><input type="checkbox" checked={f.hasInterest} onChange={e => set('hasInterest', e.target.checked)} /> Has interest?</label>
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700"><input type="checkbox" checked={!f.hasInterest} onChange={e => set('hasInterest', !e.target.checked)} /> No interest <span className="font-normal text-gray-400">(principal only)</span></label>
+          </div>
+          {!f.hasInterest && (
+            <div className="mt-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>For how many {periodPlural(f.payoutSchedule)}</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
+              </div>
+              {n(f.termMonths) > 0 && n(f.principalAmount) > 0 && <p className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#fff', color: '#334155' }}>{Math.round(n(f.termMonths))} {periodAdj(f.payoutSchedule).toLowerCase()} payment{Math.round(n(f.termMonths)) === 1 ? '' : 's'} of {peso(n(f.principalAmount) / Math.max(1, Math.round(n(f.termMonths))))} · principal only, no interest</p>}
+            </div>
+          )}
           {f.hasInterest && (
             <div className="mt-2">
               <div className="flex gap-2 mb-2 text-xs">
@@ -261,8 +274,6 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Start month</label><select value={f.payoutStartMonth} onChange={e => set('payoutStartMonth', e.target.value)} className={inp} style={bc}><option value="">—</option>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Start year</label><input value={f.payoutStartYear} onChange={e => set('payoutStartYear', e.target.value)} inputMode="numeric" placeholder="2026" className={inp + ' font-mono'} style={bc} /></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Every nth (day)</label><input value={f.payoutDay} onChange={e => set('payoutDay', e.target.value)} inputMode="numeric" placeholder="30" className={inp + ' font-mono'} style={bc} /></div>
-            {/* With interest the term lives in the interest box above; without it, capture it here so the schedule still generates. */}
-            {!f.hasInterest && <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>For how many {periodPlural(f.payoutSchedule)}</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>}
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Repayment</label><select value={f.repaymentMode} onChange={e => set('repaymentMode', e.target.value)} className={inp} style={bc}><option value="">Amortizing (default)</option><option value="AMORTIZING">Amortizing (principal + interest)</option><option value="INTEREST_ONLY">Interest-only (principal at maturity)</option></select></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Amount per period <span className="font-normal text-gray-400">(optional)</span></label><input value={f.payoutAmountPerPeriod} onChange={e => set('payoutAmountPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>
             {f.repaymentMode !== 'INTEREST_ONLY' && <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Principal per period <span className="font-normal text-gray-400">(interest = rest)</span></label><input value={f.principalPerPeriod} onChange={e => set('principalPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>}
