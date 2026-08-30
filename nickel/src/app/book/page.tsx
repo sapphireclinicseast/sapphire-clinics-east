@@ -27,6 +27,7 @@ export default function BookPage() {
   const [city, setCity] = useState('')
   const [me, setMe] = useState<Me | null>(null)
   const [providers, setProviders] = useState<Provider[] | null>(null)
+  const [providerQuery, setProviderQuery] = useState('')
   const [provider, setProvider] = useState<Provider | null>(null)
   const [slot, setSlot] = useState<Slot | null>(null)
   const [busy, setBusy] = useState(false)
@@ -165,10 +166,19 @@ export default function BookPage() {
               </div>
             )}
             {providers && providers.length > 0 && (
-              <p className="mb-2 text-[12.5px] text-[color:var(--slate)]">Can’t find the right time? <a href="/requests" className="font-semibold text-[color:var(--steel)] hover:underline">Post a request</a> and let therapists reach out.</p>
+              <>
+                <div className="relative mb-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--muted)]"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+                  <input className="input !pl-9" value={providerQuery} onChange={(e) => setProviderQuery(e.target.value)} placeholder="Search by therapist name…" />
+                </div>
+                <p className="mb-2 text-[12.5px] text-[color:var(--slate)]">Can’t find the right time? <a href="/requests" className="font-semibold text-[color:var(--steel)] hover:underline">Post a request</a> and let therapists reach out.</p>
+              </>
             )}
             <div className="space-y-2">
-              {providers?.map((p) => (
+              {providers && providers.filter((p) => p.name.toLowerCase().includes(providerQuery.trim().toLowerCase())).length === 0 && providerQuery.trim() && (
+                <p className="text-[13px] text-[color:var(--slate)]">No therapist named “{providerQuery}” in {city}.</p>
+              )}
+              {providers?.filter((p) => p.name.toLowerCase().includes(providerQuery.trim().toLowerCase())).map((p) => (
                 <button key={p.id} onClick={() => { setProvider(p); setStep('time') }} className="w-full rounded-xl border border-[color:var(--line-2)] bg-white p-3.5 text-left hover:border-[color:var(--sky)]">
                   <div className="flex items-start gap-3">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[color:var(--mist-2)] text-[15px] font-semibold text-[color:var(--slate)]">
