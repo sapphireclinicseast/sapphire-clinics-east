@@ -191,6 +191,10 @@ services:
       # Unset until the Nickel webhook is registered on the Verdana account; the
       # route then accepts unverified (logs a warning) so bookings still settle.
       PAYMONGO_WEBHOOK_SECRET: ${PAYMONGO_VERDANA_WEBHOOK_SECRET:-}
+      # Nickel's own LiveKit project (teleconsults). Values live in .env.production.
+      NICKEL_LIVEKIT_URL: ${NICKEL_LIVEKIT_URL:-}
+      NICKEL_LIVEKIT_API_KEY: ${NICKEL_LIVEKIT_API_KEY:-}
+      NICKEL_LIVEKIT_API_SECRET: ${NICKEL_LIVEKIT_API_SECRET:-}
       NODE_ENV: production
     ports:
       - "127.0.0.1:3007:3000"
