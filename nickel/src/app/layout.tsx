@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Plus_Jakarta_Sans, Baloo_2 } from 'next/font/google'
 import { getSessionPatientId } from '@/lib/auth'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
+const body = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
+const display = Baloo_2({ subsets: ['latin'], weight: ['500', '600', '700', '800'], variable: '--font-display', display: 'swap' })
 
 export const metadata: Metadata = {
   title: { default: 'Nickel', template: '%s · Nickel' },
@@ -16,7 +17,7 @@ export const viewport: Viewport = { themeColor: '#34618c' }
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const isPatient = !!(await getSessionPatientId())
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${body.variable} ${display.variable}`}>
       <body style={{ fontFamily: 'var(--font-body)' }}>
         <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-white/85 backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
