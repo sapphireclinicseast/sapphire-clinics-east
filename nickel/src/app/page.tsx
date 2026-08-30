@@ -1,7 +1,19 @@
+import HowItWorks from '@/components/HowItWorks'
+
 const STEPS = [
   { n: '1', t: 'Tell us your city', d: 'We show therapists who serve your area.' },
   { n: '2', t: 'Pick your therapist', d: 'Every therapist is PRC-licensed and identity-verified. Choose by their open schedule and the cities they cover.' },
   { n: '3', t: 'Book & pay securely', d: 'Confirm a time and pay online — the therapist comes to you.' },
+]
+
+// Why therapists choose Nickel (monochrome line icons).
+const WHY = [
+  { t: 'No awkward money talk', d: 'Clients pay through the app at your set rate — no haggling or chasing payment in person.', icon: <><path d="M12 2v20" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></> },
+  { t: 'No self-advertising', d: 'You don’t have to market yourself on social media. Nickel puts you in front of clients looking for therapy.', icon: <><path d="M3 11l18-5v12L3 14v-3Z" /><path d="M11.6 16.8a3 3 0 0 1-5.8-1.6" /></> },
+  { t: 'Clients come to you', d: 'Get found on the marketplace, or reply to clients who post a request. Two easy ways to fill your schedule.', icon: <><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9" /></> },
+  { t: 'You control your time', d: 'Set your own rate and open only the days and hours you want. Accept or decline any booking.', icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></> },
+  { t: 'You set what you earn', d: 'Name your rate. Nickel takes only a flat ₱20 per session — you keep the rest, net of payment fees.', icon: <><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z" /><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 2.5-3 2-3 4M12 17h.01" /></> },
+  { t: 'Weekly payouts', d: 'Your earnings land in your Nickel wallet on completion and are paid out to your bank or GCash every week.', icon: <><path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v1M3 7v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3M21 12v-2a1 1 0 0 0-1-1h-4a2 2 0 0 0 0 4h4a1 1 0 0 0 1-1Z" /></> },
 ]
 
 export default function NickelHome() {
@@ -36,6 +48,9 @@ export default function NickelHome() {
               Provider sign in
             </a>
           </div>
+          <p className="mt-4 text-[13px] text-white/80">
+            Prefer therapists to come to you? <a href="/requests" className="font-semibold text-white underline underline-offset-2">Post a request</a> with your preferred day and time, and licensed therapists near you will reach out.
+          </p>
         </div>
       </section>
 
@@ -55,14 +70,26 @@ export default function NickelHome() {
         </div>
       </section>
 
-      {/* Provider CTA */}
-      <section className="card flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <div className="text-[16px] font-semibold text-[color:var(--ink)]">Are you a therapist?</div>
-          <p className="text-[13px] text-[color:var(--slate)]">Join Nickel, set your own rate and schedule, and reach clients near you.</p>
+      {/* Why choose Nickel? (for therapists) */}
+      <section className="card">
+        <div className="mb-4 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">Why choose Nickel?</div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {WHY.map((w) => (
+            <div key={w.t} className="flex gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--mist-2)] text-[color:var(--steel)]">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{w.icon}</svg>
+              </span>
+              <div>
+                <div className="text-[14px] font-semibold text-[color:var(--ink)]">{w.t}</div>
+                <p className="mt-0.5 text-[12.5px] leading-snug text-[color:var(--slate)]">{w.d}</p>
+              </div>
+            </div>
+          ))}
         </div>
-        <a href="/provider/signup" className="btn-outline shrink-0">Join as a therapist</a>
       </section>
+
+      {/* Provider CTA + How it works flowchart */}
+      <HowItWorks />
     </div>
   )
 }

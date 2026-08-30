@@ -164,7 +164,14 @@ export default function BookPage() {
             <button onClick={() => setStep('city')} className="mb-3 text-[12px] text-[color:var(--steel)] hover:underline">← {city}</button>
             <div className="label">Choose your therapist in {city}</div>
             {!providers && <p className="text-[13px] text-[color:var(--slate)]">Loading therapists…</p>}
-            {providers && providers.length === 0 && <p className="text-[13px] text-[color:var(--slate)]">No therapists with open schedules in {city} yet. Please check back soon.</p>}
+            {providers && providers.length === 0 && (
+              <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-3.5 text-[13px] text-[color:var(--slate)]">
+                No therapists with open schedules in {city} yet. <a href="/requests" className="font-semibold text-[color:var(--steel)] hover:underline">Post a request</a> instead and let therapists reach out to you.
+              </div>
+            )}
+            {providers && providers.length > 0 && (
+              <p className="mb-2 text-[12.5px] text-[color:var(--slate)]">Can’t find the right time? <a href="/requests" className="font-semibold text-[color:var(--steel)] hover:underline">Post a request</a> and let therapists reach out.</p>
+            )}
             <div className="space-y-2">
               {providers?.map((p) => (
                 <button key={p.id} onClick={() => { setProvider(p); setStep('time') }} className="w-full rounded-xl border border-[color:var(--line-2)] bg-white p-3.5 text-left hover:border-[color:var(--sky)]">

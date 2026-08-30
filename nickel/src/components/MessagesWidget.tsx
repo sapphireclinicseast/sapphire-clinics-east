@@ -18,9 +18,10 @@ const fmtWhen = (iso: string) => {
 // Alert glyph by type (monochrome, per brand).
 function AlertIcon({ type }: { type: string }) {
   const common = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
-  if (type === 'BOOKING_CONFIRMED' || type === 'PROPOSAL_ACCEPTED') return <svg {...common}><path d="M20 6 9 17l-5-5" /></svg>
+  if (type === 'BOOKING_CONFIRMED' || type === 'PROPOSAL_ACCEPTED' || type === 'OFFER_ACCEPTED') return <svg {...common}><path d="M20 6 9 17l-5-5" /></svg>
   if (type === 'BOOKING_CANCELLED' || type === 'PROPOSAL_DECLINED') return <svg {...common}><path d="M18 6 6 18M6 6l12 12" /></svg>
   if (type === 'RESCHEDULE_PROPOSED') return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+  if (type === 'REQUEST_OFFER') return <svg {...common}><path d="M3 11l19-9-9 19-2-8-8-2Z" /></svg>
   return <svg {...common}><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-6 6c0 2.5 1.2 3.8 2 5h8c.8-1.2 2-2.5 2-5a6 6 0 0 0-6-6Z" /></svg>
 }
 
@@ -98,7 +99,7 @@ export default function MessagesWidget() {
                     ? <p className="px-4 py-8 text-center text-[13px] text-[color:var(--muted)]">No alerts yet.</p>
                     : alerts.map((a) => (
                       <button key={a.id}
-                        onClick={() => { if (role === 'PATIENT') window.location.href = '/bookings'; else window.location.href = '/provider' }}
+                        onClick={() => { window.location.href = role === 'PATIENT' ? (a.type === 'REQUEST_OFFER' ? '/requests' : '/bookings') : (a.type === 'OFFER_ACCEPTED' ? '/provider' : '/provider') }}
                         className={`flex w-full items-start gap-3 border-b border-[color:var(--line)] px-4 py-3 text-left last:border-0 hover:bg-[color:var(--mist)] ${a.read ? '' : 'bg-[color:var(--mist-2)]'}`}>
                         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--mist-2)] text-[color:var(--steel)]"><AlertIcon type={a.type} /></span>
                         <span className="min-w-0 flex-1">

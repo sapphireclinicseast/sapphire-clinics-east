@@ -26,7 +26,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <a href="/" className="flex items-center"><img src="/nickel-logo.png" alt="Nickel" className="h-7 w-auto" /></a>
             <nav className="flex items-center gap-1 text-sm" style={{ fontFamily: 'var(--font-body)' }}>
               {isPatient
-                ? <a href="/bookings" className="rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)]">My bookings</a>
+                ? <>
+                    <a href="/requests" className="hidden rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)] sm:inline-block">Requests</a>
+                    <a href="/bookings" className="rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)]">My bookings</a>
+                  </>
                 : <a href="/provider/login" className="rounded-lg px-3 py-2 text-[color:var(--ink)] hover:bg-[color:var(--mist)]">Provider sign in</a>}
               <a href="/book" className="btn-primary !px-4 !py-2 !text-[14px]">Book now</a>
             </nav>

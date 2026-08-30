@@ -46,6 +46,19 @@ enum BookingStatus {
   COMPLETED
 }
 
+enum RequestStatus {
+  OPEN      // posted by the patient, therapists can offer
+  MATCHED   // patient accepted an offer → a booking was created
+  CANCELLED // patient cancelled the request
+}
+
+enum OfferStatus {
+  PENDING   // therapist reached out, waiting on the patient
+  ACCEPTED  // patient accepted → booking created
+  DECLINED  // patient chose someone else / declined
+  WITHDRAWN // therapist withdrew
+}
+
 enum TicketStatus {
   OPEN
   RESOLVED
@@ -117,6 +130,7 @@ model Provider {
   tickets      Ticket[]
   payouts      Payout[]
   walletTxns   WalletTransaction[]
+  requestOffers RequestOffer[]
 
   @@index([active])
 }
@@ -153,6 +167,7 @@ model Patient {
 
   bookings     Booking[]
   walletTxns   WalletTransaction[]
+  requests     PatientRequest[]
 
   @@index([city])
 }
@@ -265,6 +280,47 @@ model WalletTransaction {
 
   @@index([patientId, createdAt])
   @@index([providerId, createdAt])
+}
+
+// ── Patient-broadcast matching ───────────────────────────────────────────────
+// The reverse of the marketplace: a patient posts what they need and when, and
+// therapists reach out with an offer the patient can accept (→ booking + pay).
+model PatientRequest {
+  id            String        @id @default(cuid())
+  patientId     String
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  city          String
+  profession    String?       // preferred discipline filter (PT/OT/SLP/…), optional
+  preferredDate DateTime?     // preferred visit date (date-only, UTC midnight)
+  preferredTime String?       // preferred start time "HH:MM", optional
+  flexibility   String?       // free text, e.g. "weekday mornings work too"
+  note          String?       // what they need help with
+  status        RequestStatus @default(OPEN)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  offers        RequestOffer[]
+
+  @@index([status, city])
+  @@index([patientId])
+}
+
+model RequestOffer {
+  id         String         @id @default(cuid())
+  requestId  String
+  request    PatientRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   Provider       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  date       DateTime       // offered visit date
+  startTime  String         // offered start time "HH:MM"
+  rate       Decimal        // the provider's rate at the time of the offer
+  message    String?        // optional note to the patient
+  status     OfferStatus    @default(PENDING)
+  bookingId  String?        // set once the patient accepts
+  createdAt  DateTime       @default(now())
+
+  @@index([requestId])
+  @@index([providerId, status])
 }
 
 // ── Tickets (concerns raised by providers or patients) ───────────────────────
