@@ -9,7 +9,7 @@ const PROFESSIONS: [string, string][] = [
 ]
 
 export default function ProviderSignup() {
-  const [f, setF] = useState({ firstName: '', lastName: '', email: '', phone: '', profession: 'PT', password: '', confirm: '' })
+  const [f, setF] = useState({ firstName: '', lastName: '', email: '', phone: '', dob: '', profession: 'PT', password: '', confirm: '' })
   const [acks, setAcks] = useState<boolean[]>(() => ACKNOWLEDGMENTS.map(() => false))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -26,7 +26,7 @@ export default function ProviderSignup() {
     try {
       const r = await fetch('/api/provider/signup', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName: f.firstName, lastName: f.lastName, email: f.email, phone: f.phone, profession: f.profession, password: f.password, termsVersion: TERMS_VERSION }),
+        body: JSON.stringify({ firstName: f.firstName, lastName: f.lastName, email: f.email, phone: f.phone, dob: f.dob, profession: f.profession, password: f.password, termsVersion: TERMS_VERSION }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? 'Could not create your account.')
@@ -50,6 +50,7 @@ export default function ProviderSignup() {
             <Field label="Last name" required value={f.lastName} onChange={(v) => set('lastName', v)} />
             <Field label="Email" type="email" required value={f.email} onChange={(v) => set('email', v)} />
             <Field label="Cellphone no." value={f.phone} onChange={(v) => set('phone', v)} />
+            <Field label="Date of birth" type="date" required value={f.dob} onChange={(v) => set('dob', v)} />
             <div className="sm:col-span-2">
               <div className="label">Profession *</div>
               <select className="select" value={f.profession} onChange={(e) => set('profession', e.target.value)}>

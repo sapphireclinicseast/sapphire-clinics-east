@@ -11,16 +11,19 @@ export async function POST(req: NextRequest) {
   const phone = String(b.phone ?? '').trim() || null
   const address = String(b.address ?? '').trim() || null
   const city = String(b.city ?? '').trim() || null
+  const dobStr = String(b.dob ?? '').trim()
+  const dob = /^\d{4}-\d{2}-\d{2}$/.test(dobStr) ? new Date(`${dobStr}T00:00:00.000Z`) : null
 
   if (!firstName || !lastName || !email) return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
   if (!email.includes('@')) return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
+  if (!dob) return NextResponse.json({ error: 'Please enter the patient’s date of birth' }, { status: 400 })
   if (password.length < 8) return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
 
   const existing = await prisma.patient.findUnique({ where: { email }, select: { id: true } })
   if (existing) return NextResponse.json({ error: 'An account already exists for this email. Please sign in.' }, { status: 409 })
 
   const patient = await prisma.patient.create({
-    data: { firstName: firstName.toUpperCase(), lastName: lastName.toUpperCase(), email, phone, address, city, passwordHash: await hashPassword(password) },
+    data: { firstName: firstName.toUpperCase(), lastName: lastName.toUpperCase(), email, phone, address, city, dob, passwordHash: await hashPassword(password) },
     select: { id: true },
   })
 

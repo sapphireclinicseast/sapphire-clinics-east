@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       passwordHash: await hashPassword(password),
       phone: String(b.phone ?? '').trim() || null,
       profession, clinicId: clinic.id,
+      dob: typeof b.dob === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.dob) ? new Date(`${b.dob}T00:00:00.000Z`) : null,
       citiesCovered: clinic.city ? [clinic.city] : [],
       rate: b.rate ? Number(b.rate) : null,
       verificationStatus: 'PENDING',

@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       phone: String(b.phone ?? '').trim() || null,
       address: String(b.address ?? '').trim() || null,
       city: String(b.city ?? '').trim() || clinic.city || null,
+      dob: typeof b.dob === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.dob) ? new Date(`${b.dob}T00:00:00.000Z`) : null,
       clinicId: clinic.id,
     },
     select: { id: true },

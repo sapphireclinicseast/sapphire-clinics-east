@@ -28,10 +28,17 @@ export async function PATCH(req: NextRequest) {
   if ('rate' in b) data.rate = b.rate === '' || b.rate == null ? null : Number(b.rate)
   if (typeof b.transpoIncluded === 'boolean') data.transpoIncluded = b.transpoIncluded
   if (typeof b.travelBuffer === 'boolean') data.travelBuffer = b.travelBuffer
-  // Specialized rate is only settable once SCEI has approved the specialization.
-  if ('specializedRate' in b) {
+  if (typeof b.dob === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.dob)) data.dob = new Date(`${b.dob}T00:00:00.000Z`)
+  // Itemized service prices (the standard booking still uses `rate`).
+  const num = (k: string) => { if (k in b) data[k] = b[k] === '' || b[k] == null ? null : Number(b[k]) }
+  ;['priceInitialEval', 'priceProgressReport', 'priceHEP'].forEach(num)
+  // Specialized rate/price only settable once SCEI has approved the specialization.
+  if ('specializedRate' in b || 'priceTreatmentSpecialized' in b) {
     const prov = await prisma.provider.findUnique({ where: { id: pid }, select: { specializedRateApproved: true } })
-    if (prov?.specializedRateApproved) data.specializedRate = b.specializedRate === '' || b.specializedRate == null ? null : Number(b.specializedRate)
+    if (prov?.specializedRateApproved) {
+      if ('specializedRate' in b) data.specializedRate = b.specializedRate === '' || b.specializedRate == null ? null : Number(b.specializedRate)
+      if ('priceTreatmentSpecialized' in b) data.priceTreatmentSpecialized = b.priceTreatmentSpecialized === '' || b.priceTreatmentSpecialized == null ? null : Number(b.priceTreatmentSpecialized)
+    }
   }
   // Names are stored uppercase to match the rest of the platform.
   if (typeof data.firstName === 'string') data.firstName = (data.firstName as string).toUpperCase()

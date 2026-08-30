@@ -9,6 +9,11 @@ export default async function SettingsPage() {
       init={{
         rate: p.rate != null ? String(Number(p.rate)) : '',
         transpoIncluded: p.transpoIncluded,
+        dob: p.dob ? p.dob.toISOString().slice(0, 10) : '',
+        priceInitialEval: p.priceInitialEval != null ? String(Number(p.priceInitialEval)) : '',
+        priceTreatmentSpecialized: p.priceTreatmentSpecialized != null ? String(Number(p.priceTreatmentSpecialized)) : '',
+        priceProgressReport: p.priceProgressReport != null ? String(Number(p.priceProgressReport)) : '',
+        priceHEP: p.priceHEP != null ? String(Number(p.priceHEP)) : '',
         specialization: p.specialization ?? '',
         specializedRate: p.specializedRate != null ? String(Number(p.specializedRate)) : '',
         specializedRateApproved: p.specializedRateApproved,

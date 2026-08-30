@@ -23,7 +23,7 @@ export default function ConsultPage() {
   const [err, setErr] = useState<string | null>(null)
 
   const [amode, setAmode] = useState<'signup' | 'login'>('signup')
-  const [af, setAf] = useState({ firstName: '', lastName: '', email: '', phone: '', address: '', password: '', confirm: '' })
+  const [af, setAf] = useState({ firstName: '', lastName: '', email: '', phone: '', address: '', dob: '', password: '', confirm: '' })
   const setA = (k: keyof typeof af, v: string) => setAf((s) => ({ ...s, [k]: v }))
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export default function ConsultPage() {
     setBusy(true)
     try {
       const url = amode === 'signup' ? '/api/patient/signup' : '/api/patient/login'
-      const body = amode === 'signup' ? { firstName: af.firstName, lastName: af.lastName, email: af.email, phone: af.phone, address: af.address, city: city || undefined, password: af.password } : { email: af.email, password: af.password }
+      const body = amode === 'signup' ? { firstName: af.firstName, lastName: af.lastName, email: af.email, phone: af.phone, address: af.address, dob: af.dob, city: city || undefined, password: af.password } : { email: af.email, password: af.password }
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json(); if (!r.ok) throw new Error(d.error ?? 'Failed')
       const meRes = await fetch('/api/patient/me').then((x) => x.json()); setMe(meRes.patient)
@@ -167,6 +167,7 @@ export default function ConsultPage() {
                     <>
                       <div className="grid gap-3 sm:grid-cols-2"><input className="input" placeholder="First name" required value={af.firstName} onChange={(e) => setA('firstName', e.target.value)} /><input className="input" placeholder="Last name" required value={af.lastName} onChange={(e) => setA('lastName', e.target.value)} /></div>
                       <input className="input" placeholder="Cellphone no." value={af.phone} onChange={(e) => setA('phone', e.target.value)} />
+                      <label className="block"><span className="mb-1 block text-[12px] text-[color:var(--slate)]">Patient date of birth</span><input className="input" type="date" required value={af.dob} onChange={(e) => setA('dob', e.target.value)} /></label>
                     </>
                   )}
                   <input className="input" type="email" placeholder="Email" required value={af.email} onChange={(e) => setA('email', e.target.value)} />

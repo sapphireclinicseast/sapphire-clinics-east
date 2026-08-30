@@ -14,6 +14,7 @@ interface Provider {
   certifications: string[]; specialization: string | null; specializedRate: number | null
   rate: number | null; transpoIncluded: boolean; slots: Slot[]
   ratingAvg: number | null; ratingCount: number
+  priceInitialEval: number | null; priceProgressReport: number | null; priceHEP: number | null
 }
 interface Me { id: string; firstName: string; city: string | null; walletBalance?: number }
 
@@ -41,7 +42,7 @@ export default function BookPage() {
 
   // auth form
   const [mode, setMode] = useState<'signup' | 'login'>('signup')
-  const [af, setAf] = useState({ firstName: '', lastName: '', email: '', phone: '', address: '', password: '', confirm: '' })
+  const [af, setAf] = useState({ firstName: '', lastName: '', email: '', phone: '', address: '', dob: '', password: '', confirm: '' })
   const setA = (k: keyof typeof af, v: string) => setAf((s) => ({ ...s, [k]: v }))
 
   useEffect(() => {
@@ -84,7 +85,7 @@ export default function BookPage() {
     try {
       const url = mode === 'signup' ? '/api/patient/signup' : '/api/patient/login'
       const body = mode === 'signup'
-        ? { firstName: af.firstName, lastName: af.lastName, email: af.email, phone: af.phone, address: af.address, city, password: af.password }
+        ? { firstName: af.firstName, lastName: af.lastName, email: af.email, phone: af.phone, address: af.address, dob: af.dob, city, password: af.password }
         : { email: af.email, password: af.password }
       const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
@@ -217,6 +218,13 @@ export default function BookPage() {
                       ))}
                     </div>
                   )}
+                  {(p.priceInitialEval != null || p.priceProgressReport != null || p.priceHEP != null) && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-[color:var(--slate)]">
+                      {p.priceInitialEval != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Initial eval {peso(p.priceInitialEval)}</span>}
+                      {p.priceProgressReport != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Progress report {peso(p.priceProgressReport)}</span>}
+                      {p.priceHEP != null && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5">Home exercise program {peso(p.priceHEP)}</span>}
+                    </div>
+                  )}
                   <div className="mt-2 text-[11px] font-medium text-[color:var(--steel)]">{p.slots.length} open slot{p.slots.length === 1 ? '' : 's'} · tap to pick a time →</div>
                 </button>
               ))}
@@ -302,6 +310,7 @@ export default function BookPage() {
                       </div>
                       <input className="input" placeholder="Cellphone no." value={af.phone} onChange={(e) => setA('phone', e.target.value)} />
                       <input className="input" placeholder="Home address (for the visit)" value={af.address} onChange={(e) => setA('address', e.target.value)} />
+                      <label className="block"><span className="mb-1 block text-[12px] text-[color:var(--slate)]">Patient date of birth</span><input className="input" type="date" required value={af.dob} onChange={(e) => setA('dob', e.target.value)} /></label>
                     </>
                   )}
                   <input className="input" type="email" placeholder="Email" required value={af.email} onChange={(e) => setA('email', e.target.value)} />

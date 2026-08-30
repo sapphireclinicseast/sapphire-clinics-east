@@ -5,7 +5,8 @@ import SignatureField from '@/components/SignatureField'
 import NetCalculator from '@/components/NetCalculator'
 
 interface Init {
-  rate: string; transpoIncluded: boolean
+  rate: string; transpoIncluded: boolean; dob: string
+  priceInitialEval: string; priceTreatmentSpecialized: string; priceProgressReport: string; priceHEP: string
   specialization: string; specializedRate: string; specializedRateApproved: boolean
   prcNumber: string; ptrNumber: string; signature: string
   bankName: string; bankAccountNo: string; bankAccountName: string; gcashNumber: string; gcashName: string
@@ -35,10 +36,10 @@ export default function SettingsForm({ init }: { init: Init }) {
       {/* Rate */}
       <section className="card">
         <h2 className="text-[16px] font-semibold">Your homecare rate</h2>
-        <p className="mb-3 mt-1 text-[12px] text-[color:var(--slate)]">Clients see this rate when they book you.</p>
+        <p className="mb-3 mt-1 text-[12px] text-[color:var(--slate)]">This is your <b>Treatment (Basic)</b> rate — the price clients pay for a standard home visit.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <div className="label">Session rate (₱)</div>
+            <div className="label">Treatment session rate — Basic (₱)</div>
             <input className="input" inputMode="numeric" value={f.rate} onChange={(e) => set('rate', e.target.value)} placeholder="e.g. 1500" />
           </div>
           <label className="flex items-end gap-2.5 pb-2.5 text-[13px]">
@@ -55,10 +56,21 @@ export default function SettingsForm({ init }: { init: Init }) {
       {/* Flat-₱20 disclaimer + net-by-method calculator */}
       <NetCalculator defaultAmount={f.rate} />
 
-      {/* Specialized rate — only editable once SCEI verifies the certification */}
+      {/* Itemized service prices */}
+      <section className="card">
+        <h2 className="text-[16px] font-semibold">Service prices</h2>
+        <p className="mb-3 mt-1 text-[12px] text-[color:var(--slate)]">Set what you charge for these services. Progress Report and Home Exercise Program are paid, patient-requested documents. Leave blank if you don’t offer one.</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div><div className="label">Initial Evaluation (₱)</div><input className="input" inputMode="numeric" value={f.priceInitialEval} onChange={(e) => set('priceInitialEval', e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 2000" /></div>
+          <div><div className="label">Progress Report (₱)</div><input className="input" inputMode="numeric" value={f.priceProgressReport} onChange={(e) => set('priceProgressReport', e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 500" /></div>
+          <div><div className="label">Home Exercise Program (₱)</div><input className="input" inputMode="numeric" value={f.priceHEP} onChange={(e) => set('priceHEP', e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 500" /></div>
+        </div>
+      </section>
+
+      {/* Treatment (Specialized) — only editable once SCEI verifies the certification */}
       <section className="card">
         <div className="flex items-center justify-between">
-          <h2 className="text-[16px] font-semibold">Specialized rate</h2>
+          <h2 className="text-[16px] font-semibold">Treatment (Specialized) price</h2>
           {f.specializedRateApproved
             ? <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[12px] font-semibold text-emerald-700">Approved{f.specialization ? ` · ${f.specialization}` : ''}</span>
             : <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[12px] font-semibold text-amber-800">Pending verification</span>}
@@ -82,6 +94,8 @@ export default function SettingsForm({ init }: { init: Init }) {
       <section className="card">
         <h2 className="text-[16px] font-semibold">Credentials</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div><div className="label">Date of birth</div><input className="input" type="date" value={f.dob} onChange={(e) => set('dob', e.target.value)} /></div>
+          <div className="hidden sm:block" />
           <div><div className="label">PRC number</div><input className="input" value={f.prcNumber} onChange={(e) => set('prcNumber', e.target.value)} /></div>
           <div><div className="label">PTR number</div><input className="input" value={f.ptrNumber} onChange={(e) => set('ptrNumber', e.target.value)} /></div>
         </div>

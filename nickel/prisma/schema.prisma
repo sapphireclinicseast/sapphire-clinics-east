@@ -70,6 +70,34 @@ enum ClinicBusinessType {
   CORPORATION
 }
 
+// Session documentation
+enum DocType {
+  INITIAL_EVAL
+  RE_EVAL
+  TREATMENT
+  PROGRESS_REPORT
+  HEP
+}
+enum DocVariant {
+  ADULT
+  PEDIA
+}
+enum DocStatus {
+  DRAFT
+  COMPLETED
+}
+enum DocSource {
+  FORM   // filled in-app, PDF generated
+  UPLOAD // therapist uploaded a PDF
+  PHOTO  // therapist photographed a handwritten copy
+}
+// For patient-requested paid documents (Progress Report, HEP)
+enum DocRequestStatus {
+  REQUESTED // patient asked + paid; awaiting therapist
+  READY     // therapist prepared it
+  CANCELLED
+}
+
 // How a clinic-arranged visit is paid out.
 enum PaymentRouting {
   THERAPIST_DIRECT // patient pays; therapist gets the net (therapist sets rate)
@@ -99,10 +127,17 @@ model Provider {
   profession   String   @default("PT") // PT | OT | SLP | SPED | PSYCHOLOGY | ...
 
   // Homecare service config
+  dob           DateTime? // date of birth
   citiesCovered String[] @default([]) // city NAMES this therapist serves (drives patient matching)
   coverageAreas Json?    // [{city, province, region, zip}] — richer coverage detail from the dashboard
   travelBuffer  Boolean  @default(false) // leave a 1-hour gap between bookable visits for travel
-  rate          Decimal? // therapist-set homecare session rate (PHP)
+  rate          Decimal? // therapist-set homecare session rate — Treatment (Basic) (PHP)
+
+  // Itemized service prices (the standard booking still uses `rate`)
+  priceInitialEval        Decimal? // Initial Evaluation
+  priceTreatmentSpecialized Decimal? // Treatment (Specialized) — needs an approved certification
+  priceProgressReport     Decimal? // Progress Report (patient-requested, paid)
+  priceHEP                Decimal? // Home Exercise Program (patient-requested, paid)
   transpoIncluded Boolean @default(false) // is transport included in the rate?
 
   // Settings — credentials & payout
@@ -158,6 +193,8 @@ model Provider {
   payouts      Payout[]
   walletTxns   WalletTransaction[]
   requestOffers RequestOffer[]
+  documents    SessionDocument[]
+  docRequests  DocRequest[]
 
   @@index([active])
 }
@@ -199,6 +236,8 @@ model Patient {
   walletTxns   WalletTransaction[]
   requests     PatientRequest[]
   consults     Consult[]
+  documents    SessionDocument[]
+  docRequests  DocRequest[]
 
   @@index([city])
 }
@@ -337,6 +376,53 @@ model WalletTransaction {
   @@index([providerId, createdAt])
   @@index([doctorId, createdAt])
   @@index([clinicId, createdAt])
+}
+
+// A clinical document tied to a patient (and usually a booking): a session note,
+// evaluation, progress report, or home exercise program.
+model SessionDocument {
+  id         String     @id @default(cuid())
+  patientId  String
+  patient    Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   Provider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  bookingId  String?    // the session this documents (null for standalone reports)
+
+  type       DocType
+  variant    DocVariant?  // ADULT / PEDIA (auto from patient age; null for report/HEP)
+  source     DocSource    @default(FORM)
+  data       Json?        // structured form fields when source = FORM
+  file       String?      // data URI: generated PDF, uploaded PDF, or photo
+  status     DocStatus    @default(DRAFT)
+
+  // Set when this document fulfils a patient-requested paid item
+  requestId  String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([patientId])
+  @@index([providerId])
+  @@index([bookingId])
+}
+
+// A patient's paid request for a Progress Report or HEP; alerts the therapist.
+model DocRequest {
+  id         String           @id @default(cuid())
+  patientId  String
+  patient    Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  type       DocType          // PROGRESS_REPORT or HEP
+  amount     Decimal
+  status     DocRequestStatus @default(REQUESTED)
+  paymongoLinkId String?
+  checkoutUrl    String?
+  paidAt         DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([providerId, status])
+  @@index([patientId])
 }
 
 // ── Partner clinic / hospital ────────────────────────────────────────────────
