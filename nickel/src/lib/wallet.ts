@@ -56,6 +56,14 @@ export async function refundBookingToWallet(db: Client, b: RefundBooking, note =
   return refund
 }
 
+// Move money in a CLINIC's wallet and write a ledger entry. Returns new balance.
+export async function clinicWalletMove(db: Client, clinicId: string, m: Move): Promise<number> {
+  const c = await db.clinic.update({ where: { id: clinicId }, data: { walletBalance: { increment: r2(m.amount) } }, select: { walletBalance: true } })
+  const balance = Number(c.walletBalance)
+  await db.walletTransaction.create({ data: { clinicId, amount: r2(m.amount), balance, type: m.type, bookingId: m.bookingId ?? null, payoutId: m.payoutId ?? null, note: m.note ?? null } })
+  return balance
+}
+
 // Move money in a DOCTOR's wallet and write a ledger entry. Returns new balance.
 export async function doctorWalletMove(db: Client, doctorId: string, m: Move): Promise<number> {
   const d = await db.doctor.update({ where: { id: doctorId }, data: { walletBalance: { increment: r2(m.amount) } }, select: { walletBalance: true } })

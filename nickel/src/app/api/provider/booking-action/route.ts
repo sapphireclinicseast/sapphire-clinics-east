@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionProviderId } from '@/lib/auth'
 import { notify } from '@/lib/notify'
-import { refundBookingToWallet, releaseEarning } from '@/lib/wallet'
+import { refundBookingToWallet, releaseEarning, clinicWalletMove } from '@/lib/wallet'
 
 // Provider acts on one of their bookings.
 // action: 'confirm' (PAID→CONFIRMED) | 'decline' (→CANCELLED) | 'complete' (CONFIRMED→COMPLETED)
@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
     select: {
       id: true, status: true, patientId: true, providerId: true, date: true, startTime: true,
       amount: true, walletApplied: true, providerNet: true, earnedAt: true, refundedAt: true,
+      clinicId: true, paymentRouting: true,
       provider: { select: { firstName: true, lastName: true } },
     },
   })
@@ -33,8 +34,17 @@ export async function POST(req: NextRequest) {
   await prisma.$transaction(async (tx) => {
     await tx.booking.update({ where: { id: bookingId }, data: { status: next as never } })
     if (next === 'COMPLETED') {
-      // Release the provider's net into their wallet (money was held until now).
-      await releaseEarning(tx, booking)
+      if (booking.clinicId && booking.paymentRouting === 'CLINIC_WALLET') {
+        // Clinic-wallet routing: the net goes to the clinic; the clinic pays the
+        // therapist's cut separately.
+        if (!booking.earnedAt && booking.providerNet != null) {
+          await clinicWalletMove(tx, booking.clinicId, { amount: Number(booking.providerNet), type: 'EARNING', bookingId: booking.id, note: 'Clinic-arranged visit completed' })
+          await tx.booking.update({ where: { id: booking.id }, data: { earnedAt: new Date() } })
+        }
+      } else {
+        // Release the provider's net into their wallet (money was held until now).
+        await releaseEarning(tx, booking)
+      }
     } else if (next === 'CANCELLED') {
       // Refund what the patient paid into their Nickel wallet.
       refunded = await refundBookingToWallet(tx, booking, 'Therapist cancelled the visit')
