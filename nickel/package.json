@@ -10,9 +10,13 @@
     "db:push": "prisma db push"
   },
   "dependencies": {
+    "@livekit/components-react": "^2.9.9",
+    "@livekit/components-styles": "^1.1.6",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
     "bcryptjs": "^3.0.3",
+    "livekit-client": "^2.15.7",
+    "livekit-server-sdk": "^2.13.4",
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
     "react": "19.2.3",

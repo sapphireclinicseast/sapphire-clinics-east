@@ -48,7 +48,22 @@ export async function POST(req: NextRequest) {
     where: { paymongoLinkId: linkId },
     select: { id: true, status: true, amount: true, walletApplied: true, providerId: true, date: true, startTime: true, patient: { select: { firstName: true, lastName: true } } },
   })
-  if (!booking) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
+  if (!booking) {
+    // Not a booking — maybe a rehab-doctor consult.
+    const consult = await prisma.consult.findFirst({
+      where: { paymongoLinkId: linkId },
+      select: { id: true, status: true, amount: true, doctorId: true, date: true, startTime: true, mode: true, patient: { select: { firstName: true, lastName: true } } },
+    })
+    if (!consult) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
+    if (consult.status === 'PENDING') {
+      const method = normalizeMethod(rawMethod)
+      const { appFee, processingFee, net } = computeSplit(Number(consult.amount), { method, processingFee: typeof feeCentavos === 'number' ? feeCentavos / 100 : undefined })
+      await prisma.consult.update({ where: { id: consult.id }, data: { status: 'PAID', paidAt: new Date(), appFee, processingFee, doctorNet: net, paymentMethod: method } })
+      const when = `${consult.date.toISOString().slice(0, 10)} at ${consult.startTime}`
+      await notify({ to: 'DOCTOR', doctorId: consult.doctorId, consultId: consult.id, type: 'CONSULT_PAID', title: 'New consult to confirm', body: `${consult.patient.firstName} ${consult.patient.lastName} booked a ${consult.mode === 'TELECONSULT' ? 'teleconsult' : 'clinic consult'} on ${when}.` })
+    }
+    return NextResponse.json({ ok: true })
+  }
 
   if (booking.status === 'PENDING') {
     // Record the flat ₱20 app fee + the actual PayMongo processing fee, and the

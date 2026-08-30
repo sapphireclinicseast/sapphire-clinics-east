@@ -56,6 +56,23 @@ export async function refundBookingToWallet(db: Client, b: RefundBooking, note =
   return refund
 }
 
+// Move money in a DOCTOR's wallet and write a ledger entry. Returns new balance.
+export async function doctorWalletMove(db: Client, doctorId: string, m: Move): Promise<number> {
+  const d = await db.doctor.update({ where: { id: doctorId }, data: { walletBalance: { increment: r2(m.amount) } }, select: { walletBalance: true } })
+  const balance = Number(d.walletBalance)
+  await db.walletTransaction.create({ data: { doctorId, amount: r2(m.amount), balance, type: m.type, bookingId: m.bookingId ?? null, payoutId: m.payoutId ?? null, note: m.note ?? null } })
+  return balance
+}
+
+// Release a completed consult's net earnings into the doctor's wallet. Idempotent.
+export async function releaseConsultEarning(db: Client, c: { id: string; doctorId: string; amount: Prisma.Decimal | number; doctorNet: Prisma.Decimal | number | null; earnedAt: Date | null }): Promise<number> {
+  if (c.earnedAt) return 0
+  const net = c.doctorNet != null ? Number(c.doctorNet) : computeSplit(Number(c.amount)).net
+  await doctorWalletMove(db, c.doctorId, { amount: net, type: 'EARNING', bookingId: c.id, note: 'Consult completed' })
+  await db.consult.update({ where: { id: c.id }, data: { earnedAt: new Date() } })
+  return net
+}
+
 // Release a completed session's net earnings into the provider's wallet. Idempotent.
 export async function releaseEarning(db: Client, b: { id: string; providerId: string; amount: Prisma.Decimal | number; providerNet: Prisma.Decimal | number | null; earnedAt: Date | null }): Promise<number> {
   if (b.earnedAt) return 0

@@ -10,9 +10,10 @@ import { prisma } from './prisma'
 
 export const SESSION_COOKIE = 'nickel_session' // provider
 export const PATIENT_COOKIE = 'nickel_patient'
+export const DOCTOR_COOKIE = 'nickel_doctor'
 export const ADMIN_COOKIE = 'nickel_admin'
 const TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
-type Typ = 'provider' | 'patient' | 'admin'
+type Typ = 'provider' | 'patient' | 'doctor' | 'admin'
 
 function secret(): string {
   return process.env.NEXTAUTH_SECRET || 'dev-insecure-secret-change-me'
@@ -44,6 +45,7 @@ function verify(token: string | undefined, typ: Typ): string | null {
 // Provider session (kept the name signSession for existing routes).
 export function signSession(providerId: string): string { return sign(providerId, 'provider') }
 export function signPatientSession(patientId: string): string { return sign(patientId, 'patient') }
+export function signDoctorSession(doctorId: string): string { return sign(doctorId, 'doctor') }
 
 export async function getSessionProviderId(): Promise<string | null> {
   return verify((await cookies()).get(SESSION_COOKIE)?.value, 'provider')
@@ -58,6 +60,13 @@ export async function getSessionProvider() {
 export async function getSessionPatient() {
   const id = await getSessionPatientId()
   return id ? prisma.patient.findUnique({ where: { id } }) : null
+}
+export async function getSessionDoctorId(): Promise<string | null> {
+  return verify((await cookies()).get(DOCTOR_COOKIE)?.value, 'doctor')
+}
+export async function getSessionDoctor() {
+  const id = await getSessionDoctorId()
+  return id ? prisma.doctor.findUnique({ where: { id } }) : null
 }
 
 // ── Admin (SCEI operations) — single shared credential from env ──

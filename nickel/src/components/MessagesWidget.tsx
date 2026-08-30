@@ -29,7 +29,7 @@ function AlertIcon({ type }: { type: string }) {
 // two tabs — Messages (chat threads) and Alerts (booking events: confirmations,
 // reschedules, cancellations). Renders nothing until there's something to show.
 export default function MessagesWidget() {
-  const [role, setRole] = useState<'PATIENT' | 'PROVIDER' | null>(null)
+  const [role, setRole] = useState<'PATIENT' | 'PROVIDER' | 'DOCTOR' | null>(null)
   const [convos, setConvos] = useState<Convo[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [msgUnread, setMsgUnread] = useState(0)
@@ -77,7 +77,7 @@ export default function MessagesWidget() {
                   <button onClick={() => { setOpen(false); setActive(null) }} className="flex h-7 w-7 items-center justify-center rounded-lg text-[color:var(--slate)] hover:bg-[color:var(--mist)]">✕</button>
                 </div>
               </div>
-              <div className="p-2"><Chat bookingId={active.bookingId} meRole={role} otherName={active.otherName} /></div>
+              <div className="p-2"><Chat bookingId={active.bookingId} meRole={role === 'PROVIDER' ? 'PROVIDER' : 'PATIENT'} otherName={active.otherName} /></div>
             </>
           ) : (
             <>
@@ -99,7 +99,7 @@ export default function MessagesWidget() {
                     ? <p className="px-4 py-8 text-center text-[13px] text-[color:var(--muted)]">No alerts yet.</p>
                     : alerts.map((a) => (
                       <button key={a.id}
-                        onClick={() => { window.location.href = role === 'PATIENT' ? (a.type === 'REQUEST_OFFER' ? '/requests' : '/bookings') : (a.type === 'OFFER_ACCEPTED' ? '/provider' : '/provider') }}
+                        onClick={() => { window.location.href = role === 'DOCTOR' ? '/doctor' : role === 'PATIENT' ? (a.type === 'REQUEST_OFFER' ? '/requests' : '/bookings') : '/provider' }}
                         className={`flex w-full items-start gap-3 border-b border-[color:var(--line)] px-4 py-3 text-left last:border-0 hover:bg-[color:var(--mist)] ${a.read ? '' : 'bg-[color:var(--mist-2)]'}`}>
                         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--mist-2)] text-[color:var(--steel)]"><AlertIcon type={a.type} /></span>
                         <span className="min-w-0 flex-1">

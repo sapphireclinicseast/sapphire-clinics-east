@@ -20,6 +20,8 @@ export interface StartBookingInput {
   startTime: string   // HH:MM
   amount: number      // provider rate to charge
   useWallet?: boolean
+  referralFile?: string | null    // doctor's referral (data URI) — required for PT
+  referralConsultId?: string | null
 }
 export type StartBookingResult =
   | { ok: true; bookingId: string; paid: true }
@@ -48,6 +50,7 @@ export async function startBooking(i: StartBookingInput): Promise<StartBookingRe
           patientId: i.patientId, providerId: i.providerId, city: i.city, date: i.bookedDate,
           startTime: i.startTime, endTime: addHour(i.startTime), amount: i.amount,
           transpoIncluded: i.transpoIncluded, walletApplied: applied,
+          referralFile: i.referralFile ?? null, referralConsultId: i.referralConsultId ?? null,
           status: fullyCovered ? 'PAID' : 'PENDING',
           ...(fullyCovered ? (() => { const s = computeSplit(i.amount, { method: 'wallet' }); return { paidAt: new Date(), appFee: s.appFee, processingFee: s.processingFee, providerNet: s.net, paymentMethod: 'wallet' } })() : {}),
         },

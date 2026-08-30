@@ -62,6 +62,28 @@ export default function NickelHome() {
         </div>
       </section>
 
+      {/* About Us */}
+      <section className="card">
+        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">About us</div>
+        <p className="text-[17px] font-semibold leading-snug text-[color:var(--ink)]" style={{ fontFamily: 'var(--font-display)' }}>
+          Licensed physical therapists, booked to your door. Home rehab anywhere in the Philippines.
+        </p>
+        <div className="mt-3 space-y-2 text-[13.5px] leading-relaxed text-[color:var(--slate)]">
+          <p>Nickel brings licensed physical therapists into Filipino homes. Book a session in a few taps, see the rate before you confirm, and recover in the room you actually live in — no traffic, no waiting room, no guessing what it will cost.</p>
+          <p>Every therapist on Nickel is licensed and verified. Rates are set by the therapist and shown upfront, transport included where stated.</p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">Vision</div>
+            <p className="mt-1 text-[13.5px] leading-snug text-[color:var(--ink)]">A Philippines where recovery never depends on how far you can travel.</p>
+          </div>
+          <div className="rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--sky)]">Mission</div>
+            <p className="mt-1 text-[13.5px] leading-snug text-[color:var(--ink)]">To bring licensed physical therapists into Filipino homes — making rehabilitation simple to book, honestly priced, and held to the same standard of care as any clinic.</p>
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section className="card">
         <div className="mb-4 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--sky)]">How it works</div>
@@ -76,6 +98,15 @@ export default function NickelHome() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Referral CTA */}
+      <section className="card flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-[200px] flex-1">
+          <div className="text-[15px] font-semibold text-[color:var(--ink)]">Need a doctor’s referral for PT?</div>
+          <p className="text-[13px] text-[color:var(--slate)]">A referral is required for home physical therapy in the Philippines. See a rehab doctor by video or in person and get yours.</p>
+        </div>
+        <a href="/consult" className="btn-outline shrink-0">See a rehab doctor</a>
       </section>
 
       {/* Why choose Nickel? (for patients) */}

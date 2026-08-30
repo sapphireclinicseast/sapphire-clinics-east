@@ -32,6 +32,11 @@ export default function BookPage() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [useWallet, setUseWallet] = useState(true)
+  // PT doctor's-referral gate
+  const [referralData, setReferralData] = useState<string | null>(null)
+  const [referralName, setReferralName] = useState<string>('')
+  const [referralConsultId, setReferralConsultId] = useState<string | null>(null)
+  const [referrals, setReferrals] = useState<{ consultId: string; date: string; doctorName: string }[]>([])
 
   // auth form
   const [mode, setMode] = useState<'signup' | 'login'>('signup')
@@ -42,6 +47,19 @@ export default function BookPage() {
     fetch('/api/cities').then((r) => r.json()).then((d) => setCities(d.cities ?? [])).catch(() => setErr('Could not load cities.'))
     fetch('/api/patient/me').then((r) => r.json()).then((d) => setMe(d.patient)).catch(() => {})
   }, [])
+
+  // Load the patient's issued referrals once they're signed in and booking PT.
+  useEffect(() => {
+    if (me && provider?.profession === 'PT') {
+      fetch('/api/patient/referrals').then((r) => r.json()).then((d) => setReferrals(d.referrals ?? [])).catch(() => {})
+    }
+  }, [me, provider])
+
+  async function onReferralFile(file: File) {
+    if (file.size > 8_000_000) { setErr('Referral file too large (max ~6 MB).'); return }
+    const data: string = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(file) })
+    setReferralData(data); setReferralName(file.name); setReferralConsultId(null)
+  }
 
   async function loadProviders(c: string) {
     setProviders(null)
@@ -83,7 +101,7 @@ export default function BookPage() {
     try {
       const r = await fetch('/api/book', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerId: provider.id, date: slot.date, startTime: slot.startTime, city, useWallet }),
+        body: JSON.stringify({ providerId: provider.id, date: slot.date, startTime: slot.startTime, city, useWallet, referralFile: referralData, referralConsultId }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? 'Could not start payment.')
@@ -286,11 +304,42 @@ export default function BookPage() {
               const fee = Number(provider.rate ?? 0)
               const applied = useWallet ? Math.min(Number(me?.walletBalance ?? 0), fee) : 0
               const due = Math.max(0, fee - applied)
+              const needsReferral = provider.profession === 'PT'
+              const hasReferral = !!(referralData || referralConsultId)
               return (
                 <>
+                  {needsReferral && (
+                    <div className="mt-4 rounded-xl border border-[color:var(--line)] p-4">
+                      <div className="flex items-center gap-2 text-[13.5px] font-semibold text-[color:var(--ink)]">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M9 15l2 2 4-4" /></svg>
+                        Doctor’s referral <span className="font-normal text-[color:var(--slate)]">(required for PT)</span>
+                      </div>
+                      <p className="mt-1 text-[12px] text-[color:var(--slate)]">Philippine practice requires a doctor’s referral for physical therapy. Attach yours, or get one from a rehab-doctor consult.</p>
+
+                      {referrals.length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          {referrals.map((rf) => (
+                            <label key={rf.consultId} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--line)] px-3 py-2 text-[13px]">
+                              <input type="radio" name="ref" className="h-4 w-4" style={{ accentColor: 'var(--steel)' }} checked={referralConsultId === rf.consultId} onChange={() => { setReferralConsultId(rf.consultId); setReferralData(null); setReferralName('') }} />
+                              <span>Referral from {rf.doctorName} <span className="text-[color:var(--muted)]">· {rf.date}</span></span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <label className="cursor-pointer rounded-lg border border-dashed border-[color:var(--line-2)] px-3 py-2 text-[12.5px] font-medium text-[color:var(--steel)] hover:bg-[color:var(--mist)]">
+                          {referralData ? `Selected: ${referralName}` : 'Upload referral (photo/PDF)'}
+                          <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReferralFile(f) }} />
+                        </label>
+                        <span className="text-[12px] text-[color:var(--muted)]">or</span>
+                        <a href="/consult" className="rounded-lg border border-[color:var(--line-2)] px-3 py-2 text-[12.5px] font-medium text-[color:var(--ink)] hover:bg-[color:var(--mist)]">I don’t have one — see a rehab doctor →</a>
+                      </div>
+                    </div>
+                  )}
                   <p className="mt-3 text-[12px] text-[color:var(--slate)]">{due === 0 ? 'This visit is fully covered by your wallet credit — no card needed.' : 'You’ll be redirected to pay securely. Your booking is confirmed once payment is received.'}</p>
                   <div className="mt-4 flex justify-end">
-                    <button className="btn-primary" disabled={busy} onClick={pay}>{busy ? 'Please wait…' : due === 0 ? 'Confirm booking →' : `Pay ${peso(due)} →`}</button>
+                    <button className="btn-primary" disabled={busy || (needsReferral && !hasReferral)} onClick={pay}>{busy ? 'Please wait…' : needsReferral && !hasReferral ? 'Add a referral to continue' : due === 0 ? 'Confirm booking →' : `Pay ${peso(due)} →`}</button>
                   </div>
                 </>
               )

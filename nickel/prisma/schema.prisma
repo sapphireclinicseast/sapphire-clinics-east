@@ -59,6 +59,11 @@ enum OfferStatus {
   WITHDRAWN // therapist withdrew
 }
 
+enum ConsultMode {
+  IN_PERSON   // patient visits the doctor's clinic
+  TELECONSULT // video consult over Nickel's LiveKit
+}
+
 enum TicketStatus {
   OPEN
   RESOLVED
@@ -168,6 +173,7 @@ model Patient {
   bookings     Booking[]
   walletTxns   WalletTransaction[]
   requests     PatientRequest[]
+  consults     Consult[]
 
   @@index([city])
 }
@@ -187,6 +193,11 @@ model Booking {
   amount     Decimal       // total charged (therapist rate; +transport if not included, handled in app)
   transpoIncluded Boolean  @default(false)
   notes      String?
+
+  // Doctor's referral — required to avail of PT in the Philippines. Either the
+  // patient uploads their own, or one issued by a Nickel rehab-doctor consult.
+  referralFile     String?  // data URI of the uploaded/issued referral
+  referralConsultId String? // the Consult that produced the referral, if any
 
   // Payment (Verdana PayMongo account)
   paymongoLinkId String?
@@ -254,8 +265,10 @@ model Notification {
   id                  String   @id @default(cuid())
   recipientPatientId  String?
   recipientProviderId String?
+  recipientDoctorId   String?
   bookingId           String?
-  type                String   // BOOKING_PAID | BOOKING_CONFIRMED | RESCHEDULE_PROPOSED | PROPOSAL_ACCEPTED | PROPOSAL_DECLINED | BOOKING_CANCELLED
+  consultId           String?
+  type                String   // BOOKING_* | RESCHEDULE_* | PROPOSAL_* | REQUEST_OFFER | OFFER_ACCEPTED | CONSULT_* | REFERRAL_READY
   title               String
   body                String?
   readAt              DateTime?
@@ -263,6 +276,7 @@ model Notification {
 
   @@index([recipientPatientId, createdAt])
   @@index([recipientProviderId, createdAt])
+  @@index([recipientDoctorId, createdAt])
 }
 
 // One entry in a patient's or provider's Nickel wallet ledger. `amount` is
@@ -274,6 +288,8 @@ model WalletTransaction {
   patient    Patient?  @relation(fields: [patientId], references: [id], onDelete: Cascade)
   providerId String?
   provider   Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  doctorId   String?
+  doctor     Doctor?   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   amount     Decimal   // signed (PHP)
   balance    Decimal?  // running balance after this entry (for display)
   // Patient: REFUND (+), REDEEM (−), ADJUSTMENT. Provider: EARNING (+), PAYOUT (−), ADJUSTMENT.
@@ -285,6 +301,105 @@ model WalletTransaction {
 
   @@index([patientId, createdAt])
   @@index([providerId, createdAt])
+  @@index([doctorId, createdAt])
+}
+
+// ── Rehab doctor (physiatrist) — issues referrals & runs consults ────────────
+model Doctor {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String   @unique
+  passwordHash String
+  phone        String?
+  photo        String?
+  prcNumber    String?
+  postNominals String?  // e.g. "MD, FPARM"
+  specialization String? @default("Rehabilitation Medicine (Physiatry)")
+
+  // Consult offering
+  consultFee   Decimal? // fee for one consult (PHP)
+  teleconsultEnabled Boolean @default(true)
+  inPersonEnabled    Boolean @default(false)
+  clinicName   String?
+  clinicAddress String?
+  clinicCity   String?
+
+  // Payout details
+  bankName      String?
+  bankAccountNo String?
+  bankAccountName String?
+  gcashNumber   String?
+
+  // Verification (SCEI approves before the doctor is bookable)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  verifiedAt    DateTime?
+  rejectionReason String?
+
+  walletBalance Decimal @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  slots         DoctorSlot[]
+  consults      Consult[]
+  walletTxns    WalletTransaction[]
+
+  @@index([active])
+}
+
+model DoctorSlot {
+  id        String   @id @default(cuid())
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  createdAt DateTime @default(now())
+
+  @@unique([doctorId, dayOfWeek, startTime])
+  @@index([doctorId])
+}
+
+model Consult {
+  id         String        @id @default(cuid())
+  patientId  String
+  patient    Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId   String
+  doctor     Doctor        @relation(fields: [doctorId], references: [id])
+  mode       ConsultMode
+  date       DateTime
+  startTime  String
+  endTime    String
+  status     BookingStatus @default(PENDING)
+  amount     Decimal
+  reason     String?       // patient's reason for the consult
+
+  // Payment (Verdana PayMongo account) + split
+  paymongoLinkId String?
+  checkoutUrl    String?
+  paidAt         DateTime?
+  appFee         Decimal?
+  processingFee  Decimal?
+  paymentMethod  String?
+  doctorNet      Decimal?
+  payoutStatus   PayoutStatus @default(PENDING)
+  earnedAt       DateTime?
+
+  // Teleconsult (LiveKit)
+  roomName   String?
+
+  // Outcome
+  doctorNotes    String?
+  referralIssued Boolean @default(false)
+  referralFile   String? // data URI of the referral the doctor issued
+
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([doctorId, date])
+  @@index([patientId])
+  @@index([status])
 }
 
 // ── Patient-broadcast matching ───────────────────────────────────────────────

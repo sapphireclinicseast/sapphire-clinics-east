@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   const patientId = await getSessionPatientId()
   if (!patientId) return NextResponse.json({ error: 'Please sign in to book.' }, { status: 401 })
 
-  const b = (await req.json().catch(() => ({}))) as { providerId?: string; date?: string; startTime?: string; city?: string; useWallet?: boolean }
+  const b = (await req.json().catch(() => ({}))) as { providerId?: string; date?: string; startTime?: string; city?: string; useWallet?: boolean; referralFile?: string; referralConsultId?: string }
   const providerId = String(b.providerId ?? '')
   const date = String(b.date ?? '')
   const startTime = String(b.startTime ?? '')
@@ -31,10 +31,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'That time is no longer available. Please pick another.' }, { status: 409 })
   }
 
+  // Doctor's referral is required for PT (Philippine practice). Accept an uploaded
+  // referral, or one issued by a completed Nickel rehab-doctor consult.
+  let referralFile: string | null = null
+  let referralConsultId: string | null = null
+  if (provider.profession === 'PT') {
+    if (typeof b.referralFile === 'string' && b.referralFile.startsWith('data:')) {
+      if (b.referralFile.length > 8_000_000) return NextResponse.json({ error: 'Referral file too large (max ~6 MB).' }, { status: 413 })
+      referralFile = b.referralFile
+    } else if (b.referralConsultId) {
+      const consult = await prisma.consult.findFirst({ where: { id: String(b.referralConsultId), patientId, referralIssued: true }, select: { id: true, referralFile: true } })
+      if (consult?.referralFile) { referralFile = consult.referralFile; referralConsultId = consult.id }
+    }
+    if (!referralFile) return NextResponse.json({ error: 'A doctor’s referral is required for physical therapy. Upload one, or book a rehab-doctor consult to get a referral.', needsReferral: true }, { status: 409 })
+  }
+
   const r = await startBooking({
     patientId, providerId, providerName: `${provider.firstName} ${provider.lastName}`,
     transpoIncluded: provider.transpoIncluded, city, date, bookedDate: ymdToDate(date), startTime,
-    amount: Number(provider.rate), useWallet: b.useWallet === true,
+    amount: Number(provider.rate), useWallet: b.useWallet === true, referralFile, referralConsultId,
   })
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
   if ('paid' in r) return NextResponse.json({ bookingId: r.bookingId, paid: true, redirect: '/bookings' })

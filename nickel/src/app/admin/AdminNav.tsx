@@ -6,6 +6,7 @@ const TABS: [string, string][] = [
   ['/admin/overview', 'Overview'],
   ['/admin', 'Verification'],
   ['/admin/providers', 'Providers'],
+  ['/admin/doctors', 'Doctors'],
   ['/admin/patients', 'Patients'],
   ['/admin/bookings', 'Bookings'],
   ['/admin/payouts', 'Payouts'],

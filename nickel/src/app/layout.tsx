@@ -44,6 +44,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </header>
         <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
         <footer className="mx-auto max-w-5xl px-4 py-8 text-center text-[12px] text-[color:var(--muted)]">
+          <div className="mb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+            <a href="/provider/login" className="hover:text-[color:var(--steel)] hover:underline">Provider sign in</a>
+            <a href="/doctor/login" className="hover:text-[color:var(--steel)] hover:underline">Rehab doctor sign in</a>
+            <a href="/consult" className="hover:text-[color:var(--steel)] hover:underline">Get a referral</a>
+          </div>
           Nickel 2026
         </footer>
         <MessagesWidget />
