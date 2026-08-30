@@ -3,8 +3,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import Stars from '@/components/Stars'
 
-type Step = 'city' | 'auth' | 'provider' | 'time' | 'confirm'
-const STEPS: [Step, string][] = [['city', 'City'], ['auth', 'Account'], ['provider', 'Therapist'], ['time', 'Time'], ['confirm', 'Pay']]
+type Step = 'city' | 'provider' | 'time' | 'confirm'
+const STEPS: [Step, string][] = [['city', 'City'], ['provider', 'Therapist'], ['time', 'Time'], ['confirm', 'Book']]
 const PROF: Record<string, string> = { PT: 'Physical Therapist', OT: 'Occupational Therapist', SLP: 'Speech-Language Pathologist', SPED: 'Special Education', PSYCHOLOGY: 'Psychologist', MD: 'Medical Doctor', ORTHOSIS: 'Orthosis / Prosthesis' }
 
 interface Slot { date: string; startTime: string; endTime: string }
@@ -51,7 +51,8 @@ export default function BookPage() {
 
   function chooseCity(c: string) {
     setErr(null); setCity(c)
-    if (me) { setStep('provider'); loadProviders(c) } else setStep('auth')
+    // Browse therapists first — we only ask for an account at checkout.
+    setStep('provider'); loadProviders(c)
   }
 
   async function doAuth(e: FormEvent) {
@@ -71,7 +72,8 @@ export default function BookPage() {
       if (!r.ok) throw new Error(d.error ?? 'Failed')
       const meRes = await fetch('/api/patient/me').then((x) => x.json())
       setMe(meRes.patient)
-      setStep('provider'); loadProviders(city)
+      // Account created/signed in during checkout — stay on the confirm step.
+      setStep('confirm')
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
 
@@ -130,33 +132,6 @@ export default function BookPage() {
                 <button key={c} onClick={() => chooseCity(c)} className="rounded-xl border border-[color:var(--line-2)] bg-white p-3.5 text-left text-[15px] font-medium text-[color:var(--ink)] hover:border-[color:var(--sky)]">{c}</button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* AUTH */}
-        {step === 'auth' && (
-          <div>
-            <button onClick={() => setStep('city')} className="mb-3 text-[12px] text-[color:var(--steel)] hover:underline">← {city}</button>
-            <div className="mb-4 flex rounded-xl border border-[color:var(--line)] p-1 text-[13px]">
-              <button onClick={() => setMode('signup')} className={`flex-1 rounded-lg py-2 font-medium ${mode === 'signup' ? 'bg-[color:var(--steel)] text-white' : 'text-[color:var(--slate)]'}`}>New patient</button>
-              <button onClick={() => setMode('login')} className={`flex-1 rounded-lg py-2 font-medium ${mode === 'login' ? 'bg-[color:var(--steel)] text-white' : 'text-[color:var(--slate)]'}`}>Sign in</button>
-            </div>
-            <form onSubmit={doAuth} className="space-y-3">
-              {mode === 'signup' && (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input className="input" placeholder="First name" required value={af.firstName} onChange={(e) => setA('firstName', e.target.value)} />
-                    <input className="input" placeholder="Last name" required value={af.lastName} onChange={(e) => setA('lastName', e.target.value)} />
-                  </div>
-                  <input className="input" placeholder="Cellphone no." value={af.phone} onChange={(e) => setA('phone', e.target.value)} />
-                  <input className="input" placeholder="Home address (for the visit)" value={af.address} onChange={(e) => setA('address', e.target.value)} />
-                </>
-              )}
-              <input className="input" type="email" placeholder="Email" required value={af.email} onChange={(e) => setA('email', e.target.value)} />
-              <input className="input" type="password" placeholder="Password" required value={af.password} onChange={(e) => setA('password', e.target.value)} />
-              {mode === 'signup' && <input className="input" type="password" placeholder="Confirm password" required value={af.confirm} onChange={(e) => setA('confirm', e.target.value)} />}
-              <button className="btn-primary w-full" disabled={busy}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create account & continue' : 'Sign in & continue'}</button>
-            </form>
           </div>
         )}
 
@@ -280,7 +255,34 @@ export default function BookPage() {
               })()}
               <p className="mt-2 text-[12px] text-[color:var(--muted)]">{provider.transpoIncluded ? 'Transportation is included in this rate.' : 'Transportation is not included — arrange it directly with your therapist.'}</p>
             </div>
-            {(() => {
+
+            {/* Account is only asked for here — after choosing a therapist & time. */}
+            {!me ? (
+              <div className="mt-4">
+                <div className="text-[14px] font-semibold text-[color:var(--ink)]">{mode === 'signup' ? 'Create your account to confirm' : 'Sign in to confirm'}</div>
+                <p className="mb-3 mt-0.5 text-[12px] text-[color:var(--slate)]">Your booking with {provider.name} on {fmtDate(slot.date)} · {fmtTime(slot.startTime)} is held while you {mode === 'signup' ? 'sign up' : 'sign in'}.</p>
+                <div className="mb-3 flex rounded-xl border border-[color:var(--line)] p-1 text-[13px]">
+                  <button type="button" onClick={() => setMode('signup')} className={`flex-1 rounded-lg py-2 font-medium ${mode === 'signup' ? 'bg-[color:var(--steel)] text-white' : 'text-[color:var(--slate)]'}`}>New patient</button>
+                  <button type="button" onClick={() => setMode('login')} className={`flex-1 rounded-lg py-2 font-medium ${mode === 'login' ? 'bg-[color:var(--steel)] text-white' : 'text-[color:var(--slate)]'}`}>Sign in</button>
+                </div>
+                <form onSubmit={doAuth} className="space-y-3">
+                  {mode === 'signup' && (
+                    <>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <input className="input" placeholder="First name" required value={af.firstName} onChange={(e) => setA('firstName', e.target.value)} />
+                        <input className="input" placeholder="Last name" required value={af.lastName} onChange={(e) => setA('lastName', e.target.value)} />
+                      </div>
+                      <input className="input" placeholder="Cellphone no." value={af.phone} onChange={(e) => setA('phone', e.target.value)} />
+                      <input className="input" placeholder="Home address (for the visit)" value={af.address} onChange={(e) => setA('address', e.target.value)} />
+                    </>
+                  )}
+                  <input className="input" type="email" placeholder="Email" required value={af.email} onChange={(e) => setA('email', e.target.value)} />
+                  <input className="input" type="password" placeholder="Password" required value={af.password} onChange={(e) => setA('password', e.target.value)} />
+                  {mode === 'signup' && <input className="input" type="password" placeholder="Confirm password" required value={af.confirm} onChange={(e) => setA('confirm', e.target.value)} />}
+                  <button className="btn-primary w-full" disabled={busy}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create account & continue' : 'Sign in & continue'}</button>
+                </form>
+              </div>
+            ) : (() => {
               const fee = Number(provider.rate ?? 0)
               const applied = useWallet ? Math.min(Number(me?.walletBalance ?? 0), fee) : 0
               const due = Math.max(0, fee - applied)

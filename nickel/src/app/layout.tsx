@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans, Baloo_2 } from 'next/font/google'
 import { getSessionPatientId } from '@/lib/auth'
 import MessagesWidget from '@/components/MessagesWidget'
+import PwaSetup from '@/components/PwaSetup'
 import './globals.css'
 
 const body = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
@@ -11,6 +12,12 @@ export const metadata: Metadata = {
   title: { default: 'Nickel', template: '%s · Nickel' },
   description: 'Book a home therapy session with a licensed therapist near you. By Sapphire Clinics East, developed by Jara Universal OPC.',
   applicationName: 'Nickel',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Nickel' },
+  icons: {
+    icon: [{ url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }, { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }],
+    apple: [{ url: '/icons/icon-180.png', sizes: '180x180', type: 'image/png' }],
+  },
 }
 
 export const viewport: Viewport = { themeColor: '#34618c' }
@@ -40,6 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           Nickel 2026
         </footer>
         <MessagesWidget />
+        <PwaSetup />
       </body>
     </html>
   )

@@ -1,0 +1,9 @@
+# Dependencies
+node_modules/
+
+# Generated native projects (recreated with `npx cap add ios|android`)
+/ios/
+/android/
+
+# Capacitor
+.DS_Store

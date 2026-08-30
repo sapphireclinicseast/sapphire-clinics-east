@@ -66,7 +66,7 @@ export default function RequestsClient({ walletBalance, defaultCity }: { walletB
     <div className="animate-fade-up mx-auto max-w-2xl space-y-4">
       <div>
         <h1 className="text-[24px] font-semibold text-[color:var(--ink)]">Request a therapist</h1>
-        <p className="mt-0.5 text-[13px] text-[color:var(--slate)]">Can’t find the right time on the marketplace? Post when you need a visit and let verified therapists near you reach out. You choose who, and pay only when you accept.</p>
+        <p className="mt-0.5 text-[13px] text-[color:var(--slate)]">Can’t find the right time when browsing therapists? Post when you need a visit and let verified therapists near you reach out. You choose who, and pay only when you accept.</p>
       </div>
 
       {err && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}

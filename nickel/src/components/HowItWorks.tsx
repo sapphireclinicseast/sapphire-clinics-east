@@ -83,7 +83,7 @@ export default function HowItWorks() {
                 </span>
                 Clients find you
               </div>
-              <p className="mt-1.5 text-[12.5px] leading-snug text-[color:var(--slate)]">You appear on the marketplace for your cities. Clients browse verified therapists, pick you, choose a time and pay.</p>
+              <p className="mt-1.5 text-[12.5px] leading-snug text-[color:var(--slate)]">You appear in the Nickel provider network for your cities. Clients browse verified therapists, pick you, choose a time and pay.</p>
             </div>
             <div className="rounded-xl border border-[color:var(--line)] bg-white p-4">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-[color:var(--ink)]">

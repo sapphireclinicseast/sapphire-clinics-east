@@ -52,7 +52,7 @@ export default async function AdminOverview() {
 
       <div className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">Professionals</div>
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
-        <Tile k="Verified" v={String(pc('VERIFIED'))} accent="var(--steel)" d="live on marketplace" />
+        <Tile k="Verified" v={String(pc('VERIFIED'))} accent="var(--steel)" d="listed & bookable" />
         <Tile k="Pending review" v={String(pc('PENDING'))} accent="var(--warn,#c9871a)" />
         <Tile k="Unverified" v={String(pc('UNVERIFIED'))} />
         <Tile k="Rejected" v={String(pc('REJECTED'))} />
