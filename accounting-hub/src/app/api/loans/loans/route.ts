@@ -145,7 +145,7 @@ function loanData(b: any, principal: number, interest: ReturnType<typeof compute
     hasInterest: b.loanType === 'CORPORATE_BOND' ? true : !!b.hasInterest,
     interestMode: b.loanType === 'CORPORATE_BOND' ? null : (b.hasInterest ? (b.interestMode || null) : null),
     annualPct: b.annualPct != null ? num(b.annualPct) : null,
-    termMonths: b.loanType === 'CORPORATE_BOND' ? null : (b.hasInterest ? (b.termMonths || null) : null),
+    termMonths: b.loanType === 'CORPORATE_BOND' ? null : (b.termMonths || null),
     monthlyAmortization: interest.monthlyAmortization, computedAnnualPct: interest.computedAnnualPct, totalInterest: interest.totalInterest,
     maturityDate: b.loanType === 'CORPORATE_BOND' && b.maturityDate ? new Date(b.maturityDate) : null,
     proofOfDepositUrls: Array.isArray(b.proofOfDepositUrls) ? b.proofOfDepositUrls : undefined,

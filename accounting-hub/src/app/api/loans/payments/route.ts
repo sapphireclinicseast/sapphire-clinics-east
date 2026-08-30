@@ -35,10 +35,26 @@ function occurrences(item: any): Occ[] {
     occ.push({ seq: occ.length + 1, dueDate: mat.toISOString(), principalPortion: principal, interestPortion: 0, amount: principal })
     return occ
   }
-  if (!sched || !sm || !sy || !item.termMonths) return []
+  if (!sched || !sm || !sy) return []
   const step = stepOf(sched)
-  const count = Math.max(1, Math.round(num(item.termMonths) / step))
+  // termMonths can be absent on a no-interest item (the form only captured a term
+  // alongside interest until this fix): derive the payment count from the explicit
+  // per-period amount instead, so the schedule still reaches Payment History.
+  let count = num(item.termMonths) > 0 ? Math.max(1, Math.round(num(item.termMonths) / step)) : 0
+  if (!count && override > 0 && principal > 0) count = Math.max(1, Math.ceil(principal / override))
+  if (!count) return []
   const dates = scheduleDates(sm, sy, sched, day || 0, count)
+  // No-interest item: every peso out is principal — an explicit per-period amount
+  // is a principal installment (final payment = remainder), never interest.
+  if (item.hasInterest === false) {
+    const per = num(item.principalPerPeriod) > 0 ? r2(num(item.principalPerPeriod)) : override > 0 ? r2(override) : r2(principal / count)
+    let remaining = principal
+    return dates.map((d, i) => {
+      const p = i === count - 1 ? r2(remaining) : r2(Math.min(per, remaining))
+      remaining = r2(remaining - p)
+      return { seq: i + 1, dueDate: new Date(Date.UTC(d.y, d.m - 1, d.d)).toISOString(), principalPortion: p, interestPortion: 0, amount: p }
+    })
+  }
   // Interest-only: interest each period; principal repaid with the final payment.
   if (item.repaymentMode === 'INTEREST_ONLY') {
     const perInterest = r2(override > 0 ? override : totalInterest / count)

@@ -248,6 +248,8 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Start month</label><select value={f.payoutStartMonth} onChange={e => set('payoutStartMonth', e.target.value)} className={inp} style={bc}><option value="">—</option>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Start year</label><input value={f.payoutStartYear} onChange={e => set('payoutStartYear', e.target.value)} inputMode="numeric" placeholder="2026" className={inp + ' font-mono'} style={bc} /></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Every nth (day)</label><input value={f.payoutDay} onChange={e => set('payoutDay', e.target.value)} inputMode="numeric" placeholder="30" className={inp + ' font-mono'} style={bc} /></div>
+            {/* With interest the term lives in the interest box above; without it, capture it here so the schedule still generates. */}
+            {!f.hasInterest && <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>For how many {periodPlural(f.payoutSchedule)}</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>}
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Repayment</label><select value={f.repaymentMode} onChange={e => set('repaymentMode', e.target.value)} className={inp} style={bc}><option value="">Amortizing (default)</option><option value="AMORTIZING">Amortizing (principal + interest)</option><option value="INTEREST_ONLY">Interest-only (principal at maturity)</option></select></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Amount per period <span className="font-normal text-gray-400">(optional)</span></label><input value={f.payoutAmountPerPeriod} onChange={e => set('payoutAmountPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>
             {f.repaymentMode !== 'INTEREST_ONLY' && <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Principal per period <span className="font-normal text-gray-400">(interest = rest)</span></label><input value={f.principalPerPeriod} onChange={e => set('principalPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>}
@@ -255,13 +257,15 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
           </div>
           {(() => {
             const step = f.payoutSchedule === 'MONTHLY' ? 1 : f.payoutSchedule === 'QUARTERLY' ? 3 : f.payoutSchedule === 'BIANNUALLY' ? 6 : f.payoutSchedule === 'ANNUALLY' ? 12 : 0
-            if (!step || !n(f.termMonths)) return null
-            const count = Math.max(1, Math.round(n(f.termMonths) / step))
             const per = n(f.payoutAmountPerPeriod)
+            // f.termMonths holds PERIODS here (converted to months only on save);
+            // no term → derive the count from the per-period amount, like the server.
+            const count = n(f.termMonths) > 0 ? Math.max(1, Math.round(n(f.termMonths))) : per > 0 && n(f.principalAmount) > 0 ? Math.ceil(n(f.principalAmount) / per) : 0
+            if (!step || !count) return null
             if (f.repaymentMode === 'INTEREST_ONLY') return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} of {per > 0 ? peso(per) : 'derived'} interest + {peso(n(f.principalAmount))} principal on the last</p>
-            const prin = n(f.principalPerPeriod) > 0 ? n(f.principalPerPeriod) : n(f.principalAmount) / count
-            const int = per > 0 ? Math.max(0, per - prin) : null
-            return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} · principal {peso(prin)}{int != null ? ` + interest ${peso(int)} = ${peso(prin + int)} each` : ' + interest (auto-derived)'}</p>
+            const prin = n(f.principalPerPeriod) > 0 ? n(f.principalPerPeriod) : !f.hasInterest && per > 0 ? per : n(f.principalAmount) / count
+            const int = f.hasInterest && per > 0 ? Math.max(0, per - prin) : null
+            return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} · principal {peso(prin)}{int != null ? ` + interest ${peso(int)} = ${peso(prin + int)} each` : f.hasInterest ? ' + interest (auto-derived)' : ' each (no interest)'}</p>
           })()}
         </div>
 
@@ -526,6 +530,8 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
               <div><label className={lbl} style={mg}>Repayment</label><select value={f.repaymentMode} onChange={e => set('repaymentMode', e.target.value)} className={inp} style={bc}><option value="">Amortizing (default)</option><option value="AMORTIZING">Amortizing (principal + interest)</option><option value="INTEREST_ONLY">Interest-only (principal at maturity)</option></select></div>
               <div><label className={lbl} style={mg}>Amount per period <span className="font-normal text-gray-400">(optional)</span></label><input value={f.payoutAmountPerPeriod} onChange={e => set('payoutAmountPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>
               {f.repaymentMode !== 'INTEREST_ONLY' && <div><label className={lbl} style={mg}>Principal per period <span className="font-normal text-gray-400">(interest = rest)</span></label><input value={f.principalPerPeriod} onChange={e => set('principalPerPeriod', e.target.value)} inputMode="decimal" placeholder="auto" className={inp + ' font-mono'} style={bc} /></div>}
+              {/* With interest the term lives in the interest box above; without it, capture it here so the schedule still generates. */}
+              {!f.hasInterest && <div><label className={lbl} style={mg}>For how many {periodPlural(f.payoutSchedule)}</label><input value={f.termMonths} onChange={e => set('termMonths', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>}
             </>)}
             <div><label className={lbl} style={mg}>Bank for payments <span className="font-normal text-gray-400">(credited)</span></label><select value={f.paymentBankAccountId} onChange={e => set('paymentBankAccountId', e.target.value)} className={inp} style={bc}><option value="">— same as debited —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
           </div>
@@ -540,13 +546,15 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
               const coupon = n(f.payoutAmountPerPeriod) > 0 ? n(f.payoutAmountPerPeriod) : n(f.principalAmount) * n(f.annualPct) / 100 * (step / 12)
               return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} coupon payment{count === 1 ? '' : 's'} of {peso(coupon)} + {peso(n(f.principalAmount))} principal at maturity</p>
             }
-            if (!n(f.termMonths)) return null
-            const count = Math.max(1, Math.round(n(f.termMonths) / step))
             const per = n(f.payoutAmountPerPeriod)
+            // f.termMonths holds PERIODS here (converted to months only on save);
+            // no term → derive the count from the per-period amount, like the server.
+            const count = n(f.termMonths) > 0 ? Math.max(1, Math.round(n(f.termMonths))) : per > 0 && n(f.principalAmount) > 0 ? Math.ceil(n(f.principalAmount) / per) : 0
+            if (!count) return null
             if (f.repaymentMode === 'INTEREST_ONLY') return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} of {per > 0 ? peso(per) : 'derived'} interest + {peso(n(f.principalAmount))} principal on the last</p>
-            const prin = n(f.principalPerPeriod) > 0 ? n(f.principalPerPeriod) : n(f.principalAmount) / count
-            const int = per > 0 ? Math.max(0, per - prin) : null
-            return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} · principal {peso(prin)}{int != null ? ` + interest ${peso(int)} = ${peso(prin + int)} each` : ' + interest (auto-derived)'}</p>
+            const prin = n(f.principalPerPeriod) > 0 ? n(f.principalPerPeriod) : !f.hasInterest && per > 0 ? per : n(f.principalAmount) / count
+            const int = f.hasInterest && per > 0 ? Math.max(0, per - prin) : null
+            return <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>{count} payment{count === 1 ? '' : 's'} · principal {peso(prin)}{int != null ? ` + interest ${peso(int)} = ${peso(prin + int)} each` : f.hasInterest ? ' + interest (auto-derived)' : ' each (no interest)'}</p>
           })()}
         </div>
 
