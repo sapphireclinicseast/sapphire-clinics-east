@@ -68,7 +68,7 @@ export default function Chat({ bookingId, meRole, otherName }: { bookingId: stri
         <div><b className="text-[color:var(--ink)]">{otherName}</b><div className="text-[11px] text-[color:var(--muted)]">Messages stay inside Nickel — no phone numbers exchanged.</div></div>
       </div>
       <div className="flex max-h-[420px] min-h-[280px] flex-col gap-2.5 overflow-y-auto bg-[color:var(--mist)] p-4">
-        {messages.length === 0 && <p className="my-auto text-center text-[13px] text-[color:var(--muted)]">No messages yet. Say hello 👋</p>}
+        {messages.length === 0 && <p className="my-auto text-center text-[13px] text-[color:var(--muted)]">No messages yet. Say hello</p>}
         {messages.map((m) => {
           const mine = m.senderRole === meRole
           return (
@@ -77,7 +77,7 @@ export default function Chat({ bookingId, meRole, otherName }: { bookingId: stri
                 {m.attachment && (m.attachmentType?.startsWith('image/')
                   // eslint-disable-next-line @next/next/no-img-element
                   ? <a href={m.attachment} target="_blank" rel="noopener noreferrer"><img src={m.attachment} alt={m.attachmentName ?? 'photo'} className="mb-1 max-h-56 rounded-lg" /></a>
-                  : <a href={m.attachment} target="_blank" rel="noopener noreferrer" download={m.attachmentName ?? 'file'} className={`mb-1 flex items-center gap-2 rounded-lg px-2 py-1.5 ${mine ? 'bg-white/15' : 'bg-[color:var(--mist)]'}`}>📎 {m.attachmentName ?? 'file'}</a>)}
+                  : <a href={m.attachment} target="_blank" rel="noopener noreferrer" download={m.attachmentName ?? 'file'} className={`mb-1 flex items-center gap-1.5 rounded-lg px-2 py-1.5 ${mine ? 'bg-white/15' : 'bg-[color:var(--mist)]'}`}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 9.5 12 18.5a4.5 4.5 0 0 1-6.4-6.4l8.5-8.5a3 3 0 0 1 4.3 4.3l-8.5 8.5a1.5 1.5 0 0 1-2.1-2.1l7.8-7.8"/></svg>{m.attachmentName ?? 'file'}</a>)}
                 {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
               </div>
               <div className={`mt-0.5 text-[10.5px] text-[color:var(--muted)] ${mine ? 'text-right' : ''}`}>{fmtTime(m.createdAt)}</div>
@@ -88,7 +88,7 @@ export default function Chat({ bookingId, meRole, otherName }: { bookingId: stri
       </div>
       {pending && (
         <div className="flex items-center gap-2 border-t border-[color:var(--line)] bg-[color:var(--mist)] px-4 py-2 text-[12.5px]">
-          <span>📎 {pending.name}</span>
+          <span className="inline-flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--steel)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 9.5 12 18.5a4.5 4.5 0 0 1-6.4-6.4l8.5-8.5a3 3 0 0 1 4.3 4.3l-8.5 8.5a1.5 1.5 0 0 1-2.1-2.1l7.8-7.8"/></svg>{pending.name}</span>
           <button className="ml-auto text-[color:var(--muted)] hover:text-[color:var(--ink)]" onClick={() => setPending(null)}>Remove</button>
         </div>
       )}

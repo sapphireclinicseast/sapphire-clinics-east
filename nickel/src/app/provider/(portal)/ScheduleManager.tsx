@@ -116,7 +116,7 @@ export default function ScheduleManager({ slots, bookings, past, availableSlots 
             <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[12px] font-semibold text-amber-800">{toConfirm.length} waiting</span>
           </div>
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-800">
-            <span>⏱️</span><span><b>Check your travel time before you accept.</b> Make sure you can reach each address from your previous visit in time.</span>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span><b>Check your travel time before you accept.</b> Make sure you can reach each address from your previous visit in time.</span>
           </div>
           <div className="mt-3 space-y-2">
             {toConfirm.map((b) => (

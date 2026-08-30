@@ -54,7 +54,7 @@ export default async function AdminQueue() {
           <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[12px] font-semibold text-amber-800">{pending.length} waiting · SLA 24–48h</span>
         </div>
         {pending.length === 0 ? (
-          <p className="px-5 py-8 text-center text-[13px] text-[color:var(--slate)]">No pending applications right now. 🎉</p>
+          <p className="px-5 py-8 text-center text-[13px] text-[color:var(--slate)]">No pending applications right now.</p>
         ) : (
           <div className="overflow-x-auto"><table className="w-full text-[13.5px]">
             <thead><tr className="text-left text-[11px] uppercase tracking-wide text-[color:var(--muted)]">

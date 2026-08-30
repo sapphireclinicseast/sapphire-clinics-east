@@ -268,7 +268,7 @@ export default function VerifyForm({ rejected, rejectionReason, init }: { reject
           <ul className="mt-3 space-y-1.5">
             {certs.map((c, i) => (
               <li key={i} className="flex items-center justify-between rounded-lg border border-[color:var(--line-2)] bg-white px-3 py-2 text-[13px]">
-                <span>🏅 {c.name}</span>
+                <span className="inline-flex items-center gap-1.5"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--steel)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8.5" r="5"/><path d="m9 12.8-1.5 8.2L12 18.5l4.5 2.5L15 12.8"/></svg>{c.name}</span>
                 <button type="button" onClick={() => setCerts((cc) => cc.filter((_, j) => j !== i))} className="text-[color:var(--muted)] hover:text-[color:var(--ink)]">Remove</button>
               </li>
             ))}

@@ -17,7 +17,7 @@ function Doc({ label, src }: { label: string; src: string | null }) {
         {isImg
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={src!} alt={label} className="h-full w-full object-cover" />
-          : isPdf ? <span className="text-[26px]">📄</span> : <span className="text-[12px] text-[color:var(--muted)]">Not provided</span>}
+          : isPdf ? <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--steel)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6.5A2 2 0 0 0 4.5 4v16a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h5.5"/></svg> : <span className="text-[12px] text-[color:var(--muted)]">Not provided</span>}
       </div>
       <div className="flex items-center justify-between px-3 py-2 text-[12px]">
         <span className="font-medium text-[color:var(--ink)]">{label}</span>

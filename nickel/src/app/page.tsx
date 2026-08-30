@@ -26,7 +26,7 @@ export default function NickelHome() {
             <span aria-hidden>✓</span> Every therapist is PRC-licensed and identity-verified
           </div>
           <p className="mt-4 text-[13px] text-white/70">
-            Made by a physical therapist, for physical therapists. <span className="font-medium text-white/90">Free to use · Filipino-made 🇵🇭</span>
+            Made by a physical therapist, for physical therapists. <span className="font-medium text-white/90">Free to use · Filipino-made</span>
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <a href="/book" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-[15px] font-semibold" style={{ color: 'var(--steel-deep)' }}>

@@ -188,9 +188,9 @@ export default function BookPage() {
                   </div>
                   {(p.certifications.length > 0 || p.postgraduate || p.specialization) && (
                     <div className="mt-2 flex flex-wrap gap-1.5 border-t border-[color:var(--line)] pt-2">
-                      {p.postgraduate && <span className="rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11px] text-[color:var(--slate)]">🎓 {p.postgraduate}</span>}
+                      {p.postgraduate && <span className="inline-flex items-center gap-1 rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11px] text-[color:var(--slate)]"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="m22 9-10-4.2L2 9l10 4.2L22 9Z"/><path d="M6 11v4.5c0 1.2 2.7 3 6 3s6-1.8 6-3V11"/></svg>{p.postgraduate}</span>}
                       {[...new Set([p.specialization, ...p.certifications].filter(Boolean))].map((c) => (
-                        <span key={c} className="rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11px] text-[color:var(--slate)]">🏅 {c}</span>
+                        <span key={c} className="inline-flex items-center gap-1 rounded-md bg-[color:var(--mist)] px-2 py-0.5 text-[11px] text-[color:var(--slate)]"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8.5" r="5"/><path d="m9 12.8-1.5 8.2L12 18.5l4.5 2.5L15 12.8"/></svg>{c}</span>
                       ))}
                     </div>
                   )}

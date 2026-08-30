@@ -51,7 +51,7 @@ export default async function AdminPayouts() {
       <div className="card p-0">
         <div className="border-b border-[color:var(--line)] px-5 py-3.5"><b className="text-[color:var(--ink)]">Providers with a balance due</b></div>
         {rows.length === 0 ? (
-          <p className="px-5 py-8 text-center text-[13px] text-[color:var(--slate)]">No pending payouts. All caught up. 🎉</p>
+          <p className="px-5 py-8 text-center text-[13px] text-[color:var(--slate)]">No pending payouts. All caught up.</p>
         ) : (
           <div className="overflow-x-auto"><table className="w-full text-[13.5px]">
             <thead><tr className="text-left text-[11px] uppercase tracking-wide text-[color:var(--muted)]">

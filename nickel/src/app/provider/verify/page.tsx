@@ -26,7 +26,9 @@ export default async function VerifyPage() {
       <div className="animate-fade-up mx-auto max-w-xl">
         {header}
         <div className="card text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[color:var(--mist-2)] text-[26px]">⏳</div>
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[color:var(--mist-2)]">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--steel)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7 3h10M7 21h10M8 3v3.4a4 4 0 0 0 1.6 3.2L12 12l-2.4 2.4A4 4 0 0 0 8 17.6V21M16 3v3.4a4 4 0 0 1-1.6 3.2L12 12l2.4 2.4a4 4 0 0 1 1.6 3.2V21"/></svg>
+          </div>
           <h1 className="text-[20px] font-semibold">Your account is under review</h1>
           <p className="mx-auto mt-2 max-w-md text-[13.5px] text-[color:var(--slate)]">
             Thanks{p.firstName ? `, ${p.firstName.charAt(0) + p.firstName.slice(1).toLowerCase()}` : ''}. We&apos;ve received your documents. SCEI verifies each therapist&apos;s identity and credentials — this usually takes <strong>24–48 hours</strong>. We&apos;ll email you once your account is approved, and then you can set your schedule and start accepting home visits.
