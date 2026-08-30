@@ -47,6 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="mb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
             <a href="/provider/login" className="hover:text-[color:var(--steel)] hover:underline">Provider sign in</a>
             <a href="/doctor/login" className="hover:text-[color:var(--steel)] hover:underline">Rehab doctor sign in</a>
+            <a href="/clinic/login" className="hover:text-[color:var(--steel)] hover:underline">Clinic partner</a>
             <a href="/consult" className="hover:text-[color:var(--steel)] hover:underline">Get a referral</a>
             <a href="/privacy" className="hover:text-[color:var(--steel)] hover:underline">Privacy</a>
           </div>

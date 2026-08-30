@@ -64,6 +64,24 @@ enum ConsultMode {
   TELECONSULT // video consult over Nickel's LiveKit
 }
 
+enum ClinicBusinessType {
+  SOLE_PROP
+  PARTNERSHIP
+  CORPORATION
+}
+
+// How a clinic-arranged visit is paid out.
+enum PaymentRouting {
+  THERAPIST_DIRECT // patient pays; therapist gets the net (therapist sets rate)
+  CLINIC_WALLET    // pays into the clinic wallet; clinic pays the therapist's cut
+}
+
+// How money is collected for a clinic-arranged visit.
+enum CollectionMode {
+  ONLINE  // patient pays through Nickel (PayMongo)
+  OFFLINE // clinic collects from the patient; Nickel bills the clinic the platform fee
+}
+
 enum TicketStatus {
   OPEN
   RESOLVED
@@ -126,6 +144,10 @@ model Provider {
   // Nickel wallet — net earnings released here on session completion; payouts draw it down.
   walletBalance Decimal @default(0)
 
+  // If this therapist was onboarded by a partner clinic/hospital
+  clinicId     String?
+  clinic       Clinic?  @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -167,6 +189,9 @@ model Patient {
   dob          DateTime?
   // Nickel wallet — refundable store credit; can be applied at checkout.
   walletBalance Decimal @default(0)
+  // If this patient was onboarded by a partner clinic/hospital
+  clinicId     String?
+  clinic       Clinic?  @relation(fields: [clinicId], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -217,6 +242,13 @@ model Booking {
   walletApplied  Decimal   @default(0) // patient store credit used to pay for this booking
   earnedAt       DateTime? // when providerNet was released into the provider's wallet (on completion)
   refundedAt     DateTime? // when the patient was refunded to their wallet (on cancellation)
+
+  // Clinic-arranged booking (partner clinic/hospital)
+  clinicId       String?
+  clinic         Clinic?         @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  paymentRouting PaymentRouting? // null = normal marketplace booking (therapist-direct)
+  collectionMode CollectionMode? // how the money is collected for clinic bookings
+  therapistCut   Decimal?        // therapist's cut in CLINIC_WALLET mode (clinic sets it)
 
   // Reschedule proposal — provider proposes a new time, patient accepts/declines
   proposedDate      DateTime?
@@ -290,6 +322,8 @@ model WalletTransaction {
   provider   Provider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
   doctorId   String?
   doctor     Doctor?   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  clinicId   String?
+  clinic     Clinic?   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   amount     Decimal   // signed (PHP)
   balance    Decimal?  // running balance after this entry (for display)
   // Patient: REFUND (+), REDEEM (−), ADJUSTMENT. Provider: EARNING (+), PAYOUT (−), ADJUSTMENT.
@@ -302,6 +336,49 @@ model WalletTransaction {
   @@index([patientId, createdAt])
   @@index([providerId, createdAt])
   @@index([doctorId, createdAt])
+  @@index([clinicId, createdAt])
+}
+
+// ── Partner clinic / hospital ────────────────────────────────────────────────
+model Clinic {
+  id            String   @id @default(cuid())
+  name          String   // business / trade name
+  email         String   @unique
+  passwordHash  String
+  contactPerson String?
+  phone         String?
+  businessType  ClinicBusinessType @default(SOLE_PROP)
+  tin           String?
+  address       String?
+  city          String?
+
+  // Business documents (data URIs)
+  secDtiFile        String? // SEC (corp/partnership) or DTI (sole prop) registration
+  bir2303File       String? // BIR Form 2303 (Certificate of Registration)
+  aoiFile           String? // Articles of Incorporation (corporations)
+  byLawsFile        String? // By-Laws (corporations)
+  businessPermitFile String? // Mayor's/Business permit
+
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  verificationSubmittedAt DateTime?
+  verifiedAt    DateTime?
+  rejectionReason String?
+
+  // Clinic wallet — receives net for CLINIC_WALLET bookings; clinic pays therapists from it.
+  walletBalance Decimal @default(0)
+  // Fees the clinic owes Nickel for OFFLINE-collected bookings (₱20/booking).
+  feesOwed      Decimal @default(0)
+
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patients   Patient[]
+  providers  Provider[]
+  walletTxns WalletTransaction[]
+  bookings   Booking[]
+
+  @@index([active])
 }
 
 // ── Rehab doctor (physiatrist) — issues referrals & runs consults ────────────
