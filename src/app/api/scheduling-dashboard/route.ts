@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { branchForRole } from '@/lib/role-branch'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -29,7 +30,12 @@ export async function GET(req: NextRequest) {
   const startDate = searchParams.get('startDate')
   const endDate = searchParams.get('endDate')
   const status = searchParams.get('status') // 'all' | 'CONFIRMED' | 'PENDING' | 'CANCELLED' | 'RESCHEDULED'
-  const branch = searchParams.get('branch') // 'all' | 'SBEA' | 'SBGH' | 'Verdana'
+  // A branch-scoped account sees its own branch and nothing else. The requested
+  // branch is OVERRIDDEN rather than validated: the role decides, so passing
+  // ?branch=all or the other branch's code changes nothing. Hiding the option in
+  // the UI would not have covered this route being called directly.
+  const scopedBranch = branchForRole(role)
+  const branch = scopedBranch ?? searchParams.get('branch') // 'all' | 'SBEA' | 'SBGH' | 'Verdana'
   const departments = searchParams.get('departments') // comma-separated: 'OT,PT,SLP,...'
 
   if (!startDate || !endDate) {

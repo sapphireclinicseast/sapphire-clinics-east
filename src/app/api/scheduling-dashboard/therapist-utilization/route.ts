@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { branchForRole } from '@/lib/role-branch'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -42,7 +43,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const startDate  = searchParams.get('startDate')
   const endDate    = searchParams.get('endDate')
-  const branch     = searchParams.get('branch')     // 'all' | 'SBEA' | 'SBGH'
+  // Same rule as the dashboard route this page loads alongside: a branch-scoped
+  // account's branch comes from its role, not from the query string. Both routes
+  // must agree, or the therapist breakdown would leak what the summary hides.
+  const branch     = branchForRole(role) ?? searchParams.get('branch')  // 'all' | 'SBEA' | 'SBGH'
   const department = searchParams.get('department')  // 'all' | specific dept
   const staffId    = searchParams.get('staffId')     // optional: specific therapist
 

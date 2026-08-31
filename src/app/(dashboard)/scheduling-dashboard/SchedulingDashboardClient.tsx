@@ -1,5 +1,6 @@
 'use client'
 
+import { branchForRole } from '@/lib/role-branch'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { localTodayStr } from '@/lib/utils'
 import {
@@ -98,11 +99,16 @@ export default function SchedulingDashboardClient({ role }: { role: string }) {
 
 function DashboardContent({ role }: { role: string }) {
   const isInvestor = role === 'INVESTOR'
+  // null for unrestricted roles. Drives the branch control below; the API
+  // enforces the same rule server-side, which is what actually matters.
+  const scopedBranch = branchForRole(role)
   // ── Filter state ──
   const [startDate, setStartDate] = useState(monthAgoStr())
   const [endDate, setEndDate] = useState(todayStr())
   const [status, setStatus] = useState('CONFIRMED')
-  const [branch, setBranch] = useState('all')
+  // Seeded from the role so a branch-scoped account's first request is already
+  // its own branch, rather than asking for 'all' and being silently overridden.
+  const [branch, setBranch] = useState(() => branchForRole(role) ?? 'all')
   const [selectedDepts, setSelectedDepts] = useState<string[]>([...DEPARTMENTS])
   const [allDepts, setAllDepts] = useState(true)
   const [selectedDay, setSelectedDay] = useState(todayStr())
@@ -422,15 +428,31 @@ function DashboardContent({ role }: { role: string }) {
               <option value="PENDING">Pending</option>
               <option value="CANCELLED">Cancelled</option>
               <option value="RESCHEDULED">Rescheduled</option>
+              {/* NO_SHOW is in the ScheduleStatus enum but was missing here, so
+                  there was no way to filter for the sessions patients never
+                  turned up to — the ones the fee policy cares about most. */}
+              <option value="NO_SHOW">No-Show</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-semibold text-gray-500 uppercase">Branch</label>
-            <select value={branch} onChange={e => setBranch(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" style={{ fontFamily: 'var(--font-body)' }}>
-              <option value="all">All Branches</option>
-              {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
-            </select>
+            {scopedBranch ? (
+              /* Branch-scoped account: one branch, not a choice. Rendered as a
+                 plain field rather than a disabled select so it reads as "this
+                 is your branch" instead of "this control is broken". The server
+                 overrides the branch regardless — this only keeps the UI honest
+                 about what it can do. */
+              <div className="border border-gray-200 bg-gray-50 rounded-md px-3 py-1.5 text-sm text-gray-600"
+                title="Your account is scoped to this branch">
+                {BRANCH_LABELS[scopedBranch] ?? scopedBranch}
+              </div>
+            ) : (
+              <select value={branch} onChange={e => setBranch(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" style={{ fontFamily: 'var(--font-body)' }}>
+                <option value="all">All Branches</option>
+                {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
+              </select>
+            )}
           </div>
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
             <label className="text-[11px] font-semibold text-gray-500 uppercase">Department</label>
@@ -628,7 +650,7 @@ function DashboardContent({ role }: { role: string }) {
 
       {/* Therapist Utilization */}
       <div className="mt-6">
-        <TherapistUtilizationSection startDate={startDate} endDate={endDate} />
+        <TherapistUtilizationSection startDate={startDate} endDate={endDate} role={role} />
       </div>
 
       {/* Settings Modal */}
@@ -894,8 +916,12 @@ function UtilBar({ confirmed, rescheduled, cancelled, pending, blank, total }: {
   )
 }
 
-function TherapistUtilizationSection({ startDate, endDate }: { startDate: string; endDate: string }) {
-  const [branch, setBranch]       = useState('all')
+function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: string; endDate: string; role: string }) {
+  // Scoped exactly like the summary above. The API overrides the branch for
+  // these roles regardless; seeding from the role keeps this panel's own filter
+  // from claiming a breadth it will not get back.
+  const scopedBranch = branchForRole(role)
+  const [branch, setBranch]       = useState(() => branchForRole(role) ?? 'all')
   const [department, setDepartment] = useState('all')
   const [staffFilter, setStaffFilter] = useState('')
   const [data, setData]           = useState<TherapistUtil[]>([])
@@ -991,11 +1017,18 @@ function TherapistUtilizationSection({ startDate, endDate }: { startDate: string
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-semibold text-gray-500 uppercase">Branch</label>
-            <select value={branch} onChange={e => setBranch(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1 text-xs">
-              <option value="all">All Branches</option>
-              {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
-            </select>
+            {scopedBranch ? (
+              <div className="border border-gray-200 bg-gray-50 rounded-md px-2 py-1 text-xs text-gray-600"
+                title="Your account is scoped to this branch">
+                {BRANCH_LABELS[scopedBranch] ?? scopedBranch}
+              </div>
+            ) : (
+              <select value={branch} onChange={e => setBranch(e.target.value)}
+                className="border border-gray-300 rounded-md px-2 py-1 text-xs">
+                <option value="all">All Branches</option>
+                {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
+              </select>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-semibold text-gray-500 uppercase">Department</label>
