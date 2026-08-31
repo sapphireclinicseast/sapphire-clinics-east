@@ -208,7 +208,10 @@ function NewCampaign({ branch, setBranch }: { branch: Branch; setBranch: (b: Bra
           </optgroup>
         </select>
         <p className="mt-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
-          Branch: <strong>{branch === 'BOTH' ? 'Both' : branch}</strong>.
+          {/* branchLabel, not the raw code — SBEA/SBGH are internal and were
+              never meant to reach the UI. The selector above this line already
+              says "Greenhills Branch"; this said "SBGH". */}
+          Branch: <strong>{branch === 'BOTH' ? 'Both branches' : branchLabel(branch)}</strong>.
           {count !== null && (
             <> &nbsp;·&nbsp; <strong style={{ color: 'var(--narra)' }}>{count}</strong> patient{count === 1 ? '' : 's'} match this group.</>
           )}
@@ -462,7 +465,12 @@ function CampaignHistory({ branch, setBranch }: { branch: Branch; setBranch: (b:
                   <p className="text-[11px] mt-0.5 line-clamp-1" style={{ color: 'var(--mid-gray)' }}>{r.message}</p>
                 </td>
                 <td className="px-4 py-3 text-xs" style={{ color: 'var(--ink)' }}>{r.recipientGroup}</td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--ink)' }}>{r.branch}</td>
+                {/* Same internal-code leak as the compose screen: this column
+                    was printing SBEA/SBGH. 'BOTH' has no branchLabel entry, so
+                    it's spelled out rather than passed through. */}
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--ink)' }}>
+                  {r.branch === 'BOTH' ? 'Both branches' : branchLabel(r.branch)}
+                </td>
                 <td className="px-4 py-3 text-xs" style={{ color: 'var(--ink)' }}>{r.recipientCount}</td>
                 <td className="px-4 py-3">{statusBadge(r)}</td>
                 <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
