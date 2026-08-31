@@ -36,16 +36,18 @@ export async function GET(req: NextRequest) {
   // fire-and-forget) so it works without a cron.
   maybeSweepExpiredInterns()
 
-  const user = session.user as { role?: string; staffId?: string; branches?: { staffId: string }[]; isInternshipSupervisor?: boolean }
+  const user = session.user as { role?: string; staffId?: string; department?: string; branches?: { staffId: string }[]; isInternshipSupervisor?: boolean }
   const isAdmin = user.role === 'ADMIN'
   const isTaggedSupervisor = !!user.isInternshipSupervisor
   const myStaffIds = (user.branches ?? []).map((b) => b.staffId).filter(Boolean)
   const staffPool = myStaffIds.length > 0 ? myStaffIds : [user.staffId].filter(Boolean) as string[]
 
-  // ?scope=all — every intern org-wide (Clinical Internship Supervisor tag or
-  // admin only), not just the ones decked to this person. Source of truth is
+  // ?scope=all — every intern (Clinical Internship Supervisor tag or admin
+  // only), not just the ones decked to this person. Source of truth is
   // Staff.employmentType, not the Schedule decking used below — an intern
   // who hasn't been decked to anyone yet still belongs on this roster.
+  // A tagged supervisor only oversees interns in THEIR OWN department, so the
+  // roster is department-scoped for them; admins see every department.
   const scopeAll = new URL(req.url).searchParams.get('scope') === 'all'
   if (scopeAll && !isAdmin && !isTaggedSupervisor) {
     return NextResponse.json({ error: 'Clinical Internship Supervisor access required.' }, { status: 403 })
@@ -53,7 +55,10 @@ export async function GET(req: NextRequest) {
 
   const interns = scopeAll
     ? await prisma.staff.findMany({
-        where: { employmentType: 'intern' },
+        where: {
+          employmentType: 'intern',
+          ...(isAdmin || !user.department ? {} : { department: user.department as never }),
+        },
         select: { id: true, firstName: true, lastName: true, department: true, branch: true, hrPlatformId: true },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       })

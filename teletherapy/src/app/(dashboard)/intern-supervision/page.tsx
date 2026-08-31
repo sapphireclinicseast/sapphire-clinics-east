@@ -507,7 +507,7 @@ export default function InternSupervisionPage() {
 
           {tab === 'all-interns' && (
             <div className="space-y-3">
-              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Every intern org-wide — Clinical Internship Supervisor view. Open an intern to read every note they've written, not just sessions decked to you.</p>
+              <p className="text-[12px] text-[var(--mid-gray)] mb-1">{isAdmin ? 'Every intern org-wide' : 'Every intern in your department'} — Clinical Internship Supervisor view. Open an intern to read every note they&apos;ve written, not just sessions decked to you.</p>
               {allInternsLoading ? (
                 <div className="flex justify-center py-10"><Loader2 size={22} className="animate-spin text-[var(--teal)]" /></div>
               ) : (allInterns ?? []).length === 0 ? (
