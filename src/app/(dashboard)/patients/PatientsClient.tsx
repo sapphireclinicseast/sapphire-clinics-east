@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { isLikelyChinoy } from '@/lib/chinoy-surnames'
 import { branchLabel } from '@/lib/branch-label'
+import { useSearchParams } from 'next/navigation'
+import { flashRow } from '@/lib/highlight-row'
 
 interface Patient {
   id: string
@@ -416,6 +418,25 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
 
   // Reset to page 1 whenever the filtered/sorted list changes
   useEffect(() => { setPage(1) }, [displayPatients])
+
+  // Notification deep link: /patients?highlight=<id>. The list is paginated
+  // client-side, so the row is usually not on page 1 — jumping to its page is
+  // the difference between "took me to the patient" and "took me to a list".
+  // Declared after the reset above so it wins on the same render.
+  const searchParams = useSearchParams()
+  const highlightedId = useRef<string | null>(null)
+  useEffect(() => {
+    const id = searchParams.get('highlight')
+    if (!id || displayPatients.length === 0) return
+    if (highlightedId.current === id) return
+    const idx = displayPatients.findIndex((p: { id: string }) => p.id === id)
+    // Not in the current view (filtered out, or on another branch) — say nothing
+    // rather than jumping somewhere arbitrary.
+    if (idx === -1) return
+    highlightedId.current = id
+    setPage(Math.floor(idx / pageSize) + 1)
+    return flashRow(id)
+  }, [searchParams, displayPatients, pageSize])
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   async function fetchPatients() {
@@ -1302,7 +1323,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
               </tr>
             ) : displayPatients.slice((page - 1) * pageSize, page * pageSize).map((p) => (
               <>
-                <tr key={p.id}
+                <tr key={p.id} data-row-id={p.id}
                   style={{ borderBottom: editingId === p.id ? 'none' : '1px solid var(--light-gray)' }}>
                   <td className="px-4 py-3">
                     <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>
