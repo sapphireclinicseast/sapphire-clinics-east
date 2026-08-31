@@ -44,11 +44,22 @@ export async function GET(req: Request) {
   }
 
   // Filter wallets by branch: show wallets matching user's branch OR wallets
-  // set to ALL. EXCEPTION — patient-targeted lookups (patientId or search):
-  // interbranch patients are merged to one account in the Operations Hub, so
-  // their wallets (packages, HMO, GL, advances, reward points) must be visible
-  // and spendable at every branch's POS, wherever they were opened.
-  if (branch && branch !== 'ALL' && !patientId && !search) {
+  // set to ALL. EXCEPTIONS:
+  //
+  //  - patient-targeted lookups (patientId or search): interbranch patients are
+  //    merged to one account in the Operations Hub, so their wallets (packages,
+  //    HMO, GL, advances, reward points) must be visible and spendable at every
+  //    branch's POS, wherever they were opened.
+  //
+  //  - branch front desk: same reasoning, extended to browsing. A patient who
+  //    transferred from the other branch arrives at the counter with a wallet
+  //    opened elsewhere, and the person serving them could find it by searching
+  //    but not by looking down the list — which reads as the wallet not existing.
+  //    They already reach any wallet through search, so this narrows nothing that
+  //    was closed; it only stops the list disagreeing with the search box.
+  const FRONT_DESK = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK']
+  const isFrontDesk = FRONT_DESK.includes(session.user.role as string)
+  if (branch && branch !== 'ALL' && !patientId && !search && !isFrontDesk) {
     where.branch = { in: [branch, 'ALL'] }
   }
 
