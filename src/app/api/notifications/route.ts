@@ -71,7 +71,9 @@ async function fetchFormResponseNotifs(since: Date, branches: string[] | null): 
           branch,
           formKey: key,
           createdAt: item.submitted_at,
-          href: `/registration-forms?form=${key}&branch=${branch}&tab=results`,
+          // response= is what lets the page put the eye on THIS submission
+          // rather than dropping the user at the top of the list.
+          href: `/registration-forms?form=${key}&branch=${branch}&tab=results&response=${item.landing_id}`,
         }))
     })
   )
@@ -132,7 +134,7 @@ export async function GET() {
       name: `${p.firstName} ${p.lastName}`.trim(),
       branch: BRANCH_ENUM_TO_SHORT[p.branches[0] ?? ''] ?? (p.branch ? String(p.branch) : ''),
       createdAt: p.createdAt.toISOString(),
-      href: '/patients',
+      href: `/patients?highlight=${p.id}`,
     })),
     ...bookings.map((b) => ({
       id: `bkg_${b.id}`,
@@ -142,7 +144,7 @@ export async function GET() {
       status: b.status,
       // Use paidAt when available so a recently-paid booking sorts to the top
       createdAt: (b.paidAt ?? b.createdAt).toISOString(),
-      href: '/decking',
+      href: `/decking?highlight=${b.id}`,
     })),
     ...formResponses,
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

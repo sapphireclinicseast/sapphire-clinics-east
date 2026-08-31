@@ -17,6 +17,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { localTodayStr } from '@/lib/utils'
+import { useSearchParams } from 'next/navigation'
+import { flashRow } from '@/lib/highlight-row'
 
 interface BookingRow {
   id: string
@@ -131,6 +133,17 @@ export default function PatientRequestsPanel({ branch, service, compact }: Props
   }, [branch])
 
   useEffect(() => { load() }, [load])
+
+  // Notification deep link: /decking?highlight=<bookingId>. Waits for the list
+  // to load — the row is not in the DOM when the URL is first read.
+  const searchParams = useSearchParams()
+  const highlightedId = useRef<string | null>(null)
+  useEffect(() => {
+    const id = searchParams.get('highlight')
+    if (!id || highlightedId.current === id) return
+    highlightedId.current = id
+    return flashRow(id)
+  }, [searchParams])
 
   // Client-portal requests belong to the board that can act on them:
   //   on-site      → in-clinic bookings, which pay a downpayment
@@ -260,6 +273,7 @@ export default function PatientRequestsPanel({ branch, service, compact }: Props
     return (
       <div
         key={b.id}
+        data-row-id={b.id}
         className="bg-white border rounded-lg px-3 py-2 text-sm transition-colors"
         style={
           isDoneRow

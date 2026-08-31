@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { flashRow } from '@/lib/highlight-row'
 import { localTodayStr } from '@/lib/utils'
 import {
   FileText, QrCode, BarChart3, ExternalLink, Copy, Check,
@@ -146,6 +147,19 @@ export default function RegistrationFormsClient({ role }: Props) {
     if (tabParam === 'results') setTab('results')
     if (branch === 'SBEA' || branch === 'SBGH') setQrBranch(branch)
   }, [searchParams, visibleForms])
+
+  // Put the eye on the submission the notification was about. Runs off `results`
+  // rather than the deep-link effect above: the row does not exist until the
+  // responses have loaded, and landing on a list of 40 submissions with no idea
+  // which one was clicked is barely better than not linking at all.
+  const highlighted = useRef<string | null>(null)
+  useEffect(() => {
+    const responseId = searchParams.get('response')
+    if (!responseId || !results?.items.length) return
+    if (highlighted.current === responseId) return   // don't re-flash on refetch
+    highlighted.current = responseId
+    return flashRow(responseId)
+  }, [searchParams, results])
 
   // Reset qrBranch when form changes
   useEffect(() => {
@@ -532,6 +546,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                           return (
                           <tr
                             key={item.landing_id || i}
+                            data-row-id={item.landing_id}
                             className="transition-colors"
                             style={{
                               borderTop: '1px solid var(--border)',
