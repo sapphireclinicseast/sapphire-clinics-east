@@ -91,18 +91,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ campaign, scheduled: true })
   }
 
-  // Send immediately
-  try {
-    await executeSendCampaign(campaign.id)
-  } catch (err) {
+  // Start the send, but do NOT await the whole run before replying.
+  //
+  // A tranche is up to 450 emails; at Gmail's pace that is minutes, far past
+  // nginx's proxy_read_timeout. The proxy then returns its HTML 504 page, the
+  // browser's res.json() dies on "Unexpected token '<'", and the operator sees
+  // a failure — while the server carries on sending. The worst part is what
+  // that invites: pressing Send again, which starts a SECOND campaign to the
+  // same list.
+  //
+  // Progress is already durable and owned by the campaign row: sentCount is
+  // written every 10 sends, executeSendCampaign resumes from it, and it sets
+  // its own terminal status (sent / partial / failed). So the response only has
+  // to say the run started — the history list is the source of truth for how it
+  // went. Failures are recorded there rather than lost with this request.
+  void executeSendCampaign(campaign.id).catch((err) => {
+    // executeSendCampaign marks the campaign 'failed' itself; this catch only
+    // stops an unhandled rejection from taking the process down mid-send.
     console.error('Email send error:', err)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to send email' },
-      { status: 500 }
-    )
-  }
+  })
 
-  return NextResponse.json({ campaign, sent: recipientCount })
+  return NextResponse.json({ campaign, started: true, sent: recipientCount })
 }
 
 export async function GET(req: NextRequest) {

@@ -259,7 +259,20 @@ export default function EmailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const data = await res.json()
+      // A proxy timeout or gateway error replies with an HTML page, not JSON.
+      // Parsing it blind produced «Unexpected token '<', "<html>...», which tells
+      // the operator nothing and looks like nothing was sent — the one reading
+      // that makes them press Send again and mail the whole list twice.
+      const raw = await res.text()
+      let data: { error?: string; scheduled?: boolean } = {}
+      try {
+        data = raw ? JSON.parse(raw) : {}
+      } catch {
+        throw new Error(
+          `The server did not respond in time (HTTP ${res.status}). The send may still be running — ` +
+          `check Campaign History below before sending again, or you may email everyone twice.`,
+        )
+      }
       if (!res.ok) throw new Error(data.error || 'Failed')
       if (data.scheduled) setScheduled(true)
       else setSent(true)
