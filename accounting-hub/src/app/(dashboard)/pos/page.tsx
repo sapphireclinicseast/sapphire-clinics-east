@@ -5828,6 +5828,19 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               </button>
             </div>
 
+            {/* Patients move between branches and the wallet moves with them. There
+                is no branch check at checkout — order creation never compares the
+                wallet's branch with the order's — so a wallet opened at one branch
+                is spendable at the other as it stands. Said plainly here because
+                the branch shown below reads like a restriction and is not one. */}
+            <div className="mb-3 rounded-xl px-3 py-2 text-[11px]"
+              style={{ background: '#f0f7f2', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+              <span className="font-semibold">Usable at any branch.</span>{' '}
+              This wallet can be charged at East or Greenhills wherever the patient is
+              seen — the branch below records where it was opened, not where it may be
+              spent. Nothing needs to be ticked or changed to use it at another branch.
+            </div>
+
             {walletEditing ? (
               <div className="mb-4 space-y-3">
                 <h4 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Edit Wallet</h4>
