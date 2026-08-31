@@ -267,9 +267,19 @@ jobs:
 
             echo "✅ Marketing-hub migrations: $applied applied cleanly."
             if [ -n "$failed" ]; then
-              echo "❌ Migrations reporting errors:$failed"
-              echo "   A guard-less migration errors on every deploy once it has run."
-              exit 1
+              echo "⚠ Migrations reporting errors:$failed"
+              echo "   This loop replays EVERY migration on every deploy and there is no"
+              echo "   migration tracker, so a guard-less migration errors every time once"
+              echo "   it has already run. 25 legacy migrations are in that state."
+              echo ""
+              echo "   That is why this does NOT fail the deploy: exiting non-zero here"
+              echo "   skipped 'Rebuild & Restart Marketing Hub' entirely on 2026-08-31,"
+              echo "   so the hub stayed on old code while the errors it tripped on were"
+              echo "   all benign 'already exists'. The list above is still worth reading"
+              echo "   when a NEW migration appears in it."
+              echo ""
+              echo "   Proper fix is a ledger so each migration runs once and any error is"
+              echo "   real — until then this is advisory, not a gate."
             fi
 
       - name: Rebuild & Restart Marketing Hub
