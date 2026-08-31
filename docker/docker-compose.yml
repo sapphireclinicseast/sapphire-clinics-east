@@ -199,10 +199,11 @@ services:
       NICKEL_VAPID_PUBLIC: ${NICKEL_VAPID_PUBLIC:-}
       NICKEL_VAPID_PRIVATE: ${NICKEL_VAPID_PRIVATE:-}
       NICKEL_VAPID_SUBJECT: ${NICKEL_VAPID_SUBJECT:-mailto:main@sapphireclinicseast.org}
-      # Weekly payout cron auth + optional PayMongo disbursement. Values in .env.production.
+      # Weekly payout cron auth + optional PayMongo disbursement toggle.
+      # (PAYMONGO_SECRET_KEY is already set above for collection — the disburse
+      # adapter reuses it.) Values in .env.production.
       NICKEL_CRON_SECRET: ${NICKEL_CRON_SECRET:-}
       PAYMONGO_DISBURSE_ENABLED: ${PAYMONGO_DISBURSE_ENABLED:-false}
-      PAYMONGO_SECRET_KEY: ${PAYMONGO_SECRET_KEY:-}
       NODE_ENV: production
     ports:
       - "127.0.0.1:3007:3000"
