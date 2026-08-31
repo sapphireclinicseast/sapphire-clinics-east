@@ -11,6 +11,7 @@ import {
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
   Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign, Wand2, MonitorSmartphone,
+  CalendarCheck,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
@@ -815,6 +816,27 @@ function CashierPanel({
         >
           <Plus size={16} /> New Payment
         </button>
+
+        {/* Booked-session count for the selected branch + date (from the same
+            queue fetch that fills the table below). Hidden for Verdana, which
+            has no appointment queue at all. */}
+        {selectedBranch !== 'VERDANA_STORE' && !queueError && (
+          <div
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-sm"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+            title="Sessions booked on the selected date for this branch"
+          >
+            <CalendarCheck size={15} style={{ color: 'var(--teal)' }} />
+            {queueLoading && queue.length === 0 ? (
+              <Loader2 className="animate-spin" size={14} style={{ color: 'var(--mid-gray)' }} />
+            ) : (
+              <>
+                <span className="font-semibold">{queue.length}</span>
+                <span style={{ color: 'var(--mid-gray)' }}>{queue.length === 1 ? 'session booked' : 'sessions booked'}</span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Opens the counter tablet's own address, so front desk can put it on
             the patient-facing screen without being told the URL. Branches with
@@ -7194,6 +7216,8 @@ function ProductsSection({
   session: { user?: Record<string, unknown> } | null
 }) {
   const [products, setProducts] = useState<InventoryProduct[]>([])
+  // Onsite = the in-store POS sale flow; Online = website + TikTok Shop channels.
+  const [prodTab, setProdTab] = useState<'onsite' | 'online'>('onsite')
   // Only Verdana and Aura Health Institute carry products for sale.
   const [prodBranch, setProdBranch] = useState('VERDANA_STORE')
   const [productSearch, setProductSearch] = useState('')
@@ -7621,12 +7645,45 @@ function ProductsSection({
 
   return (
     <>
-    {/* Online Orders from verdanarehab.com */}
-    <div className="mb-4">
-      <OnlineOrdersWidget />
+    {/* Sub-tabs: Onsite = in-store POS sale; Online = website + TikTok Shop channels */}
+    <div className="flex gap-1 mb-4">
+      {([{ key: 'onsite', label: 'Products (Onsite)' }, { key: 'online', label: 'Products (Online)' }] as const).map(t => (
+        <button
+          key={t.key}
+          onClick={() => setProdTab(t.key)}
+          className="px-4 py-2 text-sm rounded-xl font-medium transition-colors"
+          style={{
+            background: prodTab === t.key ? 'var(--pale-teal)' : 'transparent',
+            color: prodTab === t.key ? 'var(--deep-teal)' : 'var(--mid-gray)',
+          }}
+        >
+          {t.label}
+        </button>
+      ))}
     </div>
 
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    {/* Online channels: verdanarehab.com orders + TikTok Shop bulk import */}
+    {prodTab === 'online' && (
+      <div className="space-y-4 mb-4">
+        <OnlineOrdersWidget />
+        <div className="rounded-2xl border bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-1.5" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+              <Upload size={15} /> TikTok Shop
+            </h3>
+            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+              Import TikTok Shop exports — Completed Orders (sales), Settlement (fees, CWT, bank deposit), and Cancelled / Failed Delivery (cancel reasons for Products Analysis). Safe to re-run; duplicates are skipped.
+            </p>
+          </div>
+          <button onClick={() => setShowTiktokImport(true)} className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }} title="Bulk upload TikTok Shop orders + settlement">
+            <Upload size={14} /> TikTok Bulk Upload
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* Onsite sale — kept mounted (hidden, not unmounted) so a half-built cart survives tab switches */}
+    <div className={`grid-cols-1 lg:grid-cols-3 gap-4 ${prodTab === 'onsite' ? 'grid' : 'hidden'}`}>
       {/* Product List */}
       <div className="lg:col-span-2 space-y-4">
         {/* Barcode Scanner Input */}
@@ -7739,9 +7796,6 @@ function ProductsSection({
               <ShoppingCart size={16} /> Cart ({cart.length})
             </h3>
             <div className="flex items-center gap-1.5">
-              <button onClick={() => setShowTiktokImport(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Bulk upload TikTok Shop orders + settlement">
-                <Upload size={13} /> TikTok Bulk Upload
-              </button>
               <label className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>Date</label>
               <input
                 type="date"
