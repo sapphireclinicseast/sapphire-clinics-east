@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Shield, Loader2, X, BadgeDollarSign } from 'lucide-react'
+import { Shield, Loader2, X, BadgeDollarSign, Plus, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import Availments from './Availments'
 import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
@@ -62,6 +62,9 @@ export default function BenefitsPayablePage() {
   const [hideRemitted, setHideRemitted] = useState(false)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  // Govcon catch-up modal (contributions for a month with no payroll)
+  const [catchupOpen, setCatchupOpen] = useState(false)
 
   // RFP modal
   const [rfpOpen, setRfpOpen] = useState(false)
@@ -165,6 +168,9 @@ export default function BenefitsPayablePage() {
         <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           <Shield size={22} style={{ color: 'var(--teal)' }} /> Benefits Payable
         </h1>
+        <button onClick={() => setCatchupOpen(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+          <Plus size={14} /> Record Govcon catch-up
+        </button>
       </div>
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>SSS, PhilHealth and Pag-IBIG contributions from locked payroll (employees & consultants). Tick lines and generate an RFP per agency — it appears under Expenses → RFP.</p>
 
@@ -291,7 +297,9 @@ export default function BenefitsPayablePage() {
                   <td className="px-3 py-2.5"><span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={r.type === 'consultant' ? { background: '#eef2ff', color: '#4338ca' } : { background: '#ecfeff', color: '#0e7490' }}>{r.type === 'consultant' ? 'Consultant' : 'Employee'}</span></td>
                   <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{r.department}</td>
                   <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{BRANCH_DISPLAY[r.branch] || r.branch}</td>
-                  <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.cutoffPeriod}</td>
+                  <td className="px-3 py-2.5 font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.cutoffPeriod.endsWith('-GOVCON')
+                    ? <>{r.cutoffPeriod.slice(0, 7)} <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold font-sans" style={{ background: '#fef3c7', color: '#92400e' }}>Catch-up</span></>
+                    : r.cutoffPeriod}</td>
                   <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{formatCurrency(ee(r))}</td>
                   <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{formatCurrency(er(r))}</td>
                   <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(ee(r) + er(r))}</td>
@@ -299,6 +307,13 @@ export default function BenefitsPayablePage() {
                     {r.benefitsRemitted ? <span className="text-[11px] font-medium" style={{ color: '#166534' }}>Remitted</span>
                       : rfpOf(r) ? <span className="text-[11px] font-medium" style={{ color: '#c44b00' }}>In RFP</span>
                       : <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Pending</span>}
+                    {r.cutoffPeriod.endsWith('-GOVCON') && !locked && r.type === 'employee' && (
+                      <button title="Delete this catch-up (reverses its journal entry and staff loan)" onClick={async () => {
+                        if (!confirm(`Delete the Govcon catch-up for ${r.name} (${r.cutoffPeriod.slice(0, 7)})? Its journal entry and staff loan are reversed.`)) return
+                        const res = await fetch(`/api/payroll/govcon-catchup?id=${r.id}`, { method: 'DELETE' })
+                        if (!res.ok) { alert((await res.json().catch(() => ({}))).error || 'Failed to delete') } else load()
+                      }} className="ml-2 p-0.5 rounded hover:bg-red-50 align-middle"><Trash2 size={12} className="text-red-400" /></button>
+                    )}
                   </td>
                 </tr>
               )
@@ -354,6 +369,116 @@ export default function BenefitsPayablePage() {
         </div>
       )}
       </>)}
+      {catchupOpen && <GovconCatchupModal defaultBranch={branch} onClose={() => setCatchupOpen(false)} onSaved={() => { setCatchupOpen(false); load() }} />}
+    </div>
+  )
+}
+
+// ── Govcon catch-up modal ─────────────────────────────────────────────────────
+// Records SSS/PHIC/HDMF for a month with NO payroll (unpaid month, maternity):
+// the person had no payslip, so no payable was ever recognized — yet the
+// remittance must still go out (and match). Creates a contributions-only row
+// this page can remit like any other, posting either
+//   DEDUCT  (hulugan): EE share → 1160 Due from Employees + a GOVCON staff loan
+//                      repaid by deductions on the coming payrolls
+//   COMPANY (maternity/shouldered): EE share booked as contribution expense
+interface CatchupEmployee { id: string; firstName: string; lastName: string }
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+function GovconCatchupModal({ defaultBranch, onClose, onSaved }: { defaultBranch: string; onClose: () => void; onSaved: () => void }) {
+  const now = new Date()
+  const [f, setF] = useState({
+    branch: defaultBranch, employeeId: '', month: String(now.getMonth() === 0 ? 12 : now.getMonth()), year: String(now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()),
+    entryDate: now.toISOString().slice(0, 10), mode: 'DEDUCT' as 'DEDUCT' | 'COMPANY', perCutoff: '', notes: '',
+    sssEE: '', sssER: '', philEE: '', philER: '', pagEE: '', pagER: '',
+  })
+  const [employees, setEmployees] = useState<CatchupEmployee[]>([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const set = (k: string, v: string) => setF(p => ({ ...p, [k]: v }))
+  const n = (v: string) => Number(v) || 0
+  useEffect(() => {
+    fetch(`/api/payroll/employees?branch=${f.branch}&includeInactive=true`).then(r => r.ok ? r.json() : []).then(j => setEmployees(Array.isArray(j) ? j : [])).catch(() => setEmployees([]))
+  }, [f.branch])
+  const eeTotal = n(f.sssEE) + n(f.philEE) + n(f.pagEE)
+  const erTotal = n(f.sssER) + n(f.philER) + n(f.pagER)
+  const total = eeTotal + erTotal
+  const save = async () => {
+    setErr('')
+    if (!f.employeeId) { setErr('Pick the employee.'); return }
+    if (!(total > 0)) { setErr('Enter at least one contribution amount.'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/payroll/govcon-catchup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        employeeId: f.employeeId, branch: f.branch, month: Number(f.month), year: Number(f.year), entryDate: f.entryDate,
+        mode: f.mode, perCutoff: n(f.perCutoff), notes: f.notes,
+        sssEE: n(f.sssEE), sssER: n(f.sssER), philEE: n(f.philEE), philER: n(f.philER), pagEE: n(f.pagEE), pagER: n(f.pagER),
+      }) })
+      if (!res.ok) { setErr((await res.json().catch(() => ({}))).error || 'Failed to record catch-up'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm'
+  const lbl = 'block text-[11px] font-semibold mb-1'
+  const bc = { borderColor: 'var(--light-gray)' }
+  const mg = { color: 'var(--mid-gray)' }
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-5 my-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Record Govcon Catch-up</h2>
+          <button onClick={onClose}><X size={18} style={mg} /></button>
+        </div>
+        <p className="text-xs mb-3" style={mg}>For a month with <strong>no payroll</strong> (unpaid month, maternity leave): recognizes the SSS/PHIC/HDMF payable so it can be remitted and tagged here like any payroll row.</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="col-span-2"><label className={lbl} style={mg}>Employee</label>
+            <select value={f.employeeId} onChange={e => set('employeeId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{[...employees].sort((a, b) => `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`)).map(e => <option key={e.id} value={e.id}>{e.lastName}, {e.firstName}</option>)}</select>
+          </div>
+          <div><label className={lbl} style={mg}>Branch</label>
+            <select value={f.branch} onChange={e => setF(p => ({ ...p, branch: e.target.value, employeeId: '' }))} className={inp} style={bc}>{BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}</select>
+          </div>
+          <div><label className={lbl} style={mg}>Record date</label><input type="date" value={f.entryDate} onChange={e => set('entryDate', e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Contribution month</label>
+            <select value={f.month} onChange={e => set('month', e.target.value)} className={inp} style={bc}>{MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select>
+          </div>
+          <div><label className={lbl} style={mg}>Year</label><input value={f.year} onChange={e => set('year', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
+        </div>
+
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <div className="grid grid-cols-3 gap-3">
+            {([['SSS', 'sssEE', 'sssER'], ['PhilHealth', 'philEE', 'philER'], ['Pag-IBIG', 'pagEE', 'pagER']] as const).map(([label, eeK, erK]) => (
+              <div key={label}>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>{label}</p>
+                <label className={lbl} style={mg}>EE share</label><input value={f[eeK]} onChange={e => set(eeK, e.target.value)} inputMode="decimal" placeholder="0.00" className={inp + ' font-mono mb-2'} style={bc} />
+                <label className={lbl} style={mg}>ER share</label><input value={f[erK]} onChange={e => set(erK, e.target.value)} inputMode="decimal" placeholder="0.00" className={inp + ' font-mono'} style={bc} />
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>EE {formatCurrency(eeTotal)} + ER {formatCurrency(erTotal)} = <strong>{formatCurrency(total)}</strong> payable</p>
+        </div>
+
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Who shoulders the employee share?</p>
+          <label className="flex items-start gap-2 text-xs mb-2" style={{ color: 'var(--charcoal)' }}>
+            <input type="radio" name="gcmode" checked={f.mode === 'DEDUCT'} onChange={() => set('mode', 'DEDUCT')} className="mt-0.5" />
+            <span><strong>Deduct from coming payrolls (hulugan)</strong> — the EE share goes to 1160 Due from Employees and opens a GOVCON staff loan; payroll suggests the deduction every cutoff until repaid.</span>
+          </label>
+          {f.mode === 'DEDUCT' && (
+            <div className="ml-6 mb-2 w-48"><label className={lbl} style={mg}>Deduction per cutoff <span className="font-normal text-gray-400">(hulog)</span></label><input value={f.perCutoff} onChange={e => set('perCutoff', e.target.value)} inputMode="decimal" placeholder="0.00" className={inp + ' font-mono'} style={bc} /></div>
+          )}
+          <label className="flex items-start gap-2 text-xs" style={{ color: 'var(--charcoal)' }}>
+            <input type="radio" name="gcmode" checked={f.mode === 'COMPANY'} onChange={() => set('mode', 'COMPANY')} className="mt-0.5" />
+            <span><strong>Company-shouldered</strong> — e.g. maternity leave (benefit is contribution-inclusive): the EE share is booked as contribution expense, nothing is deducted from the employee.</span>
+          </label>
+        </div>
+
+        <div className="mt-3"><label className={lbl} style={mg}>Notes</label><input value={f.notes} onChange={e => set('notes', e.target.value)} placeholder="e.g. Maternity leave June–Aug; per HDMF loan requirement" className={inp} style={bc} /></div>
+
+        {err && <p className="text-xs text-red-600 mt-2">{err}</p>}
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 mt-3" style={{ background: 'var(--deep-teal)' }}>
+          {busy ? <Loader2 size={15} className="inline animate-spin" /> : `Record ${MONTH_NAMES[Number(f.month) - 1]} ${f.year} catch-up · ${formatCurrency(total)}`}
+        </button>
+      </div>
     </div>
   )
 }

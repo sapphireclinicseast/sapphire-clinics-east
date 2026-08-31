@@ -24,6 +24,7 @@ const branchLabel = (b: string | null | undefined) => (b ? BRANCH_LABEL[b] || b 
 const CATEGORIES = [
   ['LOAN', 'Cash Loan'], ['BIR_ASSISTANCE', 'BIR Assistance'], ['TRAINING', 'Training'],
   ['MEDICAL', 'Medical Bill'], ['SOS', 'SOS Program'], ['PERK', 'Perk / Other'],
+  ['GOVCON', 'Govcon Catch-up'], // EE share of contributions the company advanced for an unpaid month (Benefits Payable → Record Govcon catch-up)
 ] as const
 
 interface Deduction { id: string; cutoffPeriod: string; amount: number; source: string; journalEntryId: string | null }
