@@ -215,6 +215,63 @@ jobs:
       # image stale — file changes hit /var/www/... but the container keeps
       # serving the previously-baked image. This step rebuilds from the
       # freshly-synced source and recreates the container.
+      # Schema changes must land before any app that reads them restarts, and
+      # must not depend on an unrelated build succeeding.
+      #
+      # This used to live inside "Deploy Teletherapy", five steps later. That
+      # step begins `set -e` and exits early when the teletherapy directory is
+      # missing, so any failure before the migration loop — an npm install on a
+      # corrupted node_modules, for one real occurrence — skipped every
+      # marketing-hub migration silently, while the deploy still reported green
+      # because the step carries continue-on-error. A schema change could
+      # therefore "deploy successfully" and never touch the database.
+      #
+      # Deliberately NOT continue-on-error: if migrations fail, the code that
+      # expects them should not go live.
+      - name: Apply marketing-hub migrations
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            MIGRATION_DIR="/var/www/sapphireclinicseast.org/prisma/migrations"
+            if [ ! -d "$MIGRATION_DIR" ]; then
+              echo "⚠ No migrations directory — nothing to apply."
+              exit 0
+            fi
+
+            # Replay every migration.sql in order. They all use
+            # CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS guards, so
+            # re-running is idempotent — there is no migration tracker here.
+            #
+            # ON_ERROR_STOP=0 keeps one bad migration from blocking the rest,
+            # but the exit status is captured per file so a failure is REPORTED
+            # rather than scrolling past. Previously nothing inspected these.
+            failed=""
+            applied=0
+            for dir in $(ls -d "$MIGRATION_DIR"/*/ 2>/dev/null | sort); do
+              sql="$dir/migration.sql"
+              [ -f "$sql" ] || continue
+              name=$(basename "$dir")
+              out=$(cat "$sql" | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing -q -v ON_ERROR_STOP=0 2>&1)
+              if echo "$out" | grep -qi "^ERROR:"; then
+                echo "  ✗ $name"
+                echo "$out" | grep -i "^ERROR:" | head -3 | sed 's/^/      /'
+                failed="$failed $name"
+              else
+                applied=$((applied + 1))
+              fi
+            done
+
+            echo "✅ Marketing-hub migrations: $applied applied cleanly."
+            if [ -n "$failed" ]; then
+              echo "❌ Migrations reporting errors:$failed"
+              echo "   A guard-less migration errors on every deploy once it has run."
+              exit 1
+            fi
+
       - name: Rebuild & Restart Marketing Hub
         continue-on-error: true   # OOM-kill during build must not block Accounting Hub deploy
         uses: appleboy/ssh-action@v1
@@ -574,23 +631,8 @@ jobs:
           echo "→ Creating teletherapy tables..."
           cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 || true
 
-          echo "→ Applying Prisma migrations to sapphire_marketing..."
-          # The dockerized "migrate" service isn't part of this deploy step,
-          # and historically migrations have had to be applied by hand on
-          # the VPS. Replay every migration.sql in order — they all use
-          # CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS guards
-          # so re-running is idempotent. Failures are logged but non-fatal
-          # so a single bad migration doesn't break unrelated deploys.
-          MIGRATION_DIR="/var/www/sapphireclinicseast.org/prisma/migrations"
-          for sql_file in $(ls -d "$MIGRATION_DIR"/*/ 2>/dev/null | sort); do
-            mig_name=$(basename "$sql_file")
-            sql="$sql_file/migration.sql"
-            [ -f "$sql" ] || continue
-            echo "  ↳ $mig_name"
-            cat "$sql" | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing -q -v ON_ERROR_STOP=0 2>&1 | tail -3
-          done
-          echo "✅ Marketing-hub migrations applied."
-
+          # Marketing-hub migrations used to run here. They are now their own
+          # step earlier in the job — see "Apply marketing-hub migrations".
           # (The authoritative atomic build happens later, after npm install —
           # see "Building teletherapy Next.js app". A second in-place build here
           # only risked corrupting the live .next, so it was removed.)
