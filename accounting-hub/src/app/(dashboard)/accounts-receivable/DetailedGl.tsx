@@ -337,7 +337,7 @@ type ColKey =
   | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'soaResubDate' | 'status' | 'paidDate' | 'arDays' | 'arDaysResub' | 'perMonths'
-  | 'guardian' | 'drive' | 'commission' | 'threePct' | 'payout' | 'qb' | 'linked'
+  | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked'
 
 interface Col { key: ColKey; label: string; numeric?: boolean }
 
@@ -364,7 +364,6 @@ const COLS: Col[] = [
   { key: 'guardian', label: 'Guardian Name' },
   { key: 'drive', label: 'Files' },
   { key: 'commission', label: 'GL Processor Fee', numeric: true },
-  { key: 'threePct', label: '3%', numeric: true },
   { key: 'payout', label: 'Payout' },
   { key: 'qb', label: 'QB entry' },
 ]
@@ -401,7 +400,6 @@ function cellText(r: Row, k: ColKey): string {
       // unmarked guess would do the most damage.
       return `${formatCurrency(c)} (${rate}%${assumed ? ' assumed' : ''})`
     }
-    case 'threePct': return num(r.soaAmount) ? formatCurrency(num(r.soaAmount) * 0.03) : '—'
     case 'payout': return r.payoutBatch || '—'
     case 'qb': return r.qbEntry || '—'
   }
@@ -430,7 +428,6 @@ function sortValue(r: Row, k: ColKey): string | number {
     case 'guardian': return r.guardianName || ''
     case 'drive': return r.files.length
     case 'commission': return commissionOf(r)
-    case 'threePct': return num(r.soaAmount) * 0.03
     case 'payout': return r.payoutBatch || ''
     case 'qb': return r.qbEntry || ''
   }
