@@ -7042,8 +7042,12 @@ function OnlineOrdersWidget() {
     setUpdatingId(null)
   }
 
-  const pendingOrders = orders.filter(o => o.deliveryStatus === 'pending' || o.deliveryStatus === 'preparing')
-  const otherOrders = orders.filter(o => o.deliveryStatus === 'shipped' || o.deliveryStatus === 'delivered')
+  const pendingCount = orders.filter(o => o.deliveryStatus === 'pending' || o.deliveryStatus === 'preparing').length
+  // One table, action-needed rows first: pending → preparing → shipped → delivered, newest first within each.
+  const STATUS_ORDER: Record<OnlineOrder['deliveryStatus'], number> = { pending: 0, preparing: 1, shipped: 2, delivered: 3 }
+  const sorted = [...orders].sort((a, b) =>
+    (STATUS_ORDER[a.deliveryStatus] ?? 9) - (STATUS_ORDER[b.deliveryStatus] ?? 9)
+    || +new Date(b.paidAt) - +new Date(a.paidAt))
 
   const statusColors: Record<string, string> = {
     pending: '#fef3c7',
@@ -7058,22 +7062,49 @@ function OnlineOrdersWidget() {
     delivered: '#6b7280',
   }
 
+  // The one next step for a row, mirroring the old card buttons.
+  const nextAction = (order: OnlineOrder) => {
+    const busy = updatingId === order.id
+    if (order.deliveryStatus === 'pending') return (
+      <button onClick={() => updateDeliveryStatus(order.id, 'preparing')} disabled={busy}
+        className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
+        style={{ background: 'var(--teal)' }}>
+        {busy ? <Loader2 className="animate-spin" size={12} /> : <Package size={12} />} Prepare
+      </button>
+    )
+    if (order.deliveryStatus === 'preparing') return (
+      <button onClick={() => updateDeliveryStatus(order.id, 'shipped')} disabled={busy}
+        className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
+        style={{ background: '#2563eb' }}>
+        {busy ? <Loader2 className="animate-spin" size={12} /> : <Truck size={12} />} Ship
+      </button>
+    )
+    if (order.deliveryStatus === 'shipped') return (
+      <button onClick={() => updateDeliveryStatus(order.id, 'delivered')} disabled={busy}
+        className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
+        style={{ background: '#059669' }}>
+        {busy ? <Loader2 className="animate-spin" size={12} /> : <CheckCircle size={12} />} Delivered
+      </button>
+    )
+    return null
+  }
+
   return (
-    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: pendingOrders.length > 0 ? 'var(--orange)' : 'var(--light-gray)', background: 'white' }}>
+    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: pendingCount > 0 ? 'var(--orange)' : 'var(--light-gray)', background: 'white' }}>
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between px-4 py-3"
-        style={{ background: pendingOrders.length > 0 ? '#fff7ed' : '#f8fafc' }}
+        style={{ background: pendingCount > 0 ? '#fff7ed' : '#f8fafc' }}
       >
         <div className="flex items-center gap-2.5">
           <Globe size={16} style={{ color: 'var(--teal)' }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
             Online Orders (verdanarehab.com)
           </span>
-          {pendingOrders.length > 0 && (
+          {pendingCount > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{ background: 'var(--orange)' }}>
-              {pendingOrders.length} new
+              {pendingCount} new
             </span>
           )}
         </div>
@@ -7089,7 +7120,7 @@ function OnlineOrdersWidget() {
         </div>
       </button>
 
-      {/* Body */}
+      {/* Body — every order (pending through delivered) in one detail table */}
       {expanded && (
         <div className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
           {loading ? (
@@ -7101,101 +7132,71 @@ function OnlineOrdersWidget() {
               No online orders yet.
             </div>
           ) : (
-            <div className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
-              {/* Pending orders first */}
-              {pendingOrders.map(order => (
-                <div key={order.id} className="p-4 space-y-3" style={{ background: order.deliveryStatus === 'pending' ? '#fffbeb' : 'white' }}>
-                  {/* Order header */}
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{order.id}</span>
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium"
-                          style={{ background: statusColors[order.deliveryStatus], color: statusTextColors[order.deliveryStatus] }}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs" style={{ minWidth: 820 }}>
+                <thead>
+                  <tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                    <th className="px-4 py-2.5 font-semibold">Customer</th>
+                    <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Date</th>
+                    <th className="px-3 py-2.5 font-semibold">Items Purchased</th>
+                    <th className="px-3 py-2.5 font-semibold text-right whitespace-nowrap">Total</th>
+                    <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Payment</th>
+                    <th className="px-3 py-2.5 font-semibold">Status</th>
+                    <th className="px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map(order => (
+                    <tr key={order.id} className="border-t align-top" style={{ borderColor: 'var(--light-gray)', background: order.deliveryStatus === 'pending' ? '#fffbeb' : undefined }}>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--charcoal)' }}>{order.customerName}</p>
+                        <p className="mt-0.5 flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
+                          <Phone size={10} /> {order.customerPhone}
+                        </p>
+                        <p className="mt-0.5 flex items-start gap-1" style={{ color: 'var(--mid-gray)' }} title={`${order.customerAddress}, ${order.customerCity} ${order.customerZip}`}>
+                          <MapPin size={10} className="mt-0.5 shrink-0" />
+                          <span>{order.customerCity}</span>
+                        </p>
+                        <p className="mt-0.5 font-mono" style={{ color: 'var(--light-gray)' }}>{order.id}</p>
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                        {new Date(order.paidAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        <p className="mt-0.5 flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
+                          <Clock size={10} /> {new Date(order.paidAt).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="space-y-0.5">
+                          {order.items.map((item, idx) => (
+                            <p key={idx} style={{ color: 'var(--charcoal)' }}>
+                              {item.quantity}× {item.title}{item.variantLabel ? ` (${item.variantLabel})` : ''}
+                            </p>
+                          ))}
+                          {order.shippingFee > 0 && (
+                            <p className="flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
+                              <Truck size={10} /> Shipping {formatCurrency(order.shippingFee)}
+                            </p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right whitespace-nowrap text-sm font-bold" style={{ color: 'var(--teal)' }}>
+                        {formatCurrency(order.amount)}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <p style={{ color: 'var(--charcoal)' }}>PayMongo</p>
+                        <p className="mt-0.5 font-medium" style={{ color: order.status === 'paid' ? '#065f46' : 'var(--mid-gray)' }}>{order.status}</p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium capitalize"
+                          style={{ background: statusColors[order.deliveryStatus] || '#f3f4f6', color: statusTextColors[order.deliveryStatus] || '#6b7280' }}>
                           {order.deliveryStatus}
                         </span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                        <span className="flex items-center gap-1"><Clock size={11} /> {new Date(order.paidAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-                        <span className="font-semibold" style={{ color: 'var(--teal)' }}>₱{order.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5">
-                      {order.deliveryStatus === 'pending' && (
-                        <button
-                          onClick={() => updateDeliveryStatus(order.id, 'preparing')}
-                          disabled={updatingId === order.id}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
-                          style={{ background: 'var(--teal)' }}>
-                          {updatingId === order.id ? <Loader2 className="animate-spin" size={12} /> : <Package size={12} />}
-                          Prepare
-                        </button>
-                      )}
-                      {order.deliveryStatus === 'preparing' && (
-                        <button
-                          onClick={() => updateDeliveryStatus(order.id, 'shipped')}
-                          disabled={updatingId === order.id}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
-                          style={{ background: '#2563eb' }}>
-                          {updatingId === order.id ? <Loader2 className="animate-spin" size={12} /> : <Truck size={12} />}
-                          Ship
-                        </button>
-                      )}
-                      {order.deliveryStatus === 'shipped' && (
-                        <button
-                          onClick={() => updateDeliveryStatus(order.id, 'delivered')}
-                          disabled={updatingId === order.id}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
-                          style={{ background: '#059669' }}>
-                          {updatingId === order.id ? <Loader2 className="animate-spin" size={12} /> : <CheckCircle size={12} />}
-                          Delivered
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Customer info */}
-                  <div className="rounded-xl p-3 space-y-1.5" style={{ background: '#f8fafc', border: '1px solid var(--light-gray)' }}>
-                    <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{order.customerName}</p>
-                    <p className="text-xs flex items-center gap-1.5" style={{ color: 'var(--mid-gray)' }}>
-                      <Phone size={11} /> {order.customerPhone}
-                    </p>
-                    <p className="text-xs flex items-start gap-1.5" style={{ color: 'var(--mid-gray)' }}>
-                      <MapPin size={11} className="mt-0.5 shrink-0" />
-                      <span>{order.customerAddress}, {order.customerCity} {order.customerZip}</span>
-                    </p>
-                  </div>
-
-                  {/* Items */}
-                  <div className="space-y-1">
-                    {order.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between text-xs px-1">
-                        <span style={{ color: 'var(--charcoal)' }}>
-                          {item.quantity}× {item.title}{item.variantLabel ? ` (${item.variantLabel})` : ''}
-                        </span>
-                        <span style={{ color: 'var(--mid-gray)' }}>₱{(item.price * item.quantity).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    ))}
-                    {order.shippingFee > 0 && (
-                      <div className="flex justify-between text-xs px-1 pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                        <span className="flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
-                          <Truck size={10} /> Shipping
-                        </span>
-                        <span style={{ color: 'var(--mid-gray)' }}>₱{order.shippingFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {/* Completed orders (collapsed) */}
-              {otherOrders.length > 0 && (
-                <div className="px-4 py-3">
-                  <p className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>
-                    {otherOrders.length} shipped/delivered order{otherOrders.length > 1 ? 's' : ''}
-                  </p>
-                </div>
-              )}
+                      </td>
+                      <td className="px-4 py-3 text-right">{nextAction(order)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -7662,10 +7663,9 @@ function ProductsSection({
       ))}
     </div>
 
-    {/* Online channels: verdanarehab.com orders + TikTok Shop bulk import */}
+    {/* Online channels: TikTok Shop bulk import on top, then verdanarehab.com orders */}
     {prodTab === 'online' && (
       <div className="space-y-4 mb-4">
-        <OnlineOrdersWidget />
         <div className="rounded-2xl border bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" style={{ borderColor: 'var(--light-gray)' }}>
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-1.5" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
@@ -7679,6 +7679,7 @@ function ProductsSection({
             <Upload size={14} /> TikTok Bulk Upload
           </button>
         </div>
+        <OnlineOrdersWidget />
       </div>
     )}
 
