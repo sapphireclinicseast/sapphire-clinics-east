@@ -1,6 +1,7 @@
 import { getSessionDoctor } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { upcomingSlots, ymdToDate, manilaTodayYmd } from '@/lib/availability'
+import { payoutSummary, nextPayoutRun } from '@/lib/payout-summary'
 import DoctorDashboard from './DoctorDashboard'
 
 export const dynamic = 'force-dynamic'
@@ -25,5 +26,8 @@ export default async function DoctorHome() {
   const booked = new Set(bookedRows.map((r) => `${r.date.toISOString().slice(0, 10)}|${r.startTime}`))
   const availableSlots = upcomingSlots(slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), booked, 14, 60)
 
-  return <DoctorDashboard slots={slots} consults={consults.map(map)} past={past.map(map)} walletBalance={Number(d.walletBalance)} hasFee={d.consultFee != null} availableCount={availableSlots.length} />
+  const summary = await payoutSummary({ doctorId: d.id })
+  const payout = { available: summary.available, maturing: summary.maturing, nextRun: nextPayoutRun().toISOString(), method: d.payoutMethod === 'gcash' ? 'gcash' : 'bank' }
+
+  return <DoctorDashboard slots={slots} consults={consults.map(map)} past={past.map(map)} walletBalance={Number(d.walletBalance)} hasFee={d.consultFee != null} availableCount={availableSlots.length} payout={payout} />
 }

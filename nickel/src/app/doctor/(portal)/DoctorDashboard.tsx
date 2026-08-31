@@ -14,7 +14,8 @@ function readFile(file: File): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(file) })
 }
 
-export default function DoctorDashboard({ slots, consults, past, walletBalance, hasFee, availableCount }: { slots: Slot[]; consults: C[]; past: C[]; walletBalance: number; hasFee: boolean; availableCount: number }) {
+interface Payout { available: number; maturing: number; nextRun: string; method: string }
+export default function DoctorDashboard({ slots, consults, past, walletBalance, hasFee, availableCount, payout }: { slots: Slot[]; consults: C[]; past: C[]; walletBalance: number; hasFee: boolean; availableCount: number; payout?: Payout }) {
   const router = useRouter()
   const [nd, setNd] = useState({ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' })
   const [busy, setBusy] = useState(false)
@@ -54,6 +55,21 @@ export default function DoctorDashboard({ slots, consults, past, walletBalance, 
         <div className="card"><div className="text-[12px] font-semibold text-[color:var(--muted)]">Wallet balance</div><div className="mt-1 text-[24px] font-bold text-[color:var(--steel)]">{peso(walletBalance)}</div><div className="text-[12px] text-[color:var(--slate)]">earned from completed consults</div></div>
         <div className="card"><div className="text-[12px] font-semibold text-[color:var(--muted)]">Open slots (next 14 days)</div><div className="mt-1 text-[24px] font-bold text-[color:var(--ink)]">{availableCount}</div><div className="text-[12px] text-[color:var(--slate)]">{hasFee ? 'patients can book these' : 'set your consult fee in Settings'}</div></div>
       </div>
+
+      {payout && (walletBalance > 0 || payout.available > 0 || payout.maturing > 0) && (
+        <div className="card flex flex-wrap items-center gap-3 bg-[color:var(--mist)]">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[color:var(--steel)]">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg>
+          </span>
+          <div className="min-w-0 flex-1 text-[12.5px] text-[color:var(--slate)]">
+            <div className="text-[13.5px] font-semibold text-[color:var(--ink)]">Next payout · {new Date(payout.nextRun).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+            {payout.available > 0
+              ? <><b className="text-[color:var(--ink)]">{peso(payout.available)}</b> will be sent to your {payout.method === 'gcash' ? 'GCash' : 'bank account'}.</>
+              : 'No matured earnings yet — completed consults become payable about 10 days after completion.'}
+            {payout.maturing > 0 && <> {peso(payout.maturing)} more is still maturing.</>}
+          </div>
+        </div>
+      )}
 
       {err && <div className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">{err}</div>}
 
