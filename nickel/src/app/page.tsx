@@ -29,8 +29,9 @@ function AppHome() {
   return (
     <div className="nk-app-home animate-fade-up mx-auto max-w-sm py-6">
       <div className="text-center">
-        <div className="font-[family-name:var(--font-display)] text-[34px] font-extrabold tracking-tight text-[color:var(--steel)]">Nickel</div>
-        <p className="mt-1 text-[14px] text-[color:var(--slate)]">Therapy that comes to you.</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/nickel-logo.png" alt="Nickel" className="mx-auto h-12 w-auto" />
+        <p className="mt-2 text-[14px] text-[color:var(--slate)]">Therapy that comes to you.</p>
       </div>
 
       <div className="mt-6 space-y-2.5">
