@@ -25,9 +25,39 @@ const WHY = [
   { t: 'Weekly payouts', d: 'Your earnings land in your Nickel wallet on completion and are paid out to your bank or GCash every week.', icon: <><path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v1M3 7v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3M21 12v-2a1 1 0 0 0-1-1h-4a2 2 0 0 0 0 4h4a1 1 0 0 0 1-1Z" /></> },
 ]
 
+function AppHome() {
+  return (
+    <div className="nk-app-home animate-fade-up mx-auto max-w-sm py-6">
+      <div className="text-center">
+        <div className="font-[family-name:var(--font-display)] text-[34px] font-extrabold tracking-tight text-[color:var(--steel)]">Nickel</div>
+        <p className="mt-1 text-[14px] text-[color:var(--slate)]">Therapy that comes to you.</p>
+      </div>
+
+      <div className="mt-6 space-y-2.5">
+        <a href="/book" className="btn-primary block w-full text-center">Book a session</a>
+        <a href="/bookings" className="btn-outline block w-full text-center">My bookings</a>
+      </div>
+
+      <div className="my-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+        <span className="h-px flex-1 bg-[color:var(--line)]" /> For professionals <span className="h-px flex-1 bg-[color:var(--line)]" />
+      </div>
+
+      <div className="space-y-2.5">
+        <a href="/provider/login" className="flex items-center justify-between rounded-xl border border-[color:var(--line-2)] bg-white px-4 py-3 text-[14px] font-medium text-[color:var(--ink)] hover:border-[color:var(--sky)]">Therapist sign in / sign up <span className="text-[color:var(--steel)]">→</span></a>
+        <a href="/doctor/login" className="flex items-center justify-between rounded-xl border border-[color:var(--line-2)] bg-white px-4 py-3 text-[14px] font-medium text-[color:var(--ink)] hover:border-[color:var(--sky)]">Rehab doctor sign in / sign up <span className="text-[color:var(--steel)]">→</span></a>
+        <a href="/clinic/login" className="flex items-center justify-between rounded-xl border border-[color:var(--line-2)] bg-white px-4 py-3 text-[14px] font-medium text-[color:var(--ink)] hover:border-[color:var(--sky)]">Clinic / hospital partner <span className="text-[color:var(--steel)]">→</span></a>
+      </div>
+
+      <p className="mt-6 text-center text-[11px] text-[color:var(--muted)]">Operated by Jara Universal OPC, in partnership with Sapphire Clinics East, Inc.</p>
+    </div>
+  )
+}
+
 export default function NickelHome() {
   return (
-    <div className="animate-fade-up space-y-6">
+    <>
+    <AppHome />
+    <div className="nk-web-home animate-fade-up space-y-6">
       {/* Hero */}
       <section
         className="relative overflow-hidden rounded-[22px] p-7 text-white shadow-[0_12px_36px_rgba(34,48,63,0.25)] sm:p-10"
@@ -185,5 +215,6 @@ export default function NickelHome() {
         <a href="/doctor/login?mode=signup" className="btn-primary shrink-0">Join as a rehab doctor</a>
       </section>
     </div>
+    </>
   )
 }

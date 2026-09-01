@@ -28,8 +28,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" className={`${body.variable} ${display.variable}`}>
       <body style={{ fontFamily: 'var(--font-body)' }}>
         {/* Capture the install prompt as early as possible so the Install button
-            can offer it even if the event fired before React hydrated. */}
-        <script dangerouslySetInnerHTML={{ __html: "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__nickelInstallPrompt=e;});" }} />
+            can offer it even if the event fired before React hydrated. Also flag
+            when we're running as an installed app (standalone) — before paint — so
+            the home page can show a plain sign-in view instead of the marketing page. */}
+        <script dangerouslySetInnerHTML={{ __html: "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__nickelInstallPrompt=e;});try{if(window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone){document.documentElement.setAttribute('data-standalone','1');}}catch(e){}" }} />
         <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-white/85 backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -46,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </div>
         </header>
         <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
-        <footer className="mx-auto max-w-5xl px-4 py-8 text-center text-[12px] text-[color:var(--muted)]">
+        <footer className="nk-web-only mx-auto max-w-5xl px-4 py-8 text-center text-[12px] text-[color:var(--muted)]">
           <div className="mb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
             <a href="/provider/login" className="hover:text-[color:var(--steel)] hover:underline">Provider sign in</a>
             <a href="/doctor/login" className="hover:text-[color:var(--steel)] hover:underline">Rehab doctor sign in</a>
