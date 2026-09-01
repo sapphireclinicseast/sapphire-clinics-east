@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+const PAYMENT_TYPES = ['CASH', 'HMO', 'GL'] as const
+
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -29,7 +31,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled } = await req.json()
+  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType } = await req.json()
   if (!staffId || !dayOfWeek || !startTime || !endTime)
     return NextResponse.json({ error: 'staffId, dayOfWeek, startTime, endTime are required' }, { status: 400 })
 
@@ -57,11 +59,36 @@ export async function POST(req: NextRequest) {
       staffId, dayOfWeek, startTime, endTime, branch, department,
       patientId: isDisabled ? null : (patientId || null),
       notes: notes || null,
+      // Whitelisted rather than passed through: this drives the board's colour
+      // coding, and an unrecognised value would render as an uncoloured cell
+      // that looks like plain cash.
+      paymentType: PAYMENT_TYPES.includes(paymentType) ? paymentType : 'CASH',
       disabled: isDisabled,
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },
     },
+  })
+  return NextResponse.json(slot)
+}
+
+// PATCH — change an existing slot's payment type. Front desk usually learns
+// whether a session is HMO or GL after the patient is already decked, so this
+// has to be editable in place rather than only at creation.
+export async function PATCH(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id, paymentType } = await req.json()
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+  if (!PAYMENT_TYPES.includes(paymentType)) {
+    return NextResponse.json({ error: `paymentType must be one of ${PAYMENT_TYPES.join(', ')}` }, { status: 400 })
+  }
+
+  const slot = await prisma.deckingSlot.update({
+    where: { id },
+    data: { paymentType },
+    include: { patient: { select: { id: true, firstName: true, lastName: true } } },
   })
   return NextResponse.json(slot)
 }
