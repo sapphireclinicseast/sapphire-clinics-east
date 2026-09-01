@@ -728,10 +728,18 @@ model DeckingSlot {
   branch     String
   department String
   notes      String?
+  // How this session is paid for. Front desk colour-codes the board by it —
+  // an HMO or GL slot needs paperwork chased before the session, a cash one
+  // does not, and that difference is the main thing they scan the grid for.
+  // Defaults to CASH because that is the overwhelming majority and because an
+  // existing row has to land somewhere; it is not an assertion about the slot.
+  paymentType String  @default("CASH")  // "CASH" | "HMO" | "GL"
   disabled   Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   patientBookings PatientBooking[]
+
+  @@index([paymentType])
 }
 
 // ── Clinic Capacity Settings (max daily sessions per dept per branch) ────────

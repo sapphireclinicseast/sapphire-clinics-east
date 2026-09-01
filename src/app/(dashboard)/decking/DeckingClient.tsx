@@ -22,7 +22,24 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }
-interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean }
+interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string }
+
+// Cell colouring, the way front desk reads their spreadsheet: what needs
+// paperwork chased before the session stands out from what doesn't.
+// Empty is deliberately a fill rather than white — an unfilled hour is the
+// thing they are hunting for, so it should read as a state, not as absence.
+type PayType = 'CASH' | 'HMO' | 'GL'
+const PAY_TYPES: PayType[] = ['CASH', 'HMO', 'GL']
+const PAY_STYLE: Record<PayType, { bg: string; fg: string; border: string; label: string }> = {
+  CASH: { bg: '#FFFFFF', fg: '#1F2937', border: '#D6DCE2', label: 'Cash' },
+  HMO:  { bg: '#DCEBFB', fg: '#14507F', border: '#A9CBEC', label: 'HMO' },
+  GL:   { bg: '#DDF3E1', fg: '#1B5E33', border: '#A8DCB6', label: 'GL' },
+}
+const EMPTY_CELL_BG = '#FAF7F0'   // unfilled, bookable
+const OFF_CELL_BG   = '#EDEFF1'   // disabled / not working
+function payOf(s: DeckingSlot): PayType {
+  return (PAY_TYPES as string[]).includes(s.paymentType ?? '') ? (s.paymentType as PayType) : 'CASH'
+}
 interface DayHours { open: boolean; openTime: string; closeTime: string }
 type ClinicSchedule = Record<string, DayHours>
 type AllClinicHours = Record<string, ClinicSchedule>
@@ -244,6 +261,9 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
   onDeleteSlot: (id: string) => Promise<void>
 }) {
   const [configOpen, setConfigOpen] = useState(!config)
+  // Optimistic: the grid is scanned constantly, and a colour that lags a click
+  // by a round-trip reads as the click not registering. Reverted on failure.
+  const [payOverride, setPayOverride] = useState<Record<string, PayType>>({})
   const [workDays, setWorkDays] = useState<string[]>((config?.workDays as string[]) ?? [])
   const [startTime, setStartTime] = useState(config?.startTime ?? defaultHours.startTime)
   const [endTime, setEndTime] = useState(config?.endTime ?? defaultHours.endTime)
@@ -320,6 +340,23 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
       notes: null,
     })
     setAddingCell(null)
+  }
+
+  async function handlePayChange(slot: DeckingSlot, next: PayType) {
+    const previous = payOf(slot)
+    setPayOverride(o => ({ ...o, [slot.id]: next }))
+    try {
+      const res = await fetch('/api/decking/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: slot.id, paymentType: next }),
+      })
+      if (!res.ok) throw new Error('failed')
+    } catch {
+      // Put the cell back rather than leaving a colour that says the change
+      // saved when it didn't — this drives who gets chased for paperwork.
+      setPayOverride(o => ({ ...o, [slot.id]: previous }))
+    }
   }
 
   async function handleClearSlot(slot: DeckingSlot) {
@@ -456,11 +493,11 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
             </colgroup>
             <thead>
               <tr style={{ background: '#FFF3E8' }}>
-                <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontWeight: 600, color: 'var(--mid-gray)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #FDE4CC', borderRight: '1px solid #FDE4CC' }}>
+                <th style={{ padding: '0.35rem 0.6rem', textAlign: 'left', fontWeight: 600, color: '#5A6470', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#F0F2F5', borderBottom: '1px solid #C4CBD3', borderRight: '1px solid #C4CBD3' }}>
                   Time
                 </th>
                 {configuredDays.map(day => (
-                  <th key={day} style={{ padding: '0.45rem 0.75rem', textAlign: 'center', fontWeight: 700, color: '#ED6823', fontSize: '0.78rem', borderBottom: '2px solid #FDE4CC', borderRight: '1px solid #FDE4CC' }}>
+                  <th key={day} style={{ padding: '0.35rem 0.6rem', textAlign: 'center', fontWeight: 700, color: '#2C3540', fontSize: '0.74rem', background: '#F0F2F5', borderBottom: '1px solid #C4CBD3', borderRight: '1px solid #C4CBD3' }}>
                     {DAY_LABEL[day]}
                   </th>
                 ))}
@@ -469,7 +506,7 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
             <tbody>
               {timeSlots.map((slot, idx) => (
                 <tr key={slot} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                  <td style={{ padding: '0.35rem 0.75rem', color: 'var(--mid-gray)', fontSize: '0.72rem', fontWeight: 500, whiteSpace: 'nowrap', borderRight: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '0 0.6rem', color: '#5A6470', fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap', background: '#F7F8FA', borderRight: '1px solid #C4CBD3', borderBottom: '1px solid #D6DCE2', fontVariantNumeric: 'tabular-nums' }}>
                     {formatTime(slot)}
                   </td>
                   {configuredDays.map(day => {
@@ -480,7 +517,7 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
                     // ── Disabled cell ──
                     if (disabledSlot) {
                       return (
-                        <td key={day} style={{ padding: '0.25rem 0.4rem', verticalAlign: 'top', borderRight: '1px solid #f3f4f6', background: '#f3f4f6' }}>
+                        <td key={day} style={{ padding: 0, verticalAlign: 'middle', borderRight: '1px solid #D6DCE2', borderBottom: '1px solid #D6DCE2', background: OFF_CELL_BG, height: 30 }}>
                           <div
                             style={{
                               display: 'flex', alignItems: 'center', gap: '4px',
@@ -505,83 +542,113 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
                     }
 
                     // ── Normal cell ──
+                    // Spreadsheet cell, not a card: the fill IS the cell, one
+                    // row per patient, no rounded pill and no stacked Add button
+                    // underneath. That button was why every occupied hour was
+                    // two rows tall and the grid read half as dense as the sheet
+                    // front desk actually prefers.
+                    const empty = cellSlots.length === 0
                     return (
-                      <td key={day} style={{ padding: '0.25rem 0.4rem', verticalAlign: 'top', borderRight: '1px solid #f3f4f6' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          {/* Existing patients */}
-                          {cellSlots.map(s => (
-                            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '3px', background: '#FFF3E8', border: '1px solid #FDE4CC', borderRadius: '0.3rem', padding: '0.18rem 0.4rem' }}>
-                              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#ED6823', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                title={s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : '(slot)'}>
-                                {s.patient ? `${s.patient.lastName}, ${s.patient.firstName[0]}.` : <span style={{ color: 'var(--mid-gray)' }}>(slot)</span>}
-                              </span>
-                              <button onClick={() => handleClearSlot(s)}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: 0, lineHeight: 1, flexShrink: 0 }}
-                                title="Remove">
-                                <X size={10} />
-                              </button>
-                            </div>
-                          ))}
-
-                          {/* Patient search input (while adding) */}
-                          {isAdding && (
+                      <td key={day} style={{
+                        padding: 0, verticalAlign: 'middle',
+                        borderRight: '1px solid #D6DCE2', borderBottom: '1px solid #D6DCE2',
+                        background: empty ? EMPTY_CELL_BG : 'transparent',
+                        height: 30,
+                      }}>
+                        {isAdding ? (
+                          <div style={{ padding: '2px 3px' }}>
                             <PatientCellSearch
                               current={null}
                               onSelect={p => handlePatientSelect(day, slot, p)}
                               onClear={() => setAddingCell(null)}
                               onClose={() => setAddingCell(null)}
                             />
-                          )}
-
-                          {/* Add / Disable buttons — shown when < 3 patients and not currently searching */}
-                          {!isAdding && cellSlots.length < 3 && (
-                            <div style={{ display: 'flex', gap: '2px' }}>
+                          </div>
+                        ) : empty ? (
+                          /* An empty cell is one click to fill. The disable
+                             control sits at the edge so it can't be hit by
+                             accident when aiming for the cell. */
+                          <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
+                            <button
+                              onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
+                              title="Add patient"
+                              style={{
+                                flex: 1, background: 'transparent', border: 'none', cursor: 'pointer',
+                                color: '#B9BFC7', fontSize: '0.72rem', padding: '0 6px', textAlign: 'left',
+                              }}>
+                              +
+                            </button>
+                            <button
+                              onClick={() => handleDisableSlot(day, slot)}
+                              title="Mark unavailable (break, blocked hour)"
+                              style={{
+                                background: 'transparent', border: 'none', cursor: 'pointer',
+                                color: '#C8CDD4', padding: '0 5px', display: 'flex', alignItems: 'center',
+                              }}>
+                              <Ban size={9} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                            {cellSlots.map((s2, idx) => {
+                              const pay = payOverride[s2.id] ?? payOf(s2)
+                              const st = PAY_STYLE[pay]
+                              return (
+                                <div key={s2.id} style={{
+                                  display: 'flex', alignItems: 'center', gap: 4,
+                                  background: st.bg, color: st.fg,
+                                  borderTop: idx === 0 ? 'none' : `1px solid ${st.border}`,
+                                  padding: '0 4px 0 6px', flex: 1, minHeight: 28,
+                                }}>
+                                  <span style={{
+                                    fontSize: '0.72rem', fontWeight: 600, flex: 1,
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  }}
+                                    title={s2.patient ? `${s2.patient.lastName}, ${s2.patient.firstName}` : '(slot)'}>
+                                    {s2.patient ? `${s2.patient.lastName}, ${s2.patient.firstName[0]}.` : '(slot)'}
+                                  </span>
+                                  {/* Payment type: shown only when it needs chasing.
+                                      A "Cash" badge on most of the grid would be
+                                      noise, so cash reads as the plain cell. */}
+                                  <select
+                                    value={pay}
+                                    onChange={e => handlePayChange(s2, e.target.value as PayType)}
+                                    title="Payment type"
+                                    style={{
+                                      appearance: 'none', WebkitAppearance: 'none',
+                                      background: pay === 'CASH' ? 'transparent' : 'rgba(255,255,255,0.65)',
+                                      border: pay === 'CASH' ? '1px solid transparent' : `1px solid ${st.border}`,
+                                      borderRadius: 3, color: st.fg,
+                                      fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.03em',
+                                      padding: '0 3px', cursor: 'pointer', flexShrink: 0,
+                                      opacity: pay === 'CASH' ? 0.45 : 1,
+                                    }}>
+                                    {PAY_TYPES.map(t => <option key={t} value={t}>{PAY_STYLE[t].label}</option>)}
+                                  </select>
+                                  <button onClick={() => handleClearSlot(s2)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B0453A', padding: 0, lineHeight: 1, flexShrink: 0 }}
+                                    title="Remove">
+                                    <X size={10} />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                            {/* Second patient is the exception, so it's a thin
+                                edge control rather than a row of its own. */}
+                            {cellSlots.length < 3 && (
                               <button
                                 onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
+                                title="Add another patient to this hour"
                                 style={{
-                                  background: 'transparent',
-                                  border: `1px ${cellSlots.length === 0 ? 'dashed' : 'solid'} ${cellSlots.length === 0 ? '#d1d5db' : '#FDE4CC'}`,
-                                  borderRadius: '0.3rem',
-                                  padding: '0.18rem 0.4rem',
-                                  fontSize: '0.7rem',
-                                  color: cellSlots.length === 0 ? '#9ca3af' : '#ED6823',
-                                  cursor: 'pointer',
-                                  flex: 1,
-                                  textAlign: 'center',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: '2px',
-                                }}
-                              >
-                                <Plus size={9} />
-                                {cellSlots.length === 0 ? '' : <span style={{ fontSize: '0.65rem' }}>Add</span>}
+                                  background: 'transparent', border: 'none', borderTop: '1px solid #E6E9ED',
+                                  cursor: 'pointer', color: '#9AA2AC', fontSize: '0.6rem', lineHeight: 1,
+                                  padding: '1px 0', flexShrink: 0,
+                                }}>
+                                +
                               </button>
-                              {cellSlots.length === 0 && (
-                                <button
-                                  onClick={() => handleDisableSlot(day, slot)}
-                                  style={{
-                                    background: 'transparent',
-                                    border: '1px dashed #d1d5db',
-                                    borderRadius: '0.3rem',
-                                    padding: '0.18rem 0.35rem',
-                                    fontSize: '0.6rem',
-                                    color: '#9ca3af',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '2px',
-                                    flexShrink: 0,
-                                  }}
-                                  title="Disable this slot (e.g. lunch break)"
-                                >
-                                  <Ban size={8} />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                            )}
+                          </div>
+                        )}
                       </td>
                     )
                   })}
@@ -930,6 +997,26 @@ export default function DeckingClient({ role }: { role: string }) {
             />
             )}
           </div>
+
+          {/* Colour key. The grid is scanned, not read — without a key the fills
+              are decoration, and front desk keeps going back to the sheet they
+              already know how to interpret. */}
+          {activeSection !== 'perday' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.9rem', marginBottom: '0.85rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>
+              {([
+                { bg: EMPTY_CELL_BG, border: '#D6DCE2', label: 'Open slot' },
+                { bg: PAY_STYLE.CASH.bg, border: PAY_STYLE.CASH.border, label: 'Cash' },
+                { bg: PAY_STYLE.HMO.bg, border: PAY_STYLE.HMO.border, label: 'HMO' },
+                { bg: PAY_STYLE.GL.bg, border: PAY_STYLE.GL.border, label: 'Guarantee Letter' },
+                { bg: OFF_CELL_BG, border: '#D6DCE2', label: 'Unavailable' },
+              ]).map(k => (
+                <span key={k.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span style={{ width: 13, height: 13, background: k.bg, border: `1px solid ${k.border}`, display: 'inline-block' }} />
+                  {k.label}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Department chips — hidden on Per Day, which is an all-department
               aggregate: a department filter there would contradict the table. */}
