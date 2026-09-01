@@ -32,11 +32,16 @@ type PayType = 'CASH' | 'HMO' | 'GL'
 const PAY_TYPES: PayType[] = ['CASH', 'HMO', 'GL']
 const PAY_STYLE: Record<PayType, { bg: string; fg: string; border: string; label: string }> = {
   CASH: { bg: '#FFFFFF', fg: '#1F2937', border: '#D6DCE2', label: 'Cash' },
-  HMO:  { bg: '#DCEBFB', fg: '#14507F', border: '#A9CBEC', label: 'HMO' },
-  GL:   { bg: '#DDF3E1', fg: '#1B5E33', border: '#A8DCB6', label: 'GL' },
+  HMO:  { bg: '#EFE4FA', fg: '#5B2A86', border: '#C9AEE6', label: 'HMO' },
+  GL:   { bg: '#FDEAD6', fg: '#93460B', border: '#F3C69B', label: 'GL' },
 }
-const EMPTY_CELL_BG = '#FAF7F0'   // unfilled, bookable
-const OFF_CELL_BG   = '#EDEFF1'   // disabled / not working
+// An open hour is the thing front desk is hunting for, so it is the loudest
+// state on the board rather than the quietest — green, labelled, and readable
+// from across the grid. Green was previously GL's colour; GL moved to orange.
+const OPEN_BG     = '#DFF5E4'
+const OPEN_FG     = '#166534'
+const OPEN_BORDER = '#A9DDB7'
+const OFF_CELL_BG = '#EDEFF1'   // disabled / not working
 function payOf(s: DeckingSlot): PayType {
   return (PAY_TYPES as string[]).includes(s.paymentType ?? '') ? (s.paymentType as PayType) : 'CASH'
 }
@@ -552,7 +557,7 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
                       <td key={day} style={{
                         padding: 0, verticalAlign: 'middle',
                         borderRight: '1px solid #D6DCE2', borderBottom: '1px solid #D6DCE2',
-                        background: empty ? EMPTY_CELL_BG : 'transparent',
+                        background: empty ? OPEN_BG : 'transparent',
                         height: 30,
                       }}>
                         {isAdding ? (
@@ -571,19 +576,22 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
                           <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
                             <button
                               onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
-                              title="Add patient"
+                              title="Add patient to this open slot"
                               style={{
                                 flex: 1, background: 'transparent', border: 'none', cursor: 'pointer',
-                                color: '#B9BFC7', fontSize: '0.72rem', padding: '0 6px', textAlign: 'left',
+                                color: OPEN_FG, fontSize: '0.7rem', fontWeight: 700,
+                                letterSpacing: '0.02em', padding: '0 6px', textAlign: 'left',
+                                display: 'flex', alignItems: 'center', gap: 4,
                               }}>
-                              +
+                              <Plus size={10} />
+                              Available
                             </button>
                             <button
                               onClick={() => handleDisableSlot(day, slot)}
                               title="Mark unavailable (break, blocked hour)"
                               style={{
                                 background: 'transparent', border: 'none', cursor: 'pointer',
-                                color: '#C8CDD4', padding: '0 5px', display: 'flex', alignItems: 'center',
+                                color: OPEN_FG, opacity: 0.45, padding: '0 5px', display: 'flex', alignItems: 'center',
                               }}>
                               <Ban size={9} />
                             </button>
@@ -1004,7 +1012,7 @@ export default function DeckingClient({ role }: { role: string }) {
           {activeSection !== 'perday' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.9rem', marginBottom: '0.85rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>
               {([
-                { bg: EMPTY_CELL_BG, border: '#D6DCE2', label: 'Open slot' },
+                { bg: OPEN_BG, border: OPEN_BORDER, label: 'Available' },
                 { bg: PAY_STYLE.CASH.bg, border: PAY_STYLE.CASH.border, label: 'Cash' },
                 { bg: PAY_STYLE.HMO.bg, border: PAY_STYLE.HMO.border, label: 'HMO' },
                 { bg: PAY_STYLE.GL.bg, border: PAY_STYLE.GL.border, label: 'Guarantee Letter' },

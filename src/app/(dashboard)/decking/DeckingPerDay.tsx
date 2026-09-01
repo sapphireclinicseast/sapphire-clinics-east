@@ -26,6 +26,26 @@ export interface PerDaySlot {
   department: string
   disabled: boolean
   patientId: string | null
+  paymentType?: string
+}
+
+type Pay = 'CASH' | 'HMO' | 'GL'
+const PAYS: Pay[] = ['CASH', 'HMO', 'GL']
+// Same colours as the board, so a number here means the same thing a cell there
+// means. Diverging would make the two screens quietly contradict each other.
+const PAY_UI: Record<Pay, { label: string; fg: string; bg: string }> = {
+  CASH: { label: 'Cash', fg: '#374151', bg: '#E5E7EB' },
+  HMO:  { label: 'HMO',  fg: '#5B2A86', bg: '#EFE4FA' },
+  GL:   { label: 'GL',   fg: '#93460B', bg: '#FDEAD6' },
+}
+function payOfSlot(s: PerDaySlot): Pay {
+  return (PAYS as string[]).includes(s.paymentType ?? '') ? (s.paymentType as Pay) : 'CASH'
+}
+// Percentages are of the DAY, which is what makes them comparable across a row —
+// "Tuesday is 40% HMO" is a fact you can act on; "Tuesday is 4% of the week"
+// is not. Guarded so an empty day shows 0 rather than NaN.
+function pct(n: number, of: number): number {
+  return of > 0 ? Math.round((n / of) * 100) : 0
 }
 
 export default function DeckingPerDay({
@@ -56,6 +76,22 @@ export default function DeckingPerDay({
 
   // Only departments that actually have slots — an empty row per department the
   // branch doesn't run would bury the ones that matter.
+  // Payment split, per department per day and per day overall. Built in the same
+  // pass shape as the counts above so the two can never disagree.
+  const payByDeptDay = new Map<string, Map<string, Record<Pay, number>>>()
+  const payByDay = new Map<string, Record<Pay, number>>()
+  const payWeek: Record<Pay, number> = { CASH: 0, HMO: 0, GL: 0 }
+  for (const s of live) {
+    const pay = payOfSlot(s)
+    if (!payByDeptDay.has(s.department)) payByDeptDay.set(s.department, new Map())
+    const byDay = payByDeptDay.get(s.department)!
+    if (!byDay.has(s.dayOfWeek)) byDay.set(s.dayOfWeek, { CASH: 0, HMO: 0, GL: 0 })
+    byDay.get(s.dayOfWeek)![pay]++
+    if (!payByDay.has(s.dayOfWeek)) payByDay.set(s.dayOfWeek, { CASH: 0, HMO: 0, GL: 0 })
+    payByDay.get(s.dayOfWeek)![pay]++
+    payWeek[pay]++
+  }
+
   const rows = departments.filter(d => countsByDept.has(d))
   const dayTotal = (day: string) =>
     rows.reduce((n, d) => n + (countsByDept.get(d)?.get(day) ?? 0), 0)
@@ -93,6 +129,46 @@ export default function DeckingPerDay({
           <strong>{weekTotal}</strong> per week across {rows.length} department{rows.length === 1 ? '' : 's'}.
         </p>
       </div>
+
+      {/* Week totals. Decked is shown against ALL bookable slots, so the headline
+          number answers "how full is the week" rather than restating itself as
+          100%. The three payment lines are percentages OF THE DECKED SESSIONS —
+          the base is named on each so the two kinds of percentage on this screen
+          can't be read as the same thing. */}
+      {(() => {
+        const bookable = slots.filter(s => !s.disabled).length
+        const cards: { label: string; value: number; sub: string; fg: string; bg: string }[] = [
+          {
+            label: 'Sessions decked this week',
+            value: weekTotal,
+            sub: `${pct(weekTotal, bookable)}% of ${bookable} bookable slots`,
+            fg: '#065F46', bg: '#ECFDF5',
+          },
+          ...PAYS.map(t => ({
+            label: `${PAY_UI[t].label} sessions`,
+            value: payWeek[t],
+            sub: `${pct(payWeek[t], weekTotal)}% of decked`,
+            fg: PAY_UI[t].fg, bg: PAY_UI[t].bg,
+          })),
+        ]
+        return (
+          <div style={{
+            display: 'grid', gap: '0.6rem', padding: '0.9rem 1rem',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+            borderBottom: '1px solid var(--light-gray)',
+          }}>
+            {cards.map(c => (
+              <div key={c.label} style={{ background: c.bg, borderRadius: '0.6rem', padding: '0.6rem 0.75rem' }}>
+                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: c.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+                  {c.value}
+                </div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: c.fg, marginTop: 1 }}>{c.label}</div>
+                <div style={{ fontSize: '0.68rem', color: c.fg, opacity: 0.75, marginTop: 1 }}>{c.sub}</div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
 
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
@@ -139,6 +215,23 @@ export default function DeckingPerDay({
                     <div style={{ height: 3, marginTop: 3, background: '#D1FAE5', borderRadius: 2 }}>
                       <div style={{ height: '100%', width: `${(t / busiest) * 100}%`, background: '#059669', borderRadius: 2 }} />
                     </div>
+                    {/* Payment mix for the day. Percentages are of THIS day, so
+                        a column can be read on its own without comparing totals. */}
+                    {t > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4, fontWeight: 600 }}>
+                        {PAYS.map(pt => {
+                          const n = payByDay.get(d.key)?.[pt] ?? 0
+                          if (n === 0) return null
+                          return (
+                            <div key={pt} style={{ fontSize: '0.62rem', color: PAY_UI[pt].fg, display: 'flex', justifyContent: 'center', gap: 3 }}>
+                              <span>{PAY_UI[pt].label}</span>
+                              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+                              <span style={{ opacity: 0.7 }}>({pct(n, t)}%)</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </th>
                 )
               })}
@@ -170,15 +263,34 @@ export default function DeckingPerDay({
                         {n === 0 ? (
                           <span style={{ color: '#E2E8F0' }}>&mdash;</span>
                         ) : (
-                          <span style={{
-                            display: 'inline-block', minWidth: 26, padding: '0.15rem 0.4rem', borderRadius: '0.35rem',
-                            // Department colour at low opacity so the number stays
-                            // legible; the chip carries the identity, not the text.
-                            background: `${deptColor(dept)}1A`,
-                            color: deptColor(dept), fontWeight: 700,
-                          }}>
-                            {n}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                            <span style={{
+                              display: 'inline-block', minWidth: 26, padding: '0.15rem 0.4rem', borderRadius: '0.35rem',
+                              // Department colour at low opacity so the number stays
+                              // legible; the chip carries the identity, not the text.
+                              background: `${deptColor(dept)}1A`,
+                              color: deptColor(dept), fontWeight: 700,
+                            }}>
+                              {n}
+                            </span>
+                            {/* This department's payment mix for this day.
+                                Percentages are of this department's own count for
+                                the day, not of the day as a whole — the row is
+                                about this department, so mixing bases inside one
+                                cell would make both numbers untrustworthy. */}
+                            <span style={{ display: 'flex', gap: 3, fontSize: '0.6rem', fontWeight: 700 }}>
+                              {PAYS.map(pt => {
+                                const c = payByDeptDay.get(dept)?.get(d.key)?.[pt] ?? 0
+                                if (c === 0) return null
+                                return (
+                                  <span key={pt} style={{ color: PAY_UI[pt].fg }}
+                                    title={`${dept} · ${DAYS.find(x => x.key === d.key)!.label} · ${PAY_UI[pt].label}: ${c} of ${n} (${pct(c, n)}%)`}>
+                                    {PAY_UI[pt].label[0]}{c}
+                                  </span>
+                                )
+                              })}
+                            </span>
+                          </div>
                         )}
                       </td>
                     )
