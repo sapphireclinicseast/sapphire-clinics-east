@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-react'
 import PatientRequestsPanel from './PatientRequestsPanel'
 import { DECK_SECTIONS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
+import DeckingPerDay from './DeckingPerDay'
 import { branchLabel } from '@/lib/branch-label'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -918,17 +919,21 @@ export default function DeckingClient({ role }: { role: string }) {
                 ))}
               </div>
             )}
-            {/* Name search */}
+            {/* Name search — hidden on Per Day, which totals slots rather than
+                listing people, so filtering by name would change nothing. */}
+            {activeSection !== 'perday' && (
             <input
               style={{ border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)', minWidth: '180px' }}
               placeholder="Filter by name…"
               value={nameFilter}
               onChange={e => setNameFilter(e.target.value)}
             />
+            )}
           </div>
 
-          {/* Department chips */}
-          {!loadingStaff && presentDepts.length > 0 && (
+          {/* Department chips — hidden on Per Day, which is an all-department
+              aggregate: a department filter there would contradict the table. */}
+          {activeSection !== 'perday' && !loadingStaff && presentDepts.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
               {presentDepts.map(d => (
                 <button key={d} onClick={() => setActiveDept(d)}
@@ -945,12 +950,23 @@ export default function DeckingClient({ role }: { role: string }) {
           {/* Single column until lg, so the requests panel drops below the
               board on laptops and tablets instead of squeezing it. */}
           <div className={`grid gap-4 items-start ${
-            activeSection === 'all' ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'
+            activeSection === 'all' || activeSection === 'perday'
+              ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'
           }`}>
             <div style={{ minWidth: 0 }}>
             {/* Staff list */}
             {loadingStaff || loadingData ? (
               <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--mid-gray)', fontSize: '0.85rem' }}>Loading…</div>
+            ) : activeSection === 'perday' ? (
+              /* `slots` is the branch's full set; the per-department filtering
+                 that feeds the boards happens in slotsByStaff, so this passes the
+                 unfiltered list — a day total that only counted the selected
+                 department would be the wrong number to set a target against. */
+              <DeckingPerDay
+                slots={slots}
+                departments={presentDepts}
+                branchName={branchLabel(activeBranch) ?? activeBranch}
+              />
             ) : filteredStaff.length === 0 ? (
               <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center' }}>
                 <p style={{ color: 'var(--charcoal)', fontWeight: 600, fontSize: '0.875rem' }}>
@@ -976,7 +992,7 @@ export default function DeckingClient({ role }: { role: string }) {
               </div>
             )}
             </div>
-            {activeSection !== 'all' && (
+            {activeSection !== 'all' && activeSection !== 'perday' && (
               <div style={{ minWidth: 0 }}>
                 <PatientRequestsPanel
                   branch={branches.length > 1 ? 'ALL' : activeBranch as 'SBEA' | 'SBGH'}
