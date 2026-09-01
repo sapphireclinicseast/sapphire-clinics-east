@@ -994,8 +994,14 @@ export default function DeckingClient({ role }: { role: string }) {
             </div>
             {activeSection !== 'all' && activeSection !== 'perday' && (
               <div style={{ minWidth: 0 }}>
+                {/* Follows the branch toggle above. This used to send 'ALL'
+                    whenever the account could see more than one branch, so for
+                    any admin the panel ignored the toggle completely: filtering
+                    the board to Greenhills still listed East bookings next to
+                    it, with an "All Branches" badge contradicting the button
+                    that was clearly selected. */}
                 <PatientRequestsPanel
-                  branch={branches.length > 1 ? 'ALL' : activeBranch as 'SBEA' | 'SBGH'}
+                  branch={activeBranch as 'SBEA' | 'SBGH'}
                   service={activeSection}
                   compact
                 />
