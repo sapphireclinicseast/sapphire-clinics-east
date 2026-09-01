@@ -31,7 +31,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             can offer it even if the event fired before React hydrated. Also flag
             when we're running as an installed app (standalone) — before paint — so
             the home page can show a plain sign-in view instead of the marketing page. */}
-        <script dangerouslySetInnerHTML={{ __html: "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__nickelInstallPrompt=e;});try{if(window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone){document.documentElement.setAttribute('data-standalone','1');}}catch(e){}" }} />
+        <script dangerouslySetInnerHTML={{ __html: "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__nickelInstallPrompt=e;});try{var sp=new URLSearchParams(location.search);if(sp.get('app')==='1'){try{localStorage.setItem('nk_app','1')}catch(e){}}var forced=false;try{forced=localStorage.getItem('nk_app')==='1'}catch(e){}if(window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone||forced||sp.get('app')==='1'){document.documentElement.setAttribute('data-standalone','1');}}catch(e){}" }} />
         <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-white/85 backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
