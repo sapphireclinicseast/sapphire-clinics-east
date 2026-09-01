@@ -541,28 +541,26 @@ export default function FrontDeskWelcome({
           )}
         </div>
 
-        {/* Right column: DESK reminder card only */}
-        <div className="w-full lg:w-[272px] lg:shrink-0">
-          <DeskShortcutCard />
-        </div>
-
       </div>{/* end top row */}
 
-      {/* ── PACT card + Birthday + Slot Alerts ── */}
-      <div style={{ width: '100%', maxWidth: '1200px', padding: '0 1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-
-        {/* PACT Cancellation Reminder — left-most column, alpaca sits above it */}
-        <div className="w-full lg:w-[272px] lg:shrink-0" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={200} height={200} style={{ display: 'block' }} />
-          <PactCancellationReminder />
-
-          {/* Plush Toy Perk — VIP wallet holders + 100-session milestone patients */}
-          <PlushToyEligible branch={branch} seesAllBranches={seesAllBranches} />
-        </div>
+      {/* One flowing grid, not three fixed columns.
+          The old layout was two flex rows of mismatched heights: a short greeting
+          beside a ~700px reference card, then three columns that each ran to
+          their own length. That left a screen-sized empty pane in the middle
+          with the mascot floating in it, and made the page read as scattered
+          however good the individual cards were.
+          auto-fit + align-items:start lets every card sit at the top of its own
+          cell and the columns rebalance at any width, so there is no void to
+          leave. Order is by what gets acted on first; the reference cards come
+          after the work. */}
+      <div style={{
+        width: '100%', maxWidth: '1200px', padding: '0 1.5rem',
+        display: 'grid', gap: '1rem', alignItems: 'start',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+      }}>
 
       {/* ── Birthday Reminder ── */}
-      <div style={{ flex: '1 1 340px', minWidth: 0 }}>
+      <div style={{ minWidth: 0 }}>
         <div style={{
           background: '#fff',
           border: '1px solid #EDE5D8',
@@ -774,7 +772,7 @@ export default function FrontDeskWelcome({
       </div>
 
       {/* ── Slot Removal watchlist + PR widgets (right column) ── */}
-      <div style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {/* One watchlist, not four cards.
               These were four separate boxes, each with its own header and its own
               "None" — so on a normal day a quarter of the dashboard was chrome
@@ -849,7 +847,23 @@ export default function FrontDeskWelcome({
           <PastProgressReports />
         </div>
 
-      </div>{/* end side-by-side wrapper */}
+        {/* Perk actions — real work, so it sits with the work. */}
+        <PlushToyEligible branch={branch} seesAllBranches={seesAllBranches} />
+
+        {/* Reference, not action. These are read once and remembered, so they
+            come after everything that needs doing today rather than competing
+            with it for the top of the page. */}
+        <DeskShortcutCard />
+        <PactCancellationReminder />
+
+      </div>{/* end dashboard grid */}
+
+      {/* The mascot stays — it just no longer occupies a column of prime space
+          in the middle of the page. */}
+      <div style={{ width: '100%', maxWidth: '1200px', padding: '1.25rem 1.5rem 0', display: 'flex', justifyContent: 'center', opacity: 0.9 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={132} height={132} style={{ display: 'block' }} />
+      </div>
 
     </div>
   )
