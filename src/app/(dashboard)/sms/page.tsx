@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { branchLabel } from '@/lib/branch-label'
+import { FOLLOWUP_GROUPS } from '@/lib/followup-groups'
 import { MessageSquare, Send, Trash2, Play, Eye, Clock, Zap, Calendar, CheckCircle2 } from 'lucide-react'
 
 const MAX_LEN = 160
@@ -12,7 +13,7 @@ function toDatetimeLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-const RECIPIENT_GROUPS: Array<{ value: string; label: string; group: 'general' | 'active' }> = [
+const RECIPIENT_GROUPS: Array<{ value: string; label: string; group: 'general' | 'active' | 'followup' }> = [
   { value: 'pediatric', label: 'Pediatric patients',                   group: 'general' },
   { value: 'adult',     label: 'Adult patients',                       group: 'general' },
   { value: 'both',      label: 'Both pediatric + adult',               group: 'general' },
@@ -23,6 +24,10 @@ const RECIPIENT_GROUPS: Array<{ value: string; label: string; group: 'general' |
   { value: 'actively-serviced-SPED',     label: 'Actively Serviced — SPED',     group: 'active' },
   { value: 'actively-serviced-PSYCHOLOGY', label: 'Actively Serviced — Psychology', group: 'active' },
   { value: 'actively-serviced-ORTHOSIS', label: 'Actively Serviced — Orthosis', group: 'active' },
+  // Overdue follow-ups, straight from the Patient Relationship rules. Their own
+  // optgroup because they are the opposite audience to "actively serviced" —
+  // these are the people who have NOT come back.
+  ...FOLLOWUP_GROUPS.map(g => ({ value: g.key, label: g.label, group: 'followup' as const })),
 ]
 
 export default function SmsCampaignsPage() {
@@ -206,11 +211,27 @@ function NewCampaign({ branch, setBranch }: { branch: Branch; setBranch: (b: Bra
               <option key={g.value} value={g.value}>{g.label}</option>
             ))}
           </optgroup>
+          <optgroup label="Overdue follow-ups (Patient Relationship rules)">
+            {RECIPIENT_GROUPS.filter(g => g.group === 'followup').map(g => (
+              <option key={g.value} value={g.value}>{g.label}</option>
+            ))}
+          </optgroup>
         </select>
         <p className="mt-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
           {/* branchLabel, not the raw code — SBEA/SBGH are internal and were
               never meant to reach the UI. The selector above this line already
               says "Greenhills Branch"; this said "SBGH". */}
+          {/* Name the rule for follow-up groups. These go to patients who have
+              NOT been back, so whoever presses send should be able to see which
+              cut-off produced the list without opening another screen. */}
+          {(() => {
+            const fg = FOLLOWUP_GROUPS.find(g => g.key === recipientGroup)
+            return fg ? (
+              <span style={{ display: 'block', marginBottom: '0.2rem', color: 'var(--narra)' }}>
+                <strong>{fg.rule}</strong> &mdash; counted from each patient&apos;s first consult.
+              </span>
+            ) : null
+          })()}
           Branch: <strong>{branch === 'BOTH' ? 'Both branches' : branchLabel(branch)}</strong>.
           {count !== null && (
             <> &nbsp;·&nbsp; <strong style={{ color: 'var(--narra)' }}>{count}</strong> patient{count === 1 ? '' : 's'} match this group.</>
