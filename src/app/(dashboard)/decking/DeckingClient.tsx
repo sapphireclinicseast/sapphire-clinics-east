@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-
 import PatientRequestsPanel from './PatientRequestsPanel'
 import { DECK_SECTIONS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
 import DeckingPerDay from './DeckingPerDay'
+import SpedClassBoard from './SpedClassBoard'
 import { branchLabel } from '@/lib/branch-label'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -996,7 +997,7 @@ export default function DeckingClient({ role }: { role: string }) {
             )}
             {/* Name search — hidden on Per Day, which totals slots rather than
                 listing people, so filtering by name would change nothing. */}
-            {activeSection !== 'perday' && (
+            {activeSection !== 'perday' && activeSection !== 'sped' && (
             <input
               style={{ border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)', minWidth: '180px' }}
               placeholder="Filter by name…"
@@ -1009,7 +1010,7 @@ export default function DeckingClient({ role }: { role: string }) {
           {/* Colour key. The grid is scanned, not read — without a key the fills
               are decoration, and front desk keeps going back to the sheet they
               already know how to interpret. */}
-          {activeSection !== 'perday' && (
+          {activeSection !== 'perday' && activeSection !== 'sped' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.9rem', marginBottom: '0.85rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>
               {([
                 { bg: OPEN_BG, border: OPEN_BORDER, label: 'Available' },
@@ -1028,7 +1029,7 @@ export default function DeckingClient({ role }: { role: string }) {
 
           {/* Department chips — hidden on Per Day, which is an all-department
               aggregate: a department filter there would contradict the table. */}
-          {activeSection !== 'perday' && !loadingStaff && presentDepts.length > 0 && (
+          {activeSection !== 'perday' && activeSection !== 'sped' && !loadingStaff && presentDepts.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
               {presentDepts.map(d => (
                 <button key={d} onClick={() => setActiveDept(d)}
@@ -1045,13 +1046,36 @@ export default function DeckingClient({ role }: { role: string }) {
           {/* Single column until lg, so the requests panel drops below the
               board on laptops and tablets instead of squeezing it. */}
           <div className={`grid gap-4 items-start ${
-            activeSection === 'all' || activeSection === 'perday'
+            activeSection === 'all' || activeSection === 'perday' || activeSection === 'sped'
               ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'
           }`}>
             <div style={{ minWidth: 0 }}>
             {/* Staff list */}
             {loadingStaff || loadingData ? (
               <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--mid-gray)', fontSize: '0.85rem' }}>Loading…</div>
+            ) : activeSection === 'sped' ? (
+              /* SPED gets the branch's SPED slots and SPED staff, whatever the
+                 department chip says — the chip is hidden here precisely because
+                 the board is SPED by definition. */
+              <SpedClassBoard
+                slots={slots.filter(sl => sl.department === 'SPED')}
+                staff={staff
+                  .filter(st => !isIntern(st)
+                    && (st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch))
+                    && st.department === 'SPED')
+                  .map(st => ({ id: st.id, firstName: st.firstName, lastName: st.lastName }))}
+                branchName={branchLabel(activeBranch) ?? activeBranch}
+                onAddChild={async (block, patientId) => {
+                  await handleSaveSlot({ ...block, patientId, branch: activeBranch, department: 'SPED', notes: null })
+                }}
+                onRemove={handleDeleteSlot}
+                onCreateBlock={async (block) => {
+                  // An empty block: the row has to exist before children can be
+                  // dropped into it, and a class with no one in it yet is a real
+                  // state (next term's timetable) rather than a placeholder.
+                  await handleSaveSlot({ ...block, patientId: null, branch: activeBranch, department: 'SPED', notes: null })
+                }}
+              />
             ) : activeSection === 'perday' ? (
               /* `slots` is the branch's full set; the per-department filtering
                  that feeds the boards happens in slotsByStaff, so this passes the
@@ -1087,7 +1111,7 @@ export default function DeckingClient({ role }: { role: string }) {
               </div>
             )}
             </div>
-            {activeSection !== 'all' && activeSection !== 'perday' && (
+            {activeSection !== 'all' && activeSection !== 'perday' && activeSection !== 'sped' && (
               <div style={{ minWidth: 0 }}>
                 {/* Follows the branch toggle above. This used to send 'ALL'
                     whenever the account could see more than one branch, so for

@@ -46,12 +46,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Slot is already disabled' }, { status: 400 })
     }
   } else {
-    // Enforce max 3 patient assignments per time slot (ignore disabled markers)
-    const existing = await prisma.deckingSlot.count({
-      where: { staffId, dayOfWeek, startTime, disabled: false },
-    })
-    if (existing >= 3)
-      return NextResponse.json({ error: 'Maximum 3 patients per time slot' }, { status: 400 })
+    // Max 3 patients per time slot — a therapist runs one-to-one or a small
+    // pair, so a fourth name in an hour is a mistake worth blocking.
+    //
+    // SPED is exempt: a SPED session IS a class. Capping it at 3 would cap the
+    // class size at 3, which is not a rule anyone asked for — it is this limit
+    // leaking into a context it was never written for.
+    if (department !== 'SPED') {
+      const existing = await prisma.deckingSlot.count({
+        where: { staffId, dayOfWeek, startTime, disabled: false },
+      })
+      if (existing >= 3)
+        return NextResponse.json({ error: 'Maximum 3 patients per time slot' }, { status: 400 })
+    }
   }
 
   const slot = await prisma.deckingSlot.create({
