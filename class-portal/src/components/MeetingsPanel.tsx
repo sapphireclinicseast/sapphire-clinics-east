@@ -181,10 +181,13 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h2 className="text-[18px] leading-tight">Meetings</h2>
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1 max-w-xl">
+            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1 max-w-2xl">
               Video meetings hosted on <span className="font-semibold">meet.sapphireclinicseast.org</span>.
-              Anyone with the link joins straight into the room — participants can start recording + open a
-              whiteboard from the meeting toolbar. Tag students to keep the meeting visible on their own portal.
+              Anyone with the link joins straight into the room; the in-meeting toolbar offers
+              <span className="font-semibold"> Cloud Record</span> (server-side, saved to the meet app),
+              <span className="font-semibold"> Broadcast</span> (host only), and a
+              <span className="font-semibold"> Whiteboard</span>. Tag students to keep the meeting visible on
+              their own portal.
             </p>
           </div>
           {canCreate && (
@@ -262,13 +265,42 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
                     </td>
                     <td className="py-2.5 px-3 text-[12.5px] whitespace-nowrap">
                       {joinLink ? (
-                        <div className="flex items-center gap-1.5">
-                          <a href={joinLink} target="_blank" rel="noopener noreferrer" className="text-[color:var(--bright-teal)] underline">Open</a>
-                          <button
-                            type="button"
-                            className="text-[10.5px] px-1.5 py-0.5 rounded bg-[color:var(--paper-2)] hover:bg-[color:var(--paper-3)]"
-                            onClick={() => void copyToClipboard(joinLink, viewer.role === 'STUDENT' ? 'Guest link' : 'Host link')}
-                          >Copy</button>
+                        <div className="flex flex-col items-start gap-1">
+                          <a href={joinLink} target="_blank" rel="noopener noreferrer" className="text-[color:var(--bright-teal)] underline">Open meeting</a>
+                          {/* Students see just a Guest link — they don't need
+                              the host token. Staff (teacher/admin/branch admin)
+                              see both so they can share the guest link with
+                              parents/students and keep the host link private.
+                              Host unlocks Broadcast + moderator controls; Cloud
+                              Record is available from ANY link once inside the
+                              meeting. */}
+                          {viewer.role === 'STUDENT' ? (
+                            m.guestLink && <button
+                              type="button"
+                              className="text-[10.5px] px-1.5 py-0.5 rounded bg-[color:var(--paper-2)] hover:bg-[color:var(--paper-3)]"
+                              title="Guest link — join the meeting and use Cloud Record from the toolbar."
+                              onClick={() => void copyToClipboard(m.guestLink!, 'Guest link')}
+                            >Copy guest link</button>
+                          ) : (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {m.hostLink && (
+                                <button
+                                  type="button"
+                                  className="text-[10.5px] px-1.5 py-0.5 rounded bg-[color:var(--sage-tint)] hover:bg-[color:var(--sage)] text-[color:var(--deep-teal)] font-semibold"
+                                  title="Host link (KEEP PRIVATE): join as moderator — unlocks Broadcast + Cloud Record + Whiteboard controls."
+                                  onClick={() => void copyToClipboard(m.hostLink!, 'Host link (keep private)')}
+                                >🎥 Copy host link</button>
+                              )}
+                              {m.guestLink && (
+                                <button
+                                  type="button"
+                                  className="text-[10.5px] px-1.5 py-0.5 rounded bg-[color:var(--paper-2)] hover:bg-[color:var(--paper-3)]"
+                                  title="Guest link — safe to share with students/parents. They can Cloud Record from inside the meeting."
+                                  onClick={() => void copyToClipboard(m.guestLink!, 'Guest link (share with students)')}
+                                >Copy guest link</button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ) : <span className="text-[color:var(--mid-gray)]">—</span>}
                     </td>
