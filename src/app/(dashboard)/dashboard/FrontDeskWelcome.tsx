@@ -475,58 +475,54 @@ export default function FrontDeskWelcome({
       {/* ── Top row: greeting (center) + reminder cards (right) ── */}
       <div className="w-full max-w-[1200px] px-6 flex flex-col lg:flex-row gap-6 items-start">
 
-        {/* Center column: logo + greeting + quote + branch badge */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+        {/* Left column: greeting + quote + branch badge.
+            This was a centred, full-height landing block — logo, then greeting,
+            then a boxed quote — which pushed the actual work below the fold on a
+            laptop. It reads as a page header now: the logo sits beside the
+            greeting rather than above it, and everything is left-aligned so the
+            eye starts in one place instead of the middle. */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.85rem' }}>
 
-          {/* Logo */}
-          <Image
-            src="/aura-health-logo.png"
-            alt="Aura Health Rehab Clinic"
-            width={180}
-            height={101}
-            style={{ objectFit: 'contain' }}
-            unoptimized
-          />
-
-          {/* Greeting */}
-          <div style={{ textAlign: 'center', maxWidth: '560px', padding: '0 2rem' }}>
-            <p style={{
-              fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.18em',
-              textTransform: 'uppercase', color: '#4a8073', marginBottom: '0.4rem',
-            }}>
-              Welcome back
-            </p>
-            <h1 style={{
-              fontSize: 'clamp(1.4rem, 2.5vw, 2.2rem)', fontWeight: 800, lineHeight: 1.2,
-              color: '#1A1A1A', marginBottom: '1.25rem',
-              fontFamily: 'var(--font-display, system-ui)',
-            }}>
-              Good {getGreeting()},{' '}
-              <span style={{ color: '#4a8073' }}>{name ?? 'there'}</span>! 👋
-            </h1>
-
-            {quote && (
-              <div style={{
-                background: 'rgba(36,73,82,0.07)',
-                border: '1px solid rgba(36,73,82,0.18)',
-                borderRadius: '0.875rem',
-                padding: '1rem 1.4rem',
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+            <Image
+              src="/aura-health-logo.png"
+              alt="Aura Health Rehab Clinic"
+              width={104}
+              height={58}
+              style={{ objectFit: 'contain', flexShrink: 0 }}
+              unoptimized
+            />
+            <div style={{ textAlign: 'left' }}>
+              <p style={{
+                fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.18em',
+                textTransform: 'uppercase', color: '#4a8073', marginBottom: '0.15rem',
               }}>
-                <p style={{
-                  fontSize: '1rem', fontWeight: 500, lineHeight: 1.7,
-                  color: '#1a3a35', fontStyle: 'italic', margin: 0,
-                }}>
-                  &ldquo;{quote.text}&rdquo;
-                </p>
-                <p style={{
-                  fontSize: '0.78rem', fontWeight: 600, color: '#4a8073',
-                  marginTop: '0.5rem', marginBottom: 0,
-                }}>
-                  — {quote.author}
-                </p>
-              </div>
-            )}
+                Welcome back
+              </p>
+              <h1 style={{
+                fontSize: 'clamp(1.25rem, 2vw, 1.65rem)', fontWeight: 800, lineHeight: 1.15,
+                color: '#1A1A1A', margin: 0,
+                fontFamily: 'var(--font-display, system-ui)',
+              }}>
+                Good {getGreeting()},{' '}
+                <span style={{ color: '#4a8073' }}>{name ?? 'there'}</span>
+              </h1>
+            </div>
           </div>
+
+          {/* The quote stays — it is the one warm thing on the page — but as a
+              quiet line rather than a bordered card competing with the widgets
+              that carry actual work. */}
+          {quote && (
+            <p style={{
+              maxWidth: '52ch', margin: 0,
+              fontSize: '0.85rem', lineHeight: 1.6, color: '#4a6b64', fontStyle: 'italic',
+              borderLeft: '2px solid rgba(74,128,115,0.35)', paddingLeft: '0.75rem',
+            }}>
+              &ldquo;{quote.text}&rdquo;
+              <span style={{ fontStyle: 'normal', fontWeight: 600, color: '#4a8073' }}> &mdash; {quote.author}</span>
+            </p>
+          )}
 
           {/* Branch badge */}
           {branchLabel && (
@@ -777,56 +773,74 @@ export default function FrontDeskWelcome({
         </div>
       </div>
 
-      {/* ── Slot Removal Alerts + PR widgets (right column — always shown) ── */}
+      {/* ── Slot Removal watchlist + PR widgets (right column) ── */}
       <div style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
-              Subject to Slot Removal — No-Shows ({slotAlerts.subjectNoShow.length})
-            </div>
-            {slotAlerts.subjectNoShow.length === 0 ? (
-              <div style={{ fontSize: '0.82rem', color: '#991B1B', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
-            ) : slotAlerts.subjectNoShow.map((p: any) => (
-              <div key={p.id} style={{ fontSize: '0.82rem', color: '#991B1B', fontWeight: 600, padding: '0.2rem 0' }}>
-                {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#DC2626' }}>— {p.noShowCount}/3</span>
+          {/* One watchlist, not four cards.
+              These were four separate boxes, each with its own header and its own
+              "None" — so on a normal day a quarter of the dashboard was chrome
+              announcing that nothing had happened. Severity is carried by a
+              coloured rail and the count, which is what makes a real entry jump
+              out; when everything is clear it collapses to a single line. */}
+          {(() => {
+            const rows = [
+              { key: 'sn', label: 'No-shows — at limit',      list: slotAlerts.subjectNoShow, out: 3,  field: 'noShowCount',       tone: '#DC2626', bg: '#FEF2F2', bd: '#FECACA', ink: '#991B1B' },
+              { key: 'nn', label: 'No-shows — nearing',       list: slotAlerts.nearingNoShow, out: 3,  field: 'noShowCount',       tone: '#D97706', bg: '#FFFBEB', bd: '#FDE68A', ink: '#92400E' },
+              { key: 'sc', label: 'Cancellations — at limit', list: slotAlerts.subjectCancel, out: 12, field: 'cancellationsUsed', tone: '#DC2626', bg: '#FEF2F2', bd: '#FECACA', ink: '#991B1B' },
+              { key: 'nc', label: 'Cancellations — nearing',  list: slotAlerts.nearingCancel, out: 12, field: 'cancellationsUsed', tone: '#D97706', bg: '#FFFBEB', bd: '#FDE68A', ink: '#92400E' },
+            ]
+            const flagged = rows.filter(r => r.list.length > 0)
+            const total = rows.reduce((n, r) => n + r.list.length, 0)
+            return (
+              <div style={{
+                background: total === 0 ? '#F8FAF9' : '#fff',
+                border: `1px solid ${total === 0 ? '#E3E9E6' : '#FECACA'}`,
+                borderRadius: '0.875rem', padding: '0.9rem 1.1rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: total === 0 ? 0 : '0.7rem' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: total === 0 ? '#6B7C75' : '#DC2626' }}>
+                    Slot removal watchlist
+                  </span>
+                  {total > 0 && (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: '#DC2626', borderRadius: 99, padding: '1px 7px' }}>
+                      {total}
+                    </span>
+                  )}
+                </div>
+
+                {total === 0 ? (
+                  <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75' }}>
+                    Nobody is at or near slot removal.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                    {flagged.map(r => (
+                      <div key={r.key} style={{ borderLeft: `3px solid ${r.tone}`, background: r.bg, borderRadius: '0.4rem', padding: '0.45rem 0.6rem' }}>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: r.tone, marginBottom: '0.25rem' }}>
+                          {r.label} ({r.list.length})
+                        </div>
+                        {r.list.map((p: any) => (
+                          <div key={p.id} style={{ fontSize: '0.82rem', color: r.ink, fontWeight: 600, padding: '0.1rem 0', display: 'flex', justifyContent: 'space-between', gap: '0.6rem' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.lastName}, {p.firstName}</span>
+                            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: r.tone, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                              {p[r.field]}/{r.out}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                    {/* Cleared categories are named but not given a box each —
+                        knowing cancellations are clear still matters, it just
+                        doesn't warrant the same weight as a real flag. */}
+                    {flagged.length < rows.length && (
+                      <p style={{ margin: 0, fontSize: '0.72rem', color: '#6B7C75' }}>
+                        Clear: {rows.filter(r => r.list.length === 0).map(r => r.label).join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
-              Nearing Slot Removal — No-Shows ({slotAlerts.nearingNoShow.length})
-            </div>
-            {slotAlerts.nearingNoShow.length === 0 ? (
-              <div style={{ fontSize: '0.82rem', color: '#92400E', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
-            ) : slotAlerts.nearingNoShow.map((p: any) => (
-              <div key={p.id} style={{ fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.2rem 0' }}>
-                {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#D97706' }}>— {p.noShowCount}/3</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
-              Subject to Slot Removal — Cancellations ({slotAlerts.subjectCancel.length})
-            </div>
-            {slotAlerts.subjectCancel.length === 0 ? (
-              <div style={{ fontSize: '0.82rem', color: '#991B1B', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
-            ) : slotAlerts.subjectCancel.map((p: any) => (
-              <div key={p.id} style={{ fontSize: '0.82rem', color: '#991B1B', fontWeight: 600, padding: '0.2rem 0' }}>
-                {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#DC2626' }}>— {p.cancellationsUsed}/12</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
-              Nearing Slot Removal — Cancellations ({slotAlerts.nearingCancel.length})
-            </div>
-            {slotAlerts.nearingCancel.length === 0 ? (
-              <div style={{ fontSize: '0.82rem', color: '#92400E', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
-            ) : slotAlerts.nearingCancel.map((p: any) => (
-              <div key={p.id} style={{ fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.2rem 0' }}>
-                {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#D97706' }}>— {p.cancellationsUsed}/12</span>
-              </div>
-            ))}
-          </div>
+            )
+          })()}
 
           {/* Progress Reports — pending PRs awaiting Paid + Email */}
           <PendingProgressReports />
