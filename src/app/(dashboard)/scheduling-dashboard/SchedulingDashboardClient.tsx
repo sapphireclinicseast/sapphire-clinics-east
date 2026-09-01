@@ -1000,6 +1000,34 @@ function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: 
     ? data.filter(t => t.staffName.toLowerCase().includes(staffFilter.toLowerCase()))
     : data
 
+  // The Overall block used the server's `summary`, which is computed before the
+  // therapist-name filter is applied — that filter is client-side only. So
+  // narrowing to one therapist left a headline still covering everybody: a total
+  // describing rows the user could no longer see.
+  //
+  // Derived from `filtered` instead, so the headline always summarises exactly
+  // the rows beneath it, under every filter.
+  const visibleSummary = useMemo<UtilSummary | null>(() => {
+    if (filtered.length === 0) return null
+    const acc: UtilSummary = {
+      totalSlots: 0, deckedPerWeek: 0, rosteredPerWeek: 0, deckedOffRoster: 0,
+      confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0, overbooked: 0,
+    }
+    for (const t of filtered) {
+      acc.totalSlots       += t.totalSlots
+      acc.deckedPerWeek    += t.deckedPerWeek
+      acc.rosteredPerWeek  += t.rosteredPerWeek
+      acc.deckedOffRoster  += t.deckedOffRoster
+      acc.confirmed        += t.confirmed
+      acc.rescheduled      += t.rescheduled
+      acc.cancelled        += t.cancelled
+      acc.pending          += t.pending
+      acc.blank            += t.blank
+      acc.overbooked       += t.overbooked
+    }
+    return acc
+  }, [filtered])
+
   const statBox = (label: string, value: number, total: number, color: string) => (
     <div className="flex flex-col items-center px-3 py-2 rounded-lg" style={{ background: `${color}11`, border: `1px solid ${color}33` }}>
       <span className="text-lg font-extrabold" style={{ color }}>{pct(value, total)}%</span>
@@ -1071,24 +1099,24 @@ function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: 
         </div>
       ) : (
         <div>
-          {summary && summary.totalSlots > 0 && (
+          {visibleSummary && visibleSummary.totalSlots > 0 && (
             <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
-                  {viewMode === 'therapist' ? 'Overall' : 'Aggregate'} — {summary.totalSlots} total slots
+                  {viewMode === 'therapist' ? 'Overall' : 'Aggregate'} — {visibleSummary.totalSlots} total slots
                 </span>
                 <span className="text-xs text-gray-400">({startDate} to {endDate})</span>
               </div>
               <div className="mb-4">
-                <DeckingVsAttendance {...summary} />
+                <DeckingVsAttendance {...visibleSummary} />
               </div>
-              <UtilBar {...summary} total={summary.totalSlots} />
+              <UtilBar {...visibleSummary} total={visibleSummary.totalSlots} />
               <div className="flex flex-wrap gap-3 mt-3">
-                {statBox('Confirmed', summary.confirmed, summary.totalSlots, '#10b981')}
-                {statBox('Rescheduled', summary.rescheduled, summary.totalSlots, '#f59e0b')}
-                {statBox('Cancelled', summary.cancelled, summary.totalSlots, '#ef4444')}
-                {statBox('Pending', summary.pending, summary.totalSlots, '#6366f1')}
-                {statBox('Blank', summary.blank, summary.totalSlots, '#9ca3af')}
+                {statBox('Confirmed', visibleSummary.confirmed, visibleSummary.totalSlots, '#10b981')}
+                {statBox('Rescheduled', visibleSummary.rescheduled, visibleSummary.totalSlots, '#f59e0b')}
+                {statBox('Cancelled', visibleSummary.cancelled, visibleSummary.totalSlots, '#ef4444')}
+                {statBox('Pending', visibleSummary.pending, visibleSummary.totalSlots, '#6366f1')}
+                {statBox('Blank', visibleSummary.blank, visibleSummary.totalSlots, '#9ca3af')}
               </div>
             </div>
           )}
