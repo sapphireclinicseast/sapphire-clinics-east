@@ -10,7 +10,7 @@
 // service delivery, so none of them belong on a service board. They surface
 // under All so nobody silently disappears from Decking.
 
-export type DeckSection = 'onsite' | 'teletherapy' | 'homecare' | 'all' | 'perday'
+export type DeckSection = 'onsite' | 'teletherapy' | 'homecare' | 'all' | 'perday' | 'sped'
 
 export const DECK_SECTIONS: { key: DeckSection; label: string; blurb: string }[] = [
   { key: 'onsite',      label: 'On-site',     blurb: 'Consultants seeing patients in clinic' },
@@ -21,6 +21,9 @@ export const DECK_SECTIONS: { key: DeckSection; label: string; blurb: string }[]
   // week, for setting a per-day session target. Last because it answers a
   // different question from the four boards before it.
   { key: 'perday',      label: 'Per Day',     blurb: 'Weekly totals by day, all departments — for setting a daily target' },
+  // Not a roster cut either: SPED runs classes, so it gets one board for the
+  // branch rather than a grid per consultant.
+  { key: 'sped',        label: 'SPED Class',  blurb: 'One board for SPED classes — many children per block, blocks longer than an hour' },
 ]
 
 // HR's slugs. Kept as a literal list so an unrecognised value from HR falls
@@ -72,9 +75,10 @@ export function inSection(arrangement: string | null | undefined, section: DeckS
   if (section === 'onsite')      return ONSITE.has(a)
   if (section === 'teletherapy') return TELETHERAPY.has(a)
   if (section === 'homecare')    return HOMECARE.has(a)
-  // 'perday' is an aggregate of slots, not a roster cut — no consultant belongs
-  // to it. Spelled out because the old trailing `return HOMECARE.has(a)` would
-  // have quietly answered the homecare question for it.
+  // 'perday' and 'sped' are not roster cuts — one is an aggregate of slots, the
+  // other a class board — so no consultant "belongs" to either. Spelled out
+  // because the old trailing `return HOMECARE.has(a)` would have quietly
+  // answered the homecare question for them.
   return false
 }
 
