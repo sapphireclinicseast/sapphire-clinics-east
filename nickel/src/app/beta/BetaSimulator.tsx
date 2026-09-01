@@ -5,7 +5,8 @@ import { useRef, useState } from 'react'
 // A device-framed, clickable preview of the live Nickel app. The app runs in a
 // same-origin iframe, so every in-app link works — it is the real beta, not a mockup.
 const ROUTES: { label: string; path: string }[] = [
-  { label: 'Home', path: '/' },
+  { label: 'App home (installed)', path: '/?app=1' },
+  { label: 'Website home', path: '/' },
   { label: 'Provider network (therapists)', path: '/book?city=Pasig' },
   { label: 'Book a therapist', path: '/book' },
   { label: 'Rehab doctor consult', path: '/consult' },
@@ -35,7 +36,7 @@ const DEVICES: Record<string, { label: string; w: number; h: number; radius: num
 
 export default function BetaSimulator() {
   const [device, setDevice] = useState<keyof typeof DEVICES>('iphone')
-  const [path, setPath] = useState('/')
+  const [path, setPath] = useState('/?app=1')
   const [nonce, setNonce] = useState(0) // bump to reload the iframe
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const d = DEVICES[device]
