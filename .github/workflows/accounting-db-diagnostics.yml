@@ -1,0 +1,60 @@
+# ── Read-only ACCOUNTING DB diagnostics ──────────────────────────────
+# Manual dispatch only. Mirrors db-diagnostics.yml but for the accounting
+# Postgres (accounting_db / sapphire_accounting). Exists for the same
+# reason: interactive SSH to the VPS is often unreachable (flaky sshd)
+# while GitHub Actions' SSH works. No inputs, no arbitrary SQL — extend
+# the fixed query list via PR only.
+name: Accounting DB Diagnostics (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    name: Read-only diagnostics
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts || true
+
+      - name: Run diagnostics
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -s' << 'REMOTE'
+          set +e
+          PSQL="docker exec accounting_db psql -U sapphire -d sapphire_accounting -c"
+
+          echo "══════════ Orders by month/status, Sep–Nov 2025 (imported QB window) ══════════"
+          $PSQL "SELECT to_char(o.\"transactionDate\",'YYYY-MM') m, o.status::text, COUNT(*),
+            COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM \"OrderPayment\" p WHERE p.\"orderId\"=o.id AND p.method='HMO')) AS with_hmo_pay,
+            COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM \"OrderPayment\" p WHERE p.\"orderId\"=o.id)) AS with_any_pay
+            FROM \"Order\" o
+            WHERE o.\"transactionDate\" >= '2025-09-01' AND o.\"transactionDate\" < '2025-12-01'
+            GROUP BY 1,2 ORDER BY 1,2"
+
+          echo "══════════ Oct 2025 orders: payment methods breakdown ══════════"
+          $PSQL "SELECT p.method::text, COUNT(*), COUNT(DISTINCT p.\"walletId\") wallets
+            FROM \"OrderPayment\" p JOIN \"Order\" o ON o.id=p.\"orderId\"
+            WHERE o.\"transactionDate\" >= '2025-10-01' AND o.\"transactionDate\" < '2025-11-01'
+            GROUP BY 1 ORDER BY 2 DESC"
+
+          echo "══════════ Sample Oct 2025 orders (10 newest) ══════════"
+          $PSQL "SELECT o.\"orderNumber\", o.\"transactionDate\"::date, o.status::text, o.\"patientName\", o.\"netAmount\", o.branch::text,
+            (SELECT string_agg(p.method::text, ',') FROM \"OrderPayment\" p WHERE p.\"orderId\"=o.id) AS methods
+            FROM \"Order\" o
+            WHERE o.\"transactionDate\" >= '2025-10-01' AND o.\"transactionDate\" < '2025-11-01'
+            ORDER BY o.\"transactionDate\" DESC LIMIT 10"
+
+          echo "══════════ HMO wallets: active vs inactive ══════════"
+          $PSQL "SELECT \"walletType\"::text, \"isActive\", COUNT(*) FROM \"DigitalWallet\" GROUP BY 1,2 ORDER BY 1,2"
+
+          echo "══════════ HMO-paid orders per month, 2025 ══════════"
+          $PSQL "SELECT to_char(o.\"transactionDate\",'YYYY-MM') m, COUNT(DISTINCT o.id)
+            FROM \"Order\" o JOIN \"OrderPayment\" p ON p.\"orderId\"=o.id AND p.method='HMO'
+            WHERE o.\"transactionDate\" >= '2025-01-01' AND o.\"transactionDate\" < '2026-01-01'
+            GROUP BY 1 ORDER BY 1"
+          REMOTE
