@@ -78,14 +78,22 @@ export async function POST(req: Request) {
           soaSubmissionItems: { select: { id: true } },
         },
       })
-      const pool = candidates.map(o => ({
-        id: o.id,
-        name: normName(o.patientName || ''),
-        date: new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
-        amount: o.payments.reduce((s, p) => s + Number(p.amount), 0),
-        tagged: o.soaSubmissionItems.length > 0,
-        used: false,
-      }))
+      // Early QB imports stored the payment account ("HMO - INTELLICARE") as
+      // the patient name — those orders can only pair by date + amount.
+      const walletToken = normName(wallet.patientName).split(' ')[0] || ''
+      const pool = candidates.map(o => {
+        const raw = (o.patientName || '').trim()
+        const name = normName(raw)
+        return {
+          id: o.id,
+          name,
+          generic: !raw || /^HMO\b/i.test(raw) || (!!walletToken && name.includes(walletToken)),
+          date: new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
+          amount: o.payments.reduce((s, p) => s + Number(p.amount), 0),
+          tagged: o.soaSubmissionItems.length > 0,
+          used: false,
+        }
+      })
 
       const matchedIds: string[] = []
       let alreadyTagged = 0
@@ -93,13 +101,16 @@ export async function POST(req: Request) {
       for (const row of batch.rows) {
         const rn = normName(row.patient)
         const hit = pool.find(o =>
-          !o.used && o.name === rn && row.dates.includes(o.date) && Math.abs(o.amount - row.amount) < 0.51)
+          !o.used && !o.generic && o.name === rn && row.dates.includes(o.date) && Math.abs(o.amount - row.amount) < 0.51)
           // Amount drifts (partial areas, rounding) shouldn't orphan a clearly
           // identified session: fall back to name+date alone if unambiguous.
           || (() => {
-            const byDay = pool.filter(o => !o.used && o.name === rn && row.dates.includes(o.date))
+            const byDay = pool.filter(o => !o.used && !o.generic && o.name === rn && row.dates.includes(o.date))
             return byDay.length === 1 ? byDay[0] : undefined
           })()
+          // Generic-name pool (patient unknown in the DB): same provider, same
+          // service date, same amount — interchangeable, pair greedily.
+          || pool.find(o => !o.used && o.generic && row.dates.includes(o.date) && Math.abs(o.amount - row.amount) < 0.51)
         if (!hit) { unmatched.push(row); continue }
         hit.used = true
         if (hit.tagged) { alreadyTagged++; continue }
