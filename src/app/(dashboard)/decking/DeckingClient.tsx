@@ -23,7 +23,7 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }
-interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string }
+interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean }
 
 // Cell colouring, the way front desk reads their spreadsheet: what needs
 // paperwork chased before the session stands out from what doesn't.
@@ -32,7 +32,7 @@ interface DeckingSlot { id: string; staffId: string; patientId: string | null; p
 type PayType = 'CASH' | 'HMO' | 'GL'
 const PAY_TYPES: PayType[] = ['CASH', 'HMO', 'GL']
 const PAY_STYLE: Record<PayType, { bg: string; fg: string; border: string; label: string }> = {
-  CASH: { bg: '#FFFFFF', fg: '#1F2937', border: '#D6DCE2', label: 'Cash' },
+  CASH: { bg: '#E3EEFB', fg: '#14507F', border: '#A9CBEC', label: 'Cash' },
   HMO:  { bg: '#EFE4FA', fg: '#5B2A86', border: '#C9AEE6', label: 'HMO' },
   GL:   { bg: '#FDEAD6', fg: '#93460B', border: '#F3C69B', label: 'GL' },
 }
@@ -263,7 +263,7 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
   onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) => Promise<void>
-  onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean }) => Promise<void>
+  onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean }) => Promise<void>
   onDeleteSlot: (id: string) => Promise<void>
 }) {
   const [configOpen, setConfigOpen] = useState(!config)
@@ -625,12 +625,12 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
                                     title="Payment type"
                                     style={{
                                       appearance: 'none', WebkitAppearance: 'none',
-                                      background: pay === 'CASH' ? 'transparent' : 'rgba(255,255,255,0.65)',
-                                      border: pay === 'CASH' ? '1px solid transparent' : `1px solid ${st.border}`,
+                                      background: 'rgba(255,255,255,0.65)',
+                                      border: `1px solid ${st.border}`,
                                       borderRadius: 3, color: st.fg,
                                       fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.03em',
                                       padding: '0 3px', cursor: 'pointer', flexShrink: 0,
-                                      opacity: pay === 'CASH' ? 0.45 : 1,
+                                      opacity: 1,
                                     }}>
                                     {PAY_TYPES.map(t => <option key={t} value={t}>{PAY_STYLE[t].label}</option>)}
                                   </select>
@@ -865,7 +865,7 @@ export default function DeckingClient({ role }: { role: string }) {
   // Build maps
   const configMap = new Map(configs.map(c => [c.staffId, c]))
   const slotsByStaff = new Map<string, DeckingSlot[]>()
-  for (const slot of slots.filter(s => s.department === activeDept)) {
+  for (const slot of slots.filter(s => s.department === activeDept && !s.isClass)) {
     const arr = slotsByStaff.get(slot.staffId) ?? []
     arr.push(slot)
     slotsByStaff.set(slot.staffId, arr)
@@ -884,6 +884,42 @@ export default function DeckingClient({ role }: { role: string }) {
     ? { startTime: defaultHours.startTime, endTime: defaultHours.closeTime }
     : DEFAULT_HOURS[activeBranch] ?? { startTime: '10:00', endTime: '20:00' }
 
+  // Capacity for whatever the filters currently show. A "slot" here is an hour
+  // cell on a therapist's grid, not a DeckingSlot row: empty cells have no row,
+  // and a cell holding two patients is still one slot. Counting rows would
+  // report a booked pair as two slots and miss every open hour entirely.
+  const slotSummary = (() => {
+    let total = 0, booked = 0, blocked = 0
+    for (const st of filteredStaff) {
+      const cfg = configMap.get(st.id)
+      if (!cfg) continue                       // no work days set — no capacity yet
+      const hours = generateHourlySlots(
+        cfg.useDefault ? resolvedDefaultHours.startTime : cfg.startTime,
+        cfg.useDefault ? resolvedDefaultHours.endTime   : cfg.endTime,
+      )
+      const days = (cfg.workDays as string[]) ?? []
+      total += days.length * hours.length
+
+      // Collapse rows to cells: one (day, hour) counts once however many
+      // children or markers sit in it.
+      const rows = (slotsByStaff.get(st.id) ?? []).filter(sl => !sl.isClass)
+      const bookedCells = new Set<string>()
+      const blockedCells = new Set<string>()
+      for (const r of rows) {
+        const key = `${r.dayOfWeek}|${r.startTime}`
+        if (r.disabled) blockedCells.add(key)
+        else if (r.patientId) bookedCells.add(key)
+      }
+      // A cell that is both booked and blocked cannot happen, but if it ever
+      // did, counting it once as booked keeps total = booked + blocked + open.
+      for (const k of bookedCells) blockedCells.delete(k)
+      booked += bookedCells.size
+      blocked += blockedCells.size
+    }
+    const open = Math.max(0, total - booked - blocked)
+    return { total, booked, blocked, open }
+  })()
+
   async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) {
     await fetch('/api/decking/therapists', {
       method: 'POST',
@@ -893,7 +929,7 @@ export default function DeckingClient({ role }: { role: string }) {
     await loadBranchData(activeBranch)
   }
 
-  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean }) {
+  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean }) {
     await fetch('/api/decking/slots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1058,7 +1094,10 @@ export default function DeckingClient({ role }: { role: string }) {
                  department chip says — the chip is hidden here precisely because
                  the board is SPED by definition. */
               <SpedClassBoard
-                slots={slots.filter(sl => sl.department === 'SPED')}
+                /* Classes only. Filtering on department alone put every 1-on-1
+                   SPED therapy session on this board — a different booking for a
+                   different group of patients. */
+                slots={slots.filter(sl => sl.department === 'SPED' && sl.isClass)}
                 staff={staff
                   .filter(st => !isIntern(st)
                     && (st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch))
@@ -1066,14 +1105,14 @@ export default function DeckingClient({ role }: { role: string }) {
                   .map(st => ({ id: st.id, firstName: st.firstName, lastName: st.lastName }))}
                 branchName={branchLabel(activeBranch) ?? activeBranch}
                 onAddChild={async (block, patientId) => {
-                  await handleSaveSlot({ ...block, patientId, branch: activeBranch, department: 'SPED', notes: null })
+                  await handleSaveSlot({ ...block, patientId, branch: activeBranch, department: 'SPED', notes: null, isClass: true })
                 }}
                 onRemove={handleDeleteSlot}
                 onCreateBlock={async (block) => {
                   // An empty block: the row has to exist before children can be
                   // dropped into it, and a class with no one in it yet is a real
                   // state (next term's timetable) rather than a placeholder.
-                  await handleSaveSlot({ ...block, patientId: null, branch: activeBranch, department: 'SPED', notes: null })
+                  await handleSaveSlot({ ...block, patientId: null, branch: activeBranch, department: 'SPED', notes: null, isClass: true })
                 }}
               />
             ) : activeSection === 'perday' ? (
@@ -1112,7 +1151,40 @@ export default function DeckingClient({ role }: { role: string }) {
             )}
             </div>
             {activeSection !== 'all' && activeSection !== 'perday' && activeSection !== 'sped' && (
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {/* Capacity for the current branch / department / section, in the
+                    space this column used to leave empty. Open is derived
+                    (total − booked − blocked) rather than counted separately, so
+                    the three numbers always add up. */}
+                <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '0.85rem 1rem' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)', marginBottom: '0.6rem' }}>
+                    Slots &mdash; {branchLabel(activeBranch) ?? activeBranch} &middot; {activeDept}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                    {([
+                      { label: 'Total',  value: slotSummary.total,  fg: '#1F2937', bg: '#F1F3F5' },
+                      { label: 'Booked', value: slotSummary.booked, fg: '#14507F', bg: '#E3EEFB' },
+                      { label: 'Open',   value: slotSummary.open,   fg: '#166534', bg: '#DFF5E4' },
+                    ]).map(k => (
+                      <div key={k.label} style={{ background: k.bg, borderRadius: '0.5rem', padding: '0.5rem 0.4rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: k.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {slotSummary.blocked > 0 && (
+                    /* Named rather than folded into "open": a blocked hour is not
+                       capacity anyone can book into. */
+                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.7rem', color: 'var(--mid-gray)' }}>
+                      {slotSummary.blocked} marked unavailable, not counted as open.
+                    </p>
+                  )}
+                  {slotSummary.total === 0 && (
+                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.7rem', color: 'var(--mid-gray)' }}>
+                      No work days configured for this department yet, so there is no capacity to count.
+                    </p>
+                  )}
+                </div>
                 {/* Follows the branch toggle above. This used to send 'ALL'
                     whenever the account could see more than one branch, so for
                     any admin the panel ignored the toggle completely: filtering

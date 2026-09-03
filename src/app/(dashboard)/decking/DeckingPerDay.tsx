@@ -34,7 +34,7 @@ const PAYS: Pay[] = ['CASH', 'HMO', 'GL']
 // Same colours as the board, so a number here means the same thing a cell there
 // means. Diverging would make the two screens quietly contradict each other.
 const PAY_UI: Record<Pay, { label: string; fg: string; bg: string }> = {
-  CASH: { label: 'Cash', fg: '#374151', bg: '#E5E7EB' },
+  CASH: { label: 'Cash', fg: '#14507F', bg: '#E3EEFB' },
   HMO:  { label: 'HMO',  fg: '#5B2A86', bg: '#EFE4FA' },
   GL:   { label: 'GL',   fg: '#93460B', bg: '#FDEAD6' },
 }
