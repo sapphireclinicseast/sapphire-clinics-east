@@ -9,7 +9,7 @@
 // a dropdown. Hiding the control is a courtesy, never the control itself.
 
 import { useCallback, useEffect, useState } from 'react'
-import { FileText, QrCode, Download, Plus, Settings, X, Trash2, Upload } from 'lucide-react'
+import { FileText, QrCode, Download, Settings, X, Trash2, Upload, Info, Copy } from 'lucide-react'
 
 interface Option { id: string; name: string; active: boolean; sortOrder: number }
 interface BranchOption { value: string; label: string; shortCode: string }
@@ -146,7 +146,7 @@ export default function LoaSubmissionsPage() {
             <FileText size={24} /> LOA Submission
           </h1>
           <p style={{ color: '#667', fontSize: '0.9rem', marginTop: '0.15rem' }}>
-            Letters of Authorization for HMO sessions — send the patient a link or QR, or upload the document yourself.
+            Letters of Authorization for HMO sessions — share the form link or QR, or upload the document yourself.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -154,9 +154,27 @@ export default function LoaSubmissionsPage() {
             <Settings size={15} /> Settings
           </button>
           <button onClick={() => setShowInvite(true)} style={{ ...input, cursor: 'pointer', background: '#ED6823', color: '#fff', border: 'none', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <Plus size={16} /> Send LOA link
+            <QrCode size={16} /> LOA form link
           </button>
         </div>
+      </div>
+
+      {/* The form asks patients to find themselves in the CRM, so a patient who
+          has never been registered cannot submit. Front desk have to know that,
+          and the place they will look is this screen. */}
+      <div style={{
+        display: 'flex', gap: '0.6rem', alignItems: 'flex-start',
+        background: '#FFF7E6', border: '1px solid #F3D9A5', borderRadius: 10,
+        padding: '0.7rem 0.85rem', marginTop: '1rem',
+      }}>
+        <Info size={16} style={{ color: '#8A5A00', flexShrink: 0, marginTop: 2 }} />
+        <p style={{ fontSize: '0.85rem', color: '#8A5A00', lineHeight: 1.55, margin: 0 }}>
+          <strong>Register the patient first.</strong> The LOA form asks patients to
+          find their own name, and it searches the Patient CRM — so anyone who has
+          not been added there yet cannot submit. If a patient says their name is
+          not found, create their record in <strong>Patient CRM</strong>, then send
+          them the link again.
+        </p>
       </div>
 
       {/* Filters */}
@@ -190,7 +208,7 @@ export default function LoaSubmissionsPage() {
         <div style={{ ...card, textAlign: 'center', padding: '3rem 1rem' }}>
           <p style={{ color: '#667' }}>No LOA submissions yet.</p>
           <p style={{ color: '#8A9499', fontSize: '0.85rem', marginTop: '0.35rem' }}>
-            Send a patient a link or QR to fill in — or start one from an HMO slot on the Decking board.
+            Share the form link or QR with patients — or start one from an HMO slot on the Decking board.
           </p>
         </div>
       ) : (
@@ -277,12 +295,7 @@ export default function LoaSubmissionsPage() {
       )}
 
       {qr && <QrModal qr={qr} onClose={() => setQr(null)} />}
-      {showInvite && (
-        <InviteModal
-          onClose={() => setShowInvite(false)}
-          onSent={(inv) => { setShowInvite(false); setQr({ id: inv.id, url: inv.uploadUrl, data: inv.qrDataUrl, expiresAt: inv.expiresAt }); load() }}
-        />
-      )}
+      {showInvite && <FormLinkModal onClose={() => setShowInvite(false)} />}
       {showSettings && (
         <SettingsModal
           hmos={hmos} services={services}
@@ -344,59 +357,50 @@ function QrModal({ qr, onClose }: { qr: { url: string; data: string; expiresAt: 
   )
 }
 
-function InviteModal({
-  onClose, onSent,
-}: {
-  onClose: () => void
-  onSent: (inv: { id: string; uploadUrl: string; qrDataUrl: string; expiresAt: string }) => void
-}) {
-  const [patientName, setPatientName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
+function FormLinkModal({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<{ url: string; qrDataUrl: string } | null>(null)
+  const [copied, setCopied] = useState(false)
 
-  async function send() {
-    setErr(''); setBusy(true)
-    try {
-      const r = await fetch('/api/loa/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patientName }),
-      })
-      const d = await r.json()
-      if (!r.ok) setErr(d.error ?? 'Could not create the link')
-      else onSent(d)
-    } finally { setBusy(false) }
-  }
+  useEffect(() => {
+    fetch('/api/loa/form-link').then(r => r.json()).then(setData).catch(() => {})
+  }, [])
 
   return (
     <div style={overlay} onClick={onClose}>
-      <div style={{ ...sheet, maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1C2B30' }}>Send LOA link</h2>
+      <div style={{ ...sheet, maxWidth: 400, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1C2B30' }}>LOA form</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8A9499' }}><X size={18} /></button>
         </div>
-        <p style={{ fontSize: '0.85rem', color: '#667', lineHeight: 1.5, marginBottom: '0.9rem' }}>
-          The patient fills in the form themselves — HMO, branch, date of approval,
-          services availed — and uploads the letter. All you send is the link.
+        <p style={{ fontSize: '0.85rem', color: '#667', lineHeight: 1.5, marginBottom: '0.9rem', textAlign: 'left' }}>
+          This is the same link every time — print the QR for the counter, or send
+          the link to any patient. They find their own name, fill in the form and
+          upload the letter.
         </p>
 
-        <label style={label}>Patient name (optional)</label>
-        <input
-          value={patientName} onChange={e => setPatientName(e.target.value)}
-          placeholder="Surname, First name" style={field}
-        />
-        <p style={{ fontSize: '0.75rem', color: '#8A9499', marginTop: '-0.5rem', marginBottom: '0.9rem' }}>
-          Only so you can tell the pending letters apart before they come back.
-        </p>
-
-        {err && <p style={{ color: '#991B1B', fontSize: '0.85rem', marginBottom: '0.6rem' }}>{err}</p>}
-
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={send} disabled={busy} style={{ ...field, marginBottom: 0, cursor: 'pointer', fontWeight: 700, background: '#ED6823', color: '#fff', border: 'none', opacity: busy ? 0.6 : 1 }}>
-            {busy ? 'Creating…' : 'Create link & QR'}
-          </button>
-          <button onClick={onClose} style={{ ...field, marginBottom: 0, cursor: 'pointer' }}>Cancel</button>
-        </div>
+        {data ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={data.qrDataUrl} alt="LOA form QR code" style={{ width: 230, height: 230, margin: '0 auto', display: 'block' }} />
+            <input readOnly value={data.url} onFocus={e => e.currentTarget.select()} style={{ ...field, marginTop: '0.85rem', fontSize: '0.78rem', textAlign: 'center' }} />
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(data.url); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+                style={{ ...field, marginBottom: 0, cursor: 'pointer', fontWeight: 700, background: '#ED6823', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+              >
+                <Copy size={15} /> {copied ? 'Copied!' : 'Copy link'}
+              </button>
+              <a
+                href={data.qrDataUrl} download="LOA-form-QR.png"
+                style={{ ...field, marginBottom: 0, cursor: 'pointer', fontWeight: 700, textDecoration: 'none', color: '#46555C', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                Save QR
+              </a>
+            </div>
+          </>
+        ) : (
+          <p style={{ color: '#8A9499', fontSize: '0.9rem', padding: '2rem 0' }}>Loading…</p>
+        )}
       </div>
     </div>
   )
