@@ -893,31 +893,36 @@ export default function DeckingClient({ role }: { role: string }) {
     for (const st of filteredStaff) {
       const cfg = configMap.get(st.id)
       if (!cfg) continue                       // no work days set — no capacity yet
-      const hours = generateHourlySlots(
-        cfg.useDefault ? resolvedDefaultHours.startTime : cfg.startTime,
-        cfg.useDefault ? resolvedDefaultHours.endTime   : cfg.endTime,
-      )
-      const days = (cfg.workDays as string[]) ?? []
-      total += days.length * hours.length
 
-      // Collapse rows to cells: one (day, hour) counts once however many
-      // children or markers sit in it.
-      const rows = (slotsByStaff.get(st.id) ?? []).filter(sl => !sl.isClass)
-      const bookedCells = new Set<string>()
-      const blockedCells = new Set<string>()
-      for (const r of rows) {
+      // Walk exactly the cells TherapistRow draws, and classify each the way
+      // the cell itself does. Deriving capacity separately is what made Open
+      // read 0 on a board full of green: the grid builds its rows from the
+      // stored config times, while this counted the clinic default window
+      // whenever useDefault was set. Where that window was the narrower of the
+      // two, booked + blocked swallowed the whole total.
+      const hours = generateHourlySlots(cfg.startTime, cfg.endTime)
+      const days = (cfg.workDays as string[]) ?? []
+
+      const byCell = new Map<string, DeckingSlot[]>()
+      for (const r of (slotsByStaff.get(st.id) ?? []).filter(sl => !sl.isClass)) {
         const key = `${r.dayOfWeek}|${r.startTime}`
-        if (r.disabled) blockedCells.add(key)
-        else if (r.patientId) bookedCells.add(key)
+        byCell.set(key, [...(byCell.get(key) ?? []), r])
       }
-      // A cell that is both booked and blocked cannot happen, but if it ever
-      // did, counting it once as booked keeps total = booked + blocked + open.
-      for (const k of bookedCells) blockedCells.delete(k)
-      booked += bookedCells.size
-      blocked += blockedCells.size
+
+      for (const day of days) {
+        for (const hour of hours) {
+          total++
+          const cell = byCell.get(`${day}|${hour}`) ?? []
+          // Same precedence as the cell: disabled wins, then any occupant
+          // (a cell holding three children is still one filled slot), else open.
+          if (cell.some(r => r.disabled)) blocked++
+          else if (cell.length > 0) booked++
+        }
+      }
     }
-    const open = Math.max(0, total - booked - blocked)
-    return { total, booked, blocked, open }
+    // Every counted cell fell into exactly one bucket, so this cannot go
+    // negative and needs no clamp to hide an inconsistency.
+    return { total, booked, blocked, open: total - booked - blocked }
   })()
 
   async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) {
