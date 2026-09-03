@@ -10,7 +10,7 @@
 // service delivery, so none of them belong on a service board. They surface
 // under All so nobody silently disappears from Decking.
 
-export type DeckSection = 'onsite' | 'teletherapy' | 'homecare' | 'all' | 'perday' | 'sped'
+export type DeckSection = 'onsite' | 'teletherapy' | 'homecare' | 'all' | 'perday' | 'sped' | 'crosssell'
 
 export const DECK_SECTIONS: { key: DeckSection; label: string; blurb: string }[] = [
   { key: 'onsite',      label: 'On-site',     blurb: 'Consultants seeing patients in clinic' },
@@ -24,6 +24,10 @@ export const DECK_SECTIONS: { key: DeckSection; label: string; blurb: string }[]
   // Not a roster cut either: SPED runs classes, so it gets one board for the
   // branch rather than a grid per consultant.
   { key: 'sped',        label: 'SPED Class',  blurb: 'One board for SPED classes — many children per block, blocks longer than an hour' },
+  // Also not a roster cut: this one is about the PATIENTS on the board rather
+  // than the consultants running it — who already sees more than one
+  // department, and who does not yet.
+  { key: 'crosssell',   label: 'Interdepartment', blurb: 'Patients seeing more than one department, and the ones who could be' },
 ]
 
 // HR's slugs. Kept as a literal list so an unrecognised value from HR falls
@@ -75,10 +79,10 @@ export function inSection(arrangement: string | null | undefined, section: DeckS
   if (section === 'onsite')      return ONSITE.has(a)
   if (section === 'teletherapy') return TELETHERAPY.has(a)
   if (section === 'homecare')    return HOMECARE.has(a)
-  // 'perday' and 'sped' are not roster cuts — one is an aggregate of slots, the
-  // other a class board — so no consultant "belongs" to either. Spelled out
-  // because the old trailing `return HOMECARE.has(a)` would have quietly
-  // answered the homecare question for them.
+  // 'perday', 'sped' and 'crosssell' are not roster cuts — an aggregate of
+  // slots, a class board, and a patient list — so no consultant "belongs" to
+  // any of them. Spelled out because the old trailing `return HOMECARE.has(a)`
+  // would have quietly answered the homecare question for them.
   return false
 }
 

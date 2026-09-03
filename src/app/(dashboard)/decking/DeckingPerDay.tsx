@@ -42,11 +42,13 @@ function pct(n: number, of: number): number {
 }
 
 export default function DeckingPerDay({
-  slots, departments, branchName,
+  slots, departments, branchName, capacity = {},
 }: {
   slots: PerDaySlot[]
   departments: string[]
   branchName: string
+  /** department → day → hours the consultants offered. Capacity, not bookings. */
+  capacity?: Record<string, Record<string, number>>
 }) {
   // Disabled slots are switched-off time, not sessions — counting them would
   // inflate the very number the target is set against.
@@ -85,6 +87,29 @@ export default function DeckingPerDay({
     payWeek[pay]++
   }
 
+  // Hours switched off. Subtracted from available alongside decked sessions, so
+  // this screen and the Slots card on the boards give the same answer — Open
+  // there is likewise total − booked − blocked.
+  const blockedByDept = new Map<string, Map<string, number>>()
+  for (const s of slots.filter(x => x.disabled)) {
+    if (!blockedByDept.has(s.department)) blockedByDept.set(s.department, new Map())
+    const m = blockedByDept.get(s.department)!
+    m.set(s.dayOfWeek, (m.get(s.dayOfWeek) ?? 0) + 1)
+  }
+
+  // Departments with capacity but nothing decked still belong on the capacity
+  // tables — an empty department is exactly what a cross-sell conversation
+  // needs to see.
+  const capacityDepts = departments.filter(d => capacity[d] && Object.keys(capacity[d]).length > 0)
+  const capOf = (dept: string, day: string) => capacity[dept]?.[day] ?? 0
+  const deckedOf = (dept: string, day: string) => countsByDept.get(dept)?.get(day) ?? 0
+  const blockedOf = (dept: string, day: string) => blockedByDept.get(dept)?.get(day) ?? 0
+  // Floored at zero: more decked than capacity means the config was narrowed
+  // after the sessions were booked, and a negative "available" would read as a
+  // data error rather than the over-booking it is.
+  const availOf = (dept: string, day: string) =>
+    Math.max(0, capOf(dept, day) - deckedOf(dept, day) - blockedOf(dept, day))
+
   const rows = departments.filter(d => countsByDept.has(d))
   const dayTotal = (day: string) =>
     rows.reduce((n, d) => n + (countsByDept.get(d)?.get(day) ?? 0), 0)
@@ -93,25 +118,40 @@ export default function DeckingPerDay({
   const weekTotal = DAYS.reduce((n, d) => n + dayTotal(d.key), 0)
   const busiest = Math.max(1, ...DAYS.map(d => dayTotal(d.key)))
 
-  if (live.length === 0) {
-    return (
-      <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center' }}>
-        <p style={{ color: 'var(--charcoal)', fontWeight: 600, fontSize: '0.875rem' }}>
-          No decked sessions in {branchName}
-        </p>
-        <p style={{ color: 'var(--mid-gray)', fontSize: '0.8rem', marginTop: '0.35rem' }}>
-          Deck sessions under On-site, Teletherapy or Homecare and they will total up here.
-        </p>
-      </div>
-    )
-  }
-
   const cellBase: React.CSSProperties = {
     padding: '0.5rem 0.4rem', textAlign: 'center', fontSize: '0.82rem',
     borderBottom: '1px solid #F1F5F9',
   }
 
+  // An empty decked table is replaced, not the whole screen: capacity is still
+  // worth showing — arguably most worth showing — when nothing is booked yet.
+  if (live.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '2rem', textAlign: 'center' }}>
+          <p style={{ color: 'var(--charcoal)', fontWeight: 600, fontSize: '0.875rem' }}>
+            No decked sessions in {branchName}
+          </p>
+          <p style={{ color: 'var(--mid-gray)', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+            Deck sessions under On-site, Teletherapy or Homecare and they will total up here.
+          </p>
+        </div>
+        <CapacityTable
+          title={`Slots per day — ${branchName}`}
+          blurb="All the time a therapist or doctor gave us to consult, by day of week — their configured work days and hours, whether or not anything is decked into them."
+          depts={capacityDepts} valueOf={capOf} accent="#1F2937" cellBase={cellBase}
+        />
+        <CapacityTable
+          title={`Available slots per day — ${branchName}`}
+          blurb="Slots the consultants gave us, minus what is already decked and minus the hours marked unavailable — what is still open to book."
+          depts={capacityDepts} valueOf={availOf} accent="#166534" cellBase={cellBase} emphasiseZero
+        />
+      </div>
+    )
+  }
+
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
     <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', overflow: 'hidden' }}>
       <div style={{ padding: '0.9rem 1rem', borderBottom: '1px solid var(--light-gray)' }}>
         <p style={{ fontWeight: 700, color: 'var(--charcoal)', fontSize: '0.9rem' }}>
@@ -292,6 +332,116 @@ export default function DeckingPerDay({
                 </tr>
               )
             })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {/* ── Capacity ────────────────────────────────────────────────────────
+        Two readings of the same week that the decked table cannot give: the
+        time consultants actually gave us, and what of it is still sellable. */}
+    <CapacityTable
+      title={`Slots per day — ${branchName}`}
+      blurb="All the time a therapist or doctor gave us to consult, by day of week — their configured work days and hours, whether or not anything is decked into them."
+      depts={capacityDepts}
+      valueOf={capOf}
+      accent="#1F2937"
+      cellBase={cellBase}
+    />
+
+    <CapacityTable
+      title={`Available slots per day — ${branchName}`}
+      blurb="Slots the consultants gave us, minus what is already decked and minus the hours marked unavailable — what is still open to book."
+      depts={capacityDepts}
+      valueOf={availOf}
+      accent="#166534"
+      cellBase={cellBase}
+      emphasiseZero
+    />
+    </div>
+  )
+}
+
+/**
+ * One department × day grid over a single number.
+ *
+ * Both capacity tables share it rather than being written twice: they differ
+ * only in which number each cell holds, and two hand-copied grids would be two
+ * places for a day-order or totals bug to appear in.
+ */
+function CapacityTable({
+  title, blurb, depts, valueOf, accent, cellBase, emphasiseZero = false,
+}: {
+  title: string
+  blurb: string
+  depts: string[]
+  valueOf: (dept: string, day: string) => number
+  accent: string
+  cellBase: React.CSSProperties
+  emphasiseZero?: boolean
+}) {
+  const dayTotal = (day: string) => depts.reduce((n, d) => n + valueOf(d, day), 0)
+  const weekTotal = DAYS.reduce((n, d) => n + dayTotal(d.key), 0)
+
+  if (depts.length === 0) {
+    return (
+      <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '1.5rem', textAlign: 'center' }}>
+        <p style={{ fontWeight: 700, color: 'var(--charcoal)', fontSize: '0.9rem' }}>{title}</p>
+        <p style={{ color: 'var(--mid-gray)', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+          No consultant has work days configured at this branch yet, so there is no capacity to total.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', overflow: 'hidden' }}>
+      <div style={{ padding: '0.9rem 1rem', borderBottom: '1px solid var(--light-gray)' }}>
+        <p style={{ fontWeight: 700, color: 'var(--charcoal)', fontSize: '0.9rem' }}>{title}</p>
+        <p style={{ color: 'var(--mid-gray)', fontSize: '0.78rem', marginTop: '0.15rem' }}>
+          {blurb} <strong>{weekTotal}</strong> per week.
+        </p>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#F8FAFC' }}>
+              <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--mid-gray)', borderBottom: '1px solid #E2E8F0' }}>Department</th>
+              {DAYS.map(d => (
+                <th key={d.key} style={{ padding: '0.5rem 0.4rem', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--mid-gray)', borderBottom: '1px solid #E2E8F0' }}>{d.short}</th>
+              ))}
+              <th style={{ padding: '0.5rem 0.4rem', textAlign: 'center', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--mid-gray)', borderBottom: '1px solid #E2E8F0' }}>Week</th>
+            </tr>
+          </thead>
+          <tbody>
+            {depts.map(dept => {
+              const wk = DAYS.reduce((n, d) => n + valueOf(dept, d.key), 0)
+              return (
+                <tr key={dept}>
+                  <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--charcoal)', borderBottom: '1px solid #F1F5F9' }}>{dept}</td>
+                  {DAYS.map(d => {
+                    const n = valueOf(dept, d.key)
+                    return (
+                      <td key={d.key} style={{
+                        ...cellBase,
+                        color: n === 0 ? '#CBD5E1' : accent,
+                        fontWeight: n > 0 && emphasiseZero ? 700 : 500,
+                      }}>
+                        {n === 0 ? '·' : n}
+                      </td>
+                    )
+                  })}
+                  <td style={{ ...cellBase, fontWeight: 700, color: 'var(--charcoal)' }}>{wk}</td>
+                </tr>
+              )
+            })}
+            <tr style={{ background: '#F8FAFC' }}>
+              <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', fontWeight: 800, color: 'var(--charcoal)' }}>All departments</td>
+              {DAYS.map(d => (
+                <td key={d.key} style={{ ...cellBase, fontWeight: 800, color: accent }}>{dayTotal(d.key) || '·'}</td>
+              ))}
+              <td style={{ ...cellBase, fontWeight: 800, color: 'var(--charcoal)' }}>{weekTotal}</td>
+            </tr>
           </tbody>
         </table>
       </div>
