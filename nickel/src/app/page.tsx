@@ -49,7 +49,7 @@ function AppHome() {
         <a href="/clinic/login" className="flex items-center justify-between rounded-xl border border-[color:var(--line-2)] bg-white px-4 py-3 text-[14px] font-medium text-[color:var(--ink)] hover:border-[color:var(--sky)]">Clinic / hospital partner <span className="text-[color:var(--steel)]">→</span></a>
       </div>
 
-      <p className="mt-6 text-center text-[11px] text-[color:var(--muted)]">Operated by Jara Universal OPC, in partnership with Sapphire Clinics East, Inc.</p>
+      <p className="mt-6 text-center text-[11px] text-[color:var(--muted)]">Operated by Jara Universal OPC.</p>
     </div>
   )
 }
