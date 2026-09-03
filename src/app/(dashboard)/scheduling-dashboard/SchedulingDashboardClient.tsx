@@ -8,7 +8,7 @@ import {
   Filter, Lock, Activity, ChevronDown, ChevronUp, User,
 } from 'lucide-react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -49,6 +49,19 @@ function monthAgoStr() {
   return d.toISOString().split('T')[0]
 }
 
+/** "YYYY-MM" for the current month. */
+function thisMonthStr() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+/** "YYYY-MM" for N months back. setMonth handles the year rollover. */
+function monthsAgoMonthStr(n: number) {
+  const d = new Date()
+  d.setMonth(d.getMonth() - n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 function getSlotForTime(startTime: string): string {
   const h = parseInt(startTime.split(':')[0], 10)
   if (h >= 9 && h < 20) return `${h.toString().padStart(2, '0')}:00`
@@ -62,6 +75,14 @@ function heatBg(count: number, max: number): string {
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+interface SlotUtilPoint {
+  month: string
+  label: string
+  slots: number
+  delta: number | null
+  pctChange: number | null
+}
 
 interface ScheduleRow {
   id: string
@@ -112,6 +133,20 @@ function DashboardContent({ role }: { role: string }) {
   const [selectedDepts, setSelectedDepts] = useState<string[]>([...DEPARTMENTS])
   const [allDepts, setAllDepts] = useState(true)
   const [selectedDay, setSelectedDay] = useState(todayStr())
+
+  // ── Slot Utilization subsection ──
+  // Its own month range: the filter bar above is day-grained and usually set to
+  // a few weeks, which cannot answer a month-on-month question. Branch and
+  // department are deliberately NOT duplicated here — this reads the same two
+  // filters as the rest of the page, so the whole screen describes one cut of
+  // the clinic rather than two that disagree.
+  const [slotFrom, setSlotFrom] = useState(monthsAgoMonthStr(11))
+  const [slotTo, setSlotTo] = useState(thisMonthStr())
+  const [slotIncludeCancelled, setSlotIncludeCancelled] = useState(false)
+  const [slotData, setSlotData] = useState<SlotUtilPoint[]>([])
+  const [slotSummary, setSlotSummary] = useState<{ total: number; netChange: number | null; netPctChange: number | null } | null>(null)
+  const [slotLoading, setSlotLoading] = useState(false)
+  const [slotError, setSlotError] = useState('')
 
   // ── Data state ──
   const [schedules, setSchedules] = useState<ScheduleRow[]>([])
@@ -188,6 +223,30 @@ function DashboardContent({ role }: { role: string }) {
   }, [startDate, endDate, status, branch, selectedDepts, allDepts])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // ── Slot Utilization fetch ──
+  // Shares the page's branch/department filters, so changing either redraws
+  // this line too; the month range is its own.
+  useEffect(() => {
+    if (slotFrom > slotTo) { setSlotError('“From” month is after “To” month.'); setSlotData([]); return }
+    const ctl = new AbortController()
+    setSlotLoading(true); setSlotError('')
+    const params = new URLSearchParams({
+      from: slotFrom, to: slotTo, branch,
+      departments: allDepts ? 'all' : selectedDepts.join(','),
+    })
+    if (slotIncludeCancelled) params.set('includeCancelled', '1')
+    fetch(`/api/scheduling-dashboard/slot-utilization?${params}`, { signal: ctl.signal })
+      .then(async r => {
+        const d = await r.json()
+        if (!r.ok) throw new Error(d.error ?? 'Could not load slot utilization')
+        setSlotData(d.points ?? [])
+        setSlotSummary({ total: d.total ?? 0, netChange: d.netChange ?? null, netPctChange: d.netPctChange ?? null })
+      })
+      .catch(err => { if (err.name !== 'AbortError') { setSlotError(err.message); setSlotData([]) } })
+      .finally(() => setSlotLoading(false))
+    return () => ctl.abort()
+  }, [slotFrom, slotTo, branch, selectedDepts, allDepts, slotIncludeCancelled])
 
   // ── Dept checkbox handlers ──
   function toggleAllDepts(checked: boolean) {
@@ -608,6 +667,141 @@ function DashboardContent({ role }: { role: string }) {
             </AreaChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* ── Slot Utilization ──────────────────────────────────────────────
+          Month on month, over a range of the user's choosing. Separate from the
+          charts above, which are day-grained over the filter bar's short window
+          and so cannot show a trend across a year. */}
+      <div className={`${cardStyle} p-5 mb-6`}>
+        <div className="flex flex-wrap items-end justify-between gap-4 mb-1">
+          <div>
+            <h3 className={sectionH}>Slot Utilization</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Slots run each month{branch !== 'all' ? ` · ${branch === 'SBEA' ? 'East Branch' : branch === 'SBGH' ? 'Greenhills Branch' : branch}` : ' · all branches'}
+              {allDepts ? ' · all departments' : ` · ${selectedDepts.join(', ') || 'no department selected'}`}
+              {slotIncludeCancelled ? ' · including cancelled' : ' · cancelled excluded, no-shows counted'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-gray-500 uppercase">From</label>
+              <input type="month" value={slotFrom} onChange={e => setSlotFrom(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-gray-500 uppercase">To</label>
+              <input type="month" value={slotTo} onChange={e => setSlotTo(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" />
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 pb-2 cursor-pointer">
+              <input type="checkbox" checked={slotIncludeCancelled}
+                onChange={e => setSlotIncludeCancelled(e.target.checked)} />
+              Include cancelled
+            </label>
+          </div>
+        </div>
+
+        {/* Branch and department are not repeated here — this reads the page's
+            filters, so the whole screen describes one cut of the clinic. */}
+        <p className="text-[11px] text-gray-400 mb-3">
+          Filtered by the branch and department selected above.
+        </p>
+
+        {slotError ? (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{slotError}</p>
+        ) : slotLoading && slotData.length === 0 ? (
+          <p className="text-sm text-gray-500 py-10 text-center">Loading…</p>
+        ) : slotData.length === 0 ? (
+          <p className="text-sm text-gray-500 py-10 text-center">No sessions in this range.</p>
+        ) : (
+          <>
+            {slotSummary && (
+              <div className="flex flex-wrap gap-5 mb-4">
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase">Total slots</p>
+                  <p className="text-xl font-extrabold text-gray-900 tabular-nums">{slotSummary.total.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase">First → last month</p>
+                  <p className="text-xl font-extrabold tabular-nums" style={{
+                    color: slotSummary.netChange === null ? '#6b7280' : slotSummary.netChange > 0 ? '#166534' : slotSummary.netChange < 0 ? '#991B1B' : '#6b7280',
+                  }}>
+                    {slotSummary.netChange === null ? '—'
+                      : `${slotSummary.netChange > 0 ? '+' : ''}${slotSummary.netChange.toLocaleString()}`}
+                    {slotSummary.netPctChange !== null && (
+                      <span className="text-sm font-bold ml-1">
+                        ({slotSummary.netPctChange > 0 ? '+' : ''}{slotSummary.netPctChange.toFixed(1)}%)
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={slotData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                {/* Params typed as `unknown`, not `number`/`string`: recharts'
+                    Formatter generic expects `any` there, and a narrower
+                    parameter type does not satisfy it. */}
+                <Tooltip
+                  formatter={(v: unknown) => [Number(v).toLocaleString(), 'Slots'] as [string, string]}
+                  labelFormatter={(label: unknown) => {
+                    const p = slotData.find(x => x.label === label)
+                    if (!p || p.delta === null) return String(label ?? '')
+                    const sign = p.delta > 0 ? '+' : ''
+                    const pct = p.pctChange === null ? '' : ` (${p.pctChange > 0 ? '+' : ''}${p.pctChange.toFixed(1)}%)`
+                    return `${label} — ${sign}${p.delta} vs previous month${pct}`
+                  }}
+                />
+                {/* Animation off: recharts draws a Line by animating
+                    stroke-dasharray from a stub, and here it stalled on the
+                    first frame — a 21px dash of a 1189px path, i.e. a line
+                    chart with no visible line. The page's Area charts do not
+                    hit this. Rendering it statically is worth more than the
+                    draw-in. */}
+                <Line type="monotone" dataKey="slots" stroke="#1A7B8A" strokeWidth={2.5}
+                  dot={{ r: 3 }} activeDot={{ r: 5 }} name="Slots" isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+
+            {/* The line shows the shape; the table is where a month-on-month
+                figure can actually be read off and quoted. */}
+            <div className="overflow-x-auto mt-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left">
+                    <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase">Month</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase text-right">Slots</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase text-right">Change</th>
+                    <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase text-right">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {slotData.map(p => (
+                    <tr key={p.month} className="border-b border-gray-100">
+                      <td className="px-3 py-1.5">{p.label}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{p.slots.toLocaleString()}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-semibold" style={{
+                        color: p.delta === null ? '#9ca3af' : p.delta > 0 ? '#166534' : p.delta < 0 ? '#991B1B' : '#6b7280',
+                      }}>
+                        {p.delta === null ? '—' : `${p.delta > 0 ? '+' : ''}${p.delta.toLocaleString()}`}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums" style={{
+                        color: p.pctChange === null ? '#9ca3af' : p.pctChange > 0 ? '#166534' : p.pctChange < 0 ? '#991B1B' : '#6b7280',
+                      }}>
+                        {p.pctChange === null ? '—' : `${p.pctChange > 0 ? '+' : ''}${p.pctChange.toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Top Therapists */}
