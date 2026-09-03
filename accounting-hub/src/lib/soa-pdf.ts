@@ -20,6 +20,9 @@ export interface SoaSettings {
   contactEmail?: string | null
   contactPhone1?: string | null
   contactPhone2?: string | null
+  // Per-provider SOA reference codes { [walletId]: "ITCR" } — used in
+  // BR-YYYYMMDD-HMO-000x reference numbers; missing entries derive from the name.
+  hmoCodes?: Record<string, string> | null
 }
 
 export interface SoaOrder {

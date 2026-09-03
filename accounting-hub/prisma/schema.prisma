@@ -1459,6 +1459,9 @@ model ARPaymentItem {
 // unpaid session can be told apart from one nobody has billed yet.
 model SoaSubmission {
   id             String        @id @default(cuid())
+  // SOA reference number, assigned when the submission is recorded:
+  // BR-YYYYMMDD-HMO-000x (e.g. AHEA-20260903-ITCR-0001), sequence per prefix.
+  referenceNo    String?       @unique
   walletId       String
   wallet         DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
   submittedDate  DateTime
@@ -2453,6 +2456,9 @@ model SoaSettings {
   contactEmail         String?
   contactPhone1        String?
   contactPhone2        String?
+  // Per-provider code used in SOA reference numbers (BR-YYYYMMDD-HMO-000x),
+  // as { [walletId]: "ITCR" }. Missing entries derive from the provider name.
+  hmoCodes             Json?
   updatedAt            DateTime @updatedAt
 }
 
@@ -2470,6 +2476,7 @@ model SoaRecord {
   orderIds        Json?
   submittedDate   DateTime? // when the user recorded this SOA as actually submitted
   submissionId    String? // the SoaSubmission batch created by the Submitted button
+  referenceNo     String? // copy of the batch's SOA reference number, for display
   generatedAt     DateTime @default(now())
   generatedById   String?
   generatedByName String?

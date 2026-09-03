@@ -31,7 +31,15 @@ export async function PUT(req: Request) {
       hmoOfficerName, hmoOfficerEsigUrl,
       clinicManagerName, clinicManagerEsigUrl,
       contactEmail, contactPhone1, contactPhone2,
+      hmoCodes,
     } = body
+    // Per-provider SOA reference codes: { [walletId]: "ITCR" } — letters/digits only.
+    const cleanCodes: Record<string, string> = {}
+    if (hmoCodes && typeof hmoCodes === 'object') {
+      for (const [k, v] of Object.entries(hmoCodes as Record<string, unknown>)) {
+        if (typeof v === 'string' && v.trim()) cleanCodes[k] = v.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+      }
+    }
 
     const data = {
       clinicName: clinicName ?? null,
@@ -47,6 +55,7 @@ export async function PUT(req: Request) {
       contactEmail: contactEmail ?? null,
       contactPhone1: contactPhone1 ?? null,
       contactPhone2: contactPhone2 ?? null,
+      hmoCodes: cleanCodes,
     }
 
     const settings = await prisma.soaSettings.upsert({

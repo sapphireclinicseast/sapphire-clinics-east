@@ -21,6 +21,7 @@ interface SubmissionOrder {
 
 interface Submission {
   id: string
+  referenceNo?: string | null
   walletId: string
   submittedDate: string
   transmittalUrls: unknown
@@ -270,7 +271,14 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
                     {open ? <ChevronDown size={14} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={14} style={{ color: 'var(--mid-gray)' }} />}
                   </button>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{s.wallet.patientName}</p>
+                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>
+                      {s.wallet.patientName}
+                      {s.referenceNo && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium align-middle" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                          {s.referenceNo}
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                       Submitted {fmtDate(s.submittedDate)} · {s.items.length} session{s.items.length !== 1 ? 's' : ''} · by {s.createdBy.name}
                     </p>

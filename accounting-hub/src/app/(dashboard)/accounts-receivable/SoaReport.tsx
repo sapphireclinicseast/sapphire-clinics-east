@@ -5,6 +5,7 @@ import {
   X, CheckCircle2, Upload, RefreshCw,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { ScanUpload } from '@/components/ScanUpload'
 import {
   buildSoaPdf, periodLabel, MONTH_OPTIONS, type SoaSettings, type SoaOrder as AROrder,
 } from '@/lib/soa-pdf'
@@ -25,6 +26,7 @@ interface SoaListRecord {
   orderIds?: string[] | null      // sessions covered by this SOA (set at generation)
   submittedDate?: string | null   // set once the Submitted button records the filing date
   submissionId?: string | null
+  referenceNo?: string | null     // SOA reference number (assigned at submission)
 }
 
 
@@ -37,10 +39,12 @@ interface SoaReportProps {
 /* ─── SOA Settings Modal ───────────────────────────────────── */
 function SoaSettingsModal({
   settings,
+  wallets,
   onSave,
   onClose,
 }: {
   settings: SoaSettings
+  wallets: ARWallet[]
   onSave: (s: SoaSettings) => Promise<void>
   onClose: () => void
 }) {
@@ -139,6 +143,31 @@ function SoaSettingsModal({
               {field('Email', 'contactEmail', 'east.sandboxclinic@gmail.com')}
               {field('Phone 1', 'contactPhone1', '0917 118 9289')}
               {field('Phone 2', 'contactPhone2', '(02) 5310 4991')}
+            </div>
+          </div>
+
+          {/* SOA Reference Codes */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--teal)' }}>SOA Reference Codes</p>
+            <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+              Provider code used in SOA reference numbers (BR-YYYYMMDD-HMO-000x, e.g. AHEA-20260903-ITCR-0001).
+              Blank = first four letters of the provider name.
+            </p>
+            <div className="space-y-2">
+              {wallets.map(w => (
+                <div key={w.id} className="flex items-center justify-between gap-2">
+                  <span className="text-xs truncate" style={{ color: 'var(--charcoal)' }}>{w.patientName}</span>
+                  <input
+                    type="text"
+                    value={form.hmoCodes?.[w.id] || ''}
+                    placeholder={(w.patientName || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4)}
+                    maxLength={6}
+                    onChange={e => setForm(f => ({ ...f, hmoCodes: { ...(f.hmoCodes || {}), [w.id]: e.target.value.toUpperCase() } }))}
+                    className="w-24 px-2 py-1.5 rounded-lg border text-xs font-mono outline-none text-center"
+                    style={{ borderColor: 'var(--light-gray)' }}
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
@@ -316,17 +345,19 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
   // "SOA Submitted" / "Date SOA Submitted" in the Per HMO table.
   const [submitFor, setSubmitFor] = useState<SoaListRecord | null>(null)
   const [submitDate, setSubmitDate] = useState('')
+  const [submitProofs, setSubmitProofs] = useState<string[]>([])
   const [submitBusy, setSubmitBusy] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const markSubmitted = async () => {
     if (!submitFor || !submitDate) { setSubmitError('Pick the date of submission.'); return }
+    if (submitProofs.length === 0) { setSubmitError('Attach at least one proof of submission (e.g. LBC receipt photo, email screenshot).'); return }
     setSubmitBusy(true)
     setSubmitError('')
     try {
       const r = await fetch('/api/accounts-receivable/soa', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: submitFor.id, submittedDate: submitDate }),
+        body: JSON.stringify({ id: submitFor.id, submittedDate: submitDate, proofUrls: submitProofs }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Failed to record the submission')
@@ -703,16 +734,17 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Generated</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>By</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Submitted</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>SOA Ref</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loadingRecords ? (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
                   <Loader2 size={16} className="animate-spin inline mr-2" />Loading…
                 </td></tr>
               ) : filteredRecords.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
                   {canWrite ? 'No SOA records found. Generate your first SOA above.' : 'No SOA records found.'}
                 </td></tr>
               ) : filteredRecords.map(r => (
@@ -747,7 +779,7 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                       </span>
                     ) : canWrite && (r.orderIds?.length || 0) > 0 ? (
                       <button
-                        onClick={() => { setSubmitFor(r); setSubmitDate(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })); setSubmitError('') }}
+                        onClick={() => { setSubmitFor(r); setSubmitDate(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })); setSubmitProofs([]); setSubmitError('') }}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white"
                         style={{ background: 'var(--teal)' }}
                         title="Record the date this SOA was submitted — its sessions flip to SOA-submitted in Per HMO">
@@ -756,6 +788,9 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                     ) : (
                       <span className="text-xs" style={{ color: 'var(--mid-gray)' }} title={(r.orderIds?.length || 0) === 0 ? 'Generated before per-session tracking — tag its sessions in SOA Submissions' : undefined}>—</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono whitespace-nowrap" style={{ color: r.referenceNo ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+                    {r.referenceNo || '—'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1.5">
@@ -789,6 +824,7 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
       {showSettings && (
         <SoaSettingsModal
           settings={settings}
+          wallets={wallets}
           onSave={saveSettings}
           onClose={() => setShowSettings(false)}
         />
@@ -817,6 +853,24 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date of submission</label>
               <input type="date" value={submitDate} onChange={e => setSubmitDate(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                Proof of submission <span className="font-normal">(required — LBC receipt photo, email screenshot, …)</span>
+              </label>
+              {submitProofs.length > 0 && (
+                <div className="rounded-lg border divide-y mb-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  {submitProofs.map((u, i) => (
+                    <div key={u} className="flex items-center justify-between gap-1 px-2 py-1">
+                      <a href={u} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium hover:underline truncate" style={{ color: 'var(--teal)' }}>Proof {i + 1}</a>
+                      <button onClick={() => setSubmitProofs(prev => prev.filter(x => x !== u))} className="p-0.5 rounded hover:bg-red-50"><X size={10} className="text-red-400" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <ScanUpload compact section="soa-proof" prefix={`SOAPROOF-${submitFor.id.slice(-6).toUpperCase()}`}
+                existingCount={submitProofs.length} onUploaded={u => setSubmitProofs(prev => [...prev, u])}
+                label={submitProofs.length > 0 ? '+ Add' : 'Upload'} />
             </div>
             {submitError && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: '#fef2f2', color: '#dc2626' }}>

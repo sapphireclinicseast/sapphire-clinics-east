@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { nextSoaReferenceNo, soaBranchCode, soaHmoCode } from '@/lib/soa-ref'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 // The HMO officer owns this record, so the write list includes that role even
@@ -25,6 +26,7 @@ export async function GET(req: Request) {
       take: 500,
       select: {
         id: true,
+        referenceNo: true,
         walletId: true,
         submittedDate: true,
         transmittalUrls: true,
@@ -96,21 +98,36 @@ export async function POST(req: Request) {
       }
     }
 
-    const created = await prisma.soaSubmission.create({
-      data: {
-        walletId,
-        submittedDate: new Date(submittedDate),
-        transmittalUrls: asUrlArray(transmittalUrls),
-        documentUrls: asUrlArray(documentUrls),
-        notes: notes || null,
-        branch: branch || null,
-        createdById: session.user.id as string,
-        items: ids.length ? { create: ids.map(orderId => ({ orderId })) } : undefined,
-      },
-      select: { id: true },
+    // Reference number is assigned the moment a submission exists:
+    // BR-YYYYMMDD-HMO-000x, sequence per exact prefix (no duplicates).
+    const [wallet, settings] = await Promise.all([
+      prisma.digitalWallet.findUnique({ where: { id: walletId }, select: { patientName: true, branch: true } }),
+      prisma.soaSettings.findUnique({ where: { id: 'singleton' }, select: { hmoCodes: true } }),
+    ])
+    const created = await prisma.$transaction(async (tx) => {
+      const referenceNo = await nextSoaReferenceNo(
+        tx,
+        soaBranchCode(branch || wallet?.branch),
+        new Date(submittedDate),
+        soaHmoCode(settings?.hmoCodes, walletId, wallet?.patientName || ''),
+      )
+      return tx.soaSubmission.create({
+        data: {
+          referenceNo,
+          walletId,
+          submittedDate: new Date(submittedDate),
+          transmittalUrls: asUrlArray(transmittalUrls),
+          documentUrls: asUrlArray(documentUrls),
+          notes: notes || null,
+          branch: branch || null,
+          createdById: session.user.id as string,
+          items: ids.length ? { create: ids.map(orderId => ({ orderId })) } : undefined,
+        },
+        select: { id: true, referenceNo: true },
+      })
     })
 
-    return NextResponse.json({ id: created.id }, { status: 201 })
+    return NextResponse.json({ id: created.id, referenceNo: created.referenceNo }, { status: 201 })
   } catch (e) {
     console.error('SOA submission POST failed', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
