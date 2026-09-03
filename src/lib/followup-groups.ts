@@ -11,10 +11,26 @@
 // their first consult is long past. If the intent is "has not been seen in N
 // months", this needs to key off the LAST session instead, and both this and the
 // Follow Up tab would have to change together.
-//
-// The same computation lives inline in
-// src/app/api/patient-relationship/route.ts. It is duplicated rather than
-// shared for now; if either changes, change both.
+
+/**
+ * Department follow-up intervals, in days. This is the single definition —
+ * the Patient Relationship "Follow Up" tab imports it from here, so the SMS
+ * audience and the tab cannot drift apart into two different rules.
+ */
+export const DEPT_FOLLOWUP: Record<string, { days: number; label: string }> = {
+  PSYCHOLOGY: { days: 90,  label: '3 months of no consult' },
+  PT:         { days: 60,  label: 'Should consult with MD after 2 months' },
+  OT:         { days: 180, label: 'Reconsult with Developmental Pediatrician after 6 months' },
+  SLP:        { days: 180, label: 'Reconsult with Developmental Pediatrician after 6 months' },
+  SPED:       { days: 180, label: 'Reconsult with Developmental Pediatrician after 6 months' },
+}
+
+/**
+ * Grace band around the due date used by the Follow Up tab: within ±7 days a
+ * patient reads as "due", past it as "overdue". The SMS groups deliberately do
+ * NOT apply it — they take everyone past the interval, due and overdue alike.
+ */
+export const TOLERANCE_DAYS = 7
 
 export interface FollowUpGroup {
   key: string
@@ -24,30 +40,21 @@ export interface FollowUpGroup {
   rule: string
 }
 
+// Each group names the departments it covers and takes its interval and rule
+// text from DEPT_FOLLOWUP, so editing an interval there moves the tab and the
+// SMS audience together.
+function group(key: string, label: string, departments: string[]): FollowUpGroup {
+  const spec = DEPT_FOLLOWUP[departments[0]]
+  if (!spec) throw new Error(`No follow-up interval defined for ${departments[0]}`)
+  return { key, label, departments, days: spec.days, rule: spec.label }
+}
+
 export const FOLLOWUP_GROUPS: FollowUpGroup[] = [
-  {
-    key: 'followup-pt',
-    label: 'PT Follow-up (overdue)',
-    departments: ['PT'],
-    days: 60,
-    rule: 'Should consult with MD after 2 months',
-  },
-  {
-    key: 'followup-psych',
-    label: 'Psych Follow-up (overdue)',
-    departments: ['PSYCHOLOGY'],
-    days: 90,
-    rule: '3 months of no consult',
-  },
-  {
-    key: 'followup-devped',
-    label: 'DevPed Follow-up (overdue)',
-    // One group across three departments because they share one rule and one
-    // action: go back to the Developmental Pediatrician.
-    departments: ['OT', 'SLP', 'SPED'],
-    days: 180,
-    rule: 'Reconsult with Developmental Pediatrician after 6 months',
-  },
+  group('followup-pt',    'PT Follow-up (overdue)',    ['PT']),
+  group('followup-psych', 'Psych Follow-up (overdue)', ['PSYCHOLOGY']),
+  // One group across three departments because they share one rule and one
+  // action: go back to the Developmental Pediatrician.
+  group('followup-devped', 'DevPed Follow-up (overdue)', ['OT', 'SLP', 'SPED']),
 ]
 
 export function followUpGroup(key: string): FollowUpGroup | undefined {
