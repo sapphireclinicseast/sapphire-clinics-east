@@ -7,6 +7,7 @@
 // campaign auto-progresses to 'sent' once sentCount === recipients.length.
 
 import { prisma } from './prisma'
+import { followUpGroup } from './followup-groups'
 
 // httpSMS-on-Globe-SIM safely handles ~1000/day per SIM; we leave headroom
 // for schedule reminders, birthdays and other ad-hoc sends from the same SIM.
@@ -171,6 +172,60 @@ async function resolveRecipients(
 
     return patients
       .filter((p): p is typeof p & { phone: string } => !!p.phone && p.phone.trim().length > 0)
+  }
+
+  // ── followup-{pt|psych|devped} ────────────────────────────────────────────
+  // The people the Patient Relationship "Follow Up" tab lists as overdue.
+  // Reference date is the FIRST consult, matching that tab exactly — see the
+  // warning in lib/followup-groups.ts about what that does and does not mean.
+  const fg = followUpGroup(recipientGroup)
+  if (fg) {
+    const branchFilter = branch === 'BOTH' ? null : branch
+
+    // Earliest session per patient, per the tab's own definition of a starting
+    // point. Ordered ascending so the first row seen for a patient is theirs.
+    const schedules = await prisma.schedule.findMany({
+      where: {
+        patientId: { not: null },
+        staff: {
+          department: { in: fg.departments as ('PT' | 'OT' | 'SLP' | 'SPED' | 'MD' | 'PSYCHOLOGY')[] },
+          ...(branchFilter ? { branch: branchFilter as 'SBEA' | 'SBGH' } : {}),
+        },
+      },
+      select: { patientId: true, date: true },
+      orderBy: { date: 'asc' },
+    })
+
+    const firstSession = new Map<string, Date>()
+    for (const row of schedules) {
+      if (!row.patientId) continue
+      if (!firstSession.has(row.patientId)) firstSession.set(row.patientId, row.date)
+    }
+    if (firstSession.size === 0) return []
+
+    const candidates = await prisma.patient.findMany({
+      where: {
+        id: { in: Array.from(firstSession.keys()) },
+        smsUnsubscribed: false,   // honour the SMS opt-out, as every group does
+        phone: { not: null },
+      },
+      select: { id: true, firstName: true, lastName: true, phone: true, firstDayOfConsult: true },
+    })
+
+    const now = Date.now()
+    const DAY = 24 * 60 * 60 * 1000
+    return candidates
+      .filter(p => {
+        const ref = p.firstDayOfConsult ?? firstSession.get(p.id)
+        if (!ref) return false
+        const daysSince = Math.floor((now - new Date(ref).getTime()) / DAY)
+        // "Everyone beyond the N months" — past the threshold, which is the
+        // whole overdue population rather than only those past the tab's
+        // ±7-day "due" band.
+        return daysSince >= fg.days
+      })
+      .filter((p): p is typeof p & { phone: string } => !!p.phone && p.phone.trim().length > 0)
+      .map(p => ({ id: p.id, firstName: p.firstName, lastName: p.lastName, phone: p.phone }))
   }
 
   return []

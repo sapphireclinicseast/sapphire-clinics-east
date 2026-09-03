@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { loadCancellationFees, pairFeesToLogs } from '@/lib/cancellation-fees'
+import { DEPT_FOLLOWUP, TOLERANCE_DAYS } from '@/lib/followup-groups'
 
 const HR_URLS = [
   process.env.HR_PLATFORM_URL,
@@ -29,15 +30,9 @@ async function hrFetch(path: string, opts: RequestInit = {}): Promise<Response> 
   throw lastErr
 }
 
-// Department-specific follow-up intervals (in days)
-const DEPT_FOLLOWUP: Record<string, { days: number; label: string }> = {
-  PSYCHOLOGY: { days: 90,  label: '3 months of no consult' },
-  PT:         { days: 60,  label: 'Should consult with MD after 2 months' },
-  OT:         { days: 180, label: 'Reconsult with Developmental Pediatrician after 6 months' },
-  SLP:        { days: 180, label: 'Reconsult with Developmental Pediatrician after 6 months' },
-  SPED:       { days: 180, label: 'Reconsult with Developmental Pediatrician after 6 months' },
-}
-const TOLERANCE_DAYS = 7
+// Department-specific follow-up intervals (in days). Defined in
+// lib/followup-groups.ts so this tab and the SMS follow-up audiences read the
+// same rule; they used to be two copies that could silently disagree.
 
 // Free cancellation allowance per 6-month window (before fees apply)
 const FREE_CANCELLATIONS = 2
