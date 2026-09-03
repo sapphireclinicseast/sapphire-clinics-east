@@ -298,6 +298,7 @@ model Patient {
   birthdayGreetings   BirthdayGreeting[]
   patientBookings     PatientBooking[]
   followUpReminders   FollowUpReminder[]
+  loaSubmissions      LoaSubmission[]
   documents           PatientDocument[]
   tickets             PatientTicket[]
   homeProgress        HomeProgressEntry[]
@@ -746,6 +747,7 @@ model DeckingSlot {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   patientBookings PatientBooking[]
+  loaSubmissions  LoaSubmission[]
 
   @@index([paymentType])
 }
@@ -2272,4 +2274,96 @@ model EmailBounce {
 
   @@index([email])
   @@index([kind, detectedAt])
+}
+
+// ─── LOA (HMO Letter of Authorization) ──────────────────────────────────────
+//
+// An HMO session needs an approved LOA on file. Front desk raises one from the
+// HMO slot on the Decking board, then either uploads the document themselves or
+// hands the patient a link / QR code to photograph their copy.
+
+/// The HMO names offered in the LOA form. A settings-managed list rather than a
+/// hardcoded array or a Postgres enum, because the clinic adds providers
+/// without a deploy — same reasoning as the HrBranch registry behind
+/// getBranchOptions(). Branches deliberately are NOT modelled here: they come
+/// from HrBranch, which syncs from HR Platform, so a new clinic appears on its
+/// own.
+model HmoProvider {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+enum LoaStatus {
+  AWAITING   // raised, nothing uploaded yet
+  SUBMITTED  // document received
+  APPROVED   // front desk checked it against the HMO's approval
+  REJECTED
+}
+
+model LoaSubmission {
+  id             String    @id @default(cuid())
+  // Optional so a letter can be chased before the patient record exists; when
+  // absent, patientName carries what front desk typed.
+  patientId      String?
+  patient        Patient?  @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  patientName    String?
+  // The HMO slot this was raised from, when it came off the Decking board.
+  // SetNull rather than Cascade: deleting a slot must not destroy the paper
+  // trail for a letter that was already approved.
+  deckingSlotId  String?
+  deckingSlot    DeckingSlot? @relation(fields: [deckingSlotId], references: [id], onDelete: SetNull)
+  hmoName        String
+  branch         String
+  /// Services the LOA covers. Ticked from LoaServiceOption, stored as plain
+  /// text rather than IDs so renaming or retiring an option never rewrites the
+  /// history of letters already approved under the old name.
+  services       String[]  @default([])
+  dateOfApproval DateTime?
+  fileUrl        String?
+  fileMime       String?
+  status         LoaStatus @default(AWAITING)
+  notes          String?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  tokens         LoaUploadToken[]
+
+  @@index([branch, status])
+  @@index([deckingSlotId])
+  @@index([patientId])
+}
+
+/// One-time link behind the QR code the patient scans. Mirrors
+/// ReferralUploadToken — short-lived, single-use, and the only thing standing
+/// in for auth on the public upload route.
+model LoaUploadToken {
+  id        String        @id @default(cuid())
+  token     String        @unique
+  loaId     String
+  loa       LoaSubmission @relation(fields: [loaId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  used      Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  @@index([loaId])
+}
+
+/// The services offered in the LOA form's tick list. Settings-managed for the
+/// same reason as HmoProvider: the clinic adds and retires services without a
+/// deploy.
+model LoaServiceOption {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, sortOrder])
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
+import LoaSubmissionsTab from './LoaSubmissionsTab'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { branchLabel } from '@/lib/branch'
@@ -473,7 +474,7 @@ export default function AccountsReceivablePage() {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
   // HMO sub-tab state
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report' | 'submitted-soa'>('overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report' | 'submitted-soa' | 'loa'>('overview')
   // useSession resolves after the first render, so the initial tab/sub-tab are
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
@@ -1229,6 +1230,9 @@ export default function AccountsReceivablePage() {
             { key: 'per-hmo', label: 'Per HMO' },
             { key: 'soa-report', label: 'Generate SOA' },
             { key: 'submitted-soa', label: 'SOA Submissions' },
+            // Letters of Authorization are raised in the Operations Hub; this is
+            // the HMO officer's read-only window onto them.
+            { key: 'loa', label: 'LOA Submission' },
           ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
@@ -2137,6 +2141,8 @@ export default function AccountsReceivablePage() {
       </>}
 
       {/* ── Per HMO sub-tab content ── */}
+      {tab === 'HMO' && hmoSubTab === 'loa' && <LoaSubmissionsTab />}
+
       {tab === 'HMO' && hmoSubTab === 'per-hmo' && (() => {
         // Filter the main orders data
         // Prefer the period this tab fetched for itself; the page list is only

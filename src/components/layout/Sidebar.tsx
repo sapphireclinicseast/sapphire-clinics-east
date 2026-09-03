@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Send, Calendar, Cake, Sparkles,
   Users, Mail, BookOpen, Clock, ChevronRight, Link2, ChevronDown, X, BarChart2,
   UserCog, ListOrdered, CalendarDays, ClipboardCheck, Layers, HeartHandshake,
-  UsersRound, FileText, Activity,
+  UsersRound, FileText, Activity, FileCheck,
   MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -27,6 +27,7 @@ const CLINIC_TOOLS_ALL = [
   { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
   { href: '/registration-forms', icon: FileText, label: 'Registration Forms' },
   { href: '/decking', icon: Layers, label: 'Decking Module' },
+  { href: '/loa-submissions', icon: FileCheck, label: 'LOA Submission' },
   { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
   { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
 ]
@@ -111,6 +112,7 @@ const FRONT_DESK_NAV = [
       { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
       { href: '/registration-forms', icon: FileText, label: 'Registration Forms' },
       { href: '/decking', icon: Layers, label: 'Decking Module' },
+      { href: '/loa-submissions', icon: FileCheck, label: 'LOA Submission' },
       { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
       { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
     ],
