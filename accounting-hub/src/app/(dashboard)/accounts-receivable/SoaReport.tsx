@@ -270,6 +270,44 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
   const [showDuplicate, setShowDuplicate] = useState(false)
   const pendingGenRef = useRef<(() => Promise<void>) | null>(null)
 
+  // Transaction preview: once a provider + month are chosen, every eligible
+  // transaction loads TICKED; individual sessions can be unticked before
+  // generating. Sessions already in an SOA Submissions batch never appear —
+  // they can no longer go on a new SOA.
+  const [previewOrders, setPreviewOrders] = useState<AROrder[] | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [unticked, setUnticked] = useState<Set<string>>(new Set())
+  const [alreadySubmittedCount, setAlreadySubmittedCount] = useState(0)
+
+  const loadPreview = useCallback(async () => {
+    if (!genWallet || !genPeriod) { setPreviewOrders(null); setUnticked(new Set()); return }
+    setPreviewLoading(true)
+    setGenError('')
+    setGenSuccess('')
+    try {
+      const [year, month] = genPeriod.split('-')
+      const dateFrom = `${year}-${month}-01`
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate()
+      const dateTo = `${year}-${month}-${String(lastDay).padStart(2, '0')}`
+      const r = await fetch(`/api/accounts-receivable?type=HMO&walletId=${genWallet}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
+      const d = await r.json()
+      const all: AROrder[] = d.orders || []
+      const eligible = all.filter(o => !(o.soaSubmissionItems?.length))
+      setAlreadySubmittedCount(all.length - eligible.length)
+      setPreviewOrders(eligible)
+      setUnticked(new Set())
+    } catch {
+      setPreviewOrders(null)
+      setGenError('Could not load the transactions for this provider and month.')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }, [genWallet, genPeriod])
+  useEffect(() => { loadPreview() }, [loadPreview])
+
+  const previewAmount = (o: AROrder) =>
+    o.payments.reduce((s, p) => (!p.walletId || p.walletId === genWallet) ? s + (Number(p.amount) || 0) : s, 0)
+
   // History filters
   const [histWallet, setHistWallet] = useState('')
   const [histPeriod, setHistPeriod] = useState('')
@@ -336,30 +374,21 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
         }
       }
 
-      // Fetch orders for this wallet + period
-      const [year, month] = genPeriod.split('-')
-      const dateFrom = `${year}-${month}-01`
-      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate()
-      const dateTo = `${year}-${month}-${String(lastDay).padStart(2, '0')}`
+      // The SOA covers exactly the TICKED transactions from the preview list.
+      const eligible = previewOrders || []
+      const fetchedOrders = eligible.filter(o => !unticked.has(o.id))
+      const excludedByUser = eligible.length - fetchedOrders.length
+      const alreadySubmitted = alreadySubmittedCount
 
-      const ordersRes = await fetch(
-        `/api/accounts-receivable?type=HMO&walletId=${genWallet}&dateFrom=${dateFrom}&dateTo=${dateTo}`
-      )
-      const ordersData = await ordersRes.json()
-      const allOrders: AROrder[] = ordersData.orders || []
-      // Sessions already tagged in an SOA Submissions batch (logged manually, or
-      // auto-recorded by an earlier SOA Report) are already claimed — they can no
-      // longer go on a new SOA.
-      const fetchedOrders = allOrders.filter(o => !(o.soaSubmissionItems?.length))
-      const alreadySubmitted = allOrders.length - fetchedOrders.length
-
-      if (allOrders.length === 0) {
-        setGenError('No orders found for this provider and period.')
+      if (eligible.length === 0) {
+        setGenError(alreadySubmitted > 0
+          ? 'All sessions in this period are already tagged as SOA-submitted (see SOA Submissions) — nothing left to put on a new SOA.'
+          : 'No orders found for this provider and period.')
         setGenerating(false)
         return
       }
       if (fetchedOrders.length === 0) {
-        setGenError('All sessions in this period are already tagged as SOA-submitted (see SOA Submissions) — nothing left to put on a new SOA.')
+        setGenError('Every transaction is unticked — tick at least one session to generate an SOA.')
         setGenerating(false)
         return
       }
@@ -401,10 +430,12 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
 
       setGenSuccess(
         `SOA for ${walletName} — ${periodLabel(genPeriod)} generated successfully. ${fetchedOrders.length} session${fetchedOrders.length === 1 ? '' : 's'} tagged as SOA-submitted.`
+        + (excludedByUser > 0 ? ` ${excludedByUser} unticked session${excludedByUser === 1 ? ' was' : 's were'} left off the SOA.` : '')
         + (alreadySubmitted > 0 ? ` ${alreadySubmitted} already-submitted session${alreadySubmitted === 1 ? ' was' : 's were'} excluded.` : '')
         + tagNote
       )
       await fetchRecords()
+      await loadPreview()
     } catch (e) {
       setGenError(e instanceof Error ? e.message : 'Failed to generate SOA')
     } finally {
@@ -488,7 +519,7 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
         <div>
           <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Generate SOA Report</h2>
           <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-            Select an HMO provider and month to generate a Statement of Account PDF.
+            Select an HMO provider and month — every transaction for that month loads ticked below. Untick any you want left off, then generate the Statement of Account PDF.
           </p>
         </div>
 
@@ -508,12 +539,82 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
               {MONTH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <button onClick={handleGenerate} disabled={generating || !genWallet || !genPeriod}
+          <button onClick={handleGenerate}
+            disabled={generating || previewLoading || !genWallet || !genPeriod || !previewOrders || previewOrders.filter(o => !unticked.has(o.id)).length === 0}
             className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: 'var(--teal)' }}>
             {generating ? <><Loader2 size={14} className="animate-spin" /> Generating…</> : <><FileText size={14} /> Generate SOA</>}
           </button>
         </div>
+
+        {/* ── Transaction preview: all ticked by default; untick to leave off ── */}
+        {genWallet && genPeriod && (
+          previewLoading ? (
+            <div className="flex items-center gap-2 px-3 py-4 text-xs" style={{ color: 'var(--mid-gray)' }}>
+              <Loader2 size={14} className="animate-spin" /> Loading transactions…
+            </div>
+          ) : previewOrders && (
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+              {previewOrders.length === 0 ? (
+                <div className="px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  {alreadySubmittedCount > 0
+                    ? `All ${alreadySubmittedCount} session${alreadySubmittedCount === 1 ? '' : 's'} in this month are already tagged as SOA-submitted (see SOA Submissions) — nothing left to put on a new SOA.`
+                    : 'No transactions found for this provider and month.'}
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left sticky top-0" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                          <th className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={unticked.size === 0}
+                              onChange={() => setUnticked(unticked.size === 0 ? new Set(previewOrders.map(o => o.id)) : new Set())}
+                              title={unticked.size === 0 ? 'Untick all' : 'Tick all'}
+                            />
+                          </th>
+                          <th className="px-3 py-2 font-semibold whitespace-nowrap">Date</th>
+                          <th className="px-3 py-2 font-semibold">Patient</th>
+                          <th className="px-3 py-2 font-semibold">Service</th>
+                          <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewOrders.map(o => {
+                          const on = !unticked.has(o.id)
+                          return (
+                            <tr key={o.id} className="border-t cursor-pointer" style={{ borderColor: 'var(--light-gray)', opacity: on ? 1 : 0.45 }}
+                              onClick={() => setUnticked(prev => { const n = new Set(prev); n.has(o.id) ? n.delete(o.id) : n.add(o.id); return n })}>
+                              <td className="px-3 py-2"><input type="checkbox" checked={on} readOnly /></td>
+                              <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                                {new Date(o.arCustomDate || o.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </td>
+                              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
+                              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.items.map(i => i.name).join(', ')}</td>
+                              <td className="px-3 py-2 text-right font-medium whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{formatCurrency(previewAmount(o))}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-t text-xs" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                    <span style={{ color: 'var(--charcoal)' }}>
+                      <strong>{previewOrders.length - unticked.size}</strong> of {previewOrders.length} session{previewOrders.length === 1 ? '' : 's'} ticked
+                      {' '}· total <strong>{formatCurrency(previewOrders.filter(o => !unticked.has(o.id)).reduce((s, o) => s + previewAmount(o), 0))}</strong>
+                      {unticked.size > 0 && <span style={{ color: 'var(--mid-gray)' }}> · {unticked.size} unticked will stay taggable later</span>}
+                    </span>
+                    {alreadySubmittedCount > 0 && (
+                      <span style={{ color: 'var(--mid-gray)' }}>{alreadySubmittedCount} already-submitted session{alreadySubmittedCount === 1 ? '' : 's'} not shown</span>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )
+        )}
 
         {genError && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: '#fef2f2', color: '#dc2626' }}>
