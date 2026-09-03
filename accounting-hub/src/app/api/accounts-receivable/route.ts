@@ -129,11 +129,15 @@ export async function GET(req: Request) {
           select: { submission: { select: { submittedDate: true } } },
         },
       },
-      // The unscoped list backs the page grid, where 500 newest is plenty. A
-      // wallet-scoped request backs the Record Payment tag list, which must
-      // reach years back (imported QB orders) — one wallet stays small enough
-      // to return whole.
-      take: walletId ? 5000 : 500,
+      // The unscoped list backs the page grid, where 500 newest is plenty. Any
+      // narrowed request — one wallet (the Record Payment tag list) or an
+      // explicit period (Per HMO) — must reach years back to the imported QB
+      // orders instead, and is small enough to return whole.
+      //
+      // Without the date arm, Per HMO could only ever sift the newest 500
+      // client-side. That cap cut off at 2026-03-12, so asking it for 2025
+      // returned "No transactions found" over 862 real HMO orders.
+      take: (walletId || dateFrom || dateTo) ? 5000 : 500,
     })
 
     // HMO sessions whose service the HMO settles with the clinician directly

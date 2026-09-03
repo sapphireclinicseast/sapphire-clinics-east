@@ -497,6 +497,12 @@ export default function AccountsReceivablePage() {
   const [perHmoSortField, setPerHmoSortField] = useState('transactionDate')
   const [perHmoSortDir, setPerHmoSortDir] = useState<'asc' | 'desc'>('desc')
   const [perHmoColSearch, setPerHmoColSearch] = useState<Record<string, string>>({})
+  // Per HMO fetches its own period rather than sifting the page list. That list
+  // is the 500 newest orders, which reaches back only a few months, so every
+  // imported QuickBooks order sat outside it and the tab showed
+  // "No transactions found" for any past year.
+  const [perHmoFetched, setPerHmoFetched] = useState<AROrder[] | null>(null)
+  const [perHmoLoading, setPerHmoLoading] = useState(false)
   const [showDownloadMenu, setShowDownloadMenu] = useState(false)
 
   // Invoice Settings state
@@ -560,6 +566,28 @@ export default function AccountsReceivablePage() {
       .catch(() => {})
     return () => ctl.abort()
   }, [showPaymentModal, tab, payWalletId])
+
+  // Per HMO's own order fetch. Any of its filters makes the request narrow
+  // enough for the API to lift the 500-row page cap, so a past year returns the
+  // imported QB orders it actually holds. With no filter set there is nothing
+  // to widen to, and the tab falls back to the page list.
+  useEffect(() => {
+    if (tab !== 'HMO' || hmoSubTab !== 'per-hmo') return
+    if (!perHmoWallet && !perHmoFrom && !perHmoTo) { setPerHmoFetched(null); return }
+    const ctl = new AbortController()
+    const params = new URLSearchParams({ type: 'HMO', sortField, sortDir })
+    if (branch) params.set('branch', branch)
+    if (perHmoWallet) params.set('walletId', perHmoWallet)
+    if (perHmoFrom) params.set('dateFrom', perHmoFrom)
+    if (perHmoTo) params.set('dateTo', perHmoTo)
+    setPerHmoLoading(true)
+    fetch(`/api/accounts-receivable?${params}`, { signal: ctl.signal })
+      .then(r => r.json())
+      .then(d => setPerHmoFetched(d.orders || []))
+      .catch(() => {})
+      .finally(() => setPerHmoLoading(false))
+    return () => ctl.abort()
+  }, [tab, hmoSubTab, branch, perHmoWallet, perHmoFrom, perHmoTo, sortField, sortDir])
 
   // Fetch aging dashboard data whenever tab / branch / period changes
   useEffect(() => {
@@ -2111,16 +2139,18 @@ export default function AccountsReceivablePage() {
       {/* ── Per HMO sub-tab content ── */}
       {tab === 'HMO' && hmoSubTab === 'per-hmo' && (() => {
         // Filter the main orders data
-        let perHmoOrders = orders
+        // Prefer the period this tab fetched for itself; the page list is only
+        // the 500 newest orders and cannot answer for a past year.
+        let perHmoOrders = perHmoFetched ?? orders
+        // Period membership follows the same rule as the server: a Change Date
+        // (arCustomDate), where one was set, decides the period instead of the
+        // transaction date. Reading transactionDate here re-dropped rows the
+        // server had deliberately moved into range.
+        const periodDate = (o: AROrder) =>
+          new Date(o.arCustomDate ?? o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
         if (perHmoWallet) perHmoOrders = perHmoOrders.filter(o => o.payments.some(p => p.walletId === perHmoWallet))
-        if (perHmoFrom) perHmoOrders = perHmoOrders.filter(o => {
-          const d = new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
-          return d >= perHmoFrom
-        })
-        if (perHmoTo) perHmoOrders = perHmoOrders.filter(o => {
-          const d = new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
-          return d <= perHmoTo
-        })
+        if (perHmoFrom) perHmoOrders = perHmoOrders.filter(o => periodDate(o) >= perHmoFrom)
+        if (perHmoTo) perHmoOrders = perHmoOrders.filter(o => periodDate(o) <= perHmoTo)
         // Apply column searches
         if (perHmoColSearch.patient) {
           const q = perHmoColSearch.patient.toLowerCase()
@@ -2361,7 +2391,11 @@ export default function AccountsReceivablePage() {
                   {loading ? (
                     <tr><td colSpan={13} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                   ) : perHmoOrders.length === 0 ? (
-                    <tr><td colSpan={13} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No transactions found</td></tr>
+                    <tr><td colSpan={13} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      {/* Fetching a past year takes a moment — saying "none" while
+                          the rows are still in flight is how this read as empty. */}
+                      {perHmoLoading ? 'Loading transactions…' : 'No transactions found'}
+                    </td></tr>
                   ) : perHmoOrders.map(o => {
                     const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
                     const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
