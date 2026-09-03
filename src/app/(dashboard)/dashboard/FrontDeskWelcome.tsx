@@ -473,7 +473,7 @@ export default function FrontDeskWelcome({
       )}
 
       {/* ── Top row: greeting (center) + reminder cards (right) ── */}
-      <div className="w-full max-w-[1200px] px-6 flex flex-col lg:flex-row gap-6 items-start">
+      <div className="w-full max-w-[1200px] px-6 flex flex-col xl:flex-row gap-6 items-start">
 
         {/* Left column: greeting + quote + branch badge.
             This was a centred, full-height landing block — logo, then greeting,
@@ -481,7 +481,7 @@ export default function FrontDeskWelcome({
             laptop. It reads as a page header now: the logo sits beside the
             greeting rather than above it, and everything is left-aligned so the
             eye starts in one place instead of the middle. */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.85rem' }}>
+        <div style={{ flex: '1 1 380px', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.85rem' }}>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
             <Image
@@ -539,6 +539,24 @@ export default function FrontDeskWelcome({
               {branchLabel}
             </div>
           )}
+        </div>
+
+        {/* Right column: the mascot and the two reference cards.
+            This half of the header row was empty — the greeting is short, so a
+            single flex child left a hero-sized gap on every screen wider than a
+            laptop. The cards that fill it are reference, not work: they are read
+            once and remembered, which is exactly what belongs beside a greeting
+            rather than in the grid competing with today's queue. */}
+        <div style={{
+          width: '100%', maxWidth: 420, flex: '0 1 420px', minWidth: 0,
+          display: 'flex', flexDirection: 'column', gap: '0.75rem',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', opacity: 0.9 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={104} height={104} style={{ display: 'block' }} />
+          </div>
+          <DeskShortcutCard />
+          <PactCancellationReminder />
         </div>
 
       </div>{/* end top row */}
@@ -850,20 +868,7 @@ export default function FrontDeskWelcome({
         {/* Perk actions — real work, so it sits with the work. */}
         <PlushToyEligible branch={branch} seesAllBranches={seesAllBranches} />
 
-        {/* Reference, not action. These are read once and remembered, so they
-            come after everything that needs doing today rather than competing
-            with it for the top of the page. */}
-        <DeskShortcutCard />
-        <PactCancellationReminder />
-
       </div>{/* end dashboard grid */}
-
-      {/* The mascot stays — it just no longer occupies a column of prime space
-          in the middle of the page. */}
-      <div style={{ width: '100%', maxWidth: '1200px', padding: '1.25rem 1.5rem 0', display: 'flex', justifyContent: 'center', opacity: 0.9 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={132} height={132} style={{ display: 'block' }} />
-      </div>
 
     </div>
   )
