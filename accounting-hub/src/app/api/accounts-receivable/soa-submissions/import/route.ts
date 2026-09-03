@@ -27,6 +27,19 @@ const IMPORT_NOTE = 'Imported from HMO tracker workbook'
 const normName = (s: string) =>
   (s || '').toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ')
 
+// Multi-letter name tokens ("MA." and middle initials drop out).
+const nameTokens = (s: string) =>
+  (s || '').toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter(t => t.length > 1)
+
+// "BAUTISTA, CHRISTINE" ⊆ "CHRISTINE VICTORIA BAUTISTA": every token of the
+// shorter name appears in the longer one, with at least two in common.
+const nameSubset = (a: string[], b: string[]) => {
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a]
+  return short.length >= 2 && short.every(t => long.includes(t))
+}
+
+const dayDiff = (a: string, b: string) => Math.abs((+new Date(a) - +new Date(b)) / 86400000)
+
 export async function POST(req: Request) {
   const internalSecret = process.env.NEXTAUTH_SECRET
   if (!internalSecret || req.headers.get('x-internal-secret') !== internalSecret) {
@@ -87,6 +100,7 @@ export async function POST(req: Request) {
         return {
           id: o.id,
           name,
+          tokens: nameTokens(raw),
           generic: !raw || /^HMO\b/i.test(raw) || (!!walletToken && name.includes(walletToken)),
           date: new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
           amount: o.payments.reduce((s, p) => s + Number(p.amount), 0),
@@ -98,19 +112,24 @@ export async function POST(req: Request) {
       const matchedIds: string[] = []
       let alreadyTagged = 0
       const unmatched: { patient: string; amount: number; dates: string[] }[] = []
+      const unique = <T,>(arr: T[]) => (arr.length === 1 ? arr[0] : undefined)
       for (const row of batch.rows) {
         const rn = normName(row.patient)
-        const hit = pool.find(o =>
-          !o.used && !o.generic && o.name === rn && row.dates.includes(o.date) && Math.abs(o.amount - row.amount) < 0.51)
-          // Amount drifts (partial areas, rounding) shouldn't orphan a clearly
-          // identified session: fall back to name+date alone if unambiguous.
-          || (() => {
-            const byDay = pool.filter(o => !o.used && !o.generic && o.name === rn && row.dates.includes(o.date))
-            return byDay.length === 1 ? byDay[0] : undefined
-          })()
-          // Generic-name pool (patient unknown in the DB): same provider, same
-          // service date, same amount — interchangeable, pair greedily.
-          || pool.find(o => !o.used && o.generic && row.dates.includes(o.date) && Math.abs(o.amount - row.amount) < 0.51)
+        const rTokens = nameTokens(row.patient)
+        const amountOk = (o: { amount: number }) => Math.abs(o.amount - row.amount) < 0.51
+        const hit =
+          // 1. exact normalized name + service date + amount
+          pool.find(o => !o.used && !o.generic && o.name === rn && row.dates.includes(o.date) && amountOk(o))
+          // 2. exact name + date, amount drifted — only when unambiguous
+          || unique(pool.filter(o => !o.used && !o.generic && o.name === rn && row.dates.includes(o.date)))
+          // 3. name-subset (middle names / initials differ) + date + amount, unambiguous
+          || unique(pool.filter(o => !o.used && !o.generic && nameSubset(rTokens, o.tokens) && row.dates.includes(o.date) && amountOk(o)))
+          // 4. name-subset + amount within ±3 days (workbook carries the LOA
+          //    approval date, sessions land a few days later), unambiguous
+          || unique(pool.filter(o => !o.used && !o.generic && nameSubset(rTokens, o.tokens) && amountOk(o) && row.dates.some(d => dayDiff(d, o.date) <= 3)))
+          // 5. generic-name pool (patient unknown in the DB): same provider,
+          //    same service date, same amount — interchangeable, pair greedily.
+          || pool.find(o => !o.used && o.generic && row.dates.includes(o.date) && amountOk(o))
         if (!hit) { unmatched.push(row); continue }
         hit.used = true
         if (hit.tagged) { alreadyTagged++; continue }
