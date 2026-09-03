@@ -10,6 +10,7 @@
 // see /api/loa-form/patients.
 
 import { useEffect, useRef, useState } from 'react'
+import LoaPhotoCapture from '@/components/LoaPhotoCapture'
 
 type Stage = 'form' | 'submitting' | 'success'
 interface Picked { id: string; name: string }
@@ -37,7 +38,6 @@ export default function LoaStandingFormPage() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
-  const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -265,14 +265,12 @@ export default function LoaStandingFormPage() {
           </p>
         )}
 
-        {/* capture="environment" opens the rear camera on a phone — most
-            patients photograph the letter rather than having a file to pick. */}
-        <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
         <input ref={galleryRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
 
-        <button style={bigButton} onClick={() => cameraRef.current?.click()}>📷 Take a photo</button>
+        {/* Phone: rear camera. Laptop: in-page webcam, since the capture
+            attribute is ignored there and this used to open a file picker. */}
+        <LoaPhotoCapture onCapture={handleFile} buttonStyle={bigButton} />
         <button style={ghostButton} onClick={() => galleryRef.current?.click()}>📎 Choose a photo or PDF</button>
 
         {errorMsg && (

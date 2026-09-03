@@ -7,6 +7,7 @@
 // Modelled on /referral/[token], which patients already use for referrals.
 
 import { useEffect, useRef, useState } from 'react'
+import LoaPhotoCapture from '@/components/LoaPhotoCapture'
 import { useParams } from 'next/navigation'
 
 type Stage = 'loading' | 'ready' | 'uploading' | 'success' | 'error'
@@ -29,7 +30,6 @@ export default function LoaUploadPage() {
   const [preview, setPreview] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [approvalDate, setApprovalDate] = useState('')
-  const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -123,9 +123,27 @@ export default function LoaUploadPage() {
       <div style={container}>
         <div style={card}>
           <h1 style={{ fontSize: '1.2rem', fontWeight: 800, color: charcoal, marginBottom: '0.5rem' }}>
-            Something went wrong
+            This link is no longer valid
           </h1>
           <p style={{ color: '#667', lineHeight: 1.5 }}>{errorMsg}</p>
+          {/* A one-time link dies when it is used, when a newer one is issued
+              for the same letter, or after 12 hours — and the patient reading
+              this cannot tell which. Sending them to the standing form, which
+              never expires, turns a dead end into a working path rather than a
+              message telling them to ring the clinic. */}
+          <a
+            href="/loa"
+            style={{
+              display: 'block', marginTop: '1.1rem', padding: '0.95rem',
+              borderRadius: 12, background: teal, color: '#fff',
+              fontWeight: 700, textDecoration: 'none', textAlign: 'center',
+            }}
+          >
+            Use the LOA form instead
+          </a>
+          <p style={{ fontSize: '0.78rem', color: '#8A9499', marginTop: '0.7rem', lineHeight: 1.5 }}>
+            You will be asked to find your name, then upload the same document.
+          </p>
         </div>
       </div>
     )
@@ -222,23 +240,15 @@ export default function LoaUploadPage() {
           </p>
         )}
 
-        {/* capture="environment" opens the rear camera straight away on a phone,
-            which is how most patients will send this — they photograph the
-            letter rather than having a file to pick. */}
-        <input
-          ref={cameraRef} type="file" accept="image/*" capture="environment"
-          style={{ display: 'none' }}
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
-        />
         <input
           ref={galleryRef} type="file" accept="image/*,application/pdf"
           style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
         />
 
-        <button style={bigButton} onClick={() => cameraRef.current?.click()}>
-          📷 Take a photo
-        </button>
+        {/* On a phone this opens the rear camera; on a laptop, where the
+            capture attribute is ignored, it opens an in-page webcam instead. */}
+        <LoaPhotoCapture onCapture={handleFile} buttonStyle={bigButton} />
         <button style={ghostButton} onClick={() => galleryRef.current?.click()}>
           📎 Choose a photo or PDF
         </button>
