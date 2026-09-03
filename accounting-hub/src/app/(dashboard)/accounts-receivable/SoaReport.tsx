@@ -346,10 +346,20 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
         `/api/accounts-receivable?type=HMO&walletId=${genWallet}&dateFrom=${dateFrom}&dateTo=${dateTo}`
       )
       const ordersData = await ordersRes.json()
-      const fetchedOrders: AROrder[] = ordersData.orders || []
+      const allOrders: AROrder[] = ordersData.orders || []
+      // Sessions already tagged in an SOA Submissions batch (logged manually, or
+      // auto-recorded by an earlier SOA Report) are already claimed — they can no
+      // longer go on a new SOA.
+      const fetchedOrders = allOrders.filter(o => !(o.soaSubmissionItems?.length))
+      const alreadySubmitted = allOrders.length - fetchedOrders.length
 
-      if (fetchedOrders.length === 0) {
+      if (allOrders.length === 0) {
         setGenError('No orders found for this provider and period.')
+        setGenerating(false)
+        return
+      }
+      if (fetchedOrders.length === 0) {
+        setGenError('All sessions in this period are already tagged as SOA-submitted (see SOA Submissions) — nothing left to put on a new SOA.')
         setGenerating(false)
         return
       }
@@ -370,7 +380,30 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
 
       if (!saveRes.ok) throw new Error('Failed to save SOA')
 
-      setGenSuccess(`SOA for ${walletName} — ${periodLabel(genPeriod)} generated successfully.`)
+      // Record the covered sessions as an SOA Submissions batch, so their
+      // "SOA Submitted" flag flips to Yes and they can't land on another SOA.
+      let tagNote = ''
+      try {
+        const subRes = await fetch('/api/accounts-receivable/soa-submissions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            walletId: genWallet,
+            submittedDate: new Date().toISOString().slice(0, 10),
+            notes: `Generated via SOA Report — ${periodLabel(genPeriod)}`,
+            orderIds: fetchedOrders.map(o => o.id),
+          }),
+        })
+        if (!subRes.ok) tagNote = ' (Warning: the sessions could not be tagged as SOA-submitted — tag them in SOA Submissions.)'
+      } catch {
+        tagNote = ' (Warning: the sessions could not be tagged as SOA-submitted — tag them in SOA Submissions.)'
+      }
+
+      setGenSuccess(
+        `SOA for ${walletName} — ${periodLabel(genPeriod)} generated successfully. ${fetchedOrders.length} session${fetchedOrders.length === 1 ? '' : 's'} tagged as SOA-submitted.`
+        + (alreadySubmitted > 0 ? ` ${alreadySubmitted} already-submitted session${alreadySubmitted === 1 ? ' was' : 's were'} excluded.` : '')
+        + tagNote
+      )
       await fetchRecords()
     } catch (e) {
       setGenError(e instanceof Error ? e.message : 'Failed to generate SOA')

@@ -30,6 +30,9 @@ export interface SoaOrder {
   items: { name: string }[]
   payments: { amount: string | number; walletId?: string | null }[]
   arPaymentItems: { paymentId: string }[]
+  // Present when already tagged in an SOA Submissions batch (or a previously
+  // generated SOA Report) — such orders are excluded from a new SOA Report.
+  soaSubmissionItems?: { submission: { submittedDate: string } }[]
 }
 
 /* ─── Month options ────────────────────────────────────────── */

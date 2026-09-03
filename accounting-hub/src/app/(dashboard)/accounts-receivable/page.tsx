@@ -61,6 +61,8 @@ interface AROrder {
   items: { name: string; service?: { department?: string | null; hmoPaysClinicianDirect?: boolean } | null }[]
   payments: { amount: number | string; walletId?: string }[]
   arPaymentItems: { paymentId: string }[]
+  soaSubmissionItems?: { submission: { submittedDate: string } }[]
+  soaApprovalStatus?: string | null   // APPROVED | DISAPPROVED | null (pending)
 }
 
 interface ARSummary {
@@ -965,6 +967,26 @@ export default function AccountsReceivablePage() {
     }
   }
 
+  /* ── SOA Submission Status (Pending / Approved / Disapproved) ──
+     Manual per-claim outcome; a paid order displays as Approved regardless. */
+  const [soaStatusBusy, setSoaStatusBusy] = useState<string | null>(null)
+  const saveSoaStatus = async (orderId: string, status: string) => {
+    setSoaStatusBusy(orderId)
+    try {
+      const res = await fetch('/api/accounts-receivable/soa-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, status: status || null }),
+      })
+      if (res.ok) {
+        setOrders(prev => prev.map(o =>
+          o.id === orderId ? { ...o, soaApprovalStatus: status || null } : o
+        ))
+      }
+    } catch { /* ignore */ }
+    finally { setSoaStatusBusy(null) }
+  }
+
   /* ── Summary dashboard export ──────────────────────────────────
      Builds the four tables on this screen once, so the Excel workbook and
      the PDF always carry the same figures. Everything reflects the filters
@@ -1178,7 +1200,7 @@ export default function AccountsReceivablePage() {
             { key: 'overview', label: 'Overview' },
             { key: 'per-hmo', label: 'Per HMO' },
             { key: 'soa-report', label: 'SOA Report' },
-            { key: 'submitted-soa', label: 'Submitted for SOA' },
+            { key: 'submitted-soa', label: 'SOA Submissions' },
           ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
@@ -2108,6 +2130,10 @@ export default function AccountsReceivablePage() {
           const q = perHmoColSearch.service.toLowerCase()
           perHmoOrders = perHmoOrders.filter(o => o.items.map(i => i.name).join(', ').toLowerCase().includes(q))
         }
+        if (perHmoColSearch.clinician) {
+          const q = perHmoColSearch.clinician.toLowerCase()
+          perHmoOrders = perHmoOrders.filter(o => (o.clinicianName || '').toLowerCase().includes(q))
+        }
         if (perHmoColSearch.hmo) {
           const q = perHmoColSearch.hmo.toLowerCase()
           perHmoOrders = perHmoOrders.filter(o => {
@@ -2127,6 +2153,9 @@ export default function AccountsReceivablePage() {
           } else if (perHmoSortField === 'service') {
             aVal = a.items.map(i => i.name).join(', ')
             bVal = b.items.map(i => i.name).join(', ')
+          } else if (perHmoSortField === 'clinician') {
+            aVal = a.clinicianName || ''
+            bVal = b.clinicianName || ''
           }
           if (aVal < bVal) return perHmoSortDir === 'asc' ? -1 : 1
           if (aVal > bVal) return perHmoSortDir === 'asc' ? 1 : -1
@@ -2157,8 +2186,8 @@ export default function AccountsReceivablePage() {
             }
             y += 2
             // Header
-            const cols = ['Date', 'Service', 'Patient', 'HMO', 'Amount']
-            const colWidths = [28, 75, 50, 50, 35]
+            const cols = ['Date', 'Service', 'Patient', 'Clinician', 'HMO', 'Amount', 'SOA', 'SOA Date']
+            const colWidths = [24, 60, 40, 38, 36, 26, 14, 24]
             let x = margin
             doc.setFontSize(8); doc.setFont('helvetica', 'bold')
             cols.forEach((c, i) => { doc.text(c, x, y); x += colWidths[i] }); y += 5
@@ -2169,12 +2198,16 @@ export default function AccountsReceivablePage() {
               const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
               const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
               const amtStr = amt.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+              const soaDates = (o.soaSubmissionItems || []).map(i => i.submission.submittedDate).sort()
               const row = [
                 formatDate(o.transactionDate),
                 o.items.map(i => i.name).join(', '),
                 o.patientName || '—',
+                o.clinicianName || '—',
                 wallet?.patientName || '—',
                 amtStr,
+                soaDates.length ? 'Yes' : 'No',
+                soaDates.length ? formatDate(soaDates[soaDates.length - 1]) : '—',
               ]
               row.forEach((cell, i) => {
                 const maxW = colWidths[i] - 2
@@ -2193,12 +2226,19 @@ export default function AccountsReceivablePage() {
             const rows = perHmoOrders.map(o => {
               const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
               const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
+              const soaDates = (o.soaSubmissionItems || []).map(i => i.submission.submittedDate).sort()
               return {
                 Date: formatDate(o.transactionDate),
                 Service: o.items.map(i => i.name).join(', '),
                 Patient: o.patientName || '—',
+                Clinician: o.clinicianName || '—',
                 HMO: wallet?.patientName || '—',
                 Amount: amt,
+                'SOA Submitted': soaDates.length ? 'Yes' : 'No',
+                'Date SOA Submitted': soaDates.length ? formatDate(soaDates[soaDates.length - 1]) : '',
+                'Submission Status': o.arPaymentItems.length > 0 ? 'Approved'
+                  : o.soaApprovalStatus === 'APPROVED' ? 'Approved'
+                  : o.soaApprovalStatus === 'DISAPPROVED' ? 'Disapproved' : 'Pending',
                 Proof: o.arProofUrl || '',
               }
             })
@@ -2284,9 +2324,13 @@ export default function AccountsReceivablePage() {
                       { label: 'Change Date', field: '', searchKey: '' },
                       { label: 'Service', field: 'service', searchKey: 'service' },
                       { label: 'Patient', field: 'patientName', searchKey: 'patient' },
+                      { label: 'Clinician', field: 'clinician', searchKey: 'clinician' },
                       { label: 'HMO', field: 'hmo', searchKey: 'hmo' },
                       { label: 'Amount', field: 'amount', searchKey: 'amount' },
                       { label: 'Status', field: 'status', searchKey: 'status' },
+                      { label: 'SOA Submitted', field: '', searchKey: '' },
+                      { label: 'Date SOA Submitted', field: '', searchKey: '' },
+                      { label: 'Submission Status', field: '', searchKey: '' },
                       { label: 'Invoice', field: '', searchKey: '' },
                       { label: 'Proof', field: '', searchKey: '' },
                     ].map(col => (
@@ -2299,7 +2343,7 @@ export default function AccountsReceivablePage() {
                           )}
                           {col.field && perHmoSortField !== col.field && <ArrowUpDown size={10} style={{ color: 'var(--light-gray)' }} />}
                         </div>
-                        {col.searchKey && ['service', 'patient', 'hmo'].includes(col.searchKey) && (
+                        {col.searchKey && ['service', 'patient', 'clinician', 'hmo'].includes(col.searchKey) && (
                           <input
                             className="mt-1 w-full px-2 py-0.5 rounded border text-xs outline-none"
                             style={{ borderColor: 'var(--light-gray)' }}
@@ -2315,9 +2359,9 @@ export default function AccountsReceivablePage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                    <tr><td colSpan={13} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                   ) : perHmoOrders.length === 0 ? (
-                    <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No transactions found</td></tr>
+                    <tr><td colSpan={13} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No transactions found</td></tr>
                   ) : perHmoOrders.map(o => {
                     const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
                     const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
@@ -2401,6 +2445,7 @@ export default function AccountsReceivablePage() {
                         </td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.items.map(i => i.name).join(', ')}</td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.clinicianName || '—'}</td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{wallet?.patientName || '—'}</td>
                         <td className="px-3 py-2 text-xs text-right font-medium" style={{ color: 'var(--charcoal)' }}>
                           <div className="relative group inline-block cursor-default">
@@ -2417,6 +2462,50 @@ export default function AccountsReceivablePage() {
                             {isPaid ? 'Paid' : 'Unpaid'}
                           </span>
                         </td>
+                        {/* SOA Submitted — automated: Yes once the order is in any
+                            SOA Submissions batch (logged there, or auto-recorded when
+                            an SOA Report was generated over it). */}
+                        {(() => {
+                          const soaDates = (o.soaSubmissionItems || []).map(i => i.submission.submittedDate).sort()
+                          const soaSubmitted = soaDates.length > 0
+                          return (
+                            <>
+                              <td className="px-3 py-2 text-center">
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                                  style={soaSubmitted ? { background: '#dcfce7', color: '#166534' } : { background: '#f3f4f6', color: '#6b7280' }}>
+                                  {soaSubmitted ? 'Yes' : 'No'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-center whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                                {soaSubmitted ? formatDate(soaDates[soaDates.length - 1]) : '—'}
+                              </td>
+                              {/* Submission Status — Pending by default; Paid auto-shows Approved */}
+                              <td className="px-3 py-2 text-center">
+                                {isPaid ? (
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold" title="Automatically Approved — this claim is tagged as Paid"
+                                    style={{ background: '#dcfce7', color: '#166534' }}>
+                                    Approved
+                                  </span>
+                                ) : (
+                                  <select
+                                    value={o.soaApprovalStatus || ''}
+                                    disabled={soaStatusBusy === o.id}
+                                    onChange={e => saveSoaStatus(o.id, e.target.value)}
+                                    className="px-1.5 py-1 rounded-lg border text-xs outline-none disabled:opacity-50"
+                                    style={{
+                                      borderColor: 'var(--light-gray)',
+                                      color: o.soaApprovalStatus === 'APPROVED' ? '#166534' : o.soaApprovalStatus === 'DISAPPROVED' ? '#b91c1c' : 'var(--mid-gray)',
+                                      background: o.soaApprovalStatus === 'APPROVED' ? '#dcfce7' : o.soaApprovalStatus === 'DISAPPROVED' ? '#fee2e2' : 'white',
+                                    }}>
+                                    <option value="">Pending</option>
+                                    <option value="APPROVED">Approved</option>
+                                    <option value="DISAPPROVED">Disapproved</option>
+                                  </select>
+                                )}
+                              </td>
+                            </>
+                          )
+                        })()}
                         <td className="px-3 py-2 text-center">
                           <button
                             disabled={invoiceBusy === o.id}

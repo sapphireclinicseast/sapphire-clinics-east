@@ -1031,6 +1031,9 @@ model Order {
   referenceNumber       String?
   arProofUrl            String? // Per-transaction AR proof attachment (PDF or image)
   arCustomDate          DateTime? // Manually overridden transaction date for AR Invoice / SOA
+  // Per-claim SOA submission outcome: null = Pending; APPROVED | DISAPPROVED set
+  // manually in the Per HMO table. A paid order displays as Approved regardless.
+  soaApprovalStatus     String?
   status                OrderStatus  @default(COMPLETED)
   returnedByBuyer       Boolean      @default(false) // product order returned by buyer (stock restocked, sale reversed)
   paymentStatus         String       @default("PAID") // PAID | UNPAID (session recorded, cash collected later)
