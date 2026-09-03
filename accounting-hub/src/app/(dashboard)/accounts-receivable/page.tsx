@@ -482,6 +482,14 @@ export default function AccountsReceivablePage() {
   }, [isFrontdesk, tab, hmoSubTab, visibleTabs.join(',')])
   // Per HMO sub-tab state
   const [perHmoWallet, setPerHmoWallet] = useState('')
+  // Fullscreen overlay for the Per HMO table — it carries a lot of columns.
+  const [perHmoExpanded, setPerHmoExpanded] = useState(false)
+  useEffect(() => {
+    if (!perHmoExpanded) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPerHmoExpanded(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [perHmoExpanded])
   const [perHmoFrom, setPerHmoFrom] = useState('')
   const [perHmoTo, setPerHmoTo] = useState('')
   const [perHmoSortField, setPerHmoSortField] = useState('transactionDate')
@@ -2203,7 +2211,10 @@ export default function AccountsReceivablePage() {
         }
 
         return (
-          <div className="space-y-4">
+          <div
+            className={perHmoExpanded ? 'fixed inset-0 z-40 overflow-y-auto p-6 space-y-4' : 'space-y-4'}
+            style={perHmoExpanded ? { background: 'var(--off-white)' } : undefined}
+          >
             {/* Filters + Download */}
             <div className="flex flex-wrap items-end gap-3">
               <div>
@@ -2225,6 +2236,13 @@ export default function AccountsReceivablePage() {
                   className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div className="relative ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => setPerHmoExpanded(v => !v)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--mid-gray)', color: 'var(--mid-gray)' }}
+                  title={perHmoExpanded ? 'Back to the normal page view' : 'Expand this table to the full screen'}>
+                  {perHmoExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />} {perHmoExpanded ? 'Collapse' : 'Expand'}
+                </button>
                 <button
                   onClick={() => {
                     setInvSettingBranch('')
