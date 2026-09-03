@@ -337,20 +337,25 @@ function ProofCell({ orderId, currentUrl, onChange }: {
   }
 
   return (
-    <div className="flex flex-col items-center gap-1 min-w-[90px]">
-      {urls.map((url, i) => (
-        <div key={url} className="flex items-center gap-1">
-          <a href={url} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg border text-[10px] font-medium"
-            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-            <FileCheck size={10} /> {urls.length > 1 ? `File ${i + 1}` : 'View'}
-          </a>
-          <button onClick={() => remove(url)} disabled={busy}
-            className="p-0.5 rounded hover:bg-red-50 disabled:opacity-40" title="Remove this file">
-            <X size={10} className="text-red-400" />
-          </button>
+    <div className="flex flex-col items-stretch gap-1.5 min-w-[130px]">
+      {/* Attached files as one tidy list: name on the left, remove on the right */}
+      {urls.length > 0 && (
+        <div className="rounded-lg border divide-y" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          {urls.map((url, i) => (
+            <div key={url} className="flex items-center justify-between gap-1 px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
+              <a href={url} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[10px] font-medium hover:underline"
+                style={{ color: 'var(--teal)' }}>
+                <FileCheck size={10} /> {urls.length > 1 ? `File ${i + 1}` : 'View file'}
+              </a>
+              <button onClick={() => remove(url)} disabled={busy}
+                className="p-0.5 rounded hover:bg-red-50 disabled:opacity-40" title="Remove this file">
+                <X size={10} className="text-red-400" />
+              </button>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
       {/* File pick or QR scan — the phone photographs the proof and it lands
           on this order automatically, same session flow as everywhere else. */}
       <ScanUpload compact section="ar-proof" prefix={`ARPROOF-${orderId.slice(-6).toUpperCase()}`}
@@ -2208,6 +2213,10 @@ export default function AccountsReceivablePage() {
           const q = perHmoColSearch.clinician.toLowerCase()
           perHmoOrders = perHmoOrders.filter(o => (o.clinicianName || '').toLowerCase().includes(q))
         }
+        if (perHmoColSearch.status) {
+          const wantPaid = perHmoColSearch.status === 'paid'
+          perHmoOrders = perHmoOrders.filter(o => (o.arPaymentItems.length > 0) === wantPaid)
+        }
         if (perHmoColSearch.hmo) {
           const q = perHmoColSearch.hmo.toLowerCase()
           perHmoOrders = perHmoOrders.filter(o => {
@@ -2230,6 +2239,9 @@ export default function AccountsReceivablePage() {
           } else if (perHmoSortField === 'clinician') {
             aVal = a.clinicianName || ''
             bVal = b.clinicianName || ''
+          } else if (perHmoSortField === 'status') {
+            aVal = a.arPaymentItems.length > 0 ? 1 : 0
+            bVal = b.arPaymentItems.length > 0 ? 1 : 0
           }
           if (aVal < bVal) return perHmoSortDir === 'asc' ? -1 : 1
           if (aVal > bVal) return perHmoSortDir === 'asc' ? 1 : -1
@@ -2430,6 +2442,18 @@ export default function AccountsReceivablePage() {
                           )}
                           {col.field && perHmoSortField !== col.field && <ArrowUpDown size={10} style={{ color: 'var(--light-gray)' }} />}
                         </div>
+                        {col.searchKey === 'status' && (
+                          <select
+                            className="mt-1 w-full px-1 py-0.5 rounded border text-xs outline-none bg-white font-normal"
+                            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                            value={perHmoColSearch.status || ''}
+                            onChange={e => setPerHmoColSearch(prev => ({ ...prev, status: e.target.value }))}
+                            onClick={e => e.stopPropagation()}>
+                            <option value="">All</option>
+                            <option value="paid">Paid</option>
+                            <option value="unpaid">Unpaid</option>
+                          </select>
+                        )}
                         {col.searchKey && ['service', 'patient', 'clinician', 'hmo'].includes(col.searchKey) && (
                           <input
                             className="mt-1 w-full px-2 py-0.5 rounded border text-xs outline-none"
@@ -2461,7 +2485,13 @@ export default function AccountsReceivablePage() {
                     const isEditingDate = changeDateEditId === o.id
                     const isBusyDate = changeDateBusy === o.id
                     return (
-                      <tr key={o.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)', background: isDirect ? '#fff7ed' : undefined }}>
+                      <tr key={o.id} className="border-t hover:bg-gray-50/50"
+                        style={{
+                          borderColor: 'var(--light-gray)',
+                          // Settled claims read green at a glance: Paid, or manually
+                          // Approved. Direct-to-clinician keeps its amber otherwise.
+                          background: (isPaid || o.soaApprovalStatus === 'APPROVED') ? '#f0fdf4' : isDirect ? '#fff7ed' : undefined,
+                        }}>
                         {/* Original transaction date */}
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
                           {formatDate(o.transactionDate)}
