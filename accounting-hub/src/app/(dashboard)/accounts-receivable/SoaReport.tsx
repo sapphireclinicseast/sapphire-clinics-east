@@ -22,6 +22,9 @@ interface SoaListRecord {
   isHighlighted: boolean
   generatedAt: string
   generatedByName: string | null
+  orderIds?: string[] | null      // sessions covered by this SOA (set at generation)
+  submittedDate?: string | null   // set once the Submitted button records the filing date
+  submissionId?: string | null
 }
 
 
@@ -292,7 +295,10 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
       const r = await fetch(`/api/accounts-receivable?type=HMO&walletId=${genWallet}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
       const d = await r.json()
       const all: AROrder[] = d.orders || []
-      const eligible = all.filter(o => !(o.soaSubmissionItems?.length))
+      // Excluded: sessions already in a submitted batch, AND sessions sitting on
+      // a generated SOA that is still awaiting its Submitted date.
+      const pendingCovered = new Set(records.filter(r => r.walletId === genWallet && !r.submittedDate).flatMap(r => r.orderIds || []))
+      const eligible = all.filter(o => !(o.soaSubmissionItems?.length) && !pendingCovered.has(o.id))
       setAlreadySubmittedCount(all.length - eligible.length)
       setPreviewOrders(eligible)
       setUnticked(new Set())
@@ -302,8 +308,36 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
     } finally {
       setPreviewLoading(false)
     }
-  }, [genWallet, genPeriod])
+  }, [genWallet, genPeriod, records])
   useEffect(() => { loadPreview() }, [loadPreview])
+
+  // "Submitted" button: record the date the SOA was actually filed. The server
+  // creates the SoaSubmission batch over the record's sessions, which flips
+  // "SOA Submitted" / "Date SOA Submitted" in the Per HMO table.
+  const [submitFor, setSubmitFor] = useState<SoaListRecord | null>(null)
+  const [submitDate, setSubmitDate] = useState('')
+  const [submitBusy, setSubmitBusy] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const markSubmitted = async () => {
+    if (!submitFor || !submitDate) { setSubmitError('Pick the date of submission.'); return }
+    setSubmitBusy(true)
+    setSubmitError('')
+    try {
+      const r = await fetch('/api/accounts-receivable/soa', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: submitFor.id, submittedDate: submitDate }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Failed to record the submission')
+      setSubmitFor(null)
+      await fetchRecords()
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Failed to record the submission')
+    } finally {
+      setSubmitBusy(false)
+    }
+  }
 
   const previewAmount = (o: AROrder) =>
     o.payments.reduce((s, p) => (!p.walletId || p.walletId === genWallet) ? s + (Number(p.amount) || 0) : s, 0)
@@ -396,43 +430,27 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
       // Generate PDF
       const pdfBase64 = await buildSoaPdf(fetchedOrders, genWallet, walletName, genPeriod, settings)
 
-      // Save record
+      // Save record, carrying the covered order ids. Sessions are NOT tagged as
+      // submitted yet — that happens when the Submitted button records the
+      // actual filing date on the SOA record.
       const saveRes = await fetch('/api/accounts-receivable/soa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           walletId: genWallet, walletName, period: genPeriod,
           pdfData: pdfBase64,
+          orderIds: fetchedOrders.map(o => o.id),
           forceCreate: true, // at this point we've confirmed or it's a fresh generate
         }),
       })
 
       if (!saveRes.ok) throw new Error('Failed to save SOA')
 
-      // Record the covered sessions as an SOA Submissions batch, so their
-      // "SOA Submitted" flag flips to Yes and they can't land on another SOA.
-      let tagNote = ''
-      try {
-        const subRes = await fetch('/api/accounts-receivable/soa-submissions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            walletId: genWallet,
-            submittedDate: new Date().toISOString().slice(0, 10),
-            notes: `Generated via SOA Report — ${periodLabel(genPeriod)}`,
-            orderIds: fetchedOrders.map(o => o.id),
-          }),
-        })
-        if (!subRes.ok) tagNote = ' (Warning: the sessions could not be tagged as SOA-submitted — tag them in SOA Submissions.)'
-      } catch {
-        tagNote = ' (Warning: the sessions could not be tagged as SOA-submitted — tag them in SOA Submissions.)'
-      }
-
       setGenSuccess(
-        `SOA for ${walletName} — ${periodLabel(genPeriod)} generated successfully. ${fetchedOrders.length} session${fetchedOrders.length === 1 ? '' : 's'} tagged as SOA-submitted.`
-        + (excludedByUser > 0 ? ` ${excludedByUser} unticked session${excludedByUser === 1 ? ' was' : 's were'} left off the SOA.` : '')
+        `SOA for ${walletName} — ${periodLabel(genPeriod)} generated with ${fetchedOrders.length} session${fetchedOrders.length === 1 ? '' : 's'}.`
+        + (excludedByUser > 0 ? ` ${excludedByUser} unticked session${excludedByUser === 1 ? ' was' : 's were'} left off.` : '')
         + (alreadySubmitted > 0 ? ` ${alreadySubmitted} already-submitted session${alreadySubmitted === 1 ? ' was' : 's were'} excluded.` : '')
-        + tagNote
+        + ' Once it is actually filed, click Submitted on the record below to log the date — that flips its sessions to SOA-submitted in Per HMO.'
       )
       await fetchRecords()
       await loadPreview()
@@ -517,7 +535,7 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
       {canWrite && (
       <div className="rounded-2xl border p-5 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
         <div>
-          <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Generate SOA Report</h2>
+          <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Generate SOA</h2>
           <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
             Select an HMO provider and month — every transaction for that month loads ticked below. Untick any you want left off, then generate the Statement of Account PDF.
           </p>
@@ -684,16 +702,17 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Period</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Generated</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>By</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Submitted</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loadingRecords ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
                   <Loader2 size={16} className="animate-spin inline mr-2" />Loading…
                 </td></tr>
               ) : filteredRecords.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
                   {canWrite ? 'No SOA records found. Generate your first SOA above.' : 'No SOA records found.'}
                 </td></tr>
               ) : filteredRecords.map(r => (
@@ -721,6 +740,23 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                     })}
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.generatedByName || '—'}</td>
+                  <td className="px-4 py-3">
+                    {r.submittedDate ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>
+                        {new Date(r.submittedDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    ) : canWrite && (r.orderIds?.length || 0) > 0 ? (
+                      <button
+                        onClick={() => { setSubmitFor(r); setSubmitDate(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })); setSubmitError('') }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white"
+                        style={{ background: 'var(--teal)' }}
+                        title="Record the date this SOA was submitted — its sessions flip to SOA-submitted in Per HMO">
+                        <Upload size={11} /> Submitted
+                      </button>
+                    ) : (
+                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }} title={(r.orderIds?.length || 0) === 0 ? 'Generated before per-session tracking — tag its sessions in SOA Submissions' : undefined}>—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => openSoa(r.id, false)} disabled={viewingId === r.id}
@@ -765,6 +801,40 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
           onConfirm={confirmDuplicate}
           onCancel={() => { setShowDuplicate(false); pendingGenRef.current = null; setGenerating(false) }}
         />
+      )}
+
+      {/* Record-the-submission-date dialog (the Submitted button) */}
+      {submitFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40" onClick={() => !submitBusy && setSubmitFor(null)} />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5 space-y-4">
+            <h3 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Record SOA submission</h3>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              <strong>{submitFor.walletName}</strong> — {periodLabel(submitFor.period)}, covering {submitFor.orderIds?.length || 0} session{(submitFor.orderIds?.length || 0) === 1 ? '' : 's'}.
+              Recording this flips those sessions to <strong>SOA Submitted: Yes</strong> with this date in the Per HMO table.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date of submission</label>
+              <input type="date" value={submitDate} onChange={e => setSubmitDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            {submitError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: '#fef2f2', color: '#dc2626' }}>
+                <AlertCircle size={13} /> {submitError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setSubmitFor(null)} disabled={submitBusy}
+                className="px-4 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                Cancel
+              </button>
+              <button onClick={markSubmitted} disabled={submitBusy || !submitDate}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                {submitBusy ? <><Loader2 size={13} className="animate-spin" /> Recording…</> : 'Record as Submitted'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

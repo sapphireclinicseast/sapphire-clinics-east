@@ -1227,7 +1227,7 @@ export default function AccountsReceivablePage() {
           {([
             { key: 'overview', label: 'Overview' },
             { key: 'per-hmo', label: 'Per HMO' },
-            { key: 'soa-report', label: 'SOA Report' },
+            { key: 'soa-report', label: 'Generate SOA' },
             { key: 'submitted-soa', label: 'SOA Submissions' },
           ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}

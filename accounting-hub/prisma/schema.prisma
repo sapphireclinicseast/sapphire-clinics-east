@@ -2465,6 +2465,11 @@ model SoaRecord {
   pdfData         String? // Base64-encoded PDF
   branch          String?
   isHighlighted   Boolean  @default(false) // true when multiple SOAs for same provider+period
+  // Orders covered by this SOA, captured at generation (JSON array of Order ids).
+  // The "Submitted" button tags exactly these into an SoaSubmission batch.
+  orderIds        Json?
+  submittedDate   DateTime? // when the user recorded this SOA as actually submitted
+  submissionId    String? // the SoaSubmission batch created by the Submitted button
   generatedAt     DateTime @default(now())
   generatedById   String?
   generatedByName String?

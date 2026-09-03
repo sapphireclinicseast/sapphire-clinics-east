@@ -44,6 +44,7 @@ export async function GET(req: Request) {
         id: true, walletId: true, walletName: true, period: true,
         branch: true, isHighlighted: true, generatedAt: true,
         generatedById: true, generatedByName: true,
+        orderIds: true, submittedDate: true, submissionId: true,
         // pdfData excluded from list for performance
       },
     })
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { walletId, walletName, period, pdfData, branch, forceCreate, checkOnly } = await req.json()
+    const { walletId, walletName, period, pdfData, branch, forceCreate, checkOnly, orderIds } = await req.json()
     if (!walletId || !period) {
       return NextResponse.json({ error: 'walletId and period are required' }, { status: 400 })
     }
@@ -101,6 +102,8 @@ export async function POST(req: Request) {
         pdfData: pdfData || null,
         branch: branch || null,
         isHighlighted: !!existing, // highlight the new one too if replacing
+        // Which orders this SOA covers — the Submitted button tags exactly these.
+        orderIds: Array.isArray(orderIds) ? [...new Set(orderIds.filter(Boolean))] : undefined,
         generatedById: session.user.id || null,
         generatedByName: session.user.name || null,
       },
@@ -133,6 +136,69 @@ export async function DELETE(req: Request) {
 
     return NextResponse.json({ ok: true })
   } catch {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+/** PATCH /api/accounts-receivable/soa
+ *  Body: { id, submittedDate: "YYYY-MM-DD" }
+ *  Marks a generated SOA as actually submitted: creates an SoaSubmission batch
+ *  over the record's covered orders (flipping their "SOA Submitted" flag and
+ *  date in Per HMO) and stamps the record itself.
+ */
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  try {
+    const { id, submittedDate } = await req.json()
+    if (!id || !submittedDate) {
+      return NextResponse.json({ error: 'id and submittedDate are required' }, { status: 400 })
+    }
+    const record = await prisma.soaRecord.findUnique({ where: { id } })
+    if (!record) return NextResponse.json({ error: 'SOA record not found' }, { status: 404 })
+    if (record.submittedDate) {
+      return NextResponse.json({ error: 'This SOA is already recorded as submitted.' }, { status: 409 })
+    }
+    const ids: string[] = Array.isArray(record.orderIds) ? (record.orderIds as string[]).filter(Boolean) : []
+    if (ids.length === 0) {
+      return NextResponse.json(
+        { error: 'This SOA was generated before per-session tracking — tag its sessions manually in SOA Submissions instead.' },
+        { status: 400 },
+      )
+    }
+    // Only orders that still stand and still belong to this provider get tagged
+    // (a session could have been voided or re-tendered since generation).
+    const validIds = (await prisma.order.findMany({
+      where: { id: { in: ids }, status: { not: 'VOIDED' }, payments: { some: { method: 'HMO', walletId: record.walletId } } },
+      select: { id: true },
+    })).map(o => o.id)
+    if (validIds.length === 0) {
+      return NextResponse.json({ error: 'None of the sessions on this SOA are still valid for this provider.' }, { status: 400 })
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const sub = await tx.soaSubmission.create({
+        data: {
+          walletId: record.walletId,
+          submittedDate: new Date(submittedDate),
+          notes: `SOA ${record.period} — marked submitted from Generate SOA`,
+          branch: record.branch || null,
+          createdById: session.user.id as string,
+          items: { create: validIds.map(orderId => ({ orderId })) },
+        },
+        select: { id: true },
+      })
+      return tx.soaRecord.update({
+        where: { id },
+        data: { submittedDate: new Date(submittedDate), submissionId: sub.id },
+        select: { id: true, submittedDate: true, submissionId: true },
+      })
+    })
+    return NextResponse.json({ ...updated, taggedCount: validIds.length, droppedCount: ids.length - validIds.length })
+  } catch (e) {
+    console.error('SOA mark-submitted failed', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
