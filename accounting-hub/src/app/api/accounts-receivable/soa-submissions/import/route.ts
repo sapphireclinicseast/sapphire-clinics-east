@@ -46,13 +46,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { dryRun, batches } = await req.json() as {
+    const { dryRun, mode, batches } = await req.json() as {
       dryRun?: boolean
-      batches: { walletName: string; branch?: string; submittedDate: string; rows: { patient: string; amount: number; dates: string[] }[] }[]
+      mode?: 'clinicians'
+      batches: { walletName: string; branch?: string; submittedDate: string; rows: { patient: string; amount: number; dates: string[]; clinician?: string }[] }[]
     }
     if (!Array.isArray(batches) || batches.length === 0) {
       return NextResponse.json({ error: 'batches required' }, { status: 400 })
     }
+    if (mode === 'clinicians') return backfillClinicians(batches, !!dryRun)
 
     const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } })
     if (!admin) return NextResponse.json({ error: 'no admin user' }, { status: 500 })
@@ -194,4 +196,104 @@ export async function POST(req: Request) {
     console.error('SOA submissions import failed', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Internal server error' }, { status: 500 })
   }
+}
+
+/* ── Clinician backfill ─────────────────────────────────────────────────
+ * The dashlabs/QB import never stored the clinician (it lived in the source
+ * documents' TAGS), so historical orders show no clinician. The HMO tracker
+ * workbooks carry THERAPIST/PHYSICIAN per row: match rows to orders the same
+ * way the submission import does and fill clinicianName where it is empty.
+ * Workbook short forms ("PT DENISE", "DR. DE CASTRO") resolve to the full
+ * names the POS already uses when the token match is unambiguous. */
+async function backfillClinicians(
+  batches: { walletName: string; rows: { patient: string; amount: number; dates: string[]; clinician?: string }[] }[],
+  dryRun: boolean,
+) {
+  const wallets = await prisma.digitalWallet.findMany({
+    where: { walletType: 'HMO' },
+    select: { id: true, patientName: true },
+  })
+  const walletByName = new Map(wallets.map(w => [w.patientName.trim().toUpperCase(), w]))
+
+  // Known full clinician names from POS orders, for short-form resolution.
+  const known = (await prisma.order.findMany({
+    where: { clinicianName: { not: null } },
+    select: { clinicianName: true },
+    distinct: ['clinicianName'],
+  })).map(o => (o.clinicianName || '').trim()).filter(Boolean)
+  const resolveClinician = (raw: string): string => {
+    const tokens = (raw || '').toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/)
+      .filter(t => t.length > 1 && !['PT', 'OT', 'DR', 'SLP', 'MD'].includes(t))
+    if (tokens.length === 0) return raw.trim()
+    const hits = known.filter(k => {
+      const kt = nameTokens(k)
+      return tokens.every(t => kt.includes(t))
+    })
+    return hits.length === 1 ? hits[0] : raw.trim()
+  }
+
+  const report: unknown[] = []
+  let totalUpdated = 0
+  for (const batch of batches) {
+    const wallet = walletByName.get((batch.walletName || '').trim().toUpperCase())
+    if (!wallet) { report.push({ walletName: batch.walletName, error: 'wallet not found' }); continue }
+    const rows = batch.rows.filter(r => r.patient && r.clinician && r.dates?.length)
+    if (rows.length === 0) { report.push({ walletName: batch.walletName, error: 'no usable rows' }); continue }
+    const allDates = rows.flatMap(r => r.dates).sort()
+    const candidates = await prisma.order.findMany({
+      where: {
+        status: { not: 'VOIDED' },
+        payments: { some: { method: 'HMO', walletId: wallet.id } },
+        transactionDate: {
+          gte: new Date(`${allDates[0]}T00:00:00+08:00`),
+          lte: new Date(`${allDates[allDates.length - 1]}T23:59:59.999+08:00`),
+        },
+      },
+      select: {
+        id: true, patientName: true, clinicianName: true, transactionDate: true,
+        payments: { where: { method: 'HMO', walletId: wallet.id }, select: { amount: true } },
+      },
+    })
+    const walletToken = normName(wallet.patientName).split(' ')[0] || ''
+    const pool = candidates.map(o => {
+      const raw = (o.patientName || '').trim()
+      const name = normName(raw)
+      return {
+        id: o.id, name, tokens: nameTokens(raw),
+        generic: !raw || /^HMO\b/i.test(raw) || (!!walletToken && name.includes(walletToken)),
+        date: new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
+        amount: o.payments.reduce((s, p) => s + Number(p.amount), 0),
+        hasClinician: !!(o.clinicianName || '').trim(),
+        used: false,
+      }
+    })
+    const unique = <T,>(arr: T[]) => (arr.length === 1 ? arr[0] : undefined)
+    let matched = 0, updated = 0, skippedHasClinician = 0, unmatchedCount = 0
+    const updates = new Map<string, string>()
+    for (const row of rows) {
+      const rn = normName(row.patient)
+      const rTokens = nameTokens(row.patient)
+      const amountOk = (o: { amount: number }) => Math.abs(o.amount - row.amount) < 0.51
+      const hit =
+        pool.find(o => !o.used && !o.generic && o.name === rn && row.dates.includes(o.date) && amountOk(o))
+        || unique(pool.filter(o => !o.used && !o.generic && o.name === rn && row.dates.includes(o.date)))
+        || unique(pool.filter(o => !o.used && !o.generic && nameSubset(rTokens, o.tokens) && row.dates.includes(o.date) && amountOk(o)))
+        || unique(pool.filter(o => !o.used && !o.generic && nameSubset(rTokens, o.tokens) && amountOk(o) && row.dates.some(d => dayDiff(d, o.date) <= 3)))
+        || pool.find(o => !o.used && o.generic && row.dates.includes(o.date) && amountOk(o))
+      if (!hit) { unmatchedCount++; continue }
+      hit.used = true
+      matched++
+      if (hit.hasClinician) { skippedHasClinician++; continue }
+      updates.set(hit.id, resolveClinician(row.clinician as string))
+    }
+    if (!dryRun && updates.size > 0) {
+      for (const [orderId, clinicianName] of updates) {
+        await prisma.order.update({ where: { id: orderId }, data: { clinicianName } })
+      }
+    }
+    updated = updates.size
+    totalUpdated += updated
+    report.push({ walletName: wallet.patientName, rows: rows.length, matched, updated, skippedHasClinician, unmatchedCount })
+  }
+  return NextResponse.json({ dryRun, mode: 'clinicians', totalUpdated, batches: report })
 }
